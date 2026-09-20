@@ -1,0 +1,15 @@
+{
+  "name": "dlvyinsttypecodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "Cash",
+      "doc": "Cash"
+    },
+    {
+      "value": "S",
+      "name": "Securities",
+      "doc": "Securities"
+    }
+  ]
+}

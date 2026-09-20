@@ -1,364 +1,411 @@
-//! The variant encoding: one byte stream for any value, and back.
+//! The Parquet Variant encoding, and the value that holds it.
 
 use std::sync::Arc;
 
 use yggdryl::{
-    COMPRESS_FROM, DataType, DataTypeId, DataTypeKind, DataTypeValue, Scalar, StringType, TimeUnit,
-    Timezone, VARIANT_VERSION,
+    DataType, DataTypeId, DataTypeKind, DigestAlgorithm, FamilyValue, Field, Nested, Scalar,
+    VARIANT_EXTENSION_NAME, VARIANT_VERSION, Value, Variant,
 };
 
-/// One WKB point, the payload a geospatial value is.
-fn point_wkb() -> Vec<u8> {
-    let mut wkb = vec![1_u8, 1, 0, 0, 0];
-    wkb.extend_from_slice(&1.0_f64.to_le_bytes());
-    wkb.extend_from_slice(&2.0_f64.to_le_bytes());
-    wkb
-}
-
-/// One value of every leaf the encoding spells, and of every nesting.
-fn corpus() -> Vec<Scalar> {
-    let text = |dtype: &str, text: &str| {
-        DataType::from_str(dtype)
-            .unwrap()
-            .required_field("value")
-            .scalar(Scalar::from(text))
-            .unwrap()
-    };
-    vec![
-        Scalar::Null,
-        Scalar::from(true),
-        Scalar::from(i8::MIN),
-        Scalar::from(i16::MIN),
-        Scalar::from(i32::MIN),
-        Scalar::from(i64::MIN),
-        Scalar::from(i128::MIN),
-        Scalar::from(u8::MAX),
-        Scalar::from(u16::MAX),
-        Scalar::from(u32::MAX),
-        Scalar::from(u64::MAX),
-        Scalar::from(u128::MAX),
-        Scalar::from(half::f16::from_f32(-0.0)),
-        Scalar::from(-0.0_f32),
-        Scalar::from(f64::from_bits(0x7ff8_0000_0000_0001)),
-        text("decimal32(9, 2)", "-1234567.89"),
-        text("decimal64(18, 4)", "1.2345"),
-        text(
-            "decimal128(38, 7)",
-            "-1701411834604692317316873037158.8410572",
-        ),
-        text(
-            "decimal256(76, 18)",
-            "-1234567890123456789.012345678901234567",
-        ),
-        Scalar::date32(19_782),
-        Scalar::date64(86_400_000),
-        Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-        Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
-        Scalar::datetime64(
-            1_704_190_530_000_000_000,
-            TimeUnit::Nanosecond,
-            Timezone::UTC,
-        )
-        .unwrap(),
-        Scalar::datetime64(
-            1,
-            TimeUnit::Millisecond,
-            Timezone::from_str("Europe/Paris").unwrap(),
-        )
-        .unwrap(),
-        Scalar::duration32(1, TimeUnit::Millisecond).unwrap(),
-        Scalar::duration64(-1, TimeUnit::Nanosecond).unwrap(),
-        Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
-        Scalar::from("naïve"),
-        text("fixed_ascii(4)", "USD "),
-        text("large_cp1252_view", "café"),
-        text("sized_utf8(8)", "bounded"),
-        text("currency", "USD"),
-        text("country", "FR"),
-        text("mic", "XPAR"),
-        text("cfi", "ESVUFR"),
-        text("isin", "US0378331005"),
-        text("cusip", "037833100"),
-        text("sedol", "B0YBKJ7"),
-        text("bloomberg", "AAPL US Equity"),
-        text("side", "BUY"),
-        text("state", "20NEW"),
-        text("timeinforce", "GTC"),
-        text("version", "5.0.1"),
-        text("url", "https://example.com/a?b=1"),
-        text("urn", "urn:isbn:0451450523"),
-        text("timezone", "Europe/Paris"),
-        text("mimetype", "application/json"),
-        text("mediatype", "text/plain; charset=utf-8"),
-        Scalar::from(vec![0_u8, 255]),
-        DataType::from_str("fixed_binary(2)")
-            .unwrap()
-            .required_field("value")
-            .scalar(Scalar::from(vec![b'a', b'b']))
-            .unwrap(),
-        DataType::from_str("binary_view")
-            .unwrap()
-            .required_field("value")
-            .scalar(Scalar::from(vec![7_u8; 40]))
-            .unwrap(),
-        Scalar::Geometry(yggdryl::Geometry::new(point_wkb()).unwrap()),
-        Scalar::Geography(yggdryl::Geography::new(point_wkb()).unwrap()),
-        text("uuid", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
-        Scalar::from_sequence([Scalar::from(1_i32), Scalar::Null, Scalar::from("a")]),
-        Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
-        Scalar::from_struct([
-            ("id", Scalar::from(1_i64)),
-            (
-                "tags",
-                Scalar::from_sequence([Scalar::from_struct([("n", Scalar::Null)]).unwrap()]),
-            ),
-        ])
-        .unwrap(),
-    ]
+/// The value most of these tests exchange: one object, two leaves.
+fn quote() -> Scalar {
+    Scalar::from_struct([
+        ("symbol", Scalar::from("AAPL")),
+        ("size", Scalar::from(100_i64)),
+    ])
+    .expect("the value builds")
 }
 
 #[test]
-fn every_leaf_and_every_nesting_reads_back_as_itself() {
-    for value in corpus() {
-        let bytes = value.into_variant_bytes();
-        assert_eq!(bytes[0], VARIANT_VERSION, "{value:?}");
-        assert_eq!(bytes[1], value.id().as_u8(), "{value:?}");
-        let read = Scalar::decode_variant_bytes(&bytes)
-            .unwrap_or_else(|error| panic!("{value:?} encoded as {bytes:?} refused: {error}"));
-        assert_eq!(read, value);
-        assert_eq!(
-            read.id(),
-            value.id(),
-            "the leaf travels, not just the value"
-        );
-        assert_eq!(read.dtype().ok(), value.dtype().ok(), "{value:?}");
-        // The stream is the same bytes, cut one leaf per chunk.
-        let chunks: Vec<Vec<u8>> = value.encode_variant_stream_bytes().collect();
-        assert_eq!(chunks.concat(), bytes);
-        assert_eq!(Scalar::decode_variant_stream_bytes(&chunks).unwrap(), value);
-    }
-}
-
-#[test]
-fn a_leaf_keeps_its_parameters() {
-    let parsed = |dtype: &str, text: &str| {
-        DataType::from_str(dtype)
-            .unwrap()
-            .required_field("value")
-            .scalar(Scalar::from(text))
-            .unwrap()
-    };
-    let fixed = parsed("fixed_ascii(4)", "USD");
-    let read = Scalar::decode_variant_bytes(&fixed.into_variant_bytes()).unwrap();
-    assert_eq!(read.id(), DataTypeId::FixedAsciiString);
-    assert_eq!(
-        read.dtype().unwrap(),
-        DataType::from_str("fixed_ascii(4)").unwrap()
+fn the_metadata_header_states_the_version_and_a_sorted_dictionary() {
+    let variant = Variant::encode(&quote()).unwrap();
+    let header = variant.metadata()[0];
+    assert_eq!(header & 0x0f, VARIANT_VERSION, "the specification version");
+    assert_eq!((header >> 4) & 0x01, 1, "sorted_strings");
+    assert_eq!(usize::from(header >> 6) + 1, 1, "one-byte offsets");
+    // Two keys, sorted: `size` then `symbol`.
+    assert_eq!(variant.metadata()[1], 2);
+    assert!(
+        variant.metadata().ends_with(b"sizesymbol"),
+        "{:?}",
+        variant.metadata()
     );
+    assert_eq!(variant.scalar().unwrap(), quote());
+}
 
-    let stamp = Scalar::datetime64(
-        1,
-        TimeUnit::Millisecond,
-        Timezone::from_str("Asia/Tokyo").unwrap(),
+#[test]
+fn a_short_string_folds_its_length_and_a_long_one_states_it() {
+    let short = Variant::encode(&Scalar::from("abc")).unwrap();
+    assert_eq!(short.value()[0] & 0x03, 1, "the short-string basic type");
+    assert_eq!(short.value()[0] >> 2, 3, "the length in the header");
+    assert_eq!(short.value().len(), 4);
+
+    let long = "x".repeat(64);
+    let held = Variant::encode(&Scalar::from(long.as_str())).unwrap();
+    assert_eq!(held.value()[0] & 0x03, 0, "a primitive");
+    assert_eq!(held.value()[0] >> 2, 16, "the string primitive");
+    assert_eq!(held.value().len(), 1 + 4 + 64);
+    assert_eq!(held.scalar().unwrap(), Scalar::from(long.as_str()));
+}
+
+#[test]
+fn a_variant_is_a_value_the_generic_vocabulary_knows() {
+    let variant = Variant::encode(&quote()).unwrap();
+    let value = variant.clone().into_scalar();
+
+    assert!(matches!(value, Scalar::Variant(_)));
+    assert_eq!(value.id(), DataTypeId::Variant);
+    assert_eq!(value.family(), DataTypeKind::Nested);
+    assert_eq!(value.kind(), "variant");
+    assert_eq!(Value::dtype(&variant).unwrap(), DataType::Variant);
+    assert_eq!(Variant::from_scalar(&value), Some(&variant));
+    assert_eq!(Variant::from_scalar(&quote()), None);
+    assert_eq!(Scalar::from(variant.clone()), value);
+
+    // It is one leaf of the nested family, beside the three containers.
+    let held = Nested::from_scalar(&value).expect("a nested value");
+    assert!(matches!(held, Nested::Variant(_)));
+    assert_eq!(FamilyValue::dtype(&held).unwrap(), DataType::Variant);
+    assert_eq!(held.into_scalar(), value);
+
+    // Equality is the bytes, and the display is the JSON the value spells.
+    assert_eq!(value, variant.clone().into_scalar());
+    assert_eq!(variant.to_string(), r#"{"size":100,"symbol":"AAPL"}"#);
+}
+
+#[test]
+fn an_encoded_variant_keeps_its_foreign_bytes_when_already_typed() {
+    // A valid foreign dictionary need not claim sorted strings. Its object
+    // still states fields in name order: dictionary ids 1 (`a`), then 0 (`b`).
+    let variant = Variant::new(
+        vec![0x01, 2, 0, 1, 2, b'b', b'a'],
+        vec![2, 2, 1, 0, 0, 1, 2, 0, 8],
     )
     .unwrap();
-    let read = Scalar::decode_variant_bytes(&stamp.into_variant_bytes()).unwrap();
-    assert_eq!(read, stamp);
-    assert_eq!(read.dtype().unwrap(), stamp.dtype().unwrap());
+    let scalar = Scalar::Variant(variant.clone());
 
-    let decimal = parsed("decimal64(10, 3)", "1.5");
-    let read = Scalar::decode_variant_bytes(&decimal.into_variant_bytes()).unwrap();
-    assert_eq!(read, decimal);
-    assert_eq!(read.as_decimal(), decimal.as_decimal());
+    let scalar_encoded = scalar.into_variant().unwrap();
+    let typed_encoded = DataType::Variant.encode_variant(&scalar).unwrap();
+    let value_encoded = Value::into_variant(&variant).unwrap();
+    let value_decoded = <Variant as Value>::from_variant(&variant).unwrap();
+    for held in [scalar_encoded, typed_encoded, value_encoded, value_decoded] {
+        assert_eq!(held, variant);
+        assert_eq!(held.metadata().as_ptr(), variant.metadata().as_ptr());
+        assert_eq!(held.value().as_ptr(), variant.value().as_ptr());
+    }
 }
 
 #[test]
-fn a_number_is_two_bytes_and_its_width() {
-    assert_eq!(
-        Scalar::from(7_i32).into_variant_bytes(),
-        [VARIANT_VERSION, DataTypeId::Int32.as_u8(), 7, 0, 0, 0]
-    );
-    assert_eq!(
-        Scalar::Null.into_variant_bytes(),
-        [VARIANT_VERSION, DataTypeId::Null.as_u8()]
-    );
-    assert_eq!(
-        Scalar::from(true).into_variant_bytes(),
-        [VARIANT_VERSION, DataTypeId::Boolean.as_u8(), 1]
-    );
-    assert_eq!(Scalar::from(u64::MAX).into_variant_bytes().len(), 10);
-}
+fn casting_into_a_variant_encodes_and_casting_out_decodes() {
+    // A value entering a variant column is encoded, canonically.
+    let held = DataType::Variant.scalar(quote()).unwrap();
+    assert_eq!(held, Scalar::Variant(Variant::encode(&quote()).unwrap()));
+    // And a value already encoded is answered untouched.
+    assert_eq!(DataType::Variant.scalar(held.clone()).unwrap(), held);
 
-#[test]
-fn a_variable_payload_states_its_compression_and_compresses_past_four_kibibytes() {
-    let bytes = Scalar::from("abc").into_variant_bytes();
+    // Leaving the type decodes first, so every cast a value answers a
+    // variant answers too.
+    let seven = Scalar::Variant(Variant::encode(&Scalar::from(7_i32)).unwrap());
     assert_eq!(
-        bytes,
-        [
-            VARIANT_VERSION,
-            DataTypeId::Utf8String.as_u8(),
-            0,
-            3,
-            b'a',
-            b'b',
-            b'c'
-        ]
-    );
-    let exact = "x".repeat(COMPRESS_FROM);
-    let bytes = Scalar::from(exact.as_str()).into_variant_bytes();
-    assert_eq!(bytes[2], 0, "four kibibytes stay as they are");
-    assert_eq!(bytes.len(), COMPRESS_FROM + 5);
-    let past = "x".repeat(COMPRESS_FROM + 1);
-    let bytes = Scalar::from(past.as_str()).into_variant_bytes();
-    assert_eq!(bytes[2], 1, "one byte past is a zstd frame");
-    assert!(bytes.len() < 64, "{}", bytes.len());
-    assert_eq!(
-        Scalar::decode_variant_bytes(&bytes).unwrap(),
-        Scalar::from(past.as_str())
-    );
-    // Bytes and a geometry compress the same way.
-    let payload = Scalar::from(vec![7_u8; COMPRESS_FROM * 4]);
-    let bytes = payload.into_variant_bytes();
-    assert_eq!(bytes[2], 1);
-    assert_eq!(Scalar::decode_variant_bytes(&bytes).unwrap(), payload);
-}
-
-#[test]
-fn a_nested_value_is_a_count_and_its_children_without_the_version() {
-    let value = Scalar::from_sequence([Scalar::from(1_i8), Scalar::from(2_i8)]);
-    assert_eq!(
-        value.into_variant_bytes(),
-        [
-            VARIANT_VERSION,
-            DataTypeId::List.as_u8(),
-            2,
-            DataTypeId::Int8.as_u8(),
-            1,
-            DataTypeId::Int8.as_u8(),
-            2
-        ]
-    );
-    let value = Scalar::from_struct([("b", Scalar::Null), ("a", Scalar::from(true))]).unwrap();
-    // Sorted by name, as the struct holds them.
-    assert_eq!(
-        value.into_variant_bytes(),
-        [
-            VARIANT_VERSION,
-            DataTypeId::Struct.as_u8(),
-            2,
-            1,
-            b'a',
-            DataTypeId::Boolean.as_u8(),
-            1,
-            1,
-            b'b',
-            DataTypeId::Null.as_u8()
-        ]
-    );
-    let chunks: Vec<Vec<u8>> = value.encode_variant_stream_bytes().collect();
-    assert_eq!(
-        chunks.len(),
-        5,
-        "the header, then a name and a value per child"
-    );
-}
-
-#[test]
-fn a_datatype_casts_on_the_way_in_and_on_the_way_out() {
-    let bytes = DataType::Int64
-        .encode_variant_bytes(&Scalar::from(7_i32))
-        .unwrap();
-    assert_eq!(bytes[1], DataTypeId::Int64.as_u8());
-    assert_eq!(
-        DataType::Int64.decode_variant_bytes(&bytes).unwrap(),
+        DataType::Int64.scalar(seven.clone()).unwrap(),
         Scalar::from(7_i64)
     );
-    // The cast is the datatype's own: text into a number, a number into text.
-    let read = DataType::utf8().decode_variant_bytes(&bytes).unwrap();
-    assert_eq!(read, Scalar::from("7"));
-    assert!(
-        DataType::Int64
-            .encode_variant_bytes(&Scalar::from("seven"))
-            .is_err()
+    assert_eq!(
+        DataType::utf8().scalar(seven).unwrap(),
+        Scalar::from("7"),
+        "a variant casts as the value it holds"
     );
-    let decimal = DataType::from_str("decimal128(10, 2)").unwrap();
-    let held = decimal
-        .clone()
-        .required_field("value")
-        .scalar(Scalar::from("1.5"))
-        .unwrap();
-    let chunks: Vec<Vec<u8>> = decimal
-        .encode_variant_stream_bytes(&Scalar::from(1.5_f64))
-        .unwrap()
+
+    // A null is a value a variant spells, so a required column holds it.
+    let null = DataType::Variant.scalar(Scalar::Null).unwrap();
+    let Scalar::Variant(held) = &null else {
+        panic!("a variant value, got {null:?}");
+    };
+    assert_eq!(held.value(), [0], "the encoding's own null");
+    assert_eq!(held.scalar().unwrap(), Scalar::Null);
+}
+
+#[test]
+fn a_variant_column_crosses_arrow_as_the_two_binaries() {
+    let field = Field::new("payload", DataType::variant(), true);
+    let arrow = field.clone().into_arrow_field().unwrap();
+    assert_eq!(arrow.extension_type_name(), Some(VARIANT_EXTENSION_NAME));
+    let arrow_schema::DataType::Struct(children) = arrow.data_type() else {
+        panic!("a struct storage, got {}", arrow.data_type());
+    };
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0].name(), "metadata");
+    assert_eq!(children[1].name(), "value");
+
+    let root = Field::new(
+        "row",
+        DataType::from(yggdryl::StructType::from_fields([field]).unwrap()),
+        false,
+    );
+    let rows = Scalar::from_sequence([
+        Scalar::from_struct([("payload", quote())]).unwrap(),
+        Scalar::from_struct([("payload", Scalar::from(7_i64))]).unwrap(),
+    ]);
+    let batch = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+    assert_eq!(batch.num_rows(), 2);
+
+    let read = yggdryl::arrow::batch_to_value(&batch).unwrap();
+    let read = read.as_sequence().unwrap();
+    let held: Vec<Scalar> = read
+        .iter()
+        .map(|row| row.as_sequence().unwrap()[0].clone())
         .collect();
-    assert_eq!(decimal.decode_variant_stream_bytes(&chunks).unwrap(), held);
-    // A leaf datatype answers the same doors through the datatype it widens to.
-    let bytes = StringType::default()
-        .encode_variant_bytes(&Scalar::from(1_i32))
-        .unwrap();
-    assert_eq!(bytes[1], DataTypeId::Utf8String.as_u8());
-    assert_eq!(
-        StringType::default().decode_variant_bytes(&bytes).unwrap(),
-        Scalar::from("1")
-    );
-}
-
-#[test]
-fn the_refusals_name_the_byte_and_the_reason() {
-    let refused = |bytes: &[u8]| Scalar::decode_variant_bytes(bytes).unwrap_err().to_string();
-    assert!(refused(&[]).contains("ends before"), "{}", refused(&[]));
-    assert!(
-        refused(&[1, 0]).contains("version 1"),
-        "{}",
-        refused(&[1, 0])
-    );
-    let placeholder = refused(&[0, DataTypeKind::Integer.id()]);
-    assert!(
-        placeholder.contains("placeholder") && placeholder.contains("integer"),
-        "{placeholder}"
-    );
-    assert!(
-        refused(&[0, 0xf0]).contains("names no datatype"),
-        "{}",
-        refused(&[0, 0xf0])
-    );
-    let short = refused(&[0, DataTypeId::Int32.as_u8(), 1]);
-    assert!(short.contains("4 bytes announced"), "{short}");
-    let trailing = refused(&[0, DataTypeId::Null.as_u8(), 0]);
-    assert!(trailing.contains("1 bytes left"), "{trailing}");
-    let compression = refused(&[0, DataTypeId::Utf8String.as_u8(), 7, 0]);
-    assert!(compression.contains("compression 7"), "{compression}");
-    let twice = Scalar::from_struct([("a", Scalar::Null)])
-        .unwrap()
-        .into_variant_bytes();
-    let mut doubled = twice.clone();
-    doubled[2] = 2;
-    doubled.extend_from_slice(&twice[3..]);
-    assert!(refused(&doubled).contains("twice"), "{}", refused(&doubled));
-    // A placeholder is a valid tag for nothing, so a family gains a leaf
-    // without a stream written before it moving.
-    let position =
-        Scalar::decode_variant_bytes(&[0, DataTypeId::List.as_u8(), 1, 0x2f]).unwrap_err();
-    assert!(position.to_string().contains("decimal"), "{position}");
-}
-
-#[test]
-fn the_identifiers_are_the_digest_tags_laid_out_by_family() {
-    for id in DataTypeId::ALL {
-        assert_eq!(DataTypeKind::of_u8(id.as_u8()), Some(id.kind()), "{id}");
+    for (value, expected) in held.iter().zip([quote(), Scalar::from(7_i64)]) {
+        let Scalar::Variant(variant) = value else {
+            panic!("a variant value, got {value:?}");
+        };
+        assert_eq!(variant.scalar().unwrap(), expected);
     }
-    assert_eq!(DataTypeKind::Integer.id(), 0x10);
-    assert_eq!(DataTypeKind::Text.id(), 0x50);
-    assert_eq!(DataTypeKind::Nested.id(), 0x90);
-    assert_eq!(DataTypeId::from_u8(DataTypeKind::Nested.id()), None);
-    // What a value feeds a digest starts with the same byte the encoding
-    // writes after the version.
-    let value = Scalar::from("AAPL");
-    let mut fed = yggdryl::xxhash::Xxh3::new();
-    value.write_bytes(&mut fed);
+}
+
+#[test]
+fn variant_fields_distinguish_absence_from_encoded_null() {
+    let optional = DataType::Variant.nullable_field("payload");
+    let required = DataType::Variant.required_field("payload");
+    let present = DataType::Variant.scalar(Scalar::Null).unwrap();
+    assert!(matches!(present, Scalar::Variant(_)));
+    assert_eq!(optional.scalar(Scalar::Null).unwrap(), Scalar::Null);
+    assert_eq!(optional.cast_scalar(&Scalar::Null).unwrap(), Scalar::Null);
+    assert!(required.scalar(Scalar::Null).is_err());
+    assert!(required.cast_scalar(&Scalar::Null).is_err());
+    assert_eq!(required.scalar(present.clone()).unwrap(), present);
+    assert_eq!(optional.default_value().unwrap(), Scalar::Null);
+    assert_eq!(required.default_value().unwrap(), present);
+    assert!(DataType::Variant.is_default_value(&present).unwrap());
+    assert!(!DataType::Variant.is_default_value(&Scalar::Null).unwrap());
+}
+
+#[test]
+fn variant_arrow_nulls_keep_their_outer_validity_when_rematerialized() {
+    use arrow_array::Array;
+    let field = DataType::Variant.nullable_field("payload");
+    let values = Scalar::from_sequence([
+        Scalar::Null,
+        Scalar::Variant(Scalar::Null.into_variant().unwrap()),
+        Scalar::Variant(Scalar::from(7_i64).into_variant().unwrap()),
+    ]);
+    let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+    assert!(array.is_null(0));
+    assert!(array.is_valid(1));
+    assert!(array.is_valid(2));
+    let decoded = yggdryl::arrow::array_to_value(&field, array.as_ref()).unwrap();
+    assert_eq!(decoded, values);
+    let restored = yggdryl::arrow::array_from_value(&field, &decoded).unwrap();
+    assert_eq!(restored.to_data(), array.to_data());
+
+    let single = yggdryl::arrow::scalar_array(&field, &Scalar::Null).unwrap();
+    assert!(single.is_null(0));
+    let root =
+        DataType::from(yggdryl::StructType::from_fields([field]).unwrap()).required_field("row");
+    let row = yggdryl::FieldRecord::new(&root, Scalar::from_sequence([Scalar::Null])).unwrap();
+    assert!(row.into_arrow_batch().unwrap().column(0).is_null(0));
+}
+
+#[test]
+fn a_variant_digests_and_writes_as_the_value_it_holds() {
+    let variant = Scalar::Variant(Variant::encode(&quote()).unwrap());
     assert_eq!(
-        value.into_variant_bytes()[1],
-        DataTypeId::Utf8String.as_u8()
+        variant.digest(DigestAlgorithm::Xxh3),
+        quote().digest(DigestAlgorithm::Xxh3),
+        "one value digests alike however it crossed"
     );
-    assert_eq!(Arc::new(value).id(), DataTypeId::Utf8String);
+    assert_eq!(
+        yggdryl::json::into_json_scalar(&variant).unwrap(),
+        yggdryl::json::into_json_scalar(&quote()).unwrap(),
+    );
+    assert_eq!(
+        yggdryl::yaml::into_utf8(&variant).unwrap(),
+        yggdryl::yaml::into_utf8(&quote()).unwrap(),
+    );
+}
+
+#[test]
+fn a_variant_serializes_as_its_two_buffers_and_reads_back() {
+    let variant = Scalar::Variant(Variant::encode(&quote()).unwrap());
+    let document = serde_json::to_string(&variant).unwrap();
+    assert!(document.contains(r#""type":"variant""#), "{document}");
+    let read: Scalar = serde_json::from_str(&document).unwrap();
+    assert_eq!(read, variant, "the bytes survive, not a re-encoding");
+}
+
+#[test]
+fn metadata_offsets_keys_and_sorted_claim_are_validated() {
+    let malformed = [
+        ("first offset", vec![0x01, 1, 1, 1, b'x'], "zero"),
+        ("trailing key bytes", vec![0x01, 0, 0, b'x'], "key"),
+        ("invalid key text", vec![0x01, 1, 0, 1, 0xff], "UTF-8"),
+        (
+            "key offset inside UTF-8",
+            vec![0x01, 2, 0, 1, 2, 0xc3, 0xa9],
+            "UTF-8",
+        ),
+        (
+            "unsorted keys",
+            vec![0x11, 2, 0, 1, 2, b'b', b'a'],
+            "sorted",
+        ),
+        (
+            "duplicate keys",
+            vec![0x11, 2, 0, 1, 2, b'a', b'a'],
+            "unique",
+        ),
+    ];
+
+    for (case, metadata, expected) in malformed {
+        let refused = Variant::new(metadata, vec![0]).unwrap_err().to_string();
+        assert!(refused.contains(expected), "{case}: {refused}");
+    }
+
+    // Reserved metadata bits do not change the version-one dictionary.
+    Variant::new(vec![0x31, 0, 0], vec![0]).unwrap();
+
+    let refused = Variant::new(vec![0xd1, 0xff, 0xff, 0xff, 0xff], vec![0])
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("offset"), "{refused}");
+}
+
+#[test]
+fn nested_values_fill_their_declared_physical_segments() {
+    let metadata = Arc::<[u8]>::from(vec![0x11, 0, 0]);
+    // The outer array grants five bytes to an inner array whose own final
+    // offset says that its child occupies no bytes.
+    let refused = Variant::new(metadata, vec![3, 1, 0, 5, 3, 1, 0, 0, 0])
+        .unwrap()
+        .scalar()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("segment") || refused.contains("offset"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn child_offsets_may_store_values_outside_logical_order() {
+    let metadata = || Arc::<[u8]>::from(vec![0x11, 2, 0, 1, 2, b'a', b'b']);
+
+    let array = Variant::new(metadata(), vec![3, 2, 1, 0, 2, 8, 0]).unwrap();
+    assert_eq!(
+        array.scalar().unwrap(),
+        Scalar::from_sequence([Scalar::Null, Scalar::from(false)])
+    );
+
+    let object = Variant::new(metadata(), vec![2, 2, 0, 1, 1, 0, 2, 8, 0]).unwrap();
+    assert_eq!(
+        object.scalar().unwrap(),
+        Scalar::from_struct([("a", Scalar::Null), ("b", Scalar::from(false)),]).unwrap()
+    );
+}
+
+#[test]
+fn object_fields_are_encoded_in_unsigned_utf8_name_order() {
+    let metadata = Arc::<[u8]>::from(vec![0x11, 2, 0, 1, 2, b'a', b'b']);
+    // The field IDs spell b, a while their physical values each spell null.
+    let refused = Variant::new(metadata, vec![2, 2, 1, 0, 0, 1, 2, 0, 0])
+        .unwrap()
+        .scalar()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("order") || refused.contains("sorted"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn decimal_physical_types_obey_their_precision_limits() {
+    for (scalar, physical) in [
+        (Scalar::Decimal32(yggdryl::Decimal32::new(i32::MAX, 0)), 9),
+        (Scalar::Decimal64(yggdryl::Decimal64::new(i64::MAX, 0)), 10),
+    ] {
+        let encoded = Variant::encode(&scalar).unwrap();
+        assert_eq!(encoded.value()[0] >> 2, physical, "{scalar:?}");
+        assert_eq!(encoded.scalar().unwrap(), scalar);
+    }
+
+    let metadata = || Arc::<[u8]>::from(vec![0x11, 0, 0]);
+    let malformed = [
+        (8, i32::MAX.to_le_bytes().to_vec(), "decimal4"),
+        (9, i64::MAX.to_le_bytes().to_vec(), "decimal8"),
+        (10, i128::MAX.to_le_bytes().to_vec(), "decimal16"),
+    ];
+    for (physical, coefficient, expected) in malformed {
+        let mut value = vec![physical << 2, 0];
+        value.extend(coefficient);
+        let refused = Variant::new(metadata(), value)
+            .unwrap()
+            .scalar()
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(expected), "{refused}");
+    }
+
+    // A wider physical type may carry a coefficient of narrower precision.
+    let mut value = vec![10 << 2, 0];
+    value.extend(1_i128.to_le_bytes());
+    assert_eq!(
+        Variant::new(metadata(), value).unwrap().scalar().unwrap(),
+        Scalar::Decimal128(yggdryl::Decimal128::new(1, 0))
+    );
+}
+
+#[test]
+fn the_refusals_name_the_byte() {
+    // Another version.
+    let refused = Variant::new(vec![0x02_u8], vec![0_u8])
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("version 2"), "{refused}");
+
+    // A dictionary the metadata ends before.
+    let refused = Variant::new(vec![0x11_u8, 4], vec![0_u8])
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("offset"), "{refused}");
+
+    // A payload cut short, and a primitive this version does not name.
+    let empty = || Arc::<[u8]>::from(vec![0x11_u8, 0, 0]);
+    let refused = Variant::new(empty(), vec![(5 << 2), 1])
+        .unwrap()
+        .scalar()
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("4 bytes announced"), "{refused}");
+    let refused = Variant::new(empty(), vec![60 << 2])
+        .unwrap()
+        .scalar()
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("primitive type 60"), "{refused}");
+
+    // Bytes left over after the value.
+    let refused = Variant::new(empty(), vec![0, 0])
+        .unwrap()
+        .scalar()
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("1 bytes left"), "{refused}");
+
+    // And what the standard cannot spell is refused by name.
+    let zoned = Scalar::time64(
+        1,
+        yggdryl::TimeUnit::Microsecond,
+        yggdryl::Timezone::from_str("UTC").unwrap(),
+    );
+    if let Ok(zoned) = zoned {
+        let refused = Variant::encode(&zoned).unwrap_err().to_string();
+        assert!(refused.contains("zone"), "{refused}");
+    }
+    // A coefficient of thirty-nine digits is past what a variant decimal
+    // holds, whatever width carried it here.
+    let refused = Variant::encode(&Scalar::Decimal128(yggdryl::Decimal128::new(i128::MAX, 0)))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("38"), "{refused}");
 }

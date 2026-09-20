@@ -1,0 +1,93 @@
+{
+  "codes": [
+    {
+      "name": "ACCT",
+      "value": "ACCT"
+    },
+    {
+      "name": "ALLO",
+      "value": "ALLO"
+    },
+    {
+      "name": "BOOK",
+      "value": "BOOK"
+    },
+    {
+      "name": "CERT",
+      "value": "CERT"
+    },
+    {
+      "name": "COLL",
+      "value": "COLL"
+    },
+    {
+      "name": "COMM",
+      "value": "COMM"
+    },
+    {
+      "name": "CONF",
+      "value": "CONF"
+    },
+    {
+      "name": "EXEC",
+      "value": "EXEC"
+    },
+    {
+      "name": "MKST",
+      "value": "MKST"
+    },
+    {
+      "name": "ORDR",
+      "value": "ORDR"
+    },
+    {
+      "name": "PAYM",
+      "value": "PAYM"
+    },
+    {
+      "name": "POSN",
+      "value": "POSN"
+    },
+    {
+      "name": "PRTY",
+      "value": "PRTY"
+    },
+    {
+      "name": "QUOT",
+      "value": "QUOT"
+    },
+    {
+      "name": "REGI",
+      "value": "REGI"
+    },
+    {
+      "name": "RISK",
+      "value": "RISK"
+    },
+    {
+      "name": "SECU",
+      "value": "SECU"
+    },
+    {
+      "name": "SESS",
+      "value": "SESS"
+    },
+    {
+      "name": "SETL",
+      "value": "SETL"
+    },
+    {
+      "name": "STRM",
+      "value": "STRM"
+    },
+    {
+      "name": "TRAD",
+      "value": "TRAD"
+    },
+    {
+      "name": "UNKN",
+      "value": "UNKN"
+    }
+  ],
+  "name": "msgcatcodeset"
+}

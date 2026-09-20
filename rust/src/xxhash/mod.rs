@@ -100,7 +100,7 @@ pub(crate) mod stream;
 pub use field::{DigestFieldNames, DigestFields};
 pub use handle::Hashed;
 pub use scalar::ValueBytes;
-pub(crate) use scalar::write_named_bytes;
+pub(crate) use scalar::{Feed, write_named_bytes};
 pub use secret::SECRET_MINIMUM_LENGTH;
 pub use state::{Xxh3, Xxh32, Xxh64, Xxh128};
 pub use stream::{DigestReader, DigestWriter};

@@ -1,0 +1,45 @@
+{
+  "name": "discretioninstcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RelatedToDisplayedPrice",
+      "doc": "Related to displayed price"
+    },
+    {
+      "value": "1",
+      "name": "RelatedToMarketPrice",
+      "doc": "Related to market price"
+    },
+    {
+      "value": "2",
+      "name": "RelatedToPrimaryPrice",
+      "doc": "Related to primary price"
+    },
+    {
+      "value": "3",
+      "name": "RelatedToLocalPrimaryPrice",
+      "doc": "Related to local primary price"
+    },
+    {
+      "value": "4",
+      "name": "RelatedToMidpointPrice",
+      "doc": "Related to midpoint price"
+    },
+    {
+      "value": "5",
+      "name": "RelatedToLastTradePrice",
+      "doc": "Related to last trade price"
+    },
+    {
+      "value": "6",
+      "name": "RelatedToVWAP",
+      "doc": "Related to VWAP"
+    },
+    {
+      "value": "7",
+      "name": "AveragePriceGuarantee",
+      "doc": "Average Price Guarantee"
+    }
+  ]
+}

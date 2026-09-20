@@ -1,0 +1,15 @@
+{
+  "name": "networkstatusresponsetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Full",
+      "doc": "Full"
+    },
+    {
+      "value": "2",
+      "name": "IncrementalUpdate",
+      "doc": "Incremental Update"
+    }
+  ]
+}

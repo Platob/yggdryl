@@ -1,0 +1,20 @@
+{
+  "name": "multilegmodelcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PredefinedMultilegSecurity",
+      "doc": "Predefined Multileg Security"
+    },
+    {
+      "value": "1",
+      "name": "UserDefinedMultilegSecurity",
+      "doc": "User-defined Multileg Security"
+    },
+    {
+      "value": "2",
+      "name": "UserDefined",
+      "doc": "User-defined, Non-Securitized, Multileg"
+    }
+  ]
+}

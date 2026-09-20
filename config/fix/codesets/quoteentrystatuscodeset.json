@@ -1,0 +1,50 @@
+{
+  "name": "quoteentrystatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "5",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "6",
+      "name": "RemovedFromMarket",
+      "doc": "Removed from Market"
+    },
+    {
+      "value": "7",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "12",
+      "name": "LockedMarketWarning",
+      "doc": "Locked Market Warning"
+    },
+    {
+      "value": "13",
+      "name": "CrossMarketWarning",
+      "doc": "Cross Market Warning"
+    },
+    {
+      "value": "14",
+      "name": "CanceledDueToLockMarket",
+      "doc": "Canceled due to Lock Market"
+    },
+    {
+      "value": "15",
+      "name": "CanceledDueToCrossMarket",
+      "doc": "Canceled due to Cross Market"
+    },
+    {
+      "value": "16",
+      "name": "Active",
+      "doc": "Active"
+    }
+  ]
+}

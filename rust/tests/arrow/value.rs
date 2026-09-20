@@ -192,8 +192,12 @@ mod widths {
                 Scalar::from("USD"),
                 DataTypeId::Currency,
             ),
-            (DataType::Mic, Scalar::from("XNAS"), DataTypeId::Mic),
-            (DataType::Cfi, Scalar::from("ESXXXX"), DataTypeId::Cfi),
+            (DataType::MicCode, Scalar::from("XNAS"), DataTypeId::MicCode),
+            (
+                DataType::CfiCode,
+                Scalar::from("ESXXXX"),
+                DataTypeId::CfiCode,
+            ),
             (
                 DataType::interval(TimeUnit::YearMonth).unwrap(),
                 Scalar::from(15),

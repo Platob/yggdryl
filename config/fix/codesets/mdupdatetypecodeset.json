@@ -1,0 +1,15 @@
+{
+  "name": "mdupdatetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "FullRefresh",
+      "doc": "Full refresh"
+    },
+    {
+      "value": "1",
+      "name": "IncrementalRefresh",
+      "doc": "Incremental refresh"
+    }
+  ]
+}

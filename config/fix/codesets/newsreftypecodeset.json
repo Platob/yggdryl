@@ -1,0 +1,25 @@
+{
+  "name": "newsreftypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Replacement",
+      "doc": "Replacement"
+    },
+    {
+      "value": "1",
+      "name": "OtherLanguage",
+      "doc": "Other language"
+    },
+    {
+      "value": "2",
+      "name": "Complimentary",
+      "doc": "Complimentary"
+    },
+    {
+      "value": "3",
+      "name": "Withdrawal",
+      "doc": "Withdrawal"
+    }
+  ]
+}

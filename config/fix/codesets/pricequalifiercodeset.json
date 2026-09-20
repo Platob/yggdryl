@@ -1,0 +1,20 @@
+{
+  "name": "pricequalifiercodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AccruedInterestIsFactored",
+      "doc": "Accrued interest (if any) is factored into the price"
+    },
+    {
+      "value": "1",
+      "name": "TaxIsFactored",
+      "doc": "Tax is factored into the price"
+    },
+    {
+      "value": "2",
+      "name": "BondAmortizationIsFactored",
+      "doc": "The effect of bond amortization or the floating rate index offset is factored into the price"
+    }
+  ]
+}

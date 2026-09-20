@@ -1,0 +1,13 @@
+{
+  "name": "exdestinationcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None"
+    },
+    {
+      "value": "4",
+      "name": "Posit"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "selfmatchpreventioninstructioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CancelAggressive",
+      "doc": "Cancel aggressive"
+    },
+    {
+      "value": "2",
+      "name": "CancelPassive",
+      "doc": "Cancel passive"
+    },
+    {
+      "value": "3",
+      "name": "CancelAggressivePassive",
+      "doc": "Cancel aggressive and passive"
+    }
+  ]
+}

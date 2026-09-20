@@ -244,6 +244,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "CI",
     "FIX:tag": "338113",
     "description": "MsgType = CI",

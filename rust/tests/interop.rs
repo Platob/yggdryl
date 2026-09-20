@@ -10,5 +10,7 @@ mod iceberg;
 #[cfg(feature = "object")]
 #[path = "interop/object/mod.rs"]
 mod object;
+#[path = "interop/variant.rs"]
+mod variant;
 #[path = "interop/zip.rs"]
 mod zip;

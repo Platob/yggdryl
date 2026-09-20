@@ -1,0 +1,45 @@
+{
+  "name": "returnratequotetimetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "1",
+      "name": "OfficialSettlPx",
+      "doc": "Official settlement price time"
+    },
+    {
+      "value": "2",
+      "name": "Xetra",
+      "doc": "XETRA"
+    },
+    {
+      "value": "3",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "4",
+      "name": "DerivativesClose",
+      "doc": "Derivatives close"
+    },
+    {
+      "value": "5",
+      "name": "High",
+      "doc": "High"
+    },
+    {
+      "value": "6",
+      "name": "Low",
+      "doc": "Low"
+    },
+    {
+      "value": "7",
+      "name": "AsSpecifiedInMasterConfirmation",
+      "doc": "As specified in the master confirmation"
+    }
+  ]
+}

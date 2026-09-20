@@ -1,0 +1,25 @@
+{
+  "name": "testsuitestatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Undefined",
+      "doc": "Undefined"
+    },
+    {
+      "value": "1",
+      "name": "Pass",
+      "doc": "Pass"
+    },
+    {
+      "value": "2",
+      "name": "Fail",
+      "doc": "Fail"
+    },
+    {
+      "value": "3",
+      "name": "Warning",
+      "doc": "Warning"
+    }
+  ]
+}

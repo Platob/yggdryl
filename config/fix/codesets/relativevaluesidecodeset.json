@@ -1,0 +1,20 @@
+{
+  "name": "relativevaluesidecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Bid",
+      "doc": "Bid"
+    },
+    {
+      "value": "2",
+      "name": "Mid",
+      "doc": "Mid"
+    },
+    {
+      "value": "3",
+      "name": "Offer",
+      "doc": "Offer"
+    }
+  ]
+}

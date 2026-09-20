@@ -359,12 +359,13 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -483,12 +484,13 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -580,12 +582,13 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -691,12 +694,13 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -775,7 +779,8 @@ fn field_with_dtype(
 
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
-/// The extensions this workspace owns never reach here: `yggdryl.variant`,
+/// The extensions this workspace owns never reach here: the canonical
+/// `arrow.parquet.variant`,
 /// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
 /// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
 /// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes

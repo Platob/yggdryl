@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the ten [codes](codes.md) |
-| Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 86 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the twelve [codes](codes.md) |
+| Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
+| Identity | `id()`, `kind()`: 84 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -82,7 +82,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     )?;
     assert_eq!(
         row.get_field_by_path("venue").map(|field| field.dtype().clone()),
-        Some(DataType::Mic)
+        Some(DataType::MicCode)
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
@@ -276,7 +276,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [variant encoding](variant.md) and the [digest feed](../hashing.md#encoding) write that byte.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte.
 
 ## Arrow projection
 

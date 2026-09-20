@@ -113,6 +113,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CX",
     "FIX:tag": "1073655",
     "description": "MsgType = CX",

@@ -126,6 +126,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "listid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "K",
     "FIX:tag": "1096950",
     "description": "MsgType = K",

@@ -1,0 +1,35 @@
+{
+  "name": "paymentdateoffsetdaytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Business",
+      "doc": "Business"
+    },
+    {
+      "value": "1",
+      "name": "Calendar",
+      "doc": "Calendar"
+    },
+    {
+      "value": "2",
+      "name": "Commodity",
+      "doc": "Commodity business"
+    },
+    {
+      "value": "3",
+      "name": "Currency",
+      "doc": "Currency business"
+    },
+    {
+      "value": "4",
+      "name": "Exchange",
+      "doc": "Exchange business"
+    },
+    {
+      "value": "5",
+      "name": "Scheduled",
+      "doc": "Scheduled trading day"
+    }
+  ]
+}

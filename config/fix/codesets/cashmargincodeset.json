@@ -1,0 +1,20 @@
+{
+  "name": "cashmargincodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Cash",
+      "doc": "Cash"
+    },
+    {
+      "value": "2",
+      "name": "MarginOpen",
+      "doc": "Margin Open"
+    },
+    {
+      "value": "3",
+      "name": "MarginClose",
+      "doc": "Margin Close"
+    }
+  ]
+}

@@ -188,6 +188,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "AA",
     "FIX:tag": "623843",
     "description": "MsgType = AA",

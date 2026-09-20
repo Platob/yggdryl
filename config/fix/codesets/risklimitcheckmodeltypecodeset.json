@@ -1,0 +1,25 @@
+{
+  "name": "risklimitcheckmodeltypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "PlusOneModel",
+      "doc": "PlusOne model"
+    },
+    {
+      "value": "2",
+      "name": "PingModel",
+      "doc": "Ping model"
+    },
+    {
+      "value": "3",
+      "name": "PushModel",
+      "doc": "Push model"
+    }
+  ]
+}

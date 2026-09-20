@@ -1,0 +1,20 @@
+{
+  "name": "ownershiptypecodeset",
+  "codes": [
+    {
+      "value": "J",
+      "name": "JointInvestors",
+      "doc": "Joint Investors"
+    },
+    {
+      "value": "T",
+      "name": "TenantsInCommon",
+      "doc": "Tenants in Common"
+    },
+    {
+      "value": "2",
+      "name": "JointTrustees",
+      "doc": "Joint Trustees"
+    }
+  ]
+}

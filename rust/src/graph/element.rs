@@ -15,7 +15,8 @@ use std::hash::Hasher;
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
 use crate::{
-    Bloomberg, Cfi, CodeValue, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid,
+    BloombergCode, CfiCode, CodeValue, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode,
+    SedolCode, Side, State, Uuid,
 };
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 
@@ -393,7 +394,7 @@ pub trait Element {
         if !self.get_crosscode().is_empty() {
             feed(&mut state, "crosscode", self.get_crosscode().as_bytes());
         }
-        feed_named(&mut state, self);
+        feed_named(&mut state, self, |_| true);
         state
     }
 
@@ -636,7 +637,15 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     );
     changed |= follow_element(this, previous);
     changed |= descend_from(this, previous);
+    let stated_expiry = this.get_exprtime();
     changed |= this.fold_lifecycle(previous);
+    // A replacement may shorten its lifetime. Folding simultaneous statements
+    // still keeps the latest expiry, but a newer explicit deadline is decisive.
+    if let Some(expiry) = stated_expiry {
+        changed |= moved(this.get_exprtime(), Some(expiry), |unix| {
+            this.set_exprtime(unix)
+        });
+    }
     changed
 }
 
@@ -671,23 +680,32 @@ fn merge_timed<E: Event>(this: &mut E, other: &E) -> bool {
 /// Continues a digest with the names an element goes by and its parents,
 /// each under its own name: what [`Element::digest`] feeds behind the
 /// cross code.
-fn feed_named<E: Element + ?Sized>(state: &mut Xxh3, this: &E) {
+fn feed_named<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
+where
+    E: Element + ?Sized,
+    F: Fn(&str) -> bool,
+{
     for (scheme, identifier) in this.get_identifiers() {
-        feed(state, scheme, identifier.as_bytes());
+        if include_identifier(scheme) {
+            feed(state, scheme, identifier.as_bytes());
+        }
     }
     for parent in this.get_parentuuids() {
         feed(state, "parentuuid", &parent.into_bytes());
     }
 }
 
-/// Feeds what [`Event::digest_event`] feeds, less the cross code: the names
-/// the event goes by, its parents, its state, its place in the chain and
-/// its predecessor's identity. For a content code that names no chain -
-/// a FIX message's, whose cross code is the conversation one hop of a
-/// bridge bracketed it in, so a code over it would make one message as
-/// many messages as hops.
-pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
-    feed_named(state, this);
+/// Feeds what [`Event::digest_event`] feeds, less the cross code: the selected
+/// names the event goes by, its parents, its state, its place in the chain and
+/// its predecessor's identity. A holder can leave out a name that records
+/// capture provenance rather than event content without duplicating the
+/// framing this digest owns.
+pub(crate) fn feed_event_facts<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
+where
+    E: Event + ?Sized,
+    F: Fn(&str) -> bool,
+{
+    feed_named(state, this, include_identifier);
     feed_timed(state, this);
 }
 
@@ -731,8 +749,9 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// delegates to; [`Self::merging`] is what merging means, which its
 /// [`Element::merge_with`] delegates to. Both fold the lifecycle the same
 /// way: the earliest creation, the latest expiration, the furthest state,
-/// and the identifiers the other knew. The order an event states through
-/// [`Element::is_after`] is its instant: later is after.
+/// and the identifiers the other knew. Following then keeps a newer explicit
+/// expiration, including one that shortens the lifetime. The order an event
+/// states through [`Element::is_after`] is its instant: later is after.
 ///
 /// ```
 /// use std::collections::BTreeMap;
@@ -753,7 +772,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     state: State,
 ///     seqnum: u64,
 ///     creaunix: Option<i64>,
-///     expirunix: Option<i64>,
+///     exprtime: Option<i64>,
 ///     prevunix: Option<i64>,
 ///     prevuuid: Option<Uuid>,
 ///     snapunix: Option<i64>,
@@ -774,7 +793,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             state: State::from_spelling("New").expect("a shipped state"),
 ///             seqnum: 0,
 ///             creaunix: None,
-///             expirunix: None,
+///             exprtime: None,
 ///             prevunix: None,
 ///             prevuuid: None,
 ///             snapunix: None,
@@ -876,11 +895,11 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     fn set_creaunix(&mut self, unix: Option<i64>) {
 ///         self.creaunix = unix;
 ///     }
-///     fn get_expirunix(&self) -> Option<i64> {
-///         self.expirunix
+///     fn get_exprtime(&self) -> Option<i64> {
+///         self.exprtime
 ///     }
-///     fn set_expirunix(&mut self, unix: Option<i64>) {
-///         self.expirunix = unix;
+///     fn set_exprtime(&mut self, unix: Option<i64>) {
+///         self.exprtime = unix;
 ///     }
 ///     fn get_prevunix(&self) -> Option<i64> {
 ///         self.prevunix
@@ -968,11 +987,11 @@ pub trait Event: Element {
 
     /// When this event expires, in the same count as [`Self::get_currunix`], where
     /// it has an expiry.
-    fn get_expirunix(&self) -> Option<i64>;
+    fn get_exprtime(&self) -> Option<i64>;
 
     /// Records when this event expires; `None` states it does not expire,
     /// or does not know.
-    fn set_expirunix(&mut self, unix: Option<i64>);
+    fn set_exprtime(&mut self, unix: Option<i64>);
 
     /// When the event this one follows happened, where it follows one.
     fn get_prevunix(&self) -> Option<i64>;
@@ -1112,9 +1131,9 @@ pub trait Event: Element {
             |unix| self.set_creaunix(unix),
         );
         changed |= moved(
-            self.get_expirunix(),
-            latest(self.get_expirunix(), other.get_expirunix()),
-            |unix| self.set_expirunix(unix),
+            self.get_exprtime(),
+            latest(self.get_exprtime(), other.get_exprtime()),
+            |unix| self.set_exprtime(unix),
         );
         let state = self.get_state().clone().merge_with(other.get_state());
         changed |= moved(self.get_state().clone(), state, |state| {
@@ -1201,8 +1220,8 @@ pub trait Event: Element {
 /// the lane the side implies from the price, the currency, the quantity and
 /// the unit where the lane states nothing. Six more name the instrument and
 /// the market, each optional because a market names an instrument the way
-/// it does: the [`Isin`], the [`Cusip`], the [`Sedol`], the [`Bloomberg`]
-/// identifier, the [`Cfi`] classification and the [`Mic`] of the market it
+/// it does: the [`IsinCode`], the [`CusipCode`], the [`SedolCode`], the [`BloombergCode`]
+/// identifier, the [`CfiCode`] classification and the [`MicCode`] of the market it
 /// traded on, the crate's own validated codes.
 ///
 /// Two more readings are provided. [`Self::digest_market`] continues
@@ -1219,7 +1238,7 @@ pub trait Event: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::{Cfi, Currency, Decimal18, Isin, Side};
+/// use yggdryl::{CfiCode, Currency, CusipCode, Decimal18, IsinCode, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
@@ -1228,7 +1247,7 @@ pub trait Event: Element {
 /// trade.set_qty(Decimal18::from_int(1_000));
 /// trade.set_unit("bbl".to_owned());
 /// trade.set_side(Side::read("1")?);
-/// trade.set_isincode(Some(Isin::new("US0378331005")?));
+/// trade.set_isincode(Some(IsinCode::new("US0378331005")?));
 /// assert_eq!(trade.get_px().to_string(), "82.5");
 /// assert_eq!(trade.get_currency().as_str(), "USD");
 /// assert_eq!(trade.get_unit(), "bbl");
@@ -1242,8 +1261,9 @@ pub trait Event: Element {
 /// // A market element is an element: one walk reads both.
 /// let held: &dyn MarketElement = &trade;
 /// assert_eq!(held.get_side().as_str(), "BUY");
-/// assert_eq!(held.get_isincode().map(Isin::as_str), Some("US0378331005"));
-/// assert!(held.get_cusipcode().is_none(), "an instrument is named the way the market names it");
+/// assert_eq!(held.get_isincode().map(IsinCode::as_str), Some("US0378331005"));
+/// // A validated US ISIN fills its embedded, checksum-valid CUSIP.
+/// assert_eq!(held.get_cusipcode().map(CusipCode::as_str), Some("037833100"));
 /// // Finalized, its identity is what it states.
 /// trade.finalize();
 /// let mut same = trade.clone();
@@ -1254,11 +1274,11 @@ pub trait Event: Element {
 /// // and the CFI the other states fills what this one left unknown.
 /// let mut other = trade.clone();
 /// other.set_px("83".parse()?);
-/// other.set_cficode(Some(Cfi::new("ESVUFR")?));
-/// trade.set_cficode(Some(Cfi::new("ESXXXR")?));
+/// other.set_cficode(Some(CfiCode::new("ESVUFR")?));
+/// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
 /// let merged = trade.merge_with(&other).expect("the same trade");
 /// assert_eq!(merged.get_px().to_string(), "82.5");
-/// assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+/// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
 /// # Ok(())
 /// # }
 /// ```
@@ -1294,45 +1314,51 @@ pub trait MarketElement: Element {
     fn set_side(&mut self, side: Side);
 
     /// The instrument's ISIN, where the market named it by one.
-    fn get_isincode(&self) -> Option<&Isin>;
+    fn get_isincode(&self) -> Option<&IsinCode>;
 
     /// Records the instrument's ISIN; `None` states the market named none.
-    fn set_isincode(&mut self, isincode: Option<Isin>);
+    fn set_isincode(&mut self, isincode: Option<IsinCode>);
 
     /// The instrument's CUSIP, where the market named it by one.
-    fn get_cusipcode(&self) -> Option<&Cusip>;
+    fn get_cusipcode(&self) -> Option<&CusipCode>;
 
     /// Records the instrument's CUSIP; `None` states the market named none.
-    fn set_cusipcode(&mut self, cusipcode: Option<Cusip>);
+    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>);
 
     /// The instrument's SEDOL, where the market named it by one.
-    fn get_sedolcode(&self) -> Option<&Sedol>;
+    fn get_sedolcode(&self) -> Option<&SedolCode>;
 
     /// Records the instrument's SEDOL; `None` states the market named none.
-    fn set_sedolcode(&mut self, sedolcode: Option<Sedol>);
+    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>);
 
-    /// The instrument's Bloomberg identifier, where the market named it by
+    /// The instrument's BloombergCode identifier, where the market named it by
     /// one.
-    fn get_bloombergcode(&self) -> Option<&Bloomberg>;
+    fn get_bloombergcode(&self) -> Option<&BloombergCode>;
 
-    /// Records the instrument's Bloomberg identifier; `None` states the
+    /// Records the instrument's BloombergCode identifier; `None` states the
     /// market named none.
-    fn set_bloombergcode(&mut self, bloombergcode: Option<Bloomberg>);
+    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>);
+
+    /// The instrument's FIGI, where the market named it by one.
+    fn get_figicode(&self) -> Option<&FIGICode>;
+
+    /// Records the instrument's FIGI; `None` states the market named none.
+    fn set_figicode(&mut self, figicode: Option<FIGICode>);
 
     /// The instrument's CFI classification, where the market stated it.
-    fn get_cficode(&self) -> Option<&Cfi>;
+    fn get_cficode(&self) -> Option<&CfiCode>;
 
     /// Records the instrument's CFI classification; `None` states the
     /// market stated none.
-    fn set_cficode(&mut self, cficode: Option<Cfi>);
+    fn set_cficode(&mut self, cficode: Option<CfiCode>);
 
     /// The market the element traded on, as its ISO 10383 MIC, where the
     /// element names it.
-    fn get_miccode(&self) -> Option<&Mic>;
+    fn get_miccode(&self) -> Option<&MicCode>;
 
     /// Records the market the element traded on; `None` states it names
     /// none.
-    fn set_miccode(&mut self, miccode: Option<Mic>);
+    fn set_miccode(&mut self, miccode: Option<MicCode>);
 
     /// The price the element last traded at, where it states one.
     ///
@@ -1519,6 +1545,14 @@ pub trait MarketElement: Element {
     where
         Self: Sized,
     {
+        if self.get_cusipcode().is_none() {
+            if let Some(cusip) = self
+                .get_isincode()
+                .and_then(super::instrument::embedded_cusip)
+            {
+                self.set_cusipcode(Some(cusip));
+            }
+        }
         let side = self.get_side();
         let (bid, ask) = (side.is_bid(), side.is_ask());
         // The lane the element's own side quotes, which is the only lane its
@@ -1677,7 +1711,7 @@ pub trait MarketElement: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-/// use yggdryl::{Cfi, Currency, Decimal18, Side};
+/// use yggdryl::{CfiCode, Currency, Decimal18, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketEventData::at(10);
@@ -1685,7 +1719,7 @@ pub trait MarketElement: Element {
 /// trade.set_currency(Currency::new("USD")?);
 /// trade.set_qty(Decimal18::from_int(1_000));
 /// trade.set_side(Side::read("1")?);
-/// trade.set_cficode(Some(Cfi::new("ESXXXR")?));
+/// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
 /// trade.finalize();
 /// // A market event is an event is a market element is an element: one
 /// // walk reads all.
@@ -1698,11 +1732,11 @@ pub trait MarketElement: Element {
 /// let mut later = trade.clone();
 /// later.set_currunix(20);
 /// later.set_px("83".parse()?);
-/// later.set_cficode(Some(Cfi::new("ESVUFR")?));
+/// later.set_cficode(Some(CfiCode::new("ESVUFR")?));
 /// let merged = trade.merge_with(&later).expect("the same trade");
 /// assert_eq!(merged.get_px(), Decimal18::from_int(83));
 /// assert_eq!(merged.get_currunix(), 20);
-/// assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+/// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
 /// # Ok(())
 /// # }
 /// ```
@@ -1811,16 +1845,17 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
     }
     feed(state, "unit", this.get_unit().as_bytes());
     feed(state, "side", this.get_side().as_str().as_bytes());
-    let codes: [(&str, Option<&str>); 6] = [
-        ("isincode", this.get_isincode().map(Isin::as_str)),
-        ("cusipcode", this.get_cusipcode().map(Cusip::as_str)),
-        ("sedolcode", this.get_sedolcode().map(Sedol::as_str)),
+    let codes: [(&str, Option<&str>); 7] = [
+        ("isincode", this.get_isincode().map(IsinCode::as_str)),
+        ("cusipcode", this.get_cusipcode().map(CusipCode::as_str)),
+        ("sedolcode", this.get_sedolcode().map(SedolCode::as_str)),
         (
             "bloombergcode",
-            this.get_bloombergcode().map(Bloomberg::as_str),
+            this.get_bloombergcode().map(BloombergCode::as_str),
         ),
-        ("cficode", this.get_cficode().map(Cfi::as_str)),
-        ("miccode", this.get_miccode().map(Mic::as_str)),
+        ("figicode", this.get_figicode().map(FIGICode::as_str)),
+        ("cficode", this.get_cficode().map(CfiCode::as_str)),
+        ("miccode", this.get_miccode().map(MicCode::as_str)),
     ];
     for (name, code) in codes {
         if let Some(code) = code {
@@ -1989,6 +2024,11 @@ fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
             false,
         ),
         |code| this.set_bloombergcode(code),
+    );
+    changed |= moved(
+        this.get_figicode().cloned(),
+        better_stated(this.get_figicode().cloned(), previous.get_figicode(), false),
+        |code| this.set_figicode(code),
     );
     changed |= moved(
         this.get_cficode().cloned(),
@@ -2165,6 +2205,11 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
             later,
         ),
         |code| this.set_bloombergcode(code),
+    );
+    changed |= moved(
+        this.get_figicode().cloned(),
+        better_stated(this.get_figicode().cloned(), other.get_figicode(), later),
+        |code| this.set_figicode(code),
     );
     changed |= moved(
         this.get_cficode().cloned(),

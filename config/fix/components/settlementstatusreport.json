@@ -200,6 +200,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "EE",
     "FIX:tag": "107348",
     "description": "MsgType = EE",

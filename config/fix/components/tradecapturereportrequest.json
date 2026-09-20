@@ -549,6 +549,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,tradereportid,secondarytradereportid,secondaryexecid,execid,orderid,clordid",
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "AD",
     "FIX:tag": "395821",
     "description": "MsgType = AD",

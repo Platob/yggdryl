@@ -3362,7 +3362,7 @@ impl KeyBounds {
                 });
                 continue;
             };
-            let field = schema.get_field_by_path(name).ok_or_else(|| {
+            let field = schema.dtype().get_field_by_name(name).ok_or_else(|| {
                 let stored = schema
                     .fields()
                     .iter()
@@ -4184,7 +4184,7 @@ fn invalid(reason: SmolStr) -> Error {
 /// reports the column rather than silently ignoring it.
 fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Filter {
     crate::Filter::all(pairs.iter().map(|(column, value)| {
-        schema.get_field_by_path(column).map_or_else(
+        schema.dtype().get_field_by_name(column).map_or_else(
             || crate::Filter::new(crate::Term::column(*column).eq(crate::Term::literal(*value))),
             |field| crate::Filter::partition_equals(column, value, field.dtype()),
         )

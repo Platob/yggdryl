@@ -1,0 +1,65 @@
+{
+  "name": "lastliquidityindcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NeitherAddedNorRemovedLiquidity",
+      "doc": "Neither added nor removed liquidity"
+    },
+    {
+      "value": "1",
+      "name": "AddedLiquidity",
+      "doc": "Added Liquidity"
+    },
+    {
+      "value": "2",
+      "name": "RemovedLiquidity",
+      "doc": "Removed Liquidity"
+    },
+    {
+      "value": "3",
+      "name": "LiquidityRoutedOut",
+      "doc": "Liquidity Routed Out"
+    },
+    {
+      "value": "4",
+      "name": "Auction",
+      "doc": "Auction execution"
+    },
+    {
+      "value": "5",
+      "name": "TriggeredStopOrder",
+      "doc": "Triggered stop order"
+    },
+    {
+      "value": "6",
+      "name": "TriggeredContingencyOrder",
+      "doc": "Triggered contingency order"
+    },
+    {
+      "value": "7",
+      "name": "TriggeredMarketOrder",
+      "doc": "Triggered market order"
+    },
+    {
+      "value": "8",
+      "name": "RemovedLiquidityAfterFirmOrderCommitment",
+      "doc": "Removed liquidity after firm order commitment"
+    },
+    {
+      "value": "9",
+      "name": "AuctionExecutionAfterFirmOrderCommitment",
+      "doc": "Auction execution after firm order commitment"
+    },
+    {
+      "value": "10",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "11",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

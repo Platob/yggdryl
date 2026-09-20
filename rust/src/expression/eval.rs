@@ -55,6 +55,10 @@ impl<'context> Row<'context> {
     }
 }
 
+/// How many arguments a call evaluates without allocating: every function
+/// the grammar registers takes this many or fewer, `concat` aside.
+const INLINE_ARGUMENTS: usize = 4;
+
 fn missing(what: &str) -> Error {
     Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -63,6 +67,30 @@ fn missing(what: &str) -> Error {
 }
 
 impl Node {
+    /// Evaluate this node for one row, borrowing the answer where the node
+    /// is a leaf the tree or the row already holds.
+    ///
+    /// The operators only look at their operands - compare them, test them
+    /// for null, read them as a boolean - so a literal is answered as the
+    /// tree holds it and a column as the row holds it, and neither is
+    /// cloned to be dropped a statement later. Every other node is
+    /// [`Self::eval`], owned, so there is one definition of each operator.
+    fn eval_ref<'node>(&'node self, row: &Row<'node>) -> Result<Cow<'node, Scalar>> {
+        match &self.kind {
+            Kind::Literal(value) => Ok(Cow::Borrowed(value)),
+            Kind::Column(index) => {
+                let values = row
+                    .values
+                    .ok_or_else(|| missing("a row to read a column from"))?;
+                values
+                    .get(*index)
+                    .map(Cow::Borrowed)
+                    .ok_or_else(|| missing("a row with every bound column"))
+            }
+            _ => self.eval(row).map(Cow::Owned),
+        }
+    }
+
     /// Evaluate this node for one row.
     ///
     /// # Errors
@@ -110,7 +138,7 @@ impl Node {
             Kind::And(operands) => {
                 let mut unknown = false;
                 for operand in operands {
-                    match operand.eval(row)?.as_bool() {
+                    match operand.eval_ref(row)?.as_bool() {
                         Some(false) => return Ok(Scalar::from(false)),
                         Some(true) => {}
                         None => unknown = true,
@@ -125,7 +153,7 @@ impl Node {
             Kind::Or(operands) => {
                 let mut unknown = false;
                 for operand in operands {
-                    match operand.eval(row)?.as_bool() {
+                    match operand.eval_ref(row)?.as_bool() {
                         Some(true) => return Ok(Scalar::from(true)),
                         Some(false) => {}
                         None => unknown = true,
@@ -137,13 +165,13 @@ impl Node {
                     Scalar::from(false)
                 })
             }
-            Kind::Not(inner) => Ok(match inner.eval(row)?.as_bool() {
+            Kind::Not(inner) => Ok(match inner.eval_ref(row)?.as_bool() {
                 Some(held) => Scalar::from(!held),
                 None => Scalar::Null,
             }),
             Kind::Compare(left, comparison, right) => {
-                let left_value = left.eval(row)?;
-                let right_value = right.eval(row)?;
+                let left_value = left.eval_ref(row)?;
+                let right_value = right.eval_ref(row)?;
                 Ok(compare(
                     left.field.dtype(),
                     &left_value,
@@ -152,13 +180,13 @@ impl Node {
                 ))
             }
             Kind::In(value, list) => {
-                let held = value.eval(row)?;
+                let held = value.eval_ref(row)?;
                 if held.is_null() {
                     return Ok(Scalar::Null);
                 }
                 let mut unknown = false;
                 for item in list {
-                    let item_value = item.eval(row)?;
+                    let item_value = item.eval_ref(row)?;
                     match compare(value.field.dtype(), &held, Comparison::Eq, &item_value).as_bool()
                     {
                         Some(true) => return Ok(Scalar::from(true)),
@@ -174,20 +202,22 @@ impl Node {
             }
             Kind::Between(value, low, high) => {
                 let dtype = value.field.dtype();
-                let held = value.eval(row)?;
-                let above = compare(dtype, &held, Comparison::GtEq, &low.eval(row)?);
-                let below = compare(dtype, &held, Comparison::LtEq, &high.eval(row)?);
+                let held = value.eval_ref(row)?;
+                let low = low.eval_ref(row)?;
+                let above = compare(dtype, &held, Comparison::GtEq, &low);
+                let high = high.eval_ref(row)?;
+                let below = compare(dtype, &held, Comparison::LtEq, &high);
                 Ok(kleene_and(&above, &below))
             }
-            Kind::IsNull(inner) => Ok(Scalar::from(inner.eval(row)?.is_null())),
-            Kind::IsNotNull(inner) => Ok(Scalar::from(!inner.eval(row)?.is_null())),
+            Kind::IsNull(inner) => Ok(Scalar::from(inner.eval_ref(row)?.is_null())),
+            Kind::IsNotNull(inner) => Ok(Scalar::from(!inner.eval_ref(row)?.is_null())),
             Kind::Like {
                 value,
                 pattern,
                 case_insensitive,
                 escape,
             } => {
-                let held = value.eval(row)?;
+                let held = value.eval_ref(row)?;
                 let Some(text) = scalar_text(&held) else {
                     return Ok(Scalar::Null);
                 };
@@ -199,7 +229,7 @@ impl Node {
                 )))
             }
             Kind::Glob(value, pattern) => {
-                let held = value.eval(row)?;
+                let held = value.eval_ref(row)?;
                 let Some(text) = scalar_text(&held) else {
                     return Ok(Scalar::Null);
                 };
@@ -208,17 +238,33 @@ impl Node {
                     pattern,
                 )))
             }
-            Kind::Arithmetic(left, operator, right) => arithmetic(
-                self.field.dtype(),
-                &left.eval(row)?,
-                *operator,
-                &right.eval(row)?,
-            ),
+            Kind::Arithmetic(left, operator, right) => {
+                let left = left.eval_ref(row)?;
+                let right = right.eval_ref(row)?;
+                arithmetic(self.field.dtype(), &left, *operator, &right)
+            }
             Kind::Negate(inner) => {
                 let held = inner.eval(row)?;
                 held.checked_neg()
             }
             Kind::Function(function, arguments) => {
+                // Evaluated in order into a buffer on the stack for the
+                // arities the functions have - `coalesce`, `substring`,
+                // `upper` - and into a vector only past it, so a call per
+                // row allocates nothing for its arguments.
+                if arguments.len() <= INLINE_ARGUMENTS {
+                    let mut held: [Scalar; INLINE_ARGUMENTS] =
+                        std::array::from_fn(|_| Scalar::Null);
+                    for (slot, argument) in held.iter_mut().zip(arguments) {
+                        *slot = argument.eval(row)?;
+                    }
+                    return call(
+                        function,
+                        arguments,
+                        &held[..arguments.len()],
+                        self.field.dtype(),
+                    );
+                }
                 let mut values = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     values.push(argument.eval(row)?);
@@ -226,7 +272,7 @@ impl Node {
                 call(function, arguments, &values, self.field.dtype())
             }
             Kind::Cast(inner, safety) => {
-                let held = inner.eval(row)?;
+                let held = inner.eval_ref(row)?;
                 match convert(self.field.dtype(), &held, *safety) {
                     Ok(value) => Ok(value),
                     Err(error) if matches!(safety, Safety::Safe) => {
@@ -241,7 +287,7 @@ impl Node {
                 otherwise,
             } => {
                 for (when, then) in branches {
-                    if when.eval(row)?.as_bool() == Some(true) {
+                    if when.eval_ref(row)?.as_bool() == Some(true) {
                         return then.eval(row);
                     }
                 }
@@ -868,6 +914,17 @@ fn floating(value: &Scalar) -> Option<f64> {
 /// for [`Safety::Strict`].
 #[allow(clippy::too_many_lines)]
 pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Result<Scalar> {
+    let target = unwrap_dictionary(target);
+    // A variant target owns the encoding boundary. In particular, null is
+    // the variant encoding's own null value, and an already encoded value is
+    // returned with its exact buffers rather than decoded and re-encoded.
+    if matches!(target, DataType::Variant) {
+        return match target.scalar(value.clone()) {
+            Ok(value) => Ok(value),
+            Err(_) if safety.is_safe() => Ok(Scalar::Null),
+            Err(error) => Err(error),
+        };
+    }
     // The empty-cell rule: `""` entering a target that does not keep it is
     // absence, decided before `safety` is asked. The one scalar door runs the
     // rule too, but the decimal, temporal, integer and UUID readings below
@@ -876,7 +933,16 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
     if value.is_null() || matches!(target, DataType::Null) || is_blank_text(target, value) {
         return Ok(Scalar::Null);
     }
-    let target = unwrap_dictionary(target);
+    // Outside a variant column the bytes mean the value they encode. Decode
+    // once, then send that value back through this same conversion so leaf
+    // width, text and safe-cast rules keep their one owner.
+    if let Scalar::Variant(variant) = value {
+        return match variant.scalar() {
+            Ok(decoded) => convert(target, &decoded, safety),
+            Err(_) if safety.is_safe() => Ok(Scalar::Null),
+            Err(error) => Err(error),
+        };
+    }
     let refuse = |reason: &str| -> Result<Scalar> {
         if safety.is_safe() {
             return Ok(Scalar::Null);

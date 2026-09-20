@@ -1,0 +1,80 @@
+{
+  "name": "allocreporttypecodeset",
+  "codes": [
+    {
+      "value": "2",
+      "name": "PreliminaryRequestToIntermediary",
+      "doc": "Preliminary request to intermediary"
+    },
+    {
+      "value": "3",
+      "name": "SellsideCalculatedUsingPreliminary",
+      "doc": "Sellside calculated using preliminary (includes MiscFees and NetMoney)"
+    },
+    {
+      "value": "4",
+      "name": "SellsideCalculatedWithoutPreliminary",
+      "doc": "Sellside calculated without preliminary (sent unsolicited by sellside, includes MiscFees and NetMoney)"
+    },
+    {
+      "value": "5",
+      "name": "WarehouseRecap",
+      "doc": "Warehouse recap"
+    },
+    {
+      "value": "8",
+      "name": "RequestToIntermediary",
+      "doc": "Request to intermediary"
+    },
+    {
+      "value": "9",
+      "name": "Accept",
+      "doc": "Accept"
+    },
+    {
+      "value": "10",
+      "name": "Reject",
+      "doc": "Reject"
+    },
+    {
+      "value": "11",
+      "name": "AcceptPending",
+      "doc": "Accept Pending"
+    },
+    {
+      "value": "12",
+      "name": "Complete",
+      "doc": "Complete"
+    },
+    {
+      "value": "14",
+      "name": "ReversePending",
+      "doc": "Reverse Pending"
+    },
+    {
+      "value": "15",
+      "name": "Giveup",
+      "doc": "Give-up"
+    },
+    {
+      "value": "16",
+      "name": "Takeup",
+      "doc": "Take-up"
+    },
+    {
+      "value": "17",
+      "name": "Reversal",
+      "doc": "Reversal"
+    },
+    {
+      "value": "18",
+      "name": "Alleged",
+      "doc": "Alleged reversal"
+    },
+    {
+      "value": "19",
+      "name": "SubAllocationGiveup",
+      "doc": "Sub-allocation give-up"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "orderrelationshipcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotSpecified",
+      "doc": "Not specified"
+    },
+    {
+      "value": "1",
+      "name": "OrderAggregation",
+      "doc": "Order aggregation"
+    },
+    {
+      "value": "2",
+      "name": "OrderSplit",
+      "doc": "Order split"
+    }
+  ]
+}

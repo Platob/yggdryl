@@ -1,0 +1,85 @@
+{
+  "name": "paymenttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Brokerage",
+      "doc": "Brokerage"
+    },
+    {
+      "value": "1",
+      "name": "UpfrontFee",
+      "doc": "Upfront fee"
+    },
+    {
+      "value": "2",
+      "name": "IndependentAmountCollateral",
+      "doc": "Independent amount / collateral"
+    },
+    {
+      "value": "3",
+      "name": "PrincipalExchange",
+      "doc": "Principal exchange"
+    },
+    {
+      "value": "4",
+      "name": "NovationTermination",
+      "doc": "Novation / termination"
+    },
+    {
+      "value": "5",
+      "name": "EarlyTerminationProvision",
+      "doc": "Early termination provision"
+    },
+    {
+      "value": "6",
+      "name": "CancelableProvision",
+      "doc": "Cancelable provision"
+    },
+    {
+      "value": "7",
+      "name": "ExtendibleProvision",
+      "doc": "Extendible provision"
+    },
+    {
+      "value": "8",
+      "name": "CapRateProvision",
+      "doc": "Cap rate provision"
+    },
+    {
+      "value": "9",
+      "name": "FloorRateProvision",
+      "doc": "Floor rate provision"
+    },
+    {
+      "value": "10",
+      "name": "OptionPremium",
+      "doc": "Option premium"
+    },
+    {
+      "value": "11",
+      "name": "SettlementPayment",
+      "doc": "Settlement payment"
+    },
+    {
+      "value": "12",
+      "name": "CashSettl",
+      "doc": "Cash settlement"
+    },
+    {
+      "value": "13",
+      "name": "SecurityLending",
+      "doc": "Security lending"
+    },
+    {
+      "value": "14",
+      "name": "Rebate",
+      "doc": "Rebate"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

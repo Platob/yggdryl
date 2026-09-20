@@ -304,7 +304,46 @@ impl BuildHasher for Xxh64 {
 pub struct Xxh3 {
     seed: u64,
     secret: Option<Arc<[u8]>>,
-    hasher: twox_hash::xxhash3_64::Hasher,
+    hasher: Accumulator64,
+}
+
+/// The default secret as a streaming state carries it: a reference to the
+/// algorithm's own static bytes, copied nowhere.
+type DefaultSecret = &'static [u8; twox_hash::xxhash3_64::DEFAULT_SECRET_LENGTH];
+
+/// The accumulator behind a 64-bit state.
+///
+/// A state with the default seed and secret - which is every state a value,
+/// a row or a message is digested with - accumulates over the algorithm's
+/// static secret and allocates nothing to start, to clear or to clone. One
+/// built with a seed or a secret of the caller's own derives a secret of
+/// its own, which the algorithm keeps on the heap.
+#[derive(Clone)]
+enum Accumulator64 {
+    Default(twox_hash::xxhash3_64::RawHasher<DefaultSecret>),
+    Derived(twox_hash::xxhash3_64::Hasher),
+}
+
+impl Accumulator64 {
+    fn new() -> Self {
+        Self::Default(twox_hash::xxhash3_64::RawHasher::new(
+            twox_hash::xxhash3_64::SecretBuffer::default(),
+        ))
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Default(hasher) => hasher.write(bytes),
+            Self::Derived(hasher) => hasher.write(bytes),
+        }
+    }
+
+    fn finish(&self) -> u64 {
+        match self {
+            Self::Default(hasher) => hasher.finish(),
+            Self::Derived(hasher) => hasher.finish(),
+        }
+    }
 }
 
 impl Xxh3 {
@@ -313,7 +352,7 @@ impl Xxh3 {
         Self {
             seed: 0,
             secret: None,
-            hasher: twox_hash::xxhash3_64::Hasher::new(),
+            hasher: Accumulator64::new(),
         }
     }
 
@@ -322,7 +361,7 @@ impl Xxh3 {
         Self {
             seed,
             secret: None,
-            hasher: twox_hash::xxhash3_64::Hasher::with_seed(seed),
+            hasher: Accumulator64::Derived(twox_hash::xxhash3_64::Hasher::with_seed(seed)),
         }
     }
 
@@ -399,8 +438,8 @@ impl Xxh3 {
     pub fn clear(&mut self) {
         self.hasher = match &self.secret {
             Some(secret) => build_64(self.seed, secret),
-            None if self.seed == 0 => twox_hash::xxhash3_64::Hasher::new(),
-            None => twox_hash::xxhash3_64::Hasher::with_seed(self.seed),
+            None if self.seed == 0 => Accumulator64::new(),
+            None => Accumulator64::Derived(twox_hash::xxhash3_64::Hasher::with_seed(self.seed)),
         };
     }
 
@@ -408,9 +447,9 @@ impl Xxh3 {
 }
 
 /// Build an XXH3-64 accumulator over an already validated secret.
-fn build_64(seed: u64, secret: &[u8]) -> twox_hash::xxhash3_64::Hasher {
+fn build_64(seed: u64, secret: &[u8]) -> Accumulator64 {
     match twox_hash::xxhash3_64::Hasher::with_seed_and_secret(seed, secret) {
-        Ok(hasher) => hasher,
+        Ok(hasher) => Accumulator64::Derived(hasher),
         // The only failure is a short secret, and no secret reaches here
         // without passing `secret::validate` first.
         Err(_) => unreachable!("the secret was validated before it was stored"),
@@ -448,8 +487,10 @@ impl BuildHasher for Xxh3 {
 
     /// Build a fresh state carrying this state's seed and secret.
     ///
-    /// XXH3 keeps its secret on the heap, so each build allocates one secret
-    /// buffer; that cost is the algorithm's, not this wrapper's.
+    /// A state with the default seed and secret builds without allocating;
+    /// one with a seed or a secret of its own derives a secret the
+    /// algorithm keeps on the heap, and that cost is the algorithm's, not
+    /// this wrapper's.
     fn build_hasher(&self) -> Self {
         let mut state = self.clone();
         state.clear();
@@ -473,7 +514,37 @@ impl BuildHasher for Xxh3 {
 pub struct Xxh128 {
     seed: u64,
     secret: Option<Arc<[u8]>>,
-    hasher: twox_hash::xxhash3_128::Hasher,
+    hasher: Accumulator128,
+}
+
+/// The accumulator behind a 128-bit state, split as [`Accumulator64`] is
+/// and for the same reason.
+#[derive(Clone)]
+enum Accumulator128 {
+    Default(twox_hash::xxhash3_128::RawHasher<DefaultSecret>),
+    Derived(twox_hash::xxhash3_128::Hasher),
+}
+
+impl Accumulator128 {
+    fn new() -> Self {
+        Self::Default(twox_hash::xxhash3_128::RawHasher::new(
+            twox_hash::xxhash3_128::SecretBuffer::default(),
+        ))
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Default(hasher) => hasher.write(bytes),
+            Self::Derived(hasher) => hasher.write(bytes),
+        }
+    }
+
+    fn finish_128(&self) -> u128 {
+        match self {
+            Self::Default(hasher) => hasher.finish_128(),
+            Self::Derived(hasher) => hasher.finish_128(),
+        }
+    }
 }
 
 impl Xxh128 {
@@ -482,7 +553,7 @@ impl Xxh128 {
         Self {
             seed: 0,
             secret: None,
-            hasher: twox_hash::xxhash3_128::Hasher::new(),
+            hasher: Accumulator128::new(),
         }
     }
 
@@ -491,7 +562,7 @@ impl Xxh128 {
         Self {
             seed,
             secret: None,
-            hasher: twox_hash::xxhash3_128::Hasher::with_seed(seed),
+            hasher: Accumulator128::Derived(twox_hash::xxhash3_128::Hasher::with_seed(seed)),
         }
     }
 
@@ -568,8 +639,8 @@ impl Xxh128 {
     pub fn clear(&mut self) {
         self.hasher = match &self.secret {
             Some(secret) => build_128(self.seed, secret),
-            None if self.seed == 0 => twox_hash::xxhash3_128::Hasher::new(),
-            None => twox_hash::xxhash3_128::Hasher::with_seed(self.seed),
+            None if self.seed == 0 => Accumulator128::new(),
+            None => Accumulator128::Derived(twox_hash::xxhash3_128::Hasher::with_seed(self.seed)),
         };
     }
 
@@ -577,9 +648,9 @@ impl Xxh128 {
 }
 
 /// Build an XXH3-128 accumulator over an already validated secret.
-fn build_128(seed: u64, secret: &[u8]) -> twox_hash::xxhash3_128::Hasher {
+fn build_128(seed: u64, secret: &[u8]) -> Accumulator128 {
     match twox_hash::xxhash3_128::Hasher::with_seed_and_secret(seed, secret) {
-        Ok(hasher) => hasher,
+        Ok(hasher) => Accumulator128::Derived(hasher),
         Err(_) => unreachable!("the secret was validated before it was stored"),
     }
 }

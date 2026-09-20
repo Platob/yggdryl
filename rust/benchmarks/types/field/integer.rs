@@ -67,6 +67,28 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("new", |bencher| {
         bencher.iter(|| FieldRecord::new(black_box(&root), black_box(&row).clone()).unwrap());
     });
+    let natural = Scalar::from_sequence((0..columns).map(|index| {
+        if index % 2 == 0 {
+            Scalar::from(index)
+        } else {
+            Scalar::from("XNAS")
+        }
+    }));
+    let named = Scalar::from_struct(
+        root.fields()
+            .iter()
+            .zip(natural.as_sequence().unwrap())
+            .map(|(field, value)| (field.name(), value.clone())),
+    )
+    .expect("the row names are unique");
+    for (shape, input) in [("rewritten", natural), ("named", named)] {
+        group.bench_function(format!("new_{shape}"), |bencher| {
+            bencher.iter(|| FieldRecord::new(black_box(&root), black_box(&input).clone()).unwrap());
+        });
+        group.bench_function(format!("canonicalize_{shape}"), |bencher| {
+            bencher.iter(|| root.canonicalize_value(black_box(&input).clone()).unwrap());
+        });
+    }
     group.bench_function("get_by_name", |bencher| {
         bencher.iter(|| {
             black_box(&record)
@@ -78,6 +100,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || record.clone(),
             |record| black_box(record.into_scalar()),
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("into_arrow_batch", |bencher| {
+        bencher.iter_batched(
+            || record.clone(),
+            |record| black_box(record.into_arrow_batch().unwrap()),
             BatchSize::SmallInput,
         );
     });

@@ -1,0 +1,21 @@
+{
+  "name": "legalconfirmcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "DoesNotConsituteALegalConfirm",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Does not consitute a Legal Confirm"
+    },
+    {
+      "value": "Y",
+      "name": "LegalConfirm",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Legal Confirm"
+    }
+  ]
+}

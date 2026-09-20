@@ -264,6 +264,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,clordid",
+    "FIX:msgcat": "COMM",
     "FIX:msgtype": "C",
     "FIX:tag": "688909",
     "description": "MsgType = C",

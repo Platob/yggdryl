@@ -1,0 +1,53 @@
+{
+  "name": "tradereportrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidPartyInformation",
+      "aliases": [
+        "InvalidPartyOnformation"
+      ],
+      "doc": "Invalid party information"
+    },
+    {
+      "value": "2",
+      "name": "UnknownInstrument",
+      "doc": "Unknown instrument"
+    },
+    {
+      "value": "3",
+      "name": "UnauthorizedToReportTrades",
+      "doc": "Unauthorized to report trades"
+    },
+    {
+      "value": "4",
+      "name": "InvalidTradeType",
+      "doc": "Invalid trade type"
+    },
+    {
+      "value": "5",
+      "name": "PriceExceedsCurrentPriceBand",
+      "doc": "Price exceeds current price band"
+    },
+    {
+      "value": "6",
+      "name": "ReferencePriceNotAvailable",
+      "doc": "Reference price not available"
+    },
+    {
+      "value": "7",
+      "name": "NotionalValueExceedsThreshold",
+      "doc": "Notional value exceeds threshold"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

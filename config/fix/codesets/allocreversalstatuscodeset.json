@@ -1,0 +1,20 @@
+{
+  "name": "allocreversalstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Completed",
+      "doc": "Completed"
+    },
+    {
+      "value": "1",
+      "name": "Refused",
+      "doc": "Refused"
+    },
+    {
+      "value": "2",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    }
+  ]
+}

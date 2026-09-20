@@ -1,0 +1,21 @@
+{
+  "name": "tradedflatswitchcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotTradedFlat",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not Traded Flat"
+    },
+    {
+      "value": "Y",
+      "name": "TradedFlat",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Traded Flat"
+    }
+  ]
+}

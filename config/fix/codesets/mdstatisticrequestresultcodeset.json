@@ -1,0 +1,105 @@
+{
+  "name": "mdstatisticrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnknownMarket",
+      "doc": "Invalid or unknown market"
+    },
+    {
+      "value": "2",
+      "name": "InvalidOrUnknownMarketSegment",
+      "doc": "Invalid or unknown market segment"
+    },
+    {
+      "value": "3",
+      "name": "InvalidOrUnknownSecurityList",
+      "doc": "Invalid or unknown security list"
+    },
+    {
+      "value": "4",
+      "name": "InvalidOrUnknownInstruments",
+      "doc": "Invalid or unknown instrument(s)"
+    },
+    {
+      "value": "5",
+      "name": "InvalidParties",
+      "doc": "Invalid parties"
+    },
+    {
+      "value": "6",
+      "name": "TradeDateOutOfSupportedRange",
+      "doc": "Trade date out of supported range"
+    },
+    {
+      "value": "7",
+      "name": "UnsupportedStatisticType",
+      "doc": "Statistic type not supported"
+    },
+    {
+      "value": "8",
+      "name": "UnsupportedScopeOrSubScope",
+      "doc": "Scope or sub-scope not supported"
+    },
+    {
+      "value": "9",
+      "name": "UnsupportedScopeType",
+      "doc": "Scope type not supported"
+    },
+    {
+      "value": "10",
+      "name": "MarketDepthNotSupported",
+      "doc": "Market depth not supported"
+    },
+    {
+      "value": "11",
+      "name": "FrequencyNotSupported",
+      "doc": "Frequency not supported"
+    },
+    {
+      "value": "12",
+      "name": "UnsupportedStatisticInterval",
+      "doc": "Statistic interval not supported"
+    },
+    {
+      "value": "13",
+      "name": "UnsupportedStatisticDateRange",
+      "doc": "Statistic date range not supported"
+    },
+    {
+      "value": "14",
+      "name": "UnsupportedStatisticTimeRange",
+      "doc": "Statistic time range not supported"
+    },
+    {
+      "value": "15",
+      "name": "UnsupportedRatioType",
+      "doc": "Ratio type not supported"
+    },
+    {
+      "value": "16",
+      "name": "InvalidOrUnknownTradeInputSource",
+      "doc": "Invalid or unknown trade input source"
+    },
+    {
+      "value": "17",
+      "name": "InvalidOrUnknownTradingSession",
+      "doc": "Invalid or unknown trading session"
+    },
+    {
+      "value": "18",
+      "name": "UnauthorizedForStatisticRequest",
+      "doc": "Unauthorized for statistic request"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other (further information in Text (58) field)"
+    }
+  ]
+}

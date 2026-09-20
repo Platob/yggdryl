@@ -307,6 +307,23 @@ impl DatumCodec<'_> {
                 }
                 Node::Record(record) => {
                     let depth = self.descend(depth)?;
+                    if record.variant {
+                        let mut metadata = None;
+                        let mut value = None;
+                        for field in &record.fields {
+                            self.spend(budget)?;
+                            let bytes = cursor.bytes()?;
+                            match field.name.as_str() {
+                                crate::VARIANT_METADATA_FIELD => metadata = Some(bytes),
+                                crate::VARIANT_VALUE_FIELD => value = Some(bytes),
+                                _ => unreachable!("the variant record shape was validated"),
+                            }
+                        }
+                        return Ok(Scalar::Variant(crate::Variant::new(
+                            metadata.expect("the variant record has metadata"),
+                            value.expect("the variant record has value"),
+                        )?));
+                    }
                     let mut entries = Vec::with_capacity(record.fields.len());
                     for field in &record.fields {
                         entries.push((
@@ -722,6 +739,20 @@ impl DatumCodec<'_> {
                 }
                 Node::Record(record) => {
                     let depth = self.descend(depth)?;
+                    if record.variant {
+                        let Scalar::Variant(variant) = value else {
+                            return Err(mismatch("variant", value));
+                        };
+                        for field in &record.fields {
+                            let bytes = match field.name.as_str() {
+                                crate::VARIANT_METADATA_FIELD => variant.metadata(),
+                                crate::VARIANT_VALUE_FIELD => variant.value(),
+                                _ => unreachable!("the variant record shape was validated"),
+                            };
+                            put_bytes(target, bytes);
+                        }
+                        return Ok(());
+                    }
                     self.encode_record(record, value, target, depth)?;
                 }
                 Node::Array(items) => {
@@ -863,7 +894,13 @@ impl DatumCodec<'_> {
                     || (fixed.size == 16 && matches!(value, Scalar::Uuid(_)))
             }
             Node::UuidFixed(fixed) => fixed.size == 16 && uuid_value(value).is_ok(),
-            Node::Record(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
+            Node::Record(record) => {
+                if record.variant {
+                    matches!(value, Scalar::Variant(_))
+                } else {
+                    value.as_struct().is_some() || value.as_mapping().is_some()
+                }
+            }
             Node::Map(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
             Node::Array(_) => value.as_sequence().is_some(),
             Node::Union(_) => false,

@@ -1,0 +1,40 @@
+{
+  "name": "relatedtradeidsourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NonFIXSource",
+      "doc": "Non-FIX source"
+    },
+    {
+      "value": "1",
+      "name": "TradeID",
+      "doc": "Trade ID"
+    },
+    {
+      "value": "2",
+      "name": "SecondaryTradeID",
+      "doc": "Secondary trade ID"
+    },
+    {
+      "value": "3",
+      "name": "TradeReportID",
+      "doc": "Trade report ID"
+    },
+    {
+      "value": "4",
+      "name": "FirmTradeID",
+      "doc": "Firm trade ID"
+    },
+    {
+      "value": "5",
+      "name": "SecondaryFirmTradeID",
+      "doc": "Secondary firm Trade ID"
+    },
+    {
+      "value": "6",
+      "name": "RegulatoryTradeID",
+      "doc": "Regulatory trade ID"
+    }
+  ]
+}

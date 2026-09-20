@@ -1,0 +1,25 @@
+{
+  "name": "shortsalerestrictioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoRestrictions",
+      "doc": "No restrictions"
+    },
+    {
+      "value": "1",
+      "name": "SecurityNotShortable",
+      "doc": "Security is not shortable"
+    },
+    {
+      "value": "2",
+      "name": "SecurityNotShortableAtOrBelowBestBid",
+      "doc": "Security not shortable at or below the best bid"
+    },
+    {
+      "value": "3",
+      "name": "SecurityNotShortableWithoutPreBorrow",
+      "doc": "Security is not shortable without pre-borrow"
+    }
+  ]
+}

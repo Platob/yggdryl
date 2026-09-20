@@ -223,6 +223,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "DM",
     "FIX:tag": "541024",
     "description": "MsgType = DM",

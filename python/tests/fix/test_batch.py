@@ -42,6 +42,7 @@ def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
     for itself.
     """
     pins.setdefault("exclude_msgtypes", [])
+    pins.setdefault("threads", 1)
     return FixCodec(registry, default_sending_time=CLOCK, **pins)
 
 
@@ -160,7 +161,7 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     assert plain.default_sending_time is None
     assert plain.separator is None
     assert plain.payload_column == "body"
-    assert plain.null_values == ["", "null", "<null>"]
+    assert plain.null_values == ["", "null", "<null>", "none", "n/a", "[n/a]"]
     assert plain.batch_byte_size == 128 * 1024 * 1024
     assert repr(plain).startswith("FixCodec(")
     with pytest.raises(TypeError):
@@ -197,8 +198,10 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells(
     seed: FixRegistry,
 ) -> None:
+    plain = FixCodec(seed)
     one = _fixed(seed)
     four = _fixed(seed, threads=4)
+    assert plain.threads >= 1
     assert one.threads == 1
     assert four.threads == 4
     assert _fixed(seed, threads=0).threads == 1
@@ -218,6 +221,40 @@ def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells
     held = next(iter(one.messages(parsed)))
     assert dict(held.carried)["body"].as_py() == CAPTURE[0]
     assert next(one.parse_line(CAPTURE[0])).carried == []
+
+
+def test_arrow_pool_pulls_one_input_batch_per_worker_ahead(seed: FixRegistry) -> None:
+    schema = pa.schema([pa.field("body", pa.binary(), nullable=False)])
+    pulled = 0
+    # The first row expands to two messages and the second to one. A worker
+    # therefore keeps its input batch until its third output row is pulled.
+    first = b"8=FIX.4.4|35=D|11=POOL-1|52=20240102-10:15:30|10=0|"
+    second = b"8=FIX.4.4|35=D|11=POOL-2|52=20240102-10:15:30|10=0|"
+    third = b"8=FIX.4.4|35=D|11=POOL-3|52=20240102-10:15:30|10=0|"
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        nonlocal pulled
+        for _ in range(12):
+            pulled += 1
+            yield pa.record_batch(
+                [pa.array([first + second, third], pa.binary())], schema=schema
+            )
+
+    reader = FixCodec(
+        seed,
+        default_sending_time=CLOCK,
+        exclude_msgtypes=[],
+        threads=3,
+        batch_row_size=1,
+    ).parse_text_arrow_reader(pa.RecordBatchReader.from_batches(schema, batches()))
+    for clordid in ("POOL-1", "POOL-2", "POOL-3"):
+        batch = next(reader)
+        assert batch.column(batch.schema.get_field_index("msgtype"))[0].as_py() == "D"
+        assert batch.column(batch.schema.get_field_index("clordid"))[0].as_py() == clordid
+        assert pulled == 3
+    fourth = next(reader)
+    assert fourth.column(fourth.schema.get_field_index("msgtype"))[0].as_py() == "D"
+    assert pulled == 4
 
 
 def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -> None:
@@ -250,7 +287,9 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
     # Every row settles its identity, so the non-null columns are filled.
     assert all(held is not None for held in _column(parsed, "curruuid"))
     assert all(held is not None for held in _column(parsed, "currhashcode"))
-    assert len(_column(parsed, "fixentries")[0]) >= 1
+    # This ordinary message is fully projected; the residual record remains
+    # present but empty rather than restaging projected facts.
+    assert _column(parsed, "fixentries")[0] == []
 
 
 def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixRegistry) -> None:
@@ -308,10 +347,8 @@ def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
     again = list(codec.messages(codec.arrow_reader(schema, parsed)))
     assert len(again) == len(parsed)
     for held, message in zip(again, parsed):
-        # The same content, the same wire, the same digest, the same identity.
-        assert held.entries() == message.entries()
-        assert held.into_bytes(124) == message.into_bytes(124)
-        assert held.digest() == message.digest()
+        # Arrow reconstruction combines projected and residual content in
+        # schema order; its row and stored identities are the contract.
         assert held.currhashcode == message.currhashcode
         assert held.curruuid == message.curruuid
         assert held.into_row(schema) == message.into_row(schema)
@@ -381,9 +418,11 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
 
     held = FixMsg.from_row(schema, row, seed)
 
-    assert held.entries() == parsed.entries()
-    assert held.into_bytes(124) == parsed.into_bytes(124)
-    assert held.digest() == parsed.digest()
+    # Rebuilding combines projected fields with residual entries; semantic row
+    # equality, rather than arrival entry order or wire spelling, is the contract.
+    assert held.by_tag(11) == parsed.by_tag(11)
+    assert held.by_tag(55) == parsed.by_tag(55)
+    assert held.into_row(schema) == row
     assert held.currhashcode == parsed.currhashcode
     assert held.curruuid == parsed.curruuid
     assert held.crossuuid == parsed.crossuuid
@@ -393,8 +432,33 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
         assert held.by_tag(tag) == parsed.by_tag(tag), tag
     # And it makes the row it came from, whole, without reading a clock.
     assert held.into_row(schema) == row
+    # A recorded identity must not suppress derivation of projected market
+    # facts when the row is reconstructed.
+    sided = _one(codec, b"8=FIX.4.4|35=D|11=SIDE-1|55=AAPL|54=1|38=100|10=0|")
+    assert sided.side.as_py() == "BUY"
+    restored = FixMsg.from_row(schema, sided.into_row(schema), seed)
+    assert restored.side.as_py() == "BUY"
+    assert restored.by_tag(54).as_py() == "BUY"
+
     # The process default is the registry when none is named.
     assert FixMsg.from_row(schema, row).registry is not None
+
+
+def test_rows_prune_projected_scalars_and_complete_groups_from_residual_entries(seed: FixRegistry) -> None:
+    codec = _fixed(seed)
+    schema = fix_schema(seed)
+    message = _one(
+        codec,
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|",
+    )
+    row = message.into_row(schema)
+    residual = row.as_py()[schema.index_of("fixentries")]
+    assert all(entry[0] not in (55, 453) for entry in residual)
+    assert any(entry[0] == 0 for entry in residual)
+    rebuilt = FixMsg.from_row(schema, row, seed)
+    assert rebuilt.by_tag(55).as_py() == "AAPL"
+    assert rebuilt.by_tag(453).as_py() == 1
+    assert rebuilt.into_row(schema) == row
 
 
 def test_a_captures_own_columns_are_carried_and_never_become_facts(seed: FixRegistry) -> None:
@@ -436,7 +500,7 @@ def test_a_captures_own_columns_are_carried_and_never_become_facts(seed: FixRegi
     stated[schema.index_of("url")] = "file:///capture.log"
     stated[schema.index_of("rownum")] = 42
     again = FixMsg.from_row(schema, stated, seed)
-    assert again.entries() == parsed.entries()
+    assert again.into_row(schema).as_py() == stated
     assert again.currhashcode == parsed.currhashcode
     assert {name: value.as_py() for name, value in again.carried} == {
         "url": "file:///capture.log",
@@ -457,7 +521,7 @@ def test_a_captures_own_columns_are_carried_and_never_become_facts(seed: FixRegi
     assert "65026=" not in again.into_text("|")
 
 
-def test_a_row_without_the_entries_column_has_no_content(seed: FixRegistry) -> None:
+def test_a_row_without_the_entries_column_keeps_projected_content(seed: FixRegistry) -> None:
     codec = _fixed(seed)
     wide = fix_schema(seed)
     narrow = Field(
@@ -470,15 +534,12 @@ def test_a_row_without_the_entries_column_has_no_content(seed: FixRegistry) -> N
     parsed = _one(codec, ORDER)
     row = parsed.into_row(narrow)
     held = FixMsg.from_row(narrow, row, seed)
-    # The content is rebuilt from the record, so a row without it holds the
-    # typed facts alone.
-    assert held.entries() == []
+    # A row without residual entries still reconstructs projected content.
+    assert held.by_tag(55).as_py() == "AAPL"
     assert held.header() == parsed.header()
     assert held.currunix == parsed.currunix
-    # The content columns go with it: a row that kept no record cannot say
-    # what the message stated beyond its typed facts.
     again = held.into_row(narrow).as_py()
-    assert again[narrow.index_of("symbol")] is None
+    assert again[narrow.index_of("symbol")] == "AAPL"
     assert again[narrow.index_of("currunix")] == row.as_py()[narrow.index_of("currunix")]
     # A row that does not fit the schema is refused.
     with pytest.raises(ValueError):

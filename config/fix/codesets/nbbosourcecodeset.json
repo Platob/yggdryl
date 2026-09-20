@@ -1,0 +1,25 @@
+{
+  "name": "nbbosourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotApplicable",
+      "doc": "Not applicable"
+    },
+    {
+      "value": "1",
+      "name": "Direct",
+      "doc": "Direct"
+    },
+    {
+      "value": "2",
+      "name": "SIP",
+      "doc": "Securities Information Processor"
+    },
+    {
+      "value": "3",
+      "name": "Hybrid",
+      "doc": "Hybrid"
+    }
+  ]
+}

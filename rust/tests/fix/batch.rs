@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
@@ -26,12 +26,18 @@ fn direction_registry() -> Arc<FixRegistry> {
     // Tag 385 as the dictionary types it: text carrying its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
+    registry
+        .set_codeset(
+            "msgdirectioncodeset",
+            &[
+                yggdryl::FixCode::new("Receive", "R"),
+                yggdryl::FixCode::new("Send", "S"),
+            ],
+        )
+        .unwrap();
     direction
         .as_fix_mut()
-        .set_codes(&[
-            yggdryl::FixCode::new("Receive", "R"),
-            yggdryl::FixCode::new("Send", "S"),
-        ])
+        .set_codeset("msgdirectioncodeset")
         .unwrap();
     registry.insert(direction).unwrap();
     Arc::new(registry)
@@ -211,7 +217,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
 }
 
 #[test]
-fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
+fn the_entries_column_keeps_only_content_the_columns_did_not_represent() {
     let reader = codec()
         .parse_text_arrow_reader(capture_reader(
             &["8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|"],
@@ -228,11 +234,16 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let digest = tag_column(&batch, yggdryl::CURRHASHCODE_TAG_NAME.0);
     assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
-    // And the arrival record is there in full, which is what makes the batch
-    // lossless rather than one reader's summary.
+    // Every scalar this fixture states has a fixed column, so its residual
+    // arrival record is present but empty rather than duplicating the row.
     let entries = column(&batch, "fixentries");
     assert!(entries.is_valid(0));
-    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        first_value(&batch, "fixentries")
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(0)
+    );
 }
 
 /// Two hundred wide orders, about 450 bytes each.
@@ -385,7 +396,7 @@ fn messages_to_batches_close_on_the_bytes_their_rows_land_as() {
 }
 
 #[test]
-fn messages_with_no_arrival_record_are_charged_by_their_row() {
+fn messages_without_residual_entries_are_charged_and_rebuilt_by_their_columns() {
     let codec = codec();
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     let whole = batches(
@@ -394,8 +405,7 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
             .unwrap(),
     );
     assert_eq!(whole.len(), 1);
-    // The lifted columns alone: the projection a consumer keeps, whose rows
-    // come back as messages holding no entries.
+    // The projected columns alone still state ordinary message content.
     let batch = &whole[0];
     let lifted: Vec<usize> = (0..batch.num_columns())
         .filter(|at| batch.schema().field(*at).name() != yggdryl::fix::FIXENTRIES_COLUMN)
@@ -403,6 +413,20 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
     let projected = batch.project(&lifted).unwrap();
     assert_eq!(projected.num_rows(), 200);
     let reader = || yggdryl::arrow::batch_reader(projected.schema(), [projected.clone()]);
+    let restored: Vec<FixMsg> = codec
+        .messages(reader())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(restored.len(), 200);
+    assert_eq!(
+        restored[0].by_tag(11).unwrap().as_str(),
+        Some("ORDER-000000")
+    );
+    let text = "x".repeat(400);
+    assert_eq!(
+        restored[0].by_tag(58).unwrap().as_str(),
+        Some(text.as_str())
+    );
 
     // Under a bound of about ten rows of leaves, the stream is cut into
     // batches of about ten - it is not one batch of everything, which is
@@ -741,6 +765,310 @@ fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
     }
 }
 
+#[test]
+fn lifecycle_drops_republications_and_true_retransmissions_but_keeps_distinct_deliveries() {
+    let codec = codec();
+    let original = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|";
+    let replay = b"8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|";
+    let distinct = b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|";
+    let messages = [
+        original.as_slice(),
+        original.as_slice(),
+        replay.as_slice(),
+        distinct.as_slice(),
+    ]
+    .into_iter()
+    .map(|line| codec.parse_fix_line(line));
+
+    let walked: Vec<_> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].header().msgseqnum(), Some(7));
+    assert_eq!(walked[1].header().msgseqnum(), Some(8));
+    assert_eq!(walked[1].get_seqnum(), 1, "replays take no chain place");
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+}
+
+#[test]
+fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
+    let codec = codec();
+    let original = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|";
+    // The two ordinary row fields have distinct wire order but one content ID.
+    let reordered = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|55=AAPL|1=ACCOUNT|10=0|";
+    let replay = b"8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|";
+    // Delivery headers alone do not collapse changed content.
+    let changed_content =
+        b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|1=ACCOUNT|55=MSFT|10=0|";
+    let distinct = b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|1=ACCOUNT|55=AAPL|10=0|";
+    // No SendingTime or TransactTime: the fixed intake clock dates it, while
+    // the distinct delivery sequence keeps the otherwise same event.
+    let unstated_time = b"8=FIX.4.4|35=D|49=S|56=T|34=9|1=ACCOUNT|55=AAPL|10=0|";
+    let original_message = codec.parse_fix_line(original).unwrap();
+    let reordered_message = codec.parse_fix_line(reordered).unwrap();
+    assert_ne!(original_message.digest(), reordered_message.digest());
+    assert_eq!(
+        original_message.get_currhashcode(),
+        reordered_message.get_currhashcode()
+    );
+    let messages = vec![
+        original_message.clone(),
+        original_message,
+        reordered_message,
+        codec.parse_fix_line(replay).unwrap(),
+        codec.parse_fix_line(changed_content).unwrap(),
+        codec.parse_fix_line(distinct).unwrap(),
+        codec.parse_fix_line(unstated_time).unwrap(),
+        codec.parse_fix_line(unstated_time).unwrap(),
+    ];
+
+    let direct: Vec<FixMsg> = codec
+        .lifecycle(messages.clone())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        direct.len(),
+        4,
+        "repeat, reordered body, replay and duplicate unstated clock deduplicate"
+    );
+    assert_eq!(
+        direct
+            .iter()
+            .filter(|message| message.header().msgseqnum() == Some(7))
+            .count(),
+        2,
+        "changed content under one delivery header stays"
+    );
+    assert!(
+        direct
+            .iter()
+            .any(|message| message.header().msgseqnum() == Some(8)),
+        "a distinct delivery sequence stays"
+    );
+    assert!(
+        direct
+            .iter()
+            .any(|message| message.header().msgseqnum() == Some(9)),
+        "an unstated SendingTime without TransactTime stays"
+    );
+    assert_eq!(
+        codec
+            .lifecycle(direct.clone())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+            .len(),
+        direct.len(),
+        "a second walk retains the settled deliveries"
+    );
+
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows = codec.arrow_reader(schema, messages).unwrap();
+    let arrow: Vec<FixMsg> = codec
+        .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(arrow.len(), direct.len());
+    for (direct, arrow) in direct.iter().zip(&arrow) {
+        assert_eq!(arrow.get_curruuid(), direct.get_curruuid());
+        assert_eq!(arrow.get_currhashcode(), direct.get_currhashcode());
+        assert_eq!(arrow.get_prevuuid(), direct.get_prevuuid());
+        assert_eq!(arrow.get_parentuuids(), direct.get_parentuuids());
+        assert_eq!(arrow.get_state(), direct.get_state());
+        assert_eq!(arrow.get_seqnum(), direct.get_seqnum());
+        assert_eq!(arrow.get_currunix(), direct.get_currunix());
+    }
+}
+
+#[test]
+fn lifecycle_headerless_reordered_content_is_one_delivery_through_arrow() {
+    let codec = codec();
+    let first = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|")
+        .unwrap();
+    let reordered = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|1=ACCOUNT|10=0|")
+        .unwrap();
+    assert_ne!(first.digest(), reordered.digest());
+    assert_eq!(first.get_curruuid(), reordered.get_curruuid());
+
+    let direct: Vec<FixMsg> = codec
+        .lifecycle([first.clone(), reordered.clone()])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(direct.len(), 1);
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows = codec.arrow_reader(schema, [first, reordered]).unwrap();
+    let arrow: Vec<FixMsg> = codec
+        .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(arrow.len(), 1);
+    assert_eq!(arrow[0].get_curruuid(), direct[0].get_curruuid());
+    assert_eq!(arrow[0].get_currhashcode(), direct[0].get_currhashcode());
+}
+
+#[test]
+fn lifecycle_remembers_deliveries_across_the_whole_finite_capture() {
+    let codec = codec();
+    let first = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=LONG-CAPTURE|10=0|")
+        .unwrap();
+    let mut messages = vec![first.clone()];
+    for sequence in 2_u64..=4_097 {
+        let mut message = first.clone();
+        message.set(34, Scalar::from(sequence)).unwrap();
+        messages.push(message);
+    }
+    messages.push(first);
+    assert_eq!(
+        codec.lifecycle(messages).map(Result::unwrap).count(),
+        4_097,
+        "a repeated delivery remains a repeat after many distinct deliveries"
+    );
+}
+
+#[test]
+fn lifecycle_deduplicates_headerless_repeats_within_one_capture_context_only() {
+    let codec = codec().with_capture_names(["msgsessionid"]);
+    let captured = |session: &[u8]| {
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(
+                b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+            )
+            .unwrap(),
+            Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![Some(TextBytes::from_bytes(session).unwrap())])
+        .unwrap();
+        codec.parse_text_line(&line).unwrap().next().unwrap()
+    };
+    let first = captured(b"SESSION-A");
+    let repeated = captured(b"SESSION-A");
+    let other_session = captured(b"SESSION-B");
+    let walked: Vec<_> = codec
+        .lifecycle([first, repeated, other_session])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].capture().msgsessionid(), Some("SESSION-A"));
+    assert_eq!(walked[1].capture().msgsessionid(), Some("SESSION-B"));
+
+    let sequenced = [
+        codec.parse_fix_line(
+            b"8=FIX.4.4|35=D|34=1|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+        ),
+        codec.parse_fix_line(
+            b"8=FIX.4.4|35=D|34=2|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+        ),
+    ];
+    let walked: Vec<_> = codec
+        .lifecycle(sequenced)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|message| message.header().msgseqnum())
+            .collect::<Vec<_>>(),
+        [Some(1), Some(2)],
+        "different delivery sequence numbers remain distinct"
+    );
+}
+
+#[test]
+fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes() {
+    let codec = codec();
+    let later =
+        b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|";
+    let earlier = b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|";
+
+    let walked: Vec<_> = codec
+        .lifecycle([codec.parse_fix_line(later), codec.parse_fix_line(earlier)])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].header().msgseqnum(), Some(1));
+    assert_eq!(
+        walked[1].get_bloombergcode().map(|code| code.as_str()),
+        Some("AAPL US Equity")
+    );
+    assert_eq!(
+        codec.clone().with_snapshot_ns(1_000_000).snapshot_ns(),
+        Some(1_000_000)
+    );
+    assert_eq!(codec.snapshot_ns(), None);
+}
+
+#[test]
+fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous() {
+    let codec = codec();
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=US0378331005|{body}|10=0|"
+        )
+    };
+    let learned: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(2, "").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        learned[1].get_figicode().map(|value| value.as_str()),
+        Some("BBG000BLNQ16")
+    );
+
+    let ambiguous: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(3, "").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
+            codec.parse_fix_line(line(2, "figicode=BCG000000005").as_bytes()),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert!(
+        ambiguous[2].get_figicode().is_none(),
+        "a conflicting association stays unknown"
+    );
+}
+
+#[test]
+fn lifecycle_expiry_keeps_fix_content_and_retires_at_the_exact_deadline() {
+    let codec = codec();
+    let original = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|",
+        )
+        .unwrap();
+    let walked: Vec<_> = codec
+        .lifecycle([original.clone()])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+
+    assert_eq!(walked.len(), 2);
+    let (source, expired) = (&walked[0], &walked[1]);
+    assert_eq!(source.get_curruuid(), original.get_curruuid());
+    assert_eq!(
+        source.entries(),
+        original.entries(),
+        "the yielded source is immutable"
+    );
+    assert_eq!(expired.get_currunix(), source.get_exprtime().unwrap());
+    assert!(expired.get_state().is_failed());
+    assert_eq!(expired.get_prevuuid(), Some(source.get_curruuid()));
+    assert_eq!(expired.get_seqnum(), source.get_seqnum() + 1);
+    assert!(Arc::ptr_eq(expired.registry(), source.registry()));
+    assert_eq!(
+        expired.entries(),
+        source.entries(),
+        "expiry changes no FIX content"
+    );
+}
+
 /// A source that answers `item`, then `None` once, then resumes a bounded
 /// number of times: a door that did not fuse would read the resumed items.
 fn resuming<T: Clone>(item: T) -> impl Iterator<Item = T> {
@@ -820,14 +1148,15 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     assert_eq!(first_tag_value(&filled, 151), super::decimal("60"));
     // One fill, so the average is that fill's price.
     assert_eq!(first_tag_value(&filled, 6), super::decimal("10.5"));
-    // The record is the message read as a tree, so the row's arrival record
-    // is what the line read emits.
-    assert_eq!(
-        first_value(&filled, "fixentries")
-            .as_sequence()
-            .map(<[Scalar]>::len),
-        Some(message.entries().len()),
-    );
+    // Projected fields do not also remain in the residual record. The one
+    // derived field this fixed schema does not project stays there instead,
+    // so reconstructing the row cannot lose it.
+    let residual = first_value(&filled, "fixentries");
+    let entries = residual.as_sequence().expect("the residual entries");
+    assert_eq!(entries.len(), 1);
+    let entry = entries[0].as_sequence().expect("a residual entry");
+    assert_eq!(entry[0].as_i64(), Some(381));
+    assert_eq!(entry[2].as_str(), Some("420"));
 }
 
 /// The batch door reads a row as the line it is, and states that line as the
@@ -1587,7 +1916,7 @@ fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
 }
 
 #[test]
-fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
+fn a_message_through_the_arrow_reader_and_back_states_the_same_semantic_row() {
     let codec = every_msgtype().with_null_values::<[&str; 0], &str>([]);
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     let parsed: Vec<FixMsg> = codec
@@ -1605,10 +1934,17 @@ fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
         .unwrap();
     assert_eq!(again.len(), parsed.len());
     for (held, message) in again.iter().zip(&parsed) {
-        // The arrival record is what the row carries the content in, so it is
-        // what comes back: none of this corpus nests a group inside a group,
-        // which is the one shape `FixMsg::from_row` names as inexact.
-        assert_eq!(held.entries(), message.entries());
+        // Represented fields rebuild from their columns; the residual keeps
+        // only content those columns could not state.
+        assert_eq!(
+            held.into_row(&schema).unwrap(),
+            message.into_row(&schema).unwrap(),
+            "semantic row"
+        );
+        assert_eq!(held.get_curruuid(), message.get_curruuid());
+        assert_eq!(held.get_crossuuid(), message.get_crossuuid());
+        assert_eq!(held.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(held.get_crosshashcode(), message.get_crosshashcode());
         for tag in [35, 11, 55, 54, 17, 37] {
             fn stated(message: &FixMsg, tag: i32) -> Option<Scalar> {
                 message.get_by_tag(tag).filter(|held| !held.is_null())

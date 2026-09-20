@@ -59,9 +59,10 @@
 //! This crate's own derived fields are excluded too, for the plainer reason
 //! that a value cannot cover itself: the digest is one of them.
 
+use std::hash::Hasher;
 use std::sync::LazyLock;
 
-use crate::digest::DigestAlgorithm;
+use crate::xxhash::Xxh128;
 
 use super::msg::FixMsg;
 use super::{MSGTYPE_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
@@ -93,7 +94,7 @@ static ENVELOPE_TAGS: LazyLock<Vec<i32>> = LazyLock::new(|| {
 });
 
 /// Whether one tag belongs to the envelope rather than the message.
-fn is_envelope(tag: i32) -> bool {
+pub(super) fn is_envelope(tag: i32) -> bool {
     ENVELOPE_TAGS.binary_search(&tag).is_ok()
 }
 
@@ -101,16 +102,21 @@ fn is_envelope(tag: i32) -> bool {
 /// name where the tag named no field, its value and how many entries nest
 /// under it, the envelope tags left out.
 ///
+/// The wire arrives as bands - what stands in front of the row, the row,
+/// what closes it - fed in order into one state, so the digest is the
+/// digest of the one sequence they make and no band is copied to make it.
+///
 /// The frame is not the message: `BeginString`, `BodyLength` and `CheckSum`
 /// say how the bytes were framed, and a different separator, a recomputed
 /// body length and a different checksum are the same message.
-pub(super) fn digest_of(entries: &[super::FixEntry]) -> u128 {
-    let mut state = DigestAlgorithm::Xxh128.digester();
-    walk(&mut state, entries);
-    state
-        .as_digest()
-        .as_u128()
-        .expect("the 128-bit algorithm answers 128 bits")
+pub(super) fn digest_of(bands: &[&[super::FixEntry]]) -> u128 {
+    // The algorithm is this module's own and fixed, so the state is the
+    // concrete one and no write dispatches on it.
+    let mut state = Xxh128::new();
+    for entries in bands {
+        walk(&mut state, entries);
+    }
+    state.as_u128()
 }
 
 /// Feeds one level of entries, pre-order, children under their parent.
@@ -124,26 +130,26 @@ pub(super) fn digest_of(entries: &[super::FixEntry]) -> u128 {
 ///
 /// An excluded envelope tag excludes its entire subtree, exactly as it
 /// excluded its flat entry before entries nested.
-fn walk(state: &mut crate::digest::Digester, entries: &[super::FixEntry]) {
+fn walk(state: &mut impl Hasher, entries: &[super::FixEntry]) {
     for entry in entries {
         let tag = entry.tag();
         if is_envelope(tag) {
             continue;
         }
-        state.write_bytes(&tag.to_be_bytes());
+        state.write(&tag.to_be_bytes());
         // The name only where the tag named no field. A resolved entry is
         // identified by its tag, and two spellings of one tag are one
         // field; an unresolved one has nothing but its name, so two rows
         // whose unknown keys differ are two messages.
         if tag == 0 {
             let name = entry.name().as_bytes();
-            state.write_bytes(&length_of(name));
-            state.write_bytes(name);
+            state.write(&length_of(name));
+            state.write(name);
         }
         let value = entry.value().unwrap_or_default().as_bytes();
-        state.write_bytes(&length_of(value));
-        state.write_bytes(value);
-        state.write_bytes(&(entry.entries().len() as u32).to_be_bytes());
+        state.write(&length_of(value));
+        state.write(value);
+        state.write(&(entry.entries().len() as u32).to_be_bytes());
         walk(state, entry.entries());
     }
 }

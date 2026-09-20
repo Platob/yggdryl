@@ -224,6 +224,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quoteid,quotereqid,secondaryquoteid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "CW",
     "FIX:tag": "898973",
     "description": "MsgType = CW",

@@ -1,0 +1,25 @@
+{
+  "name": "clearedindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotCleared",
+      "doc": "Not cleared"
+    },
+    {
+      "value": "1",
+      "name": "Cleared",
+      "doc": "Cleared"
+    },
+    {
+      "value": "2",
+      "name": "Submitted",
+      "doc": "Submitted"
+    },
+    {
+      "value": "3",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

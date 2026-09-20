@@ -348,6 +348,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "c",
     "FIX:tag": "235157",
     "description": "MsgType = c (lowercase C)",

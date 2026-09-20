@@ -26,10 +26,6 @@ pub(crate) enum Segment<'a> {
     Index(usize),
     /// The element field of a list layout.
     Item,
-    /// The key of one map entry.
-    MapKey(usize),
-    /// The value of one map entry.
-    MapValue(usize),
     /// The entries struct of a map layout.
     MapEntries,
     /// One union alternative, by Arrow type id.
@@ -119,16 +115,6 @@ pub(crate) fn push_segment(path: &mut String, segment: Segment<'_>) {
             path.push(']');
         }
         Segment::Item => path.push_str("[]"),
-        Segment::MapKey(index) => {
-            path.push('[');
-            push_usize(path, index);
-            path.push_str("].key");
-        }
-        Segment::MapValue(index) => {
-            path.push('[');
-            push_usize(path, index);
-            path.push_str("].value");
-        }
         Segment::MapEntries => path.push_str(".entries"),
         Segment::UnionType(type_id) => {
             path.push_str("<union:");
@@ -208,8 +194,9 @@ mod tests {
         let root = Path::root();
         assert_eq!(root.child(Segment::Item).render(), "$[]");
         assert_eq!(root.child(Segment::MapEntries).render(), "$.entries");
-        assert_eq!(root.child(Segment::MapKey(2)).render(), "$[2].key");
-        assert_eq!(root.child(Segment::MapValue(2)).render(), "$[2].value");
+        let entry = root.child(Segment::Index(2));
+        assert_eq!(entry.field("key").render(), "$[2].key");
+        assert_eq!(entry.field("value").render(), "$[2].value");
         assert_eq!(
             root.child(Segment::DictionaryValue).render(),
             "$.dictionary_value"

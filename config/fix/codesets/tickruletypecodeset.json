@@ -1,0 +1,44 @@
+{
+  "name": "tickruletypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RegularTrading",
+      "aliases": [
+        "Regular"
+      ],
+      "doc": "Regular trading"
+    },
+    {
+      "value": "1",
+      "name": "VariableCabinet",
+      "aliases": [
+        "Variable"
+      ],
+      "doc": "Variable cabinet"
+    },
+    {
+      "value": "2",
+      "name": "FixedCabinet",
+      "aliases": [
+        "Fixed"
+      ],
+      "doc": "Fixed cabinet"
+    },
+    {
+      "value": "3",
+      "name": "TradedAsASpreadLeg",
+      "doc": "Traded as a spread leg"
+    },
+    {
+      "value": "4",
+      "name": "SettledAsASpreadLeg",
+      "doc": "Settled as a spread leg"
+    },
+    {
+      "value": "5",
+      "name": "TradedAsSpread",
+      "doc": "Traded as spread"
+    }
+  ]
+}

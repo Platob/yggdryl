@@ -1,0 +1,25 @@
+{
+  "name": "dividendamounttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RecordAmount",
+      "doc": "Record amount"
+    },
+    {
+      "value": "1",
+      "name": "ExAmount",
+      "doc": "Ex amount"
+    },
+    {
+      "value": "2",
+      "name": "PaidAmount",
+      "doc": "Paid amount"
+    },
+    {
+      "value": "3",
+      "name": "PerMasterConfirm",
+      "doc": "As specified in master confirmation"
+    }
+  ]
+}

@@ -6,18 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codeset": "provisionoptionsinglepartybuyersidecodeset",
       "FIX:tag": "40100",
       "description": "If optional early termination is not available to both parties then this component identifies the seller of the option through its side of the trade.",
       "display": "ProvisionOptionSinglePartySellerSide"
@@ -30,28 +19,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "European",
-          "doc": "European"
-        },
-        {
-          "value": "1",
-          "name": "American",
-          "doc": "American"
-        },
-        {
-          "value": "2",
-          "name": "Bermuda",
-          "doc": "Bermuda"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "exercisestylecodeset",
       "FIX:tag": "40101",
       "description": "The instrument provision option’s exercise style.",
       "display": "ProvisionOptionExerciseStyle"
@@ -142,43 +110,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "CashPrice",
-          "doc": "Cash price"
-        },
-        {
-          "value": "1",
-          "name": "CashPriceAlternate",
-          "doc": "Cash price alternate"
-        },
-        {
-          "value": "2",
-          "name": "ParYieldCurveAdjusted",
-          "doc": "Par yield curve adjusted"
-        },
-        {
-          "value": "3",
-          "name": "ZeroCouponYieldCurveAdjusted",
-          "doc": "Zero coupon yield curve adjusted"
-        },
-        {
-          "value": "4",
-          "name": "ParYieldCurveUnadjusted",
-          "doc": "Par yield curve unadjusted"
-        },
-        {
-          "value": "5",
-          "name": "CrossCurrency",
-          "doc": "Cross currency"
-        },
-        {
-          "value": "6",
-          "name": "CollateralizedPrice",
-          "doc": "Collateralized price"
-        }
-      ],
+      "FIX:codeset": "provisioncashsettlmethodcodeset",
       "FIX:tag": "40108",
       "description": "An ISDA defined cash settlement method used for the determination of the applicable cash settlement amount. The method is defined in the 2006 ISDA Definitions, Section 18.3. Cash Settlement Methods, paragraph (e).",
       "display": "ProvisionCashSettlMethod"
@@ -215,28 +147,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bid",
-          "doc": "Bid"
-        },
-        {
-          "value": "1",
-          "name": "Mid",
-          "doc": "Mid"
-        },
-        {
-          "value": "2",
-          "name": "Offer",
-          "doc": "Offer"
-        },
-        {
-          "value": "3",
-          "name": "ExercisingPartyPays",
-          "doc": "Exercising party pays"
-        }
-      ],
+      "FIX:codeset": "provisioncashsettlquotetypecodeset",
       "FIX:tag": "40111",
       "description": "Identifies the type of quote to be used.",
       "display": "ProvisionCashSettlQuoteType"
@@ -249,28 +160,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "40112",
       "description": "Identifies the source of quote information.",
       "display": "ProvisionCashSettlQuoteSource"
@@ -320,48 +210,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "40116",
       "description": "The cash settlement valuation date adjustment business day convention. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionCashSettlValueDateBusinessDayConvention"
@@ -410,28 +259,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40120",
       "description": "Time unit associated with the relative cash settlement value date offset.",
       "display": "ProvisionCashSettlValueDateOffsetUnit"
@@ -444,38 +272,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40121",
       "description": "Specifies the day type of the provision's relative cash settlement value date offset.",
       "display": "ProvisionCashSettlValueDateOffsetDayType"
@@ -501,48 +298,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "40123",
       "description": "The business day convention used to adjust the instrument's provision's option exercise date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionOptionExerciseBusinessDayConvention"
@@ -579,28 +335,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "provisionoptionexerciseearliestdateoffsetunitcodeset",
       "FIX:tag": "40126",
       "description": "Time unit associated with the interval to the first (and possibly only) exercise date in the exercise period.",
       "display": "ProvisionOptionExerciseEarliestDateOffsetUnit"
@@ -625,48 +360,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codeset": "couponfrequencyunitcodeset",
       "FIX:tag": "40128",
       "description": "Time unit associated with the frequency of subsequent exercise dates in the exercise period following the earliest exercise date.",
       "display": "ProvisionOptionExerciseFrequencyUnit"
@@ -716,28 +410,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40132",
       "description": "Time unit associated with the relative option exercise start date offset.",
       "display": "ProvisionOptionExerciseStartDateOffsetUnit"
@@ -750,38 +423,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40133",
       "description": "Specifies the day type of the provision's relative option exercise start date offset.",
       "display": "ProvisionOptionExerciseStartDateOffsetDayType"
@@ -920,18 +562,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codeset": "provisionoptionexercisefixeddatetypecodeset",
       "FIX:tag": "40144",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "ProvisionOptionExerciseFixedDateType"
@@ -957,48 +588,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "40146",
       "description": "The business day convention used to adjust the instrument's provision's option expiration date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionOptionExpirationDateBusinessDayConvention"
@@ -1047,28 +637,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40150",
       "description": "Time unit associated with the relative option expiration date offset.",
       "display": "ProvisionOptionExpirationDateOffsetUnit"
@@ -1081,38 +650,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40151",
       "description": "Specifies the day type of the provision's relative option expiration date offset.",
       "display": "ProvisionOptionExpirationDateOffsetDayType"
@@ -1176,48 +714,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "40156",
       "description": "The business day convention used to adjust the instrument's provision's option underlying date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionOptionRelevantUnderlyingDateBusinessDayConvention"
@@ -1266,28 +763,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40160",
       "description": "Time unit associated with the relative option relevant underlying date offset.",
       "display": "ProvisionOptionRelevantUnderlyingDateOffsetUnit"
@@ -1300,38 +776,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40161",
       "description": "Specifies the day type of the provision's relative option relevant underlying date offset.",
       "display": "ProvisionOptionRelevantUnderlyingDateOffsetDayType"
@@ -1357,48 +802,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "40163",
       "description": "The business day convention used to adjust the provisional cash settlement payment's termination or relative termination date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionCashSettlPaymentDateBusinessDayConvention"
@@ -1447,28 +851,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40167",
       "description": "Time unit associated with the relative cash settlement payment date offset.",
       "display": "ProvisionCashSettlPaymentDateOffsetUnit"
@@ -1481,38 +864,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40168",
       "description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
       "display": "ProvisionCashSettlPaymentDateOffsetDayType"
@@ -1576,18 +928,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codeset": "provisioncashsettlpaymentdatetypecodeset",
       "FIX:tag": "40173",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "ProvisionCashSettlPaymentDateType"
@@ -1624,194 +965,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "KoreanInvestorID",
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Korean Investor ID"
-        },
-        {
-          "value": "6",
-          "name": "UKNationalInsuranceOrPensionNumber",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "UK National Insurance or Pension Number"
-        },
-        {
-          "value": "B",
-          "name": "BIC",
-          "group": "For all PartyRoles",
-          "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
-        },
-        {
-          "value": "I",
-          "name": "ISITCAcronym",
-          "group": "For PartyRole=\"Broker of Credit\"",
-          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
-        },
-        {
-          "value": "2",
-          "name": "TaiwaneseForeignInvestorID",
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
-        },
-        {
-          "value": "7",
-          "name": "USSocialSecurityNumber",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Social Security Number"
-        },
-        {
-          "value": "C",
-          "name": "GeneralIdentifier",
-          "group": "For all PartyRoles",
-          "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
-        },
-        {
-          "value": "3",
-          "name": "TaiwaneseTradingAcct",
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Trading Acct"
-        },
-        {
-          "value": "8",
-          "name": "USEmployerOrTaxIDNumber",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Employer or Tax ID Number"
-        },
-        {
-          "value": "D",
-          "name": "Proprietary",
-          "group": "For all PartyRoles",
-          "doc": "Proprietary / Custom code"
-        },
-        {
-          "value": "4",
-          "name": "MalaysianCentralDepository",
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Malaysian Central Depository (MCD) number"
-        },
-        {
-          "value": "9",
-          "name": "AustralianBusinessNumber",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Business Number"
-        },
-        {
-          "value": "E",
-          "name": "ISOCountryCode",
-          "group": "For all PartyRoles",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "5",
-          "name": "ChineseInvestorID",
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Chinese Investor ID"
-        },
-        {
-          "value": "A",
-          "name": "AustralianTaxFileNumber",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Tax File Number"
-        },
-        {
-          "value": "F",
-          "name": "SettlementEntityLocation",
-          "group": "For all PartyRoles",
-          "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
-        },
-        {
-          "value": "G",
-          "name": "MIC",
-          "group": "For all PartyRoles",
-          "doc": "Market Identifier Code (ISO 10383) MIC"
-        },
-        {
-          "value": "J",
-          "name": "TaxID",
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Tax ID"
-        },
-        {
-          "value": "H",
-          "name": "CSDParticipant",
-          "group": "For all PartyRoles",
-          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
-        },
-        {
-          "value": "K",
-          "name": "AustralianCompanyNumber",
-          "group": "For all PartyRoles",
-          "doc": "Australian Company Number"
-        },
-        {
-          "value": "L",
-          "name": "AustralianRegisteredBodyNumber",
-          "group": "For all PartyRoles",
-          "doc": "Australian Registered Body Number"
-        },
-        {
-          "value": "M",
-          "name": "CFTCReportingFirmIdentifier",
-          "group": "For all PartyRoles",
-          "doc": "CFTC reporting firm identifier"
-        },
-        {
-          "value": "N",
-          "name": "LegalEntityIdentifier",
-          "group": "For all PartyRoles",
-          "doc": "Legal Entity Identifier (ISO 17442) LEI"
-        },
-        {
-          "value": "O",
-          "name": "InterimIdentifier",
-          "group": "For all PartyRoles",
-          "doc": "Interim identifier"
-        },
-        {
-          "value": "P",
-          "name": "ShortCodeIdentifier",
-          "group": "For all PartyRoles",
-          "doc": "Short code identifier"
-        },
-        {
-          "value": "Q",
-          "name": "NationalIDNaturalPerson",
-          "group": "For all PartyRoles",
-          "doc": "National ID of natural person"
-        },
-        {
-          "value": "R",
-          "name": "IndiaPermanentAccountNumber",
-          "group": "For all PartyRoles",
-          "doc": "India Permanent Account Number"
-        },
-        {
-          "value": "S",
-          "name": "FDID",
-          "group": "For all PartyRoles",
-          "doc": "Firm designated identifier"
-        },
-        {
-          "value": "T",
-          "name": "SPSAID",
-          "group": "For all PartyRoles",
-          "doc": "Special Segregated Account ID"
-        },
-        {
-          "value": "U",
-          "name": "MasterSPSAID",
-          "group": "For all PartyRoles",
-          "doc": "Master Special Segregated Account ID"
-        },
-        {
-          "value": "V",
-          "name": "KoreaShortSellingRegistrationNumber",
-          "group": "For all PartyRoles",
-          "doc": "Korea Short Selling Registration Number"
-        }
-      ],
+      "FIX:codeset": "partyidsourcecodeset",
       "FIX:tag": "40176",
       "description": "Identifies class or source of the ProvisionPartyID(40175) value.",
       "display": "ProvisionPartyIDSource"
@@ -1824,653 +978,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "ExecutingFirm",
-          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
-        },
-        {
-          "value": "2",
-          "name": "BrokerOfCredit",
-          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
-        },
-        {
-          "value": "3",
-          "name": "ClientID",
-          "doc": "Client ID (formerly FIX 4.2 ClientID)"
-        },
-        {
-          "value": "4",
-          "name": "ClearingFirm",
-          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
-        },
-        {
-          "value": "5",
-          "name": "InvestorID",
-          "doc": "Investor ID"
-        },
-        {
-          "value": "6",
-          "name": "IntroducingFirm",
-          "doc": "Introducing Firm"
-        },
-        {
-          "value": "7",
-          "name": "EnteringFirm",
-          "doc": "Entering Firm"
-        },
-        {
-          "value": "8",
-          "name": "Locate",
-          "doc": "Locate / Lending Firm (for short-sales)"
-        },
-        {
-          "value": "9",
-          "name": "FundManagerClientID",
-          "doc": "Fund Manager Client ID (for CIV)"
-        },
-        {
-          "value": "10",
-          "name": "SettlementLocation",
-          "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
-        },
-        {
-          "value": "11",
-          "name": "OrderOriginationTrader",
-          "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
-        },
-        {
-          "value": "12",
-          "name": "ExecutingTrader",
-          "doc": "Executing Trader (associated with Executing Firm - actually executes)"
-        },
-        {
-          "value": "13",
-          "name": "OrderOriginationFirm",
-          "doc": "Order Origination Firm (e.g. buy-side firm)"
-        },
-        {
-          "value": "14",
-          "name": "GiveupClearingFirmDepr",
-          "doc": "Giveup Clearing Firm (firm to which trade is given up)"
-        },
-        {
-          "value": "15",
-          "name": "CorrespondantClearingFirm",
-          "doc": "Correspondant Clearing Firm"
-        },
-        {
-          "value": "16",
-          "name": "ExecutingSystem",
-          "doc": "Executing System"
-        },
-        {
-          "value": "17",
-          "name": "ContraFirm",
-          "doc": "Contra Firm"
-        },
-        {
-          "value": "18",
-          "name": "ContraClearingFirm",
-          "doc": "Contra Clearing Firm"
-        },
-        {
-          "value": "19",
-          "name": "SponsoringFirm",
-          "doc": "Sponsoring Firm"
-        },
-        {
-          "value": "20",
-          "name": "UnderlyingContraFirm",
-          "doc": "Underlying Contra Firm"
-        },
-        {
-          "value": "21",
-          "name": "ClearingOrganization",
-          "doc": "Clearing Organization"
-        },
-        {
-          "value": "22",
-          "name": "Exchange",
-          "doc": "Exchange"
-        },
-        {
-          "value": "24",
-          "name": "CustomerAccount",
-          "doc": "Customer Account"
-        },
-        {
-          "value": "25",
-          "name": "CorrespondentClearingOrganization",
-          "doc": "Correspondent Clearing Organization"
-        },
-        {
-          "value": "26",
-          "name": "CorrespondentBroker",
-          "doc": "Correspondent Broker"
-        },
-        {
-          "value": "27",
-          "name": "Buyer",
-          "doc": "Buyer/Seller (Receiver/Deliverer)"
-        },
-        {
-          "value": "28",
-          "name": "Custodian",
-          "doc": "Custodian"
-        },
-        {
-          "value": "29",
-          "name": "Intermediary",
-          "doc": "Intermediary"
-        },
-        {
-          "value": "30",
-          "name": "Agent",
-          "doc": "Agent"
-        },
-        {
-          "value": "31",
-          "name": "SubCustodian",
-          "doc": "Sub-custodian"
-        },
-        {
-          "value": "32",
-          "name": "Beneficiary",
-          "doc": "Beneficiary"
-        },
-        {
-          "value": "33",
-          "name": "InterestedParty",
-          "doc": "Interested party"
-        },
-        {
-          "value": "34",
-          "name": "RegulatoryBody",
-          "doc": "Regulatory body"
-        },
-        {
-          "value": "35",
-          "name": "LiquidityProvider",
-          "doc": "Liquidity provider"
-        },
-        {
-          "value": "36",
-          "name": "EnteringTrader",
-          "doc": "Entering trader"
-        },
-        {
-          "value": "37",
-          "name": "ContraTrader",
-          "doc": "Contra trader"
-        },
-        {
-          "value": "38",
-          "name": "PositionAccount",
-          "doc": "Position account"
-        },
-        {
-          "value": "39",
-          "name": "ContraInvestorID",
-          "doc": "Contra Investor ID"
-        },
-        {
-          "value": "40",
-          "name": "TransferToFirm",
-          "doc": "Transfer to Firm"
-        },
-        {
-          "value": "41",
-          "name": "ContraPositionAccount",
-          "doc": "Contra Position Account"
-        },
-        {
-          "value": "42",
-          "name": "ContraExchange",
-          "doc": "Contra Exchange"
-        },
-        {
-          "value": "43",
-          "name": "InternalCarryAccount",
-          "doc": "Internal Carry Account"
-        },
-        {
-          "value": "44",
-          "name": "OrderEntryOperatorID",
-          "doc": "Order Entry Operator ID"
-        },
-        {
-          "value": "45",
-          "name": "SecondaryAccountNumber",
-          "doc": "Secondary Account Number"
-        },
-        {
-          "value": "46",
-          "name": "ForeignFirm",
-          "doc": "Foreign Firm"
-        },
-        {
-          "value": "47",
-          "name": "ThirdPartyAllocationFirm",
-          "doc": "Third Party Allocation Firm"
-        },
-        {
-          "value": "48",
-          "name": "ClaimingAccount",
-          "doc": "Claiming Account"
-        },
-        {
-          "value": "49",
-          "name": "AssetManager",
-          "doc": "Asset Manager"
-        },
-        {
-          "value": "50",
-          "name": "PledgorAccount",
-          "doc": "Pledgor Account"
-        },
-        {
-          "value": "51",
-          "name": "PledgeeAccount",
-          "doc": "Pledgee Account"
-        },
-        {
-          "value": "52",
-          "name": "LargeTraderReportableAccount",
-          "doc": "Large Trader Reportable Account"
-        },
-        {
-          "value": "53",
-          "name": "TraderMnemonic",
-          "doc": "Trader mnemonic"
-        },
-        {
-          "value": "54",
-          "name": "SenderLocation",
-          "doc": "Sender Location"
-        },
-        {
-          "value": "55",
-          "name": "SessionID",
-          "doc": "Session ID"
-        },
-        {
-          "value": "56",
-          "name": "AcceptableCounterparty",
-          "doc": "Acceptable Counterparty"
-        },
-        {
-          "value": "57",
-          "name": "UnacceptableCounterparty",
-          "doc": "Unacceptable Counterparty"
-        },
-        {
-          "value": "58",
-          "name": "EnteringUnit",
-          "doc": "Entering Unit"
-        },
-        {
-          "value": "59",
-          "name": "ExecutingUnit",
-          "doc": "Executing Unit"
-        },
-        {
-          "value": "60",
-          "name": "IntroducingBroker",
-          "doc": "Introducing Broker"
-        },
-        {
-          "value": "61",
-          "name": "QuoteOriginator",
-          "doc": "Quote originator"
-        },
-        {
-          "value": "62",
-          "name": "ReportOriginator",
-          "doc": "Report originator"
-        },
-        {
-          "value": "63",
-          "name": "SystematicInternaliser",
-          "doc": "Systematic internaliser (SI)"
-        },
-        {
-          "value": "64",
-          "name": "MultilateralTradingFacility",
-          "doc": "Multilateral Trading Facility (MTF)"
-        },
-        {
-          "value": "65",
-          "name": "RegulatedMarket",
-          "doc": "Regulated Market (RM)"
-        },
-        {
-          "value": "66",
-          "name": "MarketMaker",
-          "doc": "Market Maker"
-        },
-        {
-          "value": "67",
-          "name": "InvestmentFirm",
-          "doc": "Investment Firm"
-        },
-        {
-          "value": "68",
-          "name": "HostCompetentAuthority",
-          "doc": "Host Competent Authority (Host CA)"
-        },
-        {
-          "value": "69",
-          "name": "HomeCompetentAuthority",
-          "doc": "Home Competent Authority (Home CA)"
-        },
-        {
-          "value": "70",
-          "name": "CompetentAuthorityLiquidity",
-          "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
-        },
-        {
-          "value": "71",
-          "name": "CompetentAuthorityTransactionVenue",
-          "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
-        },
-        {
-          "value": "72",
-          "name": "ReportingIntermediary",
-          "doc": "Reporting intermediary"
-        },
-        {
-          "value": "73",
-          "name": "ExecutionVenue",
-          "doc": "Execution Venue"
-        },
-        {
-          "value": "74",
-          "name": "MarketDataEntryOriginator",
-          "doc": "Market data entry originator"
-        },
-        {
-          "value": "75",
-          "name": "LocationID",
-          "doc": "Location ID"
-        },
-        {
-          "value": "76",
-          "name": "DeskID",
-          "doc": "Desk ID"
-        },
-        {
-          "value": "77",
-          "name": "MarketDataMarket",
-          "doc": "Market data market"
-        },
-        {
-          "value": "78",
-          "name": "AllocationEntity",
-          "doc": "Allocation Entity"
-        },
-        {
-          "value": "79",
-          "name": "PrimeBroker",
-          "doc": "Prime Broker providing General Trade Services"
-        },
-        {
-          "value": "80",
-          "name": "StepOutFirm",
-          "doc": "Step-Out Firm (Prime Broker)"
-        },
-        {
-          "value": "81",
-          "name": "BrokerClearingID",
-          "doc": "Broker clearing identifier"
-        },
-        {
-          "value": "82",
-          "name": "CentralRegistrationDepository",
-          "doc": "Central Registration Depository (CRD)"
-        },
-        {
-          "value": "83",
-          "name": "ClearingAccount",
-          "doc": "Clearing Account"
-        },
-        {
-          "value": "84",
-          "name": "AcceptableSettlingCounterparty",
-          "doc": "Acceptable Settling Counterparty"
-        },
-        {
-          "value": "85",
-          "name": "UnacceptableSettlingCounterparty",
-          "doc": "Unacceptable Settling Counterparty"
-        },
-        {
-          "value": "86",
-          "name": "CLSMemberBank",
-          "doc": "CLS Member Bank"
-        },
-        {
-          "value": "87",
-          "name": "InConcertGroup",
-          "doc": "In Concert Group"
-        },
-        {
-          "value": "88",
-          "name": "InConcertControllingEntity",
-          "doc": "In Concert Controlling Entity"
-        },
-        {
-          "value": "89",
-          "name": "LargePositionsReportingAccount",
-          "doc": "Large Positions Reporting Account"
-        },
-        {
-          "value": "90",
-          "name": "SettlementFirm",
-          "doc": "Settlement Firm"
-        },
-        {
-          "value": "91",
-          "name": "SettlementAccount",
-          "doc": "Settlement account"
-        },
-        {
-          "value": "92",
-          "name": "ReportingMarketCenter",
-          "doc": "Reporting Market Center"
-        },
-        {
-          "value": "93",
-          "name": "RelatedReportingMarketCenter",
-          "doc": "Related Reporting Market Center"
-        },
-        {
-          "value": "94",
-          "name": "AwayMarket",
-          "doc": "Away Market"
-        },
-        {
-          "value": "95",
-          "name": "GiveupTradingFirm",
-          "doc": "Give-up (trading) firm"
-        },
-        {
-          "value": "96",
-          "name": "TakeupTradingFirm",
-          "doc": "Take-up (trading) firm"
-        },
-        {
-          "value": "97",
-          "name": "GiveupClearingFirm",
-          "doc": "Give-up clearing firm"
-        },
-        {
-          "value": "98",
-          "name": "TakeupClearingFirm",
-          "doc": "Take-up clearing firm"
-        },
-        {
-          "value": "99",
-          "name": "OriginatingMarket",
-          "doc": "Originating Market"
-        },
-        {
-          "value": "100",
-          "name": "MarginAccount",
-          "doc": "Margin account"
-        },
-        {
-          "value": "101",
-          "name": "CollateralAssetAccount",
-          "doc": "Collateral asset account"
-        },
-        {
-          "value": "102",
-          "name": "DataRepository",
-          "doc": "Data repository"
-        },
-        {
-          "value": "103",
-          "name": "CalculationAgent",
-          "doc": "Calculation agent"
-        },
-        {
-          "value": "104",
-          "name": "ExerciseNoticeSender",
-          "doc": "Sender of exercise notice"
-        },
-        {
-          "value": "105",
-          "name": "ExerciseNoticeReceiver",
-          "doc": "Receiver of exercise notice"
-        },
-        {
-          "value": "106",
-          "name": "RateReferenceBank",
-          "doc": "Rate reference bank"
-        },
-        {
-          "value": "107",
-          "name": "Correspondent",
-          "doc": "Correspondent"
-        },
-        {
-          "value": "109",
-          "name": "BeneficiaryBank",
-          "doc": "Beneficiary's bank or depository institution"
-        },
-        {
-          "value": "110",
-          "name": "Borrower",
-          "doc": "Borrower"
-        },
-        {
-          "value": "111",
-          "name": "PrimaryObligator",
-          "doc": "Primary obligator"
-        },
-        {
-          "value": "112",
-          "name": "Guarantor",
-          "doc": "Guarantor"
-        },
-        {
-          "value": "113",
-          "name": "ExcludedReferenceEntity",
-          "doc": "Excluded reference entity"
-        },
-        {
-          "value": "114",
-          "name": "DeterminingParty",
-          "doc": "Determining party"
-        },
-        {
-          "value": "115",
-          "name": "HedgingParty",
-          "doc": "Hedging party"
-        },
-        {
-          "value": "116",
-          "name": "ReportingEntity",
-          "doc": "Reporting entity"
-        },
-        {
-          "value": "117",
-          "name": "SalesPerson",
-          "doc": "Sales person"
-        },
-        {
-          "value": "118",
-          "name": "Operator",
-          "doc": "Operator"
-        },
-        {
-          "value": "119",
-          "name": "CSD",
-          "doc": "Central Securities Depository (CSD)"
-        },
-        {
-          "value": "120",
-          "name": "ICSD",
-          "doc": "International Central Securities Depository (ICSD)"
-        },
-        {
-          "value": "121",
-          "name": "TradingSubAccount",
-          "doc": "Trading sub-account"
-        },
-        {
-          "value": "122",
-          "name": "InvestmentDecisionMaker",
-          "doc": "Investment decision maker"
-        },
-        {
-          "value": "123",
-          "name": "PublishingIntermediary",
-          "doc": "Publishing intermediary"
-        },
-        {
-          "value": "124",
-          "name": "CSDParticipant",
-          "doc": "Central Securities Depository (CSD) Participant"
-        },
-        {
-          "value": "125",
-          "name": "Issuer",
-          "doc": "Issuer"
-        },
-        {
-          "value": "126",
-          "name": "ContraCustomerAccount",
-          "doc": "Contra Customer Account"
-        },
-        {
-          "value": "127",
-          "name": "ContraInvestmentDecisionMaker",
-          "doc": "Contra Investment Decision Maker"
-        },
-        {
-          "value": "128",
-          "name": "AuthorizingPerson",
-          "doc": "Authorizing person"
-        },
-        {
-          "value": "129",
-          "name": "PrimaryPlaceOfListing",
-          "doc": "Primary place of listing"
-        },
-        {
-          "value": "130",
-          "name": "SecondaryPlaceOfListing",
-          "doc": "Secondary place of listing"
-        },
-        {
-          "value": "131",
-          "name": "Algorithm",
-          "doc": "Algorithm"
-        }
-      ],
+      "FIX:codeset": "partyrolecodeset",
       "FIX:tag": "40177",
       "description": "Identifies the type or role of ProvisionPartyID(40175) specified.",
       "display": "ProvisionPartyRole"
@@ -2507,453 +1015,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Firm",
-          "doc": "Firm"
-        },
-        {
-          "value": "2",
-          "name": "Person",
-          "doc": "Person"
-        },
-        {
-          "value": "3",
-          "name": "System",
-          "doc": "System"
-        },
-        {
-          "value": "4",
-          "name": "Application",
-          "doc": "Application"
-        },
-        {
-          "value": "5",
-          "name": "FullLegalNameOfFirm",
-          "doc": "Full legal name of firm"
-        },
-        {
-          "value": "6",
-          "name": "PostalAddress",
-          "doc": "Postal address"
-        },
-        {
-          "value": "7",
-          "name": "PhoneNumber",
-          "doc": "Phone number"
-        },
-        {
-          "value": "8",
-          "name": "EmailAddress",
-          "doc": "Email address"
-        },
-        {
-          "value": "9",
-          "name": "ContactName",
-          "doc": "Contact name"
-        },
-        {
-          "value": "10",
-          "name": "SecuritiesAccountNumber",
-          "doc": "Securities account number (for settlement instructions)"
-        },
-        {
-          "value": "11",
-          "name": "RegistrationNumber",
-          "doc": "Registration number (for settlement instructions and confirmations)"
-        },
-        {
-          "value": "12",
-          "name": "RegisteredAddressForConfirmation",
-          "doc": "Registered address (for confirmation purposes)"
-        },
-        {
-          "value": "13",
-          "name": "RegulatoryStatus",
-          "doc": "Regulatory status (for confirmation purposes)"
-        },
-        {
-          "value": "14",
-          "name": "RegistrationName",
-          "doc": "Registration name (for settlement instructions)"
-        },
-        {
-          "value": "15",
-          "name": "CashAccountNumber",
-          "doc": "Cash account number (for settlement instructions)"
-        },
-        {
-          "value": "16",
-          "name": "BIC",
-          "doc": "BIC"
-        },
-        {
-          "value": "17",
-          "name": "CSDParticipantMemberCode",
-          "doc": "CSD participant member code"
-        },
-        {
-          "value": "18",
-          "name": "RegisteredAddress",
-          "doc": "Registered address"
-        },
-        {
-          "value": "19",
-          "name": "FundAccountName",
-          "doc": "Fund account name"
-        },
-        {
-          "value": "20",
-          "name": "TelexNumber",
-          "doc": "Telex number"
-        },
-        {
-          "value": "21",
-          "name": "FaxNumber",
-          "doc": "Fax number"
-        },
-        {
-          "value": "22",
-          "name": "SecuritiesAccountName",
-          "doc": "Securities account name"
-        },
-        {
-          "value": "23",
-          "name": "CashAccountName",
-          "doc": "Cash account name"
-        },
-        {
-          "value": "24",
-          "name": "Department",
-          "doc": "Department"
-        },
-        {
-          "value": "25",
-          "name": "LocationDesk",
-          "doc": "Location desk"
-        },
-        {
-          "value": "26",
-          "name": "PositionAccountType",
-          "doc": "Position account type"
-        },
-        {
-          "value": "27",
-          "name": "SecurityLocateID",
-          "doc": "Security locate ID"
-        },
-        {
-          "value": "28",
-          "name": "MarketMaker",
-          "doc": "Market maker"
-        },
-        {
-          "value": "29",
-          "name": "EligibleCounterparty",
-          "doc": "Eligible counterparty"
-        },
-        {
-          "value": "30",
-          "name": "ProfessionalClient",
-          "doc": "Professional client"
-        },
-        {
-          "value": "31",
-          "name": "Location",
-          "doc": "Location"
-        },
-        {
-          "value": "32",
-          "name": "ExecutionVenue",
-          "doc": "Execution venue"
-        },
-        {
-          "value": "33",
-          "name": "CurrencyDeliveryIdentifier",
-          "doc": "Currency delivery identifier"
-        },
-        {
-          "value": "34",
-          "name": "AddressCity",
-          "doc": "Address City"
-        },
-        {
-          "value": "35",
-          "name": "AddressStateOrProvince",
-          "doc": "Address State/Province"
-        },
-        {
-          "value": "36",
-          "name": "AddressPostalCode",
-          "doc": "Address Postal Code"
-        },
-        {
-          "value": "37",
-          "name": "AddressStreet",
-          "doc": "Address Street"
-        },
-        {
-          "value": "38",
-          "name": "AddressISOCountryCode",
-          "doc": "Address Country (ISO country code)"
-        },
-        {
-          "value": "39",
-          "name": "ISOCountryCode",
-          "doc": "ISO country code"
-        },
-        {
-          "value": "40",
-          "name": "MarketSegment",
-          "doc": "Market segment"
-        },
-        {
-          "value": "41",
-          "name": "CustomerAccountType",
-          "doc": "Customer account type"
-        },
-        {
-          "value": "42",
-          "name": "OmnibusAccount",
-          "doc": "Omnibus account"
-        },
-        {
-          "value": "43",
-          "name": "FundsSegregationType",
-          "doc": "Funds segregation type"
-        },
-        {
-          "value": "44",
-          "name": "GuaranteeFund",
-          "doc": "Guarantee fund"
-        },
-        {
-          "value": "45",
-          "name": "SwapDealer",
-          "doc": "Swap dealer"
-        },
-        {
-          "value": "46",
-          "name": "MajorParticipant",
-          "doc": "Major participant"
-        },
-        {
-          "value": "47",
-          "name": "FinancialEntity",
-          "doc": "Financial entity"
-        },
-        {
-          "value": "48",
-          "name": "USPerson",
-          "doc": "U.S. person"
-        },
-        {
-          "value": "49",
-          "name": "ReportingEntityIndicator",
-          "doc": "Reporting entity indicator"
-        },
-        {
-          "value": "50",
-          "name": "ElectedClearingRequirementException",
-          "doc": "Elected clearing requirement exception"
-        },
-        {
-          "value": "51",
-          "name": "BusinessCenter",
-          "doc": "Business center"
-        },
-        {
-          "value": "52",
-          "name": "ReferenceText",
-          "doc": "Reference text"
-        },
-        {
-          "value": "53",
-          "name": "ShortMarkingExemptAccount",
-          "doc": "Short-marking exempt account"
-        },
-        {
-          "value": "54",
-          "name": "ParentFirmIdentifier",
-          "doc": "Parent firm identifier"
-        },
-        {
-          "value": "55",
-          "name": "ParentFirmName",
-          "doc": "Parent firm name"
-        },
-        {
-          "value": "56",
-          "name": "DealIdentifier",
-          "doc": "Deal identifier"
-        },
-        {
-          "value": "57",
-          "name": "SystemTradeID",
-          "doc": "System trade identifier"
-        },
-        {
-          "value": "58",
-          "name": "SystemTradeSubID",
-          "doc": "System trade sub-identifier"
-        },
-        {
-          "value": "59",
-          "name": "FCMCode",
-          "doc": "Futures Commission Merchant (FCM) code"
-        },
-        {
-          "value": "60",
-          "name": "DlvryTrmlCode",
-          "doc": "Delivery terminal customer account/code"
-        },
-        {
-          "value": "61",
-          "name": "VolntyRptEntity",
-          "doc": "Voluntary reporting entity"
-        },
-        {
-          "value": "62",
-          "name": "RptObligJursdctn",
-          "doc": "Reporting obligation jurisdiction"
-        },
-        {
-          "value": "63",
-          "name": "VolntyRptJursdctn",
-          "doc": "Voluntary reporting jurisdiction"
-        },
-        {
-          "value": "64",
-          "name": "CompanyActivities",
-          "doc": "Company activities"
-        },
-        {
-          "value": "65",
-          "name": "EEAreaDomiciled",
-          "doc": "European Economic Area domiciled"
-        },
-        {
-          "value": "66",
-          "name": "ContractLinked",
-          "doc": "Contract linked to commercial or treasury financing for this counterparty"
-        },
-        {
-          "value": "67",
-          "name": "ContractAbove",
-          "doc": "Contract above clearing threshold for this counterparty"
-        },
-        {
-          "value": "68",
-          "name": "VolntyRptPty",
-          "doc": "Voluntary reporting party"
-        },
-        {
-          "value": "69",
-          "name": "EndUser",
-          "doc": "End user"
-        },
-        {
-          "value": "70",
-          "name": "LocationOrJurisdiction",
-          "doc": "Location or jurisdiction"
-        },
-        {
-          "value": "71",
-          "name": "DerivativesDealer",
-          "doc": "Derivatives dealer"
-        },
-        {
-          "value": "72",
-          "name": "Domicile",
-          "doc": "Domicile"
-        },
-        {
-          "value": "73",
-          "name": "ExemptFromRecognition",
-          "doc": "Exempt from recognition"
-        },
-        {
-          "value": "74",
-          "name": "Payer",
-          "doc": "Payer"
-        },
-        {
-          "value": "75",
-          "name": "Receiver",
-          "doc": "Receiver"
-        },
-        {
-          "value": "76",
-          "name": "SystematicInternaliser",
-          "doc": "Systematic Internaliser (SI)"
-        },
-        {
-          "value": "77",
-          "name": "PublishingEntityIndicator",
-          "doc": "Publishing entity indicator"
-        },
-        {
-          "value": "78",
-          "name": "FirstName",
-          "doc": "First name"
-        },
-        {
-          "value": "79",
-          "name": "Surname",
-          "doc": "Surname"
-        },
-        {
-          "value": "80",
-          "name": "DateOfBirth",
-          "doc": "Date of birth"
-        },
-        {
-          "value": "81",
-          "name": "OrderTransmittingFirm",
-          "doc": "Order transmitting firm"
-        },
-        {
-          "value": "82",
-          "name": "OrderTransmittingFirmBuyer",
-          "doc": "Order transmitting firm for buyer"
-        },
-        {
-          "value": "83",
-          "name": "OrderTransmitterSeller",
-          "doc": "Order transmitter for seller"
-        },
-        {
-          "value": "84",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal Entity Identifier (ISO 17442) LEI"
-        },
-        {
-          "value": "85",
-          "name": "SubSectorClassification",
-          "doc": "Sub-sector classification"
-        },
-        {
-          "value": "86",
-          "name": "PartySide",
-          "doc": "Party side"
-        },
-        {
-          "value": "87",
-          "name": "LegalRegistrationCountry",
-          "doc": "Legal registration country"
-        },
-        {
-          "value": "88",
-          "name": "AlgorithmVersion",
-          "doc": "Algorithm version"
-        },
-        {
-          "value": "89",
-          "name": "CertificateRegistrationStatus",
-          "doc": "Certificate registration status"
-        }
-      ],
+      "FIX:codeset": "partysubidtypecodeset",
       "FIX:tag": "40180",
       "description": "The type of ProvisionPartySubID(40179).",
       "display": "ProvisionPartySubIDType"
@@ -3148,28 +1210,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "protectiontermeventunitcodeset",
       "FIX:tag": "40196",
       "description": "Time unit associated with protection term events.",
       "display": "ProtectionTermEventUnit"
@@ -3182,38 +1223,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "protectiontermeventdaytypecodeset",
       "FIX:tag": "40197",
       "description": "Day type for events that specify a period and unit.",
       "display": "ProtectionTermEventDayType"

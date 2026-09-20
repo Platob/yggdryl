@@ -1,0 +1,15 @@
+{
+  "name": "responsetransporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Inband",
+      "doc": "In-band (default)"
+    },
+    {
+      "value": "1",
+      "name": "OutOfBand",
+      "doc": "Out of band"
+    }
+  ]
+}

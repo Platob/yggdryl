@@ -1,0 +1,20 @@
+{
+  "name": "complexeventcrediteventnotifyingpartycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "SellerNotifies",
+      "doc": "Seller notifies"
+    },
+    {
+      "value": "1",
+      "name": "BuyerNotifies",
+      "doc": "Buyer notifies"
+    },
+    {
+      "value": "2",
+      "name": "SellerOrBuyerNotifies",
+      "doc": "Seller or buyer notifies"
+    }
+  ]
+}

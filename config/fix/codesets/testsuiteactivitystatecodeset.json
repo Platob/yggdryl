@@ -1,0 +1,25 @@
+{
+  "name": "testsuiteactivitystatecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Scheduled",
+      "doc": "Scheduled"
+    },
+    {
+      "value": "1",
+      "name": "Running",
+      "doc": "Running"
+    },
+    {
+      "value": "2",
+      "name": "Completed",
+      "doc": "Completed"
+    },
+    {
+      "value": "3",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    }
+  ]
+}

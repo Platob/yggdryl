@@ -1,0 +1,318 @@
+{
+  "name": "execinstcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "StayOnOfferSide",
+      "doc": "Stay on offer side"
+    },
+    {
+      "value": "1",
+      "name": "NotHeld",
+      "doc": "Not held"
+    },
+    {
+      "value": "2",
+      "name": "Work",
+      "doc": "Work"
+    },
+    {
+      "value": "3",
+      "name": "GoAlong",
+      "doc": "Go along"
+    },
+    {
+      "value": "4",
+      "name": "OverTheDay",
+      "doc": "Over the day"
+    },
+    {
+      "value": "5",
+      "name": "Held",
+      "doc": "Held"
+    },
+    {
+      "value": "6",
+      "name": "ParticipateDoNotInitiate",
+      "doc": "Participate don't initiate"
+    },
+    {
+      "value": "7",
+      "name": "StrictScale",
+      "doc": "Strict scale"
+    },
+    {
+      "value": "8",
+      "name": "TryToScale",
+      "doc": "Try to scale"
+    },
+    {
+      "value": "9",
+      "name": "StayOnBidSide",
+      "doc": "Stay on bid side"
+    },
+    {
+      "value": "A",
+      "name": "NoCross",
+      "doc": "No cross"
+    },
+    {
+      "value": "B",
+      "name": "OKToCross",
+      "doc": "OK to cross"
+    },
+    {
+      "value": "C",
+      "name": "CallFirst",
+      "doc": "Call first"
+    },
+    {
+      "value": "D",
+      "name": "PercentOfVolume",
+      "doc": "Percent of volume"
+    },
+    {
+      "value": "E",
+      "name": "DoNotIncrease",
+      "doc": "Do not increase - DNI"
+    },
+    {
+      "value": "F",
+      "name": "DoNotReduce",
+      "doc": "Do not reduce - DNR"
+    },
+    {
+      "value": "G",
+      "name": "AllOrNone",
+      "doc": "All or none - AON"
+    },
+    {
+      "value": "H",
+      "name": "ReinstateOnSystemFailure",
+      "doc": "Reinstate on system failure"
+    },
+    {
+      "value": "I",
+      "name": "InstitutionsOnly",
+      "doc": "Institutions only"
+    },
+    {
+      "value": "J",
+      "name": "ReinstateOnTradingHalt",
+      "doc": "Reinstate on trading halt"
+    },
+    {
+      "value": "K",
+      "name": "CancelOnTradingHalt",
+      "doc": "Cancel on trading halt"
+    },
+    {
+      "value": "L",
+      "name": "LastPeg",
+      "doc": "Last peg (last sale)"
+    },
+    {
+      "value": "M",
+      "name": "MidPricePeg",
+      "doc": "Mid-price peg (midprice of inside quote)"
+    },
+    {
+      "value": "N",
+      "name": "NonNegotiable",
+      "doc": "Non-negotiable"
+    },
+    {
+      "value": "O",
+      "name": "OpeningPeg",
+      "doc": "Opening peg"
+    },
+    {
+      "value": "P",
+      "name": "MarketPeg",
+      "doc": "Market peg"
+    },
+    {
+      "value": "Q",
+      "name": "CancelOnSystemFailure",
+      "doc": "Cancel on system failure"
+    },
+    {
+      "value": "R",
+      "name": "PrimaryPeg",
+      "doc": "Primary peg"
+    },
+    {
+      "value": "S",
+      "name": "Suspend",
+      "doc": "Suspend"
+    },
+    {
+      "value": "T",
+      "name": "FixedPegToLocalBestBidOrOfferAtTimeOfOrder",
+      "doc": "Fixed peg to local best bid or offer at time of order"
+    },
+    {
+      "value": "U",
+      "name": "CustomerDisplayInstruction",
+      "doc": "Customer display instruction"
+    },
+    {
+      "value": "V",
+      "name": "Netting",
+      "doc": "Netting (for Forex)"
+    },
+    {
+      "value": "W",
+      "name": "PegToVWAP",
+      "doc": "Peg to VWAP"
+    },
+    {
+      "value": "X",
+      "name": "TradeAlong",
+      "doc": "Trade along"
+    },
+    {
+      "value": "Y",
+      "name": "TryToStop",
+      "doc": "Try to stop"
+    },
+    {
+      "value": "Z",
+      "name": "CancelIfNotBest",
+      "doc": "Cancel if not best"
+    },
+    {
+      "value": "a",
+      "name": "TrailingStopPeg",
+      "doc": "Trailing stop peg"
+    },
+    {
+      "value": "b",
+      "name": "StrictLimit",
+      "doc": "Strict limit"
+    },
+    {
+      "value": "c",
+      "name": "IgnorePriceValidityChecks",
+      "doc": "Ignore price validity checks"
+    },
+    {
+      "value": "d",
+      "name": "PegToLimitPrice",
+      "doc": "Peg to limit price"
+    },
+    {
+      "value": "e",
+      "name": "WorkToTargetStrategy",
+      "doc": "Work to target strategy"
+    },
+    {
+      "value": "f",
+      "name": "IntermarketSweep",
+      "doc": "Intermarket sweep"
+    },
+    {
+      "value": "g",
+      "name": "ExternalRoutingAllowed",
+      "doc": "External routing allowed"
+    },
+    {
+      "value": "h",
+      "name": "ExternalRoutingNotAllowed",
+      "doc": "External routing not allowed"
+    },
+    {
+      "value": "i",
+      "name": "ImbalanceOnly",
+      "doc": "Imbalance only"
+    },
+    {
+      "value": "j",
+      "name": "SingleExecutionRequestedForBlockTrade",
+      "doc": "Single execution requested for block trade"
+    },
+    {
+      "value": "k",
+      "name": "BestExecution",
+      "doc": "Best execution"
+    },
+    {
+      "value": "l",
+      "name": "SuspendOnSystemFailure",
+      "doc": "Suspend on system failure"
+    },
+    {
+      "value": "m",
+      "name": "SuspendOnTradingHalt",
+      "doc": "Suspend on trading halt"
+    },
+    {
+      "value": "n",
+      "name": "ReinstateOnConnectionLoss",
+      "doc": "Reinstate on connection loss"
+    },
+    {
+      "value": "o",
+      "name": "CancelOnConnectionLoss",
+      "doc": "Cancel on connection loss"
+    },
+    {
+      "value": "p",
+      "name": "SuspendOnConnectionLoss",
+      "doc": "Suspend on connection loss"
+    },
+    {
+      "value": "q",
+      "name": "Release",
+      "aliases": [
+        "ReleaseFromSuspension"
+      ],
+      "doc": "Release"
+    },
+    {
+      "value": "r",
+      "name": "ExecuteAsDeltaNeutral",
+      "doc": "Execute as delta neutral using volatility provided"
+    },
+    {
+      "value": "s",
+      "name": "ExecuteAsDurationNeutral",
+      "doc": "Execute as duration neutral"
+    },
+    {
+      "value": "t",
+      "name": "ExecuteAsFXNeutral",
+      "doc": "Execute as FX neutral"
+    },
+    {
+      "value": "u",
+      "name": "MinGuaranteedFillEligible",
+      "doc": "Minimum guaranteed fill eligible"
+    },
+    {
+      "value": "v",
+      "name": "BypassNonDisplayLiquidity",
+      "doc": "Bypass non-displayed liquidity"
+    },
+    {
+      "value": "w",
+      "name": "Lock",
+      "doc": "Lock"
+    },
+    {
+      "value": "x",
+      "name": "IgnoreNotionalValueChecks",
+      "doc": "Ignore notional value checks"
+    },
+    {
+      "value": "y",
+      "name": "TrdAtRefPx",
+      "doc": "Trade at reference price"
+    },
+    {
+      "value": "z",
+      "name": "AllowFacilitation",
+      "doc": "Allow facilitation"
+    }
+  ]
+}

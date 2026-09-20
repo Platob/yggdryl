@@ -806,6 +806,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,quoteid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "t",
     "FIX:tag": "393258",
     "description": "MsgType = t (lowercase T)",

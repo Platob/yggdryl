@@ -1,0 +1,153 @@
+{
+  "name": "securitytradingstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OpeningDelay",
+      "doc": "Opening delay"
+    },
+    {
+      "value": "2",
+      "name": "TradingHalt",
+      "doc": "Trading halt"
+    },
+    {
+      "value": "3",
+      "name": "Resumed",
+      "aliases": [
+        "Resume"
+      ],
+      "doc": "Resumed"
+    },
+    {
+      "value": "4",
+      "name": "NoOpen",
+      "doc": "No Open / No Resume"
+    },
+    {
+      "value": "5",
+      "name": "PriceIndication",
+      "doc": "Price indication"
+    },
+    {
+      "value": "6",
+      "name": "TradingRangeIndication",
+      "doc": "Trading Range Indication"
+    },
+    {
+      "value": "7",
+      "name": "MarketImbalanceBuy",
+      "doc": "Market Imbalance Buy"
+    },
+    {
+      "value": "8",
+      "name": "MarketImbalanceSell",
+      "doc": "Market Imbalance Sell"
+    },
+    {
+      "value": "9",
+      "name": "MarketOnCloseImbalanceBuy",
+      "doc": "Market on Close Imbalance Buy"
+    },
+    {
+      "value": "10",
+      "name": "MarketOnCloseImbalanceSell",
+      "doc": "Market on Close Imbalance Sell"
+    },
+    {
+      "value": "12",
+      "name": "NoMarketImbalance",
+      "doc": "No Market Imbalance"
+    },
+    {
+      "value": "13",
+      "name": "NoMarketOnCloseImbalance",
+      "doc": "No Market on Close Imbalance"
+    },
+    {
+      "value": "14",
+      "name": "ITSPreOpening",
+      "doc": "ITS Pre-opening"
+    },
+    {
+      "value": "15",
+      "name": "NewPriceIndication",
+      "doc": "New Price Indication"
+    },
+    {
+      "value": "16",
+      "name": "TradeDisseminationTime",
+      "doc": "Trade Dissemination Time"
+    },
+    {
+      "value": "17",
+      "name": "ReadyToTrade",
+      "doc": "Ready to trade (start of session)"
+    },
+    {
+      "value": "18",
+      "name": "NotAvailableForTrading",
+      "doc": "Not available for trading (end of session)"
+    },
+    {
+      "value": "19",
+      "name": "NotTradedOnThisMarket",
+      "doc": "Not traded on this market"
+    },
+    {
+      "value": "20",
+      "name": "UnknownOrInvalid",
+      "doc": "Unknown or Invalid"
+    },
+    {
+      "value": "21",
+      "name": "PreOpen",
+      "doc": "Pre-open"
+    },
+    {
+      "value": "22",
+      "name": "OpeningRotation",
+      "doc": "Opening Rotation"
+    },
+    {
+      "value": "23",
+      "name": "FastMarket",
+      "doc": "Fast Market"
+    },
+    {
+      "value": "24",
+      "name": "PreCross",
+      "doc": "Pre-Cross - system is in a pre-cross state allowing market to respond to either side of cross"
+    },
+    {
+      "value": "25",
+      "name": "Cross",
+      "doc": "Cross - system has crossed a percentage of the orders and allows market to respond prior to crossing remaining portion"
+    },
+    {
+      "value": "26",
+      "name": "PostClose",
+      "doc": "Post-close"
+    },
+    {
+      "value": "27",
+      "name": "NoCancel",
+      "doc": "No-cancel"
+    },
+    {
+      "value": "28",
+      "name": "Outage",
+      "doc": "Outage"
+    },
+    {
+      "value": "29",
+      "name": "PartialOutage",
+      "doc": "Partial outage"
+    },
+    {
+      "value": "30",
+      "name": "Delayed",
+      "doc": "Delayed"
+    }
+  ]
+}

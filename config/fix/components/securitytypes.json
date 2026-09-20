@@ -201,6 +201,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "w",
     "FIX:tag": "223603",
     "description": "MsgType = w (lowercase W)",

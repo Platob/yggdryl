@@ -1,0 +1,60 @@
+{
+  "name": "flowscheduletypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NERCEasternOffPeak",
+      "doc": "NERC Eastern Off-Peak"
+    },
+    {
+      "value": "1",
+      "name": "NERCWesternOffPeak",
+      "doc": "NERC Western Off-Peak"
+    },
+    {
+      "value": "2",
+      "name": "NERCCalendarAllDaysInMonth",
+      "doc": "NERC Calendar-All Days in month"
+    },
+    {
+      "value": "3",
+      "name": "NERCEasternPeak",
+      "doc": "NERC Eastern Peak"
+    },
+    {
+      "value": "4",
+      "name": "NERCWesternPeak",
+      "doc": "NERC Western Peak"
+    },
+    {
+      "value": "5",
+      "name": "AllTimes",
+      "doc": "All times"
+    },
+    {
+      "value": "6",
+      "name": "OnPeak",
+      "doc": "On peak"
+    },
+    {
+      "value": "7",
+      "name": "OffPeak",
+      "doc": "Off peak"
+    },
+    {
+      "value": "8",
+      "name": "Base",
+      "doc": "Base"
+    },
+    {
+      "value": "9",
+      "name": "Block",
+      "doc": "Block"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

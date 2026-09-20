@@ -1,0 +1,20 @@
+{
+  "name": "settlmethodcodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "CashSettlementRequired",
+      "doc": "Cash settlement required"
+    },
+    {
+      "value": "P",
+      "name": "PhysicalSettlementRequired",
+      "doc": "Physical settlement required"
+    },
+    {
+      "value": "E",
+      "name": "Election",
+      "doc": "Election at exercise"
+    }
+  ]
+}

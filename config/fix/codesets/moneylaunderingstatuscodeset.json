@@ -1,0 +1,30 @@
+{
+  "name": "moneylaunderingstatuscodeset",
+  "codes": [
+    {
+      "value": "Y",
+      "name": "Passed",
+      "doc": "Passed"
+    },
+    {
+      "value": "N",
+      "name": "NotChecked",
+      "doc": "Not Checked"
+    },
+    {
+      "value": "1",
+      "name": "ExemptBelowLimit",
+      "doc": "Exempt - Below the Limit"
+    },
+    {
+      "value": "2",
+      "name": "ExemptMoneyType",
+      "doc": "Exempt - Client Money Type exemption"
+    },
+    {
+      "value": "3",
+      "name": "ExemptAuthorised",
+      "doc": "Exempt - Authorised Credit or financial institution"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "posttradepaymentstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Initiated",
+      "doc": "Initiated"
+    },
+    {
+      "value": "2",
+      "name": "Pending",
+      "doc": "Pending"
+    },
+    {
+      "value": "3",
+      "name": "Confirmed",
+      "doc": "Confirmed"
+    },
+    {
+      "value": "4",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

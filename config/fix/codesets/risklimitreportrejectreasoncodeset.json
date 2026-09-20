@@ -1,0 +1,20 @@
+{
+  "name": "risklimitreportrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnkRiskLmtRprtID",
+      "doc": "Unknown RiskLimitReportID(1667)"
+    },
+    {
+      "value": "1",
+      "name": "UnkPty",
+      "doc": "Unknown party"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

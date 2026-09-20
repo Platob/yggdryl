@@ -1,0 +1,15 @@
+{
+  "name": "taxonomytypecodeset",
+  "codes": [
+    {
+      "value": "I",
+      "name": "ISINOrAltInstrmtID",
+      "doc": "ISIN or Alternate instrument identifier plus CFI"
+    },
+    {
+      "value": "E",
+      "name": "InterimTaxonomy",
+      "doc": "Interim Taxonomy"
+    }
+  ]
+}

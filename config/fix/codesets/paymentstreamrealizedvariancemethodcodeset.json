@@ -1,0 +1,20 @@
+{
+  "name": "paymentstreamrealizedvariancemethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Previous",
+      "doc": "Previous"
+    },
+    {
+      "value": "1",
+      "name": "Last",
+      "doc": "Last"
+    },
+    {
+      "value": "2",
+      "name": "Both",
+      "doc": "Both"
+    }
+  ]
+}

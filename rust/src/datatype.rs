@@ -122,12 +122,12 @@ pub enum DataType {
     /// ISO 4217: a currency code, three ASCII bytes.
     Currency,
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    Mic,
+    MicCode,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    Cfi,
+    CfiCode,
     /// ISO 6166: a securities identification number, twelve ASCII bytes
     /// closed by a check digit.
-    Isin,
+    IsinCode,
     /// FIX's side of a trade, four ASCII bytes.
     Side,
     /// What state one thing is in, eight ASCII bytes.
@@ -204,16 +204,18 @@ pub enum DataType {
     /// A MIME type with its charset and content codings, stored as the
     /// canonical text that spells all three.
     MediaType,
-    // Appended after the text datatypes rather than beside `Isin` for the
+    // Appended after the text datatypes rather than beside `IsinCode` for the
     // same reason: the derived discriminant is what a stored digest of a
     // schema is over.
     /// CUSIP: a North American securities identifier, nine ASCII bytes
     /// closed by a check digit.
-    Cusip,
+    CusipCode,
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes closed by a check digit.
-    Sedol,
-    Bloomberg,
+    SedolCode,
+    BloombergCode,
+    /// ANSI X9.145 Financial Instrument Global Identifier.
+    FIGICode,
 }
 
 impl DataType {
@@ -293,12 +295,13 @@ impl DataType {
             Self::String(parameters) => parameters.id(),
             Self::Country => DataTypeId::Country,
             Self::Currency => DataTypeId::Currency,
-            Self::Mic => DataTypeId::Mic,
-            Self::Cfi => DataTypeId::Cfi,
-            Self::Isin => DataTypeId::Isin,
-            Self::Cusip => DataTypeId::Cusip,
-            Self::Sedol => DataTypeId::Sedol,
-            Self::Bloomberg => DataTypeId::Bloomberg,
+            Self::MicCode => DataTypeId::MicCode,
+            Self::CfiCode => DataTypeId::CfiCode,
+            Self::IsinCode => DataTypeId::IsinCode,
+            Self::CusipCode => DataTypeId::CusipCode,
+            Self::SedolCode => DataTypeId::SedolCode,
+            Self::BloombergCode => DataTypeId::BloombergCode,
+            Self::FIGICode => DataTypeId::FIGICode,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
@@ -616,8 +619,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::String(_) => 25,
         DataType::Country => 30,
         DataType::Currency => 31,
-        DataType::Mic => 32,
-        DataType::Cfi => 33,
+        DataType::MicCode => 32,
+        DataType::CfiCode => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
         DataType::Sequence(SequenceType::List(_)) => 36,
@@ -646,14 +649,15 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::State => 55,
         DataType::TimeInForce => 56,
         DataType::Uri(UriType::Url) => 57,
-        DataType::Isin => 58,
+        DataType::IsinCode => 58,
         DataType::Timezone => 59,
         DataType::MimeType => 60,
         DataType::MediaType => 61,
-        DataType::Cusip => 62,
-        DataType::Sedol => 63,
-        DataType::Bloomberg => 64,
+        DataType::CusipCode => 62,
+        DataType::SedolCode => 63,
+        DataType::BloombergCode => 64,
         DataType::Uri(UriType::Urn) => 65,
+        DataType::FIGICode => 66,
     }
 }
 
@@ -698,24 +702,28 @@ impl DataType {
 /// Subscripting a datatype reaches a nested **child**, never metadata.
 ///
 /// The same semantic [`Field`] carries, so a caller walking a schema gets a
-/// child from every node in the graph. The string is resolved by
-/// [`DataType::get_field_by_path`] - an exact name first, a dotted path after -
-/// and that method is the non-panicking form.
+/// child from every node in the graph. The string uses the shared selector
+/// path grammar: dots descend into children, and a literal dotted name must be
+/// quoted. [`DataType::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
 /// use yggdryl::DataType;
 /// use yggdryl::StructType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
+/// let row = DataType::from(StructType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::Boolean.required_field("literal.name"),
+/// ])?);
 /// assert_eq!(row["id"].dtype(), &DataType::Int64);
+/// assert_eq!(row[r#""literal.name""#].dtype(), &DataType::Boolean);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Panics
 ///
-/// Panics when this datatype has no child with that name - including when it is a dotted path.
+/// Panics when the selector path does not resolve to a child of this datatype.
 impl Index<&str> for DataType {
     type Output = Field;
 
@@ -827,12 +835,13 @@ mod arrow {
                 R::String(parameters) => string::arrow_storage(*parameters)?,
                 R::Country
                 | R::Currency
-                | R::Mic
-                | R::Cfi
-                | R::Isin
-                | R::Cusip
-                | R::Sedol
-                | R::Bloomberg
+                | R::MicCode
+                | R::CfiCode
+                | R::IsinCode
+                | R::CusipCode
+                | R::SedolCode
+                | R::BloombergCode
+                | R::FIGICode
                 | R::Side
                 | R::State
                 | R::TimeInForce => code::code_arrow_storage(self)?,

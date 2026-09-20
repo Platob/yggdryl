@@ -1,0 +1,25 @@
+{
+  "name": "positioncapacitycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "1",
+      "name": "Agent",
+      "doc": "Agent"
+    },
+    {
+      "value": "2",
+      "name": "Customer",
+      "doc": "Customer"
+    },
+    {
+      "value": "3",
+      "name": "Counterparty",
+      "doc": "Counterparty"
+    }
+  ]
+}

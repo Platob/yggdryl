@@ -64,7 +64,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal,
+    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
+    Side, State, TimeInForce, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -174,9 +175,9 @@ pub enum Scalar {
     /// ISO 4217 currency code.
     Currency(Currency),
     /// ISO 10383 market identifier code.
-    Mic(Mic),
+    MicCode(MicCode),
     /// ISO 10962 classification code.
-    Cfi(Cfi),
+    CfiCode(CfiCode),
     /// FIX's side of a trade.
     Side(Side),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -184,13 +185,13 @@ pub enum Scalar {
     /// How long an order stands.
     TimeInForce(TimeInForce),
     /// ISO 6166 securities identification number.
-    Isin(Isin),
+    IsinCode(IsinCode),
     /// CUSIP securities identifier.
-    Cusip(Cusip),
+    CusipCode(CusipCode),
     /// SEDOL securities identifier.
-    Sedol(Sedol),
-    /// Bloomberg securities identifier.
-    Bloomberg(Bloomberg),
+    SedolCode(SedolCode),
+    /// BloombergCode securities identifier.
+    BloombergCode(BloombergCode),
     /// An RFC 9562 identifier.
     Uuid(Uuid),
     /// A canonical, numerically ordered version.
@@ -225,6 +226,16 @@ pub enum Scalar {
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
     Struct(Struct),
+    /// One semi-structured value in [the Parquet Variant binary
+    /// encoding](crate::Variant): its metadata dictionary and its value
+    /// payload, the pair a `variant` column stores per row.
+    ///
+    /// A variant *is* those bytes, the way a geometry is its WKB: the value
+    /// inside them is [`Variant::scalar`](crate::Variant::scalar), and a
+    /// cast either way encodes or decodes. Two variants are equal when
+    /// their bytes are, which is why a value cast into a variant is
+    /// canonically encoded - keys sorted, sizes narrowest.
+    Variant(crate::Variant),
     /// An Arrow payload - one pinned row, a column, a table, or a stream -
     /// carrying the exact field that types it, behind one shared pointer so
     /// a clone shares the buffers rather than the rows.
@@ -236,6 +247,8 @@ pub enum Scalar {
     /// narrowing accessor - answers `None`; [`into_native`](Self::into_native)
     /// is the one crossing into the native tree, and it drains a stream.
     Arrow(Arc<crate::arrow::ArrowScalar>),
+    /// ANSI X9.145 Financial Instrument Global Identifier.
+    FIGICode(FIGICode),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -450,6 +463,12 @@ impl Serialize for Scalar {
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
+            // The two buffers as they are: a variant is its bytes, and
+            // re-encoding the value they hold would restate a foreign
+            // writer's dictionary as this one's.
+            Self::Variant(value) => {
+                tagged(serializer, "variant", &(value.metadata(), value.value()))
+            }
             // A stream is drained to be written, which is what serializing a
             // one-shot value means; a held shape is shared and stays readable.
             Self::Arrow(value) => match (**value).clone().into_scalar() {
@@ -544,12 +563,18 @@ impl<'de> Deserialize<'de> for Scalar {
             String(Str),
             Country(SmolStr),
             Currency(SmolStr),
-            Mic(SmolStr),
-            Cfi(SmolStr),
-            Isin(SmolStr),
-            Cusip(SmolStr),
-            Sedol(SmolStr),
-            Bloomberg(SmolStr),
+            #[serde(rename = "mic")]
+            MicCode(SmolStr),
+            #[serde(rename = "cfi")]
+            CfiCode(SmolStr),
+            #[serde(rename = "isin")]
+            IsinCode(SmolStr),
+            #[serde(rename = "cusip")]
+            CusipCode(SmolStr),
+            #[serde(rename = "sedol")]
+            SedolCode(SmolStr),
+            #[serde(rename = "bloomberg")]
+            BloombergCode(SmolStr),
             Side(SmolStr),
             State(SmolStr),
             #[serde(rename = "timeinforce")]
@@ -578,6 +603,9 @@ impl<'de> Deserialize<'de> for Scalar {
             Sequence(Vec<Scalar>),
             Mapping(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
+            Variant(Arc<[u8]>, Arc<[u8]>),
+            #[serde(rename = "figi")]
+            FIGICode(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -611,23 +639,26 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Currency(value) => crate::Currency::new(value)
                 .map(Self::Currency)
                 .map_err(D::Error::custom),
-            StructuralWire::Mic(value) => crate::Mic::new(value)
-                .map(Self::Mic)
+            StructuralWire::MicCode(value) => crate::MicCode::new(value)
+                .map(Self::MicCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Cfi(value) => crate::Cfi::new(value)
-                .map(Self::Cfi)
+            StructuralWire::CfiCode(value) => crate::CfiCode::new(value)
+                .map(Self::CfiCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Isin(value) => crate::Isin::new(value)
-                .map(Self::Isin)
+            StructuralWire::IsinCode(value) => crate::IsinCode::new(value)
+                .map(Self::IsinCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Cusip(value) => crate::Cusip::new(value)
-                .map(Self::Cusip)
+            StructuralWire::CusipCode(value) => crate::CusipCode::new(value)
+                .map(Self::CusipCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Bloomberg(value) => crate::Bloomberg::new(value)
-                .map(Self::Bloomberg)
+            StructuralWire::BloombergCode(value) => crate::BloombergCode::new(value)
+                .map(Self::BloombergCode)
                 .map_err(serde::de::Error::custom),
-            StructuralWire::Sedol(value) => crate::Sedol::new(value)
-                .map(Self::Sedol)
+            StructuralWire::FIGICode(value) => crate::FIGICode::new(value)
+                .map(Self::FIGICode)
+                .map_err(D::Error::custom),
+            StructuralWire::SedolCode(value) => crate::SedolCode::new(value)
+                .map(Self::SedolCode)
                 .map_err(D::Error::custom),
             // A side and a state are read by their spelling, exactly as a
             // column reads them.
@@ -761,6 +792,9 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Struct(entries) => {
                 Self::from_struct(entries.0).map_err(D::Error::custom)
             }
+            StructuralWire::Variant(metadata, value) => crate::Variant::new(metadata, value)
+                .map(Self::Variant)
+                .map_err(D::Error::custom),
         }
     }
 }
@@ -854,15 +888,16 @@ impl Ord for Scalar {
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
             Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_) => code_key(self).cmp(&code_key(other)),
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_)
+            | Self::FIGICode(_) => code_key(self).cmp(&code_key(other)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -877,6 +912,10 @@ impl Ord for Scalar {
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
             Self::Struct(left) => same_kind!(Self::Struct(right) => left.cmp(right)),
+            // A variant orders by its bytes, metadata first: its value is
+            // not one this comparison decodes, and two encodings of one
+            // value are one value only when their bytes agree.
+            Self::Variant(left) => same_kind!(Self::Variant(right) => left.cmp(right)),
             Self::Arrow(left) => same_kind!(Self::Arrow(right) => left.cmp(right)),
         }
     }
@@ -941,15 +980,16 @@ impl Hash for Scalar {
             Self::String(value) => value.hash(state),
             Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_) => code_key(self).hash(state),
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_)
+            | Self::FIGICode(_) => code_key(self).hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -970,6 +1010,10 @@ impl Hash for Scalar {
             }
             Self::Struct(value) => {
                 2_isize.hash(state);
+                value.hash(state);
+            }
+            Self::Variant(value) => {
+                3_isize.hash(state);
                 value.hash(state);
             }
         }
@@ -1009,7 +1053,7 @@ fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Ti
     ))
 }
 
-/// The eleven registered codes as one pattern.
+/// The twelve registered codes as one pattern.
 ///
 /// A guard does not count towards exhaustiveness, so a match that must cover
 /// every `Scalar` spells the codes out. This is where they are spelled, once;
@@ -1018,19 +1062,20 @@ macro_rules! code_scalars {
     () => {
         $crate::Scalar::Country(_)
             | $crate::Scalar::Currency(_)
-            | $crate::Scalar::Mic(_)
-            | $crate::Scalar::Cfi(_)
+            | $crate::Scalar::MicCode(_)
+            | $crate::Scalar::CfiCode(_)
             | $crate::Scalar::Side(_)
             | $crate::Scalar::State(_)
             | $crate::Scalar::TimeInForce(_)
-            | $crate::Scalar::Isin(_)
-            | $crate::Scalar::Cusip(_)
-            | $crate::Scalar::Sedol(_)
-            | $crate::Scalar::Bloomberg(_)
+            | $crate::Scalar::IsinCode(_)
+            | $crate::Scalar::CusipCode(_)
+            | $crate::Scalar::SedolCode(_)
+            | $crate::Scalar::BloombergCode(_)
+            | $crate::Scalar::FIGICode(_)
     };
 }
 
-/// The reading the eleven registered codes order and hash by.
+/// The reading the twelve registered codes order and hash by.
 ///
 /// They share one value rank, so the identity is what separates them: a
 /// currency and a country whose bytes agree are two values.
@@ -1088,15 +1133,16 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Uuid(_) => 17,
         Scalar::Country(_)
         | Scalar::Currency(_)
-        | Scalar::Mic(_)
-        | Scalar::Cfi(_)
+        | Scalar::MicCode(_)
+        | Scalar::CfiCode(_)
         | Scalar::Side(_)
         | Scalar::State(_)
         | Scalar::TimeInForce(_)
-        | Scalar::Isin(_)
-        | Scalar::Cusip(_)
-        | Scalar::Sedol(_)
-        | Scalar::Bloomberg(_) => 18,
+        | Scalar::IsinCode(_)
+        | Scalar::CusipCode(_)
+        | Scalar::SedolCode(_)
+        | Scalar::BloombergCode(_)
+        | Scalar::FIGICode(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1104,6 +1150,10 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::MediaType(_) => 23,
         Scalar::Arrow(_) => 24,
         Scalar::Urn(_) => 25,
+        // A variant is its own kind, ranked after the containers it can
+        // hold: the bytes say what is inside, and nothing else orders by
+        // what they decode to.
+        Scalar::Variant(_) => 26,
     }
 }
 
@@ -1156,15 +1206,16 @@ impl Scalar {
             Self::String(text) => text.parameters().id(),
             Self::Country(_) => DataTypeId::Country,
             Self::Currency(_) => DataTypeId::Currency,
-            Self::Mic(_) => DataTypeId::Mic,
-            Self::Cfi(_) => DataTypeId::Cfi,
+            Self::MicCode(_) => DataTypeId::MicCode,
+            Self::CfiCode(_) => DataTypeId::CfiCode,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
-            Self::Isin(_) => DataTypeId::Isin,
-            Self::Cusip(_) => DataTypeId::Cusip,
-            Self::Sedol(_) => DataTypeId::Sedol,
-            Self::Bloomberg(_) => DataTypeId::Bloomberg,
+            Self::IsinCode(_) => DataTypeId::IsinCode,
+            Self::CusipCode(_) => DataTypeId::CusipCode,
+            Self::SedolCode(_) => DataTypeId::SedolCode,
+            Self::BloombergCode(_) => DataTypeId::BloombergCode,
+            Self::FIGICode(_) => DataTypeId::FIGICode,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Timezone(_) => DataTypeId::Timezone,
@@ -1178,6 +1229,7 @@ impl Scalar {
             Self::Sequence(_) => DataTypeId::List,
             Self::Mapping(_) => DataTypeId::Map,
             Self::Struct(_) => DataTypeId::Struct,
+            Self::Variant(_) => DataTypeId::Variant,
         }
     }
 
@@ -1219,15 +1271,16 @@ impl Scalar {
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
             Self::Currency(_) => DataTypeId::Currency.as_str(),
-            Self::Mic(_) => DataTypeId::Mic.as_str(),
-            Self::Cfi(_) => DataTypeId::Cfi.as_str(),
+            Self::MicCode(_) => DataTypeId::MicCode.as_str(),
+            Self::CfiCode(_) => DataTypeId::CfiCode.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
             Self::State(_) => DataTypeId::State.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
-            Self::Isin(_) => DataTypeId::Isin.as_str(),
-            Self::Cusip(_) => DataTypeId::Cusip.as_str(),
-            Self::Sedol(_) => DataTypeId::Sedol.as_str(),
-            Self::Bloomberg(_) => DataTypeId::Bloomberg.as_str(),
+            Self::IsinCode(_) => DataTypeId::IsinCode.as_str(),
+            Self::CusipCode(_) => DataTypeId::CusipCode.as_str(),
+            Self::SedolCode(_) => DataTypeId::SedolCode.as_str(),
+            Self::BloombergCode(_) => DataTypeId::BloombergCode.as_str(),
+            Self::FIGICode(_) => DataTypeId::FIGICode.as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Timezone(_) => "timezone",
@@ -1252,6 +1305,7 @@ impl Scalar {
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
             Self::Struct(_) => "struct",
+            Self::Variant(_) => "variant",
         }
     }
 
@@ -1280,6 +1334,27 @@ impl Scalar {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
             Self::Sequence(Sequence::new(values))
         })
+    }
+
+    /// Build a known-width sequence in its final shared storage.
+    ///
+    /// The callback is evaluated once for each index, in ascending order, and
+    /// the first refusal stops the build. Null initializes the shared slice so
+    /// a partial build remains safe to drop without a temporary `Vec`.
+    pub(crate) fn try_sequence(
+        len: usize,
+        mut at: impl FnMut(usize) -> Result<Self>,
+    ) -> Result<Self> {
+        if len == 0 {
+            return Ok(Self::empty_sequence());
+        }
+        let mut values = (0..len).map(|_| Self::Null).collect::<Arc<[_]>>();
+        let unique =
+            Arc::get_mut(&mut values).expect("newly collected sequence storage has one owner");
+        for (index, value) in unique.iter_mut().enumerate() {
+            *value = at(index)?;
+        }
+        Ok(Self::Sequence(Sequence::new(values)))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
@@ -1431,7 +1506,7 @@ impl Scalar {
 
     /// Borrow the validated storage when this is a registered code.
     ///
-    /// The eleven codes are eleven variants, but every question but "which
+    /// The twelve codes are twelve variants, but every question but "which
     /// one" has the same answer for all of them, so this is where they are
     /// written out and [`Self::id`] is the other half: the identity leads, and
     /// the text follows it. A currency and a country whose bytes agree are two
@@ -1441,15 +1516,16 @@ impl Scalar {
         match self {
             Self::Country(value) => Some(value.storage()),
             Self::Currency(value) => Some(value.storage()),
-            Self::Mic(value) => Some(value.storage()),
-            Self::Cfi(value) => Some(value.storage()),
+            Self::MicCode(value) => Some(value.storage()),
+            Self::CfiCode(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
             Self::State(value) => Some(value.storage()),
             Self::TimeInForce(value) => Some(value.storage()),
-            Self::Isin(value) => Some(value.storage()),
-            Self::Cusip(value) => Some(value.storage()),
-            Self::Sedol(value) => Some(value.storage()),
-            Self::Bloomberg(value) => Some(value.storage()),
+            Self::IsinCode(value) => Some(value.storage()),
+            Self::CusipCode(value) => Some(value.storage()),
+            Self::SedolCode(value) => Some(value.storage()),
+            Self::BloombergCode(value) => Some(value.storage()),
+            Self::FIGICode(value) => Some(value.storage()),
             _ => None,
         }
     }
@@ -1654,6 +1730,7 @@ impl Scalar {
     /// variant answers `None`, because its spelling is the caller's to choose.
     pub(crate) fn leaf_display(&self) -> Option<&dyn fmt::Display> {
         let leaf: &dyn fmt::Display = match self {
+            Self::Variant(value) => value,
             Self::Int8(value) => value,
             Self::Int16(value) => value,
             Self::Int32(value) => value,
@@ -1688,15 +1765,16 @@ impl Scalar {
             | Self::String(_)
             | Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_)
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_)
+            | Self::FIGICode(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)
@@ -1981,7 +2059,55 @@ impl Index<&str> for Scalar {
 /// pin crate-private readers: the sign-and-magnitude reader every width
 /// compares through, and the rank sweep that decides how two kinds sort.
 mod tests {
-    use crate::{Scalar, TimeUnit, Timezone, i256};
+    use crate::{Error, Scalar, TimeUnit, Timezone, i256};
+
+    #[test]
+    fn a_fallible_sequence_skips_the_callback_when_empty() {
+        let mut calls = 0;
+        let sequence = Scalar::try_sequence(0, |_| {
+            calls += 1;
+            Ok(Scalar::Null)
+        })
+        .unwrap();
+
+        assert_eq!(calls, 0);
+        assert_eq!(sequence.as_sequence(), Some([].as_slice()));
+    }
+
+    #[test]
+    fn a_fallible_sequence_keeps_every_input_in_index_order() {
+        let inputs = vec![Scalar::from("first"), Scalar::from(2_i64), Scalar::Null];
+        let retained = inputs.clone();
+        let mut calls = Vec::new();
+        let sequence = Scalar::try_sequence(inputs.len(), |index| {
+            calls.push(index);
+            Ok(inputs[index].clone())
+        })
+        .unwrap();
+
+        assert_eq!(calls, [0, 1, 2]);
+        assert_eq!(sequence.as_sequence(), Some(retained.as_slice()));
+        assert_eq!(inputs, retained);
+    }
+
+    #[test]
+    fn a_fallible_sequence_stops_at_its_first_refusal() {
+        let mut calls = Vec::new();
+        let error = Scalar::try_sequence(5, |index| {
+            calls.push(index);
+            if index == 2 {
+                return Err(Error::InvalidRecord {
+                    path: "$[2]".into(),
+                    reason: "refused child".into(),
+                });
+            }
+            Ok(Scalar::from(i64::try_from(index).unwrap()))
+        })
+        .unwrap_err();
+
+        assert_eq!(calls, [0, 1, 2]);
+        assert!(error.to_string().contains("refused child"));
+    }
 
     #[test]
     fn the_integer_sign_and_magnitude_reader_answers_every_width() {

@@ -1,0 +1,35 @@
+{
+  "name": "partydetailrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidParty",
+      "doc": "Invalid party(-ies)"
+    },
+    {
+      "value": "2",
+      "name": "InvalidRelatedParty",
+      "doc": "Invalid related party(-ies)"
+    },
+    {
+      "value": "3",
+      "name": "InvalidPartyStatus",
+      "doc": "Invalid party status(es)"
+    },
+    {
+      "value": "98",
+      "name": "NotAuthorized",
+      "doc": "Not authorized"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

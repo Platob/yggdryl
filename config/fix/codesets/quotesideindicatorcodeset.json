@@ -1,0 +1,15 @@
+{
+  "name": "quotesideindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "No",
+      "doc": "Single sided quotes are not allowed"
+    },
+    {
+      "value": "Y",
+      "name": "Yes",
+      "doc": "Single sided quotes are allowed"
+    }
+  ]
+}

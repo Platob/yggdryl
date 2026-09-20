@@ -2201,6 +2201,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,execrefid,secondaryexecid",
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "AE",
     "FIX:tag": "162094",
     "description": "MsgType = AE",

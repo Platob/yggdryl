@@ -64,6 +64,32 @@ fn restored_columns_take_the_type_the_schema_declares() {
 }
 
 #[test]
+fn a_literal_dotted_partition_name_keeps_its_declared_type() {
+    let declared = StructType::from_fields([
+        DataType::Int64.required_field("price"),
+        DataType::Int32.required_field("a.b"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+
+    let restored = with_partitions(
+        &prices(),
+        &[("a.b".to_owned(), "2024".to_owned())],
+        Some(&declared),
+    )
+    .unwrap();
+
+    let dotted = restored
+        .column_by_name("a.b")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<Int32Array>()
+        .expect("an Int32 column, as the literal declaration says");
+    assert_eq!(dotted.values(), &[2024, 2024, 2024]);
+}
+
+#[test]
 fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
     let declared = StructType::from_fields([
         DataType::Int64.required_field("price"),

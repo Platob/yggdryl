@@ -1,0 +1,20 @@
+{
+  "name": "marketsegmentrelationshipcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "MarketSegmentPoolMember",
+      "doc": "Market segment pool member"
+    },
+    {
+      "value": "2",
+      "name": "RetailSegment",
+      "doc": "Retail segment"
+    },
+    {
+      "value": "3",
+      "name": "WholesaleSegment",
+      "doc": "Wholesale segment"
+    }
+  ]
+}

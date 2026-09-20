@@ -1,0 +1,15 @@
+{
+  "name": "paymentschedulesteprelativetocodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "1",
+      "name": "Previous",
+      "doc": "Previous"
+    }
+  ]
+}

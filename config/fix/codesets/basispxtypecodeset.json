@@ -1,0 +1,70 @@
+{
+  "name": "basispxtypecodeset",
+  "codes": [
+    {
+      "value": "2",
+      "name": "ClosingPriceAtMorningSession",
+      "doc": "Closing price at morning session"
+    },
+    {
+      "value": "3",
+      "name": "ClosingPrice",
+      "doc": "Closing price"
+    },
+    {
+      "value": "4",
+      "name": "CurrentPrice",
+      "doc": "Current price"
+    },
+    {
+      "value": "5",
+      "name": "SQ",
+      "doc": "SQ"
+    },
+    {
+      "value": "6",
+      "name": "VWAPThroughADay",
+      "doc": "VWAP through a day"
+    },
+    {
+      "value": "7",
+      "name": "VWAPThroughAMorningSession",
+      "doc": "VWAP through a morning session"
+    },
+    {
+      "value": "8",
+      "name": "VWAPThroughAnAfternoonSession",
+      "doc": "VWAP through an afternoon session"
+    },
+    {
+      "value": "9",
+      "name": "VWAPThroughADayExcept",
+      "doc": "VWAP through a day except \"YORI\" (an opening auction)"
+    },
+    {
+      "value": "A",
+      "name": "VWAPThroughAMorningSessionExcept",
+      "doc": "VWAP through a morning session except \"YORI\" (an opening auction)"
+    },
+    {
+      "value": "B",
+      "name": "VWAPThroughAnAfternoonSessionExcept",
+      "doc": "VWAP through an afternoon session except \"YORI\" (an opening auction)"
+    },
+    {
+      "value": "C",
+      "name": "Strike",
+      "doc": "Strike"
+    },
+    {
+      "value": "D",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "Z",
+      "name": "Others",
+      "doc": "Others"
+    }
+  ]
+}

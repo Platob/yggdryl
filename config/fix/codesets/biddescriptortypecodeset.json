@@ -1,0 +1,20 @@
+{
+  "name": "biddescriptortypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Sector",
+      "doc": "Sector"
+    },
+    {
+      "value": "2",
+      "name": "Country",
+      "doc": "Country"
+    },
+    {
+      "value": "3",
+      "name": "Index",
+      "doc": "Index"
+    }
+  ]
+}

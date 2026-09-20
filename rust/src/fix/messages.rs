@@ -75,10 +75,15 @@ impl FixMessages {
 
     /// The same messages, read here and now: what a door reading on
     /// several threads hands back, so the reading happens on the thread
-    /// that was given the row rather than on the one that pulls.
+    /// that was given the row rather than on the one that pulls. A row's
+    /// frames are the one source with reading left to do; every other is
+    /// already read, and is handed back as it is.
     pub(super) fn collected(self) -> Self {
-        Self {
-            source: Source::Many(self.collect::<Vec<_>>().into_iter()),
+        match self.source {
+            Source::Frames { .. } => Self {
+                source: Source::Many(self.collect::<Vec<_>>().into_iter()),
+            },
+            source => Self { source },
         }
     }
 }

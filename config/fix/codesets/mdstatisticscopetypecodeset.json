@@ -1,0 +1,30 @@
+{
+  "name": "mdstatisticscopetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "EntryRate",
+      "doc": "Entry rate"
+    },
+    {
+      "value": "2",
+      "name": "ModificationRate",
+      "doc": "Modification rate"
+    },
+    {
+      "value": "3",
+      "name": "CancelRate",
+      "doc": "Cancel rate"
+    },
+    {
+      "value": "4",
+      "name": "DownwardMove",
+      "doc": "Downward move"
+    },
+    {
+      "value": "5",
+      "name": "UpwardMove",
+      "doc": "Upward move"
+    }
+  ]
+}

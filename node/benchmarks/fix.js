@@ -119,7 +119,7 @@ const message = new fix.FixMsg(
   order,
   {
     symbol: 'AAPL',
-    orderqty: Scalar.float(100),
+    orderqty: Scalar.decimal(100n * 10n ** 18n, 18),
     nopartyids: 1,
     parties: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
   },
@@ -157,6 +157,7 @@ if (catalog.clone().addField(foldingField) !== false) throw new Error('party_id 
 if (catalog.clone().addField(arrivingField) !== true) throw new Error('Symbol should arrive')
 const singleton = catalog.msgtype('D')
 const codec = new fix.FixCodec(catalog)
+const snapshotCodec = new fix.FixCodec(catalog, { snapshotNs: 1_000_000_000n })
 
 function drain(values) {
   let count = 0
@@ -181,6 +182,9 @@ if (parsed.identifiers.clordid !== 'ORDER-000000') {
 }
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
+}
+if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
+  throw new Error('FIX category and exact snapshot boundary mismatch')
 }
 const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
@@ -235,6 +239,10 @@ try {
   benchmark('fix/field_has_branch', () => tagged.fix.hasBranch(VENDOR_DIALECT))
   benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/declared_identifiers', () => orderDeclaration.fix.identifiers)
+  benchmark('fix/field_msgcat', () => orderDeclaration.fix.msgcat)
+  benchmark('fix/msgtype_msgcat', () => orderType.msgcat)
+  benchmark('fix/message_msgcat', () => parsed.msgcat)
+  benchmark('fix/codec_snapshot_ns', () => snapshotCodec.snapshotNs)
   benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
   // The typed holders, each read once into the plain object it crosses as.
   benchmark('fix/message_event', () => parsed.event())

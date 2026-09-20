@@ -1,0 +1,15 @@
+{
+  "name": "quotemodeltypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "QuoteEntry",
+      "doc": "Quote entry"
+    },
+    {
+      "value": "2",
+      "name": "QuoteModification",
+      "doc": "Quote modification"
+    }
+  ]
+}

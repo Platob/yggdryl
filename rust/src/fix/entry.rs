@@ -71,6 +71,17 @@ impl FixEntry {
         self.value.as_deref()
     }
 
+    /// The name as the entry holds it, for a row that keeps it: a reference
+    /// count where the name is long, never a copy.
+    pub(super) const fn held_name(&self) -> &SmolStr {
+        &self.name
+    }
+
+    /// The value as the entry holds it, for a row that keeps it.
+    pub(super) const fn held_value(&self) -> Option<&SmolStr> {
+        self.value.as_ref()
+    }
+
     /// The entries nested under this one, in their order: a group's
     /// occurrences, an occurrence's or a component's members.
     #[must_use]
@@ -146,7 +157,11 @@ pub(super) fn emit_text(
 /// its name, so `BUY` under `Side(54)` is `1` on the wire and `BUY` in a
 /// dictionary that never coded it; everything else spells as it does
 /// under no field.
-pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Option<SmolStr> {
+pub(super) fn wire_text_under(
+    registry: &super::FixRegistry,
+    field: &crate::Field,
+    value: &crate::Scalar,
+) -> Option<SmolStr> {
     let coded = value.is_code()
         || matches!(
             field.dtype(),
@@ -155,7 +170,7 @@ pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Op
     if coded {
         if let Some(code) = value
             .as_str()
-            .and_then(|name| field.as_fix().code_by_name(name))
+            .and_then(|name| registry.codeset_of(field)?.code_by_name(name))
         {
             return Some(SmolStr::new(code.value()));
         }

@@ -1,0 +1,25 @@
+{
+  "name": "inthemoneyconditioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "StandardITM",
+      "doc": "Standard in-the-money"
+    },
+    {
+      "value": "1",
+      "name": "ATMITM",
+      "doc": "At-the-money is in-the-money"
+    },
+    {
+      "value": "2",
+      "name": "ATMCallITM",
+      "doc": "At-the-money call is in-the-money"
+    },
+    {
+      "value": "3",
+      "name": "ATMPutITM",
+      "doc": "At-the-money put is in-the-money"
+    }
+  ]
+}

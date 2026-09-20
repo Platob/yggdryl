@@ -1,0 +1,25 @@
+{
+  "name": "discretionoffsettypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Price",
+      "doc": "Price (default)"
+    },
+    {
+      "value": "1",
+      "name": "BasisPoints",
+      "doc": "Basis Points"
+    },
+    {
+      "value": "2",
+      "name": "Ticks",
+      "doc": "Ticks"
+    },
+    {
+      "value": "3",
+      "name": "PriceTier",
+      "doc": "Price Tier / Level"
+    }
+  ]
+}

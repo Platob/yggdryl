@@ -1,0 +1,65 @@
+{
+  "name": "businessrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "1",
+      "name": "UnknownID",
+      "doc": "Unknown ID"
+    },
+    {
+      "value": "2",
+      "name": "UnknownSecurity",
+      "doc": "Unknown Security"
+    },
+    {
+      "value": "3",
+      "name": "UnsupportedMessageType",
+      "doc": "Unsupported Message Type"
+    },
+    {
+      "value": "4",
+      "name": "ApplicationNotAvailable",
+      "doc": "Application not available"
+    },
+    {
+      "value": "5",
+      "name": "ConditionallyRequiredFieldMissing",
+      "doc": "Conditionally required field missing"
+    },
+    {
+      "value": "6",
+      "name": "NotAuthorized",
+      "doc": "Not Authorized"
+    },
+    {
+      "value": "7",
+      "name": "DeliverToFirmNotAvailableAtThisTime",
+      "doc": "DeliverTo firm not available at this time"
+    },
+    {
+      "value": "8",
+      "name": "ThrottleLimitExceeded",
+      "doc": "Throttle limit exceeded"
+    },
+    {
+      "value": "9",
+      "name": "ThrottleLimitExceededSessionDisconnected",
+      "doc": "Throttle limit exceeded, session will be disconnected"
+    },
+    {
+      "value": "10",
+      "name": "ThrottledMessagesRejectedOnRequest",
+      "doc": "Throttled messages rejected on request"
+    },
+    {
+      "value": "18",
+      "name": "InvalidPriceIncrement",
+      "doc": "Invalid price increment"
+    }
+  ]
+}

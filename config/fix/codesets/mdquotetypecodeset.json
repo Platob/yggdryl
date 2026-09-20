@@ -1,0 +1,33 @@
+{
+  "name": "mdquotetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Indicative",
+      "doc": "Indicative"
+    },
+    {
+      "value": "1",
+      "name": "Tradeable",
+      "doc": "Tradeable"
+    },
+    {
+      "value": "2",
+      "name": "RestrictedTradeable",
+      "doc": "Restricted tradeable"
+    },
+    {
+      "value": "3",
+      "name": "Counter",
+      "doc": "Counter (tradeable)"
+    },
+    {
+      "value": "4",
+      "name": "InitiallyTradeable",
+      "aliases": [
+        "IndicativeAndTradeable"
+      ],
+      "doc": "Initially tradeable"
+    }
+  ]
+}

@@ -1137,15 +1137,20 @@ Object.defineProperty(Field.prototype, 'scalar', {
   },
 })
 
-// A datatype has no name or nullability, so it borrows a nullable one for the
-// read. The value rules are the datatype's; the name never reaches the scalar.
+// A datatype owns its value rules directly: it has neither a name nor
+// nullability to borrow through a synthetic field.
 Object.defineProperty(DataType.prototype, 'scalar', {
   configurable: true,
   value(value, options) {
-    return Scalar.from(value, {
-      ...checkedOptions(options),
-      field: new Field('value', this, true),
-    })
+    options = checkedOptions(options)
+    return nativeScalarFromJs(
+      value,
+      options.maxDepth,
+      nativeWrapperPrototypes,
+      nativeIntrinsics,
+      undefined,
+      this,
+    )
   },
 })
 

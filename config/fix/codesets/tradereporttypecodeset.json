@@ -1,0 +1,100 @@
+{
+  "name": "tradereporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Submit",
+      "doc": "Submit"
+    },
+    {
+      "value": "1",
+      "name": "Alleged",
+      "doc": "Alleged"
+    },
+    {
+      "value": "2",
+      "name": "Accept",
+      "doc": "Accept"
+    },
+    {
+      "value": "3",
+      "name": "Decline",
+      "doc": "Decline"
+    },
+    {
+      "value": "4",
+      "name": "Addendum",
+      "doc": "Addendum"
+    },
+    {
+      "value": "5",
+      "name": "No",
+      "doc": "No/Was"
+    },
+    {
+      "value": "6",
+      "name": "TradeReportCancel",
+      "doc": "Trade Report Cancel"
+    },
+    {
+      "value": "7",
+      "name": "LockedIn",
+      "doc": "(Locked-In) Trade Break"
+    },
+    {
+      "value": "8",
+      "name": "Defaulted",
+      "doc": "Defaulted"
+    },
+    {
+      "value": "9",
+      "name": "InvalidCMTA",
+      "doc": "Invalid CMTA"
+    },
+    {
+      "value": "10",
+      "name": "Pended",
+      "doc": "Pended"
+    },
+    {
+      "value": "11",
+      "name": "AllegedNew",
+      "doc": "Alleged New"
+    },
+    {
+      "value": "12",
+      "name": "AllegedAddendum",
+      "doc": "Alleged Addendum"
+    },
+    {
+      "value": "13",
+      "name": "AllegedNo",
+      "doc": "Alleged No/Was"
+    },
+    {
+      "value": "14",
+      "name": "AllegedTradeReportCancel",
+      "doc": "Alleged Trade Report Cancel"
+    },
+    {
+      "value": "15",
+      "name": "AllegedTradeBreak",
+      "doc": "Alleged (Locked-In) Trade Break"
+    },
+    {
+      "value": "16",
+      "name": "Verify",
+      "doc": "Verify"
+    },
+    {
+      "value": "17",
+      "name": "Dispute",
+      "doc": "Dispute"
+    },
+    {
+      "value": "18",
+      "name": "NonMaterialUpdate",
+      "doc": "Non-material Update"
+    }
+  ]
+}

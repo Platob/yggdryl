@@ -126,6 +126,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "MKST",
     "FIX:msgtype": "BI",
     "FIX:tag": "352836",
     "description": "MsgType = BI",

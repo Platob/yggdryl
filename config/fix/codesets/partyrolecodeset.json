@@ -1,0 +1,650 @@
+{
+  "name": "partyrolecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ExecutingFirm",
+      "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+    },
+    {
+      "value": "2",
+      "name": "BrokerOfCredit",
+      "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+    },
+    {
+      "value": "3",
+      "name": "ClientID",
+      "doc": "Client ID (formerly FIX 4.2 ClientID)"
+    },
+    {
+      "value": "4",
+      "name": "ClearingFirm",
+      "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+    },
+    {
+      "value": "5",
+      "name": "InvestorID",
+      "doc": "Investor ID"
+    },
+    {
+      "value": "6",
+      "name": "IntroducingFirm",
+      "doc": "Introducing Firm"
+    },
+    {
+      "value": "7",
+      "name": "EnteringFirm",
+      "doc": "Entering Firm"
+    },
+    {
+      "value": "8",
+      "name": "Locate",
+      "doc": "Locate / Lending Firm (for short-sales)"
+    },
+    {
+      "value": "9",
+      "name": "FundManagerClientID",
+      "doc": "Fund Manager Client ID (for CIV)"
+    },
+    {
+      "value": "10",
+      "name": "SettlementLocation",
+      "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
+    },
+    {
+      "value": "11",
+      "name": "OrderOriginationTrader",
+      "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
+    },
+    {
+      "value": "12",
+      "name": "ExecutingTrader",
+      "doc": "Executing Trader (associated with Executing Firm - actually executes)"
+    },
+    {
+      "value": "13",
+      "name": "OrderOriginationFirm",
+      "doc": "Order Origination Firm (e.g. buy-side firm)"
+    },
+    {
+      "value": "14",
+      "name": "GiveupClearingFirmDepr",
+      "doc": "Giveup Clearing Firm (firm to which trade is given up)"
+    },
+    {
+      "value": "15",
+      "name": "CorrespondantClearingFirm",
+      "doc": "Correspondant Clearing Firm"
+    },
+    {
+      "value": "16",
+      "name": "ExecutingSystem",
+      "doc": "Executing System"
+    },
+    {
+      "value": "17",
+      "name": "ContraFirm",
+      "doc": "Contra Firm"
+    },
+    {
+      "value": "18",
+      "name": "ContraClearingFirm",
+      "doc": "Contra Clearing Firm"
+    },
+    {
+      "value": "19",
+      "name": "SponsoringFirm",
+      "doc": "Sponsoring Firm"
+    },
+    {
+      "value": "20",
+      "name": "UnderlyingContraFirm",
+      "doc": "Underlying Contra Firm"
+    },
+    {
+      "value": "21",
+      "name": "ClearingOrganization",
+      "doc": "Clearing Organization"
+    },
+    {
+      "value": "22",
+      "name": "Exchange",
+      "doc": "Exchange"
+    },
+    {
+      "value": "24",
+      "name": "CustomerAccount",
+      "doc": "Customer Account"
+    },
+    {
+      "value": "25",
+      "name": "CorrespondentClearingOrganization",
+      "doc": "Correspondent Clearing Organization"
+    },
+    {
+      "value": "26",
+      "name": "CorrespondentBroker",
+      "doc": "Correspondent Broker"
+    },
+    {
+      "value": "27",
+      "name": "Buyer",
+      "doc": "Buyer/Seller (Receiver/Deliverer)"
+    },
+    {
+      "value": "28",
+      "name": "Custodian",
+      "doc": "Custodian"
+    },
+    {
+      "value": "29",
+      "name": "Intermediary",
+      "doc": "Intermediary"
+    },
+    {
+      "value": "30",
+      "name": "Agent",
+      "doc": "Agent"
+    },
+    {
+      "value": "31",
+      "name": "SubCustodian",
+      "doc": "Sub-custodian"
+    },
+    {
+      "value": "32",
+      "name": "Beneficiary",
+      "doc": "Beneficiary"
+    },
+    {
+      "value": "33",
+      "name": "InterestedParty",
+      "doc": "Interested party"
+    },
+    {
+      "value": "34",
+      "name": "RegulatoryBody",
+      "doc": "Regulatory body"
+    },
+    {
+      "value": "35",
+      "name": "LiquidityProvider",
+      "doc": "Liquidity provider"
+    },
+    {
+      "value": "36",
+      "name": "EnteringTrader",
+      "doc": "Entering trader"
+    },
+    {
+      "value": "37",
+      "name": "ContraTrader",
+      "doc": "Contra trader"
+    },
+    {
+      "value": "38",
+      "name": "PositionAccount",
+      "doc": "Position account"
+    },
+    {
+      "value": "39",
+      "name": "ContraInvestorID",
+      "doc": "Contra Investor ID"
+    },
+    {
+      "value": "40",
+      "name": "TransferToFirm",
+      "doc": "Transfer to Firm"
+    },
+    {
+      "value": "41",
+      "name": "ContraPositionAccount",
+      "doc": "Contra Position Account"
+    },
+    {
+      "value": "42",
+      "name": "ContraExchange",
+      "doc": "Contra Exchange"
+    },
+    {
+      "value": "43",
+      "name": "InternalCarryAccount",
+      "doc": "Internal Carry Account"
+    },
+    {
+      "value": "44",
+      "name": "OrderEntryOperatorID",
+      "doc": "Order Entry Operator ID"
+    },
+    {
+      "value": "45",
+      "name": "SecondaryAccountNumber",
+      "doc": "Secondary Account Number"
+    },
+    {
+      "value": "46",
+      "name": "ForeignFirm",
+      "doc": "Foreign Firm"
+    },
+    {
+      "value": "47",
+      "name": "ThirdPartyAllocationFirm",
+      "doc": "Third Party Allocation Firm"
+    },
+    {
+      "value": "48",
+      "name": "ClaimingAccount",
+      "doc": "Claiming Account"
+    },
+    {
+      "value": "49",
+      "name": "AssetManager",
+      "doc": "Asset Manager"
+    },
+    {
+      "value": "50",
+      "name": "PledgorAccount",
+      "doc": "Pledgor Account"
+    },
+    {
+      "value": "51",
+      "name": "PledgeeAccount",
+      "doc": "Pledgee Account"
+    },
+    {
+      "value": "52",
+      "name": "LargeTraderReportableAccount",
+      "doc": "Large Trader Reportable Account"
+    },
+    {
+      "value": "53",
+      "name": "TraderMnemonic",
+      "doc": "Trader mnemonic"
+    },
+    {
+      "value": "54",
+      "name": "SenderLocation",
+      "doc": "Sender Location"
+    },
+    {
+      "value": "55",
+      "name": "SessionID",
+      "doc": "Session ID"
+    },
+    {
+      "value": "56",
+      "name": "AcceptableCounterparty",
+      "doc": "Acceptable Counterparty"
+    },
+    {
+      "value": "57",
+      "name": "UnacceptableCounterparty",
+      "doc": "Unacceptable Counterparty"
+    },
+    {
+      "value": "58",
+      "name": "EnteringUnit",
+      "doc": "Entering Unit"
+    },
+    {
+      "value": "59",
+      "name": "ExecutingUnit",
+      "doc": "Executing Unit"
+    },
+    {
+      "value": "60",
+      "name": "IntroducingBroker",
+      "doc": "Introducing Broker"
+    },
+    {
+      "value": "61",
+      "name": "QuoteOriginator",
+      "doc": "Quote originator"
+    },
+    {
+      "value": "62",
+      "name": "ReportOriginator",
+      "doc": "Report originator"
+    },
+    {
+      "value": "63",
+      "name": "SystematicInternaliser",
+      "doc": "Systematic internaliser (SI)"
+    },
+    {
+      "value": "64",
+      "name": "MultilateralTradingFacility",
+      "doc": "Multilateral Trading Facility (MTF)"
+    },
+    {
+      "value": "65",
+      "name": "RegulatedMarket",
+      "doc": "Regulated Market (RM)"
+    },
+    {
+      "value": "66",
+      "name": "MarketMaker",
+      "doc": "Market Maker"
+    },
+    {
+      "value": "67",
+      "name": "InvestmentFirm",
+      "doc": "Investment Firm"
+    },
+    {
+      "value": "68",
+      "name": "HostCompetentAuthority",
+      "doc": "Host Competent Authority (Host CA)"
+    },
+    {
+      "value": "69",
+      "name": "HomeCompetentAuthority",
+      "doc": "Home Competent Authority (Home CA)"
+    },
+    {
+      "value": "70",
+      "name": "CompetentAuthorityLiquidity",
+      "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
+    },
+    {
+      "value": "71",
+      "name": "CompetentAuthorityTransactionVenue",
+      "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
+    },
+    {
+      "value": "72",
+      "name": "ReportingIntermediary",
+      "doc": "Reporting intermediary"
+    },
+    {
+      "value": "73",
+      "name": "ExecutionVenue",
+      "doc": "Execution Venue"
+    },
+    {
+      "value": "74",
+      "name": "MarketDataEntryOriginator",
+      "doc": "Market data entry originator"
+    },
+    {
+      "value": "75",
+      "name": "LocationID",
+      "doc": "Location ID"
+    },
+    {
+      "value": "76",
+      "name": "DeskID",
+      "doc": "Desk ID"
+    },
+    {
+      "value": "77",
+      "name": "MarketDataMarket",
+      "doc": "Market data market"
+    },
+    {
+      "value": "78",
+      "name": "AllocationEntity",
+      "doc": "Allocation Entity"
+    },
+    {
+      "value": "79",
+      "name": "PrimeBroker",
+      "doc": "Prime Broker providing General Trade Services"
+    },
+    {
+      "value": "80",
+      "name": "StepOutFirm",
+      "doc": "Step-Out Firm (Prime Broker)"
+    },
+    {
+      "value": "81",
+      "name": "BrokerClearingID",
+      "doc": "Broker clearing identifier"
+    },
+    {
+      "value": "82",
+      "name": "CentralRegistrationDepository",
+      "doc": "Central Registration Depository (CRD)"
+    },
+    {
+      "value": "83",
+      "name": "ClearingAccount",
+      "doc": "Clearing Account"
+    },
+    {
+      "value": "84",
+      "name": "AcceptableSettlingCounterparty",
+      "doc": "Acceptable Settling Counterparty"
+    },
+    {
+      "value": "85",
+      "name": "UnacceptableSettlingCounterparty",
+      "doc": "Unacceptable Settling Counterparty"
+    },
+    {
+      "value": "86",
+      "name": "CLSMemberBank",
+      "doc": "CLS Member Bank"
+    },
+    {
+      "value": "87",
+      "name": "InConcertGroup",
+      "doc": "In Concert Group"
+    },
+    {
+      "value": "88",
+      "name": "InConcertControllingEntity",
+      "doc": "In Concert Controlling Entity"
+    },
+    {
+      "value": "89",
+      "name": "LargePositionsReportingAccount",
+      "doc": "Large Positions Reporting Account"
+    },
+    {
+      "value": "90",
+      "name": "SettlementFirm",
+      "doc": "Settlement Firm"
+    },
+    {
+      "value": "91",
+      "name": "SettlementAccount",
+      "doc": "Settlement account"
+    },
+    {
+      "value": "92",
+      "name": "ReportingMarketCenter",
+      "doc": "Reporting Market Center"
+    },
+    {
+      "value": "93",
+      "name": "RelatedReportingMarketCenter",
+      "doc": "Related Reporting Market Center"
+    },
+    {
+      "value": "94",
+      "name": "AwayMarket",
+      "doc": "Away Market"
+    },
+    {
+      "value": "95",
+      "name": "GiveupTradingFirm",
+      "doc": "Give-up (trading) firm"
+    },
+    {
+      "value": "96",
+      "name": "TakeupTradingFirm",
+      "doc": "Take-up (trading) firm"
+    },
+    {
+      "value": "97",
+      "name": "GiveupClearingFirm",
+      "doc": "Give-up clearing firm"
+    },
+    {
+      "value": "98",
+      "name": "TakeupClearingFirm",
+      "doc": "Take-up clearing firm"
+    },
+    {
+      "value": "99",
+      "name": "OriginatingMarket",
+      "doc": "Originating Market"
+    },
+    {
+      "value": "100",
+      "name": "MarginAccount",
+      "doc": "Margin account"
+    },
+    {
+      "value": "101",
+      "name": "CollateralAssetAccount",
+      "doc": "Collateral asset account"
+    },
+    {
+      "value": "102",
+      "name": "DataRepository",
+      "doc": "Data repository"
+    },
+    {
+      "value": "103",
+      "name": "CalculationAgent",
+      "doc": "Calculation agent"
+    },
+    {
+      "value": "104",
+      "name": "ExerciseNoticeSender",
+      "doc": "Sender of exercise notice"
+    },
+    {
+      "value": "105",
+      "name": "ExerciseNoticeReceiver",
+      "doc": "Receiver of exercise notice"
+    },
+    {
+      "value": "106",
+      "name": "RateReferenceBank",
+      "doc": "Rate reference bank"
+    },
+    {
+      "value": "107",
+      "name": "Correspondent",
+      "doc": "Correspondent"
+    },
+    {
+      "value": "109",
+      "name": "BeneficiaryBank",
+      "doc": "Beneficiary's bank or depository institution"
+    },
+    {
+      "value": "110",
+      "name": "Borrower",
+      "doc": "Borrower"
+    },
+    {
+      "value": "111",
+      "name": "PrimaryObligator",
+      "doc": "Primary obligator"
+    },
+    {
+      "value": "112",
+      "name": "Guarantor",
+      "doc": "Guarantor"
+    },
+    {
+      "value": "113",
+      "name": "ExcludedReferenceEntity",
+      "doc": "Excluded reference entity"
+    },
+    {
+      "value": "114",
+      "name": "DeterminingParty",
+      "doc": "Determining party"
+    },
+    {
+      "value": "115",
+      "name": "HedgingParty",
+      "doc": "Hedging party"
+    },
+    {
+      "value": "116",
+      "name": "ReportingEntity",
+      "doc": "Reporting entity"
+    },
+    {
+      "value": "117",
+      "name": "SalesPerson",
+      "doc": "Sales person"
+    },
+    {
+      "value": "118",
+      "name": "Operator",
+      "doc": "Operator"
+    },
+    {
+      "value": "119",
+      "name": "CSD",
+      "doc": "Central Securities Depository (CSD)"
+    },
+    {
+      "value": "120",
+      "name": "ICSD",
+      "doc": "International Central Securities Depository (ICSD)"
+    },
+    {
+      "value": "121",
+      "name": "TradingSubAccount",
+      "doc": "Trading sub-account"
+    },
+    {
+      "value": "122",
+      "name": "InvestmentDecisionMaker",
+      "doc": "Investment decision maker"
+    },
+    {
+      "value": "123",
+      "name": "PublishingIntermediary",
+      "doc": "Publishing intermediary"
+    },
+    {
+      "value": "124",
+      "name": "CSDParticipant",
+      "doc": "Central Securities Depository (CSD) Participant"
+    },
+    {
+      "value": "125",
+      "name": "Issuer",
+      "doc": "Issuer"
+    },
+    {
+      "value": "126",
+      "name": "ContraCustomerAccount",
+      "doc": "Contra Customer Account"
+    },
+    {
+      "value": "127",
+      "name": "ContraInvestmentDecisionMaker",
+      "doc": "Contra Investment Decision Maker"
+    },
+    {
+      "value": "128",
+      "name": "AuthorizingPerson",
+      "doc": "Authorizing person"
+    },
+    {
+      "value": "129",
+      "name": "PrimaryPlaceOfListing",
+      "doc": "Primary place of listing"
+    },
+    {
+      "value": "130",
+      "name": "SecondaryPlaceOfListing",
+      "doc": "Secondary place of listing"
+    },
+    {
+      "value": "131",
+      "name": "Algorithm",
+      "doc": "Algorithm"
+    }
+  ]
+}

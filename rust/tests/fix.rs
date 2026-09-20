@@ -1,9 +1,15 @@
 //! FIX integration tests.
 
+#[path = "fix/aliases.rs"]
+mod aliases;
+#[path = "fix/allocations.rs"]
+mod allocations;
 #[path = "fix/batch.rs"]
 mod batch;
 #[path = "fix/capture.rs"]
 mod capture;
+#[path = "fix/categories.rs"]
+mod categories;
 #[path = "fix/cfb.rs"]
 mod cfb;
 /// The instrument's classification, at the seam between its value and FIX.
@@ -44,14 +50,21 @@ mod message;
 /// The threads a codec reads on.
 #[path = "fix/parallel.rs"]
 mod parallel;
+#[path = "fix/party_source.rs"]
+mod party_source;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
+#[path = "fix/residual.rs"]
+mod residual;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]
 mod store;
 #[path = "fix/zero_entries.rs"]
 mod zero_entries;
+
+#[global_allocator]
+static ALLOCATOR: allocations::CountingAllocator = allocations::CountingAllocator;
 
 /// What a reader warned about while it ran, on this thread alone.
 ///
@@ -148,6 +161,9 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
 /// Undated test bytes have one explicit intake clock; replay never consults now.
 fn fixed_codec(registry: std::sync::Arc<yggdryl::FixRegistry>) -> yggdryl::FixCodec {
     yggdryl::FixCodec::new(registry)
+        // Allocation and warning pins observe this thread. Pool behavior has
+        // its own explicit multi-worker fixtures in `parallel`.
+        .with_threads(1)
         .try_with_default_sending_time(Some(
             yggdryl::Scalar::datetime64(
                 1_704_190_530_000_000_000,

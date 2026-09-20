@@ -1,0 +1,15 @@
+{
+  "name": "tradsesstatusrejreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "UnknownOrInvalidTradingSessionID",
+      "doc": "Unknown or invalid TradingSessionID"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

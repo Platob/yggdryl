@@ -1,0 +1,21 @@
+{
+  "name": "forexreqcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "DoNotExecuteForexAfterSecurityTrade",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Do Not Execute Forex After Security Trade"
+    },
+    {
+      "value": "Y",
+      "name": "ExecuteForexAfterSecurityTrade",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Execute Forex After Security Trade"
+    }
+  ]
+}

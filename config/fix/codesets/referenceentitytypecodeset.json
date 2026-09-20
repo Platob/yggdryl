@@ -1,0 +1,55 @@
+{
+  "name": "referenceentitytypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Asian",
+      "doc": "Asian"
+    },
+    {
+      "value": "2",
+      "name": "AustralianNewZealand",
+      "doc": "Australian and New Zealand"
+    },
+    {
+      "value": "3",
+      "name": "EuropeanEmergingMarkets",
+      "doc": "European emerging markets"
+    },
+    {
+      "value": "4",
+      "name": "Japanese",
+      "doc": "Japanese"
+    },
+    {
+      "value": "5",
+      "name": "NorthAmericanHighYield",
+      "doc": "North American high yield"
+    },
+    {
+      "value": "6",
+      "name": "NorthAmericanInsurance",
+      "doc": "North American insurance"
+    },
+    {
+      "value": "7",
+      "name": "NorthAmericanInvestmentGrade",
+      "doc": "North American investment grade"
+    },
+    {
+      "value": "8",
+      "name": "Singaporean",
+      "doc": "Singaporean"
+    },
+    {
+      "value": "9",
+      "name": "WesternEuropean",
+      "doc": "Western European"
+    },
+    {
+      "value": "10",
+      "name": "WesternEuropeanInsurance",
+      "doc": "Western European insurance"
+    }
+  ]
+}

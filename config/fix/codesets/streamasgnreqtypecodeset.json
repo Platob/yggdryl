@@ -1,0 +1,15 @@
+{
+  "name": "streamasgnreqtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "StreamAssignmentForNewCustomer",
+      "doc": "Stream assignment for new customer(s)"
+    },
+    {
+      "value": "2",
+      "name": "StreamAssignmentForExistingCustomer",
+      "doc": "Stream assignment for existing customer(s)"
+    }
+  ]
+}

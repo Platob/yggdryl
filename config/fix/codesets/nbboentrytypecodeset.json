@@ -1,0 +1,20 @@
+{
+  "name": "nbboentrytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Bid",
+      "doc": "Bid"
+    },
+    {
+      "value": "1",
+      "name": "Offer",
+      "doc": "Offer"
+    },
+    {
+      "value": "2",
+      "name": "MidPrice",
+      "doc": "Mid-price"
+    }
+  ]
+}

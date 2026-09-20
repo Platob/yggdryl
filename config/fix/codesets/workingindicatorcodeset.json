@@ -1,0 +1,21 @@
+{
+  "name": "workingindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotWorking",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Order has been accepted but not yet in a working state"
+    },
+    {
+      "value": "Y",
+      "name": "Working",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Order is currently being worked"
+    }
+  ]
+}

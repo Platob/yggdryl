@@ -24,6 +24,13 @@ impl JsMsgType {
 
 #[napi]
 impl JsMsgType {
+    /// The fixed four-byte business category, or `null` for an unclassified
+    /// custom definition.
+    #[napi(getter)]
+    pub fn msgcat(&self) -> Option<String> {
+        self.inner.msgcat().map(ToOwned::to_owned)
+    }
+
     /// The native canonical name.
     #[napi(getter)]
     pub fn name(&self) -> String {

@@ -70,9 +70,9 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
-    recognized_arrow_extension,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    code_refusal, recognized_arrow_extension,
 };
 use crate::{DataType, Field, Scalar};
 
@@ -1236,12 +1236,13 @@ mod typed {
     // A registered code stores as the text it is, exactly as a version does.
     typed_array!(crate::CountryType, arrow_array::StringArray);
     typed_array!(crate::CurrencyType, arrow_array::StringArray);
-    typed_array!(crate::MicType, arrow_array::StringArray);
-    typed_array!(crate::CfiType, arrow_array::StringArray);
-    typed_array!(crate::IsinType, arrow_array::StringArray);
-    typed_array!(crate::CusipType, arrow_array::StringArray);
-    typed_array!(crate::SedolType, arrow_array::StringArray);
-    typed_array!(crate::BloombergType, arrow_array::StringArray);
+    typed_array!(crate::MicCodeType, arrow_array::StringArray);
+    typed_array!(crate::CfiCodeType, arrow_array::StringArray);
+    typed_array!(crate::IsinCodeType, arrow_array::StringArray);
+    typed_array!(crate::CusipCodeType, arrow_array::StringArray);
+    typed_array!(crate::SedolCodeType, arrow_array::StringArray);
+    typed_array!(crate::BloombergCodeType, arrow_array::StringArray);
+    typed_array!(crate::FIGICodeType, arrow_array::StringArray);
     typed_array!(crate::SideType, arrow_array::StringArray);
     typed_array!(crate::StateType, arrow_array::StringArray);
     typed_array!(crate::TimeInForceType, arrow_array::StringArray);
@@ -1253,9 +1254,10 @@ mod typed {
     typed_array!(crate::StructType, arrow_array::StructArray);
     typed_array!(crate::UnionType, arrow_array::UnionArray);
     typed_array!(crate::MappingType, arrow_array::MapArray);
-    // A variant's storage is the binary of its encoding, and a geospatial
-    // value is its WKB payload, so their physical arrays are fixed.
-    typed_array!(crate::VariantType, arrow_array::BinaryArray);
+    // A variant's storage is the struct of its two binaries, and a
+    // geospatial value is its WKB payload, so their physical arrays are
+    // fixed.
+    typed_array!(crate::VariantType, arrow_array::StructArray);
     typed_array!(crate::GeometryType, arrow_array::BinaryArray);
     typed_array!(crate::GeographyType, arrow_array::BinaryArray);
 
@@ -1899,8 +1901,9 @@ impl ArrayCastPlan {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
-                            "casting {source:?} to variant: a variant column holds the \
-                             variant encoding of each value, which `into_variant_bytes` writes"
+                            "casting {source:?} to variant: a variant column is the \
+                             struct of `metadata` and `value` binaries the variant \
+                             encoding writes, which `Variant::encode` fills"
                         ),
                     });
                 }
@@ -2526,42 +2529,49 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::Mic => ingest_code_array::<MIC_WIDTH>(
+                DataType::MicCode => ingest_code_array::<MIC_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Cfi => ingest_code_array::<CFI_WIDTH>(
+                DataType::CfiCode => ingest_code_array::<CFI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Isin => ingest_code_array::<ISIN_WIDTH>(
+                DataType::IsinCode => ingest_code_array::<ISIN_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Cusip => ingest_code_array::<CUSIP_WIDTH>(
+                DataType::CusipCode => ingest_code_array::<CUSIP_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Sedol => ingest_code_array::<SEDOL_WIDTH>(
+                DataType::SedolCode => ingest_code_array::<SEDOL_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Bloomberg => ingest_code_array::<BLOOMBERG_WIDTH>(
+                DataType::BloombergCode => ingest_code_array::<BLOOMBERG_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::FIGICode => ingest_code_array::<FIGI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
@@ -2880,7 +2890,7 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "variant",
             reason: format!(
                 "casting variant to {}: a variant column holds the variant encoding of \
-                 each value, which `decode_variant_bytes` reads",
+                 each value, which `Variant::scalar` reads",
                 other.name()
             ),
         }),

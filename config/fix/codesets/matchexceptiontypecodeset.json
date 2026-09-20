@@ -1,0 +1,40 @@
+{
+  "name": "matchexceptiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoMatchingConfirmation",
+      "doc": "No matching confirmation"
+    },
+    {
+      "value": "1",
+      "name": "NoMatchingAllocation",
+      "doc": "No matching allocation"
+    },
+    {
+      "value": "2",
+      "name": "AllocationDataElementMissing",
+      "doc": "Allocation data element missing"
+    },
+    {
+      "value": "3",
+      "name": "ConfirmationDataElementMissing",
+      "doc": "Confirmation data element missing"
+    },
+    {
+      "value": "4",
+      "name": "DataDifferenceNotWithinTolerance",
+      "doc": "Data difference not within tolerance"
+    },
+    {
+      "value": "5",
+      "name": "MatchWithinTolerance",
+      "doc": "Match within tolerance"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

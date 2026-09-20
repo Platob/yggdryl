@@ -1,0 +1,15 @@
+{
+  "name": "customerprioritycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoPriority",
+      "doc": "No priority"
+    },
+    {
+      "value": "1",
+      "name": "UnconditionalPriority",
+      "doc": "Unconditional priority"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "paymentstreamtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Periodic",
+      "doc": "Periodic (default)"
+    },
+    {
+      "value": "1",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "2",
+      "name": "Single",
+      "doc": "Single"
+    },
+    {
+      "value": "3",
+      "name": "Dividend",
+      "doc": "Dividend"
+    },
+    {
+      "value": "4",
+      "name": "Interest",
+      "doc": "Interest"
+    },
+    {
+      "value": "5",
+      "name": "DividendReturn",
+      "doc": "Dividend return"
+    },
+    {
+      "value": "6",
+      "name": "PriceReturn",
+      "doc": "Price return"
+    },
+    {
+      "value": "7",
+      "name": "TotalReturn",
+      "doc": "Total return"
+    },
+    {
+      "value": "8",
+      "name": "Variance",
+      "doc": "Variance"
+    },
+    {
+      "value": "9",
+      "name": "Correlation",
+      "doc": "Correlation"
+    }
+  ]
+}

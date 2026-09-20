@@ -174,13 +174,16 @@ const px: string = message.px
 const qty: string = message.qty
 const side: string = message.side
 const currency: string = message.currency
+const figicode: string | null = message.figicode
+const messageCategory: string | null = message.msgcat
 // And the same facts on the event, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creaunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
-const eventExpiry: bigint | null = event.expirunix
+const eventExpiry: bigint | null = event.exprtime
 const eventIsin: string | null = event.isincode
+const eventFigi: string | null = event.figicode
 const eventBidPx: string | null = event.bidpx
 const eventAskCurrency: string | null = event.askcurrency
 const eventIdentifiers: Record<string, string> = event.identifiers
@@ -222,12 +225,14 @@ void px
 void qty
 void side
 void currency
+void figicode
 void eventCurrunix
 void eventCreated
 void eventPrevUnix
 void eventSnap
 void eventExpiry
 void eventIsin
+void eventFigi
 void eventBidPx
 void eventAskCurrency
 void eventIdentifiers
@@ -519,6 +524,7 @@ const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
 const registered: MsgType = loaded.registerMsgtype('BridgeReport', 'bridgereport')
 const wireCode: string = order.asStr()
+const orderCategory: string | null = order.msgcat
 const messageDefinition: Field = order.asField()
 const identifierValues: Array<[Field, Scalar]> = order.identifierValues(fromText)
 for (const [identifierField, identifierValue] of identifierValues) {
@@ -532,6 +538,10 @@ const singletonHash: bigint = order.stableHash()
 const singletonEqual: boolean = order.equals(order.clone())
 const singletonOrder: number = order.compare(order)
 
+const snapshotCodec = new fix.FixCodec(loaded, { snapshotNs: 1_000_000_000n })
+const snapshotNs: bigint | null = snapshotCodec.snapshotNs
+const snapshotsDisabled: FixCodec = new fix.FixCodec(loaded, { snapshotNs: null })
+
 field.fix.counter = 453
 const counterTag: number | null = field.fix.counter
 field.fix.component = 'party'
@@ -542,6 +552,9 @@ const componentRef: string | null = field.fix.component
 const groupRef: string | null = field.fix.group
 const fieldRef: string | null = field.fix.fieldRef
 const messageCode: string | null = field.fix.msgtype
+const fieldCategory: string | null = field.fix.msgcat
+field.fix.msgcat = 'ORDR'
+field.fix.msgcat = null
 
 const decoded: TextLine = handle.readTextLines().next().value
 const records: FixMessages = reader.parseTextLine(decoded)

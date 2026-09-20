@@ -11,11 +11,11 @@ use crate::budget::{
 use crate::string::is_text_storage;
 use crate::{
     BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
+    FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
-use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
+use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -34,8 +34,8 @@ use arrow_array::{
     UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
-    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer,
-    i256 as ArrowI256,
+    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, NullBufferBuilder, OffsetBuffer,
+    ScalarBuffer, i256 as ArrowI256,
 };
 use arrow_schema::DataType as ArrowDataType;
 use half::f16;
@@ -168,12 +168,13 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::String(parameters) => string_array(*parameters, values)?,
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
-        DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
-        DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
-        DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
-        DataType::Cusip => code_array::<CUSIP_WIDTH>(dtype, values)?,
-        DataType::Sedol => code_array::<SEDOL_WIDTH>(dtype, values)?,
-        DataType::Bloomberg => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
+        DataType::MicCode => code_array::<MIC_WIDTH>(dtype, values)?,
+        DataType::CfiCode => code_array::<CFI_WIDTH>(dtype, values)?,
+        DataType::IsinCode => code_array::<ISIN_WIDTH>(dtype, values)?,
+        DataType::CusipCode => code_array::<CUSIP_WIDTH>(dtype, values)?,
+        DataType::SedolCode => code_array::<SEDOL_WIDTH>(dtype, values)?,
+        DataType::BloombergCode => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
+        DataType::FIGICode => code_array::<FIGI_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -288,12 +289,78 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 .map(|value| optional_wkb(value))
                 .collect::<Result<Vec<_>>>()?,
         )),
-        // A variant value crosses this boundary as the variant encoding,
-        // one binary per row; a null value is the encoding's own null, a
-        // value the column holds, and never an absent cell.
-        DataType::Variant => Arc::new(BinaryArray::from_iter_values(
-            values.iter().map(|value| value.into_variant_bytes()),
-        )),
+        // A variant value crosses this boundary as the two binaries the
+        // encoding is, `metadata` and `value`. A bare null is an absent cell;
+        // an encoded variant null remains present.
+        DataType::Variant => {
+            let native_count = values
+                .iter()
+                .filter(|value| !matches!(value, Scalar::Variant(_) | Scalar::Null))
+                .count();
+            let mut native = Vec::with_capacity(native_count);
+            let mut metadata_bytes = 0_usize;
+            let mut value_bytes = 0_usize;
+            for value in values {
+                let variant = match value {
+                    Scalar::Null => continue,
+                    Scalar::Variant(held) => held,
+                    held => {
+                        native.push(crate::Variant::encode(held)?);
+                        native.last().expect("the encoded variant was retained")
+                    }
+                };
+                metadata_bytes = metadata_bytes
+                    .checked_add(variant.metadata().len())
+                    .ok_or_else(|| {
+                        Error::IncompatibleSchema(
+                            "variant metadata payload exceeds this address space".to_owned(),
+                        )
+                    })?;
+                value_bytes = value_bytes
+                    .checked_add(variant.value().len())
+                    .ok_or_else(|| {
+                        Error::IncompatibleSchema(
+                            "variant value payload exceeds this address space".to_owned(),
+                        )
+                    })?;
+            }
+            i32::try_from(metadata_bytes).map_err(|_| {
+                invalid_value("a variant metadata column within int32", metadata_bytes)
+            })?;
+            i32::try_from(value_bytes)
+                .map_err(|_| invalid_value("a variant value column within int32", value_bytes))?;
+
+            let mut metadata = BinaryBuilder::with_capacity(values.len(), metadata_bytes);
+            let mut payloads = BinaryBuilder::with_capacity(values.len(), value_bytes);
+            let mut native = native.iter();
+            let mut validity = NullBufferBuilder::new(values.len());
+            for value in values {
+                if matches!(value, Scalar::Null) {
+                    metadata.append_value([]);
+                    payloads.append_value([]);
+                    validity.append_null();
+                    continue;
+                }
+                validity.append_non_null();
+                // Already encoded values lend their two buffers directly to
+                // Arrow's final builders. A native fallback was encoded once
+                // in the sizing pass and is retained until both copies land.
+                let variant = match value {
+                    Scalar::Variant(held) => held,
+                    _ => native.next().expect("every native value was encoded once"),
+                };
+                metadata.append_value(variant.metadata());
+                payloads.append_value(variant.value());
+            }
+            Arc::new(StructArray::new(
+                crate::variant_fields(),
+                vec![
+                    Arc::new(metadata.finish()) as ArrayRef,
+                    Arc::new(payloads.finish()) as ArrayRef,
+                ],
+                validity.finish(),
+            ))
+        }
     };
     Ok(array)
 }
@@ -475,44 +542,51 @@ pub(crate) fn value_from_array(
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Mic => {
+        DataType::MicCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Mic(crate::Mic::new(code_cell_text(
+            Scalar::MicCode(crate::MicCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Cfi => {
+        DataType::CfiCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cfi(crate::Cfi::new(code_cell_text(
+            Scalar::CfiCode(crate::CfiCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Isin => {
+        DataType::IsinCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Isin(crate::Isin::new(code_cell_text(
+            Scalar::IsinCode(crate::IsinCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Cusip => {
+        DataType::CusipCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cusip(crate::Cusip::new(code_cell_text(
+            Scalar::CusipCode(crate::CusipCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Sedol => {
+        DataType::SedolCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Sedol(crate::Sedol::new(code_cell_text(
+            Scalar::SedolCode(crate::SedolCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Bloomberg => {
+        DataType::BloombergCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Bloomberg(crate::Bloomberg::new(code_cell_text(
+            Scalar::BloombergCode(crate::BloombergCode::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?)
+        }
+        DataType::FIGICode => {
+            let text = downcast::<StringArray>(array)?;
+            Scalar::FIGICode(crate::FIGICode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
@@ -654,7 +728,10 @@ pub(crate) fn value_from_array(
             downcast::<BinaryArray>(array)?.value(index),
         ))?),
         DataType::Variant => {
-            Scalar::decode_variant_bytes(downcast::<BinaryArray>(array)?.value(index))?
+            let stored = downcast::<StructArray>(array)?;
+            let metadata = variant_child(stored, crate::VARIANT_METADATA_FIELD, index)?;
+            let payload = variant_child(stored, crate::VARIANT_VALUE_FIELD, index)?;
+            Scalar::Variant(crate::Variant::new(metadata, payload)?)
         }
     };
     Ok(value)
@@ -1274,6 +1351,36 @@ fn downcast<T: Array + 'static>(array: &dyn Array) -> Result<&T> {
             array.data_type()
         ))
     })
+}
+
+/// One binary cell of a variant column's named child.
+///
+/// The child is found by name, never by position, which is what the
+/// Parquet, Avro and ORC spellings of a variant all state; any of Arrow's
+/// three binary layouts holds it, because a foreign writer chooses its own.
+fn variant_child<'a>(stored: &'a StructArray, name: &str, index: usize) -> Result<&'a [u8]> {
+    let child = stored.column_by_name(name).ok_or_else(|| {
+        Error::IncompatibleSchema(format!(
+            "expected a variant column with a {name:?} child, got {}",
+            stored.data_type()
+        ))
+    })?;
+    if child.is_null(index) {
+        return Ok(&[]);
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<BinaryArray>() {
+        return Ok(binary.value(index));
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<LargeBinaryArray>() {
+        return Ok(binary.value(index));
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<BinaryViewArray>() {
+        return Ok(binary.value(index));
+    }
+    Err(Error::IncompatibleSchema(format!(
+        "expected binary storage for a variant's {name:?} child, got {}",
+        child.data_type()
+    )))
 }
 
 fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Result<Scalar> {

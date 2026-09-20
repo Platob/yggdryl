@@ -1,0 +1,25 @@
+{
+  "name": "tradeallocstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PendingClear",
+      "doc": "Pending clear"
+    },
+    {
+      "value": "1",
+      "name": "Claimed",
+      "doc": "Claimed"
+    },
+    {
+      "value": "2",
+      "name": "Cleared",
+      "doc": "Cleared"
+    },
+    {
+      "value": "3",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

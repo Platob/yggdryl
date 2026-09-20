@@ -1,0 +1,35 @@
+{
+  "name": "posreqresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ValidRequest",
+      "doc": "Valid request"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnsupportedRequest",
+      "doc": "Invalid or unsupported request"
+    },
+    {
+      "value": "2",
+      "name": "NoPositionsFoundThatMatchCriteria",
+      "doc": "No positions found that match criteria"
+    },
+    {
+      "value": "3",
+      "name": "NotAuthorizedToRequestPositions",
+      "doc": "Not authorized to request positions"
+    },
+    {
+      "value": "4",
+      "name": "RequestForPositionNotSupported",
+      "doc": "Request for position not supported"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

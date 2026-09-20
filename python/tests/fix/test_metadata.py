@@ -15,6 +15,7 @@ PROPERTIES = [
     ("field_ref", "PartyID", "partyid"),
     ("group", "Parties", "parties"),
     ("msgtype", "P Report Ack", "P Report Ack"),
+    ("msgcat", "ORDR", "ORDR"),
 ]
 
 
@@ -82,6 +83,15 @@ def test_message_code_refuses_control_text_without_changing_metadata(invalid: st
     before = field.into_json()
     with pytest.raises(ValueError, match="message-code"):
         field.fix.msgtype = invalid
+    assert field.into_json() == before
+
+
+def test_message_category_refuses_invalid_text_without_changing_metadata() -> None:
+    field = Field("probe", "utf8")
+    field.fix.msgcat = "ORDR"
+    before = field.into_json()
+    with pytest.raises(ValueError):
+        field.fix.msgcat = "order"
     assert field.into_json() == before
 
 

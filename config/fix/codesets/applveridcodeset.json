@@ -1,0 +1,60 @@
+{
+  "name": "applveridcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "FIX27",
+      "doc": "FIX27"
+    },
+    {
+      "value": "1",
+      "name": "FIX30",
+      "doc": "FIX30"
+    },
+    {
+      "value": "2",
+      "name": "FIX40",
+      "doc": "FIX40"
+    },
+    {
+      "value": "3",
+      "name": "FIX41",
+      "doc": "FIX41"
+    },
+    {
+      "value": "4",
+      "name": "FIX42",
+      "doc": "FIX42"
+    },
+    {
+      "value": "5",
+      "name": "FIX43",
+      "doc": "FIX43"
+    },
+    {
+      "value": "6",
+      "name": "FIX44",
+      "doc": "FIX44"
+    },
+    {
+      "value": "7",
+      "name": "FIX50",
+      "doc": "FIX50"
+    },
+    {
+      "value": "8",
+      "name": "FIX50SP1",
+      "doc": "FIX50SP1"
+    },
+    {
+      "value": "9",
+      "name": "FIX50SP2",
+      "doc": "FIX50SP2"
+    },
+    {
+      "value": "10",
+      "name": "FIXLatest",
+      "doc": "FIXLatest"
+    }
+  ]
+}

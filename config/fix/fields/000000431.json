@@ -6,28 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "43100",
       "description": "Time unit associated with the floating rate index.",
       "display": "PaymentFloatingRateIndexCurveUnit"
@@ -66,28 +45,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "43103",
       "description": "Time unit associated with the payment frequency.",
       "display": "PaymentFrequencyUnit"
@@ -112,28 +70,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "43105",
       "description": "Time unit associated with the floating rate reset frequency.",
       "display": "PaymentRateResetFrequencyUnit"
@@ -230,28 +167,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "43113",
       "description": "The source of the payment stream's second floating rate index.",
       "display": "PaymentStreamRateIndex2Source"
@@ -276,173 +192,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codeset": "securityidsourcecodeset",
       "FIX:tag": "43115",
       "description": "Source for the second floating rate index identified in PaymentStreamRateIndex2ID(43114).",
       "display": "PaymentStreamRateIndex2IDSource"
@@ -467,28 +217,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "43117",
       "description": "The source of the payment stream's second floating rate index.",
       "display": "LegPaymentStreamRateIndex2Source"
@@ -513,173 +242,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codeset": "securityidsourcecodeset",
       "FIX:tag": "43119",
       "description": "Source for the second floating rate index identified in LegPaymentStreamRateIndex2ID(43118).",
       "display": "LegPaymentStreamRateIndex2IDSource"
@@ -704,28 +267,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "43121",
       "description": "The source of the payment stream's second floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndex2Source"
@@ -750,173 +292,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codeset": "securityidsourcecodeset",
       "FIX:tag": "43123",
       "description": "Source for the second floating rate index identified in UnderlyingPaymentStreamRateIndex2ID(43122).",
       "display": "UnderlyingPaymentStreamRateIndex2IDSource"

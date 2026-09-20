@@ -167,6 +167,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CK",
     "FIX:tag": "120288",
     "description": "MsgType = CK",

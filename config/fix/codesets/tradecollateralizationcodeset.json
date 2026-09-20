@@ -1,0 +1,30 @@
+{
+  "name": "tradecollateralizationcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Uncollateralized",
+      "doc": "Uncollateralized"
+    },
+    {
+      "value": "1",
+      "name": "PartiallyCollateralized",
+      "doc": "Partially collateralized"
+    },
+    {
+      "value": "2",
+      "name": "OneWayCollaterallization",
+      "doc": "One-way collaterallization"
+    },
+    {
+      "value": "3",
+      "name": "FullyCollateralized",
+      "doc": "Fully collateralized"
+    },
+    {
+      "value": "4",
+      "name": "NetExposure",
+      "doc": "Net exposure"
+    }
+  ]
+}

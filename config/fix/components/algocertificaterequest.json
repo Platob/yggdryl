@@ -244,6 +244,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "CERT",
     "FIX:msgtype": "EH",
     "FIX:tag": "130290",
     "description": "MsgType = EH",

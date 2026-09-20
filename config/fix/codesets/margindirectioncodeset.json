@@ -1,0 +1,15 @@
+{
+  "name": "margindirectioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Posted",
+      "doc": "Posted"
+    },
+    {
+      "value": "1",
+      "name": "Received",
+      "doc": "Received"
+    }
+  ]
+}

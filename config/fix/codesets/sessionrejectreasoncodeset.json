@@ -1,0 +1,111 @@
+{
+  "name": "sessionrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "InvalidTagNumber",
+      "doc": "Invalid Tag Number"
+    },
+    {
+      "value": "1",
+      "name": "RequiredTagMissing",
+      "doc": "Required Tag Missing"
+    },
+    {
+      "value": "2",
+      "name": "TagNotDefinedForThisMessageType",
+      "doc": "Tag not defined for this message type"
+    },
+    {
+      "value": "3",
+      "name": "UndefinedTag",
+      "doc": "Undefined tag"
+    },
+    {
+      "value": "4",
+      "name": "TagSpecifiedWithoutAValue",
+      "doc": "Tag specified without a value"
+    },
+    {
+      "value": "5",
+      "name": "ValueIsIncorrect",
+      "doc": "Value is incorrect (out of range) for this tag"
+    },
+    {
+      "value": "6",
+      "name": "IncorrectDataFormatForValue",
+      "doc": "Incorrect data format for value"
+    },
+    {
+      "value": "7",
+      "name": "DecryptionProblem",
+      "doc": "Decryption problem"
+    },
+    {
+      "value": "8",
+      "name": "SignatureProblem",
+      "doc": "Signature problem"
+    },
+    {
+      "value": "9",
+      "name": "CompIDProblem",
+      "doc": "CompID problem"
+    },
+    {
+      "value": "10",
+      "name": "SendingTimeAccuracyProblem",
+      "doc": "SendingTime Accuracy Problem"
+    },
+    {
+      "value": "11",
+      "name": "InvalidMsgType",
+      "doc": "Invalid MsgType"
+    },
+    {
+      "value": "12",
+      "name": "XMLValidationError",
+      "doc": "XML Validation Error"
+    },
+    {
+      "value": "13",
+      "name": "TagAppearsMoreThanOnce",
+      "doc": "Tag appears more than once"
+    },
+    {
+      "value": "14",
+      "name": "TagSpecifiedOutOfRequiredOrder",
+      "doc": "Tag specified out of required order"
+    },
+    {
+      "value": "15",
+      "name": "RepeatingGroupFieldsOutOfOrder",
+      "doc": "Repeating group fields out of order"
+    },
+    {
+      "value": "16",
+      "name": "IncorrectNumInGroupCountForRepeatingGroup",
+      "doc": "Incorrect NumInGroup count for repeating group"
+    },
+    {
+      "value": "17",
+      "name": "NonDataValueIncludesFieldDelimiter",
+      "aliases": [
+        "Non"
+      ],
+      "doc": "Non \"Data\" value includes field delimiter (<SOH> character)"
+    },
+    {
+      "value": "18",
+      "name": "InvalidUnsupportedApplVer",
+      "aliases": [
+        "Invalid"
+      ],
+      "doc": "Invalid/Unsupported Application Version"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

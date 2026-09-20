@@ -1,0 +1,15 @@
+{
+  "name": "testthresholdtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Under",
+      "doc": "Under"
+    },
+    {
+      "value": "1",
+      "name": "Over",
+      "doc": "Over"
+    }
+  ]
+}

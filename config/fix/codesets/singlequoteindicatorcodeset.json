@@ -1,0 +1,21 @@
+{
+  "name": "singlequoteindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "MultipleQuotesAllowed",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Multiple quotes allowed"
+    },
+    {
+      "value": "Y",
+      "name": "OnlyOneQuoteAllowed",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Only one quote allowed"
+    }
+  ]
+}

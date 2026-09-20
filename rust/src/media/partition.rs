@@ -182,7 +182,7 @@ pub fn with_partitions(
         if batch.schema().index_of(column).is_ok() {
             continue;
         }
-        let child = field.and_then(|field| field.get_field_by_path(column));
+        let child = field.and_then(|field| field.dtype().get_field_by_name(column));
         let array = constant_column(value, rows, child)?;
         // The restored column keeps its declaration - nullability and any
         // extension identity - and says it came from the path. That is the one

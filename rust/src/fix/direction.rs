@@ -13,13 +13,13 @@
 //! once when it takes its registry, so no row builds a regex and no row asks
 //! the dictionary a question the row before it asked.
 
-use regex::bytes::Regex;
+use regex::bytes::RegexSet;
 use smol_str::SmolStr;
 
 use super::FixRegistry;
 use super::MSGDIRECTION_TAG_NAME;
 use super::directions::{FixDirection, compile, outside_set, repeated};
-use crate::{DataType, Field, FixField};
+use crate::{DataType, Field};
 
 /// The name tag 385's set gives the code a sent message carries.
 const SEND_NAME: &str = "Send";
@@ -83,6 +83,11 @@ pub struct MsgDirection {
     /// Tag 385 as a built message carries it: the dictionary's field, non-null,
     /// or a text field carrying the tag where the dictionary has none.
     field: Field,
+    /// The document of the set tag 385 reads by, as the dictionary held it
+    /// when the reading was taken: the field names its set and the registry
+    /// owns it, so a reading that outlives the borrow carries the text it
+    /// resolved every spelling against.
+    document: Option<Box<str>>,
     /// Every code of the set, in the set's order, and the name each carries.
     codes: Vec<(SmolStr, SmolStr)>,
     sent: SmolStr,
@@ -90,11 +95,11 @@ pub struct MsgDirection {
     /// The rules in force, each code resolved to the set's value and every
     /// pattern one the regex crate compiled.
     directions: Vec<FixDirection>,
-    /// Every pattern of every rule, compiled once; applying one to a prefix
-    /// allocates nothing, which is what a per-row reading has to cost.
-    rules: Vec<Regex>,
-    /// Which rule the pattern at each index of `rules` belongs to.
-    owners: Vec<usize>,
+    /// Each rule's patterns, compiled once into one set per rule, in the
+    /// order of `directions`: a prefix is walked once per rule for all of
+    /// its patterns, and the walk allocates nothing, which is what a
+    /// per-row reading has to cost.
+    rules: Vec<RegexSet>,
 }
 
 impl MsgDirection {
@@ -124,28 +129,29 @@ impl MsgDirection {
             },
             super::build::stated,
         );
-        let codes: Vec<(SmolStr, SmolStr)> = field
-            .as_fix()
-            .codes()
+        let document: Option<Box<str>> = registry
+            .codeset_of(&field)
+            .map(|set| Box::from(set.document()));
+        let codes: Vec<(SmolStr, SmolStr)> = super::codes::FixCodes::over(document.as_deref())
             .filter_map(Result::ok)
             .map(|code| (SmolStr::new(code.value()), SmolStr::new(code.name())))
             .collect();
         let named = |name: &str, default: &str| {
-            field
-                .as_fix()
-                .code_value(name)
+            document
+                .as_deref()
+                .and_then(|codes| super::codes::translate(codes, name))
                 .map_or_else(|| SmolStr::new(default), SmolStr::new)
         };
         let sent = named(SEND_NAME, SEND_CODE);
         let recv = named(RECEIVE_NAME, RECEIVE_CODE);
         let mut reading = Self {
             field,
+            document,
             codes,
             sent,
             recv,
             directions: Vec::new(),
             rules: Vec::new(),
-            owners: Vec::new(),
         };
         let stated: Vec<FixDirection> = {
             let walk = reading.field.as_fix().directions();
@@ -181,8 +187,7 @@ impl MsgDirection {
     /// one thing.
     fn compile(&mut self, rules: Vec<FixDirection>) {
         let mut directions: Vec<FixDirection> = Vec::with_capacity(rules.len());
-        let mut compiled = Vec::new();
-        let mut owners = Vec::new();
+        let mut compiled: Vec<RegexSet> = Vec::with_capacity(rules.len());
         for rule in rules {
             let Some(code) = self.code(rule.code()).map(SmolStr::new) else {
                 warned(&outside_set(rule.code(), self.codes()));
@@ -194,22 +199,27 @@ impl MsgDirection {
             }
             let mut kept: Vec<&str> = Vec::with_capacity(rule.patterns().len());
             for pattern in rule.patterns() {
+                // Each pattern is proven on its own, so the one the crate
+                // refuses is the one warned about; the rule's set is then
+                // built over the accepted ones.
                 match compile(pattern) {
-                    Ok(regex) => {
-                        kept.push(pattern);
-                        compiled.push(regex);
-                        owners.push(directions.len());
-                    }
+                    Ok(_) => kept.push(pattern),
                     Err(error) => warned(&error),
                 }
             }
             if kept.is_empty() {
                 continue;
             }
+            // Every pattern compiled alone, so the set compiles too; a set
+            // the crate's size limit refuses reads nothing, and says so once.
+            let set = RegexSet::new(&kept).unwrap_or_else(|error| {
+                log::warn!("compiling the FIX direction patterns of {code} as one set: {error}");
+                RegexSet::empty()
+            });
+            compiled.push(set);
             directions.push(FixDirection::new(code, kept));
         }
         self.rules = compiled;
-        self.owners = owners;
         self.directions = directions;
     }
 
@@ -259,7 +269,7 @@ impl MsgDirection {
     /// setter that admits one resolve exactly alike.
     #[must_use]
     pub fn code(&self, spelling: &str) -> Option<&str> {
-        resolve(&self.field.as_fix(), spelling)
+        resolve(self.document.as_deref(), spelling)
     }
 
     /// Reads which way one captured byte line moved.
@@ -289,45 +299,45 @@ impl MsgDirection {
     /// The reading, over a prefix the caller has already bounded.
     ///
     /// A reader that located the frame to parse it hands the prose in front
-    /// of it here, so the frame is located once. Every compiled pattern is
-    /// applied to it, allocating nothing, and the rules the matches belong
-    /// to decide: one names its code, two stop the reading.
+    /// of it here, so the frame is located once. The prefix is walked once
+    /// per rule for all of the rule's patterns, allocating nothing, and the
+    /// rules that match decide: one names its code, two stop the reading.
     #[must_use]
     pub(super) fn read_prefix(&self, prefix: &[u8]) -> Option<&str> {
         let mut named: Option<usize> = None;
-        for (index, rule) in self.rules.iter().enumerate() {
+        for (owner, rule) in self.rules.iter().enumerate() {
             if !rule.is_match(prefix) {
                 continue;
             }
-            let owner = self.owners[index];
-            match named {
-                Some(held) if held != owner => return None,
-                _ => named = Some(owner),
+            if named.is_some() {
+                return None;
             }
+            named = Some(owner);
         }
         named.map(|owner| self.directions[owner].code())
     }
 }
 
-/// The code one spelling names in one field's set: its value, or the name
-/// the set gives it, ASCII case folded; else the specification's two halves
+/// The code one spelling names in tag 385's set: its value, or the name the
+/// set gives it, ASCII case folded; else the specification's two halves
 /// under the codes the set gives them, `S` and `R` where it names neither.
 ///
 /// The one place a spelling from outside becomes a code of the set: the
-/// reading resolves a pin, a stated column and a rule's code through it,
-/// and [`set_directions`](crate::FixFieldMut::set_directions) admits a
-/// rule's code through it, so what the door lets in is what the reading
-/// answers.
-pub(super) fn resolve<'field>(field: &FixField<'field>, spelling: &str) -> Option<&'field str> {
+/// reading resolves a pin, a stated column and a rule's code through it, so
+/// what a rule states and what the reading answers are one resolution. A
+/// dictionary holding no such set resolves the two halves alone, which is
+/// what an absent field reads by.
+pub(super) fn resolve<'codes>(codes: Option<&'codes str>, spelling: &str) -> Option<&'codes str> {
     let spelling = spelling.trim();
     if spelling.is_empty() {
         return None;
     }
-    if let Some(value) = field.code_value(spelling) {
+    let translate = |text: &str| codes.and_then(|codes| super::codes::translate(codes, text));
+    if let Some(value) = translate(spelling) {
         return Some(value);
     }
-    let sent = field.code_value(SEND_NAME).unwrap_or(SEND_CODE);
-    let recv = field.code_value(RECEIVE_NAME).unwrap_or(RECEIVE_CODE);
+    let sent = translate(SEND_NAME).unwrap_or(SEND_CODE);
+    let recv = translate(RECEIVE_NAME).unwrap_or(RECEIVE_CODE);
     [(sent, SEND_NAME), (recv, RECEIVE_NAME)]
         .into_iter()
         .find(|(value, name)| {

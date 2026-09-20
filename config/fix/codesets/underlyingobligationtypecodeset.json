@@ -1,0 +1,25 @@
+{
+  "name": "underlyingobligationtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Bond",
+      "doc": "Bond"
+    },
+    {
+      "value": "1",
+      "name": "ConvertibleBond",
+      "doc": "Convertible bond"
+    },
+    {
+      "value": "2",
+      "name": "Mortgage",
+      "doc": "Mortgage"
+    },
+    {
+      "value": "3",
+      "name": "Loan",
+      "doc": "Loan"
+    }
+  ]
+}

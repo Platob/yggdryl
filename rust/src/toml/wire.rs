@@ -1,5 +1,6 @@
 //! Natural TOML projection for structured values.
 
+use std::borrow::Cow;
 use std::io::Write;
 
 use base64::Engine as _;
@@ -121,14 +122,19 @@ const fn offset_seconds(offset: toml::value::Offset) -> i32 {
 }
 
 /// Preflight the natural TOML document.
-pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
+pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<Cow<'_, Scalar>> {
+    // A variant at the document boundary is the table its bytes hold. Keep
+    // that one decode for emission too; ordinary values stay borrowed.
+    let value = match value {
+        Scalar::Variant(held) => Cow::Owned(held.scalar()?),
+        value => Cow::Borrowed(value),
+    };
     observe_depth(1, maximum)?;
-    match value {
+    match value.as_ref() {
         Scalar::Struct(entries) => {
             for value in entries.as_map().values() {
                 check_value(value, 1, maximum)?;
             }
-            Ok(())
         }
         Scalar::Mapping(entries)
             if entries
@@ -139,15 +145,18 @@ pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
             for (_, value) in entries.as_slice() {
                 check_value(value, 1, maximum)?;
             }
-            Ok(())
         }
-        _ => Err(codec_error("TOML document root must be a record")),
+        _ => return Err(codec_error("TOML document root must be a record")),
     }
+    Ok(value)
 }
 
 fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
     match value {
         Scalar::Null => Err(codec_error("TOML cannot represent null")),
+        // A nested variant is transparent to the TOML shape and depth: its
+        // encoded value is checked at the same position the variant occupies.
+        Scalar::Variant(held) => check_value(&held.scalar()?, parent, maximum),
         _ if value.is_integer() && value.as_i64().is_none() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
@@ -255,6 +264,11 @@ fn write_scalar<W: Write>(
                 reason: error.to_string().into(),
             })?;
             return write_scalar(writer, &native, layout, depth);
+        }
+        // A variant is the value its bytes hold, written as that value.
+        Scalar::Variant(held) => {
+            let held = held.scalar()?;
+            return write_scalar(writer, &held, layout, depth);
         }
         Scalar::Null => return Err(codec_error("TOML cannot represent null")),
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,

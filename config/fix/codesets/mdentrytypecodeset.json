@@ -1,0 +1,233 @@
+{
+  "name": "mdentrytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Bid",
+      "doc": "Bid"
+    },
+    {
+      "value": "1",
+      "name": "Offer",
+      "doc": "Offer"
+    },
+    {
+      "value": "2",
+      "name": "Trade",
+      "doc": "Trade"
+    },
+    {
+      "value": "3",
+      "name": "IndexValue",
+      "doc": "Index value"
+    },
+    {
+      "value": "4",
+      "name": "OpeningPrice",
+      "doc": "Opening price"
+    },
+    {
+      "value": "5",
+      "name": "ClosingPrice",
+      "doc": "Closing price"
+    },
+    {
+      "value": "6",
+      "name": "SettlementPrice",
+      "doc": "Settlement price"
+    },
+    {
+      "value": "7",
+      "name": "TradingSessionHighPrice",
+      "doc": "Trading session high price"
+    },
+    {
+      "value": "8",
+      "name": "TradingSessionLowPrice",
+      "doc": "Trading session low price"
+    },
+    {
+      "value": "9",
+      "name": "VWAP",
+      "aliases": [
+        "TradingSessionVwapPrice"
+      ],
+      "doc": "Volume Weighted Average Price"
+    },
+    {
+      "value": "A",
+      "name": "Imbalance",
+      "doc": "Imbalance"
+    },
+    {
+      "value": "B",
+      "name": "TradeVolume",
+      "doc": "Trade volume"
+    },
+    {
+      "value": "C",
+      "name": "OpenInterest",
+      "doc": "Open interest"
+    },
+    {
+      "value": "D",
+      "name": "CompositeUnderlyingPrice",
+      "doc": "Composite underlying price"
+    },
+    {
+      "value": "E",
+      "name": "SimulatedSellPrice",
+      "doc": "Simulated sell price"
+    },
+    {
+      "value": "F",
+      "name": "SimulatedBuyPrice",
+      "doc": "Simulated buy price"
+    },
+    {
+      "value": "G",
+      "name": "MarginRate",
+      "doc": "Margin rate"
+    },
+    {
+      "value": "H",
+      "name": "MidPrice",
+      "doc": "Mid-price"
+    },
+    {
+      "value": "J",
+      "name": "EmptyBook",
+      "doc": "Empty book"
+    },
+    {
+      "value": "K",
+      "name": "SettleHighPrice",
+      "doc": "Settle high price"
+    },
+    {
+      "value": "L",
+      "name": "SettleLowPrice",
+      "doc": "Settle low price"
+    },
+    {
+      "value": "M",
+      "name": "PriorSettlePrice",
+      "doc": "Prior settle price"
+    },
+    {
+      "value": "N",
+      "name": "SessionHighBid",
+      "doc": "Session high bid"
+    },
+    {
+      "value": "O",
+      "name": "SessionLowOffer",
+      "doc": "Session low offer"
+    },
+    {
+      "value": "P",
+      "name": "EarlyPrices",
+      "doc": "Early prices"
+    },
+    {
+      "value": "Q",
+      "name": "AuctionClearingPrice",
+      "doc": "Auction clearing price"
+    },
+    {
+      "value": "S",
+      "name": "SwapValueFactor",
+      "doc": "Swap Value Factor (SVF) for swaps cleared through a central counterparty (CCP)"
+    },
+    {
+      "value": "R",
+      "name": "DailyValueAdjustmentForLongPositions",
+      "doc": "Daily value adjustment for long positions"
+    },
+    {
+      "value": "T",
+      "name": "CumulativeValueAdjustmentForLongPositions",
+      "doc": "Cumulative value adjustment for long positions"
+    },
+    {
+      "value": "U",
+      "name": "DailyValueAdjustmentForShortPositions",
+      "doc": "Daily value adjustment for short positions"
+    },
+    {
+      "value": "V",
+      "name": "CumulativeValueAdjustmentForShortPositions",
+      "doc": "Cumulative value adjustment for short positions"
+    },
+    {
+      "value": "W",
+      "name": "FixingPrice",
+      "doc": "Fixing price"
+    },
+    {
+      "value": "X",
+      "name": "CashRate",
+      "doc": "Cash rate"
+    },
+    {
+      "value": "Y",
+      "name": "RecoveryRate",
+      "doc": "Recovery rate"
+    },
+    {
+      "value": "Z",
+      "name": "RecoveryRateForLong",
+      "doc": "Recovery rate for long positions"
+    },
+    {
+      "value": "a",
+      "name": "RecoveryRateForShort",
+      "doc": "Recovery rate for short positions"
+    },
+    {
+      "value": "b",
+      "name": "MarketBid",
+      "doc": "Market bid"
+    },
+    {
+      "value": "c",
+      "name": "MarketOffer",
+      "doc": "Market offer"
+    },
+    {
+      "value": "d",
+      "name": "ShortSaleMinPrice",
+      "doc": "Short sale minimum price"
+    },
+    {
+      "value": "e",
+      "name": "PreviousClosingPrice",
+      "doc": "Previous closing price"
+    },
+    {
+      "value": "f",
+      "name": "CorporateActionReferencePrice",
+      "doc": "Corporate action reference price"
+    },
+    {
+      "value": "g",
+      "name": "ThresholdLimitPriceBanding",
+      "doc": "Threshold limits and price banding"
+    },
+    {
+      "value": "h",
+      "name": "DailyFinancingValue",
+      "doc": "Daily financing value"
+    },
+    {
+      "value": "i",
+      "name": "AccruedFinancingValue",
+      "doc": "Accrued financing value"
+    },
+    {
+      "value": "t",
+      "name": "TWAP",
+      "doc": "Time Weighted Average Price"
+    }
+  ]
+}

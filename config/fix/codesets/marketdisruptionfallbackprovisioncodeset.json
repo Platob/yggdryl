@@ -1,0 +1,15 @@
+{
+  "name": "marketdisruptionfallbackprovisioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MasterAgreement",
+      "doc": "As specified in master agreement"
+    },
+    {
+      "value": "1",
+      "name": "Confirmation",
+      "doc": "As specified in confirmation"
+    }
+  ]
+}

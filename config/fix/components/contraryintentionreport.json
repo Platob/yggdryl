@@ -198,6 +198,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "EXEC",
     "FIX:msgtype": "BO",
     "FIX:tag": "968560",
     "description": "MsgType = BO",

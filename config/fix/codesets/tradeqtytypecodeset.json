@@ -1,0 +1,50 @@
+{
+  "name": "tradeqtytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ClearedQuantity",
+      "doc": "Cleared quantity"
+    },
+    {
+      "value": "1",
+      "name": "LongSideClaimedQuantity",
+      "doc": "Long side claimed quantity"
+    },
+    {
+      "value": "2",
+      "name": "ShortSideClaimedQuantity",
+      "doc": "Short side claimed quantity"
+    },
+    {
+      "value": "3",
+      "name": "LongSideRejectedQuantity",
+      "doc": "Long side rejected quantity"
+    },
+    {
+      "value": "4",
+      "name": "ShortSideRejectedQuantity",
+      "doc": "Short side rejected quantity"
+    },
+    {
+      "value": "5",
+      "name": "PendingQuantity",
+      "doc": "Pending quantity"
+    },
+    {
+      "value": "6",
+      "name": "TransactionQuantity",
+      "doc": "Transaction quantity"
+    },
+    {
+      "value": "7",
+      "name": "RemainingQuantity",
+      "doc": "Remaining trade quantity"
+    },
+    {
+      "value": "8",
+      "name": "PreviousRemainingQuantity",
+      "doc": "Previous remaining trade quantity"
+    }
+  ]
+}

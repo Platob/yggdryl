@@ -1,0 +1,25 @@
+{
+  "name": "execmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unspecified",
+      "doc": "Undefined/unspecified - (default when not specified)"
+    },
+    {
+      "value": "1",
+      "name": "Manual",
+      "doc": "Manual"
+    },
+    {
+      "value": "2",
+      "name": "Automated",
+      "doc": "Automated"
+    },
+    {
+      "value": "3",
+      "name": "VoiceBrokered",
+      "doc": "Voice brokered"
+    }
+  ]
+}

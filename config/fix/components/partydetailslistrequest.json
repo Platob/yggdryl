@@ -166,6 +166,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CF",
     "FIX:tag": "270673",
     "description": "MsgType = CF",

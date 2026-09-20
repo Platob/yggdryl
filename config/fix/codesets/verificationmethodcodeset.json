@@ -1,0 +1,15 @@
+{
+  "name": "verificationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NonElectronic",
+      "doc": "Non-electronic"
+    },
+    {
+      "value": "1",
+      "name": "Electronic",
+      "doc": "Electronic"
+    }
+  ]
+}

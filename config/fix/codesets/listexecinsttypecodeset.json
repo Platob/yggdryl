@@ -1,0 +1,30 @@
+{
+  "name": "listexecinsttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Immediate",
+      "doc": "Immediate"
+    },
+    {
+      "value": "2",
+      "name": "WaitForInstruction",
+      "doc": "Wait for Execut Instruction (i.e. a List Execut message or phone call before proceeding with execution of the list)"
+    },
+    {
+      "value": "3",
+      "name": "SellDriven",
+      "doc": "Exchange/switch CIV order - Sell driven"
+    },
+    {
+      "value": "4",
+      "name": "BuyDrivenCashTopUp",
+      "doc": "Exchange/switch CIV order - Buy driven, cash top-up (i.e. additional cash will be provided to fulfill the order)"
+    },
+    {
+      "value": "5",
+      "name": "BuyDrivenCashWithdraw",
+      "doc": "Exchange/switch CIV order - Buy driven, cash withdraw (i.e. additional cash will not be provided to fulfill the order)"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "openclosesettlflagcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DailyOpen",
+      "doc": "Daily Open / Close / Settlement entry"
+    },
+    {
+      "value": "1",
+      "name": "SessionOpen",
+      "doc": "Session Open / Close / Settlement entry"
+    },
+    {
+      "value": "2",
+      "name": "DeliverySettlementEntry",
+      "doc": "Delivery Settlement entry"
+    },
+    {
+      "value": "3",
+      "name": "ExpectedEntry",
+      "doc": "Expected entry"
+    },
+    {
+      "value": "4",
+      "name": "EntryFromPreviousBusinessDay",
+      "doc": "Entry from previous business day"
+    },
+    {
+      "value": "5",
+      "name": "TheoreticalPriceValue",
+      "doc": "Theoretical Price value"
+    }
+  ]
+}

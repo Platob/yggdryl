@@ -1,0 +1,55 @@
+{
+  "name": "marginreqmtinqresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnknownInstrument",
+      "doc": "Invalid or unknown instrument"
+    },
+    {
+      "value": "2",
+      "name": "InvalidOrUnknownMarginClass",
+      "doc": "Invalid or unknown margin class"
+    },
+    {
+      "value": "3",
+      "name": "InvalidParties",
+      "doc": "Invalid Parties"
+    },
+    {
+      "value": "4",
+      "name": "InvalidTransportTypeReq",
+      "doc": "Invalid Transport Type requested"
+    },
+    {
+      "value": "5",
+      "name": "InvalidDestinationReq",
+      "doc": "Invalid Destination requested"
+    },
+    {
+      "value": "6",
+      "name": "NoMarginReqFound",
+      "doc": "No margin requirement found"
+    },
+    {
+      "value": "7",
+      "name": "MarginReqInquiryQualifierNotSupported",
+      "doc": "Margin requirement inquiry qualifier not supported"
+    },
+    {
+      "value": "8",
+      "name": "UnauthorizedForMarginReqInquiry",
+      "doc": "Unauthorized for margin requirement inquiry"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other (further information in Text (58) field)"
+    }
+  ]
+}

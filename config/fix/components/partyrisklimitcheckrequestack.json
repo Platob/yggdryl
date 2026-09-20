@@ -396,6 +396,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "reforderid",
+    "FIX:msgcat": "RISK",
     "FIX:msgtype": "DG",
     "FIX:tag": "424918",
     "description": "MsgType = DG",

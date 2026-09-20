@@ -104,6 +104,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SESS",
     "FIX:msgtype": "EO",
     "FIX:tag": "569008",
     "description": "MsgType = EO",

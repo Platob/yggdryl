@@ -308,6 +308,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,secondaryorderid,clordid,execid",
+    "FIX:msgcat": "EXEC",
     "FIX:msgtype": "BN",
     "FIX:tag": "380966",
     "description": "MsgType = BN",

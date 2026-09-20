@@ -148,6 +148,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid",
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "T",
     "FIX:tag": "936330",
     "description": "MsgType = T",

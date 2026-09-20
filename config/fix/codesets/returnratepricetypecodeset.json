@@ -1,0 +1,15 @@
+{
+  "name": "returnratepricetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AbsoluteTerms",
+      "doc": "Absolute terms"
+    },
+    {
+      "value": "1",
+      "name": "PercentageOfNotional",
+      "doc": "Percentage of notional"
+    }
+  ]
+}

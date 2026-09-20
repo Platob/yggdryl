@@ -1,0 +1,40 @@
+{
+  "name": "outagereasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "1",
+      "name": "PowerOutage",
+      "doc": "Power outage"
+    },
+    {
+      "value": "2",
+      "name": "HardwareError",
+      "doc": "Hardware error"
+    },
+    {
+      "value": "3",
+      "name": "SoftwareError",
+      "doc": "Software error"
+    },
+    {
+      "value": "4",
+      "name": "NetworkError",
+      "doc": "Network error"
+    },
+    {
+      "value": "5",
+      "name": "ThirdPartyIssue",
+      "doc": "Third-Party issue"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -240,19 +240,19 @@ impl TextEntries {
         read_entries_at(body, 1)
     }
 
-    /// [`from_bytes_direct`](Self::from_bytes_direct), beside where the frame
-    /// the scan located opens in `body` - `None` where it located none.
+    /// [`from_bytes_direct`](Self::from_bytes_direct), beside what the scan
+    /// located: where the frame opens in `body`, and whether the line named
+    /// a separator for it.
     ///
-    /// One scan for both, because the reader that bounds a message to its
-    /// frame asks both of the same bytes, and locating the frame is a walk
-    /// over every pair a line holds in front of it.
-    /// `preserve` selects a scanner-owned original span where a protocol's
-    /// value must retain transport-like trailing bytes; public readers keep
-    /// the trimmed view.
-    pub(crate) fn from_bytes_direct_located(body: &TextBytes) -> (Option<Self>, Option<usize>) {
+    /// One scan for all of it, because the reader that bounds a message to
+    /// its frame asks every one of them of the same bytes, and locating the
+    /// frame is a walk over every pair a line holds in front of it.
+    pub(crate) fn from_bytes_direct_located(
+        body: &TextBytes,
+    ) -> (Option<Self>, crate::mime_type::line::Located) {
         let bytes = body.as_bytes();
-        let (frame_at, spans) = crate::mime_type::line::located_entry_spans(bytes);
-        (collect_entries(body, spans, 1), frame_at)
+        let (located, spans) = crate::mime_type::line::located_entry_spans(bytes);
+        (collect_entries(body, spans, 1), located)
     }
 
     /// Borrow the entries in the order the line declared them.

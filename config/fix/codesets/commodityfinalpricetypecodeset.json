@@ -1,0 +1,40 @@
+{
+  "name": "commodityfinalpricetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ArgusMcCloskey",
+      "doc": "Argus McCloskey"
+    },
+    {
+      "value": "1",
+      "name": "Baltic",
+      "doc": "Baltic"
+    },
+    {
+      "value": "2",
+      "name": "Exchange",
+      "doc": "Exchange"
+    },
+    {
+      "value": "3",
+      "name": "GlobalCoal",
+      "doc": "Global Coal"
+    },
+    {
+      "value": "4",
+      "name": "IHSMcCloskey",
+      "doc": "IHS McCloskey"
+    },
+    {
+      "value": "5",
+      "name": "Platts",
+      "doc": "Platts"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

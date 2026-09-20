@@ -1,0 +1,35 @@
+{
+  "name": "deliveryschedulesettlflowtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AllTimes",
+      "doc": "All times"
+    },
+    {
+      "value": "1",
+      "name": "OnPeak",
+      "doc": "On peak"
+    },
+    {
+      "value": "2",
+      "name": "OffPeak",
+      "doc": "Off peak"
+    },
+    {
+      "value": "3",
+      "name": "Base",
+      "doc": "Base"
+    },
+    {
+      "value": "4",
+      "name": "BlockHours",
+      "doc": "Block hours"
+    },
+    {
+      "value": "5",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

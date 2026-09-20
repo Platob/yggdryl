@@ -1,0 +1,13 @@
+{
+  "name": "customerorfirmcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Customer"
+    },
+    {
+      "value": "1",
+      "name": "Firm"
+    }
+  ]
+}

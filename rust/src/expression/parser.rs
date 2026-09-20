@@ -230,7 +230,9 @@ const SYMBOLS: [&str; 23] = [
 
 fn tokenize(input: &str) -> Result<Vec<Spanned>> {
     let bytes = input.as_bytes();
-    let mut tokens = Vec::new();
+    // A token is a few characters of the grammar, so this holds the run
+    // without growing.
+    let mut tokens = Vec::with_capacity(input.len() / 4 + 8);
     let mut cursor = 0_usize;
     while cursor < bytes.len() {
         let byte = bytes[cursor];
@@ -306,6 +308,12 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
     Ok(tokens)
 }
 
+/// `text` with its ASCII letters lowered, inline for the words the grammar
+/// spells.
+fn folded(text: &str) -> SmolStr {
+    text.chars().map(|held| held.to_ascii_lowercase()).collect()
+}
+
 /// Read a delimited run, treating a doubled delimiter as one literal character.
 ///
 /// The doubling rule is the SQL one and it is the only escape: a backslash in
@@ -313,8 +321,21 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
 /// need it to be.
 fn read_delimited(input: &str, start: usize, delimiter: char) -> Result<(SmolStr, usize)> {
     let width = delimiter.len_utf8();
+    let opened = start + width;
+    // A run doubling no delimiter inside it - nearly every literal - is
+    // read off the input in one piece; one that does is walked below.
+    let Some(at) = input[opened..].find(delimiter) else {
+        return Err(parse_error(
+            start,
+            format_smolstr!("expected a closing {delimiter:?}"),
+        ));
+    };
+    let close = opened + at;
+    if !input[close + width..].starts_with(delimiter) {
+        return Ok((SmolStr::new(&input[opened..close]), close + width));
+    }
     let mut text = String::new();
-    let mut cursor = start + width;
+    let mut cursor = opened;
     loop {
         let Some(character) = input[cursor..].chars().next() else {
             return Err(parse_error(
@@ -373,7 +394,7 @@ fn read_number(input: &str, start: usize) -> Result<(SmolStr, usize)> {
 /// Return whether a word opens a plan section, so it cannot be a location.
 fn is_section_word(word: &str) -> bool {
     matches!(
-        word.to_ascii_lowercase().as_str(),
+        folded(word).as_str(),
         "select"
             | "from"
             | "where"
@@ -1360,7 +1381,9 @@ impl<'input> Parser<'input> {
                 format_smolstr!("expected a value or a name, got {}", self.describe()),
             ));
         };
-        let lowered = word.to_ascii_lowercase();
+        // Folded into an inline string: a word of the grammar is short, and
+        // the fold allocates nothing for it.
+        let lowered = folded(&word);
         match lowered.as_str() {
             "null" => {
                 self.cursor += 1;
@@ -1785,7 +1808,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
 
 /// Read a float, accepting the three names the finite grammar cannot spell.
 fn float_from_text(text: &str) -> Option<f64> {
-    match text.to_ascii_lowercase().as_str() {
+    match folded(text).as_str() {
         "nan" => Some(f64::NAN),
         "inf" | "+inf" | "infinity" => Some(f64::INFINITY),
         "-inf" | "-infinity" => Some(f64::NEG_INFINITY),

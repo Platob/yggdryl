@@ -1,0 +1,15 @@
+{
+  "name": "minqtymethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Once",
+      "doc": "Once (applies only to first execution)"
+    },
+    {
+      "value": "2",
+      "name": "Multiple",
+      "doc": "Multiple (applies to every execution)"
+    }
+  ]
+}

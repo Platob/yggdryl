@@ -1,0 +1,35 @@
+{
+  "name": "collasgnresptypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Received",
+      "doc": "Received"
+    },
+    {
+      "value": "1",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "2",
+      "name": "Declined",
+      "doc": "Declined"
+    },
+    {
+      "value": "3",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "4",
+      "name": "TransactionPending",
+      "doc": "Transaction pending"
+    },
+    {
+      "value": "5",
+      "name": "TransactionCompletedWithWarning",
+      "doc": "Transaction completed with warning - see Text(58) for further information."
+    }
+  ]
+}

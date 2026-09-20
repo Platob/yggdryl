@@ -1,0 +1,40 @@
+{
+  "name": "allocaccounttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CarriedCustomerSide",
+      "doc": "Account is carried pn customer side of books"
+    },
+    {
+      "value": "2",
+      "name": "CarriedNonCustomerSide",
+      "doc": "Account is carried on non-customer side of books"
+    },
+    {
+      "value": "3",
+      "name": "HouseTrader",
+      "doc": "House trader"
+    },
+    {
+      "value": "4",
+      "name": "FloorTrader",
+      "doc": "Floor trader"
+    },
+    {
+      "value": "6",
+      "name": "CarriedNonCustomerSideCrossMargined",
+      "doc": "Account is carried on non-customer side of books and is cross margined"
+    },
+    {
+      "value": "7",
+      "name": "HouseTraderCrossMargined",
+      "doc": "Account is house trader and is cross margined"
+    },
+    {
+      "value": "8",
+      "name": "JointBackOfficeAccount",
+      "doc": "Joint back office account (JBO)"
+    }
+  ]
+}

@@ -470,6 +470,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,secondaryclordid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "BZ",
     "FIX:tag": "182726",
     "description": "MsgType = BZ",

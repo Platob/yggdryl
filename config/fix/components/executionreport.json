@@ -3364,6 +3364,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,secondaryorderid,secondaryclordid,secondaryexecid,clordid,origclordid,quoterespid,listid,execid,execrefid,allocid,reforderid,refclordid",
+    "FIX:msgcat": "EXEC",
     "FIX:msgtype": "8",
     "FIX:tag": "684272",
     "description": "MsgType = 8",

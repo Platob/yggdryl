@@ -59,8 +59,8 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 
 use crate::parser;
@@ -586,10 +586,11 @@ pub(crate) mod casts {
         // answers, so the check digit and the case are settled here rather
         // than on every read of the cell.
         let canonical = match field.dtype() {
-            DataType::Isin => crate::Isin::is_canonical(text),
-            DataType::Cusip => crate::Cusip::is_canonical(text),
-            DataType::Sedol => crate::Sedol::is_canonical(text),
-            DataType::Bloomberg => crate::Bloomberg::is_canonical(text),
+            DataType::IsinCode => crate::IsinCode::is_canonical(text),
+            DataType::CusipCode => crate::CusipCode::is_canonical(text),
+            DataType::SedolCode => crate::SedolCode::is_canonical(text),
+            DataType::BloombergCode => crate::BloombergCode::is_canonical(text),
+            DataType::FIGICode => crate::FIGICode::is_canonical(text),
             _ => true,
         };
         if !canonical {
@@ -601,9 +602,9 @@ pub(crate) mod casts {
     }
 }
 
-// The ten registered codes' values.
+// The twelve registered codes' values.
 // ------------------------------------------------------------------------
-// What a [`Cfi`] code means: ISO 10962, six characters.
+// What a [`CfiCode`] code means: ISO 10962, six characters.
 //
 // The [code registry](crate::codes) already owns a CFI's width and its
 // ASCII validity, which is all a *storage* layer needs. This is the rest of
@@ -621,19 +622,19 @@ pub(crate) mod casts {
 // "income" for `EP`, "assets" for `CI` and not applicable at all for `SE` -
 // so nothing here reads an attribute by position alone.
 //
-// [`Cfi::UNKNOWN`] means "not applicable or unknown" and is valid **only in
+// [`CfiCode::UNKNOWN`] means "not applicable or unknown" and is valid **only in
 // positions 3 to 6**. There is no valid category `X` and no valid group `X`,
 // which is what stops a caller filling a code it does not have: a value that
 // knows no category is absent, never `XXXXXX`.
 //
-// Where a category is known and its group is not, [`Cfi::coarse`] answers
+// Where a category is known and its group is not, [`CfiCode::coarse`] answers
 // that category's **Others** group rather than an `X`, because that is how
 // the standard itself spells "this kind of thing, kind unspecified": `EM` is
 // Equities/Others, `DM` Debt/Others, `CM` CIVs/Others.
 //
 // # Merging two statements
 //
-// [`Cfi::merged`] folds two codes for one instrument position by position,
+// [`CfiCode::merged`] folds two codes for one instrument position by position,
 // and only when they agree on what the instrument *is*: same category, same
 // group. A stated attribute fills an unknown one, so `ESXXXX` merged with
 // `ESVUFR` is `ESVUFR`. Two different stated attributes are a conflict, and
@@ -659,15 +660,16 @@ impl DataType {
     pub const CODES: &'static [(&'static str, DataType, usize)] = &[
         ("country", DataType::Country, COUNTRY_WIDTH),
         ("currency", DataType::Currency, CURRENCY_WIDTH),
-        ("mic", DataType::Mic, MIC_WIDTH),
-        ("cfi", DataType::Cfi, CFI_WIDTH),
-        ("isin", DataType::Isin, ISIN_WIDTH),
-        ("cusip", DataType::Cusip, CUSIP_WIDTH),
-        ("sedol", DataType::Sedol, SEDOL_WIDTH),
+        ("mic", DataType::MicCode, MIC_WIDTH),
+        ("cfi", DataType::CfiCode, CFI_WIDTH),
+        ("isin", DataType::IsinCode, ISIN_WIDTH),
+        ("cusip", DataType::CusipCode, CUSIP_WIDTH),
+        ("sedol", DataType::SedolCode, SEDOL_WIDTH),
         ("side", DataType::Side, SIDE_WIDTH),
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
-        ("bloomberg", DataType::Bloomberg, BLOOMBERG_WIDTH),
+        ("bloomberg", DataType::BloombergCode, BLOOMBERG_WIDTH),
+        ("figi", DataType::FIGICode, FIGI_WIDTH),
     ];
 }
 
@@ -1092,7 +1094,7 @@ impl DataType {
 }
 
 // ------------------------------------------------------------------------
-// Every string's field marker: the one family and the ten codes.
+// Every string's field marker: the one family and the twelve codes.
 //
 // One file because a marker is one line per datatype and the family is one
 // family; splitting them would be two lists to keep in step rather than one.
@@ -2087,8 +2089,8 @@ impl StringEnum {
     /// agree about what a side is. A FIX code or the specification's name
     /// reaches the value through [`Side::from_spelling`](crate::Side::from_spelling),
     /// which is how a registry maps tag 54 onto it; per-member pedigree stays
-    /// in the field's own `FIX:codes` document, because that is where a
-    /// version can be asked about. A spelling that names no side is refused
+    /// in the registry's vocabulary named by the field's `FIX:codeset`, where
+    /// a version can be asked about. A spelling that names no side is refused
     /// rather than stored, exactly as a state is.
     pub const SIDES: &'static [&'static str] = &[
         "ASDEF", "BORROW", "BUY", "BUYMINUS", "CROSS", "CROSSSH", "CROSSSHX", "LEND", "OPPOSITE",
@@ -2230,8 +2232,8 @@ impl StringEnum {
     ///
     /// // A member's code is the value's own bytes under the resolved width.
     /// assert_eq!(
-    ///     venues.into_members(&DataType::Mic)?[0].1,
-    ///     DataType::Mic.ascii_packed(StringEnum::MICS[0].as_bytes())?
+    ///     venues.into_members(&DataType::MicCode)?[0].1,
+    ///     DataType::MicCode.ascii_packed(StringEnum::MICS[0].as_bytes())?
     /// );
     ///
     /// // `exchange` is FIX's name for the same list, under the same type.
@@ -3251,9 +3253,15 @@ mod tests {
             code_for_extension("yggdryl.currency"),
             Some(DataType::Currency)
         );
-        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
-        assert_eq!(code_for_extension("yggdryl.cusip"), Some(DataType::Cusip));
-        assert_eq!(code_for_extension("yggdryl.sedol"), Some(DataType::Sedol));
+        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::CfiCode));
+        assert_eq!(
+            code_for_extension("yggdryl.cusip"),
+            Some(DataType::CusipCode)
+        );
+        assert_eq!(
+            code_for_extension("yggdryl.sedol"),
+            Some(DataType::SedolCode)
+        );
         assert_eq!(code_for_extension("yggdryl.ascii"), None);
         assert_eq!(code_for_extension("arrow.uuid"), None);
     }
@@ -3292,7 +3300,10 @@ mod tests {
     fn a_cell_is_validated_at_the_code_width() {
         assert_eq!(code_cell_text(&DataType::Currency, b"USD").unwrap(), "USD");
         assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
-        assert_eq!(code_cell_text(&DataType::Cfi, b"ESVUFR").unwrap(), "ESVUFR");
+        assert_eq!(
+            code_cell_text(&DataType::CfiCode, b"ESVUFR").unwrap(),
+            "ESVUFR"
+        );
         let refused = code_cell_text(&DataType::Country, b"USD")
             .unwrap_err()
             .to_string();

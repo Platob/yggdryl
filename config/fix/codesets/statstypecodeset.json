@@ -1,0 +1,25 @@
+{
+  "name": "statstypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ExchangeLast",
+      "doc": "Exchange Last"
+    },
+    {
+      "value": "2",
+      "name": "High",
+      "doc": "High / Low Price"
+    },
+    {
+      "value": "3",
+      "name": "AveragePrice",
+      "doc": "Average Price (VWAP, TWAP ... )"
+    },
+    {
+      "value": "4",
+      "name": "Turnover",
+      "doc": "Turnover (Price * Qty)"
+    }
+  ]
+}

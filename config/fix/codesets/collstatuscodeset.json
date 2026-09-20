@@ -1,0 +1,35 @@
+{
+  "name": "collstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unassigned",
+      "doc": "Unassigned"
+    },
+    {
+      "value": "1",
+      "name": "PartiallyAssigned",
+      "doc": "Partially Assigned"
+    },
+    {
+      "value": "2",
+      "name": "AssignmentProposed",
+      "doc": "Assignment Proposed"
+    },
+    {
+      "value": "3",
+      "name": "Assigned",
+      "doc": "Assigned (Accepted)"
+    },
+    {
+      "value": "4",
+      "name": "Challenged",
+      "doc": "Challenged"
+    },
+    {
+      "value": "5",
+      "name": "Reused",
+      "doc": "Reused"
+    }
+  ]
+}

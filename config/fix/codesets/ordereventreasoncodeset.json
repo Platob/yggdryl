@@ -1,0 +1,70 @@
+{
+  "name": "ordereventreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AddOrderRequest",
+      "doc": "Add order request"
+    },
+    {
+      "value": "2",
+      "name": "ModifyOrderRequest",
+      "doc": "Modify order request"
+    },
+    {
+      "value": "3",
+      "name": "DeleteOrderRequest",
+      "doc": "Delete order request"
+    },
+    {
+      "value": "4",
+      "name": "OrderEnteredOOB",
+      "doc": "Order entered out-of-band"
+    },
+    {
+      "value": "5",
+      "name": "OrderModifiedOOB",
+      "doc": "Order modified out-of-band"
+    },
+    {
+      "value": "6",
+      "name": "OrderDeletedOOB",
+      "doc": "Order deleted out-of-band"
+    },
+    {
+      "value": "7",
+      "name": "OrderActivatedOrTriggered",
+      "doc": "Order activated or triggered"
+    },
+    {
+      "value": "8",
+      "name": "OrderExpired",
+      "doc": "Order expired"
+    },
+    {
+      "value": "9",
+      "name": "ReserveOrderRefreshed",
+      "doc": "Reserve order refreshed"
+    },
+    {
+      "value": "10",
+      "name": "AwayMarketBetter",
+      "doc": "Away market better"
+    },
+    {
+      "value": "11",
+      "name": "CorporateAction",
+      "doc": "Corporate action"
+    },
+    {
+      "value": "12",
+      "name": "StartOfDay",
+      "doc": "Start of day"
+    },
+    {
+      "value": "13",
+      "name": "EndOfDay",
+      "doc": "End of day"
+    }
+  ]
+}

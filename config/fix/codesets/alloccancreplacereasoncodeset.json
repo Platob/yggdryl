@@ -1,0 +1,25 @@
+{
+  "name": "alloccancreplacereasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OriginalDetailsIncomplete",
+      "doc": "Original details incomplete/incorrect"
+    },
+    {
+      "value": "2",
+      "name": "ChangeInUnderlyingOrderDetails",
+      "doc": "Change in underlying order details"
+    },
+    {
+      "value": "3",
+      "name": "CancelledByGiveupFirm",
+      "doc": "Cancelled by give-up firm"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "remunerationindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoRemunerationPaid",
+      "doc": "No remuneration paid"
+    },
+    {
+      "value": "1",
+      "name": "RemunerationPaid",
+      "doc": "Remuneration paid"
+    }
+  ]
+}

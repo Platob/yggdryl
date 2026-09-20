@@ -1,0 +1,15 @@
+{
+  "name": "complexeventquotebasiscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Currency1PerCurrency2",
+      "doc": "Currency 1 per currency 2"
+    },
+    {
+      "value": "1",
+      "name": "Currency2PerCurrency1",
+      "doc": "Currency 2 per currency 1"
+    }
+  ]
+}

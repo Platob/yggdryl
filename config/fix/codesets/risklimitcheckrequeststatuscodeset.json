@@ -1,0 +1,30 @@
+{
+  "name": "risklimitcheckrequeststatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Approved",
+      "doc": "Approved"
+    },
+    {
+      "value": "1",
+      "name": "PartiallyApproved",
+      "doc": "Partially approved"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "3",
+      "name": "ApprovalPending",
+      "doc": "Approval pending"
+    },
+    {
+      "value": "4",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    }
+  ]
+}

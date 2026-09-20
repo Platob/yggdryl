@@ -82,6 +82,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ALLO",
     "FIX:msgtype": "DV",
     "FIX:tag": "1043086",
     "description": "MsgType = DV",

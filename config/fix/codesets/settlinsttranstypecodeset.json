@@ -1,0 +1,25 @@
+{
+  "name": "settlinsttranstypecodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "C",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "R",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "T",
+      "name": "Restate",
+      "doc": "Restate"
+    }
+  ]
+}

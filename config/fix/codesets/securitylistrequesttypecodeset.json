@@ -1,0 +1,35 @@
+{
+  "name": "securitylistrequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Symbol",
+      "doc": "Symbol"
+    },
+    {
+      "value": "1",
+      "name": "SecurityTypeAnd",
+      "doc": "SecurityType and/or CFICode"
+    },
+    {
+      "value": "2",
+      "name": "Product",
+      "doc": "Product"
+    },
+    {
+      "value": "3",
+      "name": "TradingSessionID",
+      "doc": "TradingSessionID"
+    },
+    {
+      "value": "4",
+      "name": "AllSecurities",
+      "doc": "All Securities"
+    },
+    {
+      "value": "5",
+      "name": "MarketIDOrMarketID",
+      "doc": "MarketID or MarketID + MarketSegmentID"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "restructuringtypecodeset",
+  "codes": [
+    {
+      "value": "FR",
+      "name": "FullRestructuring",
+      "doc": "Full Restructuring"
+    },
+    {
+      "value": "MR",
+      "name": "ModifiedRestructuring",
+      "doc": "Modified Restructuring"
+    },
+    {
+      "value": "MM",
+      "name": "ModifiedModRestructuring",
+      "doc": "Modified Mod Restructuring"
+    },
+    {
+      "value": "XR",
+      "name": "NoRestructuringSpecified",
+      "doc": "No Restructuring specified"
+    }
+  ]
+}

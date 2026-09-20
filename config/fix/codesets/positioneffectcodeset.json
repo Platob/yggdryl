@@ -1,0 +1,35 @@
+{
+  "name": "positioneffectcodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "F",
+      "name": "FIFO",
+      "doc": "FIFO"
+    },
+    {
+      "value": "O",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "R",
+      "name": "Rolled",
+      "doc": "Rolled"
+    },
+    {
+      "value": "N",
+      "name": "CloseButNotifyOnOpen",
+      "doc": "Close but notify on open"
+    },
+    {
+      "value": "D",
+      "name": "Default",
+      "doc": "Default"
+    }
+  ]
+}

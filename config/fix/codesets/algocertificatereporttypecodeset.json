@@ -1,0 +1,20 @@
+{
+  "name": "algocertificatereporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CertificateInformation",
+      "doc": "Certificate information"
+    },
+    {
+      "value": "1",
+      "name": "CertificateStateChanged",
+      "doc": "Certificate state changed"
+    },
+    {
+      "value": "2",
+      "name": "CertificateRevoked",
+      "doc": "Certificate revoked"
+    }
+  ]
+}

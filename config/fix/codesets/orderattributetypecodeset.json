@@ -1,0 +1,80 @@
+{
+  "name": "orderattributetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AggregatedOrder",
+      "doc": "Aggregated order"
+    },
+    {
+      "value": "1",
+      "name": "PendingAllocation",
+      "doc": "Order pending allocation"
+    },
+    {
+      "value": "2",
+      "name": "LiquidityProvisionActivityOrder",
+      "doc": "Liquidity provision activity order"
+    },
+    {
+      "value": "3",
+      "name": "RiskReductionOrder",
+      "doc": "Risk reduction order"
+    },
+    {
+      "value": "4",
+      "name": "AlgorithmicOrder",
+      "doc": "Algorithmic order"
+    },
+    {
+      "value": "5",
+      "name": "SystematicInternaliserOrder",
+      "doc": "Authorised reporter order"
+    },
+    {
+      "value": "6",
+      "name": "AllExecutionsSubmittedToAPA",
+      "doc": "All executions for the order are to be submitted to an APA"
+    },
+    {
+      "value": "7",
+      "name": "OrderExecutionInstructedByClient",
+      "doc": "Order execution instructed by client"
+    },
+    {
+      "value": "8",
+      "name": "LargeInScale",
+      "doc": "Large in scale order"
+    },
+    {
+      "value": "9",
+      "name": "Hidden",
+      "doc": "Hidden order"
+    },
+    {
+      "value": "10",
+      "name": "SubjectToEUSTO",
+      "doc": "Subject to EU share trading obligation (STO)"
+    },
+    {
+      "value": "11",
+      "name": "SubjectToUKSTO",
+      "doc": "Subject to UK share trading obligation (STO)"
+    },
+    {
+      "value": "12",
+      "name": "RepresentativeOrder",
+      "doc": "Representative order"
+    },
+    {
+      "value": "13",
+      "name": "LinkageType",
+      "doc": "Linkage type"
+    },
+    {
+      "value": "14",
+      "name": "ExemptFromSTO",
+      "doc": "Exempt from share trading obligation (STO)"
+    }
+  ]
+}

@@ -712,7 +712,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
     [
-      'currunix', 'creaunix', 'expirunix', 'prevunix', 'snapunix',
+      'currunix', 'creaunix', 'exprtime', 'prevunix', 'snapunix',
       'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
       'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
       'sourceurl', 'rownum', 'mtime', 'body', 'level', 'id',

@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamcapratebuysidecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Buyer",
+      "doc": "Buyer of the trade"
+    },
+    {
+      "value": "2",
+      "name": "Seller",
+      "doc": "Seller of the trade"
+    }
+  ]
+}

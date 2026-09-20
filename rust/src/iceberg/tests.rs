@@ -1474,9 +1474,9 @@ mod types {
         for (dtype, value) in [
             (DataType::Country, "FR"),
             (DataType::Currency, "USD"),
-            (DataType::Mic, "XPAR"),
-            (DataType::Cfi, "ESVUFR"),
-            (DataType::Isin, "US0378331005"),
+            (DataType::MicCode, "XPAR"),
+            (DataType::CfiCode, "ESVUFR"),
+            (DataType::IsinCode, "US0378331005"),
             (DataType::Side, "BUY"),
             (DataType::State, "0"),
             (DataType::TimeInForce, "GTC"),
@@ -1587,6 +1587,54 @@ mod partition_specs {
                 .unwrap()
                 .is_unpartitioned()
         );
+    }
+
+    #[test]
+    fn identity_partitions_keep_literal_and_reserved_top_level_names() {
+        let mut schema = StructType::from_fields([
+            DataType::utf8().required_field("a.b"),
+            DataType::Int64.required_field("null"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let ids: Vec<i32> = schema
+            .fields()
+            .iter()
+            .map(|field| field.parquet_field_id().unwrap().unwrap())
+            .collect();
+
+        let spec = PartitionSpec::identity(7, &schema, &["a.b", "null"]).unwrap();
+        assert_eq!(
+            spec.fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["a.b", "null"]
+        );
+        assert_eq!(
+            spec.fields
+                .iter()
+                .map(|field| field.source_id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+
+        let marked = spec.mark_partitions(&schema).unwrap();
+        assert_eq!(
+            marked.partition_field_names().collect::<Vec<_>>(),
+            ["a.b", "null"]
+        );
+        assert_eq!(
+            marked
+                .fields()
+                .iter()
+                .map(|field| field.parquet_field_id().unwrap())
+                .collect::<Vec<_>>(),
+            vec![Some(ids[0]), Some(ids[1])]
+        );
+        assert_eq!(PartitionSpec::from_schema(7, &marked).unwrap(), spec);
     }
 
     #[test]
@@ -3596,7 +3644,7 @@ mod planning {
         let path = root("code-bounds");
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Mic.nullable_field("venue"),
+            DataType::MicCode.nullable_field("venue"),
         ])
         .map(DataType::from)
         .unwrap()
@@ -7775,18 +7823,35 @@ mod isolation {
         let _ = std::fs::remove_dir_all(&v3);
     }
 
-    /// One variant value: the v1 metadata of an empty dictionary and a null.
+    /// One variant column: the two binaries the encoding states, per row.
     fn variant_column(rows: usize, field: &arrow_schema::Field) -> ArrayRef {
-        assert_eq!(
-            field.data_type(),
-            &arrow_schema::DataType::Binary,
-            "a variant lays out as the binary of its encoding"
-        );
-        Arc::new(BinaryArray::from_iter_values((0..rows).map(|row| {
-            crate::Scalar::from_struct([("row", crate::Scalar::from(row as i64))])
+        let arrow_schema::DataType::Struct(children) = field.data_type() else {
+            panic!(
+                "a variant lays out as the struct of its two binaries, got {}",
+                field.data_type()
+            );
+        };
+        let variants: Vec<crate::Variant> = (0..rows)
+            .map(|row| {
+                crate::Variant::encode(
+                    &crate::Scalar::from_struct([("row", crate::Scalar::from(row as i64))])
+                        .unwrap(),
+                )
                 .unwrap()
-                .into_variant_bytes()
-        })))
+            })
+            .collect();
+        Arc::new(arrow_array::StructArray::new(
+            children.clone(),
+            vec![
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(crate::Variant::metadata),
+                )) as ArrayRef,
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(crate::Variant::value),
+                )) as ArrayRef,
+            ],
+            None,
+        ))
     }
 
     #[test]

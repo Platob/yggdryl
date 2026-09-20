@@ -93,6 +93,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "STRM",
     "FIX:msgtype": "CE",
     "FIX:tag": "654808",
     "description": "MsgType = CE",

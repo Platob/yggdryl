@@ -449,6 +449,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "BG",
     "FIX:tag": "656331",
     "description": "MsgType = BG",

@@ -144,7 +144,7 @@
     "metadata": {
       "FIX:tag": "65027",
       "FIX:transient": "false",
-      "description": "How many pairs the message carried, in arrival order.",
+      "description": "How many residual entries remain outside the row's projected columns.",
       "display": "NoFixEntries"
     }
   },
@@ -268,7 +268,7 @@
     }
   },
   {
-    "name": "expirunix",
+    "name": "exprtime",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -278,8 +278,95 @@
     "metadata": {
       "FIX:tag": "65053",
       "FIX:transient": "false",
-      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed.",
-      "display": "ExpirUnix"
+      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
+      "display": "ExprTime"
+    }
+  },
+  {
+    "name": "msgcat",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_ascii",
+      "fixed": 4
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:codeset": "msgcatcodeset",
+      "FIX:tag": "65054",
+      "description": "The four-byte business category of the message type.",
+      "display": "MsgCat"
+    }
+  },
+  {
+    "name": "isincode",
+    "dtype": {
+      "type": "isin"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65055",
+      "description": "The normalized ISIN the message identifies.",
+      "display": "IsinCode"
+    }
+  },
+  {
+    "name": "cusipcode",
+    "dtype": {
+      "type": "cusip"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65057",
+      "description": "The normalized CUSIP the message identifies.",
+      "display": "CusipCode"
+    }
+  },
+  {
+    "name": "sedolcode",
+    "dtype": {
+      "type": "sedol"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65058",
+      "description": "The normalized SEDOL the message identifies.",
+      "display": "SedolCode"
+    }
+  },
+  {
+    "name": "bloombergcode",
+    "dtype": {
+      "type": "bloomberg"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65059",
+      "description": "The normalized Bloomberg identifier the message identifies.",
+      "display": "BloombergCode"
+    }
+  },
+  {
+    "name": "miccode",
+    "dtype": {
+      "type": "mic"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65060",
+      "description": "The normalized market MIC the message identifies.",
+      "display": "MicCode"
+    }
+  },
+  {
+    "name": "figicode",
+    "dtype": {
+      "type": "figi"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65061",
+      "description": "The normalized FIGI the message identifies.",
+      "display": "FIGICode"
     }
   }
 ]

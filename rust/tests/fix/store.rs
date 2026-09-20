@@ -4,6 +4,7 @@ use super::path as fpath;
 
 use std::path::PathBuf;
 use yggdryl::SequenceType;
+use yggdryl::fix::FixReplacement;
 use yggdryl::local::Folder;
 use yggdryl::{
     DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructType,
@@ -38,11 +39,12 @@ const DUMP_WRITE: &str = "YGGDRYL_FIX_DUMP_WRITE";
 
 /// The documents a store dump states that the generator does not: the
 /// crate's field shard and the fixed row.
-const CRATE_DOCUMENTS: [&str; 4] = [
+const CRATE_DOCUMENTS: [&str; 5] = [
     "fields/000000650.json",
     "components/fixmsg.json",
     "groups/identifiers.json",
     "groups/metadata.json",
+    "codesets/msgcatcodeset.json",
 ];
 
 #[test]
@@ -74,6 +76,10 @@ fn the_committed_store_carries_the_crate_dump() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The set `PartyID` reads by, named the way a field that states none is
+/// named: the folded field name and `codeset`.
+const PARTY_CODESET: &str = "partyidcodeset";
+
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
     field.as_fix_mut().set_tag(tag).unwrap();
@@ -83,11 +89,16 @@ fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
 fn catalog() -> FixRegistry {
     let counter = tagged("NoPartyIDs", 453, DataType::Int32);
     let mut partyid = tagged("PartyID", 448, DataType::utf8());
-    partyid
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Broker", "B")])
+    partyid.as_fix_mut().set_codeset(PARTY_CODESET).unwrap();
+    // The vocabulary first: a field names the set it reads by, and a
+    // registry refuses a field naming one it does not hold.
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(PARTY_CODESET, &[FixCode::new("Broker", "B")])
         .unwrap();
-    let mut registry = FixRegistry::from_fields([counter, partyid]).unwrap();
+    for field in [counter, partyid] {
+        registry.insert(field).unwrap();
+    }
     let mut member = registry.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
     let component = StructType::from_fields([member])
@@ -476,7 +487,10 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     let json = registry.into_json().unwrap();
     let document = yggdryl::from_json_scalar(&json).unwrap();
     let record = document.as_struct().unwrap();
-    assert_eq!(record.len(), FixCategory::ALL.len());
+    // The three categories and the `codesets` the fields read by, which is
+    // a folder of vocabularies rather than a fourth category.
+    assert_eq!(record.len(), FixCategory::ALL.len() + 1);
+    assert!(record["codesets"].as_sequence().is_some());
     assert!(record.get("branches").is_none());
     for category in FixCategory::ALL {
         assert!(record[category.as_str()].as_sequence().is_some());
@@ -512,7 +526,10 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     assert_eq!(loaded.dialects(), ["cme", "merc", "pending"]);
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
     assert_eq!(
-        loaded.field(448).unwrap().as_fix().code_name("B"),
+        loaded
+            .codeset_of(loaded.field(448).unwrap())
+            .unwrap()
+            .code_name("B"),
         Some("Broker")
     );
     let message = loaded.msgtype("D").unwrap();
@@ -700,9 +717,9 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
         refused.contains("messages") && refused.contains("fields, components, or groups"),
         "{refused}"
     );
-    // The three categories are the whole of a snapshot: nothing else is
-    // declared beside them, so an empty one is a registry of the crate's own
-    // fields and nothing more.
+    // The three categories are the whole of a snapshot's definitions - only
+    // the `codesets` the fields read by stand beside them, and a snapshot
+    // stating none is a registry of the crate's own fields and nothing more.
     let empty = FixRegistry::from_json(r#"{"fields":[],"components":[],"groups":[]}"#).unwrap();
     assert_eq!(empty, FixRegistry::new());
     assert_eq!(super::scalars(&empty), super::seeded_fields());
@@ -735,11 +752,13 @@ fn categories_round_trip_compact_references_and_counter_fields() {
         "components/Party.json",
         "groups/Parties.json",
         "components/NewOrderSingle.json",
+        "codesets/partyidcodeset.json",
     ] {
         assert!(root.join(file).is_file(), "{file}");
     }
-    // A message is a component with a marker, so nothing is written beside
-    // the three folders.
+    // A message is a component with a marker, so no folder is written for
+    // one: what stands beside the three categories is `codesets`, which
+    // holds vocabularies rather than Field documents.
     assert!(!root.join("messages").exists());
     let document =
         Field::from_json_bytes(&std::fs::read(root.join("groups/Parties.json")).unwrap()).unwrap();
@@ -772,15 +791,162 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     );
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
     assert_eq!(loaded.field_by_counter(453).unwrap().name(), "Parties");
-    assert_eq!(loaded.field(448).unwrap().as_fix().codes().count(), 1);
-    assert_eq!(
-        loaded.field(448).unwrap().as_fix().code_name("B"),
-        Some("Broker")
+    let set = loaded.codeset_of(loaded.field(448).unwrap()).unwrap();
+    assert_eq!(set.codes().count(), 1);
+    assert_eq!(set.code_name("B"), Some("Broker"));
+    assert_eq!(set.name(), PARTY_CODESET);
+    let party = loaded.field(448).unwrap();
+    assert_eq!(party.as_fix().codeset(), Some(PARTY_CODESET));
+    assert_eq!(party.get_metadata("FIX:codeset"), Some(PARTY_CODESET));
+    assert!(
+        party.as_fix().get("codes").is_none(),
+        "members live in the registry set"
     );
-    assert!(loaded.field(448).unwrap().as_fix().get("codes").is_some());
     // A definition is a field of the registry: the one namespace answers it
     // under the name it is stored by.
     assert!(loaded.get_field("Parties").is_some());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
+    let root = scratch("codesets");
+    let mut folder = Folder::new(&root).unwrap();
+    let mut registry = catalog();
+    // A second vocabulary no field reads by: a set is the dictionary's, so
+    // what takes one away is the dictionary rather than a field.
+    registry
+        .set_codeset("venuecodeset", &[FixCode::new("Venue", "V")])
+        .unwrap();
+    registry.write_into(&mut folder).unwrap();
+    // One document per set, each stating the name it is filed under so the
+    // file says what it is without its own path.
+    let stored = std::fs::read(root.join("codesets/partyidcodeset.json")).unwrap();
+    let document = yggdryl::from_json_scalar(stored).unwrap();
+    assert_eq!(
+        document.get_key_str("name").and_then(Scalar::as_str),
+        Some(PARTY_CODESET)
+    );
+    assert_eq!(
+        document
+            .get_key_str("codes")
+            .and_then(|codes| codes.get(0))
+            .and_then(|code| code.get_key_str("value"))
+            .and_then(Scalar::as_str),
+        Some("B")
+    );
+    assert!(root.join("codesets/venuecodeset.json").is_file());
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(loaded, registry);
+    // The persisted party and venue sets sit beside the built-in MsgCat set.
+    assert_eq!(loaded.codesets().len(), 3);
+    assert_eq!(
+        loaded.codeset("venuecodeset").unwrap().code_name("V"),
+        Some("Venue")
+    );
+
+    // A set the dictionary no longer holds takes its document with it, the
+    // way a definition no longer held takes its own.
+    assert!(registry.remove_codeset("venuecodeset").unwrap().is_some());
+    registry.write_into(&mut folder).unwrap();
+    assert!(!root.join("codesets/venuecodeset.json").exists());
+    assert!(root.join("codesets/partyidcodeset.json").is_file());
+    assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_folded_code_set_name_collision_refuses_atomically() {
+    let mut registry = catalog();
+    let before = registry.clone();
+    // The alternate spelling resolves to the held set. A rendered vocabulary
+    // may not make two folded names answer, and the refusal must not replace
+    // the held document under that canonical key.
+    let error = registry
+        .set_codeset(
+            "Party_ID_CodeSet",
+            &[
+                FixCode::new("GoodTillDate", "6"),
+                FixCode::new("good_till_date", "7"),
+            ],
+        )
+        .unwrap_err();
+    assert!(matches!(error, yggdryl::Error::Parse { .. }), "{error}");
+    assert_eq!(registry, before);
+    assert_eq!(
+        registry
+            .codeset_of(registry.field(448).unwrap())
+            .unwrap()
+            .code_value("Broker"),
+        Some("B")
+    );
+}
+
+#[test]
+fn replacing_a_code_set_forgets_warm_typed_parse_memos() {
+    let mut registry = std::sync::Arc::new(catalog());
+    {
+        let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
+        let message = codec
+            .parse_line(b"8=FIX.4.4|35=D|448=Broker|10=0|")
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(448).unwrap().as_str(), Some("B"));
+    }
+    assert_eq!(std::sync::Arc::strong_count(&registry), 1);
+    // Cached plans retain Weak references. `make_mut` dissociates those
+    // without cloning while this remains the sole strong owner.
+    std::sync::Arc::make_mut(&mut registry)
+        .set_codeset(PARTY_CODESET, &[FixCode::new("Broker", "D")])
+        .unwrap();
+    let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
+    let message = codec
+        .parse_line(b"8=FIX.4.4|35=D|448=Broker|10=0|")
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(message.by_tag(448).unwrap().as_str(), Some("D"));
+}
+
+#[test]
+fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
+    let root = scratch("codeset-stem");
+    let mut folder = Folder::new(&root).unwrap();
+    catalog().write_into(&mut folder).unwrap();
+    // The stem is how a set is addressed, so a file stating another name is
+    // refused the way a definition's document is.
+    folder
+        .child_by_path("codesets/othercodeset.json")
+        .unwrap()
+        .write_all_bytes(br#"{"name":"partyidcodeset","codes":[{"value":"B","name":"Broker"}]}"#)
+        .unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+    assert!(
+        error.contains("expected the code set name to equal its filename stem"),
+        "{error}"
+    );
+    assert!(error.contains("othercodeset.json"), "{error}");
+    std::fs::remove_file(root.join("codesets/othercodeset.json")).unwrap();
+    assert!(FixRegistry::from_handle(&folder).is_ok());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_field_naming_a_code_set_the_store_does_not_hold_is_refused() {
+    let root = scratch("codeset-absent");
+    let mut folder = Folder::new(&root).unwrap();
+    catalog().write_into(&mut folder).unwrap();
+    // A field may not be left reading by a vocabulary nothing states, so
+    // the field's own document is where the absence is named.
+    std::fs::remove_file(root.join("codesets/partyidcodeset.json")).unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err();
+    assert!(matches!(error, yggdryl::Error::Absent { .. }), "{error}");
+    let error = error.to_string();
+    assert!(error.contains("codesets"), "{error}");
+    assert!(error.contains(PARTY_CODESET), "{error}");
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -832,34 +998,35 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
 fn enum_codes_belong_to_each_field() {
     let mut registry = catalog();
     // A venue's field on the standard tag, under its own name: a second
-    // field beside the holder, each with the codes it declared.
+    // field beside the holder, each reading by the set it named.
     let mut field = tagged("VenuePartyID", 448, DataType::utf8());
     field.as_fix_mut().set_branches(["venue"]).unwrap();
+    registry
+        .set_codeset("venuepartyidcodeset", &[FixCode::new("VenueBroker", "V")])
+        .unwrap();
     field
         .as_fix_mut()
-        .set_codes(&[FixCode::new("VenueBroker", "V")])
+        .set_codeset("venuepartyidcodeset")
         .unwrap();
     registry.insert(field).unwrap();
-    let venue = registry
+    let held = registry
         .field(FixId::of(448, "VenuePartyID").unwrap())
-        .unwrap()
-        .as_fix();
+        .unwrap();
+    let venue = registry.codeset_of(held).unwrap();
     assert_eq!(venue.code_value("VenueBroker"), Some("V"));
     assert_eq!(venue.code_value("Broker"), None);
-    assert!(venue.has_branch("venue"));
+    assert!(held.as_fix().has_branch("venue"));
     assert_eq!(registry.field(448).unwrap().name(), "PartyID");
-    assert_eq!(
-        registry
-            .field(448)
-            .unwrap()
-            .as_fix()
-            .code_value("VenueBroker"),
-        None
-    );
-    assert_eq!(
-        registry.field(448).unwrap().as_fix().code_value("Broker"),
-        Some("B")
-    );
+    let holder = registry
+        .codeset_of(registry.field(448).unwrap())
+        .expect("the holder's own set");
+    assert_eq!(holder.code_value("VenueBroker"), None);
+    assert_eq!(holder.code_value("Broker"), Some("B"));
+    // The two test vocabularies and built-in MsgCat are held once each under
+    // their names. Categories hold Field documents and resolve references,
+    // which is why `codesets` is written beside the three folders rather
+    // than as a fourth.
+    assert_eq!(registry.codesets().len(), 3);
     assert_eq!(FixCategory::ALL.len(), 3);
     assert!(FixCategory::from_str("codesets").is_err());
 }
@@ -929,12 +1096,11 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
             registry.field(448).unwrap().as_fix().id().unwrap().unwrap(),
             "{on_448:?}"
         );
+        let party = registry
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
+            .unwrap();
         assert_eq!(
-            registry
-                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
-                .unwrap()
-                .as_fix()
-                .code_name("B"),
+            registry.codeset_of(party).unwrap().code_name("B"),
             Some("Broker")
         );
     };
@@ -1153,7 +1319,10 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
         Some(448)
     );
     assert_eq!(
-        registry.field(54).unwrap().as_fix().code_name("1"),
+        registry
+            .codeset_of(registry.field(54).unwrap())
+            .unwrap()
+            .code_name("1"),
         Some("Buy")
     );
 }
@@ -1181,13 +1350,27 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         // The scalars alone: `iter` answers the definitions beside them now,
         // and a definition handed to `from_fields` ahead of what it
         // references has nothing to resolve against.
-        let mut source = FixRegistry::from_fields(
-            original
-                .iter()
-                .filter(|field| super::category_of(field) == FixCategory::Fields)
-                .cloned(),
-        )
-        .unwrap();
+        //
+        // The vocabularies lead them, because a field names the set it reads
+        // by and a dictionary refuses one naming a set it does not hold: the
+        // sets are what the scalars are folded into, never a copy each field
+        // carries.
+        let mut source = FixRegistry::new();
+        for set in original.codesets() {
+            let codes: Vec<FixCode> = set
+                .codes()
+                .map(|code| FixCode::from(code.unwrap()))
+                .collect();
+            source.set_codeset(set.name(), &codes).unwrap();
+        }
+        source
+            .add_fields(
+                original
+                    .iter()
+                    .filter(|field| super::category_of(field) == FixCategory::Fields)
+                    .cloned(),
+            )
+            .unwrap();
         let plain = super::definitions(&original, FixCategory::Components)
             .filter(|field| field.as_fix().msgtype().is_none())
             // The crate's own components - `instids` - are already in the
@@ -1237,12 +1420,11 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         }
         let group = target.msgtype("D").unwrap().get_group_by_tag(453).unwrap();
         assert_eq!(group.name(), "Parties");
+        let party = target
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
+            .unwrap();
         assert_eq!(
-            target
-                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
-                .unwrap()
-                .as_fix()
-                .code_name("B"),
+            target.codeset_of(party).unwrap().code_name("B"),
             Some("Broker")
         );
         assert_eq!(
@@ -1253,15 +1435,14 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
 }
 
 #[test]
-fn merging_catalogs_resolves_imported_references_against_the_inline_code_union() {
+fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
     let mut target = catalog();
     let mut source = catalog();
-    let mut coded = source.field(448).unwrap().clone();
-    coded
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Client", "C")])
+    // The source knows one more member of the set both dictionaries hold,
+    // which is what the merge has to union before it folds the fields.
+    source
+        .merge_codeset(PARTY_CODESET, &[FixCode::new("Client", "C")])
         .unwrap();
-    source.insert(coded).unwrap();
     let mut message = source.field_by_name("NewOrderSingle").unwrap().clone();
     message.set_name("IncomingOrder");
     message.as_fix_mut().set_msgtype("I").unwrap();
@@ -1277,17 +1458,18 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         "IncomingOrder.Parties.PartyID",
     ] {
         let field = target.field_by_path(&fpath(path)).unwrap();
-        assert_eq!(field.as_fix().code_name("B"), Some("Broker"), "{path}");
-        assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
+        let set = target.codeset_of(field).unwrap_or_else(|| panic!("{path}"));
+        assert_eq!(set.code_name("B"), Some("Broker"), "{path}");
+        assert_eq!(set.code_name("C"), Some("Client"), "{path}");
     }
     let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
     let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the resolved group list")
     };
     assert_eq!(
-        item.get_field("PartyID")
+        target
+            .codeset_of(item.get_field("PartyID").unwrap())
             .unwrap()
-            .as_fix()
             .code_value("Broker"),
         Some("B")
     );
@@ -1302,12 +1484,14 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
 fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_atomically() {
     let mut target = catalog();
     let mut coded = target.field(448).unwrap().clone();
-    coded
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Client", "C")])
-        .unwrap();
     coded.as_fix_mut().set_branches(["incoming"]).unwrap();
-    let mut source = FixRegistry::from_fields([coded]).unwrap();
+    // The source states the set its field reads by before the field
+    // arrives, and states one member of it: the fold unions the two.
+    let mut source = FixRegistry::new();
+    source
+        .set_codeset(PARTY_CODESET, &[FixCode::new("Client", "C")])
+        .unwrap();
+    source.insert(coded).unwrap();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
     let extended = StructType::from_fields([member, DataType::Int32.nullable_field("Extra")])
@@ -1331,12 +1515,11 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
             "{path}"
         );
     }
+    let party = target
+        .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
+        .unwrap();
     assert_eq!(
-        target
-            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
-            .unwrap()
-            .as_fix()
-            .code_name("C"),
+        target.codeset_of(party).unwrap().code_name("C"),
         Some("Client")
     );
     // The membership the source stamped unions onto the standard field the
@@ -1632,21 +1815,27 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
 }
 
 #[test]
-fn message_code_aliases_reindex_after_field_enum_mutation() {
+fn message_code_aliases_reindex_after_a_code_set_mutation() {
     let mut registry = catalog();
-    let mut field = tagged("MsgType", 35, DataType::utf8());
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Order", "D").with_aliases(["NOS"])])
+    registry
+        .set_codeset(
+            "msgtypecodeset",
+            &[FixCode::new("Order", "D").with_aliases(["NOS"])],
+        )
         .unwrap();
+    let mut field = tagged("MsgType", 35, DataType::utf8());
+    field.as_fix_mut().set_codeset("msgtypecodeset").unwrap();
     registry.insert(field).unwrap();
     assert_eq!(registry.msgtype("nos").unwrap().as_str(), "D");
-    let mut field = registry.field(35).unwrap().clone();
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Order", "D").with_aliases(["NewOrder"])])
+    // The set tag 35 reads by is restated whole, the field untouched: the
+    // alias it no longer lists stops answering and the one it now lists
+    // answers in its place.
+    registry
+        .set_codeset(
+            "msgtypecodeset",
+            &[FixCode::new("Order", "D").with_aliases(["NewOrder"])],
+        )
         .unwrap();
-    registry.insert(field).unwrap();
     assert!(registry.get_msgtype("NOS").is_none());
     assert_eq!(registry.msgtype("new_order").unwrap().as_str(), "D");
 }
@@ -1672,29 +1861,33 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     message.as_fix_mut().set_msgtype("R").unwrap();
     registry.insert(message).unwrap();
 
-    let mut coded = registry.field(35).unwrap().clone();
-    coded
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Order", "D").with_aliases(["NOS"])])
+    registry
+        .set_codeset(
+            "msgtypecodeset",
+            &[FixCode::new("Order", "D").with_aliases(["NOS"])],
+        )
         .unwrap();
+    let mut coded = registry.field(35).unwrap().clone();
+    coded.as_fix_mut().set_codeset("msgtypecodeset").unwrap();
     registry.update(coded).unwrap();
     assert_eq!(registry.msgtype("NOS").unwrap().as_str(), "D");
+    let stated = registry
+        .field_by_path(&fpath("EnumReport.Header.MsgType"))
+        .unwrap();
     assert_eq!(
-        registry
-            .field_by_path(&fpath("EnumReport.Header.MsgType"))
-            .unwrap()
-            .as_fix()
-            .code_value("NOS"),
+        registry.codeset_of(stated).unwrap().code_value("NOS"),
         Some("D")
     );
 
+    // A set name nothing can file is refused where it is stated, and the
+    // occurrences it reaches are left as they were.
     let before = registry.clone();
     let mut malformed = registry.field(35).unwrap().clone();
-    malformed.update_metadata([("FIX:codes", "[")]).unwrap();
+    malformed.update_metadata([("FIX:codeset", "[")]).unwrap();
     assert!(registry.insert(malformed).is_err());
     assert_eq!(registry, before);
     let mut changed = registry.field(35).unwrap().clone();
-    changed.as_fix_mut().set_codes(&[]).unwrap();
+    changed.as_fix_mut().remove_codeset();
     changed.as_fix_mut().set_description("Changed").unwrap();
     registry.insert(changed).unwrap();
     assert_eq!(
@@ -1707,18 +1900,13 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     );
 
     let mut uncoded = registry.field(35).unwrap().clone();
-    uncoded.as_fix_mut().set_codes(&[]).unwrap();
+    uncoded.as_fix_mut().remove_codeset();
     registry.insert(uncoded).unwrap();
     assert!(registry.get_msgtype("NOS").is_none());
-    assert!(
-        registry
-            .field_by_path(&fpath("EnumReport.Header.MsgType"))
-            .unwrap()
-            .as_fix()
-            .codes()
-            .next()
-            .is_none()
-    );
+    let stated = registry
+        .field_by_path(&fpath("EnumReport.Header.MsgType"))
+        .unwrap();
+    assert!(registry.codeset_of(stated).is_none());
 }
 
 #[test]
@@ -1847,52 +2035,57 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
 
 #[test]
 fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
-    let mut side = tagged("Side", 54, DataType::utf8());
-    side.as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Buy", "1").with_description("Buy side"),
-            FixCode::new("Sell", "2"),
+    // A field's `FIX:codeset` names the set it reads by and is one text, so
+    // the document property this is about is one of the four that still
+    // hold an array: the rules restating a retired field.
+    let mut floor = tagged("MaxFloor", 111, DataType::Float64);
+    floor
+        .as_fix_mut()
+        .set_replacements(&[
+            FixReplacement::new("select maxfloor as displayqty".parse().unwrap())
+                .with_doc("MaxFloor became DisplayQty"),
+            FixReplacement::new("select maxfloor as maxshow".parse().unwrap()),
         ])
         .unwrap();
-    let canonical = side.get_metadata("FIX:codes").unwrap().to_owned();
+    let canonical = floor.get_metadata("FIX:replacements").unwrap().to_owned();
     assert!(canonical.starts_with("[{"), "{canonical}");
 
     // The store writes the document rather than one escaped line, so the
-    // file an operator opens renders a code set as a code set.
-    let document = yggdryl::into_fix_document(side.clone()).unwrap();
-    let codes = document
+    // file an operator opens renders the rules as rules.
+    let document = yggdryl::into_fix_document(floor.clone()).unwrap();
+    let rules = document
         .get_key_str("metadata")
-        .and_then(|metadata| metadata.get_key_str("FIX:codes"))
-        .expect("the code set");
-    assert_eq!(codes.len(), 2);
+        .and_then(|metadata| metadata.get_key_str("FIX:replacements"))
+        .expect("the replacement rules");
+    assert_eq!(rules.len(), 2);
     assert_eq!(
-        codes
+        rules
             .get(0)
-            .and_then(|code| code.get_key_str("value"))
+            .and_then(|rule| rule.get_key_str("plan"))
             .and_then(Scalar::as_str),
-        Some("1"),
+        Some("select maxfloor as displayqty"),
     );
     // And the keys stay in the order the reader walks them, so the file
     // reads the way the document is written.
-    assert_eq!(
-        codes.get(0).map(Scalar::keys),
-        Some(vec!["value", "name", "doc"]),
-    );
+    assert_eq!(rules.get(0).map(Scalar::keys), Some(vec!["plan", "doc"]));
 
     // Reading one back restates the canonical text, whatever order the file
     // spelled an entry's keys in.
-    assert_eq!(yggdryl::from_fix_document(document).unwrap(), side);
+    assert_eq!(yggdryl::from_fix_document(document).unwrap(), floor);
     let reordered = yggdryl::from_json_scalar(
-        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,"metadata":{
-            "FIX:tag":"54",
-            "FIX:codes":[{"doc":"Buy side","name":"Buy","value":"1"},{"name":"Sell","value":"2"}]
+        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,"metadata":{
+            "FIX:tag":"111",
+            "FIX:replacements":[
+                {"doc":"MaxFloor became DisplayQty","plan":"select maxfloor as displayqty"},
+                {"plan":"select maxfloor as maxshow"}
+            ]
         }}"#,
     )
     .unwrap();
     assert_eq!(
         yggdryl::from_fix_document(reordered)
             .unwrap()
-            .get_metadata("FIX:codes"),
+            .get_metadata("FIX:replacements"),
         Some(canonical.as_str()),
     );
 }
@@ -1902,18 +2095,20 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     // One shape: a property the file spells as text is not read as canonical
     // text, because the store writes the document itself.
     let text = yggdryl::from_json_scalar(
-        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
-            "metadata":{"FIX:tag":"54","FIX:codes":"[{\"value\":\"1\",\"name\":\"Buy\"}]"}}"#,
+        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,
+            "metadata":{"FIX:tag":"111",
+            "FIX:replacements":"[{\"plan\":\"select maxfloor as displayqty\"}]"}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(text).expect_err("the escaped shape is not the shape");
-    assert!(error.to_string().contains("FIX:codes"), "{error}");
+    assert!(error.to_string().contains("FIX:replacements"), "{error}");
 
     // An entry stating a key the document does not declare is refused the
     // same way rather than dropped.
     let unknown = yggdryl::from_json_scalar(
-        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
-            "metadata":{"FIX:tag":"54","FIX:codes":[{"value":"1","name":"Buy","note":"x"}]}}"#,
+        r#"{"name":"MaxFloor","dtype":{"type":"float64"},"nullable":true,
+            "metadata":{"FIX:tag":"111",
+            "FIX:replacements":[{"plan":"select maxfloor as displayqty","note":"x"}]}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(unknown).expect_err("an undeclared key");
@@ -1921,12 +2116,12 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
 
     // And a field holding text no reader can parse is named where it is
     // written rather than copied out for a reader to refuse later.
-    let mut broken = tagged("Side", 54, DataType::utf8());
+    let mut broken = tagged("MaxFloor", 111, DataType::Float64);
     broken
-        .set_metadata([("FIX:codes", "not a document")])
+        .set_metadata([("FIX:replacements", "not a document")])
         .unwrap();
     let error = yggdryl::into_fix_document(broken).expect_err("a malformed document");
-    assert!(error.to_string().contains("FIX:codes"), "{error}");
+    assert!(error.to_string().contains("FIX:replacements"), "{error}");
 }
 
 #[test]
@@ -2016,7 +2211,7 @@ fn every_committed_field_document_round_trips_through_the_store_shape() {
         let document = yggdryl::into_fix_document(field.clone()).unwrap();
         if document
             .get_key_str("metadata")
-            .is_some_and(|metadata| metadata.get_key_str("FIX:codes").is_some())
+            .is_some_and(|metadata| metadata.get_key_str("FIX:codeset").is_some())
         {
             carried += 1;
         }

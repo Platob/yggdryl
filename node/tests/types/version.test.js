@@ -171,14 +171,15 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Eighty-three, laid out by family: every identifier sits in its
-  // family's range and the list states them in that order, so `url` and
+  // Eighty-four, including FIGICode, laid out by family: every identifier
+  // sits in its family's range and the list states them in that order, so `url` and
   // `urn` follow `version` in the text family, `sized_utf8` follows
   // `fixed_utf8`, and the geospatial pair closes the list. An identifier is
   // a wire contract laid out by family, so a leaf added later lands beside
   // its family and nothing ever moves.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 83)
+  assert.equal(enums.dataTypeIds.length, 84)
+  assert.equal(enums.dataTypeIds.includes('figi'), true)
   const ids = [...enums.dataTypeIds]
   assert.equal(ids.indexOf('url'), ids.indexOf('version') + 1)
   assert.equal(ids.indexOf('urn'), ids.indexOf('url') + 1)

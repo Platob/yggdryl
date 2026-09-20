@@ -190,6 +190,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CV",
     "FIX:tag": "1084522",
     "description": "MsgType = CV",

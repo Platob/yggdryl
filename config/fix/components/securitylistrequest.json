@@ -286,6 +286,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "securitylistid",
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "x",
     "FIX:tag": "858799",
     "description": "MsgType = x (lowercase X)",

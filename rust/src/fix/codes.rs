@@ -1,13 +1,28 @@
-//! The FIX code set a field carries, and every spelling that reaches a value.
+//! The named FIX code sets a dictionary holds, and every spelling that
+//! reaches a value.
 //!
 //! Most FIX fields with a vocabulary are `int`, `Boolean` or `String` and
-//! carry their members as a *code set*: a wire value, a symbolic name, and
+//! draw their values from a *code set*: a wire value, a symbolic name, and
 //! usually a sentence of documentation. `Side(54)` is `1` for `Buy`; a
 //! message may spell that `1`, `Buy`, `buy` or `BUY`, and a JSON or human
 //! caller routinely spells it the long way. One field answers all of them.
 //!
-//! `FIX:codes` is that vocabulary: one [canonical document](super::document)
-//! ordered by wire value, read borrowed. It is a second key beside
+//! # The set is named, and the dictionary owns it
+//!
+//! A code set is a vocabulary rather than a property of one field: the
+//! specification names it - `SideCodeSet`, `UnitOfMeasureCodeSet` - and
+//! names it from as many fields as draw on it, 103 of them in the shipped
+//! dictionary for one offset-unit set alone. So the [registry](super::FixRegistry)
+//! holds each set once under its name, stored beside the fields in
+//! [`codesets/`](super::FixRegistry::write_into), and a field's `FIX:codeset`
+//! states which set it draws from rather than a copy of its members. One
+//! owner per vocabulary: a code named, aliased or documented once is named
+//! for every field that reads it, and two fields cannot drift apart while
+//! claiming one set.
+//!
+//! [`FixCodeSet`] is that set, borrowed from the dictionary: one [canonical
+//! document](super::document) ordered by wire value, read without parsing
+//! ahead or allocating. It is a second key beside
 //! [`StringEnum`](crate::StringEnum) rather than a second copy of it - that
 //! type is name to ASCII value packed through the field's own width, so it
 //! accepts only fixed US-ASCII strings of at most sixteen bytes and coded
@@ -16,10 +31,9 @@
 //!
 //! # Resolving a spelling
 //!
-//! [`FixField::code_value`](crate::FixField) composes three tiers, and a
-//! spelling that reaches none falls through unchanged rather than failing:
-//! a venue sends codes no dictionary lists exactly as it sends fields no
-//! dictionary names.
+//! [`FixCodeSet::code_value`] composes three tiers, and a spelling that
+//! reaches none falls through unchanged rather than failing: a venue sends
+//! codes no dictionary lists exactly as it sends fields no dictionary names.
 //!
 //! 1. **The text as a wire value, exactly.** `4` is `4`. A spelling that is
 //!    already a legal code is never reinterpreted as somebody's name, and
@@ -30,14 +44,28 @@
 //!    are one spelling.
 //! 3. **The leading parenthesized abbreviation of the description.** `"Good
 //!    Till Date (GTD)"` answers `gtd`.
+//!
+//! # Merging two sets
+//!
+//! Two dictionaries stating one set state it from different sources: a
+//! venue's `CBlock` knows a value exists and calls it after itself, the
+//! specification knows what it is called, and an older version knows a
+//! spelling the newest dropped. [`FixCodes::merge`] folds them into the one
+//! set that answers every spelling either declared - keyed by wire value,
+//! a placeholder name yielding to a real one, every surviving spelling kept
+//! as an alias - which is why a merge adds to a dictionary's vocabulary and
+//! never narrows it.
 
+use std::collections::btree_map::Entry;
 use std::iter::FusedIterator;
+use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::FixRegistry;
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
 use crate::folds_equal;
-use crate::{Error, Result};
+use crate::{Error, Field, Result, Scalar};
 
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
@@ -69,7 +97,7 @@ pub(super) const KEYS: [&str; 5] = [VALUE, NAME, GROUP, ALIASES, DOC];
 /// One member of a FIX code set, as a caller states it.
 ///
 /// The borrowed [`FixCodeValue`] is what a read answers; this is what a writer
-/// hands [`FixFieldMut::set_codes`](crate::FixFieldMut).
+/// hands [`FixRegistry::set_codeset`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixCode {
     name: SmolStr,
@@ -309,7 +337,7 @@ impl<'field> FixCodeValue<'field> {
 
 /// A field's code set, ordered by wire value.
 ///
-/// Answered by [`FixField::codes`](crate::FixField). It walks the stored
+/// Answered by [`FixCodeSet::codes`]. It walks the stored
 /// document as it goes and hands back slices of it, so nothing is parsed
 /// ahead of the code being asked for and nothing is allocated. An absent
 /// property yields nothing.
@@ -321,7 +349,7 @@ pub struct FixCodes<'field> {
 }
 
 impl<'field> FixCodes<'field> {
-    /// Walks one stored `FIX:codes` value, or nothing for an absent one.
+    /// Walks one registry-owned code-set document, or nothing for an absent one.
     pub(super) fn over(stored: Option<&'field str>) -> Self {
         Self {
             cursor: Cursor::new(stored.unwrap_or_default()),
@@ -358,7 +386,7 @@ impl<'field> FixCodes<'field> {
             }
             if ordered[..index]
                 .iter()
-                .any(|held| held.name.eq_ignore_ascii_case(&code.name))
+                .any(|held| folds_equal(&held.name, &code.name))
             {
                 return Err(Error::Parse {
                     target: TARGET,
@@ -372,6 +400,24 @@ impl<'field> FixCodes<'field> {
             code.write_into(&mut writer)?;
         }
         Ok(writer.finish())
+    }
+
+    /// The codes one canonical document states, owned.
+    ///
+    /// The one boundary between a code set as text - what a CLI flag, a
+    /// binding argument or a hand-edited file carries - and the typed
+    /// [`FixCode`] the dictionary's doors take. A caller resolves once here
+    /// and hands [`FixRegistry::set_codeset`] a value whose shape is already
+    /// proven.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the text is not
+    /// an array of code objects, or one states a key a code does not declare.
+    pub fn parse(document: &'field str) -> Result<Vec<FixCode>> {
+        Self::over(Some(document))
+            .map(|code| code.map(FixCode::from))
+            .collect()
     }
 
     /// Advances one step: the next code, the document's end, or a refusal.
@@ -533,5 +579,792 @@ impl From<FixCodeValue<'_>> for FixCode {
                 .map_or_else(|| SmolStr::new(group), SmolStr::new)
         });
         owned
+    }
+}
+
+impl FixCodes<'_> {
+    /// Folds two stored code sets by wire value, `other` winning a shared
+    /// value.
+    ///
+    /// A code stated under a value the winner already holds is not dropped
+    /// whole: its name and its own aliases become spellings on the code that
+    /// stays, because a name one side declared is one the merged set has to
+    /// answer to.
+    ///
+    /// What cannot be kept is a spelling another code already answers to,
+    /// folded: two codes one spelling reaches resolve to nothing rather than
+    /// to either, and two sharing a name are refused outright. So that
+    /// spelling is dropped, and a code whose own *name* is taken is dropped
+    /// with it, having no other name to arrive under.
+    ///
+    /// One exception to the winner keeping its name: a code named after its
+    /// own wire value carries no name at all - it is what a source that knows
+    /// the value exists but not what anyone calls it writes - so a real name
+    /// from either side takes its place. That is what folds a dialect's
+    /// `6 Inbound` into whatever the dictionary already calls tag 35 `6`,
+    /// rather than renaming the type after the dialect's qualifier.
+    ///
+    /// Either side may be absent, which is what a dictionary meeting a set it
+    /// does not hold has; two absences answer nothing, and a fold that keeps
+    /// no member writes no document.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when either document does not parse, and what
+    /// [`Self::render`] refuses the fold on.
+    pub(super) fn merge(winner: Option<&str>, other: Option<&str>) -> Result<Option<String>> {
+        let mut codes: Vec<FixCode> = Vec::new();
+        for code in FixCodes::over(winner) {
+            codes.push(FixCode::from(code?));
+        }
+        for code in FixCodes::over(other) {
+            let incoming = FixCode::from(code?);
+            // Every spelling this code arrives with, its name first, held
+            // apart from the code so the code itself can move into the set.
+            let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
+            spellings.extend(incoming.aliases().iter().cloned());
+            let named = !incoming.is_unnamed();
+            let at = match codes
+                .iter()
+                .position(|held| held.value() == incoming.value())
+            {
+                Some(at) => {
+                    // A placeholder name yields to a real one, whichever side
+                    // carries it. The incoming name is a spelling either way,
+                    // so it is added below like any other spelling; taking it
+                    // here is only a question of which one leads.
+                    if named
+                        && codes[at].is_unnamed()
+                        && !codes
+                            .iter()
+                            .enumerate()
+                            .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
+                    {
+                        codes[at] = codes[at].clone().with_name(spellings[0].clone());
+                    }
+                    at
+                }
+                None if codes.iter().any(|held| held.is_spelled(&spellings[0])) => continue,
+                None => {
+                    codes.push(incoming.with_aliases(std::iter::empty::<SmolStr>()));
+                    codes.len() - 1
+                }
+            };
+            // A code answers its own name, so this adds it where the value was
+            // already held and skips it where the code was just pushed.
+            for spelling in &spellings {
+                if !codes.iter().any(|held| held.is_spelled(spelling)) {
+                    codes[at].push_alias(spelling.clone());
+                }
+            }
+        }
+        if codes.is_empty() {
+            return Ok(None);
+        }
+        FixCodes::render(&codes).map(Some)
+    }
+}
+
+/// The canonical text one stored array of codes restates.
+///
+/// The members keep the order the file gave them - a set is ranked by
+/// position, which is the specification's business rather than this one's -
+/// while each code's own keys are put back into [the order](KEYS) this
+/// module's reader walks them, whatever order the file spelled them in.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] when the value is not an array of code objects,
+/// or one states a key a code does not declare.
+pub(super) fn codes_text(codes: &Scalar) -> Result<String> {
+    super::document::ordered_entries(TARGET, &KEYS, codes)
+        .and_then(|ordered| crate::into_json_scalar(&ordered))
+}
+
+/// The one code in `stored` a predicate matches, or nothing when several do.
+///
+/// Ambiguity answers nothing: two codes a caller's spelling reaches are two
+/// answers, and picking one is a guess. Free rather than a method so the
+/// tiers can share one already-read document.
+fn one_matching<'field>(
+    stored: &'field str,
+    matches: impl Fn(&FixCodeValue<'field>) -> bool,
+) -> Option<FixCodeValue<'field>> {
+    let mut found = None;
+    let mut walk = FixCodes::over(Some(stored));
+    while let Some(code) = walk.next_ok() {
+        if !matches(&code) {
+            continue;
+        }
+        if found.is_some_and(|held: FixCodeValue<'field>| held.value() != code.value()) {
+            return None;
+        }
+        found = Some(code);
+    }
+    found
+}
+
+/// [`FixCodeSet::code_value`] over a stored document: the three tiers, in order.
+///
+/// A set states one reading of every code it declares and dates none of them,
+/// so every code it holds is a candidate and there is no version to prefer by.
+pub(super) fn translate<'field>(stored: &'field str, text: &str) -> Option<&'field str> {
+    // Tier 1: the text as a wire value, exactly. A spelling that is already a
+    // legal code is never reinterpreted as somebody's name, and the record a
+    // value opens is addressed rather than searched for.
+    if let Some(code) = FixCodes::seek_value(stored, text) {
+        return Some(code.value());
+    }
+    // Tier 2: the folded symbolic name, then any alias.
+    if let Some(code) = one_matching(stored, |code| code.is_spelled(text)) {
+        return Some(code.value());
+    }
+    // Tier 3: the leading parenthesized abbreviation of the description.
+    one_matching(stored, |code| {
+        code.abbreviation()
+            .is_some_and(|short| folds_equal(short, text))
+    })
+    .map(FixCodeValue::value)
+}
+
+/// One named code set a dictionary holds, borrowed from its document.
+///
+/// Answered by [`FixRegistry::codeset`](super::FixRegistry::codeset) and by
+/// [`FixRegistry::codeset_of`](super::FixRegistry::codeset_of), which reads
+/// the name a field's `FIX:codeset` states. Every read walks the stored
+/// document as it goes and hands back slices of it, so nothing is parsed
+/// ahead of the code being asked for and nothing is allocated.
+///
+/// ```
+/// use yggdryl::{DataType, FixCode, FixRegistry};
+/// # fn main() -> yggdryl::Result<()> {
+/// let mut registry = FixRegistry::new();
+/// registry.set_codeset(
+///     "sidecodeset",
+///     &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
+/// )?;
+/// let mut side = DataType::utf8().nullable_field("side");
+/// side.as_fix_mut().set_tag(54)?;
+/// side.as_fix_mut().set_codeset("sidecodeset")?;
+/// registry.insert(side)?;
+///
+/// let set = registry.codeset_of(registry.field_by_tag(54)?).expect("the set");
+/// assert_eq!(set.name(), "sidecodeset");
+/// assert_eq!(set.code_value("buy"), Some("1"));
+/// assert_eq!(set.code_name("2"), Some("Sell"));
+/// assert_eq!(set.codes().count(), 2);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FixCodeSet<'registry> {
+    name: &'registry str,
+    document: &'registry str,
+}
+
+impl<'registry> FixCodeSet<'registry> {
+    /// The set under `name`, over the document the dictionary stores.
+    pub(super) const fn new(name: &'registry str, document: &'registry str) -> Self {
+        Self { name, document }
+    }
+
+    /// Returns the name the dictionary files this set under.
+    #[must_use]
+    pub const fn name(self) -> &'registry str {
+        self.name
+    }
+
+    /// Returns the stored document, as the store writes it.
+    #[must_use]
+    pub const fn document(self) -> &'registry str {
+        self.document
+    }
+
+    /// Walks the members, ordered by wire value.
+    ///
+    /// The iterator is lazy and allocates nothing: every spelling is a slice
+    /// of the stored document, which the dictionary already owns.
+    #[must_use]
+    pub fn codes(self) -> FixCodes<'registry> {
+        FixCodes::over(Some(self.document))
+    }
+
+    /// Returns the code one wire value stands for.
+    ///
+    /// The scan stops at the match: `value` leads each record, so this reads
+    /// one key per code passed and no more.
+    #[must_use]
+    pub fn code(self, value: &str) -> Option<FixCodeValue<'registry>> {
+        FixCodes::seek_value(self.document, value)
+    }
+
+    /// Returns the code one symbolic name or alias stands for, folded.
+    ///
+    /// This does **not** stop at the first match. Two codes folding to one
+    /// spelling answer nothing rather than whichever the scan met first, so
+    /// the whole set runs and exactly one match answers. It is affordable
+    /// because [`Self::code`] is the hot path and a spelling lookup comes
+    /// from human or JSON input.
+    #[must_use]
+    pub fn code_by_name(self, name: &str) -> Option<FixCodeValue<'registry>> {
+        one_matching(self.document, |code| code.is_spelled(name))
+    }
+
+    /// Resolves any spelling of a code to its wire value.
+    ///
+    /// Composes the three tiers this module documents. An unresolved spelling
+    /// answers `None` and the caller keeps its own text: a venue sends codes
+    /// no dictionary lists, and refusing one would drop data.
+    #[must_use]
+    pub fn code_value(self, text: &str) -> Option<&'registry str> {
+        translate(self.document, text)
+    }
+
+    /// Returns the symbolic name one wire value stands for.
+    #[must_use]
+    pub fn code_name(self, value: &str) -> Option<&'registry str> {
+        self.code(value).map(FixCodeValue::name)
+    }
+}
+
+impl FixRegistry {
+    /// The code set held under `name`, folded, or nothing.
+    ///
+    /// The lenient door beside [`Self::codeset`], which raises absence: a
+    /// caller asking whether a vocabulary is held asks this.
+    #[must_use]
+    pub fn get_codeset(&self, name: &str) -> Option<FixCodeSet<'_>> {
+        // The stored key is the folded name and a field states it as the
+        // store wrote it, so the exact hit is the ordinary one and costs no
+        // allocation; a caller spelling it otherwise pays one fold.
+        if let Some((held, document)) = self.codesets.get_key_value(name) {
+            return Some(FixCodeSet::new(held.as_str(), document));
+        }
+        let folded = crate::normalized(name);
+        self.codesets
+            .get_key_value(folded.as_str())
+            .map(|(held, document)| FixCodeSet::new(held.as_str(), document))
+    }
+
+    /// The code set held under `name`, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Absent`] naming the set when no such vocabulary is
+    /// held.
+    pub fn codeset(&self, name: &str) -> Result<FixCodeSet<'_>> {
+        self.get_codeset(name)
+            .ok_or_else(|| Error::absent("codesets", name))
+    }
+
+    /// The code set `field` draws its values from.
+    ///
+    /// The field states the name and the dictionary holds the members, so
+    /// this is the one door between them. A field naming no set, and one
+    /// this dictionary does not hold, both answer nothing - a held field
+    /// never names a set this dictionary lacks, because registry validation
+    /// refuses one at every door a field arrives through.
+    #[must_use]
+    pub fn codeset_of(&self, field: &Field) -> Option<FixCodeSet<'_>> {
+        self.get_codeset(field.as_fix().codeset()?)
+    }
+
+    /// The document of the set `field` reads by, when this dictionary holds
+    /// one.
+    ///
+    /// What the readers that only scan a set take, so a translation costs one
+    /// name lookup rather than a set's worth of borrowing.
+    pub(super) fn codes_document(&self, field: &Field) -> Option<&str> {
+        self.codeset_of(field).map(FixCodeSet::document)
+    }
+
+    /// The shared document of the set `field` reads by.
+    ///
+    /// The memo retains this on its first ask, so the registry remains the
+    /// document's one owner and remembering a field costs one reference count
+    /// rather than a copy of the whole vocabulary.
+    pub(super) fn codes_document_shared(&self, field: &Field) -> Option<Arc<str>> {
+        let name = self.codeset_of(field)?.name();
+        self.codesets.get(name).map(Arc::clone)
+    }
+
+    /// Walks every code set held, in name order.
+    pub fn codesets(&self) -> impl ExactSizeIterator<Item = FixCodeSet<'_>> {
+        self.codesets
+            .iter()
+            .map(|(name, document)| FixCodeSet::new(name.as_str(), document))
+    }
+
+    /// States the members of the code set `name`, replacing what it held.
+    ///
+    /// The set is filed under the folded name, which is the stem a store
+    /// writes it as. Codes are rendered canonically, so one set is one text
+    /// however it was built. Two names may share a value - that is an
+    /// alias - but two codes may not share a name.
+    ///
+    /// An empty slice removes the set, exactly as an empty code list removed
+    /// a field's own property before a set had a name; a set no field names
+    /// is removed outright, and one a field still reads by is refused,
+    /// because a field may not be left naming a vocabulary nothing states.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when the name is not one a store can
+    /// file, [`Error::Parse`] when two codes share a name or one states an
+    /// empty value or name, and [`Error::Conflict`] when an empty slice would
+    /// take away a set a held field names. Any of them leaves this dictionary
+    /// exactly as it was.
+    pub fn set_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
+        let key = self.codeset_key(name)?;
+        if codes.is_empty() {
+            self.refuse_while_named(&key)?;
+            if self.codesets.remove(&key).is_none() {
+                return Ok(());
+            }
+        } else {
+            let document = FixCodes::render(codes)?;
+            if self
+                .codesets
+                .get(&key)
+                .is_some_and(|held| held.as_ref() == document.as_str())
+            {
+                return Ok(());
+            }
+            self.codesets.insert(key, Arc::from(document.as_str()));
+        }
+        self.forget_codesets();
+        Ok(())
+    }
+
+    /// The one code-set slot `name` currently holds, before a caller changes
+    /// it as part of a larger atomic registry mutation.
+    pub(super) fn codeset_checkpoint(&self, name: &str) -> Result<(SmolStr, Option<Arc<str>>)> {
+        let key = self.codeset_key(name)?;
+        Ok((key.clone(), self.codesets.get(&key).cloned()))
+    }
+
+    /// Restores one code-set slot from [`Self::codeset_checkpoint`].
+    ///
+    /// The document was already canonical when this registry held it, so a
+    /// rollback neither parses nor validates it again. A slot that already
+    /// answers the checkpoint is left alone, including its derived caches.
+    pub(super) fn restore_codeset(&mut self, key: SmolStr, previous: Option<Arc<str>>) {
+        if self.codesets.get(&key) == previous.as_ref() {
+            return;
+        }
+        match previous {
+            Some(document) => {
+                self.codesets.insert(key, document);
+            }
+            None => {
+                self.codesets.remove(&key);
+            }
+        }
+        self.forget_codesets();
+    }
+
+    /// Folds `codes` into the code set `name`, keeping what it already held.
+    ///
+    /// The fold is keyed by wire value: a placeholder name yields to a real
+    /// one and every surviving spelling remains an alias. So a venue's
+    /// statement of a set enriches the one the dictionary holds rather than
+    /// replacing it, and a set no dictionary held yet arrives whole.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set_codeset`] returns for the name and the
+    /// render, leaving this dictionary exactly as it was.
+    pub fn merge_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
+        let key = self.codeset_key(name)?;
+        let incoming = FixCodes::render(codes)?;
+        let held = self.codesets.get(&key).map(Arc::clone);
+        let Some(merged) = FixCodes::merge(held.as_deref(), Some(incoming.as_str()))? else {
+            return Ok(());
+        };
+        self.codesets.insert(key, Arc::from(merged.as_str()));
+        self.forget_codesets();
+        Ok(())
+    }
+
+    /// Removes the code set `name`, answering the members it held.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] naming the first field that reads by the
+    /// set, because a field may not be left naming a vocabulary nothing
+    /// states, and [`Error::Parse`] when the stored document does not parse,
+    /// having already removed it: a document a reader refuses is one a caller
+    /// asked to take away.
+    pub fn remove_codeset(&mut self, name: &str) -> Result<Option<Vec<FixCode>>> {
+        let key = self.codeset_key(name)?;
+        self.refuse_while_named(&key)?;
+        let Some(document) = self.codesets.remove(&key) else {
+            return Ok(None);
+        };
+        self.forget_codesets();
+        FixCodes::over(Some(&*document))
+            .map(|code| code.map(FixCode::from))
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
+    }
+
+    /// Folds another dictionary's code sets in, name by name.
+    ///
+    /// Run before any field is folded, which is what keeps a merge from
+    /// narrowing a vocabulary: a field keeps the set it already reads by
+    /// ([`FixField::merge_with`](crate::FixField::merge_with)), so the
+    /// members the other dictionary states have to be in that set by the
+    /// time the field is looked at. A field only the other dictionary holds
+    /// arrives naming its own set, which this fold has just added.
+    ///
+    /// A name both hold folds through [`FixCodes::merge`], the incoming
+    /// winning a shared wire value and every surviving spelling kept, so
+    /// what either side named, aliased or documented is named after the
+    /// fold.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when either document does not parse.
+    pub(super) fn merge_codesets(&mut self, other: &Self) -> Result<()> {
+        for (name, incoming) in &other.codesets {
+            match self.codesets.entry(name.clone()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(Arc::clone(incoming));
+                }
+                Entry::Occupied(mut slot) => {
+                    if slot.get().as_ref() == incoming.as_ref() {
+                        continue;
+                    }
+                    if let Some(merged) =
+                        FixCodes::merge(Some(slot.get()), Some(incoming.as_ref()))?
+                    {
+                        slot.insert(Arc::from(merged.as_str()));
+                    }
+                }
+            }
+        }
+        self.forget_codesets();
+        Ok(())
+    }
+
+    /// Folds the set an incoming field reads by into the one a stored field
+    /// already reads by.
+    ///
+    /// Two dictionaries name one field's vocabulary differently - the
+    /// specification calls it `SideCodeSet` and a venue's own file names it
+    /// after the field - and the merged field keeps the name it already had
+    /// ([`FixField::merge_with`](crate::FixField::merge_with)). Without this
+    /// the members only the incoming set declared would be reachable from no
+    /// field at all; with it they are in the set the field reads by before
+    /// the field is folded, so a merge widens a vocabulary and never narrows
+    /// one. Two fields naming one set, and a stored field naming none, are
+    /// both nothing to do.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when either document does not parse.
+    pub(super) fn unify_codeset(
+        &mut self,
+        stored: Option<&str>,
+        incoming: Option<&str>,
+    ) -> Result<()> {
+        let (Some(stored), Some(incoming)) = (stored, incoming) else {
+            return Ok(());
+        };
+        if folds_equal(stored, incoming) {
+            return Ok(());
+        }
+        let Some(other) = self.get_codeset(incoming).map(FixCodeSet::document) else {
+            return Ok(());
+        };
+        let held = self.get_codeset(stored).map(FixCodeSet::document);
+        let Some(merged) = FixCodes::merge(held, Some(other))? else {
+            return Ok(());
+        };
+        let key = self.codeset_key(stored)?;
+        self.codesets.insert(key, Arc::from(merged.as_str()));
+        self.forget_codesets();
+        Ok(())
+    }
+
+    /// Files one already-rendered document under `name`, as a store reads it.
+    ///
+    /// The loader's door: the document arrived canonical from a store, so it
+    /// is filed rather than re-rendered, and the name is held to the one rule
+    /// every stored name is held to.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when the name is not one a store can
+    /// file, and [`Error::Conflict`] when the name is already held with a
+    /// different document. Re-reading the same canonical set is idempotent.
+    pub(super) fn create_codeset(&mut self, name: &str, document: String) -> Result<()> {
+        let key = self.codeset_key(name)?;
+        match self.codesets.entry(key) {
+            Entry::Vacant(slot) => {
+                slot.insert(Arc::from(document.as_str()));
+                Ok(())
+            }
+            Entry::Occupied(slot) if slot.get().as_ref() == document.as_str() => Ok(()),
+            Entry::Occupied(slot) => Err(Error::conflict(
+                "one FIX code set per name",
+                "a different code set under that name",
+                slot.key().as_str(),
+            )),
+        }
+    }
+
+    /// The name a field's own set is filed under where it names none.
+    ///
+    /// A specification names its sets - `MsgTypeCodeSet` - and the shipped
+    /// dictionary files them under those names; a field the generator met
+    /// without one, and a dictionary built in memory, name the set after the
+    /// field that reads by it, which is the one name the field itself
+    /// supplies.
+    #[must_use]
+    pub fn derived_codeset_name(field: &Field) -> SmolStr {
+        format_smolstr!("{}codeset", crate::normalized(field.name()))
+    }
+
+    /// The folded key `name` is filed under, refusing a name no store files.
+    fn codeset_key(&self, name: &str) -> Result<SmolStr> {
+        super::catalog::validate_definition_name(name)?;
+        Ok(SmolStr::new(crate::normalized(name)))
+    }
+
+    /// Refuses taking away a set a held field still reads by.
+    fn refuse_while_named(&self, key: &str) -> Result<()> {
+        let named = self
+            .scalars()
+            .chain(self.catalog.all().map(|entry| entry.field.as_field()))
+            .find(|field| {
+                field
+                    .as_fix()
+                    .codeset()
+                    .is_some_and(|name| folds_equal(name, key))
+            });
+        match named {
+            Some(field) => Err(Error::conflict(
+                "a FIX code set no field reads by",
+                "one a field names",
+                format_smolstr!("{key:?} on {:?}", field.name()),
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// Forgets what was answered from the sets that just changed.
+    ///
+    /// The memo keys a translation by the document it read, and tag 35's set
+    /// decides which message a bare code answers, so both are re-derived
+    /// after an edit rather than answered from a set no longer held.
+    fn forget_codesets(&mut self) {
+        self.forget_derivations();
+        self.refresh_msgtype_aliases();
+    }
+}
+
+#[cfg(test)]
+mod codeset_tests {
+    use super::*;
+    use crate::DataType;
+
+    /// One field reading by one named set, and the set beside it.
+    fn dictionary(name: &str, tag: i32, codes: &[FixCode]) -> (FixRegistry, Field) {
+        let mut registry = FixRegistry::new();
+        registry.set_codeset(name, codes).unwrap();
+        let mut field = DataType::utf8().nullable_field(format!("field{tag}"));
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field.as_fix_mut().set_codeset(name).unwrap();
+        registry.insert(field.clone()).unwrap();
+        (registry, field)
+    }
+
+    #[test]
+    fn a_field_may_not_read_by_a_set_the_dictionary_does_not_hold() {
+        let mut registry = FixRegistry::new();
+        let mut field = DataType::utf8().nullable_field("side");
+        field.as_fix_mut().set_tag(54).unwrap();
+        field.as_fix_mut().set_codeset("sidecodeset").unwrap();
+        let refused = registry.insert(field.clone()).unwrap_err();
+        assert!(
+            matches!(&refused, Error::Absent { expected, path }
+                if *expected == "codesets" && path == "sidecodeset"),
+            "{refused}"
+        );
+        // And the refusal left nothing behind.
+        assert!(registry.get_field_by_tag(54).is_none());
+
+        registry
+            .set_codeset("sidecodeset", &[FixCode::new("Buy", "1")])
+            .unwrap();
+        registry.insert(field).unwrap();
+        assert_eq!(
+            registry.codeset_of(registry.field_by_tag(54).unwrap()),
+            registry.get_codeset("sidecodeset"),
+        );
+    }
+
+    #[test]
+    fn one_set_is_named_once_however_many_fields_read_by_it() {
+        let (mut registry, _) = dictionary("unitcodeset", 996, &[FixCode::new("Bbl", "Bbl")]);
+        let mut other = DataType::utf8().nullable_field("legunitofmeasure");
+        other.as_fix_mut().set_tag(999).unwrap();
+        other.as_fix_mut().set_codeset("unitcodeset").unwrap();
+        registry.insert(other).unwrap();
+
+        assert_eq!(registry.codesets().len(), 2);
+        for tag in [996, 999] {
+            let set = registry
+                .codeset_of(registry.field_by_tag(tag).unwrap())
+                .expect("the set");
+            assert_eq!(set.code_name("Bbl"), Some("Bbl"));
+        }
+        // Stating one more member is one edit, and both fields read it.
+        registry
+            .merge_codeset("unitcodeset", &[FixCode::new("Gal", "Gal")])
+            .unwrap();
+        for tag in [996, 999] {
+            let set = registry
+                .codeset_of(registry.field_by_tag(tag).unwrap())
+                .expect("the set");
+            assert_eq!(set.codes().count(), 2);
+        }
+    }
+
+    #[test]
+    fn a_set_a_field_reads_by_is_not_one_a_removal_may_take_away() {
+        let (mut registry, mut field) = dictionary("sidecodeset", 54, &[FixCode::new("Buy", "1")]);
+        let refused = registry.remove_codeset("sidecodeset").unwrap_err();
+        assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+        assert!(registry.get_codeset("sidecodeset").is_some());
+
+        // `update` folds rather than replaces, so the reference it dropped
+        // would come back; the definition door is the one that replaces a
+        // field whole.
+        field.as_fix_mut().remove_codeset();
+        registry
+            .update_definition(crate::FixCategory::Fields, field)
+            .unwrap();
+        let taken = registry.remove_codeset("sidecodeset").unwrap();
+        assert_eq!(taken, Some(vec![FixCode::new("Buy", "1")]));
+        assert!(registry.get_codeset("sidecodeset").is_none());
+    }
+
+    #[test]
+    fn merging_two_dictionaries_folds_their_sets_and_keeps_every_enrichment() {
+        // What the specification says: the values, named and documented.
+        let (mut held, _) = dictionary(
+            "msgtypecodeset",
+            35,
+            &[
+                FixCode::new("Heartbeat", "0").with_description("Heartbeat"),
+                FixCode::new("6", "6"),
+            ],
+        );
+        // What a venue's own dictionary says about the same set: one value it
+        // alone declares, one spelling for a value both hold, and a real name
+        // for the one the specification left standing for itself.
+        let (venue, _) = dictionary(
+            "msgtypecodeset",
+            35,
+            &[
+                FixCode::new("HB", "0"),
+                FixCode::new("IOI", "6"),
+                FixCode::new("VenueOwn", "ZZ").with_description("A type only this venue sends"),
+            ],
+        );
+
+        held.merge_with(&venue).unwrap();
+        let set = held.codeset("msgtypecodeset").unwrap();
+        assert_eq!(set.codes().count(), 3);
+        // The held name leads and the incoming one reaches the same code.
+        assert_eq!(set.code_name("0"), Some("Heartbeat"));
+        assert_eq!(set.code_value("hb"), Some("0"));
+        // A code named after its own value takes the real name the venue gave
+        // it, which is the enrichment a fold exists for.
+        assert_eq!(set.code_name("6"), Some("IOI"));
+        // And what only the venue declared arrived whole, its wording with it.
+        assert_eq!(set.code_value("VenueOwn"), Some("ZZ"));
+        assert_eq!(
+            set.code("ZZ").and_then(|code| code.parse_doc().unwrap()),
+            Some("A type only this venue sends".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
+        let (mut held, _) = dictionary("heldcodeset", 54, &[FixCode::new("Buy", "1")]);
+        let (venue, _) = dictionary("venuecodeset", 54, &[FixCode::new("Sell", "2")]);
+
+        held.merge_with(&venue).unwrap();
+        // The field keeps its own vocabulary's name, and what the other
+        // dictionary's set declared is in that vocabulary rather than in one
+        // no field reads by: a merge widens a set and never narrows one.
+        let field = held.field_by_tag(54).unwrap();
+        assert_eq!(field.as_fix().codeset(), Some("heldcodeset"));
+        let set = held.codeset_of(field).expect("the set");
+        assert_eq!(set.code_value("Buy"), Some("1"));
+        assert_eq!(set.code_value("Sell"), Some("2"));
+        // The incoming name is still a set of its own: a name is an identity,
+        // and folding its members into another does not retire it.
+        assert_eq!(held.codesets().len(), 3);
+        assert!(held.get_codeset("venuecodeset").is_some());
+    }
+
+    #[test]
+    fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
+        // The crate's MsgCat vocabulary is registry-owned like every other
+        // set, so even a fresh dictionary persists that one intrinsic set.
+        let path = crate::local::Folder::temporary()
+            .unwrap()
+            .path()
+            .unwrap()
+            .join(format!("yggdryl-codesets-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        let mut root = crate::holder::Holder::local(path.clone()).unwrap();
+        let registry = FixRegistry::new();
+        assert_eq!(registry.codesets().len(), 1);
+        registry.write_into(root.as_io_mut()).unwrap();
+        assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
+
+        // And one that gains a set writes the folder, while one that loses it
+        // again takes the folder away rather than leaving a stale document.
+        let mut held = registry.clone();
+        held.set_codeset("sidecodeset", &[FixCode::new("Buy", "1")])
+            .unwrap();
+        held.write_into(root.as_io_mut()).unwrap();
+        let read = FixRegistry::from_handle(root.as_io()).unwrap();
+        assert_eq!(read, held);
+        assert_eq!(read.codeset("sidecodeset").unwrap().codes().count(), 1);
+
+        registry.write_into(root.as_io_mut()).unwrap();
+        assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
+        let _ = std::fs::remove_dir_all(&path);
+
+        // The other persistence door states the sets under a key of their
+        // own, read before the fields that name them.
+        let document = held.into_json().unwrap();
+        assert!(document.contains("\"codesets\""), "{document:.120}");
+        assert_eq!(FixRegistry::from_json(&document).unwrap(), held);
+        let refused = FixRegistry::from_json(
+            r#"{"codesets":[],"fields":[],"components":[],"groups":[],"messages":[]}"#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&refused, Error::InvalidRecord { path, reason }
+                if path == "messages" && reason.contains("codesets")),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
+        let mut registry = FixRegistry::new();
+        for name in ["", "..", "one/two", "a b"] {
+            let refused = registry.set_codeset(name, &[FixCode::new("Buy", "1")]);
+            assert!(refused.is_err() || name.is_empty(), "{name:?}");
+        }
+        assert_eq!(registry.codesets().len(), 1);
     }
 }

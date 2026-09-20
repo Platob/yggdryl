@@ -1,0 +1,21 @@
+{
+  "name": "exectranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New"
+    },
+    {
+      "value": "1",
+      "name": "Cancel"
+    },
+    {
+      "value": "2",
+      "name": "Correct"
+    },
+    {
+      "value": "3",
+      "name": "Status"
+    }
+  ]
+}

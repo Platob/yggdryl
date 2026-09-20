@@ -30,19 +30,19 @@
 //! stops being a message, or starts being two, is a change nobody would see in
 //! a digest that is no longer taken.
 //!
-//! The entries column is left out of the row on purpose: it holds the
-//! entries again, in the shape a row materializes them, and pinning one fact
-//! twice would mean a deliberate change to the entry column has to be
-//! re-blessed in two places. The entries above are the owner.
+//! The residual entries column is left out of the snapshot: the complete
+//! in-memory entries above pin the source content, while the row's counter
+//! pins how much content its other columns cannot represent.
 //!
 //! One thing is asserted here rather than pinned, because it is an identity
 //! and not an answer: every message fills a row and is read back out of it,
-//! and the message that comes back has the same entries, the same digest, the
-//! same wire and the same row. That is what says the entries column carries
-//! the whole arrival record, and it is how deleting a column that used to be
-//! copied back verbatim is judged - a fact missed on the way back shows
-//! nowhere else. Three malformed shapes refuse projection (five fixtures);
-//! the assertion pins their exact identities and errors.
+//! and the message that comes back produces the same row, including its
+//! recorded event identity. Projected columns and residual entries jointly
+//! reconstruct the content; wire order is not part of that row contract.
+//! Event-content hashes order independent field names canonically while
+//! retaining equal-name occurrence order. Reordering fields therefore keeps
+//! the event identity, and a restatement does not advance its chain; changes
+//! to this identity rule update identity and ancestry pins, not wire pins.
 //!
 //! The file is one `key<TAB>value` a line. Values are rendered by the crate's
 //! own canonical spellings - [`into_json_scalar`] for a column, the wire bytes
@@ -119,9 +119,8 @@ struct Pinned {
     records: Vec<(String, String)>,
     /// The messages whose row cannot be exported or read back, and why.
     ///
-    /// Not a snapshot line, because it is not an answer this file pins - it
-    /// is the standing exception to an identity every other message honours,
-    /// and its exact set is asserted so another cannot appear quietly.
+    /// Reconstruction failures are asserted separately from the snapshot;
+    /// regenerating source observations cannot accept lost row content.
     unread: Vec<String>,
 }
 
@@ -180,32 +179,32 @@ impl Pinned {
                 return;
             }
         };
-        // A message that does not come back as itself is unread, and named
-        // with what moved: every identity is checked, none stops the
-        // reading, so the whole answer is still written beside the failure.
+        // Every semantic row must be a fixed point, including the event
+        // identity it recorded and the residual content it retained.
         match FixMsg::from_row(Arc::clone(codec.registry()), schema, &row) {
-            Ok(held) => {
-                if held.entries() != message.entries() {
-                    self.unread
-                        .push(format!("{at}: the arrivals a row reads back"));
+            Ok(held) => match held.into_row(schema) {
+                Ok(back) if back == row => {}
+                Ok(back) => {
+                    for ((column, before), after) in schema
+                        .fields()
+                        .iter()
+                        .zip(row.as_sequence().expect("a row"))
+                        .zip(back.as_sequence().expect("a row"))
+                    {
+                        if before != after {
+                            self.unread
+                                .push(format!("{at}: reconstructed {} differs", column.name()));
+                            eprintln!(
+                                "{at} {} before={} after={}",
+                                column.name(),
+                                into_json_scalar(before).expect("a scalar"),
+                                into_json_scalar(after).expect("a scalar")
+                            );
+                        }
+                    }
                 }
-                let (back, wire) = (
-                    escaped(&held.into_bytes(b'|')),
-                    escaped(&message.into_bytes(b'|')),
-                );
-                if back != wire {
-                    self.unread
-                        .push(format!("{at}: the wire a row re-emits: {back} was {wire}"));
-                }
-                if held.digest() != message.digest() {
-                    self.unread
-                        .push(format!("{at}: the digest a row reads back"));
-                }
-                if held.into_row(schema).ok().as_ref() != Some(&row) {
-                    self.unread
-                        .push(format!("{at}: the row a read message makes"));
-                }
-            }
+                Err(refused) => self.unread.push(format!("{at}: re-export: {refused}")),
+            },
             Err(refused) => self.unread.push(format!("{at}: {refused}")),
         }
         let values = row.as_sequence().expect("a row is a sequence");
@@ -437,8 +436,7 @@ fn frames() -> Vec<Vec<u8>> {
         )
         .into_bytes(),
     );
-    // A row is read for every message it carries. Appended at
-    // the end because the unread assertion names the earlier ones by index:
+    // A row is read for every message it carries. Keep fixture indices stable:
     // two frames on one line, a checksum-less frame the next one closes, a
     // bridge row the bridge marked in front of a frame, and a marked `#8=`
     // and `#10=` inside a bridge row, which are the bridge's own spelling
@@ -644,61 +642,6 @@ fn read() -> Pinned {
     pinned
 }
 
-/// The messages a row does not read back as itself, and the one shape that
-/// happens to.
-///
-/// [`FixMsg::from_row`] is exact but for two shapes, and these are the
-/// messages they reach - named rather than skipped.
-///
-/// A repeating group whose occurrences nest a second group only some of
-/// them state, which `from_row`'s own rustdoc names: the nested occurrences
-/// come back behind the parties rather than inside the occurrence that
-/// stated them, so the entries and the wire move.
-///
-/// And a coded value a venue spelled in its own words: this capture's
-/// bridge writes `TIMEINFORCE=day` where FIX's code set says `0`, so the
-/// arrival record keeps the word while the column holds the code, and only
-/// the line the word came on still has it to re-emit.
-///
-/// The `lifecycle` ordinals are the walk's order, and the walk orders by
-/// the instant the lifecycle dates each message with: `TransactTime(60)`
-/// where the parse supplied the sending clock, `SendingTime(52)` where the
-/// line stated it, so the same eight messages sit where that stamp puts
-/// them.
-const NESTING_A_SUBGROUP: [&str; 31] = [
-    "ulbridge[006]",
-    "ulbridge[008]",
-    "ulbridge[056]",
-    "ulbridge[100]",
-    "ulbridge[111]",
-    "ulbridge[138]",
-    "ulbridge[140]",
-    "ulbridge[141]",
-    "lifecycle[016]",
-    "lifecycle[018]",
-    "lifecycle[039]",
-    "lifecycle[068]",
-    "lifecycle[081]",
-    "lifecycle[083]",
-    "lifecycle[089]",
-    "lifecycle[090]",
-    "frames[000]",
-    "frames[005]",
-    "frames[010]",
-    "frames[028]",
-    "frames[031]",
-    "frames[032]",
-    "frames[033]",
-    "lift[012]",
-    "verbatim[000]",
-    "verbatim[005]",
-    "verbatim[010]",
-    "verbatim[028]",
-    "verbatim[031]",
-    "verbatim[032]",
-    "verbatim[033]",
-];
-
 /// The codec's answer over every capture this branch holds, byte for byte.
 ///
 /// This is the equivalence gate the adaptation is judged against: it asserts
@@ -708,34 +651,18 @@ const NESTING_A_SUBGROUP: [&str; 31] = [
 #[test]
 fn the_codec_answers_what_it_answered() {
     let pinned = read();
-    // Every message here also fills a row and is read back out of it, which
-    // is the identity `from_row` exists for and the only thing that says the
-    // entries column carries the whole arrival record - a column that is
-    // copied back verbatim can only be missed on the way back, so deleting
-    // one is judged here.
-    //
-    // Nothing is unread. A value the fixed row's column will not hold is
-    // that column's null and a group keeps every member that does read -
-    // two malformed groups in both source forms, and an indexed Symbol list,
-    // are the fixtures that exercise both - so a capture of ten million
-    // lines cannot end on one bad value, and what those rows said is still
-    // in the arrival record the snapshot pins beside them.
-    // Written before the identity is judged, so a regeneration lands the
-    // whole answer even while one message does not read back as itself.
+    // Every source message also checks column/residual reconstruction. Write
+    // the source snapshot before reporting failures so intentional changes
+    // can be reviewed even when a reconstructed row still needs a fix.
     let path = snapshot_path();
     let writing = std::env::var(WRITE).as_deref() == Ok("1");
     if writing {
         std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
     }
-    let mut unread: Vec<&str> = pinned
-        .unread
-        .iter()
-        .map(|held| held.split(':').next().expect("a key"))
-        .collect();
-    unread.dedup();
-    assert_eq!(
-        unread, NESTING_A_SUBGROUP,
-        "every row reads back but the ones `from_row` names as inexact"
+    assert!(
+        pinned.unread.is_empty(),
+        "every row must reconstruct without losing content: {:#?}",
+        pinned.unread
     );
     if writing {
         return;

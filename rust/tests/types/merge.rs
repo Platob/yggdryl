@@ -162,8 +162,8 @@ fn narrowing_keeps_a_registered_code_over_the_width_it_stores_in() {
         assert_ne!(up(&DataType::Currency, &other), DataType::Currency);
     }
     assert_eq!(
-        down(&DataType::Cfi, &DataType::fixed_ascii(6).unwrap()),
-        DataType::Cfi
+        down(&DataType::CfiCode, &DataType::fixed_ascii(6).unwrap()),
+        DataType::CfiCode
     );
 
     // A side narrower than the code still outranks it: narrowing is the

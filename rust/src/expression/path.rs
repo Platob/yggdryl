@@ -24,10 +24,11 @@
 //! takes it through a column - so a schema, a row, and a batch cannot disagree
 //! about what `legs[0].ccy` reaches.
 //!
-//! This is a *selector*: it says which child a caller wants. It is not the
-//! crate-private `Path` cons-list a recursive walk carries to report where a
-//! failure happened. The two never merge - one is caller input resolved once,
-//! the other is walker state rendered only on error.
+//! This is a *selector*: it says which child a caller wants. A successful
+//! recursive walk still carries the crate-private borrowed `Path` cons-list. A
+//! validation failure may retain owned `FieldSegment` values and render them with
+//! the same path spelling, sharing the segment vocabulary without sharing a
+//! parser or walker state.
 
 use std::borrow::Cow;
 use std::fmt::{self, Write as _};
@@ -96,6 +97,25 @@ impl FieldSegment {
     #[must_use]
     pub const fn index(position: i64) -> Self {
         Self::Index(position)
+    }
+
+    /// Append this segment to an owned diagnostic path.
+    ///
+    /// Field names and non-negative indexes use the bounded shared renderer;
+    /// other selector segments retain their expression spelling.
+    pub(crate) fn append_diagnostic(&self, path: &mut String) {
+        match self {
+            Self::Field(name) => crate::path::push_field_name(path, name),
+            Self::Index(index) => match usize::try_from(*index) {
+                Ok(index) => crate::path::push_segment(path, crate::path::Segment::Index(index)),
+                Err(_) => {
+                    let _ = write!(path, "{self}");
+                }
+            },
+            Self::Key(_) | Self::Range { .. } | Self::Where(_) => {
+                let _ = write!(path, "{self}");
+            }
+        }
     }
 
     /// Name a run of list elements, half-open.
@@ -607,6 +627,31 @@ impl FieldPath {
         <Self as FromStr>::from_str(value)
     }
 
+    /// Resolve one schema address and borrow its segments for one operation.
+    ///
+    /// A bare identifier is the common one-segment shape, so it stays on the
+    /// stack. Every other spelling crosses the expression parser once; an
+    /// alias names an owned projection and cannot name a borrowed child.
+    pub(crate) fn with_schema_segments<T>(
+        value: &str,
+        apply: impl FnOnce(&[FieldSegment]) -> T,
+    ) -> Result<T> {
+        if super::display::is_bare_identifier(value) {
+            let segment = FieldSegment::Field(SmolStr::new(value));
+            return Ok(apply(std::slice::from_ref(&segment)));
+        }
+        let path = Self::from_str(value)?;
+        if path.alias.is_some() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{value}"),
+                reason: SmolStr::new_static(
+                    "expected a schema address without `as`; a borrowed child cannot be renamed",
+                ),
+            });
+        }
+        Ok(apply(path.segments()))
+    }
+
     /// Borrow the resolved segments.
     #[must_use]
     pub fn segments(&self) -> &[FieldSegment] {
@@ -893,12 +938,15 @@ pub(crate) fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -
         return formatter.write_str(name);
     }
     formatter.write_char('"')?;
-    for character in name.chars() {
-        if character == '"' {
-            formatter.write_char('"')?;
-        }
-        formatter.write_char(character)?;
+    // Each run up to and including a quote, then the quote once more to
+    // double it; a name carrying none is one write.
+    let mut rest = name;
+    while let Some(at) = rest.find('"') {
+        formatter.write_str(&rest[..=at])?;
+        formatter.write_char('"')?;
+        rest = &rest[at + 1..];
     }
+    formatter.write_str(rest)?;
     formatter.write_char('"')
 }
 

@@ -1,0 +1,40 @@
+{
+  "name": "tradepricenegotiationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PercentPar",
+      "doc": "Percent of par"
+    },
+    {
+      "value": "1",
+      "name": "DealSpread",
+      "doc": "Deal spread"
+    },
+    {
+      "value": "2",
+      "name": "UpfrontPnts",
+      "doc": "Upfront points"
+    },
+    {
+      "value": "3",
+      "name": "UpfrontAmt",
+      "doc": "Upfront amount"
+    },
+    {
+      "value": "4",
+      "name": "ParUpfrontAmt",
+      "doc": "Percent of par and upfront amount"
+    },
+    {
+      "value": "5",
+      "name": "SpreadUpfrontAmt",
+      "doc": "Deal spread and upfront amount"
+    },
+    {
+      "value": "6",
+      "name": "UpfrontPntsAmt",
+      "doc": "Upfront points and upfront amount"
+    }
+  ]
+}

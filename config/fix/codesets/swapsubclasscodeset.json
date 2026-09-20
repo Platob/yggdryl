@@ -1,0 +1,30 @@
+{
+  "name": "swapsubclasscodeset",
+  "codes": [
+    {
+      "value": "AMTZ",
+      "name": "Amortizing",
+      "doc": "Amortizing notional schedule"
+    },
+    {
+      "value": "COMP",
+      "name": "Compounding",
+      "doc": "Compounding"
+    },
+    {
+      "value": "CNST",
+      "name": "ConstantNotionalSchedule",
+      "doc": "Constant notional schedule"
+    },
+    {
+      "value": "ACRT",
+      "name": "AccretingNotionalSchedule",
+      "doc": "Accreting notional schedule"
+    },
+    {
+      "value": "CUST",
+      "name": "CustomNotionalSchedule",
+      "doc": "Custom notional schedule"
+    }
+  ]
+}

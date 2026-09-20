@@ -1,0 +1,15 @@
+{
+  "name": "preallocmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ProRata",
+      "doc": "Pro rata"
+    },
+    {
+      "value": "1",
+      "name": "DoNotProRata",
+      "doc": "Do not pro-rata - discuss first"
+    }
+  ]
+}

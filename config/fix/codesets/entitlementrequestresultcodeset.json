@@ -1,0 +1,90 @@
+{
+  "name": "entitlementrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidParty",
+      "doc": "Invalid party(-ies)"
+    },
+    {
+      "value": "2",
+      "name": "InvalidRelatedParty",
+      "doc": "Invalid related party(-ies)"
+    },
+    {
+      "value": "3",
+      "name": "InvalidEntitlementType",
+      "doc": "Invalid entitlement type(s)"
+    },
+    {
+      "value": "4",
+      "name": "InvalidEntitlementID",
+      "doc": "Invalid entitlement ID(s) / ref ID(s)"
+    },
+    {
+      "value": "5",
+      "name": "InvalidEntitlementAttribute",
+      "doc": "Invalid entitlement attribute(s)"
+    },
+    {
+      "value": "6",
+      "name": "InvalidInstrumentScope",
+      "doc": "Invalid instrument scope(s)"
+    },
+    {
+      "value": "7",
+      "name": "InvalidMarketSegmentScope",
+      "doc": "Invalid market segment scope(s)"
+    },
+    {
+      "value": "8",
+      "name": "InvalidStartDate",
+      "doc": "Invalid start date"
+    },
+    {
+      "value": "9",
+      "name": "InvalidEndDate",
+      "doc": "Invalid end date"
+    },
+    {
+      "value": "10",
+      "name": "InstrumentScopeNotSupported",
+      "doc": "Instrument scope not supported"
+    },
+    {
+      "value": "11",
+      "name": "MarketSegmentScopeNotSupported",
+      "doc": "Market segment scope not supported"
+    },
+    {
+      "value": "12",
+      "name": "EntitlementNotApprovedForParty",
+      "doc": "Entitlement not approved for party(-ies)"
+    },
+    {
+      "value": "13",
+      "name": "EntitlementAlreadyDefinedForParty",
+      "doc": "Entitlement already defined for party(-ies)"
+    },
+    {
+      "value": "14",
+      "name": "InstrumentNotApprovedForParty",
+      "doc": "Instrument not approved for party(-ies)"
+    },
+    {
+      "value": "98",
+      "name": "NotAuthorized",
+      "doc": "Not authorized"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

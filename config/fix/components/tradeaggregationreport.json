@@ -192,6 +192,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "tradeid",
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "DX",
     "FIX:tag": "978335",
     "description": "MsgType = DX",

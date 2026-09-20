@@ -1,0 +1,30 @@
+{
+  "name": "newscategorycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CompanyNews",
+      "doc": "Company News"
+    },
+    {
+      "value": "1",
+      "name": "MarketplaceNews",
+      "doc": "Marketplace News"
+    },
+    {
+      "value": "2",
+      "name": "FinancialMarketNews",
+      "doc": "Financial Market News"
+    },
+    {
+      "value": "3",
+      "name": "TechnicalNews",
+      "doc": "Technical News"
+    },
+    {
+      "value": "99",
+      "name": "OtherNews",
+      "doc": "Other News"
+    }
+  ]
+}

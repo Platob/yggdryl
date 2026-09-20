@@ -16,7 +16,8 @@ fn schema() -> Field {
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
-    ]).map(DataType::from)
+    ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -63,10 +64,12 @@ fn a_name_resolves_exactly_as_the_field_resolves_it() {
     let schema = StructType::from_fields([
         Field::new("Symbol", DataType::utf8(), false),
         Field::new("symbol", DataType::utf8(), false),
-        StructType::from_fields([Field::new("px", DataType::Float64, false)]).map(DataType::from)
+        StructType::from_fields([Field::new("px", DataType::Float64, false)])
+            .map(DataType::from)
             .unwrap()
             .required_field("leg"),
-    ]).map(DataType::from)
+    ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let record = FieldRecord::new(
@@ -121,6 +124,62 @@ fn a_named_record_and_an_ordered_sequence_read_alike() {
         from_struct.into_values(),
         row().as_sequence().unwrap().to_vec()
     );
+}
+
+#[test]
+fn typing_a_named_row_preserves_its_source_and_fills_defaults() {
+    let schema = schema();
+    let source = Scalar::from_struct([("id", Scalar::from(7_i32))]).unwrap();
+
+    let record = FieldRecord::new(&schema, source.clone()).unwrap();
+
+    assert_eq!(record[0].value(), &Scalar::from(7_i64));
+    assert!(record["symbol"].is_null());
+    assert!(record["price"].is_null());
+    assert!(matches!(
+        source.as_struct().and_then(|values| values.get("id")),
+        Some(Scalar::Int32(_))
+    ));
+    assert_eq!(
+        source
+            .as_struct()
+            .and_then(|values| values.get("id"))
+            .and_then(Scalar::as_i64),
+        Some(7)
+    );
+    assert_eq!(source.as_struct().map(|values| values.len()), Some(1));
+}
+
+#[test]
+fn typing_a_named_row_keeps_nested_canonicalization_errors() {
+    let line = StructType::from_fields([DataType::Int64.required_field("price")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("line");
+    let schema = StructType::from_fields([line])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let invalid_leaf = Scalar::from_struct([(
+        "line",
+        Scalar::from_struct([("price", Scalar::from("not a price"))]).unwrap(),
+    )])
+    .unwrap();
+    let unknown = Scalar::from_struct([("unknown", Scalar::from(7))]).unwrap();
+
+    for source in [invalid_leaf, unknown] {
+        let unchanged = source.clone();
+        let canonical = schema
+            .canonicalize_value(source.clone())
+            .unwrap_err()
+            .to_string();
+        let typed = FieldRecord::new(&schema, source.clone())
+            .unwrap_err()
+            .to_string();
+
+        assert_eq!(typed, canonical);
+        assert_eq!(source, unchanged);
+    }
 }
 
 #[test]
@@ -193,7 +252,8 @@ fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::large_utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
-    ]).map(DataType::from)
+    ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let wide = FieldRecord::new(&widened, row()).unwrap();
@@ -245,9 +305,10 @@ fn subscripting_a_position_past_the_row_panics_like_a_field_does() {
 }
 
 mod arrow {
+    use arrow_array::Array;
 
-    use yggdryl::StructType;
     use super::{DataType, Field, FieldRecord, Scalar, row, schema};
+    use yggdryl::StructType;
 
     #[test]
     fn a_row_round_trips_through_a_one_row_batch() {
@@ -259,6 +320,85 @@ mod arrow {
         let decoded = FieldRecord::from_arrow_batch(&schema, &batch, 0).unwrap();
         assert_eq!(decoded, record);
         assert_eq!(decoded.into_scalar(), row());
+    }
+
+    #[test]
+    fn direct_projection_keeps_root_and_child_arrow_contracts() {
+        let nested = StructType::from_fields([DataType::Int64.required_field("price")])
+            .map(DataType::from)
+            .unwrap()
+            .nullable_field("line");
+        let schema = Field::from_parts(
+            "row",
+            StructType::from_fields([
+                DataType::Currency.required_field("currency"),
+                Field::new(
+                    "symbol",
+                    DataType::dictionary(DataType::Int8, DataType::utf8()).unwrap(),
+                    true,
+                ),
+                nested,
+            ])
+            .map(DataType::from)
+            .unwrap(),
+            false,
+            [("owner", "trading")],
+        )
+        .unwrap();
+        let record = FieldRecord::new(
+            &schema,
+            Scalar::from_sequence([Scalar::from("USD"), Scalar::from("AAPL"), Scalar::Null]),
+        )
+        .unwrap();
+        let general = yggdryl::arrow::batch_from_value(
+            &schema,
+            &Scalar::from_sequence([record.clone().into_scalar()]),
+        )
+        .unwrap();
+        let direct = record.clone().into_arrow_batch().unwrap();
+
+        assert_eq!(direct, general);
+        assert_eq!(
+            direct.schema().metadata().get("owner").map(String::as_str),
+            Some("trading")
+        );
+        assert!(direct.column(2).is_null(0));
+        assert_eq!(
+            FieldRecord::from_arrow_batch(&schema, &direct, 0).unwrap(),
+            record
+        );
+    }
+
+    #[test]
+    fn direct_projection_keeps_one_empty_struct_row() {
+        let schema = DataType::from(StructType::from_fields([]).unwrap()).required_field("row");
+        let record = FieldRecord::new(&schema, Scalar::from_sequence([])).unwrap();
+
+        let batch = record.clone().into_arrow_batch().unwrap();
+
+        assert_eq!(batch.num_rows(), 1);
+        assert_eq!(batch.num_columns(), 0);
+        assert_eq!(
+            FieldRecord::from_arrow_batch(&schema, &batch, 0).unwrap(),
+            record
+        );
+    }
+
+    #[test]
+    fn direct_projection_keeps_physical_materialization_limits() {
+        let large = DataType::fixed_size_list(DataType::Int64.required_field("item"), 1_000_001)
+            .unwrap()
+            .nullable_field("large");
+        let schema =
+            DataType::from(StructType::from_fields([large]).unwrap()).required_field("row");
+        let record = FieldRecord::new(&schema, Scalar::from_sequence([Scalar::Null])).unwrap();
+        let general = yggdryl::arrow::batch_from_value(
+            &schema,
+            &Scalar::from_sequence([record.clone().into_scalar()]),
+        )
+        .unwrap_err();
+        let direct = record.into_arrow_batch().unwrap_err();
+        assert_eq!(direct.to_string(), general.to_string());
     }
 
     #[test]
@@ -282,7 +422,8 @@ mod arrow {
             .to_string();
         assert!(past.contains("row 2"), "{past}");
 
-        let narrower = StructType::from_fields([Field::new("id", DataType::Int64, false)]).map(DataType::from)
+        let narrower = StructType::from_fields([Field::new("id", DataType::Int64, false)])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         let refused = FieldRecord::from_arrow_batch(&narrower, &batch, 0)

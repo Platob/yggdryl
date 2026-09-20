@@ -1,0 +1,33 @@
+{
+  "name": "securityresponsetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AcceptAsIs",
+      "doc": "Accept security proposal as-is"
+    },
+    {
+      "value": "2",
+      "name": "AcceptWithRevisions",
+      "doc": "Accept security proposal with revisions as indicated in the message"
+    },
+    {
+      "value": "5",
+      "name": "RejectSecurityProposal",
+      "doc": "Reject security proposal"
+    },
+    {
+      "value": "6",
+      "name": "CannotMatchSelectionCriteria",
+      "doc": "Cannot match selection criteria"
+    },
+    {
+      "value": "3",
+      "name": "ListOfSecurityTypesReturnedPerRequest"
+    },
+    {
+      "value": "4",
+      "name": "ListOfSecuritiesReturnedPerRequest"
+    }
+  ]
+}

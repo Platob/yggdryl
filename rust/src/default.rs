@@ -18,6 +18,7 @@ const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
 
 enum DefaultPlan {
     Null,
+    VariantNull,
     Bool,
     Signed,
     Unsigned,
@@ -131,6 +132,9 @@ pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
     let mut path = Vec::new();
     path.push(PathSegment::Field(field.name()));
     let planned = plan_field(field, &mut path).map_err(public_planning_error)?;
+    if matches!(&planned.plan, DefaultPlan::Null) {
+        return Ok(Scalar::Null);
+    }
     crate::value::dtype_canonical(field.dtype(), materialize(planned.plan)?)
 }
 
@@ -229,12 +233,13 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::String(_)
             | DataType::Country
             | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
-            | DataType::Cusip
-            | DataType::Sedol
-            | DataType::Bloomberg
+            | DataType::MicCode
+            | DataType::CfiCode
+            | DataType::IsinCode
+            | DataType::CusipCode
+            | DataType::SedolCode
+            | DataType::BloombergCode
+            | DataType::FIGICode
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
@@ -341,12 +346,13 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),
@@ -416,10 +422,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Decimal(DecimalType::Decimal64 { .. })
         | D::Decimal(DecimalType::Decimal128 { .. }) => scalar(DefaultPlan::Decimal, false),
         D::Decimal(DecimalType::Decimal256 { .. }) => scalar(DefaultPlan::Decimal256, false),
-        // The variant's present zero value is the variant null: a variant can
-        // hold null as a first-class value, so `Scalar::Null` here is a value,
-        // not an absence, and the plan is not logically null.
-        D::Variant => scalar(DefaultPlan::Null, false),
+        // The present default wraps the encoding's null; bare Scalar::Null
+        // remains field absence and is chosen only by a nullable field.
+        D::Variant => scalar(DefaultPlan::VariantNull, false),
         // The geospatial pair's present empty value is `POINT EMPTY`.
         D::Geometry(_) | D::Geography(_) => scalar(DefaultPlan::PointEmpty, false),
         D::Mapping(_) => scalar(DefaultPlan::EmptyMapping, false),
@@ -601,6 +606,7 @@ fn ensure_budget(nodes: usize, bytes: usize, path: &[PathSegment<'_>]) -> Planni
 fn materialize(plan: DefaultPlan) -> Result<Scalar> {
     match plan {
         DefaultPlan::Null => Ok(Scalar::Null),
+        DefaultPlan::VariantNull => crate::Variant::encode(&Scalar::Null).map(Scalar::Variant),
         DefaultPlan::Bool => Ok(Scalar::from(false)),
         DefaultPlan::Signed => Ok(Scalar::from(0_i64)),
         DefaultPlan::Unsigned => Ok(Scalar::from(0_u64)),
@@ -678,6 +684,8 @@ pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
 fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
     match plan {
         DefaultPlan::Null => matches!(value, Scalar::Null),
+        DefaultPlan::VariantNull => matches!(value, Scalar::Variant(variant)
+            if variant.scalar().is_ok_and(|value| matches!(value, Scalar::Null))),
         DefaultPlan::Bool => value.as_bool() == Some(false),
         // A temporal zero read back off an Arrow column carries its unit and
         // zone; it is the same datum the plan's bare zero spells, so both
@@ -786,13 +794,6 @@ fn interval_is_zero(value: &Scalar, unit: TimeUnit) -> bool {
 }
 
 pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool {
-    // A variant can *spell* null: the variant null is a present value the
-    // encoding writes, so `Null` in a variant column is a value, never the
-    // absence a validity bitmap records - which is exactly why a required
-    // variant column can hold it.
-    if matches!(dtype, DataType::Variant) {
-        return false;
-    }
     if matches!(value, Scalar::Null) {
         return true;
     }

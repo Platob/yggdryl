@@ -1,0 +1,21 @@
+{
+  "name": "exchangeforphysicalcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "False",
+      "aliases": [
+        "No"
+      ],
+      "doc": "False"
+    },
+    {
+      "value": "Y",
+      "name": "True",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "True"
+    }
+  ]
+}

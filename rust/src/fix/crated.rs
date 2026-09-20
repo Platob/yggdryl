@@ -13,16 +13,14 @@
 //! Each belongs in a column: a scalar registers as a field, and the
 //! identifiers Map as a group of entries.
 //!
-//! What a message says about its *market* is not here and never was this
-//! crate's to name: the price, the quantity, the instrument's codes, the
-//! market and the lanes are FIX's own fields, lifted or read off the row,
-//! and the [`MarketElement`](crate::graph::MarketElement) getters answer
-//! them from those. A column restating one would have been a second owner
-//! of a fact the dictionary already types. The state the event reached and
-//! when it stops being good are the event's own - ranked, and folded
-//! forward by a walk to the furthest and the latest its chain knows - so
-//! they have columns beside the other event facts, read off `OrdStatus`,
-//! `ExecType` and the expiry clocks where no row states them.
+//! The standard owns prices, quantities and classification. Five normalized
+//! instrument identifiers have crate columns because their FIX sources depend
+//! on an identifier source or exchange context. Those columns read the existing
+//! market event holder; they add no second value. `CFICode(461)` already names
+//! its classification, so it keeps its standard tag. `MsgCat` reads the message
+//! component's `FIX:msgcat` metadata. State and expiry are event facts derived
+//! from the standard's status and expiry fields, then carried by lifecycle;
+//! a newer explicit expiry replaces the previous deadline.
 //!
 //! The sixteen event facts are the sixteen columns every graph event is
 //! stated in, [`EventColumn`]: each crate field here takes that column's
@@ -70,9 +68,11 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty scalar fields and two Map groups, each registered by its shape.
+//! Twenty-seven scalar fields and two Map groups, each registered by its shape.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
+
+use smol_str::SmolStr;
 
 use crate::graph::EventColumn;
 use crate::{DataType, Field, Result};
@@ -141,12 +141,12 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");
 /// in the object, and no column of the message restates it.
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 
-/// The tag and name counting the arrival records one message carried.
+/// The tag and name counting the residual entries of one FIX row.
 ///
 /// The counter of the `fixentries` group, and a counter in the ordinary FIX
-/// sense: `NoPartyIDs` counts `Parties`, and this counts the pairs a line
-/// stated. A reader prunes on it without opening the list, which is what a
-/// count column is for.
+/// sense: `NoPartyIDs` counts `Parties`, and this counts entries not fully
+/// represented by the row's projected columns. A reader prunes on it without
+/// opening the list.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
@@ -218,9 +218,46 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");
 ///
 /// `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or
 /// `MaturityDate(541)`, the first stated, as a message is built; the
-/// latest its chain knows once the lifecycle followed it, and a row
-/// stating one is the row's word.
-pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_053, "expirunix");
+/// previous deadline when the next event states none; a newer explicit
+/// deadline replaces it, including when it shortens the lifetime.
+pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
+
+/// The tag and name carrying the fixed business category of the message type.
+pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
+/// The registry-owned vocabulary the crate's MsgCat column reads by.
+pub(super) const MSGCAT_CODESET_NAME: &str = "msgcatcodeset";
+
+/// The canonical MsgCat document every registry shares.
+static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
+    let codes = super::constants::MSGCATEGORIES
+        .iter()
+        .copied()
+        .map(|value| super::FixCode::new(value, value))
+        .collect::<Vec<_>>();
+    match super::FixCodes::render(&codes) {
+        Ok(document) => Some(Arc::from(document)),
+        Err(error) => {
+            log::warn!("building FIX MsgCat code set: {error}");
+            None
+        }
+    }
+});
+
+pub(super) fn msgcat_codeset() -> Option<Arc<str>> {
+    MSGCAT_CODESET.as_ref().map(Arc::clone)
+}
+/// The tag and name carrying the normalized ISIN the message identifies.
+pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");
+/// The tag and name carrying the normalized CUSIP the message identifies.
+pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_057, "cusipcode");
+/// The tag and name carrying the normalized SEDOL the message identifies.
+pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_058, "sedolcode");
+/// The tag and name carrying the normalized Bloomberg identifier the message identifies.
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");
+/// The tag and name carrying the normalized market MIC the message identifies.
+pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");
+/// The tag and name carrying the normalized FIGI the message identifies.
+pub const FIGICODE_TAG_NAME: (i32, &str) = (65_061, "figicode");
 
 /// The graph event column one crate tag is, for the sixteen that are one.
 ///
@@ -240,7 +277,7 @@ pub const fn crate_tag_of(column: EventColumn) -> (i32, &'static str) {
     match column {
         EventColumn::CurrUnix => CURRUNIX_TAG_NAME,
         EventColumn::CreaUnix => CREAUNIX_TAG_NAME,
-        EventColumn::ExpirUnix => EXPIRUNIX_TAG_NAME,
+        EventColumn::ExprTime => EXPRTIME_TAG_NAME,
         EventColumn::PrevUnix => PREVUNIX_TAG_NAME,
         EventColumn::SnapUnix => SNAPUNIX_TAG_NAME,
         EventColumn::CurrUuid => CURRUUID_TAG_NAME,
@@ -296,7 +333,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 17] = [
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
-    EXPIRUNIX_TAG_NAME.0,
+    EXPRTIME_TAG_NAME.0,
     STATE_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
@@ -359,6 +396,17 @@ fn event(column: EventColumn, display: &str, description: &str) -> Result<Field>
     )
 }
 
+fn msgcat() -> Result<Field> {
+    let mut field = crated(
+        MSGCAT_TAG_NAME,
+        "MsgCat",
+        DataType::fixed_ascii(4)?,
+        "The four-byte business category of the message type.",
+    )?;
+    field.as_fix_mut().set_codeset(MSGCAT_CODESET_NAME)?;
+    Ok(field)
+}
+
 /// Builds every field this crate defines, in tag order.
 fn build() -> Result<Vec<Field>> {
     let mut metadata = crated(
@@ -374,8 +422,9 @@ fn build() -> Result<Vec<Field>> {
         EventColumn::Identifiers,
         "Identifiers",
         "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; repeating-group members are \
-         not flattened.",
+         field that stated it, in sorted order; a capture stating both a session \
+         instance and a message context adds `msgsectxid` as `session:context`; \
+         repeating-group members are not flattened.",
     )?;
     identifiers
         .as_fix_mut()
@@ -470,7 +519,7 @@ fn build() -> Result<Vec<Field>> {
             NOFIXENTRIES_TAG_NAME,
             "NoFixEntries",
             DataType::Int32,
-            "How many pairs the message carried, in arrival order.",
+            "How many residual entries remain outside the row's projected columns.",
         )?,
         // The session instance the bridge handled a line on, which its own
         // row header states and no FIX message carries: `SenderCompID` names
@@ -483,7 +532,7 @@ fn build() -> Result<Vec<Field>> {
             "The session instance a bridge handled a line on, as its own row \
              header brackets it - never what the message states about itself.",
         )?,
-        // The three identifiers beside `isincode`, each typed as the code it
+        // The four identifiers beside `isincode`, each typed as the code it
         // is so a row joins on it rather than on text that looks like one.
         // The identities: the message's own, the one its lifecycle shares,
         // and the ones it descends from.
@@ -549,11 +598,48 @@ fn build() -> Result<Vec<Field>> {
              states one; the furthest its chain knows once followed.",
         )?,
         event(
-            EventColumn::ExpirUnix,
-            "ExpirUnix",
+            EventColumn::ExprTime,
+            "ExprTime",
             "When the message stops being good: ExpireTime, else \
-             ValidUntilTime, ExpireDate or MaturityDate; the latest its chain \
-             knows once followed.",
+             ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
+             deadline replaces the one its chain carried.",
+        )?,
+        msgcat()?,
+        crated(
+            ISINCODE_TAG_NAME,
+            "IsinCode",
+            DataType::isin(),
+            "The normalized ISIN the message identifies.",
+        )?,
+        crated(
+            CUSIPCODE_TAG_NAME,
+            "CusipCode",
+            DataType::cusip(),
+            "The normalized CUSIP the message identifies.",
+        )?,
+        crated(
+            SEDOLCODE_TAG_NAME,
+            "SedolCode",
+            DataType::sedol(),
+            "The normalized SEDOL the message identifies.",
+        )?,
+        crated(
+            BLOOMBERGCODE_TAG_NAME,
+            "BloombergCode",
+            DataType::BloombergCode,
+            "The normalized Bloomberg identifier the message identifies.",
+        )?,
+        crated(
+            MICCODE_TAG_NAME,
+            "MicCode",
+            DataType::mic(),
+            "The normalized market MIC the message identifies.",
+        )?,
+        crated(
+            FIGICODE_TAG_NAME,
+            "FIGICode",
+            DataType::figi(),
+            "The normalized FIGI the message identifies.",
         )?,
     ])
 }
@@ -567,7 +653,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 22);
+/// assert_eq!(held.len(), 29);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
@@ -575,9 +661,9 @@ fn build() -> Result<Vec<Field>> {
 /// // materialized copy of that instant was a second owner of it.
 /// assert!(held.iter().all(|field| !field.is_partition()));
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
-/// // And no derived column: a fact a message implies about its market is
-/// // what the traits answer off the FIX fields it lifted, never a second
-/// // column beside them, so nothing here declares a `FIX:derivation`.
+/// // The six normalized instrument and market codes have their own columns;
+/// // other graph facts remain answers off the FIX fields the message lifted,
+/// // so nothing here declares a `FIX:derivation`.
 /// assert!(held.iter().all(|field| !field.has_metadata("FIX:derivation")));
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
@@ -636,14 +722,24 @@ impl super::FixRegistry {
         description: Option<&str>,
     ) -> Result<&super::MsgType> {
         let field = self.field_by_tag(MSGTYPE_TAG_NAME.0)?;
-        let view = field.as_fix();
-        let mut codes: Vec<super::FixCode> = view
-            .codes()
-            .map(|code| code.map(super::FixCode::from))
-            .collect::<Result<_>>()?;
+        // The set tag 35 reads by, which the dictionary owns: a field naming
+        // none is registering the first code of a set of its own, and that
+        // set is named after the field.
+        let stated = field.as_fix().codeset().map(SmolStr::new);
+        let set_name = stated.unwrap_or_else(|| super::FixRegistry::derived_codeset_name(field));
+        let held = self.get_codeset(&set_name);
+        let mut codes: Vec<super::FixCode> = held
+            .map(|set| {
+                set.codes()
+                    .map(|code| code.map(super::FixCode::from))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let spelled = |text: &str| held.and_then(|set| set.code_value(text));
         // Every spelling this registration states, the value's own first.
         let named = name.unwrap_or(spelling);
-        let (value, at) = match view.code_value(spelling) {
+        let (value, at) = match spelled(spelling) {
             // Already spelled, by name, alias or wire value: the set answers,
             // and this states whatever it did not already hold.
             Some(held) => {
@@ -665,7 +761,7 @@ impl super::FixRegistry {
         // A spelling another code already answers to is refused rather than
         // added: two codes one spelling reaches resolve to neither.
         for spelling in [named, spelling] {
-            if let Some(taken) = view.code_value(spelling) {
+            if let Some(taken) = spelled(spelling) {
                 if taken != value.as_str() {
                     return Err(crate::Error::Conflict {
                         expected: "a free message type spelling",
@@ -687,9 +783,15 @@ impl super::FixRegistry {
             }
         }
         let mut next = self.clone();
-        let mut field = field.clone();
-        field.as_fix_mut().set_codes(&codes)?;
-        next.update(field)?;
+        // The set first: a field may not name a vocabulary the dictionary
+        // does not hold, so the members are stated before the field points
+        // at them.
+        next.set_codeset(&set_name, &codes)?;
+        if field.as_fix().codeset().is_none() {
+            let mut field = field.clone();
+            field.as_fix_mut().set_codeset(&set_name)?;
+            next.update(field)?;
+        }
         if next.get_msgtype(&value).is_none() {
             let normalized = crate::normalized(codes[at].name());
             let canonical = if !normalized.is_empty()

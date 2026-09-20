@@ -1,0 +1,55 @@
+{
+  "name": "timeunitcodeset",
+  "codes": [
+    {
+      "value": "H",
+      "name": "Hour",
+      "doc": "Hour"
+    },
+    {
+      "value": "Min",
+      "name": "Minute",
+      "doc": "Minute"
+    },
+    {
+      "value": "S",
+      "name": "Second",
+      "doc": "Second"
+    },
+    {
+      "value": "D",
+      "name": "Day",
+      "doc": "Day"
+    },
+    {
+      "value": "Wk",
+      "name": "Week",
+      "doc": "Week"
+    },
+    {
+      "value": "Mo",
+      "name": "Month",
+      "doc": "Month"
+    },
+    {
+      "value": "Yr",
+      "name": "Year",
+      "doc": "Year"
+    },
+    {
+      "value": "Q",
+      "name": "Quarter",
+      "doc": "Quarter"
+    },
+    {
+      "value": "EOM",
+      "name": "EndOfMonth",
+      "doc": "End of Month"
+    },
+    {
+      "value": "F",
+      "name": "Flexible",
+      "doc": "Flexible"
+    }
+  ]
+}

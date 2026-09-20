@@ -271,8 +271,8 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .position(|held| *held == "beginstring")
         .expect("the header opens");
     assert_eq!(
-        &names[header..header + 3],
-        ["beginstring", "msgtype", "msgseqnum"],
+        &names[header..header + 4],
+        ["beginstring", "msgtype", "msgcat", "msgseqnum"],
         "{names:?}"
     );
     for once in [
@@ -759,9 +759,8 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
 
     // The tags the batch answers and the line read cannot are fills from the
     // row's own columns: the sequence number the header stated for the routed
-    // row, which carried none. A fill is never an entry - and neither are the
-    // context, the plugin or the clock - so the arrival record is still the
-    // line alone.
+    // row, which carried none. The residual record excludes those fills and
+    // every content field successfully projected into a typed column.
     let routed = bodies[ROUTED_ROW].as_str().expect("a body").as_bytes();
     let alone = codec.sole_line(routed).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
@@ -777,14 +776,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .unwrap_or_default()
         })
         .collect();
-    assert_eq!(
-        recorded,
-        alone
-            .entries()
-            .iter()
-            .map(|entry| i64::from(entry.tag()))
-            .collect::<Vec<_>>()
-    );
+    // This projection leaves ExecBroker, GrossTradeAmt and CurrencyCodeSource
+    // in the residual record; its other content fields have typed columns.
+    assert_eq!(recorded, [76, 381, 2897]);
     for filled in [
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,

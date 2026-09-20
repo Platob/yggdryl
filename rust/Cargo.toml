@@ -122,6 +122,13 @@ futures = "0.3"
 # through a logger, and the tests that pin one install their own.
 log.workspace = true
 object_store = { version = "=0.13.1", features = ["aws"] }
+# The format's own implementation of the Variant binary encoding, read and
+# written by `rust/tests/interop/variant.rs` so both directions of the
+# encoding are checked against it rather than against this crate's reading of
+# the specification. Pinned to the arrow-rs release the workspace already
+# locks, and a dev-dependency only: nothing here reaches a public signature,
+# and the core encoding compiles with no Variant crate underneath.
+parquet-variant = "=59.2.0"
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt"] }
 
@@ -183,8 +190,9 @@ name = "media"
 path = "benchmarks/media.rs"
 harness = false
 
-# Hashing: byte and value digests, bounded handle reads, time coupling, and
-# holder fills. Values need no Arrow; column groups follow that feature.
+# Hashing: byte and value digests, bounded handle reads, time coupling,
+# holder fills, and the variant encoding a value is stored as. Values need no
+# Arrow; column groups follow that feature.
 [[bench]]
 name = "hashing"
 path = "benchmarks/hashing.rs"

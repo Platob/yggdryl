@@ -1,0 +1,15 @@
+{
+  "name": "nosidescodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OneSide",
+      "doc": "One Side"
+    },
+    {
+      "value": "2",
+      "name": "BothSides",
+      "doc": "Both Sides"
+    }
+  ]
+}

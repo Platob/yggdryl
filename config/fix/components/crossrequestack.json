@@ -103,6 +103,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "DT",
     "FIX:tag": "906013",
     "description": "MsgType = DT",

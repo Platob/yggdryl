@@ -1,0 +1,35 @@
+{
+  "name": "strategytypecodeset",
+  "codes": [
+    {
+      "value": "STD",
+      "name": "Straddle",
+      "doc": "Straddle"
+    },
+    {
+      "value": "STG",
+      "name": "Strangle",
+      "doc": "Strangle"
+    },
+    {
+      "value": "BF",
+      "name": "Butterfly",
+      "doc": "Butterfly"
+    },
+    {
+      "value": "CNDR",
+      "name": "Condor",
+      "doc": "Condor"
+    },
+    {
+      "value": "CISN",
+      "name": "CallableInversibleSnowball",
+      "doc": "Callable inversible snowball"
+    },
+    {
+      "value": "OTHER",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

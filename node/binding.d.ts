@@ -40,6 +40,8 @@ export {
   type FieldCount,
   type FieldSummaryView,
   type FixCaptureView,
+  type FixCode,
+  type FixCodeSetView,
   type FixDirection,
   type FixEntryView,
   type FixEventView,
@@ -238,6 +240,7 @@ export type DataTypeId =
   | 'cusip'
   | 'sedol'
   | 'bloomberg'
+  | 'figi'
   | 'side'
   | 'state'
   | 'timeinforce'
@@ -344,6 +347,7 @@ interface DataTypeKindById {
   cusip: 'code'
   sedol: 'code'
   bloomberg: 'code'
+  figi: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
@@ -841,17 +845,19 @@ export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
 export type CurrencyField = FieldOf<'currency', string>
 /** ISO 10383, the four-character market identifier code. */
-export type MicField = FieldOf<'mic', string>
+export type MicCodeField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
-export type CfiField = FieldOf<'cfi', string>
+export type CfiCodeField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
-export type IsinField = FieldOf<'isin', string>
+export type IsinCodeField = FieldOf<'isin', string>
 /** CUSIP, the nine-character securities identifier closed by its check digit. */
-export type CusipField = FieldOf<'cusip', string>
+export type CusipCodeField = FieldOf<'cusip', string>
 /** SEDOL, the seven-character securities identifier closed by its check digit. */
-export type SedolField = FieldOf<'sedol', string>
-/** A Bloomberg identifier - a ticker, a market and a yellow key, or a FIGI - bounded at thirty-two bytes. */
-export type BloombergField = FieldOf<'bloomberg', string>
+export type SedolCodeField = FieldOf<'sedol', string>
+/** A Bloomberg identifier - a ticker, a market and a yellow key - bounded at thirty-two bytes. */
+export type BloombergCodeField = FieldOf<'bloomberg', string>
+/** FIGI, the twelve-character Financial Instrument Global Identifier closed by its check digit. */
+export type FIGICodeField = FieldOf<'figi', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1140,12 +1146,13 @@ export interface FieldsNamespace {
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
-  mic(name: string, options?: FieldOptions): MicField
-  cfi(name: string, options?: FieldOptions): CfiField
-  isin(name: string, options?: FieldOptions): IsinField
-  cusip(name: string, options?: FieldOptions): CusipField
-  sedol(name: string, options?: FieldOptions): SedolField
-  bloomberg(name: string, options?: FieldOptions): BloombergField
+  mic(name: string, options?: FieldOptions): MicCodeField
+  cfi(name: string, options?: FieldOptions): CfiCodeField
+  isin(name: string, options?: FieldOptions): IsinCodeField
+  cusip(name: string, options?: FieldOptions): CusipCodeField
+  sedol(name: string, options?: FieldOptions): SedolCodeField
+  bloomberg(name: string, options?: FieldOptions): BloombergCodeField
+  figi(name: string, options?: FieldOptions): FIGICodeField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
@@ -1768,6 +1775,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'bloomberg', string, N, O>
+  figi<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'figi', string, N, O>
   side<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -3317,9 +3328,9 @@ export interface FixMsgConstructor {
     registry?: FixRegistry | null,
   ): FixMsg
   /**
-   * The message a fixed row holds: the inverse of `intoRow`, its typed facts
-   * read off their columns and its content rebuilt from the `fixentries`
-   * column without a parse. No clock is read.
+   * The message a fixed row holds: the inverse of `intoRow`, combining typed
+   * and projected columns with the residual `fixentries` without a parse.
+   * No clock is read, and a supplied row identity is retained.
    */
   fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
   readonly prototype: FixMsg
@@ -3381,7 +3392,7 @@ export interface Fix {
   /**
    * One row's tagged columns, in order: the crate's own, the header, the
    * body, the groups, the trailer, then `385` and the `65027` that counts
-   * the `fixentries` group closing the row.
+   * the residual `fixentries` group closing the row.
    */
   schemaTags(): number[]
   /**
@@ -3392,7 +3403,7 @@ export interface Fix {
    * instrument codes, what a bridge's capture states - `msgctxid`,
    * `msgpluginid`, `msgsessionid` - the capture's own column `sourceurl`,
    * which whoever read the line states on the row and no message holds,
-   * and the `nofixentries` counting the content record. Every registry
+   * and the `nofixentries` counting the residual record. Every registry
    * holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks.

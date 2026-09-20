@@ -82,377 +82,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RegularTrade",
-          "doc": "Regular trade"
-        },
-        {
-          "value": "1",
-          "name": "BlockTrade",
-          "doc": "Block trade"
-        },
-        {
-          "value": "2",
-          "name": "EFP",
-          "doc": "Exchange for physical (EFP)"
-        },
-        {
-          "value": "3",
-          "name": "Transfer",
-          "doc": "Transfer"
-        },
-        {
-          "value": "4",
-          "name": "LateTrade",
-          "doc": "Late trade"
-        },
-        {
-          "value": "5",
-          "name": "TTrade",
-          "doc": "T trade"
-        },
-        {
-          "value": "6",
-          "name": "WeightedAveragePriceTrade",
-          "doc": "Weighted average price trade"
-        },
-        {
-          "value": "7",
-          "name": "BunchedTrade",
-          "doc": "Bunched trade"
-        },
-        {
-          "value": "8",
-          "name": "LateBunchedTrade",
-          "doc": "Late bunched trade"
-        },
-        {
-          "value": "9",
-          "name": "PriorReferencePriceTrade",
-          "doc": "Prior reference price trade"
-        },
-        {
-          "value": "10",
-          "name": "AfterHoursTrade",
-          "doc": "After hours trade"
-        },
-        {
-          "value": "11",
-          "name": "ExchangeForRisk",
-          "doc": "Exchange for risk (EFR)"
-        },
-        {
-          "value": "12",
-          "name": "ExchangeForSwap",
-          "doc": "Exchange for swap (EFS)"
-        },
-        {
-          "value": "13",
-          "name": "ExchangeOfFuturesFor",
-          "doc": "Exchange of futures for in market futures (EFM)"
-        },
-        {
-          "value": "14",
-          "name": "ExchangeOfOptionsForOptions",
-          "doc": "Exchange of options for options (EOO)"
-        },
-        {
-          "value": "15",
-          "name": "TradingAtSettlement",
-          "doc": "Trading at settlement"
-        },
-        {
-          "value": "16",
-          "name": "AllOrNone",
-          "doc": "All or none"
-        },
-        {
-          "value": "17",
-          "name": "FuturesLargeOrderExecution",
-          "doc": "Futures large order execution"
-        },
-        {
-          "value": "18",
-          "name": "ExchangeOfFuturesForFutures",
-          "doc": "Exchange of futures for external market futures (EFF)"
-        },
-        {
-          "value": "19",
-          "name": "OptionInterimTrade",
-          "doc": "Option interim trade"
-        },
-        {
-          "value": "20",
-          "name": "OptionCabinetTrade",
-          "doc": "Option cabinet trade"
-        },
-        {
-          "value": "22",
-          "name": "PrivatelyNegotiatedTrades",
-          "doc": "Privately negotiated trade"
-        },
-        {
-          "value": "23",
-          "name": "SubstitutionOfFuturesForForwards",
-          "doc": "Substitution of futures for forwards"
-        },
-        {
-          "value": "24",
-          "name": "ErrorTrade",
-          "group": "MiFID Values",
-          "doc": "Error trade"
-        },
-        {
-          "value": "25",
-          "name": "SpecialCumDividend",
-          "group": "MiFID Values",
-          "doc": "Special cum dividend (CD)"
-        },
-        {
-          "value": "26",
-          "name": "SpecialExDividend",
-          "group": "MiFID Values",
-          "doc": "Special ex dividend (XD)"
-        },
-        {
-          "value": "27",
-          "name": "SpecialCumCoupon",
-          "group": "MiFID Values",
-          "doc": "Special cum coupon (CC)"
-        },
-        {
-          "value": "28",
-          "name": "SpecialExCoupon",
-          "group": "MiFID Values",
-          "doc": "Special ex coupon (XC)"
-        },
-        {
-          "value": "29",
-          "name": "CashSettlement",
-          "group": "MiFID Values",
-          "doc": "Cash settlement (CS)"
-        },
-        {
-          "value": "30",
-          "name": "SpecialPrice",
-          "group": "MiFID Values",
-          "doc": "Special price (SP)"
-        },
-        {
-          "value": "31",
-          "name": "GuaranteedDelivery",
-          "group": "MiFID Values",
-          "doc": "Guaranteed delivery (GD)"
-        },
-        {
-          "value": "32",
-          "name": "SpecialCumRights",
-          "group": "MiFID Values",
-          "doc": "Special cum rights (CR)"
-        },
-        {
-          "value": "33",
-          "name": "SpecialExRights",
-          "group": "MiFID Values",
-          "doc": "Special ex rights (XR)"
-        },
-        {
-          "value": "34",
-          "name": "SpecialCumCapitalRepayments",
-          "group": "MiFID Values",
-          "doc": "Special cum capital repayments (CP)"
-        },
-        {
-          "value": "35",
-          "name": "SpecialExCapitalRepayments",
-          "group": "MiFID Values",
-          "doc": "Special ex capital repayments (XP)"
-        },
-        {
-          "value": "36",
-          "name": "SpecialCumBonus",
-          "group": "MiFID Values",
-          "doc": "Special cum bonus (CB)"
-        },
-        {
-          "value": "37",
-          "name": "SpecialExBonus",
-          "group": "MiFID Values",
-          "doc": "Special ex bonus (XB)"
-        },
-        {
-          "value": "38",
-          "name": "LargeTrade",
-          "group": "MiFID Values",
-          "doc": "Block trade"
-        },
-        {
-          "value": "39",
-          "name": "WorkedPrincipalTrade",
-          "group": "MiFID Values",
-          "doc": "Worked principal trade"
-        },
-        {
-          "value": "40",
-          "name": "BlockTrades",
-          "group": "MiFID Values",
-          "doc": "Block trades"
-        },
-        {
-          "value": "41",
-          "name": "NameChange",
-          "group": "MiFID Values",
-          "doc": "Name change"
-        },
-        {
-          "value": "42",
-          "name": "PortfolioTransfer",
-          "group": "MiFID Values",
-          "doc": "Portfolio transfer"
-        },
-        {
-          "value": "43",
-          "name": "ProrogationBuy",
-          "group": "MiFID Values",
-          "doc": "Prorogation buy"
-        },
-        {
-          "value": "44",
-          "name": "ProrogationSell",
-          "group": "MiFID Values",
-          "doc": "Prorogation sell"
-        },
-        {
-          "value": "45",
-          "name": "OptionExercise",
-          "group": "MiFID Values",
-          "doc": "Option exercise"
-        },
-        {
-          "value": "46",
-          "name": "DeltaNeutralTransaction",
-          "group": "MiFID Values",
-          "doc": "Delta neutral transaction"
-        },
-        {
-          "value": "47",
-          "name": "FinancingTransaction",
-          "group": "MiFID Values",
-          "doc": "Financing transaction"
-        },
-        {
-          "value": "48",
-          "name": "NonStandardSettlement",
-          "doc": "Non-standard settlement"
-        },
-        {
-          "value": "49",
-          "name": "DerivativeRelatedTransaction",
-          "doc": "Derivative related transaction"
-        },
-        {
-          "value": "50",
-          "name": "PortfolioTrade",
-          "doc": "Portfolio trade"
-        },
-        {
-          "value": "51",
-          "name": "VolumeWeightedAverageTrade",
-          "doc": "Volume weighted average trade"
-        },
-        {
-          "value": "52",
-          "name": "ExchangeGrantedTrade",
-          "doc": "Exchange granted trade"
-        },
-        {
-          "value": "53",
-          "name": "RepurchaseAgreement",
-          "doc": "Repurchase agreement"
-        },
-        {
-          "value": "54",
-          "name": "OTC",
-          "doc": "OTC"
-        },
-        {
-          "value": "55",
-          "name": "ExchangeBasisFacility",
-          "doc": "Exchange basis facility (EBF)"
-        },
-        {
-          "value": "56",
-          "name": "OpeningTrade",
-          "doc": "Opening trade"
-        },
-        {
-          "value": "57",
-          "name": "NettedTrade",
-          "doc": "Netted trade"
-        },
-        {
-          "value": "58",
-          "name": "BlockSwapTrade",
-          "doc": "Block swap trade"
-        },
-        {
-          "value": "59",
-          "name": "CreditEventTrade",
-          "doc": "Credit event trade"
-        },
-        {
-          "value": "60",
-          "name": "SuccessionEventTrade",
-          "doc": "Succession event trade"
-        },
-        {
-          "value": "61",
-          "name": "GiveUpGiveInTrade",
-          "doc": "Give-up Give-in trade"
-        },
-        {
-          "value": "62",
-          "name": "DarkTrade",
-          "doc": "Dark trade"
-        },
-        {
-          "value": "63",
-          "name": "TechnicalTrade",
-          "doc": "Technical trade"
-        },
-        {
-          "value": "64",
-          "name": "Benchmark",
-          "doc": "Benchmark"
-        },
-        {
-          "value": "65",
-          "name": "PackageTrade",
-          "doc": "Package trade"
-        },
-        {
-          "value": "66",
-          "name": "RollTrade",
-          "doc": "Roll trade"
-        },
-        {
-          "value": "67",
-          "name": "ClosingPriceTrade",
-          "doc": "Closing price trade"
-        },
-        {
-          "value": "68",
-          "name": "InterFundTransferTrade",
-          "doc": "Inter-fund transfer trade"
-        },
-        {
-          "value": "69",
-          "name": "NetAssetValueCalculatedTrade",
-          "doc": "Net asset value calculated trade"
-        }
-      ],
+      "FIX:codeset": "trdtypecodeset",
       "FIX:tag": "3006",
       "description": "Type of trade assigned to a trade.",
       "display": "TradeType"
@@ -465,290 +95,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "CMTA",
-          "doc": "CMTA"
-        },
-        {
-          "value": "1",
-          "name": "InternalTransferOrAdjustment",
-          "doc": "Internal transfer or adjustment"
-        },
-        {
-          "value": "2",
-          "name": "ExternalTransferOrTransferOfAccount",
-          "doc": "External transfer or transfer of account"
-        },
-        {
-          "value": "3",
-          "name": "RejectForSubmittingSide",
-          "doc": "Reject for submitting side"
-        },
-        {
-          "value": "4",
-          "name": "AdvisoryForContraSide",
-          "doc": "Advisory for contra side"
-        },
-        {
-          "value": "5",
-          "name": "OffsetDueToAnAllocation",
-          "doc": "Offset due to an allocation"
-        },
-        {
-          "value": "6",
-          "name": "OnsetDueToAnAllocation",
-          "doc": "Onset due to an allocation"
-        },
-        {
-          "value": "7",
-          "name": "DifferentialSpread",
-          "doc": "Differential spread"
-        },
-        {
-          "value": "8",
-          "name": "ImpliedSpreadLegExecutedAgainstAnOutright",
-          "doc": "Implied spread leg executed against an outright"
-        },
-        {
-          "value": "9",
-          "name": "TransactionFromExercise",
-          "doc": "Transaction from exercise"
-        },
-        {
-          "value": "10",
-          "name": "TransactionFromAssignment",
-          "doc": "Transaction from assignment"
-        },
-        {
-          "value": "11",
-          "name": "ACATS",
-          "doc": "ACATS"
-        },
-        {
-          "value": "14",
-          "name": "AI",
-          "group": "MiFID Values",
-          "doc": "AI (Automated input facility disabled in response to an exchange request.)"
-        },
-        {
-          "value": "15",
-          "name": "B",
-          "group": "MiFID Values",
-          "doc": "B (Transaction between two member firms where neither member firm is registered as a market maker in the security in question and neither is a designated fund manager. Also used by broker dealers when dealing with another broker which is not a member firm. Non-order book securities only.)"
-        },
-        {
-          "value": "16",
-          "name": "K",
-          "group": "MiFID Values",
-          "doc": "K (Transaction using block trade facility.)"
-        },
-        {
-          "value": "17",
-          "name": "LC",
-          "group": "MiFID Values",
-          "doc": "LC (Correction submitted more than three days after publication of the original trade report.)"
-        },
-        {
-          "value": "18",
-          "name": "M",
-          "group": "MiFID Values",
-          "doc": "M (Transaction, other than a transaction resulting from a stock swap or stock switch, between two market makers registered in that security including IDB or a public display system trades. Non-order book securities only.)"
-        },
-        {
-          "value": "19",
-          "name": "N",
-          "group": "MiFID Values",
-          "doc": "N (Non-protected portfolio transaction or a fully disclosed portfolio transaction)"
-        },
-        {
-          "value": "20",
-          "name": "NM",
-          "group": "MiFID Values",
-          "doc": "NM ( i) transaction where Exchange has granted permission for non-publication"
-        },
-        {
-          "value": "21",
-          "name": "NR",
-          "group": "MiFID Values",
-          "doc": "NR (Non-risk transaction in a SEATS security other than an AIM security)"
-        },
-        {
-          "value": "22",
-          "name": "P",
-          "group": "MiFID Values",
-          "doc": "P (Protected portfolio transaction or a worked principal agreement to effect a portfolio transaction which includes order book securities)"
-        },
-        {
-          "value": "23",
-          "name": "PA",
-          "group": "MiFID Values",
-          "doc": "PA (Protected transaction notification)"
-        },
-        {
-          "value": "24",
-          "name": "PC",
-          "group": "MiFID Values",
-          "doc": "PC (Contra trade for transaction which took place on a previous day and which was automatically executed on the Exchange trading system)"
-        },
-        {
-          "value": "25",
-          "name": "PN",
-          "group": "MiFID Values",
-          "doc": "PN (Worked principal notification for a portfolio transaction which includes order book securities)"
-        },
-        {
-          "value": "26",
-          "name": "R",
-          "group": "MiFID Values",
-          "doc": "R ( (i) riskless principal transaction between non-members where the buying and selling transactions are executed at different prices or on different terms (requires a trade report with trade type indicator R for each transaction)"
-        },
-        {
-          "value": "27",
-          "name": "RO",
-          "group": "MiFID Values",
-          "doc": "RO (Transaction which resulted from the exercise of a traditional option or a stock-settled covered warrant)"
-        },
-        {
-          "value": "28",
-          "name": "RT",
-          "group": "MiFID Values",
-          "doc": "RT (Risk transaction in a SEATS security, (excluding AIM security) reported by a market maker registered in that security)"
-        },
-        {
-          "value": "29",
-          "name": "SW",
-          "group": "MiFID Values",
-          "doc": "SW (Transactions resulting from stock swap or a stock switch (one report is required for each line of stock))"
-        },
-        {
-          "value": "30",
-          "name": "T",
-          "group": "MiFID Values",
-          "doc": "T (If reporting a single protected transaction)"
-        },
-        {
-          "value": "31",
-          "name": "WN",
-          "group": "MiFID Values",
-          "doc": "WN (Worked principal notification for a single order book security)"
-        },
-        {
-          "value": "32",
-          "name": "WT",
-          "group": "MiFID Values",
-          "doc": "WT (Worked principal transaction (other than a portfolio transaction))"
-        },
-        {
-          "value": "33",
-          "name": "OffHoursTrade",
-          "doc": "Off Hours Trade"
-        },
-        {
-          "value": "34",
-          "name": "OnHoursTrade",
-          "doc": "On Hours Trade"
-        },
-        {
-          "value": "35",
-          "name": "OTCQuote",
-          "doc": "OTC Quote"
-        },
-        {
-          "value": "36",
-          "name": "ConvertedSWAP",
-          "doc": "Converted SWAP"
-        },
-        {
-          "value": "37",
-          "name": "CrossedTrade",
-          "group": "MiFID Values",
-          "doc": "Crossed Trade (X)"
-        },
-        {
-          "value": "38",
-          "name": "InterimProtectedTrade",
-          "group": "MiFID Values",
-          "doc": "Interim Protected Trade (I)"
-        },
-        {
-          "value": "39",
-          "name": "LargeInScale",
-          "group": "MiFID Values",
-          "doc": "Large in Scale (L)"
-        },
-        {
-          "value": "40",
-          "name": "WashTrade",
-          "doc": "Wash Trade"
-        },
-        {
-          "value": "41",
-          "name": "TradeAtSettlement",
-          "doc": "Trade at Settlement (TAS)"
-        },
-        {
-          "value": "42",
-          "name": "AuctionTrade",
-          "doc": "Auction Trade"
-        },
-        {
-          "value": "43",
-          "name": "TradeAtMarker",
-          "doc": "Trade at Marker (TAM)"
-        },
-        {
-          "value": "44",
-          "name": "CreditDefault",
-          "doc": "Default (Credit Event)"
-        },
-        {
-          "value": "45",
-          "name": "CreditRestructuring",
-          "doc": "Restructuring (credit event)"
-        },
-        {
-          "value": "46",
-          "name": "Merger",
-          "doc": "Merger (succession event)"
-        },
-        {
-          "value": "47",
-          "name": "SpinOff",
-          "doc": "Spin-off (succession event)"
-        },
-        {
-          "value": "48",
-          "name": "MultilateralCompression",
-          "doc": "Multilateral compression"
-        },
-        {
-          "value": "50",
-          "name": "Balancing",
-          "doc": "Balancing"
-        },
-        {
-          "value": "51",
-          "name": "BasisTradeIndexClose",
-          "doc": "Basis Trade index Close (BTIC)"
-        },
-        {
-          "value": "52",
-          "name": "TradeAtCashOpen",
-          "doc": "Trade At Cash Open (TACO)"
-        },
-        {
-          "value": "53",
-          "name": "TrdSubmitVenueClrSettl",
-          "doc": "Trade submitted to venue for clearing and settlement"
-        },
-        {
-          "value": "54",
-          "name": "BilateralCompression",
-          "doc": "Bilateral compression"
-        }
-      ],
+      "FIX:codeset": "trdsubtypecodeset",
       "FIX:tag": "3007",
       "description": "Further qualification to the trade type defined in TradeType(3006).",
       "display": "TradeSubType"
@@ -787,188 +134,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "ExecutionTime",
-          "doc": "Execution time"
-        },
-        {
-          "value": "2",
-          "name": "TimeIn",
-          "doc": "Time in"
-        },
-        {
-          "value": "3",
-          "name": "TimeOut",
-          "doc": "Time out"
-        },
-        {
-          "value": "4",
-          "name": "BrokerReceipt",
-          "doc": "Broker receipt"
-        },
-        {
-          "value": "5",
-          "name": "BrokerExecution",
-          "doc": "Broker execution"
-        },
-        {
-          "value": "6",
-          "name": "DeskReceipt",
-          "doc": "Desk receipt"
-        },
-        {
-          "value": "7",
-          "name": "SubmissionToClearing",
-          "doc": "Submission to clearing"
-        },
-        {
-          "value": "8",
-          "name": "TimePriority",
-          "doc": "Time priority"
-        },
-        {
-          "value": "9",
-          "name": "OrderbookEntryTime",
-          "doc": "Orderbook entry time"
-        },
-        {
-          "value": "10",
-          "name": "OrderSubmissionTime",
-          "doc": "Order submission time"
-        },
-        {
-          "value": "11",
-          "name": "PubliclyReported",
-          "doc": "Publicly reported"
-        },
-        {
-          "value": "12",
-          "name": "PublicReportUpdated",
-          "doc": "Public report updated"
-        },
-        {
-          "value": "13",
-          "name": "NonPubliclyReported",
-          "doc": "Non-publicly reported"
-        },
-        {
-          "value": "14",
-          "name": "NonPublicReportUpdated",
-          "doc": "Non-public report updated"
-        },
-        {
-          "value": "15",
-          "name": "SubmittedForConfirmation",
-          "doc": "Submitted for confirmation"
-        },
-        {
-          "value": "16",
-          "name": "UpdatedForConfirmation",
-          "doc": "Updated for confirmation"
-        },
-        {
-          "value": "17",
-          "name": "Confirmed",
-          "doc": "Confirmed"
-        },
-        {
-          "value": "18",
-          "name": "UpdatedForClearing",
-          "doc": "Updated for clearing"
-        },
-        {
-          "value": "19",
-          "name": "Cleared",
-          "doc": "Cleared"
-        },
-        {
-          "value": "20",
-          "name": "AllocationsSubmitted",
-          "doc": "Allocations submitted"
-        },
-        {
-          "value": "21",
-          "name": "AllocationsUpdated",
-          "doc": "Allocations updated"
-        },
-        {
-          "value": "22",
-          "name": "AllocationsCompleted",
-          "doc": "Allocations completed"
-        },
-        {
-          "value": "23",
-          "name": "SubmittedToRepository",
-          "doc": "Submitted to repository"
-        },
-        {
-          "value": "24",
-          "name": "PostTrdContntnEvnt",
-          "doc": "Post-trade continuation event"
-        },
-        {
-          "value": "25",
-          "name": "PostTradeValuation",
-          "doc": "Post-trade valuation"
-        },
-        {
-          "value": "26",
-          "name": "PreviousTimePriority",
-          "doc": "Previous time priority"
-        },
-        {
-          "value": "27",
-          "name": "IdentifierAssigned",
-          "doc": "Identifier assigned"
-        },
-        {
-          "value": "28",
-          "name": "PreviousIdentifierAssigned",
-          "doc": "Previous identifier assigned"
-        },
-        {
-          "value": "29",
-          "name": "OrderCancellationTime",
-          "doc": "Order cancellation time"
-        },
-        {
-          "value": "30",
-          "name": "OrderModificationTime",
-          "doc": "Order modification time"
-        },
-        {
-          "value": "31",
-          "name": "OrderRoutingTime",
-          "doc": "Order routing time"
-        },
-        {
-          "value": "32",
-          "name": "TradeCancellationTime",
-          "doc": "Trade cancellation time"
-        },
-        {
-          "value": "33",
-          "name": "TradeModificationTime",
-          "doc": "Trade modification time"
-        },
-        {
-          "value": "34",
-          "name": "ReferenceTimeForBBO",
-          "doc": "Reference time for BBO"
-        },
-        {
-          "value": "35",
-          "name": "Affirmed",
-          "doc": "Affirmed"
-        },
-        {
-          "value": "36",
-          "name": "UpdateTime",
-          "doc": "Update time"
-        }
-      ],
+      "FIX:codeset": "alloctrdregtimestamptypecodeset",
       "FIX:tag": "3010",
       "description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
       "display": "AllocTrdRegTimestampType"
@@ -1041,23 +207,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Cancel",
-          "doc": "Cancel"
-        },
-        {
-          "value": "2",
-          "name": "Replace",
-          "doc": "Replace"
-        }
-      ],
+      "FIX:codeset": "algocertificaterequesttranstypecodeset",
       "FIX:tag": "3016",
       "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateRequestTransType"
@@ -1070,23 +220,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codeset": "algocertificaterequeststatuscodeset",
       "FIX:tag": "3017",
       "description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
       "display": "AlgoCertificateRequestStatus"
@@ -1123,23 +257,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Cancel",
-          "doc": "Cancel"
-        },
-        {
-          "value": "2",
-          "name": "Replace",
-          "doc": "Replace"
-        }
-      ],
+      "FIX:codeset": "algocertificatereporttranstypecodeset",
       "FIX:tag": "3020",
       "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateReportTransType"
@@ -1152,23 +270,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codeset": "algocertificatereportstatuscodeset",
       "FIX:tag": "3021",
       "description": "Status of the report being responded to.",
       "display": "AlgoCertificateReportStatus"
@@ -1181,33 +283,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Draft",
-          "doc": "Draft"
-        },
-        {
-          "value": "1",
-          "name": "Approved",
-          "doc": "Approved"
-        },
-        {
-          "value": "2",
-          "name": "Submitted",
-          "doc": "Submitted"
-        },
-        {
-          "value": "3",
-          "name": "Registered",
-          "doc": "Registered"
-        },
-        {
-          "value": "4",
-          "name": "Cancelled",
-          "doc": "Cancelled"
-        }
-      ],
+      "FIX:codeset": "algocertificatestatuscodeset",
       "FIX:tag": "3022",
       "description": "Identifies the current status of the certificate as established by the certificate issuer.",
       "display": "AlgoCertificateStatus"
@@ -1306,28 +382,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Undefined",
-          "doc": "Undefined"
-        },
-        {
-          "value": "1",
-          "name": "Pass",
-          "doc": "Pass"
-        },
-        {
-          "value": "2",
-          "name": "Fail",
-          "doc": "Fail"
-        },
-        {
-          "value": "3",
-          "name": "Warning",
-          "doc": "Warning"
-        }
-      ],
+      "FIX:codeset": "testsuitestatuscodeset",
       "FIX:tag": "3030",
       "description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
       "display": "TestScenarioStatus"
@@ -1468,68 +523,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Seconds",
-          "doc": "Seconds (default if not specified)"
-        },
-        {
-          "value": "1",
-          "name": "TenthsOfASecond",
-          "doc": "Tenths of a second"
-        },
-        {
-          "value": "2",
-          "name": "HundredthsOfASecond",
-          "doc": "Hundredths of a second"
-        },
-        {
-          "value": "3",
-          "name": "Milliseconds",
-          "doc": "milliseconds"
-        },
-        {
-          "value": "4",
-          "name": "Microseconds",
-          "doc": "microseconds"
-        },
-        {
-          "value": "5",
-          "name": "Nanoseconds",
-          "doc": "nanoseconds"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "doc": "years"
-        }
-      ],
+      "FIX:codeset": "orderdelayunitcodeset",
       "FIX:tag": "3041",
       "description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepStartOffsetUnit"
@@ -1568,68 +562,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Seconds",
-          "doc": "Seconds (default if not specified)"
-        },
-        {
-          "value": "1",
-          "name": "TenthsOfASecond",
-          "doc": "Tenths of a second"
-        },
-        {
-          "value": "2",
-          "name": "HundredthsOfASecond",
-          "doc": "Hundredths of a second"
-        },
-        {
-          "value": "3",
-          "name": "Milliseconds",
-          "doc": "milliseconds"
-        },
-        {
-          "value": "4",
-          "name": "Microseconds",
-          "doc": "microseconds"
-        },
-        {
-          "value": "5",
-          "name": "Nanoseconds",
-          "doc": "nanoseconds"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "doc": "years"
-        }
-      ],
+      "FIX:codeset": "orderdelayunitcodeset",
       "FIX:tag": "3044",
       "description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
       "display": "TestStepEndOffsetUnit"
@@ -1666,153 +599,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Int",
-          "doc": "Int"
-        },
-        {
-          "value": "2",
-          "name": "Length",
-          "doc": "Length"
-        },
-        {
-          "value": "3",
-          "name": "NumInGroup",
-          "doc": "NumInGroup"
-        },
-        {
-          "value": "4",
-          "name": "SeqNum",
-          "doc": "SeqNum"
-        },
-        {
-          "value": "5",
-          "name": "TagNum",
-          "doc": "TagNum"
-        },
-        {
-          "value": "6",
-          "name": "Float",
-          "doc": "float"
-        },
-        {
-          "value": "7",
-          "name": "Qty",
-          "doc": "Qty"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "PriceOffset",
-          "doc": "PriceOffset"
-        },
-        {
-          "value": "10",
-          "name": "Amt",
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "doc": "Char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "doc": "UTCTimestamp"
-        },
-        {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "doc": "Tenor"
-        }
-      ],
+      "FIX:codeset": "strategyparametertypecodeset",
       "FIX:tag": "3047",
       "description": "Datatype of the test step parameter.",
       "display": "TestStepParameterType"
@@ -1909,153 +696,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Int",
-          "doc": "Int"
-        },
-        {
-          "value": "2",
-          "name": "Length",
-          "doc": "Length"
-        },
-        {
-          "value": "3",
-          "name": "NumInGroup",
-          "doc": "NumInGroup"
-        },
-        {
-          "value": "4",
-          "name": "SeqNum",
-          "doc": "SeqNum"
-        },
-        {
-          "value": "5",
-          "name": "TagNum",
-          "doc": "TagNum"
-        },
-        {
-          "value": "6",
-          "name": "Float",
-          "doc": "float"
-        },
-        {
-          "value": "7",
-          "name": "Qty",
-          "doc": "Qty"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "PriceOffset",
-          "doc": "PriceOffset"
-        },
-        {
-          "value": "10",
-          "name": "Amt",
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "doc": "Char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "doc": "UTCTimestamp"
-        },
-        {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "doc": "Tenor"
-        }
-      ],
+      "FIX:codeset": "strategyparametertypecodeset",
       "FIX:tag": "3055",
       "description": "Datatype of the metric being used for a test.",
       "display": "TestMeasureType"
@@ -2080,28 +721,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Undefined",
-          "doc": "Undefined"
-        },
-        {
-          "value": "1",
-          "name": "Pass",
-          "doc": "Pass"
-        },
-        {
-          "value": "2",
-          "name": "Fail",
-          "doc": "Fail"
-        },
-        {
-          "value": "3",
-          "name": "Warning",
-          "doc": "Warning"
-        }
-      ],
+      "FIX:codeset": "testsuitestatuscodeset",
       "FIX:tag": "3057",
       "description": "Identifies the result of an individual test based on a measure.",
       "display": "TestMeasureResult"
@@ -2114,18 +734,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Under",
-          "doc": "Under"
-        },
-        {
-          "value": "1",
-          "name": "Over",
-          "doc": "Over"
-        }
-      ],
+      "FIX:codeset": "testthresholdtypecodeset",
       "FIX:tag": "3058",
       "description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
       "display": "TestThresholdType"
@@ -2198,18 +807,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Cancel",
-          "doc": "Cancel"
-        }
-      ],
+      "FIX:codeset": "testsuiterequesttranstypecodeset",
       "FIX:tag": "3064",
       "description": "Identifies the message transaction type.",
       "display": "TestSuiteRequestTransType"
@@ -2222,23 +820,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codeset": "testsuiterequeststatuscodeset",
       "FIX:tag": "3065",
       "description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
       "display": "TestSuiteRequestStatus"
@@ -2263,23 +845,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Start",
-          "doc": "Start"
-        },
-        {
-          "value": "1",
-          "name": "Stop",
-          "doc": "Stop"
-        },
-        {
-          "value": "2",
-          "name": "State",
-          "doc": "State"
-        }
-      ],
+      "FIX:codeset": "testactiontypecodeset",
       "FIX:tag": "3067",
       "description": "Specifies the type of action to take or that was taken for a given test suite.",
       "display": "TestActionType"
@@ -2292,23 +858,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codeset": "testactionrequeststatuscodeset",
       "FIX:tag": "3068",
       "description": "Status of the TestActionRequest(35=EN) message being responded to.",
       "display": "TestActionRequestStatus"
@@ -2321,28 +871,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Scheduled",
-          "doc": "Scheduled"
-        },
-        {
-          "value": "1",
-          "name": "Running",
-          "doc": "Running"
-        },
-        {
-          "value": "2",
-          "name": "Completed",
-          "doc": "Completed"
-        },
-        {
-          "value": "3",
-          "name": "Cancelled",
-          "doc": "Cancelled"
-        }
-      ],
+      "FIX:codeset": "testsuiteactivitystatecodeset",
       "FIX:tag": "3069",
       "description": "Specifies the activity state the test suite is in.",
       "display": "TestSuiteActivityState"
@@ -2355,28 +884,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Undefined",
-          "doc": "Undefined"
-        },
-        {
-          "value": "1",
-          "name": "Pass",
-          "doc": "Pass"
-        },
-        {
-          "value": "2",
-          "name": "Fail",
-          "doc": "Fail"
-        },
-        {
-          "value": "3",
-          "name": "Warning",
-          "doc": "Warning"
-        }
-      ],
+      "FIX:codeset": "testsuitestatuscodeset",
       "FIX:tag": "3070",
       "description": "Identifies the overall test result of a group of individual test scenarios.",
       "display": "TestSuiteStatus"
@@ -2413,43 +921,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "2",
-          "name": "CentralBank",
-          "doc": "Central Bank"
-        },
-        {
-          "value": "3",
-          "name": "WMR",
-          "doc": "WMR"
-        },
-        {
-          "value": "4",
-          "name": "MitsubishiUFJ",
-          "doc": "Mitsubishi-UFJ"
-        },
-        {
-          "value": "5",
-          "name": "LondonBullionMarketAssociation",
-          "doc": "London Bullion Market Association"
-        },
-        {
-          "value": "6",
-          "name": "LondonMetalExchange",
-          "doc": "London Metal Exchange"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "fxbenchmarkcodeset",
       "FIX:tag": "3073",
       "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
       "display": "FXBenchmark"
@@ -2500,28 +972,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "CertificateInformation",
-          "doc": "Certificate information"
-        },
-        {
-          "value": "1",
-          "name": "GenerateCertificate",
-          "doc": "Generate certificate"
-        },
-        {
-          "value": "2",
-          "name": "ChangeCertificateStatus",
-          "doc": "Change certificate status"
-        },
-        {
-          "value": "3",
-          "name": "ForwardCertificate",
-          "doc": "Forward certificate"
-        }
-      ],
+      "FIX:codeset": "algocertificaterequesttypecodeset",
       "FIX:tag": "3077",
       "description": "Specifies the type of business event related to an algo certification request.",
       "display": "AlgoCertificateRequestType"
@@ -2534,23 +985,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "CertificateInformation",
-          "doc": "Certificate information"
-        },
-        {
-          "value": "1",
-          "name": "CertificateStateChanged",
-          "doc": "Certificate state changed"
-        },
-        {
-          "value": "2",
-          "name": "CertificateRevoked",
-          "doc": "Certificate revoked"
-        }
-      ],
+      "FIX:codeset": "algocertificatereporttypecodeset",
       "FIX:tag": "3078",
       "description": "Specifies the type of business event related to an algo certification report.",
       "display": "AlgoCertificateReportType"
@@ -2677,133 +1112,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Percentage",
-          "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
-        },
-        {
-          "value": "2",
-          "name": "PerUnit",
-          "doc": "Per unit (i.e. per share or contract)"
-        },
-        {
-          "value": "3",
-          "name": "FixedAmount",
-          "doc": "Fixed amount (absolute value)"
-        },
-        {
-          "value": "4",
-          "name": "Discount",
-          "doc": "Discount - percentage points below par"
-        },
-        {
-          "value": "5",
-          "name": "Premium",
-          "doc": "Premium - percentage points over par"
-        },
-        {
-          "value": "6",
-          "name": "Spread",
-          "doc": "Spread (basis points spread)"
-        },
-        {
-          "value": "7",
-          "name": "TEDPrice",
-          "doc": "TED Price"
-        },
-        {
-          "value": "8",
-          "name": "TEDYield",
-          "doc": "TED Yield"
-        },
-        {
-          "value": "9",
-          "name": "Yield",
-          "doc": "Yield"
-        },
-        {
-          "value": "10",
-          "name": "FixedCabinetTradePrice",
-          "doc": "Fixed cabinet trade price (primarily for listed futures and options)"
-        },
-        {
-          "value": "11",
-          "name": "VariableCabinetTradePrice",
-          "doc": "Variable cabinet trade price (primarily for listed futures and options)"
-        },
-        {
-          "value": "12",
-          "name": "PriceSpread",
-          "doc": "Price spread"
-        },
-        {
-          "value": "13",
-          "name": "ProductTicksInHalves",
-          "doc": "Product ticks in halves"
-        },
-        {
-          "value": "14",
-          "name": "ProductTicksInFourths",
-          "doc": "Product ticks in fourths"
-        },
-        {
-          "value": "15",
-          "name": "ProductTicksInEighths",
-          "doc": "Product ticks in eighths"
-        },
-        {
-          "value": "16",
-          "name": "ProductTicksInSixteenths",
-          "doc": "Product ticks in sixteenths"
-        },
-        {
-          "value": "17",
-          "name": "ProductTicksInThirtySeconds",
-          "doc": "Product ticks in thirty-seconds"
-        },
-        {
-          "value": "18",
-          "name": "ProductTicksInSixtyFourths",
-          "doc": "Product ticks in sixty-fourths"
-        },
-        {
-          "value": "19",
-          "name": "ProductTicksInOneTwentyEighths",
-          "doc": "Product ticks in one-twenty-eighths"
-        },
-        {
-          "value": "20",
-          "name": "NormalRateRepresentation",
-          "doc": "Normal rate representation (e.g. FX rate)"
-        },
-        {
-          "value": "21",
-          "name": "InverseRateRepresentation",
-          "doc": "Inverse rate representation (e.g. FX rate)"
-        },
-        {
-          "value": "22",
-          "name": "BasisPoints",
-          "doc": "Basis points"
-        },
-        {
-          "value": "23",
-          "name": "UpfrontPoints",
-          "doc": "Up front points"
-        },
-        {
-          "value": "24",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "25",
-          "name": "PercentageNotional",
-          "doc": "Percentage of notional"
-        }
-      ],
+      "FIX:codeset": "testorderpricetypecodeset",
       "FIX:tag": "3088",
       "description": "Type of price of TestOrderPrice(3087).",
       "display": "TestOrderPriceType"
@@ -2842,68 +1151,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Seconds",
-          "doc": "Seconds (default if not specified)"
-        },
-        {
-          "value": "1",
-          "name": "TenthsOfASecond",
-          "doc": "Tenths of a second"
-        },
-        {
-          "value": "2",
-          "name": "HundredthsOfASecond",
-          "doc": "Hundredths of a second"
-        },
-        {
-          "value": "3",
-          "name": "Milliseconds",
-          "doc": "milliseconds"
-        },
-        {
-          "value": "4",
-          "name": "Microseconds",
-          "doc": "microseconds"
-        },
-        {
-          "value": "5",
-          "name": "Nanoseconds",
-          "doc": "nanoseconds"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "doc": "years"
-        }
-      ],
+      "FIX:codeset": "orderdelayunitcodeset",
       "FIX:tag": "3091",
       "description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
       "display": "TestOrderOffsetUnit"
@@ -2940,58 +1188,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "MarketDataGatewayIPAddress",
-          "doc": "Market data gateway IP address"
-        },
-        {
-          "value": "1",
-          "name": "MarketDataGatewayPortNumber",
-          "doc": "Market data gateway port number"
-        },
-        {
-          "value": "2",
-          "name": "MarketDataGatewayDataFormat",
-          "doc": "Market data gateway data format"
-        },
-        {
-          "value": "3",
-          "name": "MarketDataGatewayFormatVersion",
-          "doc": "Market data gateway format version"
-        },
-        {
-          "value": "4",
-          "name": "MarketDataGatewayRoutingIPAddress",
-          "doc": "Market data gateway routing IP address"
-        },
-        {
-          "value": "5",
-          "name": "OrderEntryGatewayIPAddress",
-          "doc": "Order entry gateway IP address"
-        },
-        {
-          "value": "6",
-          "name": "OrderEntryGatewayPortNumber",
-          "doc": "Order entry gateway port number"
-        },
-        {
-          "value": "7",
-          "name": "OrderEntryGatewayDataFormat",
-          "doc": "Order entry gateway data format"
-        },
-        {
-          "value": "8",
-          "name": "OrderEntryGatewayFormatVersion",
-          "doc": "Order entry gateway format version"
-        },
-        {
-          "value": "9",
-          "name": "OrderEntryGatewayRoutingIPAddress",
-          "doc": "Order entry gateway routing IP address"
-        }
-      ],
+      "FIX:codeset": "testgatewaydetailtypecodeset",
       "FIX:tag": "3094",
       "description": "Type of test gateway information.",
       "display": "TestGatewayDetailType"

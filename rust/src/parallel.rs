@@ -2,221 +2,274 @@
 //!
 //! A capture is a stream of independent lines and a machine has cores, so
 //! a door built over this reads its stream a chunk at a time, hands each
-//! chunk's items to the threads and yields their answers in the items'
-//! order: it answers exactly what its sequential twin answers, sooner, and
-//! stays a stream - one chunk in hand, nothing collected. The threads are
-//! scoped to the chunk, so an item borrowed from the caller crosses to a
-//! thread and back without being made `'static`, and nothing outlives the
-//! pull that spawned it. One thread is the sequential map, item by item,
-//! and spawns nothing.
+//! chunk to a worker and yields the answers in the items' order: it
+//! answers exactly what its sequential twin answers, sooner, and stays a
+//! stream - a few chunks in hand, nothing collected. One thread is the
+//! sequential map, item by item, and spawns nothing.
 //!
-//! What a thread reads as it works - the caches a [`Warm`] names - would
-//! die with the chunk's thread, so it is taken out of each thread as it
-//! finishes and put into the one spawned in its place for the next chunk:
-//! a stream read on four threads warms four sets of caches once, and not
-//! one set per chunk.
+//! The workers live for the whole stream. Each owns one lane - the chunks
+//! it was handed, in order - and the chunks go round the lanes in turn, so
+//! chunk `k` is worked by lane `k % threads` and drained from it: every
+//! lane keeps its own order and the round keeps the lanes', which is the
+//! items' order with no sorting and no sequence number. A lane holds at
+//! most [`LANE_DEPTH`] chunks, the one being worked and the one behind it,
+//! so the thread that pulls reads the next chunk off the source while the
+//! workers work the ones before it, and what a consumer does with each
+//! answer overlaps the work on the answers after it. What a worker reads
+//! as it works - the thread-local caches a message read fills - lives as
+//! long as the worker does: a stream read on four threads warms four sets
+//! of caches once.
+//!
+//! An item crosses to a worker by value and its answer comes back the
+//! same way, so both are owned: a door that reads borrowed lines makes
+//! them its own before it spreads them, exactly as it would to keep one.
+//! A worker that panics panics the pull that drains its chunk, with the
+//! panic it raised.
 
+use std::any::Any;
 use std::collections::VecDeque;
 use std::iter::Fuse;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::thread::JoinHandle;
 
-/// What a thread keeps warm between chunks: the caches a worker fills as
-/// it works, taken out of the thread that dies with its chunk and handed
-/// to the one spawned for the next.
-pub(crate) trait Warm: Send + Sized {
-    /// The calling thread's caches, taken: the thread is left cold.
-    fn take() -> Self;
-
-    /// `self` made the calling thread's caches.
-    fn restore(self);
-}
-
-/// Nothing kept warm: work that reads no cache.
-impl Warm for () {
-    fn take() -> Self {}
-
-    fn restore(self) {}
-}
-
-/// The caches one thread of a run holds between chunks, by the run's
-/// thread: none until the thread's first chunk, and the calling thread's
-/// own are never among them.
-pub(crate) type Slots<W> = Vec<Option<W>>;
-
-/// `threads` slots, each cold.
-pub(crate) fn slots<W: Warm>(threads: usize) -> Slots<W> {
-    (0..threads.max(1)).map(|_| None).collect()
-}
+/// How many line chunks one lane holds: the chunk its worker is working,
+/// and the one waiting behind it, so the worker never idles while the puller
+/// reads the next. Whole-batch jobs override this with one.
+pub(crate) const LANE_DEPTH: usize = 2;
 
 /// `work` over every item of `source`, on `threads` threads, in order.
 ///
-/// A chunk holds `chunk` items, which is how far the stream is read ahead;
-/// every item is answered once, on some thread, and the answers come out
-/// in the items' order. One thread, or a chunk of one item, answers each
-/// item as it is pulled. A thread that panics panics the pull. What each
-/// thread reads as it works is kept warm between chunks as `W` names.
-pub(crate) fn ordered<W, I, R, F>(
+/// A chunk holds `chunk` items; up to `threads * LANE_DEPTH` chunks are
+/// read ahead. Every item is answered once, on some thread, and the
+/// answers come out in the items' order. One thread answers each item as
+/// it is pulled and reads nothing ahead. A thread that panics panics the
+/// pull that drains its chunk.
+pub(crate) fn ordered<I, R, F>(
     source: I,
     threads: usize,
     chunk: usize,
     work: F,
-) -> Ordered<W, I::IntoIter, R, F>
+) -> Ordered<I::IntoIter, R, F>
 where
-    W: Warm,
     I: IntoIterator,
-    I::Item: Send,
-    R: Send,
-    F: Fn(I::Item) -> R + Sync,
+    I::Item: Send + 'static,
+    R: Send + 'static,
+    F: Fn(I::Item) -> R + Send + Sync + 'static,
 {
     Ordered {
         source: source.into_iter().fuse(),
         threads: threads.max(1),
         chunk: chunk.max(1),
-        work,
+        lane_depth: LANE_DEPTH,
+        work: Arc::new(work),
         answered: VecDeque::new(),
-        slots: slots(threads),
+        lanes: None,
+        exhausted: false,
     }
 }
 
 /// The stream [`ordered`] answers.
-pub(crate) struct Ordered<W: Warm, I: Iterator, R, F> {
+pub(crate) struct Ordered<I: Iterator, R, F> {
     source: Fuse<I>,
     threads: usize,
     chunk: usize,
-    work: F,
-    /// The chunk in hand, its answers in order.
+    lane_depth: usize,
+    work: Arc<F>,
+    /// The chunk drained last, its answers still to be yielded, in order.
     answered: VecDeque<R>,
-    slots: Slots<W>,
+    /// The workers, spawned on the first pull that needs them.
+    lanes: Option<Lanes<I::Item, R>>,
+    /// Whether the source answered its last item.
+    exhausted: bool,
 }
 
-impl<W, I, R, F> Iterator for Ordered<W, I, R, F>
+impl<I: Iterator, R, F> Ordered<I, R, F> {
+    /// Limits the chunks each worker may hold. Batch jobs use one: each job
+    /// already owns a whole input batch, while line chunks retain the normal
+    /// read-ahead depth.
+    #[must_use]
+    pub(crate) fn with_lane_depth(mut self, lane_depth: usize) -> Self {
+        self.lane_depth = lane_depth.max(1);
+        self
+    }
+}
+
+impl<I, R, F> Iterator for Ordered<I, R, F>
 where
-    W: Warm,
     I: Iterator,
-    I::Item: Send,
-    R: Send,
-    F: Fn(I::Item) -> R + Sync,
+    I::Item: Send + 'static,
+    R: Send + 'static,
+    F: Fn(I::Item) -> R + Send + Sync + 'static,
 {
     type Item = R;
 
     fn next(&mut self) -> Option<R> {
         if self.threads == 1 {
-            return self.source.next().map(&self.work);
+            return self.source.next().map(|item| (self.work)(item));
         }
-        if let Some(answer) = self.answered.pop_front() {
-            return Some(answer);
+        loop {
+            if let Some(answer) = self.answered.pop_front() {
+                return Some(answer);
+            }
+            let (threads, chunk) = (self.threads, self.chunk);
+            let work = &self.work;
+            let lanes = self
+                .lanes
+                .get_or_insert_with(|| Lanes::spawn(threads, work));
+            // Every lane full, while the source lasts: the puller reads
+            // ahead exactly what the workers can hold, and no further.
+            while !self.exhausted && lanes.in_flight() < threads.saturating_mul(self.lane_depth) {
+                let items: Vec<I::Item> = self.source.by_ref().take(chunk).collect();
+                if items.is_empty() {
+                    self.exhausted = true;
+                    break;
+                }
+                lanes.dispatch(items);
+            }
+            if lanes.in_flight() == 0 {
+                return None;
+            }
+            self.answered.extend(lanes.drain());
         }
-        let items: Vec<I::Item> = self.source.by_ref().take(self.chunk).collect();
-        if items.is_empty() {
-            return None;
-        }
-        let work = &self.work;
-        let answered = over(items, self.threads, &mut self.slots, |part| {
-            part.into_iter().map(work).collect::<Vec<R>>()
-        });
-        for answers in answered {
-            self.answered.extend(answers);
-        }
-        self.answered.pop_front()
     }
 }
 
-/// `work` over the indices `0..count`, on `threads` threads, answered in
-/// index order: what a batch already in hand is read by, each row on some
-/// thread, the threads' caches kept warm in `slots` between runs.
-pub(crate) fn mapped<W, R, F>(count: usize, threads: usize, slots: &mut Slots<W>, work: F) -> Vec<R>
-where
-    W: Warm,
-    R: Send,
-    F: Fn(usize) -> R + Sync,
-{
-    if threads <= 1 || count <= 1 {
-        return (0..count).map(work).collect();
-    }
-    let indices: Vec<usize> = (0..count).collect();
-    over(indices, threads, slots, |part| {
-        part.into_iter().map(&work).collect::<Vec<R>>()
-    })
-    .into_iter()
-    .flatten()
-    .collect()
+/// What one worker answers for one chunk: the answers in the chunk's
+/// order, or the panic it raised working them.
+type Answered<R> = Result<Vec<R>, Box<dyn Any + Send>>;
+
+/// The workers of one stream, each behind its lane.
+struct Lanes<T, R> {
+    lanes: Vec<Lane<T, R>>,
+    /// How many chunks were handed out, which names the lane the next goes
+    /// to.
+    dispatched: usize,
+    /// How many chunks were drained, which names the lane the next comes
+    /// from.
+    drained: usize,
 }
 
-/// `items` split into at most `threads` runs, each run answered on its own
-/// scoped thread, the answers in the runs' order; the thread of run `i`
-/// starts with the caches `slots[i]` holds and leaves its own there.
-fn over<W, T, R, F>(items: Vec<T>, threads: usize, slots: &mut Slots<W>, work: F) -> Vec<R>
+/// One worker: the chunks handed to it, in order, and its answers to them.
+struct Lane<T, R> {
+    tasks: Option<Sender<Vec<T>>>,
+    answers: Receiver<Answered<R>>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl<T, R> Lanes<T, R>
 where
-    W: Warm,
-    T: Send,
-    R: Send,
-    F: Fn(Vec<T>) -> R + Sync,
+    T: Send + 'static,
+    R: Send + 'static,
 {
-    let share = items.len().div_ceil(threads.max(1)).max(1);
-    let mut parts = Vec::with_capacity(items.len().div_ceil(share));
-    let mut rest = items;
-    while !rest.is_empty() {
-        let tail = rest.split_off(rest.len().min(share));
-        parts.push(rest);
-        rest = tail;
-    }
-    if parts.len() == 1 {
-        return parts.into_iter().map(work).collect();
-    }
-    if slots.len() < parts.len() {
-        slots.resize_with(parts.len(), || None);
-    }
-    std::thread::scope(|scope| {
-        let work = &work;
-        let handles: Vec<_> = parts
-            .into_iter()
-            .zip(slots.iter_mut())
-            .map(|(part, slot)| {
-                let warmth = slot.take();
-                let handle = scope.spawn(move || {
-                    if let Some(warmth) = warmth {
-                        warmth.restore();
+    fn spawn<F>(threads: usize, work: &Arc<F>) -> Self
+    where
+        F: Fn(T) -> R + Send + Sync + 'static,
+    {
+        let lanes = (0..threads)
+            .map(|_| {
+                let (tasks, chunks) = channel::<Vec<T>>();
+                let (answers, drained) = channel::<Answered<R>>();
+                let work = Arc::clone(work);
+                let worker = std::thread::spawn(move || {
+                    while let Ok(items) = chunks.recv() {
+                        let answered = catch_unwind(AssertUnwindSafe(|| {
+                            items.into_iter().map(&*work).collect::<Vec<R>>()
+                        }));
+                        let panicked = answered.is_err();
+                        if answers.send(answered).is_err() || panicked {
+                            return;
+                        }
                     }
-                    (work(part), W::take())
                 });
-                (slot, handle)
+                Lane {
+                    tasks: Some(tasks),
+                    answers: drained,
+                    worker: Some(worker),
+                }
             })
             .collect();
-        handles
-            .into_iter()
-            .map(|(slot, handle)| {
-                let (answer, warmth) = handle
-                    .join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-                *slot = Some(warmth);
-                answer
-            })
-            .collect()
-    })
+        Self {
+            lanes,
+            dispatched: 0,
+            drained: 0,
+        }
+    }
+
+    /// How many chunks are handed out and not yet drained.
+    const fn in_flight(&self) -> usize {
+        self.dispatched - self.drained
+    }
+
+    /// Hands one chunk to the next lane round.
+    ///
+    /// A lane whose worker died refuses the chunk; the panic that killed
+    /// it is raised by the drain of the chunk it died on, which comes
+    /// first.
+    fn dispatch(&mut self, items: Vec<T>) {
+        let at = self.dispatched % self.lanes.len();
+        if let Some(tasks) = &self.lanes[at].tasks {
+            let _ = tasks.send(items);
+        }
+        self.dispatched += 1;
+    }
+
+    /// The answers of the oldest chunk still out, in its order.
+    fn drain(&mut self) -> Vec<R> {
+        let at = self.drained % self.lanes.len();
+        self.drained += 1;
+        match self.lanes[at].answers.recv() {
+            Ok(Ok(answers)) => answers,
+            Ok(Err(panic)) => resume_unwind(panic),
+            // A worker answers every chunk it takes, panic included, and
+            // leaves only after; a lane that went quiet lost its worker to
+            // something no unwind reports.
+            Err(_) => panic!("a worker thread ended without answering its chunk"),
+        }
+    }
+}
+
+impl<T, R> Drop for Lane<T, R> {
+    fn drop(&mut self) {
+        // Closing the lane is what ends the worker: it drains what it was
+        // handed and returns. Joined, so nothing outlives the stream.
+        drop(self.tasks.take());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Warm, mapped, ordered, slots};
+    use super::ordered;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::Duration;
 
     #[test]
     fn answers_come_out_in_the_order_they_were_asked_whatever_the_threads() {
         let asked: Vec<u64> = (0..1_000).collect();
-        let sequential: Vec<u64> =
-            ordered::<(), _, _, _>(asked.clone(), 1, 7, |held| held * 3).collect();
-        let spread: Vec<u64> =
-            ordered::<(), _, _, _>(asked.clone(), 4, 7, |held| held * 3).collect();
+        let sequential: Vec<u64> = ordered(asked.clone(), 1, 7, |held| held * 3).collect();
+        let spread: Vec<u64> = ordered(asked.clone(), 4, 7, |held| held * 3).collect();
         assert_eq!(
             sequential,
             asked.iter().map(|held| held * 3).collect::<Vec<_>>()
         );
         assert_eq!(spread, sequential);
         assert_eq!(
-            mapped(1_000, 3, &mut slots::<()>(3), |at| at * 2),
-            (0..2_000).step_by(2).collect::<Vec<_>>()
+            ordered(0..0_u64, 3, 7, |held| held).collect::<Vec<_>>(),
+            Vec::<u64>::new()
+        );
+        // Fewer items than lanes, and exactly one chunk.
+        assert_eq!(
+            ordered(0..2_u64, 4, 7, |held| held + 1).collect::<Vec<_>>(),
+            vec![1, 2]
         );
         assert_eq!(
-            mapped(0, 3, &mut slots::<()>(3), |at| at),
-            Vec::<usize>::new()
+            ordered(0..7_u64, 4, 7, |held| held).collect::<Vec<_>>(),
+            (0..7).collect::<Vec<_>>()
         );
     }
 
@@ -224,24 +277,12 @@ mod tests {
         static COUNTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     }
 
-    /// One thread's count of the items it answered, kept between chunks.
-    struct Counted(u64);
-
-    impl Warm for Counted {
-        fn take() -> Self {
-            Self(COUNTED.with(|held| held.replace(0)))
-        }
-
-        fn restore(self) {
-            COUNTED.with(|held| held.set(self.0));
-        }
-    }
-
     #[test]
-    fn what_a_thread_read_is_kept_warm_between_chunks() {
-        // Two threads over ten chunks of ten: each thread's count reaches
-        // its chunk share summed over every chunk, not one chunk's.
-        let counted: Vec<u64> = ordered::<Counted, _, _, _>(0..100_u64, 2, 10, |_| {
+    fn what_a_worker_read_stays_with_it_for_the_whole_stream() {
+        // Two workers over ten chunks of ten: each worker's count reaches
+        // its share of every chunk, because the worker lives for the
+        // stream and its thread-local cache with it.
+        let counted: Vec<u64> = ordered(0..100_u64, 2, 10, |_| {
             COUNTED.with(|held| {
                 held.set(held.get() + 1);
                 held.get()
@@ -258,17 +299,106 @@ mod tests {
     }
 
     #[test]
-    fn a_stream_is_read_a_chunk_ahead_and_no_further() {
-        let pulled = std::sync::atomic::AtomicUsize::new(0);
-        let source = (0..100).inspect(|_| {
-            pulled.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    fn a_stream_is_read_a_lane_depth_ahead_and_no_further() {
+        let pulled = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&pulled);
+        let source = (0..100).inspect(move |_| {
+            counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         });
-        let mut answers = ordered::<(), _, _, _>(source, 2, 10, |held| held);
+        let mut answers = ordered(source, 2, 10, |held| held);
         assert_eq!(answers.next(), Some(0));
-        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 10);
+        // Two lanes, two chunks each: forty items read for the first answer.
+        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 40);
         assert_eq!(answers.nth(8), Some(9));
-        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 10);
+        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 40);
+        // The first chunk drained, one more is read to keep its lane full.
         assert_eq!(answers.next(), Some(10));
-        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 20);
+        assert_eq!(pulled.load(std::sync::atomic::Ordering::Relaxed), 50);
+    }
+
+    #[test]
+    fn a_shallow_pool_completes_out_of_order_and_yields_in_order() {
+        let gate = Arc::new((Mutex::new(0_usize), Condvar::new()));
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let waited = Arc::clone(&gate);
+        let completed = Arc::clone(&gate);
+        let traced = Arc::clone(&trace);
+        let output: Vec<_> = ordered(0..3, 3, 1, move |item| {
+            if item == 0 {
+                let (later, wake) = &*waited;
+                let (later, _) = wake
+                    .wait_timeout_while(
+                        later.lock().expect("the gate is live"),
+                        Duration::from_secs(10),
+                        |later| *later < 2,
+                    )
+                    .expect("the gate is live");
+                assert_eq!(*later, 2, "later jobs must complete before the first");
+                traced.lock().expect("the trace is live").push(item);
+            } else {
+                traced.lock().expect("the trace is live").push(item);
+                let (later, wake) = &*completed;
+                *later.lock().expect("the gate is live") += 1;
+                wake.notify_all();
+            }
+            item
+        })
+        .with_lane_depth(1)
+        .collect();
+        assert_eq!(output, vec![0, 1, 2]);
+        let trace = trace.lock().expect("the trace is live");
+        assert_eq!(trace.last(), Some(&0));
+        assert!(trace[..2].contains(&1) && trace[..2].contains(&2));
+    }
+
+    #[test]
+    fn a_shallow_pool_reads_at_most_one_batch_per_worker_ahead() {
+        let pulled = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pulled);
+        let source = (0..100).inspect(move |_| {
+            counted.fetch_add(1, Ordering::Relaxed);
+        });
+        let mut answers = ordered(source, 3, 1, |item| item).with_lane_depth(1);
+        assert_eq!(answers.next(), Some(0));
+        assert_eq!(pulled.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn a_worker_that_panics_panics_the_pull_with_its_own_panic() {
+        let caught = std::panic::catch_unwind(|| {
+            ordered(0..100_u64, 3, 4, |held| {
+                assert!(held != 17, "item seventeen refuses");
+                held
+            })
+            .collect::<Vec<_>>()
+        });
+        let panic = caught.expect_err("the pull panics");
+        let text = panic
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| panic.downcast_ref::<&str>().map(|held| (*held).to_owned()))
+            .unwrap_or_default();
+        assert!(text.contains("item seventeen refuses"), "{text}");
+    }
+
+    #[test]
+    fn dropping_the_stream_early_ends_its_workers() {
+        let mut answers = ordered(0..1_000_u64, 3, 8, |held| held);
+        assert_eq!(answers.next(), Some(0));
+        drop(answers);
+    }
+
+    #[test]
+    fn dropping_a_shallow_pool_joins_its_dispatched_workers() {
+        let joined = Arc::new(AtomicUsize::new(0));
+        let completed = Arc::clone(&joined);
+        let mut answers = ordered(0..1_000_u64, 2, 1, move |held| {
+            completed.fetch_add(1, Ordering::Relaxed);
+            held
+        })
+        .with_lane_depth(1);
+        assert_eq!(answers.next(), Some(0));
+        drop(answers);
+        assert_eq!(joined.load(Ordering::Relaxed), 2);
     }
 }

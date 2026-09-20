@@ -1,0 +1,15 @@
+{
+  "name": "tradeaggregationrequeststatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

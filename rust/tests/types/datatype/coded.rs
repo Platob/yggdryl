@@ -15,7 +15,7 @@ use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
     StructType,
 };
-use yggdryl::{CfiField, CountryField, CurrencyField, MicField};
+use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
@@ -30,14 +30,15 @@ fn text(values: &[&str]) -> ArrayRef {
 }
 
 /// The ten codes, each with its width and one value its standard names.
-const CODED: [(&str, DataType, usize, &str); 10] = [
+const CODED: [(&str, DataType, usize, &str); 11] = [
     ("country", DataType::Country, 2, "US"),
     ("currency", DataType::Currency, 3, "USD"),
-    ("mic", DataType::Mic, 4, "XPAR"),
-    ("cfi", DataType::Cfi, 6, "ESVUFR"),
-    ("isin", DataType::Isin, 12, "US0378331005"),
-    ("cusip", DataType::Cusip, 9, "037833100"),
-    ("sedol", DataType::Sedol, 7, "B0YBKJ7"),
+    ("mic", DataType::MicCode, 4, "XPAR"),
+    ("cfi", DataType::CfiCode, 6, "ESVUFR"),
+    ("isin", DataType::IsinCode, 12, "US0378331005"),
+    ("cusip", DataType::CusipCode, 9, "037833100"),
+    ("sedol", DataType::SedolCode, 7, "B0YBKJ7"),
+    ("figi", DataType::FIGICode, 12, "BBG000BLNQ16"),
     ("side", DataType::Side, 8, "BUY"),
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),
@@ -207,7 +208,7 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
 
 #[test]
 fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
-    let venue = Field::new("venue", DataType::Mic, false);
+    let venue = Field::new("venue", DataType::MicCode, false);
     let stored = venue
         .cast_arrow_array(
             text(&["XPAR", "XLON"]),
@@ -267,7 +268,7 @@ fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
 
 #[test]
 fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
-    // A time in force declares a vocabulary exactly as `Mic` does: a value no
+    // A time in force declares a vocabulary exactly as `MicCode` does: a value no
     // version defines is held rather than refused.
     let (dtype, outside) = (DataType::TimeInForce, "X");
     let stored = dtype.scalar(Scalar::from(outside)).unwrap();
@@ -500,7 +501,7 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
 
 #[test]
 fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
-    let cfi = Field::new("classification", DataType::Cfi, false);
+    let cfi = Field::new("classification", DataType::CfiCode, false);
     let stored = scalar_array(&cfi, &Scalar::from("ESVUFR")).unwrap();
     let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
 
@@ -508,29 +509,29 @@ fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
     assert_eq!(cells.value_length(0), 6);
     assert_eq!(
         scalar_value(&cfi, stored.as_ref()).unwrap(),
-        DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
+        DataType::CfiCode.scalar(Scalar::from("ESVUFR")).unwrap()
     );
     // A width of six bytes is spellable and is still not a CFI code.
     assert_eq!(
         DataType::from_str("fixed_ascii(6)").unwrap(),
         DataType::fixed_ascii(6).unwrap()
     );
-    assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
+    assert_ne!(DataType::CfiCode, DataType::fixed_ascii(6).unwrap());
 }
 
 #[test]
 fn the_typed_field_and_scalar_aliases_name_their_code() {
     let ccy = CurrencyField::unit("ccy", false);
-    let venue = MicField::unit("venue", true);
+    let venue = MicCodeField::unit("venue", true);
     let iso = CountryField::unit("iso", true);
-    let cfi = CfiField::unit("classification", true);
+    let cfi = CfiCodeField::unit("classification", true);
 
     let ccy_field = ccy.to_field();
     let venue_field = venue.to_field();
     assert_eq!(ccy_field.dtype(), &DataType::Currency);
-    assert_eq!(venue_field.dtype(), &DataType::Mic);
+    assert_eq!(venue_field.dtype(), &DataType::MicCode);
     assert_eq!(iso.to_field().dtype(), &DataType::Country);
-    assert_eq!(cfi.to_field().dtype(), &DataType::Cfi);
+    assert_eq!(cfi.to_field().dtype(), &DataType::CfiCode);
 
     // The pairing is the field's value contract, so the text becomes the code
     // leaf on the way in.
@@ -864,20 +865,22 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
 
 #[test]
 fn a_code_merges_to_the_better_statement() {
-    use yggdryl::{Cfi, CodeValue, Currency, Isin, Mic, Side, State};
+    use yggdryl::{CfiCode, CodeValue, Currency, IsinCode, MicCode, Side, State};
 
     // A classification fills what it left unknown from the other, and stands
     // as it is beside another instrument's.
-    let partial = Cfi::new("ESXXXR").unwrap();
+    let partial = CfiCode::new("ESXXXR").unwrap();
     assert_eq!(
         partial
             .clone()
-            .merge_with(&Cfi::new("ESVUFX").unwrap())
+            .merge_with(&CfiCode::new("ESVUFX").unwrap())
             .as_str(),
         "ESVUFR"
     );
     assert_eq!(
-        partial.merge_with(&Cfi::new("DBFNFB").unwrap()).as_str(),
+        partial
+            .merge_with(&CfiCode::new("DBFNFB").unwrap())
+            .as_str(),
         "ESXXXR"
     );
 
@@ -921,19 +924,19 @@ fn a_code_merges_to_the_better_statement() {
         "USD"
     );
     assert_eq!(
-        Mic::new("XXXX")
+        MicCode::new("XXXX")
             .unwrap()
-            .merge_with(&Mic::new("XPAR").unwrap())
+            .merge_with(&MicCode::new("XPAR").unwrap())
             .as_str(),
         "XPAR"
     );
 
     // An identifier has nothing partial about it: this one stands.
-    let apple = Isin::new("US0378331005").unwrap();
+    let apple = IsinCode::new("US0378331005").unwrap();
     assert_eq!(
         apple
             .clone()
-            .merge_with(&Isin::new("US5949181045").unwrap()),
+            .merge_with(&IsinCode::new("US5949181045").unwrap()),
         apple
     );
 
@@ -953,22 +956,29 @@ fn a_code_merges_to_the_better_statement() {
 
 #[test]
 fn the_code_family_stands_for_every_registered_code() {
-    use yggdryl::{Bloomberg, Cfi, Code, Country, Currency, Cusip, Isin, Mic, Sedol};
+    use yggdryl::{
+        BloombergCode, CfiCode, Code, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
+        SedolCode,
+    };
     use yggdryl::{Side, State, TimeInForce};
 
     crate::scalar::assert_family_round_trip(
         vec![
             crate::family_leaf!(Code::Country, Country::new("US").unwrap()),
             crate::family_leaf!(Code::Currency, Currency::new("USD").unwrap()),
-            crate::family_leaf!(Code::Mic, Mic::new("XPAR").unwrap()),
-            crate::family_leaf!(Code::Cfi, Cfi::new("ESVUFR").unwrap()),
+            crate::family_leaf!(Code::MicCode, MicCode::new("XPAR").unwrap()),
+            crate::family_leaf!(Code::CfiCode, CfiCode::new("ESVUFR").unwrap()),
             crate::family_leaf!(Code::Side, Side::new("BUY").unwrap()),
             crate::family_leaf!(Code::State, State::new("20NEW").unwrap()),
             crate::family_leaf!(Code::TimeInForce, TimeInForce::new("0").unwrap()),
-            crate::family_leaf!(Code::Isin, Isin::new("US0378331005").unwrap()),
-            crate::family_leaf!(Code::Cusip, Cusip::new("037833100").unwrap()),
-            crate::family_leaf!(Code::Sedol, Sedol::new("B0YBKJ7").unwrap()),
-            crate::family_leaf!(Code::Bloomberg, Bloomberg::new("BBG000B9XRY4").unwrap()),
+            crate::family_leaf!(Code::IsinCode, IsinCode::new("US0378331005").unwrap()),
+            crate::family_leaf!(Code::CusipCode, CusipCode::new("037833100").unwrap()),
+            crate::family_leaf!(Code::SedolCode, SedolCode::new("B0YBKJ7").unwrap()),
+            crate::family_leaf!(
+                Code::BloombergCode,
+                BloombergCode::new("BBG000B9XRY4").unwrap()
+            ),
+            crate::family_leaf!(Code::FIGICode, FIGICode::new("BBG000BLNQ16").unwrap()),
         ],
         DataTypeKind::Code,
         // The text a code is made of is not the code.

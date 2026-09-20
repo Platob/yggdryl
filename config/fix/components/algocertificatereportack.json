@@ -93,6 +93,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "CERT",
     "FIX:msgtype": "EK",
     "FIX:tag": "1011229",
     "description": "MsgType = EK",

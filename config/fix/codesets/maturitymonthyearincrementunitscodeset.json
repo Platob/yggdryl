@@ -1,0 +1,25 @@
+{
+  "name": "maturitymonthyearincrementunitscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Months",
+      "doc": "Months"
+    },
+    {
+      "value": "1",
+      "name": "Days",
+      "doc": "Days"
+    },
+    {
+      "value": "2",
+      "name": "Weeks",
+      "doc": "Weeks"
+    },
+    {
+      "value": "3",
+      "name": "Years",
+      "doc": "Years"
+    }
+  ]
+}

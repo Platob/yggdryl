@@ -1,0 +1,25 @@
+{
+  "name": "allocmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Automatic",
+      "doc": "Automatic"
+    },
+    {
+      "value": "2",
+      "name": "Guarantor",
+      "doc": "Guarantor"
+    },
+    {
+      "value": "3",
+      "name": "Manual",
+      "doc": "Manual"
+    },
+    {
+      "value": "4",
+      "name": "BrokerAssigned",
+      "doc": "Broker assigned"
+    }
+  ]
+}

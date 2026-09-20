@@ -1,0 +1,123 @@
+{
+  "name": "exectypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "3",
+      "name": "DoneForDay",
+      "doc": "Done for day"
+    },
+    {
+      "value": "4",
+      "name": "Canceled",
+      "doc": "Canceled"
+    },
+    {
+      "value": "5",
+      "name": "Replaced",
+      "doc": "Replaced"
+    },
+    {
+      "value": "6",
+      "name": "PendingCancel",
+      "doc": "Pending Cancel (e.g. result of Order Cancel Request)"
+    },
+    {
+      "value": "7",
+      "name": "Stopped",
+      "doc": "Stopped"
+    },
+    {
+      "value": "8",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "9",
+      "name": "Suspended",
+      "doc": "Suspended"
+    },
+    {
+      "value": "A",
+      "name": "PendingNew",
+      "doc": "Pending New"
+    },
+    {
+      "value": "B",
+      "name": "Calculated",
+      "doc": "Calculated"
+    },
+    {
+      "value": "C",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "D",
+      "name": "Restated",
+      "doc": "Restated (Execution Report sent unsolicited by sellside, with ExecRestatementReason (378) set)"
+    },
+    {
+      "value": "E",
+      "name": "PendingReplace",
+      "doc": "Pending Replace (e.g. result of Order Cancel/Replace Request)"
+    },
+    {
+      "value": "F",
+      "name": "Trade",
+      "doc": "Trade (partial fill or fill)"
+    },
+    {
+      "value": "G",
+      "name": "TradeCorrect",
+      "doc": "Trade Correct"
+    },
+    {
+      "value": "H",
+      "name": "TradeCancel",
+      "doc": "Trade Cancel"
+    },
+    {
+      "value": "I",
+      "name": "OrderStatus",
+      "doc": "Order Status"
+    },
+    {
+      "value": "J",
+      "name": "TradeInAClearingHold",
+      "doc": "Trade in a Clearing Hold"
+    },
+    {
+      "value": "K",
+      "name": "TradeHasBeenReleasedToClearing",
+      "doc": "Trade has been released to Clearing"
+    },
+    {
+      "value": "L",
+      "name": "TriggeredOrActivatedBySystem",
+      "doc": "Triggered or Activated by System"
+    },
+    {
+      "value": "M",
+      "name": "Locked",
+      "doc": "Locked"
+    },
+    {
+      "value": "N",
+      "name": "Released",
+      "doc": "Released"
+    },
+    {
+      "value": "1",
+      "name": "PartiallyFilled"
+    },
+    {
+      "value": "2",
+      "name": "Filled"
+    }
+  ]
+}

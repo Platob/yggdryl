@@ -1,0 +1,80 @@
+{
+  "name": "ordstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "PartiallyFilled",
+      "doc": "Partially filled"
+    },
+    {
+      "value": "2",
+      "name": "Filled",
+      "doc": "Filled"
+    },
+    {
+      "value": "3",
+      "name": "DoneForDay",
+      "doc": "Done for day"
+    },
+    {
+      "value": "4",
+      "name": "Canceled",
+      "doc": "Canceled"
+    },
+    {
+      "value": "5",
+      "name": "Replaced",
+      "doc": "Replaced (No longer used)"
+    },
+    {
+      "value": "6",
+      "name": "PendingCancel",
+      "doc": "Pending Cancel (i.e. result of Order Cancel Request)"
+    },
+    {
+      "value": "7",
+      "name": "Stopped",
+      "doc": "Stopped"
+    },
+    {
+      "value": "8",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "9",
+      "name": "Suspended",
+      "doc": "Suspended"
+    },
+    {
+      "value": "A",
+      "name": "PendingNew",
+      "doc": "Pending New"
+    },
+    {
+      "value": "B",
+      "name": "Calculated",
+      "doc": "Calculated"
+    },
+    {
+      "value": "C",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "D",
+      "name": "AcceptedForBidding",
+      "doc": "Accepted for Bidding"
+    },
+    {
+      "value": "E",
+      "name": "PendingReplace",
+      "doc": "Pending Replace (i.e. result of Order Cancel/Replace Request)"
+    }
+  ]
+}

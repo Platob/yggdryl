@@ -1,0 +1,20 @@
+{
+  "name": "ioiqltyindcodeset",
+  "codes": [
+    {
+      "value": "H",
+      "name": "High",
+      "doc": "High"
+    },
+    {
+      "value": "L",
+      "name": "Low",
+      "doc": "Low"
+    },
+    {
+      "value": "M",
+      "name": "Medium",
+      "doc": "Medium"
+    }
+  ]
+}

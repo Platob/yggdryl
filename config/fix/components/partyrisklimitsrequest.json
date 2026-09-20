@@ -209,6 +209,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "RISK",
     "FIX:msgtype": "CL",
     "FIX:tag": "352800",
     "description": "MsgType = CL",

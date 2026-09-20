@@ -1,0 +1,15 @@
+{
+  "name": "deliverystreamelectingpartysidecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Buyer",
+      "doc": "Buyer"
+    },
+    {
+      "value": "1",
+      "name": "Seller",
+      "doc": "Seller"
+    }
+  ]
+}

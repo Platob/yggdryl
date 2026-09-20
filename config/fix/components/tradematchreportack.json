@@ -136,6 +136,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "DD",
     "FIX:tag": "756028",
     "description": "MsgType = DD",

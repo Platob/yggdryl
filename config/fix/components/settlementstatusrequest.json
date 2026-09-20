@@ -145,6 +145,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "EC",
     "FIX:tag": "936216",
     "description": "MsgType = EC",

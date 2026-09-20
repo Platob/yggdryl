@@ -1,0 +1,45 @@
+{
+  "name": "securityclassificationreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Fee",
+      "doc": "Fee"
+    },
+    {
+      "value": "1",
+      "name": "CreditControls",
+      "doc": "Credit Controls"
+    },
+    {
+      "value": "2",
+      "name": "Margin",
+      "doc": "Margin"
+    },
+    {
+      "value": "3",
+      "name": "EntitlementOrEligibility",
+      "doc": "Entitlement / Eligibility"
+    },
+    {
+      "value": "4",
+      "name": "MarketData",
+      "doc": "Market Data"
+    },
+    {
+      "value": "5",
+      "name": "AccountSelection",
+      "doc": "Account Selection"
+    },
+    {
+      "value": "6",
+      "name": "DeliveryProcess",
+      "doc": "Delivery Process"
+    },
+    {
+      "value": "7",
+      "name": "Sector",
+      "doc": "Sector"
+    }
+  ]
+}

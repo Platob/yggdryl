@@ -1,0 +1,15 @@
+{
+  "name": "complexeventpvfinalpriceelectionfallbackcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "1",
+      "name": "HedgeElection",
+      "doc": "Hedge election"
+    }
+  ]
+}

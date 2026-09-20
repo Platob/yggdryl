@@ -1,0 +1,150 @@
+{
+  "name": "strategyparametertypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Int",
+      "doc": "Int"
+    },
+    {
+      "value": "2",
+      "name": "Length",
+      "doc": "Length"
+    },
+    {
+      "value": "3",
+      "name": "NumInGroup",
+      "doc": "NumInGroup"
+    },
+    {
+      "value": "4",
+      "name": "SeqNum",
+      "doc": "SeqNum"
+    },
+    {
+      "value": "5",
+      "name": "TagNum",
+      "doc": "TagNum"
+    },
+    {
+      "value": "6",
+      "name": "Float",
+      "doc": "float"
+    },
+    {
+      "value": "7",
+      "name": "Qty",
+      "doc": "Qty"
+    },
+    {
+      "value": "8",
+      "name": "Price",
+      "doc": "Price"
+    },
+    {
+      "value": "9",
+      "name": "PriceOffset",
+      "doc": "PriceOffset"
+    },
+    {
+      "value": "10",
+      "name": "Amt",
+      "doc": "Amt"
+    },
+    {
+      "value": "11",
+      "name": "Percentage",
+      "doc": "Percentage"
+    },
+    {
+      "value": "12",
+      "name": "Char",
+      "doc": "Char"
+    },
+    {
+      "value": "13",
+      "name": "Boolean",
+      "doc": "Boolean"
+    },
+    {
+      "value": "14",
+      "name": "String",
+      "doc": "String"
+    },
+    {
+      "value": "15",
+      "name": "MultipleCharValue",
+      "doc": "MultipleCharValue"
+    },
+    {
+      "value": "16",
+      "name": "Currency",
+      "doc": "Currency"
+    },
+    {
+      "value": "17",
+      "name": "Exchange",
+      "doc": "Exchange"
+    },
+    {
+      "value": "18",
+      "name": "MonthYear",
+      "doc": "MonthYear"
+    },
+    {
+      "value": "19",
+      "name": "UTCTimestamp",
+      "doc": "UTCTimestamp"
+    },
+    {
+      "value": "20",
+      "name": "UTCTimeOnly",
+      "doc": "UTCTimeOnly"
+    },
+    {
+      "value": "21",
+      "name": "LocalMktDate",
+      "doc": "LocalMktDate"
+    },
+    {
+      "value": "22",
+      "name": "UTCDateOnly",
+      "doc": "UTCDateOnly"
+    },
+    {
+      "value": "23",
+      "name": "Data",
+      "doc": "data"
+    },
+    {
+      "value": "24",
+      "name": "MultipleStringValue",
+      "doc": "MultipleStringValue"
+    },
+    {
+      "value": "25",
+      "name": "Country",
+      "doc": "Country"
+    },
+    {
+      "value": "26",
+      "name": "Language",
+      "doc": "Language"
+    },
+    {
+      "value": "27",
+      "name": "TZTimeOnly",
+      "doc": "TZTimeOnly"
+    },
+    {
+      "value": "28",
+      "name": "TZTimestamp",
+      "doc": "TZTimestamp"
+    },
+    {
+      "value": "29",
+      "name": "Tenor",
+      "doc": "Tenor"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "regulatorytradeidscopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ClearingMember",
+      "doc": "Clearing member"
+    },
+    {
+      "value": "2",
+      "name": "Client",
+      "doc": "Client"
+    }
+  ]
+}

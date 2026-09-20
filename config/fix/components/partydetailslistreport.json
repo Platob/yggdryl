@@ -190,6 +190,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CG",
     "FIX:tag": "812300",
     "description": "MsgType = CG",

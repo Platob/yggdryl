@@ -81,6 +81,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "STRM",
     "FIX:msgtype": "CD",
     "FIX:tag": "917016",
     "description": "MsgType = CD",

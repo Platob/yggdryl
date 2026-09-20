@@ -1,0 +1,95 @@
+{
+  "name": "matchexceptionelementtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AccruedInterest",
+      "doc": "Accrued interest"
+    },
+    {
+      "value": "2",
+      "name": "DealPrice",
+      "doc": "Deal price"
+    },
+    {
+      "value": "3",
+      "name": "TradeDate",
+      "doc": "Trade date"
+    },
+    {
+      "value": "4",
+      "name": "SettlementDate",
+      "doc": "Settlement date"
+    },
+    {
+      "value": "5",
+      "name": "SideIndicator",
+      "doc": "Side indicator"
+    },
+    {
+      "value": "6",
+      "name": "TradedCurrency",
+      "doc": "Traded currency"
+    },
+    {
+      "value": "7",
+      "name": "AccountID",
+      "doc": "Account ID"
+    },
+    {
+      "value": "8",
+      "name": "ExecutingBrokerID",
+      "doc": "Executing broker ID"
+    },
+    {
+      "value": "9",
+      "name": "SettlementCurrencyAndAmount",
+      "doc": "Settlement currency and amount"
+    },
+    {
+      "value": "10",
+      "name": "InvestmentManagerID",
+      "doc": "Investment manager ID"
+    },
+    {
+      "value": "11",
+      "name": "NetAmount",
+      "doc": "Net amount"
+    },
+    {
+      "value": "12",
+      "name": "PlaceOfSettlement",
+      "doc": "Place of settlement"
+    },
+    {
+      "value": "13",
+      "name": "Commissions",
+      "doc": "Commissions"
+    },
+    {
+      "value": "14",
+      "name": "SecurityIdentifier",
+      "doc": "Security identifier"
+    },
+    {
+      "value": "15",
+      "name": "QualityAllocated",
+      "doc": "Quantity allocated"
+    },
+    {
+      "value": "16",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "17",
+      "name": "Fees",
+      "doc": "Fees"
+    },
+    {
+      "value": "18",
+      "name": "Tax",
+      "doc": "Tax"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "name": "venuetypecodeset",
+  "codes": [
+    {
+      "value": "E",
+      "name": "Electronic",
+      "doc": "Electronic exchange"
+    },
+    {
+      "value": "P",
+      "name": "Pit",
+      "doc": "Pit"
+    },
+    {
+      "value": "X",
+      "name": "ExPit",
+      "doc": "Ex-pit"
+    },
+    {
+      "value": "C",
+      "name": "ClearingHouse",
+      "doc": "Clearinghouse"
+    },
+    {
+      "value": "R",
+      "name": "RegisteredMarket",
+      "doc": "Registered market"
+    },
+    {
+      "value": "O",
+      "name": "OffMarket",
+      "doc": "Off-market"
+    },
+    {
+      "value": "B",
+      "name": "CentralLimitOrderBook",
+      "doc": "Central limit order book"
+    },
+    {
+      "value": "Q",
+      "name": "QuoteDrivenMarket",
+      "doc": "Quote driven market"
+    },
+    {
+      "value": "D",
+      "name": "DarkOrderBook",
+      "doc": "Dark order book"
+    },
+    {
+      "value": "A",
+      "name": "AuctionDrivenMarket",
+      "doc": "Auction driven market"
+    },
+    {
+      "value": "N",
+      "name": "QuoteNegotiation",
+      "doc": "Quote negotiation"
+    },
+    {
+      "value": "V",
+      "name": "VoiceNegotiation",
+      "doc": "Voice negotiation"
+    },
+    {
+      "value": "H",
+      "name": "HybridMarket",
+      "doc": "Hybrid market"
+    },
+    {
+      "value": "z",
+      "name": "OtherMarket",
+      "doc": "Other market (lowercase \"z\")"
+    }
+  ]
+}

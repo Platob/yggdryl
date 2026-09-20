@@ -1,0 +1,47 @@
+{
+  "name": "tradereporttranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "2",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "3",
+      "name": "Release",
+      "doc": "Release"
+    },
+    {
+      "value": "4",
+      "name": "Reverse",
+      "doc": "Reverse"
+    },
+    {
+      "value": "5",
+      "name": "CancelDueToBackOutOfTrade",
+      "doc": "Cancel Due To Back Out of Trade"
+    },
+    {
+      "value": "C",
+      "name": "CancelLegacy"
+    },
+    {
+      "value": "N",
+      "name": "NewLegacy"
+    },
+    {
+      "value": "R",
+      "name": "ReplaceLegacy"
+    }
+  ]
+}

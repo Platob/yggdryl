@@ -1,0 +1,25 @@
+{
+  "name": "provisioncashsettlquotetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Bid",
+      "doc": "Bid"
+    },
+    {
+      "value": "1",
+      "name": "Mid",
+      "doc": "Mid"
+    },
+    {
+      "value": "2",
+      "name": "Offer",
+      "doc": "Offer"
+    },
+    {
+      "value": "3",
+      "name": "ExercisingPartyPays",
+      "doc": "Exercising party pays"
+    }
+  ]
+}

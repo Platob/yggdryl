@@ -1,0 +1,20 @@
+{
+  "name": "valuecheckactioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DoNotCheck",
+      "doc": "Do not check"
+    },
+    {
+      "value": "1",
+      "name": "Check",
+      "doc": "Check"
+    },
+    {
+      "value": "2",
+      "name": "BestEffort",
+      "doc": "Best effort"
+    }
+  ]
+}

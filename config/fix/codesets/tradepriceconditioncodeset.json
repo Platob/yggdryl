@@ -1,0 +1,100 @@
+{
+  "name": "tradepriceconditioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "SpecialCumDividend",
+      "doc": "Special cum dividend (CD)"
+    },
+    {
+      "value": "1",
+      "name": "SpecialCumRights",
+      "doc": "Special cum rights (CR)"
+    },
+    {
+      "value": "2",
+      "name": "SpecialExDividend",
+      "doc": "Special ex dividend (XD)"
+    },
+    {
+      "value": "3",
+      "name": "SpecialExRights",
+      "doc": "Special ex rights (XR)"
+    },
+    {
+      "value": "4",
+      "name": "SpecialCumCoupon",
+      "doc": "Special cum coupon (CC)"
+    },
+    {
+      "value": "5",
+      "name": "SpecialCumCapitalRepayments",
+      "doc": "Special cum capital repayments (CP)"
+    },
+    {
+      "value": "6",
+      "name": "SpecialExCoupon",
+      "doc": "Special ex coupon (XC)"
+    },
+    {
+      "value": "7",
+      "name": "SpecialExCapitalRepayments",
+      "doc": "Special ex capital repayments (XP)"
+    },
+    {
+      "value": "8",
+      "name": "CashSettlement",
+      "doc": "Cash settlement (CS)"
+    },
+    {
+      "value": "9",
+      "name": "SpecialCumBonus",
+      "doc": "Special cum bonus (CB)"
+    },
+    {
+      "value": "10",
+      "name": "SpecialPrice",
+      "doc": "Special price (SP)"
+    },
+    {
+      "value": "11",
+      "name": "SpecialExBonus",
+      "doc": "Special ex bonus (XB)"
+    },
+    {
+      "value": "12",
+      "name": "GuaranteedDelivery",
+      "doc": "Guaranteed delivery (GD)"
+    },
+    {
+      "value": "13",
+      "name": "SpecialDividend",
+      "doc": "Special dividend"
+    },
+    {
+      "value": "14",
+      "name": "PriceImprovement",
+      "doc": "Price improvement"
+    },
+    {
+      "value": "15",
+      "name": "NonPriceFormingTrade",
+      "doc": "Non-price forming trade"
+    },
+    {
+      "value": "16",
+      "name": "TradeExemptedFromTradingObligation",
+      "doc": "Trade exempted from trading obligation"
+    },
+    {
+      "value": "17",
+      "name": "PricePending",
+      "doc": "Price or strike price is pending"
+    },
+    {
+      "value": "18",
+      "name": "PriceNotApplicable",
+      "doc": "Price is not applicable"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "collasgnrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownDeal",
+      "doc": "Unknown deal (order / trade)"
+    },
+    {
+      "value": "1",
+      "name": "UnknownOrInvalidInstrument",
+      "doc": "Unknown or invalid instrument"
+    },
+    {
+      "value": "2",
+      "name": "UnauthorizedTransaction",
+      "doc": "Unauthorized transaction"
+    },
+    {
+      "value": "3",
+      "name": "InsufficientCollateral",
+      "doc": "Insufficient collateral"
+    },
+    {
+      "value": "4",
+      "name": "InvalidTypeOfCollateral",
+      "doc": "Invalid type of collateral"
+    },
+    {
+      "value": "5",
+      "name": "ExcessiveSubstitution",
+      "doc": "Excessive substitution"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "transferrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Success",
+      "doc": "Success"
+    },
+    {
+      "value": "1",
+      "name": "InvalidParty",
+      "doc": "Invalid party"
+    },
+    {
+      "value": "2",
+      "name": "UnknownInstrument",
+      "doc": "Unknown instrument"
+    },
+    {
+      "value": "3",
+      "name": "UnauthorizedToSubmitXfer",
+      "doc": "Not authorized to submit transfers"
+    },
+    {
+      "value": "4",
+      "name": "UnknownPosition",
+      "doc": "Unknown position"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

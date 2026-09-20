@@ -1,0 +1,21 @@
+{
+  "name": "inviewofcommoncodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "HaltWasNotRelatedToAHaltOfTheCommonStock",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Halt was not related to a halt of the common stock"
+    },
+    {
+      "value": "Y",
+      "name": "HaltWasDueToCommonStockBeingHalted",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Halt was due to common stock being halted"
+    }
+  ]
+}

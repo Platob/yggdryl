@@ -26,18 +26,18 @@ pub use fix_category::FixCategory;
 mod arithmetic;
 pub mod ascii;
 pub mod avro;
-pub mod bloomberg;
+pub mod bloomberg_code;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
 pub mod cast;
-pub mod cfi;
+pub mod cfi_code;
 pub mod code;
 mod compatibility;
 pub mod country;
 pub mod cp1252;
 pub mod currency;
-pub mod cusip;
+pub mod cusip_code;
 mod datatype;
 pub mod date;
 pub mod datetime;
@@ -49,6 +49,7 @@ mod enumeration;
 pub mod enums;
 pub mod expression;
 mod field;
+pub mod figi_code;
 pub mod fix;
 pub mod floating;
 pub mod fs;
@@ -74,7 +75,7 @@ mod iomedia;
 mod iomode;
 mod iopath;
 pub mod ipc;
-pub mod isin;
+pub mod isin_code;
 pub mod json;
 mod listing;
 pub mod local;
@@ -83,7 +84,7 @@ pub mod media;
 mod media_type;
 mod merge;
 mod metadata;
-pub mod mic;
+pub mod mic_code;
 mod mime_type;
 #[cfg(feature = "object")]
 pub mod object;
@@ -98,7 +99,7 @@ mod regex;
 pub mod runend;
 mod scalar;
 mod scheme;
-pub mod sedol;
+pub mod sedol_code;
 pub mod sequence;
 pub(crate) mod serde;
 pub mod side;
@@ -120,6 +121,7 @@ pub mod uri;
 pub mod utf8;
 pub mod uuid;
 mod value;
+mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
@@ -147,19 +149,20 @@ pub use expression::{Expression, Filter, Plan, Selector, Term};
 pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
-    CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
-    CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME,
-    DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, EXPIRUNIX_TAG_NAME,
-    FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeValue, FixCodec, FixCodes,
-    FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader,
-    FixId, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
-    IDENTIFIERS_TAG_NAME, METADATA_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
-    MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME,
-    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
-    SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
-    STATE_TAG_NAME, ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields,
-    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag,
+    BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
+    CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
+    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN,
+    DEFAULT_REFUSED_MSGTYPES, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS,
+    FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec, FixCodes, FixDedup,
+    FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId,
+    FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
+    IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME,
+    SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME,
+    ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
+    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -201,16 +204,16 @@ pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
 pub(crate) use ascii::{ascii_bytes, ascii_text, ascii_text_sized};
-pub use bloomberg::*;
+pub use bloomberg_code::*;
 pub use boolean::*;
 pub use bytes::*;
-pub use cfi::*;
+pub use cfi_code::*;
 pub use code::*;
 pub(crate) use code::{code_cell_text, code_for_extension};
 pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use currency::*;
-pub use cusip::*;
+pub use cusip_code::*;
 pub use datatype::{DataType, VariantType};
 pub(crate) use datatype::{invalid, validate_non_negative};
 pub use date::*;
@@ -225,22 +228,21 @@ pub use duration::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
 pub use field::*;
+pub use figi_code::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
+pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
-pub(crate) use geospatial::{
-    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, is_variant_storage,
-};
 pub use integer::*;
 pub use interval::*;
-pub use isin::*;
+pub use isin_code::*;
 pub use mapping::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
-pub use mic::*;
+pub use mic_code::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
 pub(crate) use parser::{folds_equal, normalized};
@@ -248,7 +250,7 @@ pub use pretty::Pretty;
 pub use runend::*;
 pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
-pub use sedol::*;
+pub use sedol_code::*;
 pub use sequence::*;
 pub use side::*;
 pub use state::*;
@@ -273,7 +275,11 @@ pub use value::{
     FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
     NestedValue, RunEndType, TemporalValue, UnionType, Value,
 };
-pub use variant::{COMPRESS_FROM, VARIANT_VERSION, VariantStream};
+pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
+pub use variant::{
+    VARIANT_EXTENSION_NAME, VARIANT_METADATA_FIELD, VARIANT_VALUE_FIELD, VARIANT_VERSION, Variant,
+};
+pub(crate) use variant::{is_variant_storage, variant_fields};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 

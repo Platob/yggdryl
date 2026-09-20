@@ -133,8 +133,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(catalog.field_by_counter(black_box(453)).unwrap()));
     });
     group.bench_function("field_code_resolve", |bencher| {
-        let field = catalog.field(54).unwrap();
-        bencher.iter(|| black_box(field.as_fix().code_name(black_box("1"))));
+        // The set is resolved once, where a caller reads the name the field
+        // states; what is timed is the scan over the document it opens.
+        let side = catalog
+            .codeset_of(catalog.field(54).unwrap())
+            .expect("the set tag 54 reads by");
+        bencher.iter(|| black_box(black_box(side).code_name(black_box("1"))));
     });
     group.bench_function("msgtype_code", |bencher| {
         bencher.iter(|| black_box(catalog.get_msgtype(black_box("D"))));
