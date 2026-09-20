@@ -237,6 +237,14 @@ nav:
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
   - Graph: graph.md
+  - Market:
+    - market/index.md
+    - Order: market/order.md
+    - Quote: market/quote.md
+    - Execution: market/execution.md
+    - Trade: market/trade.md
+    - Book: market/book.md
+    - Book iterator: market/iterator.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

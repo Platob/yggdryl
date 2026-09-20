@@ -47,6 +47,7 @@ CI runs the rest on the pushed branch: both feature lanes, the 1.85 and 1.94 MSR
 | `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | `rust/tests/expression/`, `rust/src/expression/eval/tests.rs` | [Expression](expression/index.md) |
 | `rust/src/graph/` | `rust/tests/graph/` | [Graph](graph.md) |
+| `rust/src/market/`, `rust/src/fix/market.rs` | `rust/tests/market/` | [Market](market/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | `rust/tests/hashing/`, `rust/src/xxhash/tests.rs`, `rust/src/txhash/tests.rs` | [Hashing](hashing.md) |
 | `rust/src/fix/` | `rust/tests/fix/`, `rust/src/fix/tests.rs` | [FIX](fix/index.md) |
 

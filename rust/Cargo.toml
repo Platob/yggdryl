@@ -201,6 +201,15 @@ name = "holder"
 path = "benchmarks/holder.rs"
 harness = false
 
+# The market's products: each door over the bridge's own capture against
+# the lifecycle it composes, its Arrow twin against the lifecycle's, and
+# each product's row against the sixteen event columns alone. Every
+# module is unconditional, so the target compiles in a default build.
+[[bench]]
+name = "market"
+path = "benchmarks/market.rs"
+harness = false
+
 [[test]]
 name = "types"
 

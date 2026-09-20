@@ -57,6 +57,7 @@ from . import (
     fix as fix,
     hashing as hashing,
     holder as holder,
+    market as market,
     media as media,
     text as text,
     types as types,

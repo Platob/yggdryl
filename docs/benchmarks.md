@@ -23,6 +23,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Bytes](holder/iobase/bytes.md) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
 | Holder | [Records](holder/iobase/records.md) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
 | Holder | [Values](holder/iobase/values.md) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
+| Market | [Market](market/index.md) | The `market` Criterion target over `rust/tests/fix/ulbridge.log` repeated eight times: each product door against the lifecycle it composes, its Arrow twin against the lifecycle's, the book iterator per statement over hand-built streams, and each product's row against the sixteen event columns alone; no measured table is published yet, and each product page names the filter that measures it |
 | Media | [Apache Avro](media/avro/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
 | Media | [Apache Parquet](media/parquet/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
 | Media | [Arrow IPC](media/ipc/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026... |
@@ -107,6 +108,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
 | `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
+| `market` | each product door over the bridge's own capture against the lifecycle it composes, the Arrow twins against the lifecycle's, the book iterator per statement over makers arriving and leaving, makers restated and prints at two depths, and each product's row written and read back against the sixteen event columns alone |
 
 ## Rules
 

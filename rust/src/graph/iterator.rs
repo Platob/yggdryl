@@ -203,8 +203,7 @@ where
     /// The opening instant of the grid step `element` falls in, where the
     /// walk has a grid.
     fn step_of(&self, element: &E) -> Option<i64> {
-        let step = self.snapshot_ns()?;
-        Some(element.get_currunix().div_euclid(step) * step)
+        Some(step_of(element.get_currunix(), self.snapshot_ns()?))
     }
 
     /// Stamps `element` as the snapshot of its grid step where its identity
@@ -227,7 +226,7 @@ where
     /// Records `element` as the live one under `identity` where it is still
     /// alive, its names with it, and retires the identity where it is not.
     fn settle(&mut self, identity: Uuid, element: &E, step: Option<i64>, arrived: Uuid) {
-        if is_alive(element) {
+        if element.is_alive() {
             let known = self.names_of.entry(identity).or_default();
             for (scheme, name) in element.get_identifiers() {
                 let held = self
@@ -263,21 +262,32 @@ where
     /// that is alive, else the identity of a live element it shares a name
     /// with - an element that spells no chain identifier of its own but
     /// carries the `ClOrdID` a live order was placed under belongs to that
-    /// order - else its own cross element, under which it starts a chain.
+    /// order, and one whose own cross code is a name a live element goes
+    /// by under any scheme, as a request naming the order it is about, is
+    /// that order's - else its own cross element, under which it starts a
+    /// chain.
     fn identity_of(&self, element: &E) -> Uuid {
         let own = element.get_crossuuid();
         if self.alive.contains_key(&own) {
             return own;
         }
-        element
-            .get_identifiers()
-            .iter()
-            .find_map(|(scheme, name)| {
-                self.named
-                    .get(scheme.as_str())
-                    .and_then(|names| names.get(name.as_str()))
-                    .copied()
-            })
+        let by_name = element.get_identifiers().iter().find_map(|(scheme, name)| {
+            self.named
+                .get(scheme.as_str())
+                .and_then(|names| names.get(name.as_str()))
+                .copied()
+        });
+        let by_code = || {
+            let code = element.get_crosscode();
+            if code.is_empty() {
+                return None;
+            }
+            self.named
+                .values()
+                .find_map(|names| names.get(code).copied())
+        };
+        by_name
+            .or_else(by_code)
             .filter(|identity| self.alive.contains_key(identity))
             .unwrap_or(own)
     }
@@ -344,13 +354,11 @@ where
 {
 }
 
-/// Whether an element can still be followed: its state can still change,
-/// and it is not past its expiration.
-fn is_alive<E: Event>(element: &E) -> bool {
-    element.get_state().is_live()
-        && element
-            .get_expirunix()
-            .is_none_or(|expiration| expiration > element.get_currunix())
+/// The opening instant of the grid step `unix` falls in, on a grid of
+/// `snapshot_ns` nanoseconds aligned on the epoch: the one step arithmetic
+/// a walked event and a book of the same step carry the same `snapunix` by.
+pub(crate) fn step_of(unix: i64, snapshot_ns: i64) -> i64 {
+    unix.div_euclid(snapshot_ns) * snapshot_ns
 }
 
 /// The elements' own order as a sort reads it: after is greater, before is

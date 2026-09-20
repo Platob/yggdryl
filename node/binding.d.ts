@@ -44,6 +44,9 @@ export {
   type FixEntryView,
   type FixEventView,
   type FixHeaderView,
+  type MarketLaneView,
+  type MarketLevelView,
+  type MarketPartyView,
   type MetadataEntry,
   type PartitionEntry,
   type StringParameters,
@@ -89,8 +92,9 @@ import type {
   Xxh32,
   Xxh64,
 } from './index'
-// The Iceberg and FIX values are reached through their namespaces, so they are
-// imported here as values to type those and re-exported as types only.
+// The Iceberg, FIX and market values are reached through their namespaces,
+// so they are imported here as values to type those and re-exported as
+// types only.
 import {
   Catalog,
   Compaction,
@@ -108,6 +112,19 @@ import {
   Snapshot,
   SnapshotRef,
   Table,
+  Order,
+  Quote,
+  Execution,
+  Trade,
+  Book,
+  Orders,
+  Executions,
+  Trades,
+  Quotes,
+  Books,
+  Statements,
+  MarketSymbol,
+  BookIterator,
 } from './index'
 import type {
   RecordBatch as ArrowRecordBatch,
@@ -134,6 +151,19 @@ export type {
   Snapshot,
   SnapshotRef,
   Table,
+  Order,
+  Quote,
+  Execution,
+  Trade,
+  Book,
+  Orders,
+  Executions,
+  Trades,
+  Quotes,
+  Books,
+  Statements,
+  MarketSymbol,
+  BookIterator,
 }
 
 /** A native MIME wrapper or canonical MIME/extension string. */
@@ -600,6 +630,28 @@ declare module './index' {
   interface FixMessages extends IterableIterator<FixMsg> {
     next(): IteratorResult<FixMsg>
   }
+  interface Orders extends IterableIterator<Order> {
+    next(): IteratorResult<Order>
+  }
+  interface Executions extends IterableIterator<Execution> {
+    next(): IteratorResult<Execution>
+  }
+  interface Trades extends IterableIterator<Trade> {
+    next(): IteratorResult<Trade>
+  }
+  interface Quotes extends IterableIterator<Quote> {
+    next(): IteratorResult<Quote>
+  }
+  interface Books extends IterableIterator<Book> {
+    next(): IteratorResult<Book>
+  }
+  interface Statements extends IterableIterator<Order | Quote | Execution> {
+    next(): IteratorResult<Order | Quote | Execution>
+  }
+  interface BookIterator extends IterableIterator<Book> {
+    next(): IteratorResult<Book>
+    [Symbol.iterator](): BookIterator
+  }
   interface FixCodec {
     /**
      * A stream of captured lines, pulled one line at a time as the stream is
@@ -638,6 +690,41 @@ declare module './index' {
     formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
+    /**
+     * The orders a stream of messages states, chained, lazily: the
+     * lifecycle first, a message logged at two hops folded into one
+     * statement naming both among its sources, then the statements of one
+     * order chained under the identifier the venue gave it.
+     */
+    orders(messages: Iterable<FixMsg>): Orders
+    /** The fills a stream of messages reports, one per report stating a traded quantity. */
+    executions(messages: Iterable<FixMsg>): Executions
+    /** The trades a stream of messages reports, the two sides' reports of one match in one chain. */
+    trades(messages: Iterable<FixMsg>): Trades
+    /** The quotes a stream of messages states, a cancel ending the chain. */
+    quotes(messages: Iterable<FixMsg>): Quotes
+    /**
+     * Every statement a stream of messages makes, in instant order: the
+     * orders and the quotes, walked, and each fill in its order's chain,
+     * each yielded as the class its arm is. Trades are not among them: a
+     * fill is the print. This is the stream `books` reads.
+     */
+    statements(messages: Iterable<FixMsg>): Statements
+    /**
+     * The books a stream of messages makes: one per symbol per instant the
+     * symbol was touched at, or per grid step of `snapshotNs` nanoseconds
+     * where the step is positive - the step's closing state, stamped with
+     * the step - to `depth` levels per side. A depth of zero and a negative
+     * step are refused before a message is pulled, naming `depth` and
+     * `snapshot_ns`.
+     */
+    books(messages: Iterable<FixMsg>, depth: number, snapshotNs?: bigint | number): Books
+    /** The product doors over batches of message rows, answering batches of product rows. */
+    ordersArrowReader(source: BatchSource): BatchReader
+    executionsArrowReader(source: BatchSource): BatchReader
+    tradesArrowReader(source: BatchSource): BatchReader
+    quotesArrowReader(source: BatchSource): BatchReader
+    booksArrowReader(source: BatchSource, depth: number, snapshotNs?: bigint | number): BatchReader
   }
 
   interface Field {
@@ -3322,6 +3409,23 @@ export interface FixMsgConstructor {
    * column without a parse. No clock is read.
    */
   fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
+  /**
+   * The new order single an order states: `35=D`, exactly, naming the order
+   * as its one source. An order going by no `ClOrdID` and naming no chain
+   * is refused.
+   */
+  fromOrder(codec: FixCodec, order: Order): FixMsg
+  /**
+   * The execution report an execution states: `35=8`, `150=F`, exactly. An
+   * execution going by no `ExecID` is refused.
+   */
+  fromExecution(codec: FixCodec, execution: Execution): FixMsg
+  /** Refused: no one message states a quote, and the crate does not guess. */
+  fromQuote(codec: FixCodec, quote: Quote): never
+  /** Refused: no one message states a trade, and the crate does not guess. */
+  fromTrade(codec: FixCodec, trade: Trade): never
+  /** Refused: no one message states a book, and the crate does not guess. */
+  fromBook(codec: FixCodec, book: Book): never
   readonly prototype: FixMsg
 }
 
@@ -3405,6 +3509,114 @@ export interface Fix {
 }
 
 export declare const fix: Fix
+
+/**
+ * The public class of a product, which has no constructor: a product is
+ * read out of messages by a codec door, or out of a row by `fromRow`, which
+ * widens the row as `FixMsg.fromRow` does.
+ */
+export interface MarketProductConstructor<P> {
+  /**
+   * The product one row of `field` states: the inverse of `intoRow`, the
+   * row canonicalized under the field first.
+   */
+  fromRow(field: Field, row: FixValueInput): P
+  /** The row every product of this kind publishes, a non-null Struct. */
+  field(): Field
+  readonly prototype: P
+}
+
+/** The public `Book` class: a book's row is declared to a depth. */
+export interface BookConstructor {
+  fromRow(field: Field, row: FixValueInput): Book
+  /** The row every book of `depth` levels per side publishes; zero is refused. */
+  field(depth: number): Field
+  readonly prototype: Book
+}
+
+/**
+ * The public `Symbol` class of the market namespace: the key a book is
+ * read under, `GLOBAL` for no instrument.
+ */
+export interface MarketSymbolConstructor {
+  /** A symbol spelled by the caller, trimmed; blank text is `GLOBAL`. */
+  new (text: string): MarketSymbol
+  /**
+   * The symbol of no instrument: what a product naming none keys, and the
+   * one symbol a global book is read under.
+   */
+  readonly GLOBAL: MarketSymbol
+  /**
+   * The symbol a product names: its ISIN, else its ticker, else its CUSIP,
+   * its SEDOL or its Bloomberg identifier, else `GLOBAL`.
+   */
+  of(product: Order | Quote | Execution | Trade | Book): MarketSymbol
+  readonly prototype: MarketSymbol
+}
+
+/**
+ * The public `BookIterator` class: one book per symbol per instant, read
+ * out of any iterable of statements - the four products a ladder takes,
+ * read by a door or from rows - pulled one at a time.
+ */
+export interface BookIteratorConstructor {
+  /**
+   * Opens the iterator over `statements`, taken as arriving in instant
+   * order, reading books `depth` levels a side; `snapshotNs` is a grid step
+   * in nanoseconds, `0n` - the default - for one book per instant; `symbol`
+   * keys every statement under one symbol, `market.Symbol.GLOBAL` being
+   * the global book of the whole stream. A depth of zero throws naming
+   * `depth`, a negative step naming `snapshot_ns`, before a statement is
+   * pulled; an item that is none of the four classes throws a TypeError in
+   * place of the iterator's end.
+   */
+  new (
+    statements: Iterable<Order | Quote | Execution | Trade>,
+    depth: number,
+    snapshotNs?: bigint | number,
+    symbol?: MarketSymbol | null,
+  ): BookIterator
+  readonly prototype: BookIterator
+}
+
+/**
+ * `yggdryl::market`: the five products - what the market did, read out of
+ * what a venue said - their streams, the symbol a book is read under and
+ * the book iterator that reads one out of any statements. Each product is
+ * a graph event as a message is, its `srcuuids` the identities of the
+ * messages it was read from, so its table joins the message table on
+ * `srcuuids` to `curruuid`.
+ */
+export interface Market {
+  /** One order's life: its placement and every report against it, chained. */
+  readonly Order: MarketProductConstructor<Order>
+  /** A price stated at an instant, one or two lanes under its identifiers. */
+  readonly Quote: MarketProductConstructor<Quote>
+  /** One fill, in the chain of the order it fills. */
+  readonly Execution: MarketProductConstructor<Execution>
+  /** The settled transaction an execution reports, with its parties and clocks. */
+  readonly Trade: MarketProductConstructor<Trade>
+  /** The ladder for one instrument at one instant, to a declared depth. */
+  readonly Book: BookConstructor
+  /** A lazy stream of orders: what `FixCodec.orders` answers. */
+  readonly Orders: abstract new () => Orders
+  /** A lazy stream of executions: what `FixCodec.executions` answers. */
+  readonly Executions: abstract new () => Executions
+  /** A lazy stream of trades: what `FixCodec.trades` answers. */
+  readonly Trades: abstract new () => Trades
+  /** A lazy stream of quotes: what `FixCodec.quotes` answers. */
+  readonly Quotes: abstract new () => Quotes
+  /** A lazy stream of books: what `FixCodec.books` answers. */
+  readonly Books: abstract new () => Books
+  /** A lazy stream of every statement: what `FixCodec.statements` answers. */
+  readonly Statements: abstract new () => Statements
+  /** The key a book is read under: `new market.Symbol(text)`, `market.Symbol.GLOBAL`, `market.Symbol.of(product)`. */
+  readonly Symbol: MarketSymbolConstructor
+  /** One book per symbol per instant out of any iterable of statements. */
+  readonly BookIterator: BookIteratorConstructor
+}
+
+export declare const market: Market
 
 /** What an Arrow file system reports one path to be. */
 export type ArrowFileKind = 'file' | 'directory' | 'not-found'

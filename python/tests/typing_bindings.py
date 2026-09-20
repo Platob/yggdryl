@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import datetime
 
 import os
@@ -45,6 +46,7 @@ from yggdryl import (
     Scalar,
     types,
     fix,
+    market,
 )
 from yggdryl.coding import gzip, zlib, zstd
 from yggdryl.hashing import txhash, xxhash
@@ -1535,6 +1537,250 @@ fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
 fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
 fix_read_text_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
+
+fix_arrow_reader: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, [fix_read_bytes])
+market_orders: market.Orders = fix_reader.orders([fix_read_bytes])
+market_executions: market.Executions = fix_reader.executions([fix_read_bytes])
+market_trades: market.Trades = fix_reader.trades([fix_read_bytes])
+market_quotes: market.Quotes = fix_reader.quotes([fix_read_bytes])
+market_books: market.Books = fix_reader.books([fix_read_bytes], 5, 1_000_000_000)
+market_orders_hash: None = market.Orders.__hash__
+market_executions_hash: None = market.Executions.__hash__
+market_trades_hash: None = market.Trades.__hash__
+market_quotes_hash: None = market.Quotes.__hash__
+market_books_hash: None = market.Books.__hash__
+market_orders_reader: pa.RecordBatchReader = fix_reader.orders_arrow_reader(fix_arrow_reader)
+market_executions_reader: pa.RecordBatchReader = fix_reader.executions_arrow_reader(fix_arrow_reader)
+market_trades_reader: pa.RecordBatchReader = fix_reader.trades_arrow_reader(fix_arrow_reader)
+market_quotes_reader: pa.RecordBatchReader = fix_reader.quotes_arrow_reader(fix_arrow_reader)
+market_books_reader: pa.RecordBatchReader = fix_reader.books_arrow_reader(
+    fix_arrow_reader, 5, 1_000_000_000
+)
+market_order_field: Field = market.Order.field()
+market_execution_field: Field = market.Execution.field()
+market_trade_field: Field = market.Trade.field()
+market_quote_field: Field = market.Quote.field()
+market_book_field: Field = market.Book.field(5)
+market_order: market.Order = next(market_orders)
+market_execution: market.Execution = next(market_executions)
+market_trade: market.Trade = next(market_trades)
+market_quote: market.Quote = next(market_quotes)
+market_book: market.Book = next(market_books)
+market_order_row: Scalar = market_order.into_row()
+market_execution_row: Scalar = market_execution.into_row()
+market_trade_row: Scalar = market_trade.into_row()
+market_quote_row: Scalar = market_quote.into_row()
+market_book_row: Scalar = market_book.into_row()
+market_order_again: market.Order = market.Order.from_row(market_order_field, market_order_row)
+market_execution_again: market.Execution = market.Execution.from_row(
+    market_execution_field, {"currunix": 0}
+)
+market_trade_again: market.Trade = market.Trade.from_row(market_trade_field, market_trade_row)
+market_quote_again: market.Quote = market.Quote.from_row(market_quote_field, [0])
+market_book_again: market.Book = market.Book.from_row(market_book_field, market_book_row)
+market_order_event: fix.MarketEventData = market_order.event()
+market_execution_event: fix.MarketEventData = market_execution.event()
+market_trade_event: fix.MarketEventData = market_trade.event()
+market_quote_event: fix.MarketEventData = market_quote.event()
+market_book_event: fix.MarketEventData = market_book.event()
+market_order_curruuid: Scalar = market_order.curruuid
+market_order_crossuuid: Scalar = market_order.crossuuid
+market_order_crosscode: str = market_order.crosscode
+market_order_currhashcode: int = market_order.currhashcode
+market_order_crosshashcode: int = market_order.crosshashcode
+market_order_identifiers: dict[str, str] = market_order.identifiers
+market_order_parentuuids: list[Scalar] = market_order.parentuuids
+market_order_srcuuids: list[Scalar] = market_order.srcuuids
+market_order_currunix: int = market_order.currunix
+market_order_state: Scalar = market_order.state
+market_order_seqnum: int = market_order.seqnum
+market_order_creaunix: int | None = market_order.creaunix
+market_order_expirunix: int | None = market_order.expirunix
+market_order_prevunix: int | None = market_order.prevunix
+market_order_prevuuid: Scalar | None = market_order.prevuuid
+market_order_snapunix: int | None = market_order.snapunix
+market_order_px: Scalar = market_order.px
+market_order_avgpx: Scalar | None = market_order.avgpx
+market_order_qty: Scalar = market_order.qty
+market_order_cumqty: Scalar | None = market_order.cumqty
+market_order_leavesqty: Scalar | None = market_order.leavesqty
+market_order_side: Scalar = market_order.side
+market_order_currency: Scalar = market_order.currency
+market_order_unit: str = market_order.unit
+market_order_tif: str | None = market_order.tif
+market_order_tradable: bool | None = market_order.tradable
+market_order_symbolticker: str | None = market_order.symbolticker
+market_order_isincode: Scalar | None = market_order.isincode
+market_order_cusipcode: Scalar | None = market_order.cusipcode
+market_order_sedolcode: Scalar | None = market_order.sedolcode
+market_order_bloombergcode: Scalar | None = market_order.bloombergcode
+market_order_cficode: Scalar | None = market_order.cficode
+market_order_miccode: Scalar | None = market_order.miccode
+market_order_stoppx: Scalar | None = market_order.stoppx
+market_order_copy: market.Order = copy.copy(market_order)
+market_order_deepcopy: market.Order = copy.deepcopy(market_order)
+market_order_hash: int = hash(market_order)
+market_order_equal: bool = market_order == market_order_again
+market_order_repr: str = repr(market_order)
+market_execution_px: Scalar = market_execution.px
+market_execution_qty: Scalar = market_execution.qty
+market_execution_side: Scalar = market_execution.side
+market_execution_currency: Scalar = market_execution.currency
+market_execution_unit: str = market_execution.unit
+market_execution_symbolticker: str | None = market_execution.symbolticker
+market_execution_isincode: Scalar | None = market_execution.isincode
+market_execution_cusipcode: Scalar | None = market_execution.cusipcode
+market_execution_sedolcode: Scalar | None = market_execution.sedolcode
+market_execution_bloombergcode: Scalar | None = market_execution.bloombergcode
+market_execution_cficode: Scalar | None = market_execution.cficode
+market_execution_miccode: Scalar | None = market_execution.miccode
+market_execution_curruuid: Scalar = market_execution.curruuid
+market_execution_srcuuids: list[Scalar] = market_execution.srcuuids
+market_execution_copy: market.Execution = copy.copy(market_execution)
+market_execution_hash: int = hash(market_execution)
+market_trade_px: Scalar = market_trade.px
+market_trade_qty: Scalar = market_trade.qty
+market_trade_side: Scalar = market_trade.side
+market_trade_currency: Scalar = market_trade.currency
+market_trade_unit: str = market_trade.unit
+market_trade_symbolticker: str | None = market_trade.symbolticker
+market_trade_isincode: Scalar | None = market_trade.isincode
+market_trade_cusipcode: Scalar | None = market_trade.cusipcode
+market_trade_sedolcode: Scalar | None = market_trade.sedolcode
+market_trade_bloombergcode: Scalar | None = market_trade.bloombergcode
+market_trade_cficode: Scalar | None = market_trade.cficode
+market_trade_miccode: Scalar | None = market_trade.miccode
+market_trade_tradedate: datetime.date | None = market_trade.tradedate
+market_trade_settldate: datetime.date | None = market_trade.settldate
+market_trade_parties: list[market.MarketParty] = market_trade.parties
+market_trade_party: tuple[str, str, str] = market_trade_parties[0]
+market_trade_curruuid: Scalar = market_trade.curruuid
+market_trade_srcuuids: list[Scalar] = market_trade.srcuuids
+market_trade_copy: market.Trade = copy.copy(market_trade)
+market_trade_hash: int = hash(market_trade)
+market_quote_bidpx: Scalar | None = market_quote.bidpx
+market_quote_bidqty: Scalar | None = market_quote.bidqty
+market_quote_bidcurrency: Scalar | None = market_quote.bidcurrency
+market_quote_bidunit: str | None = market_quote.bidunit
+market_quote_askpx: Scalar | None = market_quote.askpx
+market_quote_askqty: Scalar | None = market_quote.askqty
+market_quote_askcurrency: Scalar | None = market_quote.askcurrency
+market_quote_askunit: str | None = market_quote.askunit
+market_quote_symbolticker: str | None = market_quote.symbolticker
+market_quote_isincode: Scalar | None = market_quote.isincode
+market_quote_cusipcode: Scalar | None = market_quote.cusipcode
+market_quote_sedolcode: Scalar | None = market_quote.sedolcode
+market_quote_bloombergcode: Scalar | None = market_quote.bloombergcode
+market_quote_cficode: Scalar | None = market_quote.cficode
+market_quote_miccode: Scalar | None = market_quote.miccode
+market_quote_curruuid: Scalar = market_quote.curruuid
+market_quote_srcuuids: list[Scalar] = market_quote.srcuuids
+market_quote_copy: market.Quote = copy.copy(market_quote)
+market_quote_hash: int = hash(market_quote)
+market_book_currency: Scalar = market_book.currency
+market_book_unit: str = market_book.unit
+market_book_symbolticker: str | None = market_book.symbolticker
+market_book_isincode: Scalar | None = market_book.isincode
+market_book_cusipcode: Scalar | None = market_book.cusipcode
+market_book_sedolcode: Scalar | None = market_book.sedolcode
+market_book_bloombergcode: Scalar | None = market_book.bloombergcode
+market_book_cficode: Scalar | None = market_book.cficode
+market_book_miccode: Scalar | None = market_book.miccode
+market_book_depth: int = market_book.depth
+market_book_bids: list[market.MarketLevel] = market_book.bids
+market_book_asks: list[market.MarketLevel] = market_book.asks
+market_book_level: tuple[Scalar, Scalar, int] = market_book_bids[0]
+market_book_snapunix: int | None = market_book.snapunix
+market_book_curruuid: Scalar = market_book.curruuid
+market_book_srcuuids: list[Scalar] = market_book.srcuuids
+market_book_copy: market.Book = copy.copy(market_book)
+market_book_hash: int = hash(market_book)
+market_from_order: fix.FixMsg = fix.FixMsg.from_order(fix_reader, market_order)
+market_from_execution: fix.FixMsg = fix.FixMsg.from_execution(fix_reader, market_execution)
+market_from_quote: fix.FixMsg = fix.FixMsg.from_quote(fix_reader, market_quote)
+market_from_trade: fix.FixMsg = fix.FixMsg.from_trade(fix_reader, market_trade)
+market_from_book: fix.FixMsg = fix.FixMsg.from_book(fix_reader, market_book)
+market_books_default: market.Books = fix_reader.books([fix_read_bytes], 5)
+market_books_reader_default: pa.RecordBatchReader = fix_reader.books_arrow_reader(fix_arrow_reader, 5)
+market_statements: market.Statements = fix_reader.statements([fix_read_bytes])
+market_statements_hash: None = market.Statements.__hash__
+market_statement: market.Order | market.Quote | market.Execution = next(market_statements)
+market_order_is_alive: bool = market_order.is_alive
+market_order_ordtype: str | None = market_order.ordtype
+market_order_pricing: str | None = market_order.pricing
+market_order_notional: Scalar | None = market_order.notional
+market_order_remaining: Scalar = market_order.remaining
+market_order_filled: Scalar = market_order.filled
+market_order_filled_ratio: Scalar | None = market_order.filled_ratio
+market_order_is_resting: bool = market_order.is_resting
+market_execution_is_alive: bool = market_execution.is_alive
+market_execution_notional: Scalar | None = market_execution.notional
+market_execution_is_partial: bool = market_execution.is_partial
+market_execution_completes: bool = market_execution.completes
+market_trade_is_alive: bool = market_trade.is_alive
+market_trade_notional: Scalar | None = market_trade.notional
+market_trade_settlement_days: int | None = market_trade.settlement_days
+market_trade_party_by_role: market.MarketParty | None = market_trade.party_by_role("1")
+market_quote_is_alive: bool = market_quote.is_alive
+market_quote_bid: tuple[Scalar, Scalar] | None = market_quote.bid
+market_quote_ask: tuple[Scalar, Scalar] | None = market_quote.ask
+market_quote_lane: tuple[Scalar, Scalar] | None = market_quote.lane("Buy")
+market_quote_is_two_sided: bool = market_quote.is_two_sided
+market_quote_mid: Scalar | None = market_quote.mid
+market_quote_spread: Scalar | None = market_quote.spread
+market_book_is_alive: bool = market_book.is_alive
+market_book_px: Scalar = market_book.px
+market_book_qty: Scalar = market_book.qty
+market_book_bidpx: Scalar | None = market_book.bidpx
+market_book_bidqty: Scalar | None = market_book.bidqty
+market_book_askpx: Scalar | None = market_book.askpx
+market_book_askqty: Scalar | None = market_book.askqty
+market_book_lastpx: Scalar | None = market_book.lastpx
+market_book_lastqty: Scalar | None = market_book.lastqty
+market_book_avgpx: Scalar | None = market_book.avgpx
+market_book_cumqty: Scalar | None = market_book.cumqty
+market_book_tradable: bool | None = market_book.tradable
+market_book_updates: int = market_book.updates
+market_book_best_bid: market.MarketLevel | None = market_book.best_bid
+market_book_best_ask: market.MarketLevel | None = market_book.best_ask
+market_book_level_at: market.MarketLevel | None = market_book.level("Buy", 0)
+market_book_is_two_sided: bool = market_book.is_two_sided
+market_book_is_locked: bool = market_book.is_locked
+market_book_is_crossed: bool = market_book.is_crossed
+market_book_mid: Scalar | None = market_book.mid
+market_book_spread: Scalar | None = market_book.spread
+market_book_spread_bps: Scalar | None = market_book.spread_bps
+market_book_microprice: Scalar | None = market_book.microprice
+market_book_imbalance: Scalar | None = market_book.imbalance
+market_book_imbalance_to_depth: Scalar | None = market_book.imbalance_to_depth(3)
+market_book_bid_size: Scalar = market_book.bid_size
+market_book_ask_size: Scalar = market_book.ask_size
+market_book_bid_count: int = market_book.bid_count
+market_book_ask_count: int = market_book.ask_count
+market_symbol: market.Symbol = market.Symbol("AAPL")
+market_symbol_global: market.Symbol = market.Symbol.GLOBAL
+market_symbol_of_order: market.Symbol = market.Symbol.of(market_order)
+market_symbol_of_book: market.Symbol = market.Symbol.of(market_book)
+market_symbol_text: str = market_symbol.text
+market_symbol_is_global: bool = market_symbol.is_global
+market_symbol_str: str = str(market_symbol)
+market_symbol_repr: str = repr(market_symbol)
+market_symbol_equal: bool = market_symbol == market_symbol_global
+market_symbol_less: bool = market_symbol < market_symbol_global
+market_symbol_hash: int = hash(market_symbol)
+market_symbol_copy: market.Symbol = copy.copy(market_symbol)
+market_symbol_deepcopy: market.Symbol = copy.deepcopy(market_symbol)
+market_symbol_reduce: tuple[type[market.Symbol], tuple[str]] = market_symbol.__reduce__()
+market_book_iterator: market.BookIterator = market.BookIterator([market_order, market_quote], 5)
+market_book_iterator_grid: market.BookIterator = market.BookIterator(
+    market_statements, 5, snapshot_ns=1_000_000_000, symbol=market.Symbol.GLOBAL
+)
+market_book_iterator_hash: None = market.BookIterator.__hash__
+market_book_iterator_depth: int = market_book_iterator.depth
+market_book_iterator_snapshot_ns: int = market_book_iterator.snapshot_ns
+market_book_iterator_symbol: market.Symbol | None = market_book_iterator.symbol
+market_book_iterator_self: market.BookIterator = iter(market_book_iterator)
+market_book_iterator_next: market.Book = next(market_book_iterator)
 text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
 text_line_under_options: TextLine = TextLine(2, "35=D|", None, TextOptions())
 text_line_mtime: int | None = text_line_under_options.mtime

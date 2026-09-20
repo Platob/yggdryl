@@ -2308,3 +2308,102 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     );
     assert_eq!(warm, again, "the refusal is kept, not recompiled");
 }
+
+/// What each product door costs over one capture of eight messages - an
+/// order's placement, acknowledgement, partial fill and fill, the fill's
+/// trade capture report, a quote, its update and its cancel - beyond the
+/// clone of the messages it is handed: the lifecycle that chains them, the
+/// reading of each product out of each message, the fold of twins and the
+/// walk that chains the products, and for a book the walk over the makers
+/// and the ladder read at each step. The clone is subtracted because a
+/// door takes its messages by value and a pin that charged the fixture's
+/// copy would move with the message, not with the door.
+///
+/// The lifecycle leads the table because every door composes it, and its
+/// row is what a door's row is read against: the orders door reads eight
+/// statements out of the eight messages and chains them for 171 beyond
+/// the walk, about twenty a statement - the strings a statement owns, its
+/// names, its type, its one source, the walk's own records - the trades
+/// and quotes doors fewer because they state fewer; the executions door
+/// reads the one stream of every statement, which holds the chained
+/// messages once and walks the orders and the quotes so each fill takes
+/// its order's chain, then walks the fills; and the books door reads that
+/// stream into the book iterator, one ladder per symbol and one book per
+/// instant touched. One number per door rather than a slope, because the
+/// slope per message is the lifecycle's, pinned by the FIX suite; what
+/// this pins is that a door never pays a plan, a schema or a dictionary
+/// lookup per message. It last moved when the executions door started
+/// reading its fills out of the statement stream, so a fill's chain is
+/// its order's, and the books door moved onto the book iterator, whose
+/// live layer costs less than a ladder rebuilt from the walk's live set
+/// at every step.
+const PRODUCT_DOOR_COSTS: [(&str, usize); 6] = [
+    ("lifecycle", 344),
+    ("orders", 515),
+    ("executions", 693),
+    ("trades", 454),
+    ("quotes", 429),
+    ("books", 761),
+];
+
+#[test]
+fn a_product_door_costs_its_lifecycle_and_its_reading_and_nothing_a_plan() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+    let registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    let codec = FixCodec::new(Arc::new(registry));
+    let lines: [&[u8]; 8] = [
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|59=0|15=USD|52=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|17=E0|150=0|39=0|38=100|151=100|14=0|55=AAPL|54=1|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=1|38=100|14=40|151=60|31=10.5|32=40|6=10.5|880=M1|55=AAPL|54=1|52=20260102-10:15:31.100|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=2|38=100|14=100|151=0|31=10.5|32=60|6=10.5|880=M2|55=AAPL|54=1|52=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=AE|571=T1|1003=TR1|31=10.5|32=60|55=AAPL|54=2|15=USD|75=20260102|453=1|448=FIRM|447=D|452=1|52=20260102-10:15:33.200|10=0|",
+        b"8=FIX.4.4|35=S|117=Q1|55=AAPL|132=10.4|134=100|133=10.6|135=150|15=USD|52=20260102-10:15:34.250|10=0|",
+        b"8=FIX.4.4|35=S|117=Q1|55=AAPL|132=10.45|134=100|133=10.55|135=150|15=USD|52=20260102-10:15:35.250|10=0|",
+        b"8=FIX.4.4|35=Z|117=Q1|298=1|52=20260102-10:15:36.250|10=0|",
+    ];
+    let messages: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("every line reads");
+    let (clone_once, clone_repeated) = counted_once_and_repeated(|| {
+        black_box(messages.clone());
+    });
+    let mut measured: Vec<(&str, usize)> = Vec::with_capacity(PRODUCT_DOOR_COSTS.len());
+    for (door, _) in PRODUCT_DOOR_COSTS {
+        let read: Box<dyn Fn()> = match door {
+            "lifecycle" => Box::new(|| {
+                black_box(codec.lifecycle(black_box(messages.clone())).count());
+            }),
+            "orders" => Box::new(|| {
+                black_box(codec.orders(black_box(messages.clone())).count());
+            }),
+            "executions" => Box::new(|| {
+                black_box(codec.executions(black_box(messages.clone())).count());
+            }),
+            "trades" => Box::new(|| {
+                black_box(codec.trades(black_box(messages.clone())).count());
+            }),
+            "quotes" => Box::new(|| {
+                black_box(codec.quotes(black_box(messages.clone())).count());
+            }),
+            _ => Box::new(|| {
+                black_box(
+                    codec
+                        .books(black_box(messages.clone()), 4, 1_000_000_000)
+                        .expect("a grid and a depth")
+                        .count(),
+                );
+            }),
+        };
+        let (once, repeated) = counted_once_and_repeated(&read);
+        let each = once - clone_once;
+        assert_eq!(
+            repeated - clone_repeated,
+            each * 1_000,
+            "the {door} door did not cost {each} per read over a thousand"
+        );
+        measured.push((door, each));
+    }
+    assert_eq!(measured, PRODUCT_DOOR_COSTS, "a door's cost changed");
+}

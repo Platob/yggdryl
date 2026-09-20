@@ -75,6 +75,283 @@ export declare class BatchReader {
 }
 export type JsBatchReader = BatchReader
 
+/**
+ * The ladder for one instrument at one instant, to a declared depth,
+ * with what printed against it and what the ladders imply.
+ *
+ * The chain is the instrument's - the symbol the book was read under -
+ * so every book of one symbol stands in one chain; `currunix` is when the
+ * ladder was read and `snapunix` the grid step it closed, where a grid was
+ * declared. A book is a market event whose `px` is the mid, `qty` the
+ * size resting on both ladders, `bidpx`/`bidqty`/`askpx`/`askqty` the
+ * tops, `lastpx`/`lastqty`/`avgpx`/`cumqty` the prints since the chain
+ * began, and `tradable` the makers' stated fact. A missing top is `null`
+ * on every reading that divides by it; a locked or crossed book is
+ * stated, never refused.
+ */
+export declare class Book {
+  /**
+   * The product one row of `field` states: the inverse of
+   * `intoRow`, the row canonicalized under the field first, so a
+   * code spelled as text and a number spelled at another scale
+   * read as what the column types. The loader widens `row` from
+   * whatever `Scalar.from` reads.
+   */
+  static fromRow(field: JsField, row: JsScalar): Book
+  /**
+   * This product's own identity, as its hyphenated text: a time
+   * UUID over its instant and its `currhashcode`.
+   */
+  get curruuid(): string
+  /**
+   * The identity of the chain this product belongs to, as its
+   * hyphenated text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this product states. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * The identifiers the product is known by, scheme to value,
+   * sorted.
+   */
+  get identifiers(): Record<string, string>
+  /**
+   * The identities of the statements this one descends from: the
+   * whole chain before it, oldest first.
+   */
+  get parentuuids(): Array<string>
+  /**
+   * The identities of the messages this product was read from.
+   * Provenance, never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * When the product was stated, nanoseconds since the Unix
+   * epoch, UTC.
+   */
+  get currunix(): bigint
+  /**
+   * The state the chain reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The product's place in its chain, `0` until a walk states it. */
+  get seqnum(): number
+  /** When the chain was created, or `null`. */
+  get creaunix(): bigint | null
+  /** When the chain expires, or `null`. */
+  get expirunix(): bigint | null
+  /** The instant of the statement this one follows, or `null`. */
+  get prevunix(): bigint | null
+  /** The identity of the statement this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The grid step this product is the snapshot of, or `null`. */
+  get snapunix(): bigint | null
+  /**
+   * Whether this product can still be followed: its state can
+   * still change, and it is not past its expiration.
+   */
+  get isAlive(): boolean
+  /**
+   * The event this product is: every fact the graph traits
+   * answer, as one plain object read once.
+   */
+  event(): FixEventView
+  /**
+   * This product as one row of `field()`: the sixteen event
+   * columns, the market columns it publishes, then its own, every
+   * cell the raw value its column types and null where the
+   * product states no fact.
+   */
+  intoRow(): JsScalar
+  /** Whether two statements carry the same facts. */
+  equals(other: Book): boolean
+  /** A one-line summary: the chain, the state and the instant. */
+  toString(): string
+  /** The row's schema document and value document. */
+  toJSON(): any
+  /**
+   * The ticker the instrument is known by, or `null` where it has
+   * none and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /** The instrument's ISIN, or `null`. */
+  get isincode(): string | null
+  /** The instrument's CUSIP, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, or `null`. */
+  get bloombergcode(): string | null
+  /** The instrument's CFI classification, or `null`. */
+  get cficode(): string | null
+  /** The market the product names, an ISO 10383 MIC, or `null`. */
+  get miccode(): string | null
+  /**
+   * The row every book of `depth` levels per side publishes, a non-null
+   * Struct named `book`; a depth of zero is no ladder and is refused.
+   */
+  static field(depth: number): JsField
+  /** How many levels per side the book was declared to hold. */
+  get depth(): number
+  /**
+   * How many statements have been applied to the book's chain since it
+   * began - every order, quote and print.
+   */
+  get updates(): number
+  /** The mid, as decimal text; `0` where there is none. */
+  get px(): string
+  /** The size resting on both ladders, as decimal text. */
+  get qty(): string
+  /** The best bid's price, as decimal text, or `null`. */
+  get bidpx(): string | null
+  /** The size resting at the best bid, as decimal text, or `null`. */
+  get bidqty(): string | null
+  /** The best ask's price, as decimal text, or `null`. */
+  get askpx(): string | null
+  /** The size resting at the best ask, as decimal text, or `null`. */
+  get askqty(): string | null
+  /** The last print's price, as decimal text, or `null`. */
+  get lastpx(): string | null
+  /** The last print's size, as decimal text, or `null`. */
+  get lastqty(): string | null
+  /** The average price of what printed since the chain began, or `null`. */
+  get avgpx(): string | null
+  /** The volume printed since the chain began, or `null`. */
+  get cumqty(): string | null
+  /**
+   * Whether the instrument can trade, the makers' stated fact, or
+   * `null` where they said nothing either way or disagreed.
+   */
+  get tradable(): boolean | null
+  /** The currency the ladder is priced in; `XXX` where none is stated. */
+  get currency(): string
+  /** The unit the sizes are counted in, empty where none is stated. */
+  get unit(): string
+  /** The bid ladder, best first: at most `depth` levels. */
+  get bids(): Array<MarketLevelView>
+  /** The ask ladder, best first: at most `depth` levels. */
+  get asks(): Array<MarketLevelView>
+  /** The top of the bid ladder, or `null`. */
+  get bestBid(): MarketLevelView | null
+  /** The top of the ask ladder, or `null`. */
+  get bestAsk(): MarketLevelView | null
+  /**
+   * The level at `index` of the ladder `side` takes - a spelling
+   * `Side.read` reads - the top at zero; `null` past the ladder, or for
+   * a side that takes no lane. A spelling that is no side throws.
+   */
+  level(side: string, index: number): MarketLevelView | null
+  /** Whether both ladders rest something. */
+  get isTwoSided(): boolean
+  /** Whether the two tops are at one price: a spread of zero. */
+  get isLocked(): boolean
+  /** Whether the best bid is above the best ask: a negative spread. */
+  get isCrossed(): boolean
+  /**
+   * The middle of the tops, `(bidpx + askpx) / 2` as decimal text, or
+   * `null` where a top is missing.
+   */
+  get mid(): string | null
+  /**
+   * The distance between the tops, `askpx - bidpx` as decimal text -
+   * zero where they lock, negative where they cross - or `null` where a
+   * top is missing.
+   */
+  get spread(): string | null
+  /**
+   * The spread as a share of the mid, `spread * 10000 / mid` as decimal
+   * text, or `null` where there is no mid.
+   */
+  get spreadBps(): string | null
+  /**
+   * The size-weighted mid, `(b * Qa + a * Qb) / (Qb + Qa)` as decimal
+   * text, or `null` where a top is missing.
+   */
+  get microprice(): string | null
+  /**
+   * The imbalance at the tops, `(Qb - Qa) / (Qb + Qa)` in `[-1, 1]` as
+   * decimal text, a missing top counting as no size; `null` where both
+   * are missing.
+   */
+  get imbalance(): string | null
+  /**
+   * The same imbalance over the sizes summed across the first `levels`
+   * of each ladder, a shorter ladder contributing what it has; `null`
+   * where both sums are zero.
+   */
+  imbalanceToDepth(levels: number): string | null
+  /** The size resting on the bid ladder, summed, as decimal text. */
+  get bidSize(): string
+  /** The size resting on the ask ladder, summed, as decimal text. */
+  get askSize(): string
+  /** The orders and quote lanes resting on the bid ladder, summed. */
+  get bidCount(): number
+  /** The orders and quote lanes resting on the ask ladder, summed. */
+  get askCount(): number
+}
+export type JsBook = Book
+
+/**
+ * One book per symbol per instant, read out of a stream of statements -
+ * orders, quotes, executions and trades, any product a door read or a row
+ * stated - to a declared depth.
+ *
+ * The orders and the quotes rest on each symbol's ladders under the
+ * identity their chain shares, a later statement of one replacing the
+ * earlier and a dead or expired one leaving; the executions and the
+ * trades print against them - the last price and size, the volume and its
+ * average price - never resting; and the book of every symbol an instant
+ * touched is read once the stream moves past that instant, in symbol
+ * order. A stream carrying both the execution and the trade of one fill
+ * counts it twice, so a caller feeds one of the two. The statements are
+ * taken as the caller's word that they arrive in instant order, which a
+ * door's stream does; one before the open instant throws naming
+ * `currunix` and moves nothing. With a step, one book per symbol per grid
+ * step it was touched in, the step's closing state, stamped with the
+ * step; with a symbol, every statement keyed under it, `Symbol.GLOBAL`
+ * being the global book of the whole stream. Held state is bounded by the
+ * live makers and the open instant. The loader supplies `Symbol.iterator`
+ * over `next`, and builds one through `new market.BookIterator`.
+ */
+export declare class BookIterator {
+  /**
+   * Advance the iterator: the next book, or `null` at its end.
+   *
+   * A statement the ladder refuses throws here and the iterator
+   * continues on the next call; a failure behind it throws once, in
+   * place of the end.
+   */
+  next(): IteratorResult<Book>
+  /** How many levels a side every book is read to. */
+  get depth(): number
+  /** The grid step in nanoseconds, `0n` for one book per instant. */
+  get snapshotNs(): bigint
+  /**
+   * The one symbol every statement is keyed under, or `null` where each
+   * keys the symbol it names.
+   */
+  get symbol(): MarketSymbol | null
+}
+export type JsBookIterator = BookIterator
+
+/** r" A stream of books: what `FixCodec.books` answers. */
+export declare class Books {
+  /**
+   * Advance the stream: the next product, or `null` at its end.
+   *
+   * A message the door refused throws here and the stream
+   * continues on the next call; a failure behind the stream
+   * throws once, in place of the end.
+   */
+  next(): IteratorResult<Book>
+}
+export type JsBooks = Books
+
 /** One term resolved against one schema, ready to answer. */
 export declare class Bound {
   /** The term as it stands after substitution, folding, and ordering. */
@@ -660,6 +937,161 @@ export declare class Digest {
   toJSON(): string
 }
 export type JsDigest = Digest
+
+/**
+ * One fill: the one execution report that states it, in the chain of the
+ * order it fills.
+ */
+export declare class Execution {
+  /**
+   * The product one row of `field` states: the inverse of
+   * `intoRow`, the row canonicalized under the field first, so a
+   * code spelled as text and a number spelled at another scale
+   * read as what the column types. The loader widens `row` from
+   * whatever `Scalar.from` reads.
+   */
+  static fromRow(field: JsField, row: JsScalar): Execution
+  /**
+   * This product's own identity, as its hyphenated text: a time
+   * UUID over its instant and its `currhashcode`.
+   */
+  get curruuid(): string
+  /**
+   * The identity of the chain this product belongs to, as its
+   * hyphenated text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this product states. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * The identifiers the product is known by, scheme to value,
+   * sorted.
+   */
+  get identifiers(): Record<string, string>
+  /**
+   * The identities of the statements this one descends from: the
+   * whole chain before it, oldest first.
+   */
+  get parentuuids(): Array<string>
+  /**
+   * The identities of the messages this product was read from.
+   * Provenance, never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * When the product was stated, nanoseconds since the Unix
+   * epoch, UTC.
+   */
+  get currunix(): bigint
+  /**
+   * The state the chain reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The product's place in its chain, `0` until a walk states it. */
+  get seqnum(): number
+  /** When the chain was created, or `null`. */
+  get creaunix(): bigint | null
+  /** When the chain expires, or `null`. */
+  get expirunix(): bigint | null
+  /** The instant of the statement this one follows, or `null`. */
+  get prevunix(): bigint | null
+  /** The identity of the statement this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The grid step this product is the snapshot of, or `null`. */
+  get snapunix(): bigint | null
+  /**
+   * Whether this product can still be followed: its state can
+   * still change, and it is not past its expiration.
+   */
+  get isAlive(): boolean
+  /**
+   * The event this product is: every fact the graph traits
+   * answer, as one plain object read once.
+   */
+  event(): FixEventView
+  /**
+   * This product as one row of `field()`: the sixteen event
+   * columns, the market columns it publishes, then its own, every
+   * cell the raw value its column types and null where the
+   * product states no fact.
+   */
+  intoRow(): JsScalar
+  /** Whether two statements carry the same facts. */
+  equals(other: Execution): boolean
+  /** A one-line summary: the chain, the state and the instant. */
+  toString(): string
+  /** The row's schema document and value document. */
+  toJSON(): any
+  /** The price, as decimal text; `0` where none is stated. */
+  get px(): string
+  /** The quantity, as decimal text; `0` where none is stated. */
+  get qty(): string
+  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  get side(): string
+  /** The currency; `XXX` where none is stated. */
+  get currency(): string
+  /**
+   * The unit the quantity is counted in, empty where none is
+   * stated.
+   */
+  get unit(): string
+  /**
+   * What the product is worth at its price, `px * qty` as decimal
+   * text, or `null` where either is zero.
+   */
+  get notional(): string | null
+  /**
+   * The ticker the instrument is known by, or `null` where it has
+   * none and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /** The instrument's ISIN, or `null`. */
+  get isincode(): string | null
+  /** The instrument's CUSIP, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, or `null`. */
+  get bloombergcode(): string | null
+  /** The instrument's CFI classification, or `null`. */
+  get cficode(): string | null
+  /** The market the product names, an ISO 10383 MIC, or `null`. */
+  get miccode(): string | null
+  /**
+   * The row every execution publishes, a non-null Struct named
+   * `execution`.
+   */
+  static field(): JsField
+  /**
+   * Whether the fill left its order open: the order's status after it
+   * is still live.
+   */
+  get isPartial(): boolean
+  /**
+   * Whether the fill completed its order: the order's status after it
+   * is done.
+   */
+  get completes(): boolean
+}
+export type JsExecution = Execution
+
+/** r" A stream of executions: what `FixCodec.executions` answers. */
+export declare class Executions {
+  /**
+   * Advance the stream: the next product, or `null` at its end.
+   *
+   * A message the door refused throws here and the stream
+   * continues on the next call; a failure behind the stream
+   * throws once, in place of the end.
+   */
+  next(): IteratorResult<Execution>
+}
+export type JsExecutions = Executions
 
 /**
  * A clause, a plan, or a sequence of plans: whatever one piece of
@@ -1484,6 +1916,34 @@ export declare class FixCodec {
   clone(): FixCodec
   /** How this codec renders: the dictionary it reads against. */
   toString(): string
+  /**
+   * `orders` over a stream of batches of message rows: the rows read as
+   * messages by `messages`, the orders read out of them and written as
+   * batches of order rows under `Order.field()`. The source is consumed.
+   */
+  ordersArrowReader(source: JsBatchReader): JsBatchReader
+  /**
+   * `executions` over a stream of batches of message rows, written as
+   * batches of execution rows under `Execution.field()`. The source is
+   * consumed.
+   */
+  executionsArrowReader(source: JsBatchReader): JsBatchReader
+  /**
+   * `trades` over a stream of batches of message rows, written as
+   * batches of trade rows under `Trade.field()`. The source is consumed.
+   */
+  tradesArrowReader(source: JsBatchReader): JsBatchReader
+  /**
+   * `quotes` over a stream of batches of message rows, written as
+   * batches of quote rows under `Quote.field()`. The source is consumed.
+   */
+  quotesArrowReader(source: JsBatchReader): JsBatchReader
+  /**
+   * `books` over a stream of batches of message rows, written as batches
+   * of book rows under `Book.field(depth)`. What `books` refuses is
+   * refused here, before a row is read. The source is consumed.
+   */
+  booksArrowReader(source: JsBatchReader, depth: number, snapshotNs: bigint | number): JsBatchReader
 }
 export type JsFixCodec = FixCodec
 
@@ -1896,6 +2356,45 @@ export declare class FixMsg {
   toString(): string
   /** The content row's schema document and value document. */
   toJSON(): any
+  /**
+   * The new order single an order states: `35=D`, exactly.
+   *
+   * The order's `ClOrdID(11)` - the name it goes by, else its chain - the
+   * venue's `OrderID(37)` and the `OrigClOrdID(41)` where it goes by
+   * them, the instrument and its market, the order type its prices
+   * imply, the quantity, the price, the stop price, how long it stands,
+   * when it expires, and the instant as `TransactTime(60)` and
+   * `SendingTime(52)`. The message names the order as its one source.
+   * An order going by no client identifier and naming no chain is
+   * refused.
+   */
+  static fromOrder(codec: FixCodec, order: Order): FixMsg
+  /**
+   * The execution report an execution states: `35=8`, `150=F`, exactly.
+   *
+   * The execution's own `ExecID(17)`, the order it fills where it goes by
+   * its names, the venue's match where it names one, the order's status
+   * as far as a fill can say it, the instrument, its market as
+   * `LastMkt(30)`, the side, the price and quantity that traded as
+   * `LastPx(31)` and `LastQty(32)`, the currency and unit, and the
+   * instant. An execution going by no identifier of its own is refused.
+   */
+  static fromExecution(codec: FixCodec, execution: Execution): FixMsg
+  /**
+   * Refused: no one message states a quote, and the crate does not
+   * guess. Throws the core's sentence.
+   */
+  static fromQuote(codec: FixCodec, quote: Quote): FixMsg
+  /**
+   * Refused: no one message states a trade, and the crate does not
+   * guess. Throws the core's sentence.
+   */
+  static fromTrade(codec: FixCodec, trade: Trade): FixMsg
+  /**
+   * Refused: no one message states a book, and the crate does not
+   * guess. Throws the core's sentence.
+   */
+  static fromBook(codec: FixCodec, book: Book): FixMsg
 }
 export type JsFixMsg = FixMsg
 
@@ -2847,6 +3346,42 @@ export declare class ManifestFile {
 }
 export type JsManifestFile = ManifestFile
 
+/**
+ * The key a book is read under: the text that names an instrument across
+ * the venues that trade it, or `GLOBAL` for no instrument.
+ *
+ * `Symbol.of` reads one key off a product's instrument codes, the
+ * strongest first: the ISIN, else the ticker, else the CUSIP, the SEDOL or
+ * the Bloomberg identifier; a product naming none keys the global symbol,
+ * which is also the one symbol a global book - every statement of a
+ * stream in one ladder - is read under. A book's `crosscode` is the symbol
+ * it was read under. The loader publishes this as `market.Symbol`, with
+ * `market.Symbol.GLOBAL` beside `of`.
+ */
+export declare class MarketSymbol {
+  /**
+   * A symbol spelled by the caller, trimmed; blank text is the global
+   * symbol.
+   */
+  constructor(text: string)
+  /**
+   * The symbol a product names: its ISIN, else the ticker it is known
+   * by, else its CUSIP, else its SEDOL, else its Bloomberg identifier,
+   * else the global symbol. A value of another class throws naming the
+   * classes.
+   */
+  static of(product: Order | Quote | Execution | Trade | Book): MarketSymbol
+  /** The text the symbol is. */
+  get text(): string
+  /** Whether this is the symbol of no instrument. */
+  get isGlobal(): boolean
+  /** Whether two symbols are one text. */
+  equals(other: MarketSymbol): boolean
+  /** The text the symbol is. */
+  toString(): string
+}
+export type JsMarketSymbol = MarketSymbol
+
 /** A base MIME type plus ordered transparent encodings. */
 export declare class MediaType {
   /** Parse/clone a media value or promote one MIME value. */
@@ -3156,6 +3691,202 @@ export declare class Namespaces {
   openOrCreate(name: string): Namespace
 }
 export type JsNamespaces = Namespaces
+
+/**
+ * One order's life: its placement and every report against it, chained.
+ *
+ * The chain is the order's, under the identifier the venue gave it, and
+ * the row publishes the order's price ladder - the price, the average,
+ * the quantity against what filled and what is left - the side, the
+ * currency and the unit, how long it stands, whether the instrument could
+ * be traded, the instrument, and the order's own stop price.
+ */
+export declare class Order {
+  /**
+   * The product one row of `field` states: the inverse of
+   * `intoRow`, the row canonicalized under the field first, so a
+   * code spelled as text and a number spelled at another scale
+   * read as what the column types. The loader widens `row` from
+   * whatever `Scalar.from` reads.
+   */
+  static fromRow(field: JsField, row: JsScalar): Order
+  /**
+   * This product's own identity, as its hyphenated text: a time
+   * UUID over its instant and its `currhashcode`.
+   */
+  get curruuid(): string
+  /**
+   * The identity of the chain this product belongs to, as its
+   * hyphenated text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this product states. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * The identifiers the product is known by, scheme to value,
+   * sorted.
+   */
+  get identifiers(): Record<string, string>
+  /**
+   * The identities of the statements this one descends from: the
+   * whole chain before it, oldest first.
+   */
+  get parentuuids(): Array<string>
+  /**
+   * The identities of the messages this product was read from.
+   * Provenance, never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * When the product was stated, nanoseconds since the Unix
+   * epoch, UTC.
+   */
+  get currunix(): bigint
+  /**
+   * The state the chain reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The product's place in its chain, `0` until a walk states it. */
+  get seqnum(): number
+  /** When the chain was created, or `null`. */
+  get creaunix(): bigint | null
+  /** When the chain expires, or `null`. */
+  get expirunix(): bigint | null
+  /** The instant of the statement this one follows, or `null`. */
+  get prevunix(): bigint | null
+  /** The identity of the statement this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The grid step this product is the snapshot of, or `null`. */
+  get snapunix(): bigint | null
+  /**
+   * Whether this product can still be followed: its state can
+   * still change, and it is not past its expiration.
+   */
+  get isAlive(): boolean
+  /**
+   * The event this product is: every fact the graph traits
+   * answer, as one plain object read once.
+   */
+  event(): FixEventView
+  /**
+   * This product as one row of `field()`: the sixteen event
+   * columns, the market columns it publishes, then its own, every
+   * cell the raw value its column types and null where the
+   * product states no fact.
+   */
+  intoRow(): JsScalar
+  /** Whether two statements carry the same facts. */
+  equals(other: Order): boolean
+  /** A one-line summary: the chain, the state and the instant. */
+  toString(): string
+  /** The row's schema document and value document. */
+  toJSON(): any
+  /** The price, as decimal text; `0` where none is stated. */
+  get px(): string
+  /** The quantity, as decimal text; `0` where none is stated. */
+  get qty(): string
+  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  get side(): string
+  /** The currency; `XXX` where none is stated. */
+  get currency(): string
+  /**
+   * The unit the quantity is counted in, empty where none is
+   * stated.
+   */
+  get unit(): string
+  /**
+   * What the product is worth at its price, `px * qty` as decimal
+   * text, or `null` where either is zero.
+   */
+  get notional(): string | null
+  /**
+   * The ticker the instrument is known by, or `null` where it has
+   * none and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /** The instrument's ISIN, or `null`. */
+  get isincode(): string | null
+  /** The instrument's CUSIP, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, or `null`. */
+  get bloombergcode(): string | null
+  /** The instrument's CFI classification, or `null`. */
+  get cficode(): string | null
+  /** The market the product names, an ISO 10383 MIC, or `null`. */
+  get miccode(): string | null
+  /** The row every order publishes, a non-null Struct named `order`. */
+  static field(): JsField
+  /** The price it averaged, `AvgPx(6)`, as decimal text, or `null`. */
+  get avgpx(): string | null
+  /** How much of its quantity is done, `CumQty(14)`, or `null`. */
+  get cumqty(): string | null
+  /** How much of it is still open, `LeavesQty(151)`, or `null`. */
+  get leavesqty(): string | null
+  /**
+   * How long the order stands, `TimeInForce(59)`, as it states it, or
+   * `null`.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument could be traded when the order was stated,
+   * or `null` where the market said nothing either way.
+   */
+  get tradable(): boolean | null
+  /** The stop price, `StopPx(99)`, as decimal text, or `null`. */
+  get stoppx(): string | null
+  /**
+   * The type the order states, `OrdType(40)` as the wire spells it -
+   * `1` market, `2` limit, `3` stop, `4` stop limit - or `null`.
+   */
+  get ordtype(): string | null
+  /**
+   * What the order prices: `market`, `limit`, `stop` or `stoplimit` -
+   * the type it states, else what its limit and stop imply - or `null`
+   * where it states a type outside the four.
+   */
+  get pricing(): string | null
+  /**
+   * What is left to trade, as decimal text: what the order states is
+   * left, else what it ordered less what filled.
+   */
+  get remaining(): string
+  /**
+   * What traded, as decimal text: what the order states filled, else
+   * what it ordered less what is left.
+   */
+  get filled(): string
+  /**
+   * How much of what was ordered traded, `filled / qty` as decimal text,
+   * or `null` where nothing was ordered.
+   */
+  get filledRatio(): string | null
+  /**
+   * Whether the order rests on a ladder right now: alive, on a side that
+   * takes a lane, a limit above zero, something left.
+   */
+  get isResting(): boolean
+}
+export type JsOrder = Order
+
+/** r" A stream of orders: what `FixCodec.orders` answers. */
+export declare class Orders {
+  /**
+   * Advance the stream: the next product, or `null` at its end.
+   *
+   * A message the door refused throws here and the stream
+   * continues on the next call; a failure behind the stream
+   * throws once, in place of the end.
+   */
+  next(): IteratorResult<Order>
+}
+export type JsOrders = Orders
 
 /** One partition field of a spec. */
 export declare class PartitionField {
@@ -3551,6 +4282,172 @@ export declare class ProtocolField {
   toJSON(): any
 }
 export type JsProtocolField = ProtocolField
+
+/**
+ * A price stated at an instant: one or two lanes under the quote's own
+ * identifiers and its validity, its cancel ending the chain.
+ */
+export declare class Quote {
+  /**
+   * The product one row of `field` states: the inverse of
+   * `intoRow`, the row canonicalized under the field first, so a
+   * code spelled as text and a number spelled at another scale
+   * read as what the column types. The loader widens `row` from
+   * whatever `Scalar.from` reads.
+   */
+  static fromRow(field: JsField, row: JsScalar): Quote
+  /**
+   * This product's own identity, as its hyphenated text: a time
+   * UUID over its instant and its `currhashcode`.
+   */
+  get curruuid(): string
+  /**
+   * The identity of the chain this product belongs to, as its
+   * hyphenated text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this product states. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * The identifiers the product is known by, scheme to value,
+   * sorted.
+   */
+  get identifiers(): Record<string, string>
+  /**
+   * The identities of the statements this one descends from: the
+   * whole chain before it, oldest first.
+   */
+  get parentuuids(): Array<string>
+  /**
+   * The identities of the messages this product was read from.
+   * Provenance, never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * When the product was stated, nanoseconds since the Unix
+   * epoch, UTC.
+   */
+  get currunix(): bigint
+  /**
+   * The state the chain reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The product's place in its chain, `0` until a walk states it. */
+  get seqnum(): number
+  /** When the chain was created, or `null`. */
+  get creaunix(): bigint | null
+  /** When the chain expires, or `null`. */
+  get expirunix(): bigint | null
+  /** The instant of the statement this one follows, or `null`. */
+  get prevunix(): bigint | null
+  /** The identity of the statement this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The grid step this product is the snapshot of, or `null`. */
+  get snapunix(): bigint | null
+  /**
+   * Whether this product can still be followed: its state can
+   * still change, and it is not past its expiration.
+   */
+  get isAlive(): boolean
+  /**
+   * The event this product is: every fact the graph traits
+   * answer, as one plain object read once.
+   */
+  event(): FixEventView
+  /**
+   * This product as one row of `field()`: the sixteen event
+   * columns, the market columns it publishes, then its own, every
+   * cell the raw value its column types and null where the
+   * product states no fact.
+   */
+  intoRow(): JsScalar
+  /** Whether two statements carry the same facts. */
+  equals(other: Quote): boolean
+  /** A one-line summary: the chain, the state and the instant. */
+  toString(): string
+  /** The row's schema document and value document. */
+  toJSON(): any
+  /**
+   * The ticker the instrument is known by, or `null` where it has
+   * none and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /** The instrument's ISIN, or `null`. */
+  get isincode(): string | null
+  /** The instrument's CUSIP, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, or `null`. */
+  get bloombergcode(): string | null
+  /** The instrument's CFI classification, or `null`. */
+  get cficode(): string | null
+  /** The market the product names, an ISO 10383 MIC, or `null`. */
+  get miccode(): string | null
+  /** The row every quote publishes, a non-null Struct named `quote`. */
+  static field(): JsField
+  /** The bid lane's price, as decimal text, or `null`. */
+  get bidpx(): string | null
+  /** The bid lane's quantity, as decimal text, or `null`. */
+  get bidqty(): string | null
+  /** The bid lane's currency, or `null`. */
+  get bidcurrency(): string | null
+  /** The bid lane's unit, or `null`. */
+  get bidunit(): string | null
+  /** The ask lane's price, as decimal text, or `null`. */
+  get askpx(): string | null
+  /** The ask lane's quantity, as decimal text, or `null`. */
+  get askqty(): string | null
+  /** The ask lane's currency, or `null`. */
+  get askcurrency(): string | null
+  /** The ask lane's unit, or `null`. */
+  get askunit(): string | null
+  /**
+   * The bid lane where it is quoted - its price and its size both above
+   * zero - as `{ px, qty }`, or `null`.
+   */
+  get bid(): MarketLaneView | null
+  /** The ask lane where it is quoted, as `{ px, qty }`, or `null`. */
+  get ask(): MarketLaneView | null
+  /**
+   * The lane `side` takes - a spelling `Side.read` reads, `Buy` or `1`,
+   * `Sell` or `2` - the bid for a side that pays, the ask for one that is
+   * paid, `null` for a side that takes no lane. A spelling that is no
+   * side throws.
+   */
+  lane(side: string): MarketLaneView | null
+  /** Whether both lanes are quoted. */
+  get isTwoSided(): boolean
+  /**
+   * The middle of the two lanes, `(bidpx + askpx) / 2` as decimal text,
+   * or `null` on a one-sided quote.
+   */
+  get mid(): string | null
+  /**
+   * The distance between the two lanes, `askpx - bidpx` as decimal text,
+   * or `null` on a one-sided quote.
+   */
+  get spread(): string | null
+}
+export type JsQuote = Quote
+
+/** r" A stream of quotes: what `FixCodec.quotes` answers. */
+export declare class Quotes {
+  /**
+   * Advance the stream: the next product, or `null` at its end.
+   *
+   * A message the door refused throws here and the stream
+   * continues on the next call; a failure behind the stream
+   * throws once, in place of the end.
+   */
+  next(): IteratorResult<Quote>
+}
+export type JsQuotes = Quotes
 
 /** A stateful random-access filesystem input file. */
 export declare class RandomAccessReader {
@@ -4156,6 +5053,28 @@ export declare class SnapshotRef {
   clone(): SnapshotRef
 }
 export type JsSnapshotRef = SnapshotRef
+
+/**
+ * A stream of every statement a stream of messages makes, in instant
+ * order: what `FixCodec.statements` answers, each item the product class
+ * its arm is - an `Order`, a `Quote` or an `Execution`; a trade is the
+ * print an execution already is, so the door yields none.
+ *
+ * Nothing is collected on the binding path: the core iterator is the
+ * stream, and the JavaScript iterable behind it is pulled one message at a
+ * time. A message the door refuses throws where it is met and the stream
+ * goes on past it; a failure in the iterable behind the stream throws
+ * once, in place of the end. The loader supplies `Symbol.iterator` over
+ * `next`.
+ */
+export declare class Statements {
+  /**
+   * Advance the stream: the next statement as the class its arm is, or
+   * `null` at its end.
+   */
+  next(): IteratorResult<Order | Quote | Execution>
+}
+export type JsStatements = Statements
 
 /**
  * The enum a string field's values name: one value per member name.
@@ -5148,6 +6067,171 @@ export declare class Timezone {
   toJSON(): string
 }
 export type JsTimezone = Timezone
+
+/**
+ * The settled transaction an execution reports: the matched quantity at
+ * its price, its parties and its clocks, the two sides' reports of one
+ * match in one chain.
+ */
+export declare class Trade {
+  /**
+   * The product one row of `field` states: the inverse of
+   * `intoRow`, the row canonicalized under the field first, so a
+   * code spelled as text and a number spelled at another scale
+   * read as what the column types. The loader widens `row` from
+   * whatever `Scalar.from` reads.
+   */
+  static fromRow(field: JsField, row: JsScalar): Trade
+  /**
+   * This product's own identity, as its hyphenated text: a time
+   * UUID over its instant and its `currhashcode`.
+   */
+  get curruuid(): string
+  /**
+   * The identity of the chain this product belongs to, as its
+   * hyphenated text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this product states. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * The identifiers the product is known by, scheme to value,
+   * sorted.
+   */
+  get identifiers(): Record<string, string>
+  /**
+   * The identities of the statements this one descends from: the
+   * whole chain before it, oldest first.
+   */
+  get parentuuids(): Array<string>
+  /**
+   * The identities of the messages this product was read from.
+   * Provenance, never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * When the product was stated, nanoseconds since the Unix
+   * epoch, UTC.
+   */
+  get currunix(): bigint
+  /**
+   * The state the chain reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The product's place in its chain, `0` until a walk states it. */
+  get seqnum(): number
+  /** When the chain was created, or `null`. */
+  get creaunix(): bigint | null
+  /** When the chain expires, or `null`. */
+  get expirunix(): bigint | null
+  /** The instant of the statement this one follows, or `null`. */
+  get prevunix(): bigint | null
+  /** The identity of the statement this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The grid step this product is the snapshot of, or `null`. */
+  get snapunix(): bigint | null
+  /**
+   * Whether this product can still be followed: its state can
+   * still change, and it is not past its expiration.
+   */
+  get isAlive(): boolean
+  /**
+   * The event this product is: every fact the graph traits
+   * answer, as one plain object read once.
+   */
+  event(): FixEventView
+  /**
+   * This product as one row of `field()`: the sixteen event
+   * columns, the market columns it publishes, then its own, every
+   * cell the raw value its column types and null where the
+   * product states no fact.
+   */
+  intoRow(): JsScalar
+  /** Whether two statements carry the same facts. */
+  equals(other: Trade): boolean
+  /** A one-line summary: the chain, the state and the instant. */
+  toString(): string
+  /** The row's schema document and value document. */
+  toJSON(): any
+  /** The price, as decimal text; `0` where none is stated. */
+  get px(): string
+  /** The quantity, as decimal text; `0` where none is stated. */
+  get qty(): string
+  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  get side(): string
+  /** The currency; `XXX` where none is stated. */
+  get currency(): string
+  /**
+   * The unit the quantity is counted in, empty where none is
+   * stated.
+   */
+  get unit(): string
+  /**
+   * What the product is worth at its price, `px * qty` as decimal
+   * text, or `null` where either is zero.
+   */
+  get notional(): string | null
+  /**
+   * The ticker the instrument is known by, or `null` where it has
+   * none and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /** The instrument's ISIN, or `null`. */
+  get isincode(): string | null
+  /** The instrument's CUSIP, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, or `null`. */
+  get bloombergcode(): string | null
+  /** The instrument's CFI classification, or `null`. */
+  get cficode(): string | null
+  /** The market the product names, an ISO 10383 MIC, or `null`. */
+  get miccode(): string | null
+  /** The row every trade publishes, a non-null Struct named `trade`. */
+  static field(): JsField
+  /**
+   * The day the trade was done, `TradeDate(75)`, as days since the Unix
+   * epoch, or `null`.
+   */
+  get tradedate(): number | null
+  /**
+   * The day the trade settles, `SettlDate(64)`, as days since the Unix
+   * epoch, or `null`.
+   */
+  get settldate(): number | null
+  /** The parties to the trade, in the order the report states them. */
+  get parties(): Array<MarketPartyView>
+  /**
+   * The first party whose role is `role`, exactly as the report spells
+   * it, or `null` where none is.
+   */
+  partyByRole(role: string): MarketPartyView | null
+  /**
+   * How many days after the trade date it settles, where both are
+   * stated: `T+2` answers `2`; else `null`.
+   */
+  get settlementDays(): number | null
+}
+export type JsTrade = Trade
+
+/** r" A stream of trades: what `FixCodec.trades` answers. */
+export declare class Trades {
+  /**
+   * Advance the stream: the next product, or `null` at its end.
+   *
+   * A message the door refused throws here and the stream
+   * continues on the next call; a failure behind the stream
+   * throws once, in place of the end.
+   */
+  next(): IteratorResult<Trade>
+}
+export type JsTrades = Trades
 
 /**
  * One instant coupled with one digest.
@@ -6261,6 +7345,47 @@ export interface IcebergOptionsInput {
   compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */
   dataMimeType?: MimeTypeInput
+}
+
+/**
+ * One lane a quote states, as the plain object JavaScript reads: what the
+ * quoter would pay or be paid, and for how much, both above zero.
+ */
+export interface MarketLaneView {
+  /** The price of the lane, as decimal text. */
+  px: string
+  /** The size quoted at it, as decimal text. */
+  qty: string
+}
+
+/** One level of a ladder, as the plain object JavaScript reads. */
+export interface MarketLevelView {
+  /** The price of the level, as decimal text. */
+  px: string
+  /**
+   * The size resting at it, as decimal text: what the orders and quote
+   * lanes there have left, summed.
+   */
+  qty: string
+  /** How many orders and quote lanes rest at it. */
+  count: number
+}
+
+/**
+ * One party to a trade, as the plain object JavaScript reads.
+ *
+ * FIX's `Parties` occurrence, held as the text the venue stated: the role
+ * as the message spells `PartyRole(452)`, the identifier `PartyID(448)`,
+ * and the scheme `PartyIDSource(447)` issued it under, empty where none
+ * was stated.
+ */
+export interface MarketPartyView {
+  /** The role the party plays, as the message spells it. */
+  role: string
+  /** The party's identifier under the source that issued it. */
+  id: string
+  /** The scheme the identifier is issued under; empty where none. */
+  source: string
 }
 
 /** One field-metadata key/value pair. */

@@ -155,6 +155,7 @@ mod global;
 mod group_plan;
 mod identity;
 mod latest;
+mod market;
 mod memo;
 mod messages;
 mod msg;

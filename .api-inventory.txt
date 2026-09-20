@@ -968,6 +968,26 @@ impl FixRegistry
 ### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
 pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`, each capture named for the field it fills; kept ULBridge's because the line shape is the product's)
 
+### yggdryl::fix::market  [rust/src/fix/market.rs]
+impl FixCodec  (the FIX reading of the market's products, one door per product over a stream of messages, one stream of every statement, and one door over an Arrow reader of message rows; every door runs `lifecycle` first so a statement carries what its message's chain folded forward, folds the statements one message logged at two hops makes into one naming both messages among its sources - `market::Folded` - then chains the statements of one product as the lifecycle chains messages - `market::Walked`; errors move through in source order, exhaustion is fused; nothing here reads a protocol into `market/`, which stays a vocabulary)
+  pub fn orders<I>(&self, messages: I) -> impl Iterator<Item = Result<OrderData>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one statement per message stating an order - a placement `D`, a replace `G`, a cancel `F`, an execution report `8` against it, a cancel reject `9` - the chain the venue's `OrderID`, else the `OrigClOrdID` a request is about, else the `ClOrdID`; the state `OrdStatus(39)` else `ExecType(150)`, `00UNKNOWN` where neither; the stop price `StopPx(99)` and the type `OrdType(40)`)
+  pub fn executions<I>(&self, messages: I) -> impl Iterator<Item = Result<ExecutionData>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one per execution report `8` stating a `LastQty(32)` above zero, read out of `statements` so each fill takes its chain from the order statement the same report makes once that is walked - which is what joins the execution table to the order table on `crossuuid` - then walked as every product is)
+  pub fn trades<I>(&self, messages: I) -> impl Iterator<Item = Result<TradeData>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one per execution report `8` or trade capture report `AE` stating a quantity that traded, the two sides' reports of one match in one chain under `TrdMatchID(880)`, else `TradeID(1003)`, else `TradeReportID(571)`, else the `ExecID(17)`; the state `ExecType(150)`, never the order's status; `TradeDate(75)`, `SettlDate(64)` and the `Parties` group read)
+  pub fn quotes<I>(&self, messages: I) -> impl Iterator<Item = Result<QuoteData>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one per quote `S`, quote status report `AI` and quote cancel `Z`, the chain `QuoteID(117)` else `QuoteReqID(131)`; a cancel ends it with `90CANCELED`; a lane priced in no currency of its own is priced in the quote's; `ValidUntilTime(62)` is the expiration)
+  pub fn statements<I>(&self, messages: I) -> impl Iterator<Item = Result<Statement>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (every statement a stream of messages makes, in instant order: the lifecycle first, then the orders' walk and the quotes' walk - which cannot share one, since an order and a quote spelling one identifier would take each other's place in it - merged by instant, the orders of one instant first, and each fill an execution report states yielded right after the order statement the same report makes, in that order's chain; trades are not among them, since the fill is the print and the trade of the same report would print it again; a message the lifecycle refuses is yielded first, in the order met)
+  pub fn books<I>(&self, messages: I, depth: u32, snapshot_ns: i64) -> Result<impl Iterator<Item = Result<BookData>> + use<I>> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (`market::BookIterator` over `statements`: one book per symbol per instant the symbol was touched at with a step of zero, one per grid step at its closing state with a positive one, to `depth` levels per side, chained per symbol; refuses `InvalidRecord` naming `depth` for zero and `snapshot_ns` for a negative step, both being declarations)
+  pub fn orders_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (`orders` over batches of message rows read by `messages`, written as batches of order rows under `OrderData::field`, closing on the codec's batch bounds; a row that is not a FIX row and the source reader's own failure are error batches)
+  pub fn executions_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (under `ExecutionData::field`)
+  pub fn trades_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (under `TradeData::field`)
+  pub fn quotes_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (under `QuoteData::field`)
+  pub fn books_arrow_reader(&self, source: BatchReader, depth: u32, snapshot_ns: i64) -> Result<BatchReader>  (under `BookData::field(depth)`; refuses what `books` refuses)
+impl FixMsg  (what a product writes back: the two products one message states exactly, the three no one message states refused with one sentence)
+  pub fn from_order(codec: &FixCodec, order: &impl Order) -> Result<Self>  (a new order single, `35=D`: `ClOrdID(11)` from the name the order goes by as `clordid`, else its chain, refused naming `clordid` where it has neither; `OrderID(37)` and `OrigClOrdID(41)` where known; the instrument - `Symbol(55)`, `SecurityID(48)` and `SecurityIDSource(22)` under the first code it is known by - and `SecurityExchange(207)`; `OrdType(40)` the type the order states, else what its `pricing` implies; `OrderQty(38)`, `Price(44)`, `StopPx(99)`, `TimeInForce(59)`, `ExpireTime(126)`; the instant as `TransactTime(60)` and `SendingTime(52)`; the order its one source; parsed through `parse_pairs`, so it reads back as the order)
+  pub fn from_execution(codec: &FixCodec, execution: &impl Execution) -> Result<Self>  (an execution report, `35=8`, `150=F`: `ExecID(17)` from the execution's own name, refused naming `execid` where it has none; `OrderID(37)`, `ClOrdID(11)`, `TrdMatchID(880)` where known; `OrdStatus(39)` as far as a fill can say it - `1` where the state is live, `2` where done, `4` where cancelled, `8` where failed; the instrument, `LastMkt(30)`, the side, `LastPx(31)`, `LastQty(32)`, the currency and unit; the instant as `TransactTime(60)` and `SendingTime(52)`; the execution its one source)
+  pub fn from_quote(_codec: &FixCodec, _quote: &impl Quote) -> Result<Self>  (always `InvalidRecord` naming `quote`: a quote is a reading of the quote message and its updates, and no one message states which of them a reading came from, so the crate does not guess)
+  pub fn from_trade(_codec: &FixCodec, _trade: &impl Trade) -> Result<Self>  (always `InvalidRecord` naming `trade`: a trade is a reading of the executions that matched, and no one message states a match)
+  pub fn from_book(_codec: &FixCodec, _book: &impl Book) -> Result<Self>  (always `InvalidRecord` naming `book`: a book is a reading of every order and quote resting at an instant, and no one message states a ladder)
+
 ### yggdryl::graph  [rust/src/graph/mod.rs]
 pub mod element;
 pub mod event;
@@ -1024,6 +1044,7 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
   fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: records the predecessor's identity and instant, the place after the predecessor's (saturating), forces the predecessor's cross code where this one's differs with the cross codes brought in step, takes the names the predecessor went by that this element lacks, descends from the predecessor's `lineage` - its parents then the predecessor, oldest first, each once - and folds the lifecycle, the sources staying its own; nothing for its own predecessor, one that happened after it, or where nothing moves; finalized)
   fn restating(self, live: &Self) -> Self where Self: Sized  (provided, and overridden by every market event - `FixMsg` and `MarketEventData` - to take the market's place in the chain too: the step before it, `prevpx` and `prevqty`, and what the chain is about where this reading said nothing of it. This event as another statement of `live` - the same instant and content read a second time, one message logged at every hop - taking the place `live` holds in its chain: its predecessor, position and snapshot, the chain's cross code, the names and parents it knows - never its sources - the lifecycle folded, then finalized, so both statements finalize to one identity and the chain grows by nothing; the caller establishes the twin by the identity `live` arrived under, which `EventIterator` records)
   fn merging(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge, then the later statement's instant and code, the further place in the chain, the folded lifecycle, and this element's predecessor and snapshot instant else the other's; nothing for another element or a fold that changes nothing; finalized)
+  fn is_alive(&self) -> bool  (provided, and the one reading of liveness: a state that can still change and no expiration past this event's own instant; what a walk keeps an element live by, what retires it, and what a ladder rests an order on)
   fn fold_lifecycle(&mut self, other: &Self) -> bool where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states; whether any moved)
   fn finalized(&mut self, hashcode: u64)  (provided: records the code, resets the current identity to `time_uuid` - kept where the instant has no UUIDv7 - and the cross element to `cross_uuid` over it; what an implementor's `Element::finalize` hands its content's digest to)
   fn digest_event(&self) -> Xxh3  (provided: `Element::digest` continued with the state, the place in the chain and the predecessor's identity; no instant)
@@ -1061,6 +1082,9 @@ pub trait MarketElement: Element  (an element that stands in a market: a price, 
   fn get_prevpx(&self) -> Option<Decimal18>  // and set_prevpx(Option<Decimal18>), get_prevqty() / set_prevqty(Option<Decimal18>): the price and quantity stated before this element - its own closing price where it carries one, else what the statement it follows settled on, which a walk fills
   fn fill_market(&mut self) where Self: Sized  (provided: every fact the element implies, read off the ones it states and nothing invented - the price is its own, else the last trade, else what it averaged, else its own side's lane; the quantity its own, else the last trade, else that lane's, with CumQty and LeavesQty deliberately off that ladder because together they are the quantity ordered and the dictionary already says so; the currency and the unit are its own, else that lane's; then `fill_lanes`. Idempotent, and what an implementor's `Element::finalize` runs before it digests)
   fn fill_lanes(&mut self) where Self: Sized  (provided: fills the lane the side implies - `Side::is_bid` the bid, `Side::is_ask` the ask, neither nothing - from the price, the currency, the quantity and the unit where the lane states nothing of its own; only a stated fact fills: a zero price or quantity, no currency, an empty unit fill nothing; what a lane states stands)
+  fn mid(&self) -> Option<Decimal18>  (provided: `(bidpx + askpx) / 2` where both lanes are quoted above zero, a lane at zero being no lane; nothing on a one-sided or empty element)
+  fn spread(&self) -> Option<Decimal18>  (provided: `askpx - bidpx` likewise - zero where the lanes lock, negative where they cross, both stated rather than refused)
+  fn notional(&self) -> Option<Decimal18>  (provided: `px * qty` at eighteen places truncated toward zero; nothing where either is zero or the product is past the precision)
   fn digest_market(&self) -> Xxh3  (provided: `Element::digest` continued with the price, the currency, the quantity, the unit, the side, the last trade, the average, the progress, the time in force, whether it trades and the ticker where each is stated, each instrument code and the market named, and each lane fact stated; the previous step is left out, as the predecessor's instant and identity are)
   fn merging_market(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge, then this element's price, quantity, unit and lane facts standing, and the currency, the side and each instrument code the better of the two as `CodeValue::merge_with` reads them, this element leading; nothing for another element or a fold that changes nothing; finalized)
 pub trait MarketEvent: Event + MarketElement  (blanket over every type that is both; nothing to implement)
@@ -1107,6 +1131,183 @@ pub struct EventIterator<E, I>  (the one walk: events read in their order, each 
   pub fn alive(&self) -> impl Iterator<Item = &E>  (the elements still alive after what was read, one per identity, in no order)
   impl<E: Event + Clone, I: Iterator<Item = E>> Iterator for EventIterator<E, I>  (Item = E; size_hint is the source's)
   impl<E: Event + Clone, I: FusedIterator<Item = E>> FusedIterator for EventIterator<E, I>
+
+### yggdryl::market  [rust/src/market/mod.rs]
+pub mod book, execution, iterator, order, product, quote, statement, symbol, trade;  (the market's products: what the market did, read out of what a venue said; five products, one file each, each a trait beside its holder, and what reads books beside them; each holder is a value of this crate with its own layout, Arrow row and identity, a graph event exactly as a message is, so its table joins the message table on `srcuuids` to `curruuid` and its own on `prevuuid` and `parentuuids`; nothing here reads a protocol - the FIX reading lives beside the codec, `fix::market`)
+pub use book::{Book, BookData, Level};
+pub use execution::{Execution, ExecutionData};
+pub use iterator::BookIterator;
+pub use order::{Order, OrderData, Pricing};
+pub use product::{Cells, Folded, MarketColumn, Product, RowPlan, Walked, arrow_reader, read_arrow_reader};
+pub use quote::{Quote, QuoteData};
+pub use statement::Statement;
+pub use symbol::Symbol;
+pub use trade::{Party, Trade, TradeData};
+
+### yggdryl::market::product  [rust/src/market/product.rs]
+pub enum MarketColumn  (the twenty-seven columns the market's facts are stated in, one per fact `MarketElement` names, typed as the thing held - decimal128(38, 18) for a price or a quantity, the code leaf for a currency, a side, an instrument code or a MIC, utf8 for a unit, a ticker and a TIF code, bool for tradable: Px, Currency, Qty, Unit, Side, Tif, Tradable, SymbolTicker, AvgPx, CumQty, LeavesQty, LastPx, LastQty, IsinCode, CusipCode, SedolCode, BloombergCode, CfiCode, MicCode, BidPx, BidCurrency, BidQty, BidUnit, AskPx, AskCurrency, AskQty, AskUnit; Clone, Copy, Debug, Eq, Hash, PartialEq)
+  pub const fn name(self) -> &'static str  (the fact's, as the trait spells it)
+  pub const fn display(self) -> &'static str
+  pub const fn description(self) -> &'static str
+  pub fn datatype(self) -> DataType
+  pub const fn nullable(self) -> bool  (a currency and a side are never absent - `XXX` and `UNKNOWN` where none - and everything else is)
+  pub fn field(self) -> Result<Field>
+  pub fn fact<E: MarketElement + ?Sized>(self, element: &E) -> Option<Scalar>  (what the element states under the column, through the trait's getter; None where it states nothing)
+  pub fn record<E: MarketElement + ?Sized>(self, element: &mut E, value: &Scalar)  (states the cell on the element through the trait's setter; a null clears)
+pub struct RowPlan  (where each of a product's columns sits in one row's Struct - the sixteen event columns, the market columns it publishes, its own - compiled once from a schema and read by position; a column the schema does not hold sits nowhere and reads as null, so a row projected down to fewer columns still reads as the product it states; Clone, Debug)
+  pub fn compile<P: Product>(field: &Field) -> Result<Self>  (refuses `InvalidRecord` naming the field where it is not a Struct)
+pub struct Cells<'a>  (one row read under a `RowPlan`: the cells by the column they sit in; Clone, Copy, Debug)
+  pub const fn new(plan: &'a RowPlan, row: &'a [Scalar]) -> Self
+  pub fn record<P: Product>(&self, product: &mut P)  (records the sixteen event columns and every market column the product publishes through the traits, then `fill_market`, so a derived fact is re-derived rather than stored twice)
+  pub fn own(&self, index: usize) -> &'a Scalar  (the cell of the product's own column at `index` in `Product::OWN`, null where the row does not hold it)
+pub trait Product: MarketEvent + Clone + Send + Sync + 'static  (what a product answers about its row, and the row it gets for it: the sixteen event columns first, `EventColumn::ALL`, then the market columns it publishes, then its own, under a non-null Struct named `NAME`; implemented by OrderData, ExecutionData, TradeData, QuoteData and BookData)
+  const NAME: &'static str  (the name the row root and a table of it take)
+  const DISPLAY: &'static str
+  const DESCRIPTION: &'static str
+  const MARKET: &'static [MarketColumn]  (the market columns the product publishes, in the order they follow the sixteen)
+  const OWN: &'static [&'static str]  (the names of the columns only this product has, in the order they follow the market columns; empty for a product whose facts are exactly what the traits name)
+  fn own_fields(&self) -> Result<Vec<Field>>  (the columns only this product has, in `OWN`'s order)
+  fn own_cells(&self, cells: &mut Vec<Scalar>) -> Result<()>  (this product's own cells, in `OWN`'s order, pushed onto `cells`)
+  fn from_cells(cells: &Cells<'_>) -> Result<Self>  (the product one row's cells state; refuses `InvalidRecord` naming the column a cell states what the product refuses)
+  fn row_field(&self) -> Result<Field>  (provided: the row this product publishes)
+  fn into_row(&self) -> Result<Scalar>  (provided; borrowed as `FixMsg::into_row` is: every cell the raw value its column types, null where the product states no fact)
+  fn from_row(field: &Field, row: &Scalar) -> Result<Self>  (provided: the row canonicalized under the field, the plan compiled, then `from_cells`)
+pub struct Folded<E, I>  (the fold that makes two statements of one product one: over a stream of `Result<E>` in instant order, the statements of one instant are held while the instant stands, one arriving under the identity a held one has - the same product read out of the same message logged at another hop - merged into it by `Element::merge_with`, naming both among its sources, and each yielded once the instant advances or the source is done; an error moves through in its place; Debug)
+  pub fn new(statements: impl IntoIterator<IntoIter = I>) -> Self
+  impl<E: Event + Clone, I: Iterator<Item = Result<E>>> Iterator for Folded<E, I>  (Item = Result<E>; fused)
+pub struct Walked<E, I>  (the one walk, `graph::EventIterator`, over a fallible stream of statements: the `Ok` items walked, each stated as the one after the live statement of its chain, an `Err` item yielded in its place in the order the source had it and never advancing the walk; Debug)
+  pub fn new(statements: impl IntoIterator<IntoIter = I>, sorted: bool) -> Self  (`sorted` states that the statements arrive in their own order already; otherwise they are collected and stably sorted first, as `EventIterator::new` does)
+  impl<E: Event + Clone, I: Iterator<Item = Result<E>>> Iterator for Walked<E, I>  (Item = Result<E>; fused)
+pub fn arrow_reader<P, I>(field: &Field, products: I, batch_row_size: usize, batch_byte_size: u64) -> Result<BatchReader> where P: Product, I: IntoIterator<Item = Result<P>>, I::IntoIter: Send + 'static  (the products as batches of their rows under `field`, each through `Product::into_row`, closing on `batch_row_size` rows or `batch_byte_size` bytes, whichever binds first, a zero of either no bound of that kind; an error item yields the completed prefix, then the error, and fuses the reader)
+pub fn read_arrow_reader<P: Product>(source: BatchReader) -> Result<impl Iterator<Item = Result<P>> + Send + use<P>>  (the products a stream of batches of their rows holds, each row through `Product::from_cells` under a plan compiled once from the stream's schema; one batch held at a time; the source reader's own failure an error item that fuses the stream)
+
+### yggdryl::market::symbol  [rust/src/market/symbol.rs]
+pub struct Symbol  (the key a book is read under: the text that names an instrument across the venues that trade it, or `GLOBAL` for no instrument; the text orders bytewise, which is the order books of one instant are yielded in, and a `BookData`'s own key is its `crosscode`, `Symbol::of` being the rule for a statement; Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
+  pub const GLOBAL: Self  (the symbol of no instrument, and the one symbol a global book is read under; spelled as the word, because no standard reserves a code for it)
+  pub fn new(text: &str) -> Self  (trimmed; blank text is `GLOBAL`)
+  pub fn of<E: MarketElement + ?Sized>(element: &E) -> Self  (the ISIN, else the ticker it is known by, else the CUSIP, else the SEDOL, else the Bloomberg identifier, else `GLOBAL`; a blank ticker names nothing)
+  pub fn as_str(&self) -> &str
+  pub fn is_global(&self) -> bool
+  impl Default for Symbol  (the global symbol)
+  impl fmt::Display, AsRef<str> for Symbol
+
+### yggdryl::market::statement  [rust/src/market/statement.rs]
+pub enum Statement  (one statement of one product - Order(OrderData) | Quote(QuoteData) | Execution(ExecutionData) | Trade(TradeData) - so a mixed stream is a stream of market events; every accessor and mutator reaches the arm's own event, its order is its instant, and the four readings a walk takes by value are the arm's own for two statements of one arm and refuse across arms, because an order is never another statement of a quote; Clone, Debug, PartialEq)
+  pub const fn event(&self) -> &MarketEventData  (the event the statement is, whichever product)
+  pub const fn is_maker(&self) -> bool  (an order or a quote: what rests on a ladder)
+  pub const fn is_print(&self) -> bool  (an execution or a trade: what prints against one)
+  impl From<OrderData>, From<QuoteData>, From<ExecutionData>, From<TradeData> for Statement
+  impl Element, Event, MarketElement for Statement  (so MarketEvent; `restating` across arms answers the statement unchanged, which no walk produces, since two arms never share an identity)
+
+### yggdryl::market::iterator  [rust/src/market/iterator.rs]
+pub struct BookIterator<S, I>  (one book per symbol per instant, read out of a stream of statements: the statements of one instant buffered and applied together, the live orders and quotes of each symbol kept as its ladders under the identity their chain shares, the prints kept as its last trade, volume and average price, and the book of every symbol an instant touched read once the stream moves past it, in symbol order. An order's former lanes leave the ladder and its one lane rests where it still rests; a live order stating nothing of the ladder keeps its lanes and a dead one leaves; a quote rests both lanes it quotes, a restatement replacing both and a lane withdrawn to zero leaving; a print states the last price and size, joins the volume and the turnover, never rests, and one the venue busted - 40TRDCXL - moves nothing but the count; an order past its expiry leaves at the first instant closed at or after it. A statement keys the symbol of the instrument it names, every code it named registered as an alias of that symbol, a print keying under the maker it fills where one rests and a statement naming no instrument keying `Symbol::GLOBAL`. Held state: one maker per live order or quote and one level per distinct resting price, per symbol, the statements of one open instant, and the books of one closed instant until they are yielded; Debug)
+  pub fn new(statements: impl IntoIterator<IntoIter = I>, depth: NonZeroU32, sorted: bool) -> Self  (`sorted` is the caller's word that the statements arrive in instant order, which a walked stream does; otherwise they are collected and stably sorted first, the errors met yielded first in their order)
+  pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self  (a grid aligned on the epoch: one book per symbol per step it was touched in, the step's closing state, dated at the last instant that moved the symbol and stamped with the step; zero or less takes the grid away, which is one book per instant)
+  pub fn with_symbol(mut self, symbol: Symbol) -> Self  (every statement keyed under `symbol` instead of the one it names, so one book stands for the whole stream; `Symbol::GLOBAL` is the global book)
+  pub const fn snapshot_ns(&self) -> Option<i64>
+  pub const fn depth(&self) -> NonZeroU32
+  pub const fn symbol(&self) -> Option<&Symbol>
+  impl<S: Into<Statement>, I: Iterator<Item = Result<S>>> Iterator for BookIterator<S, I>  (Item = Result<BookData>; a source error is yielded where it is met and neither closes the instant nor moves a ladder; a statement before the open instant is refused naming `currunix` and moves nothing, because a ladder cannot be rewound; fused)
+
+### yggdryl::market::order  [rust/src/market/order.rs]
+pub enum Pricing  (what an order prices: Market | Limit | Stop | StopLimit, read off the type an order states and never stored; Clone, Copy, Debug, Eq, Hash, PartialEq)
+  pub fn from_code(code: &str) -> Option<Self>  (the pricing one `OrdType(40)` code spells, where it spells one of the four - `1`, `2`, `3`, `4` - and nothing for another type, a pegged or a market-on-close order among them)
+  pub const fn code(self) -> &'static str  (the `OrdType(40)` code that spells this pricing)
+pub trait Order: MarketEvent  (what an order answers beyond the market's facts, and what those imply; implemented by OrderData)
+  fn get_stoppx(&self) -> Option<Decimal18>  (the stop price, where the order states one)
+  fn set_stoppx(&mut self, stoppx: Option<Decimal18>)
+  fn get_ordtype(&self) -> Option<&str>  (the type the order states, as the wire spells it)
+  fn set_ordtype(&mut self, ordtype: Option<String>)
+  fn pricing(&self) -> Option<Pricing>  (provided: the stated type read as one of the four, nothing for a type outside them; where it states none, what the limit and the stop imply - a limit alone a limit order, a stop alone a stop order, both a stop limit, neither a market order)
+  fn remaining(&self) -> Decimal18  (provided: what the order states is left; else what it ordered less what filled, floored at zero; else what it ordered)
+  fn filled(&self) -> Decimal18  (provided: what it states filled; else what it ordered less what is left; else nothing)
+  fn filled_ratio(&self) -> Option<Decimal18>  (provided: `filled / qty`; nothing where nothing was ordered)
+  fn is_resting(&self) -> bool  (provided: alive, on a side that takes a lane, priced at a limit above zero, with something left; a market order, a stop until it triggers, a cross and a finished order rest nothing)
+pub struct OrderData  (one statement of an order: the chain the venue's identifiers name, its state, the quantity ordered against what filled and what is left, its price ladder, the type it states, its side, its instrument and how long it stands; Clone, Debug, Default, PartialEq)
+  pub fn at(unix: i64) -> Self  (an order stated at `unix`, nanoseconds since the epoch, stating nothing else yet)
+  pub fn field() -> Result<Field>  (the row every order publishes: the sixteen, then px, avgpx, qty, cumqty, leavesqty, side, currency, unit, tif, tradable, symbolticker, isincode, cusipcode, sedolcode, bloombergcode, cficode, miccode, then stoppx and ordtype)
+  pub const fn event(&self) -> &MarketEventData
+  impl Element, Event, MarketElement for OrderData  (so MarketEvent; `with_previous` is the timed market reading and then the order's terms the predecessor stated where this statement restates none - the limit, the quantity, the stop, the type, what filled and at what average - because what an order was placed as does not vanish when a report is silent about it)
+  impl Order, Product for OrderData  (NAME `order`; OWN `stoppx` decimal128(38, 18) nullable, `ordtype` utf8 nullable)
+
+### yggdryl::market::execution  [rust/src/market/execution.rs]
+pub trait Execution: MarketEvent  (what an execution answers beyond the market's facts: where the fill left its order; implemented by ExecutionData)
+  fn is_partial(&self) -> bool  (provided: the order's status after the fill is still live)
+  fn completes(&self) -> bool  (provided: the order's status after the fill is done)
+pub struct ExecutionData  (one fill: the price and quantity that traded, `px` and `qty`, the execution's own identifier among its names, and the order it belongs to as its chain; exactly what the traits name, so it holds a `MarketEventData` and nothing beside; Clone, Debug, Default, PartialEq)
+  pub fn at(unix: i64) -> Self
+  pub fn field() -> Result<Field>  (the sixteen, then px, qty, side, currency, unit, symbolticker, isincode, cusipcode, sedolcode, bloombergcode, cficode, miccode)
+  pub const fn event(&self) -> &MarketEventData
+  impl Element, Event, MarketElement for ExecutionData  (so MarketEvent)
+  impl Execution, Product for ExecutionData  (NAME `execution`; OWN empty)
+
+### yggdryl::market::quote  [rust/src/market/quote.rs]
+pub trait Quote: MarketEvent  (what a quote answers beyond the market's facts: its lanes, read as lanes; everything provided, since a quote's facts are exactly the lanes `MarketElement` names; implemented by QuoteData)
+  fn bid(&self) -> Option<(Decimal18, Decimal18)>  (the bid lane where it is quoted: a price and a size both stated above zero, a zero price or size being no quote on that side)
+  fn ask(&self) -> Option<(Decimal18, Decimal18)>
+  fn lane(&self, side: &Side) -> Option<(Decimal18, Decimal18)>  (the lane `side` takes; nothing for one that takes none)
+  fn is_two_sided(&self) -> bool
+pub struct QuoteData  (one statement of a quote: one or two lanes, each a price, a size, a currency and a unit, under the quote's own identifiers and its validity, `expirunix`; exactly what the traits name, so it holds a `MarketEventData` and nothing beside; a one-sided quote's `px` is the lane its side states, filled by the traits and never a column; Clone, Debug, Default, PartialEq)
+  pub fn at(unix: i64) -> Self
+  pub fn field() -> Result<Field>  (the sixteen, then bidpx, bidqty, bidcurrency, bidunit, askpx, askqty, askcurrency, askunit, symbolticker, isincode, cusipcode, sedolcode, bloombergcode, cficode, miccode)
+  pub const fn event(&self) -> &MarketEventData
+  impl Element, Event, MarketElement for QuoteData  (so MarketEvent)
+  impl Quote, Product for QuoteData  (NAME `quote`; OWN empty)
+
+### yggdryl::market::trade  [rust/src/market/trade.rs]
+pub struct Party  (FIX's `Parties` occurrence held as the text the venue stated: the role as the message spells `PartyRole(452)`, a code or a word, the identifier `PartyID(448)`, the source `PartyIDSource(447)`, empty where none; text rather than a code because who names a party and how is the venue's to say; Clone, Debug, Default, Eq, Hash, PartialEq)
+  pub role: String
+  pub id: String
+  pub source: String
+pub trait Trade: MarketEvent  (what a trade answers beyond the market's facts: its clocks and its parties, and what they imply; implemented by TradeData)
+  fn get_tradedate(&self) -> Option<i32>  (days since the epoch)
+  fn set_tradedate(&mut self, days: Option<i32>)
+  fn get_settldate(&self) -> Option<i32>
+  fn set_settldate(&mut self, days: Option<i32>)
+  fn get_parties(&self) -> &[Party]  (in the order the report states them)
+  fn set_parties(&mut self, parties: Vec<Party>)  (replaced whole)
+  fn party_by_role(&self, role: &str) -> Option<&Party>  (provided: the first party whose role is `role`, exactly as the report spells it)
+  fn settlement_days(&self) -> Option<i32>  (provided: how many days after the trade date it settles, where both are stated)
+pub struct TradeData  (one statement of a trade: the settled transaction an execution reports - the matched quantity at its price, its identifier, its parties and its clocks; the chain the match's; the identity the market's facts, the two dates and the parties digested with the event's own, so a hop that added a party states a different trade under the same match; Clone, Debug, Default, PartialEq)
+  pub fn at(unix: i64) -> Self
+  pub fn field() -> Result<Field>  (the sixteen, then px, qty, side, currency, unit, symbolticker, the six codes, then tradedate date32, settldate date32, parties list<party: struct<role utf8, id utf8, source utf8?>>, all three nullable)
+  pub const fn event(&self) -> &MarketEventData
+  impl Element, Event, MarketElement for TradeData  (so MarketEvent)
+  impl Trade, Product for TradeData  (NAME `trade`; OWN tradedate, settldate, parties)
+
+### yggdryl::market::book  [rust/src/market/book.rs]
+pub struct Level  (one level of a ladder: the size resting at one price, and how many orders and quote lanes rest there; Clone, Copy, Debug, Eq, Hash, PartialEq)
+  pub px: Decimal18
+  pub qty: Decimal18
+  pub count: u64
+pub trait Book: MarketEvent  (what a book answers beyond the market's facts: its two ladders, how many statements made it, and what the ladders imply - every reading computed on the call and stored nowhere, `b` and `a` the top prices and `Qb` and `Qa` the top sizes; implemented by BookData)
+  fn get_depth(&self) -> NonZeroU32  (how many levels per side the book was declared to hold)
+  fn get_bids(&self) -> &[Level]  (best first, the highest price leading)
+  fn get_asks(&self) -> &[Level]  (best first, the lowest price leading)
+  fn set_bids(&mut self, levels: Vec<Level>) -> Result<()>  (sorted best first, one level per price, at most the depth; refuses `InvalidRecord` naming `bids` otherwise, the ladder unchanged)
+  fn set_asks(&mut self, levels: Vec<Level>) -> Result<()>  (likewise naming `asks`)
+  fn get_updates(&self) -> u64  (how many statements the chain has applied since it began, a print that moved nothing among them)
+  fn set_updates(&mut self, updates: u64)
+  fn best_bid(&self) -> Option<&Level>  (provided)
+  fn best_ask(&self) -> Option<&Level>  (provided)
+  fn level(&self, side: &Side, index: usize) -> Option<&Level>  (provided: the level at `index` of the ladder `side` takes, nothing past the ladder or for a side that takes no lane)
+  fn is_two_sided(&self) -> bool  (provided)
+  fn is_locked(&self) -> bool  (provided: the two tops at one price, a spread of zero)
+  fn is_crossed(&self) -> bool  (provided: the best bid above the best ask, a negative spread)
+  fn spread_bps(&self) -> Option<Decimal18>  (provided: `spread * 10 000 / mid`; nothing where there is no mid or it is zero)
+  fn microprice(&self) -> Option<Decimal18>  (provided: `(b * Qa + a * Qb) / (Qb + Qa)`, the mid pulled toward the side with less resting on it; nothing where either top is missing)
+  fn imbalance(&self) -> Option<Decimal18>  (provided: `(Qb - Qa) / (Qb + Qa)` at the tops, in `[-1, 1]`, a missing top counting as no size; nothing where both are missing)
+  fn imbalance_to_depth(&self, levels: usize) -> Option<Decimal18>  (provided: the same over the sizes summed across the first `levels` of each ladder)
+  fn bid_size(&self) -> Decimal18  (provided, saturating)
+  fn ask_size(&self) -> Decimal18  (provided, saturating)
+  fn bid_count(&self) -> u64  (provided, saturating)
+  fn ask_count(&self) -> u64  (provided, saturating)
+pub struct BookData  (the ladder for one instrument at one instant, to a declared depth: the bids best first and the asks best first, the top of each the lane the traits answer; the chain the symbol's and flat - a book follows the one before it and descends from it alone, because a stream reading one book per instant would otherwise carry a lineage as long as itself in every row; `currunix` when the ladder was read and `snapunix` the grid step it closed; the identity what its content digests to, the two ladders and the count among it; each ladder in the row a fixed-size list at the declared depth, one nullable level per slot, so a depth-ten book is a fixed-width row; Clone, Debug, Default, PartialEq)
+  pub fn at(unix: i64, depth: NonZeroU32) -> Self  (a book read at `unix` to `depth` levels per side, stating no level yet)
+  pub fn field(depth: NonZeroU32) -> Result<Field>  (the sixteen, then lastpx, lastqty, avgpx, cumqty, tradable, currency, unit, symbolticker, the six codes, then bids and asks, each fixed_size_list<level: struct<px, qty, count>?, depth> required, and updates uint64 required)
+  pub const fn event(&self) -> &MarketEventData
+  impl Element, Event, MarketElement for BookData  (so MarketEvent; `finalize` brings what the ladders imply in step with them - the lanes the tops, `px` the mid and `qty` what rests on both - before it digests, and `with_previous` is the flat following: the predecessor's identity, instant and place, the predecessor alone as the parent, and its mid and resting size as the step before, taking nothing of what the chain is about, because a book states every fact it knows on every statement)
+  impl Book, Product for BookData  (NAME `book`; OWN bids, asks, updates; `from_cells` takes the depth from the row's list width)
 
 ### yggdryl::hashing  [rust/src/hashing/mod.rs]
 (no public items: the private stable-hash adapters the digests share; xxhash and txhash are root modules with sections of their own)

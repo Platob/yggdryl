@@ -79,6 +79,7 @@ pub mod json;
 mod listing;
 pub mod local;
 pub mod mapping;
+pub mod market;
 pub mod media;
 mod media_type;
 mod merge;

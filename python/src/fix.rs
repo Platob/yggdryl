@@ -33,6 +33,10 @@ use yggdryl::{
 
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
+use crate::market::{
+    PyBook, PyBooks, PyExecution, PyExecutions, PyOrder, PyOrders, PyQuote, PyQuotes, PyStatements,
+    PyTrade, PyTrades,
+};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text_line::{PyTextLine, core_path_from_value};
@@ -89,7 +93,7 @@ fn repr_text(value: Option<&str>) -> String {
 
 /// A native code - a currency, a side, a state, an identifier - as the
 /// code `Scalar` its datatype is.
-fn code_scalar<C>(code: &C) -> PyScalar
+pub(crate) fn code_scalar<C>(code: &C) -> PyScalar
 where
     C: Clone,
     Scalar: From<C>,
@@ -98,7 +102,7 @@ where
 }
 
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
-fn decimal_scalar(held: yggdryl::Decimal18) -> PyScalar {
+pub(crate) fn decimal_scalar(held: yggdryl::Decimal18) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
 }
 
@@ -200,7 +204,7 @@ fn registry_or_global(
 ///
 /// Absence is the mapping protocol's `KeyError` carrying the native message
 /// unchanged; everything else keeps the boundary's `ValueError`.
-fn absent(error: &CoreError) -> PyErr {
+pub(crate) fn absent(error: &CoreError) -> PyErr {
     if error.is_absent() {
         PyKeyError::new_err(error.to_string())
     } else {
@@ -955,16 +959,16 @@ impl PyMsgType {
 /// through the stage as an item. It ends the pull instead and lands here, and
 /// the stream raises it in place of the end it would otherwise answer.
 #[derive(Clone, Default)]
-struct Failed(Arc<Mutex<Option<PyErr>>>);
+pub(crate) struct Failed(Arc<Mutex<Option<PyErr>>>);
 
 impl Failed {
-    fn set(&self, error: PyErr) {
+    pub(crate) fn set(&self, error: PyErr) {
         if let Ok(mut held) = self.0.lock() {
             *held = Some(error);
         }
     }
 
-    fn take(&self) -> Option<PyErr> {
+    pub(crate) fn take(&self) -> Option<PyErr> {
         self.0.lock().ok().and_then(|mut held| held.take())
     }
 }
@@ -976,16 +980,19 @@ impl Failed {
 /// Exhaustion ends the pull. A failure, the iterable's own or the reading's,
 /// ends it too and lands in `failed`, so the stage sees a shorter stream and
 /// the wrapper around it raises what happened.
-struct Pulled<T> {
+pub(crate) struct Pulled<T> {
     items: Py<PyIterator>,
     read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
-    failed: Failed,
+    pub(crate) failed: Failed,
     done: bool,
 }
 
 impl<T> Pulled<T> {
     /// Hold `items`, or report that it is not iterable.
-    fn new(items: &Bound<'_, PyAny>, read: fn(&Bound<'_, PyAny>) -> PyResult<T>) -> PyResult<Self> {
+    pub(crate) fn new(
+        items: &Bound<'_, PyAny>,
+        read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
+    ) -> PyResult<Self> {
         Ok(Self {
             items: PyIterator::from_object(items)?.unbind(),
             read,
@@ -1034,7 +1041,7 @@ fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 }
 
 /// One message, refusing anything else where it is met.
-fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
+pub(crate) fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
     Ok(item.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone())
 }
 
@@ -1043,7 +1050,7 @@ fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
 /// The batch it would have landed in is being pulled by the Arrow reader
 /// rather than by a Python frame, so it travels as that reader's error and
 /// arrives where the batch would have.
-fn python_failure(error: PyErr) -> CoreError {
+pub(crate) fn python_failure(error: PyErr) -> CoreError {
     CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(error)))
 }
 
@@ -1162,7 +1169,7 @@ impl PyFixFieldIterator {
 /// and only through a List's item; a `Map` field keeps its mapping and every
 /// other value crosses untouched. Nothing is typed, ordered or validated
 /// here - that is `Field::canonicalize_value`'s work, on what this hands it.
-fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
+pub(crate) fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
     match field.dtype() {
         CoreDataType::Struct(_) => {
             let children = field.fields();
@@ -1368,6 +1375,67 @@ impl PyFixMsg {
         let schema = core_field_from_value(schema)?;
         let row = named_rows(&schema, from_py(row)?);
         CoreFixMsg::from_row(registry_or_global(registry)?, &schema, &row)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The new order single an order states: `35=D`, exactly.
+    ///
+    /// The order's `ClOrdID(11)` - the name it goes by, else its chain's
+    /// code - `OrderID(37)` and `OrigClOrdID(41)` where it goes by them,
+    /// the instrument and its market, the side, `OrdType(40)` from which of
+    /// the limit and the stop it states, the quantity, the prices, the
+    /// time in force, the expiry, and the instant as `TransactTime(60)`
+    /// and `SendingTime(52)`; the message names the order as its one
+    /// source. An order going by no client identifier and naming no chain
+    /// is a `ValueError` naming `clordid`.
+    #[staticmethod]
+    fn from_order(codec: &PyFixCodec, order: &PyOrder) -> PyResult<Self> {
+        CoreFixMsg::from_order(&codec.inner, order.as_inner())
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The execution report an execution states: `35=8`, `150=F`, exactly.
+    ///
+    /// The execution's `ExecID(17)`, the order it fills, the venue's match,
+    /// the order's status as far as a fill can say it, the instrument, its
+    /// market as `LastMkt(30)`, the side, `LastPx(31)` and `LastQty(32)`,
+    /// and the instant; the message names the execution as its one source.
+    /// An execution going by no `ExecID` is a `ValueError` naming `execid`.
+    #[staticmethod]
+    fn from_execution(codec: &PyFixCodec, execution: &PyExecution) -> PyResult<Self> {
+        CoreFixMsg::from_execution(&codec.inner, execution.as_inner())
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Refused, always: a quote is a reading of the quote message and its
+    /// updates, and no one message states which of them a reading came
+    /// from, so the crate does not guess. `ValueError` naming `quote`.
+    #[staticmethod]
+    fn from_quote(codec: &PyFixCodec, quote: &PyQuote) -> PyResult<Self> {
+        CoreFixMsg::from_quote(&codec.inner, quote.as_inner())
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Refused, always: a trade is a reading of the executions that
+    /// matched, and no one message states a match, so the crate does not
+    /// guess. `ValueError` naming `trade`.
+    #[staticmethod]
+    fn from_trade(codec: &PyFixCodec, trade: &PyTrade) -> PyResult<Self> {
+        CoreFixMsg::from_trade(&codec.inner, trade.as_inner())
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Refused, always: a book is a reading of every order and quote live
+    /// at a grid step, and no one message states a ladder, so the crate
+    /// does not guess. `ValueError` naming `book`.
+    #[staticmethod]
+    fn from_book(codec: &PyFixCodec, book: &PyBook) -> PyResult<Self> {
+        CoreFixMsg::from_book(&codec.inner, book.as_inner())
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1643,9 +1711,7 @@ impl PyFixMsg {
     /// A copy at the moment it is asked for, so a message written afterwards
     /// leaves it behind; the same facts are the message's own properties.
     fn event(&self) -> PyMarketEventData {
-        PyMarketEventData {
-            inner: self.inner.event().clone(),
-        }
+        PyMarketEventData::from_inner(self.inner.event().clone())
     }
 
     /// The standard header, typed and held still.
@@ -2531,6 +2597,170 @@ impl PyFixCodec {
         Ok(PyFixMessages::pulling(self.inner.lifecycle(pulled), failed))
     }
 
+    /// The orders a stream of messages states, chained, lazily.
+    ///
+    /// `messages` is any iterable of `FixMsg`, pulled once, in its own
+    /// order, and nothing is collected. The lifecycle first: the messages
+    /// are chained before a product is read, so a statement carries what
+    /// its message's chain folded forward. One statement per message that
+    /// states an order - a placement, a replace, a cancel, a report against
+    /// it, a cancel reject - each naming the message it was read from as
+    /// its source; a message logged at two hops states its order twice, and
+    /// the two fold into one naming both. The statements of one order are
+    /// then chained under the identifier the venue gave it exactly as
+    /// `lifecycle` chains messages. A message the walk refuses raises
+    /// `ValueError` where it is met and the stream continues; an item that
+    /// is not a `FixMsg`, or a failure of the iterable itself, raises as
+    /// itself and ends it.
+    fn orders(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyOrders> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyOrders::pulling(self.inner.orders(pulled), failed))
+    }
+
+    /// The fills a stream of messages reports, chained, lazily: one per
+    /// execution report stating a quantity that traded, each in the chain
+    /// of the order it fills. Read as `orders` reads: the lifecycle first,
+    /// twins folded, the walk after.
+    fn executions(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyExecutions> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyExecutions::pulling(self.inner.executions(pulled), failed))
+    }
+
+    /// The trades a stream of messages reports, chained, lazily: one per
+    /// execution report or trade capture report stating a quantity that
+    /// traded, the two sides' reports of one match in one chain under the
+    /// identifier the venue matched them by. Read as `orders` reads.
+    fn trades(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyTrades> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyTrades::pulling(self.inner.trades(pulled), failed))
+    }
+
+    /// The quotes a stream of messages states, chained, lazily: one
+    /// statement per quote, quote status report or quote cancel, the
+    /// statements of one quote in one chain under its identifier, a cancel
+    /// ending it. Read as `orders` reads.
+    fn quotes(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyQuotes> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyQuotes::pulling(self.inner.quotes(pulled), failed))
+    }
+
+    /// Every statement a stream of messages makes, in instant order,
+    /// lazily: the orders and the quotes, walked, and each fill in its
+    /// order's chain, each item an `Order`, a `Quote` or an `Execution`.
+    ///
+    /// The lifecycle first, then the orders' walk and the quotes' merged
+    /// by instant, the orders of one instant first, and each fill an
+    /// execution report states right after the order statement the same
+    /// report makes, in that order's chain. Trades are not among them: a
+    /// fill is the print, and the trade of the same report would print it
+    /// again. This is the stream `books` reads and the one `executions`
+    /// takes its fills from; a message the lifecycle refuses raises
+    /// `ValueError` first, in the order met. Pulled and raising as
+    /// `orders` does.
+    fn statements(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyStatements> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyStatements::pulling(self.inner.statements(pulled), failed))
+    }
+
+    /// The books a stream of messages makes, one per symbol per instant
+    /// the symbol was touched at, or per grid step with a grid, chained
+    /// flat per symbol, lazily.
+    ///
+    /// A `BookIterator` over `statements`: the orders and the quotes rest,
+    /// the fills print, and the book of every symbol an instant touched
+    /// is read once the stream moves past it, to `depth` levels per side,
+    /// in symbol order. `snapshot_ns` of zero, the default, reads one book
+    /// per instant; a positive step is a grid, the book of a step its
+    /// closing state, dated at the last instant that moved the symbol and
+    /// stamped with the step. A book's sources are the statements applied
+    /// since the book before it, and what rested any maker it retired. A
+    /// depth of zero is a `ValueError` naming `depth` and a negative step
+    /// one naming `snapshot_ns`, before a message is pulled.
+    #[pyo3(signature = (messages, depth, snapshot_ns = 0))]
+    fn books(
+        &self,
+        messages: &Bound<'_, PyAny>,
+        depth: u32,
+        snapshot_ns: i64,
+    ) -> PyResult<PyBooks> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let books = self
+            .inner
+            .books(pulled, depth, snapshot_ns)
+            .map_err(value_error)?;
+        Ok(PyBooks::pulling(books, failed))
+    }
+
+    /// `orders` over a stream of batches of message rows: the rows read as
+    /// messages by `messages`, the orders read out of them and written as
+    /// batches of order rows under `Order.field()`. A row that is not a
+    /// FIX row and the source reader's own failure are error batches.
+    fn orders_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.orders_arrow_reader(source))
+    }
+
+    /// `executions` over a stream of batches of message rows, written as
+    /// batches of execution rows under `Execution.field()`.
+    fn executions_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.executions_arrow_reader(source))
+    }
+
+    /// `trades` over a stream of batches of message rows, written as
+    /// batches of trade rows under `Trade.field()`.
+    fn trades_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.trades_arrow_reader(source))
+    }
+
+    /// `quotes` over a stream of batches of message rows, written as
+    /// batches of quote rows under `Quote.field()`.
+    fn quotes_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.quotes_arrow_reader(source))
+    }
+
+    /// `books` over a stream of batches of message rows, written as
+    /// batches of book rows under `Book.field(depth)`; what `books`
+    /// refuses is refused here, before a batch is read.
+    #[pyo3(signature = (source, depth, snapshot_ns = 0))]
+    fn books_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+        depth: u32,
+        snapshot_ns: i64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(
+            py,
+            self.inner.books_arrow_reader(source, depth, snapshot_ns),
+        )
+    }
+
     /// Writes a stream of batches of FIX rows back to the wire, answering the
     /// count of lines.
     ///
@@ -3004,6 +3234,13 @@ impl PyFixCapture {
 #[derive(Clone)]
 pub(crate) struct PyMarketEventData {
     inner: CoreMarketEventData,
+}
+
+impl PyMarketEventData {
+    /// Wrap an event the core holds, copied.
+    pub(crate) const fn from_inner(inner: CoreMarketEventData) -> Self {
+        Self { inner }
+    }
 }
 
 #[pymethods]

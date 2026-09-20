@@ -574,7 +574,7 @@ pub(crate) fn crosshash(crosscode: &str) -> u64 {
 
 /// Feeds one named fact to a digest: the name, the bytes, each closed by a
 /// byte no name or value holds, so two facts never read as one.
-fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
+pub(crate) fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
     state.write(name.as_bytes());
     state.write(&[0]);
     state.write(bytes);
@@ -990,7 +990,10 @@ pub trait Event: Element {
 
     /// The grid instant this event was read as the snapshot of, in the
     /// same count as [`Self::get_currunix`], where a walk over a grid took one
-    /// of it: the opening instant of the grid step its instant fell in.
+    /// of it: the opening instant of the grid step its instant fell in. An
+    /// event is the snapshot of the step it was the first of; a state read
+    /// at the close of a step - a book - is the snapshot of the step it
+    /// closed, dated at the last instant that moved it.
     fn get_snapunix(&self) -> Option<i64>;
 
     /// Records the grid instant this event is the snapshot of; `None`
@@ -1094,6 +1097,20 @@ pub trait Event: Element {
         }
         self.finalize();
         Some(self)
+    }
+
+    /// Whether this event can still be followed: its state can still
+    /// change, and it is not past its expiration - none stated, or one
+    /// after its own instant.
+    ///
+    /// Provided, and the one reading of liveness: what a walk keeps an
+    /// element live by, what retires it, and what a ladder rests an order
+    /// on.
+    fn is_alive(&self) -> bool {
+        self.get_state().is_live()
+            && self
+                .get_expirunix()
+                .is_none_or(|expiration| expiration > self.get_currunix())
     }
 
     /// Folds another event's lifecycle into this one: the earliest
@@ -1617,6 +1634,39 @@ pub trait MarketElement: Element {
                 self.set_askunit(unit);
             }
         }
+    }
+
+    /// The middle of the two lanes, `(bidpx + askpx) / 2`, where both are
+    /// quoted above zero; nothing on a one-sided or empty element. A lane
+    /// at zero is no lane: FIX's own rule for a withdrawn side.
+    ///
+    /// Provided, and read on every call: the lanes are the stated facts,
+    /// the mid is what they imply.
+    fn mid(&self) -> Option<Decimal18> {
+        let bid = self.get_bidpx().filter(|px| *px > Decimal18::ZERO)?;
+        let ask = self.get_askpx().filter(|px| *px > Decimal18::ZERO)?;
+        bid.checked_add(ask)?.checked_div(Decimal18::from_int(2))
+    }
+
+    /// The distance between the two lanes, `askpx - bidpx`, where both are
+    /// quoted above zero: zero where they lock, negative where they cross,
+    /// both stated rather than refused; nothing on a one-sided or empty
+    /// element.
+    fn spread(&self) -> Option<Decimal18> {
+        let bid = self.get_bidpx().filter(|px| *px > Decimal18::ZERO)?;
+        let ask = self.get_askpx().filter(|px| *px > Decimal18::ZERO)?;
+        ask.checked_sub(bid)
+    }
+
+    /// What the element is worth at its price, `px * qty`, at eighteen
+    /// places truncated toward zero; nothing where either is zero or the
+    /// product is past the precision.
+    fn notional(&self) -> Option<Decimal18> {
+        let (px, qty) = (self.get_px(), self.get_qty());
+        if px.is_zero() || qty.is_zero() {
+            return None;
+        }
+        px.checked_mul(qty)
     }
 
     /// Continues [`Element::digest`] with the market's facts: the price,

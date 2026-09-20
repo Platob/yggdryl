@@ -20,6 +20,7 @@ pub mod coding;
 mod enums;
 mod expression;
 mod fix;
+mod market;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
 mod hashing;
@@ -56,6 +57,11 @@ pub use fix::{
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
+pub use market::{
+    JsBook, JsBookIterator, JsBooks, JsExecution, JsExecutions, JsMarketSymbol, JsOrder, JsOrders,
+    JsQuote, JsQuotes, JsStatements, JsTrade, JsTrades, MarketLaneView, MarketLevelView,
+    MarketPartyView, book_iterator_native,
+};
 pub use media::avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
     avro_dumps_native, avro_loads_native,

@@ -3458,7 +3458,15 @@ NativeFixMsg.prototype.set = function set(key, value) {
 // widen, because a line is a decoded row and not a value - and a batch source
 // as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
 // batch, IPC bytes. That widening lives here, beside the conversions it uses.
-for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'messages']) {
+for (const name of [
+  'parseTextArrowReader',
+  'lifecycleArrowReader',
+  'messages',
+  'ordersArrowReader',
+  'executionsArrowReader',
+  'tradesArrowReader',
+  'quotesArrowReader',
+]) {
   const native = binding.FixCodec.prototype[name]
   binding.FixCodec.prototype[name] = {
     [name](source) {
@@ -3469,6 +3477,14 @@ for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'messages'])
 const nativeWriteArrowReader = binding.FixCodec.prototype.writeArrowReader
 binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, sink) {
   return nativeWriteArrowReader.call(this, BatchReader.from(source), sink)
+}
+// The book twin declares its depth and its grid step beside the source;
+// both cross as they are, the step unstated being no grid - one book per
+// instant - and the core refuses a depth of nothing or a negative step
+// before a row is read.
+const nativeBooksArrowReader = binding.FixCodec.prototype.booksArrowReader
+binding.FixCodec.prototype.booksArrowReader = function booksArrowReader(source, depth, snapshotNs = 0n) {
+  return nativeBooksArrowReader.call(this, BatchReader.from(source), depth, snapshotNs)
 }
 
 // A stage over an iterable pulls one item at a time: the iterable's own
@@ -3509,11 +3525,31 @@ function asLine(value) {
   }
   return value
 }
+// A statement is one of the four products that state something to a
+// ladder - the public classes below share the native prototypes - and the
+// native side converts each by its class, so anything else is refused
+// here, where it is met.
+function asStatement(value) {
+  if (
+    !(value instanceof Order) &&
+    !(value instanceof Quote) &&
+    !(value instanceof Execution) &&
+    !(value instanceof Trade)
+  ) {
+    throw new TypeError('every item of a statement stream must be an Order, a Quote, an Execution or a Trade')
+  }
+  return value
+}
 {
   const streams = [
     [binding.FixCodec, 'parseLines', '_parseLinesNative', toBytes, 'lines'],
     [binding.FixCodec, 'parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
     [binding.FixCodec, 'lifecycle', '_lifecycleNative', asMessage, 'messages'],
+    [binding.FixCodec, 'orders', '_ordersNative', asMessage, 'messages'],
+    [binding.FixCodec, 'executions', '_executionsNative', asMessage, 'messages'],
+    [binding.FixCodec, 'trades', '_tradesNative', asMessage, 'messages'],
+    [binding.FixCodec, 'quotes', '_quotesNative', asMessage, 'messages'],
+    [binding.FixCodec, 'statements', '_statementsNative', asMessage, 'messages'],
   ]
   for (const [owner, name, hidden, read, what] of streams) {
     const native = owner.prototype[hidden]
@@ -3526,6 +3562,19 @@ function asLine(value) {
         return stream
       },
     }[name]
+  }
+  // The book door declares its depth and its grid step beside the stream,
+  // so it is installed by hand: the pull is the same, the two declarations
+  // cross as they are - the step unstated being no grid, one book per
+  // instant - and the core refuses a depth of nothing or a negative step
+  // before a message is pulled.
+  const nativeBooks = binding.FixCodec.prototype._booksNative
+  delete binding.FixCodec.prototype._booksNative
+  binding.FixCodec.prototype.books = function books(messages, depth, snapshotNs = 0n) {
+    const failed = {}
+    const stream = nativeBooks.call(this, pullOf(messages, asMessage, 'messages', failed), depth, snapshotNs)
+    stream[FAILED] = failed
+    return stream
   }
   // The batch reader pulls the messages as `pyarrow` would, so a failure
   // behind it is that reader's error, raised by the batch it would have
@@ -3544,24 +3593,40 @@ function asLine(value) {
   }
 }
 
-const nativeFixMessagesNext = binding.FixMessages.prototype.next
-binding.FixMessages.prototype.next = function next() {
-  const value = nativeFixMessagesNext.call(this)
-  if (value !== null) return { value, done: false }
-  // A stream over an iterable ends where the iterable failed: the failure
-  // kept for it is thrown once, as itself, in place of the end.
-  const failed = this[FAILED]
-  if (failed !== undefined && failed.error !== undefined) {
-    const { error } = failed
-    failed.error = undefined
-    throw error
+// A stream is its own iterator, whatever it streams: the messages a codec
+// stage answers, or the products a codec door reads out of them.
+function installStream(stream) {
+  const nativeNext = stream.prototype.next
+  stream.prototype.next = function next() {
+    const value = nativeNext.call(this)
+    if (value !== null) return { value, done: false }
+    // A stream over an iterable ends where the iterable failed: the failure
+    // kept for it is thrown once, as itself, in place of the end.
+    const failed = this[FAILED]
+    if (failed !== undefined && failed.error !== undefined) {
+      const { error } = failed
+      failed.error = undefined
+      throw error
+    }
+    return { value: undefined, done: true }
   }
-  return { value: undefined, done: true }
+  Object.defineProperty(stream.prototype, Symbol.iterator, {
+    configurable: true,
+    value: function messages() { return this },
+  })
 }
-Object.defineProperty(binding.FixMessages.prototype, Symbol.iterator, {
-  configurable: true,
-  value: function messages() { return this },
-})
+for (const stream of [
+  binding.FixMessages,
+  binding.Orders,
+  binding.Executions,
+  binding.Trades,
+  binding.Quotes,
+  binding.Books,
+  binding.Statements,
+  binding.BookIterator,
+]) {
+  installStream(stream)
+}
 
 // The registry is a lazy native iterator and a message answers its entries
 // whole, so the loader supplies only the protocol Node-API cannot spell:
@@ -3619,6 +3684,140 @@ for (const name of [
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
+]) {
+  delete binding[name]
+}
+
+// `yggdryl::market` is a module in the core, so it is one here too: the five
+// products and their streams are one name rather than ten top-level classes.
+//
+// A product has no constructor - it is read out of messages by a codec door
+// or out of a row by `fromRow` - and a row is whatever `Scalar.from` reads,
+// so each public class is the widening gate `FixMsg` is: a function over the
+// native prototype whose `fromRow` widens the row before the core types it.
+function productClass(name, native) {
+  const wrapper = {
+    [name]: function () {
+      throw new TypeError(
+        `${name} has no constructor: one is read out of messages by a FixCodec door or out of a row by ${name}.fromRow`,
+      )
+    },
+  }[name]
+  wrapper.prototype = native.prototype
+  Object.defineProperty(wrapper.prototype, 'constructor', {
+    configurable: true,
+    value: wrapper,
+    writable: true,
+  })
+  wrapper.fromRow = function fromRow(field, row) {
+    return native.fromRow(field, asScalar(row))
+  }
+  wrapper.field = function field(...declared) {
+    return native.field(...declared)
+  }
+  return wrapper
+}
+const Order = productClass('Order', binding.Order)
+const Quote = productClass('Quote', binding.Quote)
+const Execution = productClass('Execution', binding.Execution)
+const Trade = productClass('Trade', binding.Trade)
+const Book = productClass('Book', binding.Book)
+
+// The two products one message states exactly are written back through the
+// message's own statics, and the other three throw the core's sentence;
+// each takes native values as they are, so the public class only carries
+// the call to the native one.
+for (const name of ['fromOrder', 'fromExecution', 'fromQuote', 'fromTrade', 'fromBook']) {
+  FixMsg[name] = {
+    [name](codec, product) {
+      return NativeFixMsg[name](codec, product)
+    },
+  }[name]
+}
+
+// The symbol a book is read under is the native class, published under the
+// core's name; the global symbol - no instrument, and the key of the global
+// book - is one value beside `of`, as it is in the core.
+const MarketSymbol = binding.MarketSymbol
+Object.defineProperty(MarketSymbol, 'GLOBAL', {
+  enumerable: true,
+  value: new MarketSymbol(''),
+})
+
+// The book iterator reads books out of any iterable of statements - the
+// four products a ladder takes, read by a door or from rows - pulled one at
+// a time as the doors pull messages; the depth is declared, the grid step
+// is `0n` for one book per instant, and the symbol, where one is given,
+// keys every statement under it. The native class has no constructor of
+// its own - the pull is bound here - so the public class is the gate over
+// its prototype, exactly as a product's is.
+const nativeBookIterator = binding._bookIteratorNative
+const BookIterator = {
+  BookIterator: function (statements, depth, snapshotNs = 0n, symbol = null) {
+    if (!new.target) {
+      throw new TypeError('BookIterator is a class: build one with new')
+    }
+    if (symbol !== null && !(symbol instanceof MarketSymbol)) {
+      throw new TypeError('symbol must be a market.Symbol or null')
+    }
+    const failed = {}
+    const iterator = nativeBookIterator(pullOf(statements, asStatement, 'statements', failed), depth, snapshotNs, symbol)
+    iterator[FAILED] = failed
+    return iterator
+  },
+}.BookIterator
+BookIterator.prototype = binding.BookIterator.prototype
+Object.defineProperty(BookIterator.prototype, 'constructor', {
+  configurable: true,
+  value: BookIterator,
+  writable: true,
+})
+
+const market = Object.freeze({
+  Order,
+  Quote,
+  Execution,
+  Trade,
+  Book,
+  Orders: binding.Orders,
+  Executions: binding.Executions,
+  Trades: binding.Trades,
+  Quotes: binding.Quotes,
+  Books: binding.Books,
+  Statements: binding.Statements,
+  Symbol: MarketSymbol,
+  BookIterator,
+})
+
+// The products are reached through the namespace and nowhere else.
+for (const name of [
+  'Order',
+  'Quote',
+  'Execution',
+  'Trade',
+  'Book',
+  'Orders',
+  'Executions',
+  'Trades',
+  'Quotes',
+  'Books',
+  'Statements',
+  'MarketSymbol',
+  'BookIterator',
+  'JsOrder',
+  'JsQuote',
+  'JsExecution',
+  'JsTrade',
+  'JsBook',
+  'JsOrders',
+  'JsExecutions',
+  'JsTrades',
+  'JsQuotes',
+  'JsBooks',
+  'JsStatements',
+  'JsMarketSymbol',
+  'JsBookIterator',
+  '_bookIteratorNative',
 ]) {
   delete binding[name]
 }
@@ -3963,6 +4162,7 @@ binding.fields = fields
 binding.fix = fix
 binding.iceberg = iceberg
 binding.json = json
+binding.market = market
 binding.toml = toml
 binding.yaml = yaml
 

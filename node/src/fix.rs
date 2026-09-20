@@ -842,7 +842,7 @@ pub struct FixEventView {
 }
 
 /// One instant as JavaScript reads it: nanoseconds since the epoch.
-fn instant(unix: i64) -> BigInt {
+pub(crate) fn instant(unix: i64) -> BigInt {
     BigInt::from(unix)
 }
 
@@ -850,12 +850,12 @@ fn instant(unix: i64) -> BigInt {
 ///
 /// A plain object states every fact it declares: an absent one is `null`,
 /// as every absence at this boundary is, rather than a property left out.
-fn or_null<T>(value: Option<T>) -> Either<T, Null> {
+pub(crate) fn or_null<T>(value: Option<T>) -> Either<T, Null> {
     value.map_or(Either::B(Null), Either::A)
 }
 
 /// The event's facts, read through the graph traits.
-fn event_view(event: &MarketEventData) -> Result<FixEventView> {
+pub(crate) fn event_view(event: &MarketEventData) -> Result<FixEventView> {
     let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
     let decimal = |held: Option<Decimal18>| or_null(held.map(|value| value.to_string()));
     Ok(FixEventView {
@@ -899,7 +899,7 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
 
 /// The identifiers an event states, scheme to value, in the core's sorted
 /// order.
-fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
+pub(crate) fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
     event
         .get_identifiers()
         .iter()
@@ -908,7 +908,7 @@ fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
 }
 
 /// The parents an event states, each as its text.
-fn parents_view(event: &MarketEventData) -> Vec<String> {
+pub(crate) fn parents_view(event: &MarketEventData) -> Vec<String> {
     event
         .get_parentuuids()
         .iter()
@@ -917,7 +917,7 @@ fn parents_view(event: &MarketEventData) -> Vec<String> {
 }
 
 /// The sources an event states, each as its text.
-fn sources_view(event: &MarketEventData) -> Vec<String> {
+pub(crate) fn sources_view(event: &MarketEventData) -> Vec<String> {
     event
         .get_srcuuids()
         .iter()
@@ -1722,7 +1722,7 @@ const SOH: u8 = 0x01;
 /// the status and reason a new error is raised with, because the error
 /// itself holds handles that do not cross threads.
 #[derive(Clone, Default)]
-struct Failed(Arc<Mutex<Option<(Status, String)>>>);
+pub(crate) struct Failed(Arc<Mutex<Option<(Status, String)>>>);
 
 impl Failed {
     fn set(&self, error: &napi::Error) {
@@ -1731,7 +1731,7 @@ impl Failed {
         }
     }
 
-    fn take(&self) -> Option<napi::Error> {
+    pub(crate) fn take(&self) -> Option<napi::Error> {
         self.0
             .lock()
             .ok()
@@ -1750,16 +1750,16 @@ impl Failed {
 /// environment it is borrowed back with valid. Exhaustion ends the pull; a
 /// failure ends it too and lands in `failed`, so the stage sees a shorter
 /// stream and the wrapper around it throws what happened.
-struct Pulled<T: FromNapiValue> {
+pub(crate) struct Pulled<T: FromNapiValue> {
     pull: FunctionRef<(), Option<T>>,
     environment: usize,
     thread: ThreadId,
-    failed: Failed,
+    pub(crate) failed: Failed,
     done: bool,
 }
 
 impl<T: FromNapiValue> Pulled<T> {
-    fn new(env: Env, pull: Function<'_, (), Option<T>>) -> Result<Self> {
+    pub(crate) fn new(env: Env, pull: Function<'_, (), Option<T>>) -> Result<Self> {
         Ok(Self {
             pull: pull.create_ref()?,
             environment: env.raw().expose_provenance(),
@@ -1808,7 +1808,7 @@ impl<T: FromNapiValue> Iterator for Pulled<T> {
 /// The batch it would have landed in is being pulled by the reader rather
 /// than by a JavaScript frame, so it travels as that reader's error and
 /// arrives where the batch would have.
-fn javascript_failure(error: napi::Error) -> CoreError {
+pub(crate) fn javascript_failure(error: napi::Error) -> CoreError {
     CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(
         std::io::Error::other(error.reason.clone()),
     )))
@@ -1944,7 +1944,7 @@ impl std::io::Write for JsSink<'_> {
 /// deliberately not deterministic.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
-    inner: CoreFixCodec,
+    pub(crate) inner: CoreFixCodec,
     registry: Arc<CoreFixRegistry>,
 }
 
