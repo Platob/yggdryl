@@ -299,17 +299,21 @@ pub(super) struct FieldFacts {
     pub(super) tag: Option<i32>,
     /// `FIX:counter`, on a group's count field.
     pub(super) counter: Option<i32>,
-    /// Whether the field carries a replacement rule.
+    /// Whether a replacement rule could restate the field: one the field
+    /// states on its own `FIX:replacements`, or one the specification
+    /// states of its tag.
     pub(super) ruled: bool,
 }
 
 impl FieldFacts {
     pub(super) fn of(field: &Field) -> Option<Self> {
         let view = field.as_fix();
+        let tag = view.tag().ok()?;
         Some(Self {
-            tag: view.tag().ok()?,
+            tag,
             counter: view.counter().ok()?,
-            ruled: view.replacements().next_ok().is_some(),
+            ruled: view.replacements().next_ok().is_some()
+                || tag.is_some_and(|tag| super::retired::rules_of(tag).is_some()),
         })
     }
 }

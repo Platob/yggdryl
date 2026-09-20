@@ -443,10 +443,12 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 #[test]
 fn a_removed_field_is_kept_and_marked_deprecated() {
     let registry = seed();
-    // `MaxFloor(111)` went in 5.0, replaced by `DisplayQty`.
+    // `MaxFloor(111)` went in 5.0, replaced by `DisplayQty`: the mark is the
+    // dictionary's, and what replaced it is the specification's own table
+    // in the crate, so the field states no document of its own.
     let floor = registry.field_by_tag(111).expect("MaxFloor");
     assert_eq!(floor.as_fix().deprecated(), Some("5.0"), "{floor:?}");
-    assert!(floor.as_fix().replacements().next().is_some());
+    assert!(floor.as_fix().replacements().next().is_none());
     // `Signature(89)` went with it and nothing replaces it: the mark stands
     // on its own.
     let signature = registry.field_by_tag(89).expect("Signature");
@@ -592,10 +594,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// twenty-first and a twenty-second definition, each at its event column's
 /// datatype - a ranked state and a nanosecond clock - and as members of the
 /// fixed row, the state ahead of `OrdStatus` and the expiry beside the clocks.
+/// It last moved when what the specification retired became the crate's own
+/// table: the thirty-seven fields that carried a `FIX:replacements` document
+/// hash without it, one metadata entry fewer each, and the dictionary states
+/// no rule of its own.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_120_278_288_742_142_511);
+    assert_eq!(registry.stable_hash(), 14_053_550_445_986_752_505);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

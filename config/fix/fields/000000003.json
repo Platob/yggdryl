@@ -1557,16 +1557,6 @@
           "doc": "Term Deposit Receipt"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'",
-          "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'",
-          "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "310",
       "description": "Underlying security's SecurityType.",
       "display": "UnderlyingSecurityType"
@@ -1631,12 +1621,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate",
-          "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "314",
       "display": "UnderlyingMaturityDay"
     }
@@ -3003,12 +2987,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hopgrp",
-          "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "370",
       "display": "OnBehalfOfSendingTime"
     }

@@ -18,7 +18,7 @@
 //! | identifiers | `FIX:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | codes | `FIX:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
-//! | replacements | `FIX:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
+//! | replacements | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the specification's retirements of the tag |
 //! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
 //! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
 //! | counter | `FIX:counter` | `i32` | the wire field counting a group's occurrences |
@@ -67,9 +67,11 @@
 //!
 //! What a *value* was is the field's own business and stays: a
 //! [code](FixCode) an older version declared is a code of the set like any
-//! other, and a [`FIX:replacements`](FixReplacement) rule says how a
-//! retired field or value is restated - which every
-//! [parse](FixCodec::parse_line) applies.
+//! other. What the specification retired, and what stands in for it, is the
+//! crate's own table, and a [`FIX:replacements`](FixReplacement) rule is a
+//! registry's own word on how a field of its is restated, winning whole over
+//! that table for the field - which every [parse](FixCodec::parse_line)
+//! applies.
 //!
 //! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
 //! separators - so a query spelled in any case or with any separator finds
@@ -161,6 +163,7 @@ mod msg;
 mod msgtype;
 mod registry;
 mod replacements;
+mod retired;
 mod schema;
 mod store;
 #[cfg(test)]

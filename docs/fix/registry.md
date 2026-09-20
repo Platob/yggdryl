@@ -14,7 +14,7 @@
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `FIX:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `FIX:names`, and a field FIX retired is still in the dictionary under its own tag |
-| Replacements | A field FIX retired or whose values it replaced carries `FIX:replacements`: how a [parse](message.md#restated-under-the-dictionary) restates a message under the dictionary, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled; Rust holds no rule table, so a registry edit is a rule edit |
+| Replacements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; a registry states a rule of its own on the field as `FIX:replacements`, which wins whole over the table for that field, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
 | Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and List/LargeList groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
@@ -755,9 +755,9 @@ metadata documents remain on the field and round-trip through both bindings.
 
 ## A field carries what replaced it
 
-The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `FIX:replacements`: one canonical document, read borrowed, that a [parse](message.md#restated-under-the-dictionary) applies as it builds the message. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
+The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those retirements are facts about FIX itself, the same for every dictionary that declares the tags, so the crate holds them as one table keyed by the retired tag - [the table below](#what-the-specification-retired) - and a [parse](message.md#restated-under-the-dictionary) applies them as it builds the message, with nothing parsed, bound or evaluated per message. A rule a registry states of its own travels on the field as `FIX:replacements`: one canonical document, read borrowed, applied the same way - the same first match, the same writes, the same checks. A field's own document wins whole over the specification's entries for its tag, so a registry restates a retired field by what it states and the table does not fill in behind it. The shipped dictionary states no document: what it carried as documents lives in the table and nowhere else.
 
-Entries are in **document order**, and the order is semantic: the first entry whose condition a message meets answers, so a catch-all entry stating no condition comes last.
+Entries are in **document order**, and the order is semantic: the first entry whose condition a message meets answers, so a catch-all entry stating no condition comes last. The table below is ordered the same way.
 
 ```json
 [{"plan":"select 'A' as ordercapacity where rule80a = 'A'","doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]
@@ -796,7 +796,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 
 ### Configuring a rule
 
-A rule is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `FIX:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
+A rule of a registry's own is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it - and by it alone for that field, the specification's entries for the tag standing down. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `FIX:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
 
 The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows its 4.2 counterparty meant a principal one edits the field, and nothing else:
 
@@ -884,9 +884,9 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     assert.equal(latest.byTag(47).asJs(), 'A', 'the source stays as read')
     ```
 
-### The rules the dictionary carries
+### What the specification retired
 
-The generator writes the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - onto 37 fields as 100 entries, each validated at generation against the dictionary: the source and every target exist, a held value and a constant are codes of their field's set where it has one, group and member names exist. A rule states only what the appendix states as a value mapping; the appendix that stated it is named in its `doc`, and nowhere in the document as a version.
+The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/src/fix/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own test proves the table against the shipped dictionary on every build: every field, group and member an entry names resolves, and a message restates under the table exactly as it restates under the same rules stated as `FIX:replacements` documents - the ulbridge capture and a line per entry, both ways.
 
 | FIX | Source | Restated as |
 | --- | --- | --- |
@@ -920,6 +920,8 @@ The generator writes the replaced and deprecated features of FIX 4.3 through 5.0
 | 5.0.1 | `OrderID(37)`, `SecondaryOrderID(198)` on `r` | `MassActionReportID(1369)` |
 
 Deliberately not covered, because the appendix states no value mapping a rule can write: `MDEntryOriginator`, `MDMkt`, `LocationID` and `DeskID` into `PartyRole`; `TargetStrategyParameters` and `ParticipationRate` into `StrategyParametersGrp`; the settlement instruction fields 173 to 187 into `SettlParties`; `SecurityType` `FOR`, which has four candidates; `QuoteType`; `SecondaryTradeReportID` and `SecondaryTradeReportRefID`; `Signature` and the `SecureData` pair; `UnitOfMeasure` `MMbbl`; the `UnderlyingLeg` fields of EP187; `TotalNumPosReports`; `ReceivedDeptID`; `FXBenchmarkRateFix`. `SecurityType` `FUT` and `OPT` and `PutOrCall` into `CFICode` are not rules either, because [`CFICode`'s own derivation](#a-field-carries-how-it-is-derived) already states them. A field the specification removed and replaced with nothing - `SendingDate(51)`, `WaveNo(105)` - is in the dictionary with its `removed` entry and stays in a restated row as read.
+
+Four entries are listed as the specification states them and do not fire on a parse: `OrderID(37)` and `SecondaryOrderID(198)` are lifted out of the row onto the message's own holders before the restatement reads it, and `OddLot(575)` and `PublishTrdIndicator(852)` are boolean fields, whose value spells no text a condition could name - exactly what the same rules answer as a registry's own documents.
 
 ## A field carries how it is derived
 
@@ -1252,7 +1254,7 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
     cargo test -p yggdryl --lib fix::tests::
     cargo test -p yggdryl --lib -- fix::tests::the_fold_table_holds_through_add_field_and_through_merge_with fix::tests::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one fix::tests::three_spellings_of_one_name_under_one_tag_are_one_identity fix::tests::name_indexes_fold_ascii_and_membership_never_resolves
     cargo test -p yggdryl --test fix -- merge:: cfb::a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_standard_field
-    cargo test -p yggdryl --lib -- fix::tests::a_replacement_document_round_trips_canonically_and_in_order fix::tests::the_replacement_writer_refuses_what_the_document_cannot_state fix::tests::a_merge_lets_the_incoming_replacements_win_whole fix::tests::every_committed_replacement_is_the_document_the_rust_writer_renders
+    cargo test -p yggdryl --lib -- fix::tests::a_replacement_document_round_trips_canonically_and_in_order fix::tests::the_replacement_writer_refuses_what_the_document_cannot_state fix::tests::a_merge_lets_the_incoming_replacements_win_whole fix::tests::the_specifications_retirements_restate_as_documents_of_the_same_rules_would
     cargo test -p yggdryl --test fix latest::the_dictionary_carries_the_rules_the_engine_reads
     ```
 

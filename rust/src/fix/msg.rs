@@ -1210,7 +1210,18 @@ impl FixMsg {
     /// does not know appends a nullable `utf8` child named by its decimal,
     /// which is what the builder does with an unknown tag. A name that
     /// reaches neither a field nor a child is refused, and the message is
-    /// unchanged. Every write settles the identity again.
+    /// unchanged.
+    ///
+    /// A written value is then [restated](super::latest) exactly as a read
+    /// one is: writing `Rule80A(47)` writes the `OrderCapacity(528)` that
+    /// replaced it beside it, and writing `ExecBroker(76)` makes the
+    /// `Parties` occurrence it became - from the specification's own
+    /// [retirements](super::retired), or from the rule a registry states on
+    /// the field itself. What runs is the rules of the tags written, so a
+    /// write of a tag no rule speaks for is the write and nothing more. The
+    /// pass never overwrites a stated value and is idempotent, so writing
+    /// one value twice writes its replacement once, and a caller who states
+    /// the replacement keeps it. Every write settles the identity again.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -1372,12 +1383,34 @@ impl FixMsg {
     }
 
     /// Lands staged writes: the typed facts on their holders, the row
-    /// writes in one rebuild, then the identity settled once.
+    /// writes in one rebuild, what the written values imply restated beside
+    /// them, then the identity settled once.
+    ///
+    /// A value a caller writes is restated exactly as a value a line states
+    /// is: writing `Rule80A(47)` writes the `OrderCapacity(528)` that
+    /// replaced it beside it, and a rule a registry states of its own
+    /// applies here too. The pass is idempotent and never overwrites a
+    /// stated value, so a message written to twice is the message, and
+    /// writing what a rule would have written stands.
     fn land(&mut self, typed: Vec<(i32, Scalar)>, writes: Vec<Write>) -> Result<()> {
         if typed.is_empty() && writes.is_empty() {
             return Ok(());
         }
+        // Only what a rule could be about is restated: a write of a tag no
+        // rule speaks for is the write, and the pass is not run at all.
+        let restates = typed
+            .iter()
+            .map(|(tag, _)| *tag)
+            .chain(
+                writes
+                    .iter()
+                    .filter_map(|write| write.field.as_fix().tag().ok().flatten()),
+            )
+            .any(|tag| super::latest::restates(&self.registry, tag));
         self.land_unsettled(typed, writes)?;
+        if restates {
+            super::latest::restate(self)?;
+        }
         self.settle();
         Ok(())
     }

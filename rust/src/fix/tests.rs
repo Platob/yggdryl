@@ -3954,50 +3954,6 @@ fn assert_plan_resolves(registry: &FixRegistry, plan: &Plan, owner: &str) {
     }
 }
 
-#[test]
-fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
-    let registry = committed();
-    let mut documents = 0_usize;
-    for field in every_committed_field(&registry) {
-        let Some(stored) = field.as_metadata().get("FIX:replacements") else {
-            continue;
-        };
-        documents += 1;
-        let held: Vec<FixReplacement> = field
-            .as_fix()
-            .replacements()
-            .map(|entry| FixReplacement::from(entry.expect("a readable entry")))
-            .collect();
-        assert!(
-            !held.is_empty(),
-            "{} states at least one rule",
-            field.name()
-        );
-
-        // The cross-host assertion: the dictionary generator wrote this
-        // document in Python, and re-rendering the entries it holds through
-        // the Rust writer must reproduce it byte for byte, or the two hosts
-        // have forked on key order or on how a plan is spelled.
-        assert_eq!(
-            FixReplacements::render(&held).expect("the entries render"),
-            stored,
-            "{}",
-            field.name()
-        );
-
-        // Every name a rule reaches for is one the dictionary resolves, so a
-        // reader applying it never has to guess.
-        for entry in &held {
-            assert_plan_resolves(&registry, entry.plan(), field.name());
-        }
-    }
-    // The generator writes these; a dictionary that carries none yet is a
-    // dictionary with nothing to disagree about, so the count is reported
-    // rather than pinned.
-    eprintln!("{documents} committed fields carry fix:replacements");
-}
-
-/// Immutable seed fixtures share parsing and compiled plans within this binary.
 fn committed() -> Arc<FixRegistry> {
     static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
     Arc::clone(REGISTRY.get_or_init(|| {
@@ -4632,4 +4588,285 @@ fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
         crate::graph::MarketElement::get_isincode(&held).map(crate::Isin::as_str),
         Some("US0378331005")
     );
+}
+
+/// The plan one of the specification's retirements would be as a
+/// `FIX:replacements` entry: the same rule, spelled as a registry states one
+/// of its own.
+fn plan_of_retirement(registry: &FixRegistry, source: i32, rule: &super::retired::Rule) -> String {
+    use super::retired::{Fill, Part, When};
+    let name = |tag: i32| {
+        registry
+            .field_by_tag(tag)
+            .expect("a field the retirement names")
+            .name()
+            .to_string()
+    };
+    let quoted = |text: &str| format!("'{}'", text.replace('\'', "''"));
+    fn term(
+        fill: &Fill,
+        source: i32,
+        name: &dyn Fn(i32) -> String,
+        quoted: &dyn Fn(&str) -> String,
+    ) -> (String, String) {
+        match *fill {
+            Fill::Constant { tag, text } => (name(tag), quoted(text)),
+            Fill::Source { tag } => (name(tag), name(source)),
+            Fill::From { tag, source: other } => (name(tag), name(other)),
+            Fill::Join { tag, parts } => {
+                let parts: Vec<String> = parts
+                    .iter()
+                    .map(|part| match *part {
+                        Part::Text(tag) => name(tag),
+                        Part::TwoDigits(tag) => {
+                            format!("substring(concat('0', cast({} as utf8)), -2)", name(tag))
+                        }
+                    })
+                    .collect();
+                (name(tag), format!("concat({})", parts.join(", ")))
+            }
+            Fill::Occurrence { group, members } => {
+                let members: Vec<String> = members
+                    .iter()
+                    .map(|member| {
+                        let (name, term) = term(member, source, name, quoted);
+                        format!("{name}: {term}")
+                    })
+                    .collect();
+                (group.to_string(), format!("[{{{}}}]", members.join(", ")))
+            }
+        }
+    }
+    let selects: Vec<String> = rule
+        .fills
+        .iter()
+        .map(|fill| {
+            let (target, spelled) = term(fill, source, &name, &quoted);
+            format!("{spelled} as {target}")
+        })
+        .collect();
+    let mut conditions = Vec::new();
+    match rule.msgtypes {
+        [] => {}
+        [one] => conditions.push(format!(":msgtype = {}", quoted(one))),
+        many => conditions.push(format!(
+            ":msgtype in ({})",
+            many.iter()
+                .map(|held| quoted(held))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+    if let Some(within) = rule.within {
+        conditions.push(format!(":group = {}", quoted(within)));
+    }
+    match rule.when {
+        When::Any => {}
+        When::Equals(text) => conditions.push(format!("{} = {}", name(source), quoted(text))),
+        When::Contains(text) => {
+            conditions.push(format!("contains({}, {})", name(source), quoted(text)));
+        }
+    }
+    let mut text = format!("select {}", selects.join(", "));
+    if !conditions.is_empty() {
+        text.push_str(" where ");
+        text.push_str(&conditions.join(" and "));
+    }
+    text
+}
+
+/// One line per retirement of the table, with the fields it reads beside
+/// the retired one, and the same line again with every scalar target
+/// already stated.
+fn retirement_corpus(registry: &FixRegistry) -> Vec<String> {
+    use super::retired::{Fill, Part, RULES, When};
+    fn sample(registry: &FixRegistry, tag: i32) -> String {
+        let dtype = registry
+            .field_by_tag(tag)
+            .map(|field| field.dtype().to_string())
+            .unwrap_or_default();
+        match dtype.as_str() {
+            held if held.starts_with("decimal") || held.starts_with("float") => "12.5".into(),
+            held if held.starts_with("int") => "7".into(),
+            held if held.starts_with("datetime") => "20240102-10:15:30".into(),
+            "boolean" => "Y".into(),
+            held if held.contains("fixed") => "202406".into(),
+            _ => "X1".into(),
+        }
+    }
+    fn beside(registry: &FixRegistry, fills: &[Fill], line: &mut String) {
+        for fill in fills {
+            match fill {
+                Fill::From { source, .. } => {
+                    line.push_str(&format!("|{source}={}", sample(registry, *source)));
+                }
+                Fill::Join { parts, .. } => {
+                    for part in parts.iter() {
+                        let (tag, text) = match part {
+                            Part::Text(tag) => (*tag, sample(registry, *tag)),
+                            Part::TwoDigits(tag) => (*tag, "5".to_string()),
+                        };
+                        line.push_str(&format!("|{tag}={text}"));
+                    }
+                }
+                Fill::Occurrence { members, .. } => beside(registry, members, line),
+                Fill::Constant { .. } | Fill::Source { .. } => {}
+            }
+        }
+    }
+    fn scalar_targets(fills: &[Fill], source: i32, out: &mut Vec<i32>) {
+        for fill in fills {
+            match *fill {
+                Fill::Constant { tag, .. }
+                | Fill::Source { tag }
+                | Fill::From { tag, .. }
+                | Fill::Join { tag, .. } => {
+                    if tag != source {
+                        out.push(tag);
+                    }
+                }
+                Fill::Occurrence { .. } => {}
+            }
+        }
+    }
+    let mut lines = Vec::new();
+    for (tag, rules) in RULES {
+        for rule in rules.iter() {
+            let msgtype = rule.msgtypes.first().copied().unwrap_or("D");
+            let values: Vec<String> = match rule.when {
+                When::Any => vec![sample(registry, *tag)],
+                When::Equals(text) => vec![text.to_string()],
+                When::Contains(text) => {
+                    vec![text.to_string(), format!("G {text}"), format!("{text} G")]
+                }
+            };
+            for value in values {
+                let mut line = format!("8=FIX.4.2|35={msgtype}|11=A|37=O1");
+                match rule.within {
+                    Some("allocgrp") => line.push_str(&format!(
+                        "|70=A1|78=1|NoAllocs[0].79=ACCT|NoAllocs[0].{tag}={value}"
+                    )),
+                    Some(other) => panic!("no line shape for an occurrence of {other}"),
+                    None => line.push_str(&format!("|{tag}={value}")),
+                }
+                beside(registry, rule.fills, &mut line);
+                let mut stated = line.clone();
+                let mut targets = Vec::new();
+                scalar_targets(rule.fills, *tag, &mut targets);
+                for target in targets {
+                    stated.push_str(&format!("|{target}={}", sample(registry, target)));
+                }
+                for mut held in [line, stated] {
+                    held.push_str("|10=0|");
+                    lines.push(held);
+                }
+            }
+        }
+    }
+    lines
+}
+
+/// The specification's retirements, held as the crate's table, restate a
+/// message exactly as the same rules stated as a registry's own
+/// `FIX:replacements` documents would - and a document on a field wins whole
+/// over the table, which is what makes the two registries here differ in
+/// how they read and not in what they answer. Every rendered plan resolves
+/// against the committed dictionary, so a reader applying it never guesses.
+#[test]
+fn the_specifications_retirements_restate_as_documents_of_the_same_rules_would() {
+    use super::retired::RULES;
+    let table = committed();
+    let mut documented = table.as_ref().clone();
+    for (tag, rules) in RULES {
+        let mut field = documented
+            .field_by_tag(*tag)
+            .expect("a retired tag the dictionary holds")
+            .clone();
+        assert!(
+            field.as_fix().replacements().next().is_none(),
+            "{} states the specification's retirement as a document of its own",
+            field.name()
+        );
+        let entries: Vec<FixReplacement> = rules
+            .iter()
+            .map(|rule| {
+                let plan: Plan = plan_of_retirement(&table, *tag, rule)
+                    .parse()
+                    .expect("a retirement spells a plan");
+                assert_plan_resolves(&table, &plan, field.name());
+                FixReplacement::new(plan)
+            })
+            .collect();
+        field
+            .as_fix_mut()
+            .set_replacements(&entries)
+            .expect("a document");
+        documented.update(field).expect("updated");
+    }
+    let documented = Arc::new(documented);
+    let clock = crate::Scalar::datetime64(
+        1_704_190_530_000_000_000,
+        crate::TimeUnit::Nanosecond,
+        crate::Timezone::UTC,
+    )
+    .unwrap();
+    let codec = |registry: &Arc<FixRegistry>| {
+        FixCodec::new(Arc::clone(registry))
+            .try_with_default_sending_time(Some(clock.clone()))
+            .unwrap()
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+    };
+    let by_table = codec(&table);
+    let by_document = codec(&documented);
+    let mut lines: Vec<Vec<u8>> = retirement_corpus(&table)
+        .into_iter()
+        .map(String::into_bytes)
+        .collect();
+    let capture =
+        std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"))
+            .unwrap();
+    lines.extend(
+        capture
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(<[u8]>::to_vec),
+    );
+    // The row's shape without its metadata, which is the one thing the two
+    // registries differ in: the documents one carries and the other does not.
+    let shape = |msg: &FixMsg| {
+        let names: Vec<(String, bool)> = msg
+            .as_field()
+            .fields()
+            .iter()
+            .map(|field| (field.name().to_string(), field.is_nullable()))
+            .collect();
+        (names, super::schema::shape_digest(msg.as_field(), false))
+    };
+    let mut compared = 0;
+    for line in &lines {
+        let read = |codec: &FixCodec| {
+            codec
+                .parse_line(line)
+                .map(|messages| messages.collect::<Vec<_>>())
+                .unwrap_or_default()
+        };
+        let (tabled, documented) = (read(&by_table), read(&by_document));
+        let shown = String::from_utf8_lossy(line);
+        assert_eq!(tabled.len(), documented.len(), "{shown}");
+        for (tabled, documented) in tabled.iter().zip(&documented) {
+            let (Ok(tabled), Ok(documented)) = (tabled, documented) else {
+                assert!(tabled.is_err() && documented.is_err(), "{shown}");
+                continue;
+            };
+            assert_eq!(tabled.as_value(), documented.as_value(), "{shown}");
+            assert_eq!(shape(tabled), shape(documented), "{shown}");
+            assert_eq!(
+                tabled.into_bytes(b'|'),
+                documented.into_bytes(b'|'),
+                "{shown}"
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared > 300, "{compared} messages compared");
 }

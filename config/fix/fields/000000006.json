@@ -1621,16 +1621,6 @@
           "doc": "Term Deposit Receipt"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'",
-          "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'",
-          "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "609",
       "description": "Refer to definition of SecurityType(167)",
       "display": "LegSecurityType"
@@ -3986,14 +3976,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "5.0.1",
-      "FIX:replacements": [
-        {
-          "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
-        },
-        {
-          "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
-        }
-      ],
       "FIX:tag": "687",
       "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
       "display": "LegQty"

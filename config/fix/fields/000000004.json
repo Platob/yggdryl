@@ -948,12 +948,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties",
-          "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "439",
       "display": "ClearingFirm"
     }
@@ -965,12 +959,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties",
-          "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "440",
       "display": "ClearingAccount"
     }
@@ -2647,24 +2635,6 @@
         {
           "value": "8",
           "name": "Par"
-        }
-      ],
-      "FIX:replacements": [
-        {
-          "plan": "select '1' as qtytype where quantitytype = '6'",
-          "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"
-        },
-        {
-          "plan": "select '0' as qtytype where quantitytype = '1'",
-          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
-        },
-        {
-          "plan": "select '0' as qtytype where quantitytype = '5'",
-          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
-        },
-        {
-          "plan": "select '0' as qtytype where quantitytype = '8'",
-          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
         }
       ],
       "FIX:tag": "465",

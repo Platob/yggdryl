@@ -632,44 +632,6 @@
           "doc": "Allow facilitation"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')",
-          "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select '1' as pegpricetype where contains(execinst, 'L')",
-          "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '2' as pegpricetype where contains(execinst, 'M')",
-          "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '3' as pegpricetype where contains(execinst, 'O')",
-          "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '4' as pegpricetype where contains(execinst, 'P')",
-          "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '5' as pegpricetype where contains(execinst, 'R')",
-          "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '7' as pegpricetype where contains(execinst, 'W')",
-          "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '8' as pegpricetype where contains(execinst, 'a')",
-          "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)"
-        },
-        {
-          "plan": "select '9' as pegpricetype where contains(execinst, 'd')",
-          "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)"
-        }
-      ],
       "FIX:tag": "18",
       "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "ExecInst"
@@ -710,20 +672,6 @@
         {
           "value": "3",
           "name": "Status"
-        }
-      ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'H' as exectype where exectranstype = '1'",
-          "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'G' as exectype where exectranstype = '2'",
-          "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'I' as exectype where exectranstype = '3'",
-          "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"
         }
       ],
       "FIX:tag": "20",
@@ -2136,11 +2084,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select orderid as massactionreportid where :msgtype = 'r'"
-        }
-      ],
       "FIX:tag": "37",
       "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
       "display": "OrderID"
@@ -2395,32 +2338,6 @@
           "doc": "Market within price band"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'",
-          "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'",
-          "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'",
-          "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'",
-          "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'",
-          "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'",
-          "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "40",
       "description": "Order type.",
       "display": "OrdType"
@@ -2515,11 +2432,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select relatdsym as symbol"
-        }
-      ],
       "FIX:tag": "46",
       "display": "RelatdSym"
     }
@@ -2623,100 +2535,6 @@
         {
           "value": "Z",
           "name": "ShortExemptTransactionNonMember"
-        }
-      ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'A' as ordercapacity where rule80a = 'A'",
-          "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'A' as ordercapacity where rule80a = 'B'",
-          "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'",
-          "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'",
-          "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity where rule80a = 'E'",
-          "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity where rule80a = 'F'",
-          "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'I' as ordercapacity where rule80a = 'H'",
-          "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'I' as ordercapacity where rule80a = 'I'",
-          "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'",
-          "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'",
-          "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'",
-          "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'",
-          "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'",
-          "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'",
-          "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity where rule80a = 'P'",
-          "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'",
-          "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'",
-          "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'",
-          "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'",
-          "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity where rule80a = 'W'",
-          "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'",
-          "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'",
-          "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'",
-          "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         }
       ],
       "FIX:tag": "47",
@@ -3164,12 +2982,6 @@
       "FIX:names": [
         "settlmnttyp"
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select '2' as settltype where settltype = 'A'",
-          "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "63",
       "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
       "display": "SettlType"
@@ -3321,16 +3133,6 @@
           "name": "CalculatedWithoutPreliminary"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'",
-          "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'",
-          "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "71",
       "description": "Identifies allocation transaction type *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
       "display": "AllocTransType"
@@ -3395,12 +3197,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties",
-          "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "76",
       "display": "ExecBroker"
     }
@@ -3905,12 +3701,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties",
-          "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "92",
       "display": "BrokerOfCredit"
     }

@@ -191,7 +191,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `replacements` | `FIX:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take; see [Registry](registry.md#a-field-carries-what-replaced-it) |
+| `replacements` | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the [specification's own retirements](registry.md#what-the-specification-retired) of the tag; see [Registry](registry.md#a-field-carries-what-replaced-it) |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## Identity is a tag and a name

@@ -528,10 +528,12 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
 }
 
 #[test]
-fn the_dictionary_carries_the_rules_the_engine_reads() {
-    // The rules are metadata on the field, so a registry edit is a rule
-    // edit: restating Rule80A `A` as a principal order changes what the
-    // engine writes, with nothing in Rust to change.
+fn a_registrys_own_rule_wins_whole_over_the_specifications() {
+    // The specification restates Rule80A `A` as an agency order. A registry
+    // that states a document of its own on the field restates by that
+    // alone - `A` as a principal order - and nothing of the specification's
+    // table for the field fills in behind it; the other fields' retirements
+    // still apply.
     let mut registry = super::committed_registry().as_ref().clone();
     let mut rule80a = registry.field_by_tag(47).expect("Rule80A").clone();
     rule80a
@@ -554,8 +556,14 @@ fn the_dictionary_carries_the_rules_the_engine_reads() {
     assert_eq!(
         occurrences(&latest, "parties").len(),
         1,
-        "the other fields' rules still run"
+        "the other fields' retirements still apply"
     );
+    // A value the registry's own document does not speak for is left as it
+    // arrived, where the specification's table would have restated it.
+    let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|47=C|10=0|");
+    assert_eq!(text(&latest, 47).as_deref(), Some("C"));
+    assert_eq!(latest.get_by_tag(528), None);
+    assert_eq!(latest.get_by_tag(529), None);
 }
 
 #[test]
@@ -639,4 +647,82 @@ fn a_rule_stops_where_the_message_already_stated_one_of_its_targets() {
     // column is there either way.
     assert!(names(&held).contains(&"timeinforce"));
     assert!(names(&filled).contains(&"timeinforce"));
+}
+
+#[test]
+fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
+    // A value a caller writes is a value the message states, so what
+    // replaced it is written beside it exactly as a parse writes it.
+    let reader = reader();
+    let mut message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|10=0|")
+        .expect("a readable line");
+    assert_eq!(message.get_by_tag(528), None);
+    message
+        .set(47, Scalar::from("A"))
+        .expect("a written capacity");
+    assert_eq!(text(&message, 528).as_deref(), Some("A"));
+    assert_eq!(text(&message, 47).as_deref(), Some("A"), "the source stays");
+
+    // Idempotent: the second write finds the first write's answer stated.
+    message.set(47, Scalar::from("A")).expect("written again");
+    assert_eq!(text(&message, 528).as_deref(), Some("A"));
+    assert_eq!(
+        names(&message)
+            .iter()
+            .filter(|held| **held == "ordercapacity")
+            .count(),
+        1,
+        "{:?}",
+        names(&message)
+    );
+
+    // What the message already stated stands, here as on the parse door.
+    let mut stated = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|528=P|10=0|")
+        .expect("a readable line");
+    stated
+        .set(47, Scalar::from("A"))
+        .expect("a written capacity");
+    assert_eq!(text(&stated, 528).as_deref(), Some("P"));
+
+    // A rule that makes a group occurrence makes one from a written value.
+    let mut party = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|10=0|")
+        .expect("a readable line");
+    party
+        .set(76, Scalar::from("BRKR"))
+        .expect("a written broker");
+    let parties = occurrences(&party, "parties");
+    assert_eq!(parties.len(), 1);
+    assert_eq!(
+        parties[0],
+        [
+            ("partyid", &Scalar::from("BRKR")),
+            ("partyrole", &Scalar::from(1))
+        ]
+    );
+    assert_eq!(integer(&party, 453), Some(1));
+
+    // A registry's own rule wins here too: the field's document answers and
+    // the specification's table stands down.
+    let mut registry = super::committed_registry().as_ref().clone();
+    let mut rule80a = registry.field_by_tag(47).expect("Rule80A").clone();
+    rule80a
+        .as_fix_mut()
+        .set_replacements(&[FixReplacement::new(
+            "select 'P' as ordercapacity where rule80a = 'A'"
+                .parse()
+                .expect("a plan"),
+        )])
+        .expect("a rule");
+    registry.update(rule80a).expect("updated");
+    let own = super::fixed_codec(Arc::new(registry));
+    let mut written = own
+        .sole_line(b"8=FIX.4.4|35=D|11=A|10=0|")
+        .expect("a readable line");
+    written
+        .set(47, Scalar::from("A"))
+        .expect("a written capacity");
+    assert_eq!(text(&written, 528).as_deref(), Some("P"));
 }

@@ -566,7 +566,8 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads by canonical name, and a child stored under an alias
     // is invisible until it has been canonicalized.
-    let mut held = super::latest::restate(msg)?;
+    let mut held = msg;
+    super::latest::restate(&mut held)?;
     // The derivations, compiled and bound once per registry; a refused
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.

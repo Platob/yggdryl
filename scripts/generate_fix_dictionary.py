@@ -17,20 +17,20 @@ fields have tags. A group references its ordinary int32 counter and contains
 a non-null component. Each field stores its enum records directly in
 FIX:codes metadata. Datatypes resolve through the crate's logical-name table.
 
-The three ``FIX:`` properties that hold a document - ``FIX:codes``,
-``FIX:replacements``, ``FIX:directions`` - are written as the JSON arrays they
-are rather than as one escaped line, so an indented document renders a code set
-as a code set; the crate restates each as its canonical compact text when it
-reads the store back.
+The two ``FIX:`` properties that hold a document - ``FIX:codes`` and
+``FIX:directions`` - are written as the JSON arrays they are rather than as one
+escaped line, so an indented document renders a code set as a code set; the
+crate restates each as its canonical compact text when it reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
 field is written under the one name and datatype the newest source gives it,
 and every spelling an earlier version used is written beside it in its
 ``FIX:names`` list, so an old name still reaches the field. What a *value*
 was does travel - a code set holds every value an older version declared and
-every older spelling of a surviving one, dated - and a field whose value
-another field took over carries the FIX:replacements document that says which
-and how.
+every older spelling of a surviving one, dated. What the specification retired
+and what stands in for it is not the dictionary's to state: the crate holds
+those retirements as its own table, so no generated field carries a
+``FIX:replacements`` document.
 
 Usage::
 
@@ -588,374 +588,6 @@ def fold_legacy_codes(
     return held
 
 
-def quoted(text: str) -> str:
-    """One text literal of the crate's expression grammar."""
-    return "'" + text.replace("'", "''") + "'"
-
-
-def member_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
-    """The term one fill's value spells: a literal, another column, a join,
-    or - with none of them - the source column itself."""
-    if fill.get("value") is not None:
-        return quoted(fill["value"])
-    if fill.get("from") is not None:
-        return name_of[fill["from"]]
-    if fill.get("join") is not None:
-        parts = []
-        for part in fill["join"]:
-            name = name_of[part]
-            # An integer part is spelled with two digits, which is how a day
-            # completes a month-year.
-            if dtype_of[part] in ("int8", "int16", "int32", "int64"):
-                parts.append(f"substring(concat('0', cast({name} as utf8)), -2)")
-            else:
-                parts.append(name)
-        return f"concat({', '.join(parts)})"
-    return source
-
-
-def occurrence_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
-    """One group occurrence: a list of one record, a member per fill."""
-    members = ", ".join(
-        (name_of[member["tag"]] if "tag" in member else member["group"])
-        + ": "
-        + (
-            occurrence_term(member, name_of, dtype_of, source)
-            if "group" in member
-            else member_term(member, name_of, dtype_of, source)
-        )
-        for member in fill["members"]
-    )
-    return f"[{{{members}}}]"
-
-
-def plan_text(
-    entry: dict[str, Any],
-    source_tag: int,
-    name_of: dict[int, str],
-    dtype_of: dict[int, str],
-    multi_valued: set[int],
-) -> str:
-    """One rule as a plan of the crate's expression grammar.
-
-    The `select` names every column the rule fills and the term it takes; the
-    `where` is the rule's condition: the message type as the `:msgtype`
-    parameter, the enclosing group as `:group`, and the held value as an
-    equality on the source column - a containment for a `MultipleCharValue`
-    source, whose value is several codes in one text.
-    """
-    source = name_of[source_tag]
-    selects = ", ".join(
-        f"{occurrence_term(fill, name_of, dtype_of, source)} as {fill['group']}"
-        if "group" in fill
-        else f"{member_term(fill, name_of, dtype_of, source)} as {name_of[fill['tag']]}"
-        for fill in entry["fills"]
-    )
-    conditions = []
-    msgtypes = entry.get("msgtypes") or []
-    if len(msgtypes) == 1:
-        conditions.append(f":msgtype = {quoted(msgtypes[0])}")
-    elif msgtypes:
-        conditions.append(f":msgtype in ({', '.join(quoted(held) for held in msgtypes)})")
-    groups = entry.get("in") or []
-    if len(groups) == 1:
-        conditions.append(f":group = {quoted(groups[0])}")
-    elif groups:
-        conditions.append(f":group in ({', '.join(quoted(held) for held in groups)})")
-    if entry.get("when") is not None:
-        when = quoted(entry["when"])
-        conditions.append(f"contains({source}, {when})" if source_tag in multi_valued else f"{source} = {when}")
-    text = f"select {selects}"
-    if conditions:
-        text += " where " + " and ".join(conditions)
-    return text
-
-
-def replacements_document(
-    entries: list[dict[str, Any]],
-    source_tag: int,
-    name_of: dict[int, str],
-    dtype_of: dict[int, str],
-    multi_valued: set[int],
-) -> list[dict[str, Any]]:
-    """`FIX:replacements`: one plan per entry, its `doc` beside it.
-
-    Entries keep the order the table states them in - the first entry whose
-    condition a message meets answers, so a catch-all without one comes last
-    - and are never sorted.
-    """
-    rendered = []
-    for entry in entries:
-        held = {"plan": plan_text(entry, source_tag, name_of, dtype_of, multi_valued)}
-        if entry.get("doc"):
-            held["doc"] = entry["doc"]
-        rendered.append(held)
-    return rendered
-
-
-def rule(
-    fills: list[dict[str, Any]],
-    *,
-    when: str | None = None,
-    msgtypes: list[str] | None = None,
-    within: list[str] | None = None,
-    doc: str | None = None,
-) -> dict[str, Any]:
-    """One replacement entry, as the table states it before it is compiled to
-    a plan: `within` is the enclosing repeating group."""
-    return {"msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
-
-
-def fill(tag: int, value: str | None = None, *, source: int | None = None, join: list[int] | None = None) -> dict[str, Any]:
-    """One field target: a constant, another tag's value, a join, or - with
-    none of them - the source field's own value."""
-    return {"tag": tag, "value": value, "from": source, "join": join}
-
-
-def party(role: str) -> list[dict[str, Any]]:
-    """The one Parties occurrence a field naming a counterparty becomes."""
-    return [{"group": "parties", "members": [fill(448), fill(452, role)]}]
-
-
-def benchmark(currency: str, curve: str, point: str) -> list[dict[str, Any]]:
-    """The curve one Benchmark(219) value spelled, as its three fields."""
-    return [fill(220, currency), fill(221, curve), fill(222, point)]
-
-
-# Rule80A(47) as OrderCapacity(528) and, where the appendix states them, the
-# OrderRestrictions(529) tokens; a row whose restriction the appendix leaves to
-# Side fills only the capacity.
-RULE80A = {
-    "A": ("A", None), "B": ("A", None), "C": ("P", "1 3"), "D": ("P", "1 2"),
-    "E": ("P", None), "F": ("W", None), "H": ("I", None), "I": ("I", None),
-    "J": ("I", "1 2"), "K": ("I", "1 3"), "L": ("P", "4"), "M": ("W", "1 2"),
-    "N": ("W", "1 3"), "O": ("P", "4"), "P": ("P", None), "R": ("A", "4"),
-    "S": ("P", "5"), "T": ("W", "5"), "U": ("A", "1 2"), "W": ("W", None),
-    "X": ("W", "4"), "Y": ("A", "1 3"), "Z": ("A", "4"),
-}
-
-# The pegging ExecInst(18) values FIX 5.0 moved to PegPriceType(1094).
-PEG_PRICE_TYPES = {"L": "1", "M": "2", "O": "3", "P": "4", "R": "5", "W": "7", "a": "8", "d": "9"}
-
-# Source tag -> entries, in document order. A tag listed twice concatenates,
-# so a family's entries follow the earlier family's. A `doc` cites the
-# appendix only where the mapping is not the same value in the replacement;
-# the appendix's own version is the comment above each family and nothing
-# the document states.
-REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
-    # FIX 4.3 Appendix 6-F, Replaced features.
-    (20, [
-        rule([fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (150, [
-        rule([fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
-        rule([fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (47, [
-        rule([fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
-            when=code,
-            doc=f"Rule80A {code} is OrderCapacity {capacity}"
-            + (f" with OrderRestrictions {restrictions}" if restrictions else "")
-            + " (FIX 4.3 Appendix 6-F)",
-        )
-        for code, (capacity, restrictions) in RULE80A.items()
-    ]),
-    (204, [
-        rule([fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
-        rule([fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
-    ]),
-    (76, [rule(party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
-    (92, [rule(party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
-    (109, [rule(party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
-    (439, [rule(party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
-    (440, [
-        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
-            doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (166, [
-        *(
-            rule([{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
-                when=code,
-                doc="SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-            )
-            for code in ("CED", "DTC", "EUR", "FED", "PNY", "PTC")
-        ),
-        rule([{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
-            doc="SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (46, [rule([fill(55)])]),
-    (205, [rule([fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
-    (314, [rule([fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
-    (370, [
-        rule([{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
-            doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
-        ),
-    ]),
-    (71, [
-        rule([fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
-        rule([fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
-    ]),
-    # FIX 4.4 Appendix 6-F Replaced features and Appendix 6-E Deprecated features.
-    (40, [
-        rule([fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule([fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-    ]),
-    (63, [rule([fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
-    *(
-        (tag, [
-            rule([fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
-            rule([fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
-        ])
-        for tag in (167, 310, 609)
-    ),
-    (18, [
-        rule([fill(835, "1"), fill(840, "1"), fill(18, "R")],
-            when="T",
-            doc="ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
-        ),
-    ]),
-    (219, [
-        rule(benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
-        rule(benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
-    ]),
-    (540, [rule([fill(159)])]),
-    (119, [rule([fill(737)], within=["allocgrp"])]),
-    (120, [rule([fill(736)], within=["allocgrp"])]),
-    (240, [rule([fill(696)])]),
-    (239, [rule([fill(310)])]),
-    (226, [
-        rule([fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
-        rule([fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
-    ]),
-    (227, [rule([fill(44)])]),
-    (465, [
-        rule([fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
-        *(
-            rule([fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
-            for code in ("1", "5", "8")
-        ),
-    ]),
-    # FIX 5.0 Appendix 6-E, Deprecated features.
-    (111, [rule([fill(1138)])]),
-    (210, [rule([fill(1082)])]),
-    (575, [rule([fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
-    (18, [
-        rule([fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
-        for code, price_type in PEG_PRICE_TYPES.items()
-    ]),
-    (687, [rule([fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
-    # FIX 5.0 SP1 Appendix 6-E, Deprecated features.
-    (687, [rule([fill(1418)], msgtypes=["AE", "AR"])]),
-    (852, [
-        rule([fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
-        rule([fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
-    ]),
-    (37, [rule([fill(1369)], msgtypes=["r"])]),
-    (198, [rule([fill(1369)], msgtypes=["r"])]),
-)
-
-
-def attach_replacements(
-    catalog: dict[str, list[dict[str, Any]]],
-    code_values: dict[int, set[str]],
-    multi_valued: set[int],
-) -> dict[int, int]:
-    """Write the rules table onto its source fields, refusing one that does
-    not resolve against the dictionary it is written into.
-
-    A rule is data the crate reads at intake and never re-checks, so every
-    reference it makes is proven here: the source and every target tag are
-    fields, a `when` and every constant are codes of the set they are read
-    against (every space-separated token, for a MultipleCharValue or
-    MultipleStringValue target), group names are groups, message types are
-    messages, and a fill has exactly the shape the reader admits. Answers
-    the number of entries written per source tag.
-    """
-    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
-    name_of = {tag: field["name"] for tag, field in by_tag.items()}
-    dtype_of = {tag: field["dtype"]["type"] for tag, field in by_tag.items()}
-    groups = {field["name"] for field in catalog["groups"]}
-    msgtypes = {field["metadata"]["FIX:msgtype"] for field in catalog["messages"]}
-
-    def check_code(tag: int, value: str, where: str) -> None:
-        codes = code_values.get(tag)
-        if codes is None:
-            return
-        for token in value.split() if tag in multi_valued else [value]:
-            if token not in codes:
-                raise ValueError(f"{where}: {token!r} is not a code of tag {tag}")
-
-    def check_fill(held: dict[str, Any], where: str) -> None:
-        if ("tag" in held) == ("group" in held):
-            raise ValueError(f"{where}: a fill names exactly one of tag or group")
-        if "group" in held:
-            if set(held) - {"group", "members"}:
-                raise ValueError(f"{where}: a group fill holds only members")
-            if held["group"] not in groups:
-                raise ValueError(f"{where}: unknown group {held['group']!r}")
-            if not held.get("members"):
-                raise ValueError(f"{where}: group {held['group']!r} fills no member")
-            for member in held["members"]:
-                check_fill(member, f"{where} in {held['group']}")
-            return
-        target = held["tag"]
-        if target not in by_tag:
-            raise ValueError(f"{where}: unknown target tag {target}")
-        stated = [key for key in ("value", "from", "join") if held.get(key) is not None]
-        if len(stated) > 1 or set(held) - {"tag", "value", "from", "join"}:
-            raise ValueError(f"{where}: tag {target} states more than one source")
-        if held.get("value") is not None:
-            check_code(target, held["value"], f"{where} tag {target}")
-        if held.get("from") is not None and held["from"] not in by_tag:
-            raise ValueError(f"{where}: unknown from tag {held['from']}")
-        if held.get("join") is not None:
-            if len(held["join"]) < 2:
-                raise ValueError(f"{where}: a join of tag {target} needs two tags")
-            for part in held["join"]:
-                if part not in by_tag:
-                    raise ValueError(f"{where}: unknown join tag {part}")
-
-    per_tag: dict[int, list[dict[str, Any]]] = {}
-    for tag, entries in REPLACEMENT_RULES:
-        per_tag.setdefault(tag, []).extend(entries)
-    for tag, entries in per_tag.items():
-        if tag not in by_tag:
-            raise ValueError(f"replacements for unknown tag {tag}")
-        for index, entry in enumerate(entries):
-            where = f"tag {tag} entry {index}"
-            for msgtype in entry.get("msgtypes") or []:
-                if msgtype not in msgtypes:
-                    raise ValueError(f"{where}: unknown MsgType {msgtype!r}")
-            for group in entry.get("in") or []:
-                if group not in groups:
-                    raise ValueError(f"{where}: unknown group {group!r}")
-            if entry.get("when") is not None:
-                check_code(tag, entry["when"], f"{where} when")
-            if not entry["fills"]:
-                raise ValueError(f"{where}: fills nothing")
-            for held in entry["fills"]:
-                check_fill(held, where)
-        metadata = by_tag[tag]["metadata"]
-        metadata["FIX:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
-        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
-    return {tag: len(entries) for tag, entries in per_tag.items()}
-
-
 # ---- Derivations: what a message implies, as expressions -------------------
 #
 # Every field a message implies but need not carry declares how it derives,
@@ -1383,21 +1015,13 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 continue
             entries.append(entry)
 
-    # The wire values every field's set holds at any version, and the fields
-    # whose value is a space-separated list of them: what a replacement rule's
-    # constants and `when` are checked against.
-    code_values: dict[int, set[str]] = {}
     code_records: dict[int, list[dict[str, Any]]] = {}
-    multi_valued: set[int] = set()
 
     def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
         """The field's `FIX:codes`, legacy values folded in, or nothing."""
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
-        if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
-            multi_valued.add(tag)
         if not folded_codes:
             return None
-        code_values[tag] = {code["value"] for code in folded_codes}
         code_records[tag] = folded_codes
         return codes_document(folded_codes)
 
@@ -1504,7 +1128,6 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             }
         )
     catalog = build_catalog(latest, fields)
-    attach_replacements(catalog, code_values, multi_valued)
     attach_derivations(catalog, code_records)
     return catalog
 

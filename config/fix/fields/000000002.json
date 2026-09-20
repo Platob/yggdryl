@@ -103,16 +103,6 @@
           "name": "Firm"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'A' as ordercapacity where customerorfirm = '0'",
-          "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'P' as ordercapacity where customerorfirm = '1'",
-          "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "204",
       "display": "CustomerOrFirm"
     }
@@ -124,12 +114,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate",
-          "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "205",
       "display": "MaturityDay"
     }
@@ -232,11 +216,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "5.0",
-      "FIX:replacements": [
-        {
-          "plan": "select maxshow as secondarydisplayqty"
-        }
-      ],
       "FIX:tag": "210",
       "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
       "display": "MaxShow"
@@ -421,44 +400,6 @@
         {
           "value": "9",
           "name": "SixMolibor"
-        }
-      ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'",
-          "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'",
-          "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'",
-          "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'",
-          "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'",
-          "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'",
-          "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'",
-          "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'",
-          "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'",
-          "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"
         }
       ],
       "FIX:tag": "219",
@@ -837,16 +778,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "4.4",
-      "FIX:replacements": [
-        {
-          "plan": "select '1' as terminationtype where repurchaseterm = '1'",
-          "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"
-        },
-        {
-          "plan": "select '2' as terminationtype",
-          "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"
-        }
-      ],
       "FIX:tag": "226",
       "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "RepurchaseTerm"
@@ -860,11 +791,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "4.4",
-      "FIX:replacements": [
-        {
-          "plan": "select repurchaserate as price"
-        }
-      ],
       "FIX:tag": "227",
       "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "RepurchaseRate"
@@ -1741,11 +1667,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "4.4",
-      "FIX:replacements": [
-        {
-          "plan": "select repocollateralsecuritytype as underlyingsecuritytype"
-        }
-      ],
       "FIX:tag": "239",
       "description": "Identifies the collateral used in the transaction.",
       "display": "RepoCollateralSecurityType"
@@ -1760,11 +1681,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "4.4",
-      "FIX:replacements": [
-        {
-          "plan": "select redemptiondate as yieldredemptiondate"
-        }
-      ],
       "FIX:tag": "240",
       "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "display": "RedemptionDate"

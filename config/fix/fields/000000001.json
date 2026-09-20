@@ -520,12 +520,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyid: clientid, partyrole: '3'}] as parties",
-          "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "109",
       "display": "ClientID"
     }
@@ -554,11 +548,6 @@
     "nullable": true,
     "metadata": {
       "FIX:deprecated": "5.0",
-      "FIX:replacements": [
-        {
-          "plan": "select maxfloor as displayqty"
-        }
-      ],
       "FIX:tag": "111",
       "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
       "display": "MaxFloor"
@@ -690,11 +679,6 @@
     "nullable": true,
     "metadata": {
       "FIX:derivation": "try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))",
-      "FIX:replacements": [
-        {
-          "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
-        }
-      ],
       "FIX:tag": "119",
       "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
       "display": "SettlCurrAmt"
@@ -708,11 +692,6 @@
     "nullable": true,
     "metadata": {
       "FIX:derivation": "currency",
-      "FIX:replacements": [
-        {
-          "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
-        }
-      ],
       "FIX:tag": "120",
       "description": "Currency code of settlement denomination.",
       "display": "SettlCurrency"
@@ -1511,16 +1490,6 @@
           "name": "Filled"
         }
       ],
-      "FIX:replacements": [
-        {
-          "plan": "select 'F' as exectype where exectype = '1'",
-          "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'F' as exectype where exectype = '2'",
-          "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "150",
       "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
       "display": "ExecType"
@@ -1835,36 +1804,6 @@
         {
           "value": "PTC",
           "name": "ParticipantTrustCompany"
-        }
-      ],
-      "FIX:replacements": [
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'",
-          "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
-        },
-        {
-          "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties",
-          "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)"
         }
       ],
       "FIX:tag": "166",
@@ -3022,16 +2961,6 @@
         }
       ],
       "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-      "FIX:replacements": [
-        {
-          "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'",
-          "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
-        },
-        {
-          "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'",
-          "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
-        }
-      ],
       "FIX:tag": "167",
       "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
       "display": "SecurityType"
@@ -3472,11 +3401,6 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:replacements": [
-        {
-          "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
-        }
-      ],
       "FIX:tag": "198",
       "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
       "display": "SecondaryOrderID"
