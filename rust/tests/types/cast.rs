@@ -1232,7 +1232,7 @@ mod empty_text {
         targets
     }
 
-    /// The eleven registered codes.
+    /// The twelve registered codes.
     fn codes() -> Vec<DataType> {
         vec![
             DataType::Country,
@@ -1243,6 +1243,7 @@ mod empty_text {
             DataType::CusipCode,
             DataType::SedolCode,
             DataType::BloombergCode,
+            DataType::FIGICode,
             DataType::Side,
             DataType::State,
             DataType::TimeInForce,

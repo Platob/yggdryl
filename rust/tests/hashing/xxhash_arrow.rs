@@ -300,6 +300,14 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("BBG000B9XRY4"), Scalar::Null]),
         ),
         (
+            Field::new("figi", DataType::FIGICode, true),
+            Scalar::from_sequence([
+                Scalar::from("BBG000BLNQ16"),
+                Scalar::from("BCG000000005"),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("side", DataType::Side, true),
             Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
         ),

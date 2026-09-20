@@ -158,12 +158,12 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 }
 
 #[test]
-fn the_eleven_codes_sort_by_which_code_then_by_text() {
+fn the_twelve_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
     use yggdryl::{
-        BloombergCode, CfiCode, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode,
-        TimeInForce,
+        BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
+        SedolCode, TimeInForce,
     };
 
     fn hash_of(value: &Scalar) -> u64 {
@@ -172,7 +172,7 @@ fn the_eleven_codes_sort_by_which_code_then_by_text() {
         hasher.finish()
     }
 
-    // The eleven share one value rank, so nothing but the identity separates
+    // The twelve share one value rank, so nothing but the identity separates
     // them - and that identity is the one their datatypes sort by, which is
     // what makes a sorted column of fields and a sorted column of values agree.
     let ascending = [
@@ -187,6 +187,7 @@ fn the_eleven_codes_sort_by_which_code_then_by_text() {
         Scalar::CusipCode(CusipCode::new("037833100").unwrap()),
         Scalar::SedolCode(SedolCode::new("2046251").unwrap()),
         Scalar::BloombergCode(BloombergCode::new("BBG000B9XRY4").unwrap()),
+        Scalar::FIGICode(FIGICode::new("BBG000BLNQ16").unwrap()),
     ];
     for pair in ascending.windows(2) {
         assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);

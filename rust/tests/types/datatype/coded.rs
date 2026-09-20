@@ -957,7 +957,8 @@ fn a_code_merges_to_the_better_statement() {
 #[test]
 fn the_code_family_stands_for_every_registered_code() {
     use yggdryl::{
-        BloombergCode, CfiCode, Code, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode,
+        BloombergCode, CfiCode, Code, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
+        SedolCode,
     };
     use yggdryl::{Side, State, TimeInForce};
 
@@ -977,6 +978,7 @@ fn the_code_family_stands_for_every_registered_code() {
                 Code::BloombergCode,
                 BloombergCode::new("BBG000B9XRY4").unwrap()
             ),
+            crate::family_leaf!(Code::FIGICode, FIGICode::new("BBG000BLNQ16").unwrap()),
         ],
         DataTypeKind::Code,
         // The text a code is made of is not the code.

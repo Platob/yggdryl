@@ -641,6 +641,10 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
     assert_eq!(set.code_value("sold"), Some("2"));
     assert_eq!(set.code_name("2"), Some("Sell"));
     assert_eq!(set.codes().count(), 2);
+    assert_eq!(
+        registry.codesets().map(|set| set.name()).collect::<Vec<_>>(),
+        ["msgcatcodeset", "sidecodeset"],
+    );
     ```
 
 === "Python"
@@ -662,7 +666,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     # The field carries the name; the dictionary answers the members.
     assert registry.field(54).fix.codeset == "sidecodeset"
-    assert registry.codeset_names() == ["sidecodeset"]
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
     members = registry.codeset_of(registry.field(54))
     assert members == registry.codeset("sidecodeset")
     assert [code["name"] for code in members] == ["Buy", "Sell"]
@@ -689,7 +693,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     // The field carries the name; the dictionary answers the members.
     assert.equal(registry.field(54).fix.codeset, 'sidecodeset')
-    assert.deepEqual(registry.codesetNames(), ['sidecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset'])
     const set = registry.codesetOf(registry.field(54))
     assert.equal(set.name, 'sidecodeset')
     assert.equal(registry.codeValue('sidecodeset', 'sold'), '2')
