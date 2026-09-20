@@ -9,6 +9,8 @@
 
 use std::fmt;
 
+use smol_str::{SmolStr, SmolStrBuilder};
+
 use crate::text::elide_to;
 
 /// Byte budget for one caller-supplied name inside a rendered path.
@@ -83,6 +85,20 @@ impl<'a> Path<'a> {
         self.render_from("$")
     }
 
+    /// Render the canonical `$`-rooted text as a [`SmolStr`].
+    ///
+    /// A compiled cast plan keeps every node's path for the one refusal that
+    /// node may never raise, so the ordinary spelling - `$`, `$.id`,
+    /// `$.symbol` - has to cost nothing to keep. Written straight into
+    /// `SmolStrBuilder`, a path that fits inline never allocates; rendering
+    /// through an owned `String` first always did, once per node per compile.
+    pub(crate) fn render_compact(&self) -> SmolStr {
+        let mut rendered = SmolStrBuilder::default();
+        rendered.push_char('$');
+        self.push_into(&mut rendered);
+        rendered.finish()
+    }
+
     /// Render the canonical text under an explicit root token.
     pub(crate) fn render_from(&self, root: &str) -> String {
         let mut rendered = String::from(root);
@@ -90,7 +106,7 @@ impl<'a> Path<'a> {
         rendered
     }
 
-    fn push_into(&self, target: &mut String) {
+    fn push_into<W: PathSink>(&self, target: &mut W) {
         // Walk to the root first so segments render outermost-first without
         // allocating an intermediate vector for shallow paths.
         match self {
@@ -109,23 +125,55 @@ impl fmt::Display for Path<'_> {
     }
 }
 
-/// Append one rendered step to an owned path string.
-pub(crate) fn push_segment(path: &mut String, segment: Segment<'_>) {
+/// What one rendered path is written into.
+///
+/// Both implementations grow on demand and neither can fail, so the writers
+/// below stay free of a `fmt::Result` no caller could act on. The supertrait is
+/// what lets the two numeric steps reuse `write!`.
+pub(crate) trait PathSink: fmt::Write {
+    /// Append a rendered fragment.
+    fn push_str(&mut self, value: &str);
+    /// Append one rendered character.
+    fn push_char(&mut self, value: char);
+}
+
+impl PathSink for String {
+    fn push_str(&mut self, value: &str) {
+        Self::push_str(self, value);
+    }
+
+    fn push_char(&mut self, value: char) {
+        self.push(value);
+    }
+}
+
+impl PathSink for SmolStrBuilder {
+    fn push_str(&mut self, value: &str) {
+        Self::push_str(self, value);
+    }
+
+    fn push_char(&mut self, value: char) {
+        self.push(value);
+    }
+}
+
+/// Append one rendered step to a path sink.
+pub(crate) fn push_segment<W: PathSink>(path: &mut W, segment: Segment<'_>) {
     match segment {
         Segment::Field(name) => push_field_name(path, name),
         Segment::Index(index) => {
-            path.push('[');
+            path.push_char('[');
             push_usize(path, index);
-            path.push(']');
+            path.push_char(']');
         }
         Segment::Item => path.push_str("[]"),
         Segment::MapKey(index) => {
-            path.push('[');
+            path.push_char('[');
             push_usize(path, index);
             path.push_str("].key");
         }
         Segment::MapValue(index) => {
-            path.push('[');
+            path.push_char('[');
             push_usize(path, index);
             path.push_str("].value");
         }
@@ -133,7 +181,7 @@ pub(crate) fn push_segment(path: &mut String, segment: Segment<'_>) {
         Segment::UnionType(type_id) => {
             path.push_str("<union:");
             push_i8(path, type_id);
-            path.push('>');
+            path.push_char('>');
         }
         Segment::DictionaryValue => path.push_str(".dictionary_value"),
         Segment::RunEnds => path.push_str(".run_ends"),
@@ -143,32 +191,36 @@ pub(crate) fn push_segment(path: &mut String, segment: Segment<'_>) {
 
 /// Append a struct child name, bracketing and quoting it when it is not a
 /// bare identifier.
-pub(crate) fn push_field_name(path: &mut String, name: &str) {
+pub(crate) fn push_field_name<W: PathSink>(path: &mut W, name: &str) {
     let mut characters = name.chars();
     let is_identifier = characters
         .next()
         .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
         && characters.all(|character| character == '_' || character.is_ascii_alphanumeric());
     if is_identifier && name.len() <= PATH_NAME_LIMIT {
-        path.push('.');
+        path.push_char('.');
         path.push_str(name);
     } else {
-        path.push('[');
-        path.push_str(&format!("{:?}", elide_to(name, PATH_NAME_LIMIT)));
-        path.push(']');
+        path.push_char('[');
+        // Written straight through rather than through an owned `String` the
+        // quoted spelling would only be copied out of.
+        write_or_assert(path, format_args!("{:?}", elide_to(name, PATH_NAME_LIMIT)));
+        path.push_char(']');
     }
 }
 
-fn push_usize(path: &mut String, value: usize) {
-    use fmt::Write as _;
-    let result = write!(path, "{value}");
-    debug_assert!(result.is_ok(), "writing into a String is infallible");
+fn push_usize<W: PathSink>(path: &mut W, value: usize) {
+    write_or_assert(path, format_args!("{value}"));
 }
 
-fn push_i8(path: &mut String, value: i8) {
-    use fmt::Write as _;
-    let result = write!(path, "{value}");
-    debug_assert!(result.is_ok(), "writing into a String is infallible");
+fn push_i8<W: PathSink>(path: &mut W, value: i8) {
+    write_or_assert(path, format_args!("{value}"));
+}
+
+/// Write one formatted fragment into a sink that cannot fail.
+fn write_or_assert<W: PathSink>(path: &mut W, arguments: fmt::Arguments<'_>) {
+    let result = path.write_fmt(arguments);
+    debug_assert!(result.is_ok(), "writing into a path sink is infallible");
 }
 
 #[cfg(test)]
@@ -236,5 +288,42 @@ mod tests {
         let root = Path::root();
         let child = root.field("value");
         assert_eq!(child.render_from("record"), "record.value");
+    }
+
+    /// The compact rendering is the same text, sink or no sink.
+    ///
+    /// A compiled cast plan keeps `render_compact` rather than `render`, so the
+    /// two spellings agreeing is what lets a refusal name the same path it
+    /// always did. Every segment kind is covered, plus a name long enough to
+    /// take the bounded branch and one short enough to stay inline.
+    #[test]
+    fn the_compact_rendering_matches_the_owned_one() {
+        let root = Path::root();
+        let long = "n".repeat(512);
+        // Each step is bound: a `Path` borrows its parent, so a chained
+        // expression would drop the parent while the child still names it.
+        let users = root.field("users");
+        let third = users.child(Segment::Index(3));
+        let deep = third.field("zip code");
+        let named = root.field(&long);
+        let cases = [
+            root,
+            root.field("id"),
+            root.field("a.b"),
+            root.field(""),
+            named,
+            deep,
+            root.child(Segment::Item),
+            root.child(Segment::MapEntries),
+            root.child(Segment::MapKey(2)),
+            root.child(Segment::MapValue(2)),
+            root.child(Segment::DictionaryValue),
+            root.child(Segment::RunEnds),
+            root.child(Segment::RunEndValues),
+            root.child(Segment::UnionType(-1)),
+        ];
+        for case in cases {
+            assert_eq!(case.render_compact().as_str(), case.render(), "{case}");
+        }
     }
 }

@@ -1827,7 +1827,7 @@ impl ArrayCastPlan {
             source_type: source_type.clone(),
             expected,
             options,
-            path: SmolStr::from(path.render()),
+            path: path.render_compact(),
             null_policy,
             kind,
             blanks_text,
