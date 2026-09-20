@@ -526,7 +526,18 @@ impl<O: OffsetSizeTrait, K: SequenceKind<O>> SerieValue for GenericSequenceSerie
 /// bitmap. What differs is how a row reads, what Arrow type it lays out
 /// under, and which leaf of the root it is - so that is what this marker
 /// carries, and [`GenericSequenceSerie`] is one implementation over all of
-/// it. [`ByteKind`](crate::ByteKind) is the same idea over one run of bytes.
+/// it.
+///
+/// It carries more than [`ByteKind`](crate::ByteKind) does, and the
+/// difference is worth naming rather than glossing. A byte marker decides
+/// only which leaf its layout widens to; the meaning of a row comes from the
+/// field, through the crate's one schema-directed decode. This marker
+/// decides the meaning too, because the field cannot supply it here: a
+/// mapping's rows are stored as records of a key and a value, and
+/// [`Field::scalar`] on a mapping field takes a mapping rather than a
+/// sequence of those records, so the pairing has to happen somewhere the
+/// field is not. That is the one place this leaf departs from "the leaf
+/// names the layout, the field names the meaning".
 ///
 /// The bound is on the pair, so a shape that Arrow has no type for is
 /// unrepresentable rather than dead: Arrow has no large map, and there is no

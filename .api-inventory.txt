@@ -3394,17 +3394,17 @@ pub enum DataType
   pub fn push_value(&mut self, value: Option<&T::Native>) / pub fn set_value(&mut self, index: usize, value: Option<&T::Native>) -> Result<()>  (a set rebuilds the offsets, which is what a variable-length layout costs)
   pub struct ByteViewSerie<T: ByteViewType, K: ByteKind>  (pub fn views(&self) -> &[u128] / payloads(&self) -> &[Buffer] / nulls / array / value / push_value)
   pub struct FixedSerie<K: ByteKind>  (pub fn width(&self) -> i32 / payload / nulls / array / value / push_value)
-  pub type Utf8StringSerie / LargeUtf8StringSerie / BinaryStringSerie / LargeBinaryStringSerie = ByteSerie<.., Text>
-  pub type BinarySerie / LargeBinarySerie = ByteSerie<.., Raw>
-  pub type Utf8ViewStringSerie / BinaryViewStringSerie = ByteViewSerie<.., Text>; pub type BinaryViewSerie = ByteViewSerie<BinaryViewType, Raw>
-  pub type FixedStringSerie = FixedSerie<Text>; pub type FixedBytesSerie = FixedSerie<Raw>
+  pub type Utf8StringSerie / LargeUtf8StringSerie / BinaryStringSerie / LargeBinaryStringSerie = ByteSerie<.., TextBytes>
+  pub type BinarySerie / LargeBinarySerie = ByteSerie<.., RawBytes>
+  pub type Utf8ViewStringSerie / BinaryViewStringSerie = ByteViewSerie<.., TextBytes>; pub type BinaryViewSerie = ByteViewSerie<BinaryViewType, RawBytes>
+  pub type FixedStringSerie = FixedSerie<TextBytes>; pub type FixedBytesSerie = FixedSerie<RawBytes>
 
   pub struct StructSerie  (one Arc<Field>, one child Serie per child field, the record's own validity, the row count)
   pub fn children(&self) -> &[Serie] / pub fn child(&self, name: &str) -> Option<&Serie> / pub fn child_at(&self, index: usize) -> Option<&Serie> / pub fn child_mut(&mut self, name: &str) -> Option<&mut Serie>
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn with_child(&self, child: &Serie) -> Result<Self> / pub fn without_child(&self, name: &str) -> Result<Self>  (one field edit and one Vec of pointers; the children that stay are shared, not rebuilt)
-  pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static  (const ITEM; fn array / row / items / into_serie / from_serie. What a cut of rows IS where two shapes share one layout: Arrow lays a mapping out as a list of non-null key-value records, so a mapping column and a sequence column hold the same four things and differ only in how a row reads, which Arrow array it lays out, and which leaf it is. The bound is on the PAIR, so a shape Arrow has no type for is unrepresentable rather than dead - there is no SequenceKind<i64> for Entries, because Arrow has no large map)
-  pub struct Items / pub struct Entries  (the two markers, as ByteKind's TextBytes and RawBytes are)
+  pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static  (const ITEM; fn array / row / items / into_serie / from_serie. What a cut of rows IS where two shapes share one layout: Arrow lays a mapping out as a list of non-null key-value records, so a mapping column and a sequence column hold the same four things and differ only in how a row reads, which Arrow array it lays out, and which leaf it is. Unlike ByteKind this marker carries the row's meaning, because the field cannot supply it for a mapping. The bound is on the PAIR, so a shape Arrow has no type for is unrepresentable rather than dead - there is no SequenceKind<i64> for Entries, because Arrow has no large map)
+  pub struct Items / pub struct Entries  (the two markers. They carry more than ByteKind's TextBytes and RawBytes do: a byte marker only picks a leaf, while these also decide what a row means, because Field::scalar on a mapping field takes a mapping rather than the key-value records a mapping is stored as - so the pairing happens where the field is not)
   pub trait ByteKind: Send + Sync + Clone + Copy + Debug + 'static  (which family a run of bytes belongs to where one Arrow layout serves both) / pub struct TextBytes / pub struct RawBytes  (named for what they mark rather than `Text`, which at the crate root would sit beside `text::Text`, the plain-text handle)
   pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized / pub trait ViewLeaf<K: ByteKind>: ByteViewType + Sized / pub trait FixedLeaf: Sized  (the bounds ByteSerie, ByteViewSerie and FixedSerie are written with; public because the types they bound are)
   pub struct FixedSerie<K: ByteKind>  (one fixed-width payload and no offsets; FixedStringSerie and FixedBytesSerie are its two markers)

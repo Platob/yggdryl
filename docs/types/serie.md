@@ -44,7 +44,9 @@ A leaf is one Arrow layout under one field, and its accessors are that layout's 
 
 Arrow spells a sequence at two offset widths, and lays a mapping out as a list of non-null key-value entry records — so `SequenceSerie`, `LargeSequenceSerie` and `MappingSerie` are three names for one implementation, `GenericSequenceSerie<O, K>`, generic over the offset width and over a `SequenceKind` marker. All three hold the same four things: a field, offsets, one `Serie` of what the offsets cut, and a validity bitmap. The marker decides three things and nothing else — how a row reads (`from_sequence` or paired into `from_mapping`), which Arrow array it lays out (`ListArray`, `LargeListArray`, `MapArray`), and which leaf of the root it is.
 
-The bound is on the pair, so a shape Arrow has no type for is unrepresentable rather than dead: there is no `SequenceKind<i64> for Entries`, because Arrow has no large map. The same idea gives `ByteSerie<T, K>` a string leaf and a byte leaf over identical binary buffers, told apart by `Text` and `Raw`.
+The bound is on the pair, so a shape Arrow has no type for is unrepresentable rather than dead: there is no `SequenceKind<i64> for Entries`, because Arrow has no large map.
+
+`ByteSerie<T, K>` splits the same way — a string leaf and a byte leaf over identical binary buffers, told apart by `TextBytes` and `RawBytes` — but its markers carry less. A byte marker only picks the leaf; what a row *means* comes from the field. A sequence marker decides the meaning too, because the field cannot supply it here: a mapping's rows are stored as records of a key and a value, and `Field::scalar` on a mapping field takes a mapping rather than a sequence of those records. That pairing has to happen somewhere the field is not, and this is the one place the leaf departs from "the leaf names the layout, the field names the meaning".
 
 The width and the shape are the leaf, so nothing branches on either per row, and narrowing to another answers `None`.
 
