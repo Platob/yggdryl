@@ -435,6 +435,60 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
         Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)])
     );
     assert!(matches!(run, Scalar::Sequence(Sequence::List(_))));
+
+    // The value contract reads a column the way it reads a run, because it
+    // is the one contract every caller value crosses. Nothing to rewrite
+    // leaves the column exactly as it was.
+    let item = Field::new("price", DataType::Int64, false);
+    let exact = Field::new("prices", DataType::list(item), false);
+    let kept = exact
+        .scalar(value.clone())
+        .expect("a column is a list value");
+    assert_eq!(kept.kind(), "serie");
+    assert_eq!(
+        Sequence::from_scalar(&kept).and_then(Sequence::as_serie),
+        Some(&column)
+    );
+
+    // A narrower item rewrites the rows, and from there the declaring field
+    // is the authority, so what comes back is the run it rewrote.
+    let narrower = Field::new(
+        "prices",
+        DataType::list(Field::new("price", DataType::Int32, false)),
+        false,
+    );
+    let rewritten = narrower.scalar(value).expect("the rows narrow");
+    assert_eq!(rewritten.kind(), "sequence");
+    assert_eq!(
+        rewritten.as_sequence().expect("a run"),
+        &[Scalar::from(125_i32), Scalar::from(126_i32)]
+    );
+
+    // A row no reading can honour refuses the whole value. Text is not that
+    // row - the contract renders a number as the text it spells - so this
+    // asks for an identity over a registry, which 125 is not.
+    let refusing = Field::new(
+        "codes",
+        DataType::list(Field::new("code", DataType::Currency, false)),
+        false,
+    );
+    assert!(refusing.scalar(Scalar::from(prices())).is_err());
+
+    // And the rendering one is not a refusal, which is the contract working
+    // rather than a gap in it.
+    let rendered = Field::new(
+        "labels",
+        DataType::list(Field::new("label", DataType::utf8(), false)),
+        false,
+    );
+    assert_eq!(
+        rendered
+            .scalar(Scalar::from(prices()))
+            .expect("a number spells its own text")
+            .as_sequence()
+            .expect("a run"),
+        &[Scalar::from("125"), Scalar::from("126")]
+    );
 }
 
 #[test]
