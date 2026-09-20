@@ -62,6 +62,7 @@ mod canonical;
 
 pub(crate) use canonical::*;
 
+use std::borrow::Cow;
 use std::fmt;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -833,7 +834,13 @@ impl DataTypeValue for DataType {
     }
 }
 
-/// A borrowed iterator over sequence values, mapping keys or record values.
+/// An iterator over sequence values, mapping keys or record values.
+///
+/// Three of the four leaves already hold the values and lend them; a column
+/// holds Arrow buffers and builds one row at a time, so the item is a
+/// [`Cow`] - borrowed where the value is already there, owned where it had
+/// to be read. A walk therefore costs nothing extra on the shapes that were
+/// always values, and costs one row at a time on the one that is not.
 pub enum Children<'a> {
     /// Sequence values.
     Sequence(std::slice::Iter<'a, Scalar>),
@@ -841,16 +848,82 @@ pub enum Children<'a> {
     Mapping(std::slice::Iter<'a, (Scalar, Scalar)>),
     /// Struct field values in sorted name order.
     Struct(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
+    /// A column's rows, each built as it is reached.
+    Column(ColumnRows<'a>),
 }
 
+/// The rows of one column, built one at a time as the walk reaches them.
+///
+/// A row the column's field refuses reads as [`Scalar::Null`], because a
+/// walk has nowhere to report a refusal; [`crate::Serie::scalars`] is the
+/// door that reports one.
+pub struct ColumnRows<'a> {
+    column: &'a crate::Serie,
+    front: usize,
+    back: usize,
+}
+
+impl<'a> ColumnRows<'a> {
+    /// Walk every row of `column`.
+    pub(crate) fn new(column: &'a crate::Serie) -> Self {
+        Self {
+            column,
+            front: 0,
+            back: crate::SerieValue::len(column),
+        }
+    }
+
+    /// Build row `index`, or the null a refusal reads as.
+    fn row(&self, index: usize) -> Scalar {
+        crate::SerieValue::scalar(self.column, index).unwrap_or(Scalar::Null)
+    }
+}
+
+impl Iterator for ColumnRows<'_> {
+    type Item = Scalar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front >= self.back {
+            return None;
+        }
+        let row = self.row(self.front);
+        self.front += 1;
+        Some(row)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let length = self.back - self.front;
+        (length, Some(length))
+    }
+}
+
+impl DoubleEndedIterator for ColumnRows<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front >= self.back {
+            return None;
+        }
+        self.back -= 1;
+        Some(self.row(self.back))
+    }
+}
+
+impl ExactSizeIterator for ColumnRows<'_> {
+    fn len(&self) -> usize {
+        self.back - self.front
+    }
+}
+
+impl std::iter::FusedIterator for ColumnRows<'_> {}
+
 impl<'a> Iterator for Children<'a> {
-    type Item = &'a Scalar;
+    type Item = Cow<'a, Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Sequence(values) => values.next(),
-            Self::Mapping(entries) => entries.next().map(|(key, _)| key),
-            Self::Struct(entries) => entries.next(),
+            Self::Sequence(values) => values.next().map(Cow::Borrowed),
+            Self::Mapping(entries) => entries.next().map(|(key, _)| Cow::Borrowed(key)),
+            Self::Struct(entries) => entries.next().map(Cow::Borrowed),
+            Self::Column(rows) => rows.next().map(Cow::Owned),
         }
     }
 
@@ -863,9 +936,10 @@ impl<'a> Iterator for Children<'a> {
 impl DoubleEndedIterator for Children<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Sequence(values) => values.next_back(),
-            Self::Mapping(entries) => entries.next_back().map(|(key, _)| key),
-            Self::Struct(entries) => entries.next_back(),
+            Self::Sequence(values) => values.next_back().map(Cow::Borrowed),
+            Self::Mapping(entries) => entries.next_back().map(|(key, _)| Cow::Borrowed(key)),
+            Self::Struct(entries) => entries.next_back().map(Cow::Borrowed),
+            Self::Column(rows) => rows.next_back().map(Cow::Owned),
         }
     }
 }
@@ -876,6 +950,7 @@ impl ExactSizeIterator for Children<'_> {
             Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.len(),
             Self::Struct(entries) => entries.len(),
+            Self::Column(rows) => rows.len(),
         }
     }
 }

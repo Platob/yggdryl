@@ -570,7 +570,7 @@ fn write_node<W: Write>(
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, values.rows()?, columns, skip_first_indent, width)
+            write_sequence(writer, &values.rows()?, columns, skip_first_indent, width)
         }
         Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
             if position == Position::AfterKey {

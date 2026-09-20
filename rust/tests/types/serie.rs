@@ -301,15 +301,25 @@ fn a_serie_reads_as_the_sequence_it_is() {
     let column = prices();
     let value = Scalar::from(column.clone());
 
-    // A column is a sequence value, so everything a sequence answers, it
-    // answers - the rows decoded once, on the first ask.
+    // A column is a sequence value, so a sequence's counted and walked
+    // answers hold. What it cannot do is lend a slice it does not have:
+    // `as_sequence` borrows, and a column has no value to borrow.
     assert_eq!(value.len(), 2);
+    assert_eq!(value.iter().count(), 2);
     assert_eq!(
-        value.as_sequence().expect("a sequence"),
+        value.iter().map(|row| row.into_owned()).collect::<Vec<_>>(),
+        vec![Scalar::from(125_i64), Scalar::from(126_i64)]
+    );
+    assert_eq!(value.as_sequence(), None);
+    assert_eq!(value.kind(), "serie");
+
+    // The same rows out of the run leaf do lend, which is the one difference
+    // between the two.
+    let run = Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]);
+    assert_eq!(
+        run.as_sequence().expect("a run lends its values"),
         &[Scalar::from(125_i64), Scalar::from(126_i64)]
     );
-    assert_eq!(value.iter().count(), 2);
-    assert_eq!(value.kind(), "serie");
 
     // The leaf is reachable both ways round.
     let sequence = match &value {
@@ -322,27 +332,44 @@ fn a_serie_reads_as_the_sequence_it_is() {
 }
 
 #[test]
-fn the_rows_are_decoded_once_and_the_column_is_unchanged_by_being_read() {
+fn a_column_read_as_a_value_stores_no_row_and_is_unchanged_by_being_read() {
     let value = Scalar::from(price_buffers());
     let sequence = match &value {
         Scalar::Sequence(sequence) => sequence,
         other => panic!("a column is a sequence value, got {other:?}"),
     };
-    let rows = sequence.as_serie_rows().expect("a column read as rows");
 
-    // Nothing is decoded until a row is asked for.
-    assert!(rows.as_slice().is_none());
-    assert_eq!(rows.len(), 2);
+    // A column holds buffers and no value, so it has none to lend - before a
+    // read, after a read, ever.
+    assert!(sequence.as_slice().is_none());
+    assert_eq!(sequence.row_count(), 2);
+    assert_eq!(sequence.rows().unwrap().len(), 2);
+    assert!(sequence.as_slice().is_none(), "reading kept nothing");
 
-    // The first ask decodes, and every ask after it lends the same rows.
-    let first = rows.rows().expect("readable rows").as_ptr();
-    assert_eq!(rows.rows().expect("readable rows").as_ptr(), first);
-    assert_eq!(rows.as_slice().expect("decoded rows").len(), 2);
+    // A run is the other leaf, and it does lend.
+    let run = Sequence::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
+    assert!(run.as_slice().is_some());
+    assert!(matches!(run.rows().unwrap(), std::borrow::Cow::Borrowed(_)));
+    assert!(matches!(
+        sequence.rows().unwrap(),
+        std::borrow::Cow::Owned(_)
+    ));
 
     // And the column itself still holds buffers, not rows.
     assert_eq!(
-        rows.column().as_int64().expect("an int64 column").values(),
+        sequence
+            .as_serie()
+            .expect("a column")
+            .as_int64()
+            .expect("an int64 column")
+            .values(),
         &[125, 126]
+    );
+
+    // A walk still answers every row, building each as it is reached.
+    assert_eq!(
+        value.iter().map(|row| row.into_owned()).collect::<Vec<_>>(),
+        vec![Scalar::from(125_i64), Scalar::from(126_i64)]
     );
 }
 
@@ -365,12 +392,10 @@ fn a_column_and_the_run_it_holds_order_by_their_rows_and_are_not_one_value() {
     let column = Sequence::from(prices());
     let run = Sequence::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
 
-    // A run lends its rows where it holds them; a column has none to lend
-    // until one is asked for.
+    // A run lends its rows where it holds them; a column has none to lend.
     assert!(run.as_slice().is_some());
     assert!(column.as_slice().is_none());
     assert_eq!(column.rows().unwrap().len(), 2);
-    assert!(column.as_slice().is_some(), "the first ask decodes");
 
     // The rows are the same, so neither sorts away from the other; the leaf
     // only breaks the tie, and they are not equal.
@@ -710,5 +735,76 @@ fn a_variant_column_lends_the_run_it_encoded_and_decodes_only_on_demand() {
     assert_eq!(
         column.as_variant().expect("a variant column").bytes(3),
         None
+    );
+}
+
+#[test]
+fn a_borrowing_accessor_answers_for_the_run_and_not_for_the_column() {
+    let column = Scalar::from(prices());
+    let run = Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]);
+
+    // `get` and `[i]` lend a stored row. A run stores its rows; a column
+    // stores buffers, so there is nothing there to lend.
+    assert_eq!(run.get(0), Some(&Scalar::from(125_i64)));
+    assert_eq!(column.get(0), None);
+    assert_eq!(run.as_sequence().map(<[Scalar]>::len), Some(2));
+    assert_eq!(column.as_sequence(), None);
+
+    // Everything that counts or builds still answers for both.
+    assert_eq!(column.len(), run.len());
+    assert_eq!(
+        column
+            .iter()
+            .map(|row| row.into_owned())
+            .collect::<Vec<_>>(),
+        run.iter().map(|row| row.into_owned()).collect::<Vec<_>>()
+    );
+    assert_eq!(prices().scalar(0).unwrap(), Scalar::from(125_i64));
+
+    // And the walk borrows for the run where it owns for the column, so a
+    // run's walk still allocates nothing.
+    assert!(matches!(
+        run.iter().next().expect("a first row"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    assert!(matches!(
+        column.iter().next().expect("a first row"),
+        std::borrow::Cow::Owned(_)
+    ));
+}
+
+#[test]
+fn a_walk_over_a_column_reads_every_row_in_order_from_both_ends() {
+    let column = Scalar::from(
+        Serie::from_scalars(
+            Field::new("price", DataType::Int64, false),
+            (0..5_i64).map(Scalar::from),
+        )
+        .expect("five rows"),
+    );
+
+    let forward = column
+        .iter()
+        .map(|row| row.as_i64().expect("an int64 row"))
+        .collect::<Vec<_>>();
+    assert_eq!(forward, vec![0, 1, 2, 3, 4]);
+
+    let backward = column
+        .iter()
+        .rev()
+        .map(|row| row.as_i64().expect("an int64 row"))
+        .collect::<Vec<_>>();
+    assert_eq!(backward, vec![4, 3, 2, 1, 0]);
+
+    // The two ends meet in the middle exactly once, and the length is known
+    // without reading a row.
+    let mut walk = column.iter();
+    assert_eq!(walk.len(), 5);
+    assert_eq!(walk.next().unwrap().as_i64(), Some(0));
+    assert_eq!(walk.next_back().unwrap().as_i64(), Some(4));
+    assert_eq!(walk.len(), 3);
+    assert_eq!(
+        walk.map(|row| row.as_i64().unwrap()).collect::<Vec<_>>(),
+        vec![1, 2, 3]
     );
 }

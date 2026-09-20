@@ -70,11 +70,12 @@
 //! adds no [`DataTypeId`](crate::DataTypeId), no [`DataType`] variant and no
 //! [`Field`] variant.
 //!
-//! A sequence value still has to lend `&[Scalar]`, and a column holds none,
-//! so the decode lives in that leaf rather than here:
-//! [`SerieRows`](crate::SerieRows) builds the rows the first time one is
-//! asked for and shares them from then on, and the column it reads is
-//! unchanged by being read.
+//! A column stores no [`Scalar`] anywhere, so it lends none: reading one as
+//! a sequence builds the rows asked for and keeps nothing.
+//! [`Sequence::as_slice`](crate::Sequence::as_slice) therefore answers only
+//! for the schema-free run, [`Sequence::rows`](crate::Sequence::rows) reads
+//! either - borrowing the run's values, building the column's - and a walk
+//! over a value yields `Cow`, borrowed where the value was already there.
 //!
 //! ```
 //! use std::sync::Arc;

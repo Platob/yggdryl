@@ -13,7 +13,7 @@ One column: the Arrow buffers that hold the rows of one [`Field`](field.md), and
 | Proof from buffers | `from_arrow_*` prove the layout and the nullability of every level in constant time; a value the field's own contract refuses is refused where it is read |
 | Datatype | `list(<the field>)`, read off the field rather than inferred, so an empty column still names its datatype |
 | Registration | `Sequence::Serie`, so a column is `Scalar::Sequence(Sequence::Serie(..))` - a value wherever a sequence is one |
-| Reads as | A sequence: `as_sequence`, `len`, `iter`, `get`, indexing and dotted paths all answer its rows, decoded on the first ask and shared from then on |
+| Reads as | A sequence: `len`, `iter`, `get`, indexing and dotted paths all answer its rows, each built as it is reached. `as_sequence` borrows, and a column has no value to lend, so it answers `None` there and `Sequence::rows` is the door that reads it |
 | `kind()` | `serie`, so a refusal says which of the two it was handed |
 | Not `ArrowScalar` | That holds one payload in four shapes and answers `None` to every native accessor; a serie is one shape, a column, and reads as the sequence it is |
 | Family | `SerieValue`, implemented by every leaf, by every family enum, and by `Serie` itself |
@@ -56,7 +56,7 @@ A layout that is both a string leaf and a byte leaf - `Binary` under a windows-1
 | `with_child`, `without_child` | one field edit and one `Vec` of pointers, never a row |
 | `into_arrow_array` | the array itself, shared |
 | `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, no row decoded |
-| `scalars`, and reading a column as a sequence | one decode of every row, once |
+| `scalars`, `Sequence::rows`, and walking a column as a value | one row built per row, every time — nothing is cached, so hold the answer rather than asking twice |
 
 ## Use
 
@@ -200,7 +200,7 @@ A record column is made of child columns, and Arrow already holds each one separ
 
 ## A column is a value
 
-`Serie` registers in the sequence family, so a column needs no second reader anywhere: every accessor that answers a sequence answers a column, and `kind()` still says which one it was handed. A column holds no rows, so the first ask for one decodes them; the reading is kept beside the column rather than in it, and the buffers are untouched by being read.
+`Serie` registers in the sequence family, so a column needs no second reader anywhere: every accessor that answers a sequence answers a column, and `kind()` still says which one it was handed. A column holds no rows and keeps none: each row is built as it is reached and nothing is cached, so reading a column leaves it exactly as it was. The one thing it cannot do is lend a slice it does not have — `as_sequence` borrows, so it answers `None` for a column, and a walk yields `Cow`, borrowed for a run and owned for a column.
 
 === "Rust"
 
@@ -215,9 +215,19 @@ A record column is made of child columns, and Arrow already holds each one separ
 
     assert_eq!(value.kind(), "serie");
     assert_eq!(value.len(), 2);
-    assert_eq!(value[0], Scalar::from(125_i64));
-    assert_eq!(value.iter().count(), 2);
     assert!(value.is_container());
+
+    // A walk answers every row, building each as it is reached.
+    assert_eq!(
+        value.iter().map(|row| row.into_owned()).collect::<Vec<_>>(),
+        vec![Scalar::from(125_i64), Scalar::from(126_i64)]
+    );
+
+    // What it cannot do is lend a row it does not store: `get` and `[i]`
+    // borrow, so they answer for a run and not for a column. One row of a
+    // column is `Serie::scalar`, which builds it.
+    assert_eq!(value.get(0), None);
+    assert_eq!(serie.scalar(0)?, Scalar::from(125_i64));
 
     // A column and the run it holds order by their rows; the leaf only
     // breaks the tie, so a column never sorts away from its own rows.
@@ -225,11 +235,17 @@ A record column is made of child columns, and Arrow already holds each one separ
     assert_ne!(value, run);
     assert!(run < value);
 
-    // The reading is lazy, and it is kept beside the column, never in it.
+    // A run lends its values; a column has none to lend, and reading it
+    // keeps nothing.
     let Scalar::Sequence(sequence) = &value else { panic!("a column is a sequence value") };
-    let rows = sequence.as_serie_rows().expect("a column read as rows");
-    assert_eq!(rows.rows()?.len(), 2);
-    assert_eq!(rows.column().as_int64().unwrap().values(), &[125, 126]);
+    assert_eq!(sequence.as_slice(), None);
+    assert_eq!(sequence.rows()?.len(), 2);
+    assert_eq!(sequence.as_slice(), None, "the read kept nothing");
+    assert_eq!(run.as_sequence().expect("a run lends").len(), 2);
+
+    // The buffers are untouched by being read.
+    let column = sequence.as_serie().expect("a column");
+    assert_eq!(column.as_int64().unwrap().values(), &[125, 126]);
 
     // Dropping the field is spelled, never implied.
     assert_eq!(serie.into_sequence()?, run);
@@ -322,8 +338,10 @@ A variant row is one run of the crate's own [variant encoding](variant.md), so a
 - A batch read back names its root `row`, because Arrow names columns and never the record.
 - A column and a schema-free run with the same rows are not equal; equality is what tells them apart, and the leaf breaks the ordering tie.
 - Two columns are equal when their field and their rows are, whichever buffers hold them - a `Utf8View` column and a `Utf8` column of one field are not, because the field names the layout. A column hashes by its field and its length, so a hash never decodes a buffer.
-- `Sequence::as_slice` lends a slice only once the rows have been decoded; `Sequence::rows` is the door that decodes, and `Scalar::as_sequence` goes through it.
-- Indexing a column whose buffers hold a value its field refuses panics, as indexing any value the accessor cannot answer does; `scalar` returns that refusal instead.
+- `Sequence::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the schema-free run: a column holds Arrow buffers and no `Scalar`, so there is nothing to borrow. `Sequence::rows` reads either — borrowing the run's values, building the column's — and `Scalar::iter` walks either, yielding `Cow`.
+- Nothing caches a decoded row. Reading a column's rows twice reads them twice; hold the answer rather than asking again.
+- `Scalar::get` and `scalar[i]` borrow a stored row, so they answer for the schema-free run and not for a column, which stores none — `value.get(0)` on a column is `None` and `value[0]` panics, the way they do on any value that is not a run. `Serie::scalar(i)` builds that one row, and `Scalar::iter` walks them all.
+- A walk has nowhere to report a refusal, so a row a column's field refuses reads as `Scalar::Null` there; `Serie::scalar` and `Serie::scalars` return the refusal instead.
 - JSON, YAML and TOML write a column as its rows. The field is restored on the read side by a `Field`, never by an envelope in the document.
 - A buffer write is in place only when nothing else holds the buffers. A clone shares them, so writing to one of two clones copies the rows once and the two go their own way - which is what makes a column a value rather than a handle.
 

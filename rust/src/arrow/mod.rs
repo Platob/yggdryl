@@ -822,18 +822,24 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
     // A column already holds the buffers this would build. Where its field
     // is the one asked for, the buffers cross as they are: no row is decoded
     // and none is laid out a second time.
-    if let Scalar::Sequence(crate::Sequence::Serie(rows)) = values
-        && rows.column().field().dtype() == field.dtype()
+    if let Scalar::Sequence(crate::Sequence::Serie(column)) = values
+        && column.field().dtype() == field.dtype()
     {
-        return Ok(crate::SerieValue::into_arrow_array(rows.column()));
+        return Ok(crate::SerieValue::into_arrow_array(column.as_ref()));
     }
-    let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of array values"),
-        actual: SmolStr::new(values.kind()),
-    })?;
+    // A column under some other field still holds rows this can lay out, so
+    // the fallback reads the sequence rather than borrowing it: a run lends
+    // its values, a column builds them.
+    let Scalar::Sequence(sequence) = values else {
+        return Err(Error::InvalidValue {
+            path: SmolStr::new_static("$"),
+            expected: SmolStr::new_static("a sequence of array values"),
+            actual: SmolStr::new(values.kind()),
+        });
+    };
+    let values = sequence.rows()?;
     let mut canonical = Vec::with_capacity(values.len());
-    for value in values {
+    for value in values.as_ref() {
         // The field's own value contract, one value at a time: a synthetic row
         // around each element would allocate a sequence per value and answer
         // the same thing.
@@ -857,18 +863,23 @@ pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
     // The same short circuit a column's array crossing takes: a column of
     // records is already the table this would build.
     if let Scalar::Sequence(crate::Sequence::Serie(column)) = rows
-        && column.column().field().dtype() == root.dtype()
+        && column.field().dtype() == root.dtype()
     {
-        return column.column().into_arrow_batch();
+        return column.into_arrow_batch();
     }
-    let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of record values"),
-        actual: SmolStr::new(rows.kind()),
-    })?;
+    // The same reading the array crossing takes: a column of records under
+    // some other root still holds the rows this lays out.
+    let Scalar::Sequence(sequence) = rows else {
+        return Err(Error::InvalidValue {
+            path: SmolStr::new_static("$"),
+            expected: SmolStr::new_static("a sequence of record values"),
+            actual: SmolStr::new(rows.kind()),
+        });
+    };
+    let rows = sequence.rows()?;
     let schema = arrow_schema_from_field(root)?;
     let mut canonical = Vec::with_capacity(rows.len());
-    for row in rows {
+    for row in rows.as_ref() {
         canonical.push(root.canonicalize_value(row.clone())?);
     }
     self::rows::batch_from_values(root, schema, &canonical)

@@ -414,7 +414,7 @@ pub fn into_bytes_with_formatting(
         Format::Json => crate::json::into_bytes_with_formatting(value, formatting),
         Format::JsonLines => match value {
             Scalar::Sequence(values) => {
-                crate::json::into_bytes_all_with_formatting(values.rows()?, formatting)
+                crate::json::into_bytes_all_with_formatting(&values.rows()?, formatting)
             }
             value => {
                 crate::json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting)
@@ -440,7 +440,7 @@ pub fn into_utf8_with_formatting(
         Format::Json => crate::json::into_utf8_with_formatting(value, formatting),
         Format::JsonLines => match value {
             Scalar::Sequence(values) => {
-                crate::json::into_utf8_all_with_formatting(values.rows()?, formatting)
+                crate::json::into_utf8_all_with_formatting(&values.rows()?, formatting)
             }
             value => {
                 crate::json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting)
@@ -675,7 +675,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         let child_depth = depth.saturating_add(1);
         match value {
             Scalar::Sequence(values) => {
-                for value in values.rows()? {
+                for value in values.rows()?.as_ref() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }

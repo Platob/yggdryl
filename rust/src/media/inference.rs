@@ -216,11 +216,12 @@ impl Scalar {
             // its datatype is read off that field rather than agreed back
             // out of the rows: an empty column names its datatype where an
             // empty sequence cannot.
-            Self::Sequence(crate::Sequence::Serie(rows)) => {
-                Ok(DataType::list(rows.column().field().clone()))
+            Self::Sequence(crate::Sequence::Serie(column)) => {
+                Ok(DataType::list(column.field().clone()))
             }
             Self::Sequence(values) => {
-                let (dtype, nullable) = agreed(values.rows()?.iter(), "sequence item", depth)?;
+                let rows = values.rows()?;
+                let (dtype, nullable) = agreed(rows.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // An Arrow payload already carries its exact field: one pinned

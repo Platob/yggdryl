@@ -135,7 +135,7 @@ impl Serialize for JsonRef<'_> {
                 // here; a row its field refuses is the codec's refusal.
                 let rows = values.rows().map_err(S::Error::custom)?;
                 let mut sequence = serializer.serialize_seq(Some(rows.len()))?;
-                for value in rows {
+                for value in rows.as_ref() {
                     sequence.serialize_element(&JsonRef(value))?;
                 }
                 sequence.end()

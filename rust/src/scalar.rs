@@ -1501,12 +1501,12 @@ impl Scalar {
     /// Return sequence children as values.
     ///
     /// A schema-free run lends its values and allocates nothing. A column
-    /// holds Arrow buffers, so this decodes them once and caches the reading;
-    /// a value the column's field refuses answers `None`, and
-    /// [`Sequence::rows`](crate::Sequence::rows) is what reports why.
+    /// holds Arrow buffers and no value at all, so it has none to lend and
+    /// answers `None`; [`Sequence::rows`](crate::Sequence::rows) reads one,
+    /// and [`Self::iter`] walks either.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::Sequence(values) => values.rows().ok(),
+            Self::Sequence(values) => values.as_slice(),
             _ => None,
         }
     }

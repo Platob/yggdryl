@@ -350,7 +350,7 @@ impl Scalar {
             Self::Sequence(values) => match values.rows() {
                 Ok(rows) => {
                     write_sequence_header(sink, rows.len());
-                    for value in rows {
+                    for value in rows.as_ref() {
                         value.feed(sink, depth + 1);
                     }
                 }

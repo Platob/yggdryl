@@ -457,7 +457,10 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
         vec!["a", "m", "z"]
     );
     assert_eq!(
-        record.iter().filter_map(Scalar::as_i64).collect::<Vec<_>>(),
+        record
+            .iter()
+            .filter_map(|value| value.as_i64())
+            .collect::<Vec<_>>(),
         vec![1, 2, 3]
     );
 
