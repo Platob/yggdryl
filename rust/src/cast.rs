@@ -1617,8 +1617,24 @@ enum ArrayCastKind {
 }
 
 pub(crate) enum StructColumnPlan {
-    Source { index: usize, cast: ArrayCastPlan },
-    Missing(Field),
+    Source {
+        index: usize,
+        cast: ArrayCastPlan,
+    },
+    /// A target column no source carries, with its canonical one-row default
+    /// already materialized.
+    ///
+    /// That default is a function of the Field alone, but building it runs a
+    /// schema preflight and a full `Field::validate` - which the plan already
+    /// did for this exact Field - and then materializes a Scalar and a one-row
+    /// Arrow array. Paying that per batch is the repeated schema validation the
+    /// optimization contract forbids on a record path, so it is paid once here.
+    /// A Field whose default cannot be materialized keeps `None` and raises the
+    /// same failure from the same place it always did, on the batch.
+    Missing {
+        field: Field,
+        default: Option<ArrayRef>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -2131,7 +2147,19 @@ impl ArrayCastPlan {
                                 nulls: None,
                             });
                         }
-                        None => StructColumnPlan::Missing(target.clone()),
+                        // A nullable hole is a null column, which needs no
+                        // default; anything else fills with one, so it is built
+                        // here rather than on every batch. A failure stays for
+                        // the batch that asks, so nothing fails earlier than it
+                        // used to.
+                        None => StructColumnPlan::Missing {
+                            field: target.clone(),
+                            default: if target.is_nullable() {
+                                None
+                            } else {
+                                target.default_arrow_array().ok()
+                            },
+                        },
                     };
                     columns.push(column);
                 }
@@ -3950,9 +3978,15 @@ pub(crate) mod columns {
                                 && Arc::ptr_eq(&output, source_column);
                             output
                         }
-                        StructColumnPlan::Missing(field) => {
+                        StructColumnPlan::Missing { field, default } => {
                             unchanged = false;
-                            default_array(field, source.len(), child_exposure.as_ref(), budget)?
+                            default_array_with(
+                                field,
+                                default.as_ref(),
+                                source.len(),
+                                child_exposure.as_ref(),
+                                budget,
+                            )?
                         }
                     });
                 }
@@ -4693,6 +4727,29 @@ pub(crate) mod columns {
             exposure: Option<&BooleanBuffer>,
             budget: &mut MaterializationBudget,
         ) -> Result<ArrayRef> {
+            default_array_with(field, None, len, exposure, budget)
+        }
+
+        /// The same column, over a one-row default a caller already holds.
+        ///
+        /// `prebuilt` is exactly what `Field::default_arrow_array` would answer
+        /// for this Field; a compiled plan materializes it once so a per-batch
+        /// fill does not re-run the schema preflight behind it. `None` keeps the
+        /// original behaviour, failure timing included.
+        pub(crate) fn default_array_with(
+            field: &Field,
+            prebuilt: Option<&ArrayRef>,
+            len: usize,
+            exposure: Option<&BooleanBuffer>,
+            budget: &mut MaterializationBudget,
+        ) -> Result<ArrayRef> {
+            // The one-row default, built once per plan or once per call.
+            let default_row = || -> Result<ArrayRef> {
+                match prebuilt {
+                    Some(prebuilt) => Ok(Arc::clone(prebuilt)),
+                    None => field.default_arrow_array(),
+                }
+            };
             let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
             if len == 0 {
                 return Ok(arrow_array::new_empty_array(&arrow_type));
@@ -4745,7 +4802,7 @@ pub(crate) mod columns {
                     if len != 1 {
                         budget.add_array(&DataType::UInt32, len)?;
                     }
-                    let default = field.default_arrow_array()?;
+                    let default = default_row()?;
                     repeat_scalar(&default, len)?
                 }
                 _ => {
@@ -4754,7 +4811,7 @@ pub(crate) mod columns {
                             "mixed missing-field exposure requires a mask".to_owned(),
                         )
                     })?;
-                    let default = field.default_arrow_array()?;
+                    let default = default_row()?;
                     let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
                     let placeholder =
                         crate::arrow::value::array_from_values(field, &[&placeholder])?;
