@@ -161,7 +161,7 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     assert plain.default_sending_time is None
     assert plain.separator is None
     assert plain.payload_column == "body"
-    assert plain.null_values == ["", "null", "<null>"]
+    assert plain.null_values == ["", "null", "<null>", "none", "[n/a]"]
     assert plain.batch_byte_size == 128 * 1024 * 1024
     assert repr(plain).startswith("FixCodec(")
     with pytest.raises(TypeError):

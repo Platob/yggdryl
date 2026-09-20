@@ -260,7 +260,7 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.version, undefined)
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
-  assert.deepEqual(bare.nullValues, ['', 'null', '<null>'])
+  assert.deepEqual(bare.nullValues, ['', 'null', '<null>', 'none', '[n/a]'])
   assert.equal(bare.direction, 'S')
   // The default target, stated once in the core and read here.
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
