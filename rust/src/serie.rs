@@ -162,34 +162,34 @@ use crate::{DataType, Field, Result, Scalar};
 /// without touching a buffer, and a hash that decoded one would make a map
 /// lookup a scan.
 macro_rules! serie_leaf {
-    ($name:ident $(, $param:ident : $bound:ident)?) => {
-        impl$(<$param: $bound>)? PartialEq for $name$(<$param>)? {
+    ($name:ident $(, $param:ident : $bound:path)*) => {
+        impl<$($param: $bound),*> PartialEq for $name<$($param),*> {
             fn eq(&self, other: &Self) -> bool {
                 $crate::serie::compare_leaves(self, other) == ::std::cmp::Ordering::Equal
             }
         }
 
-        impl$(<$param: $bound>)? Eq for $name$(<$param>)? {}
+        impl<$($param: $bound),*> Eq for $name<$($param),*> {}
 
-        impl$(<$param: $bound>)? PartialOrd for $name$(<$param>)? {
+        impl<$($param: $bound),*> PartialOrd for $name<$($param),*> {
             fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
                 Some(::std::cmp::Ord::cmp(self, other))
             }
         }
 
-        impl$(<$param: $bound>)? Ord for $name$(<$param>)? {
+        impl<$($param: $bound),*> Ord for $name<$($param),*> {
             fn cmp(&self, other: &Self) -> ::std::cmp::Ordering {
                 $crate::serie::compare_leaves(self, other)
             }
         }
 
-        impl$(<$param: $bound>)? ::std::hash::Hash for $name$(<$param>)? {
+        impl<$($param: $bound),*> ::std::hash::Hash for $name<$($param),*> {
             fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
                 $crate::serie::hash_leaf(self, state);
             }
         }
 
-        impl$(<$param: $bound>)? ::std::fmt::Display for $name$(<$param>)? {
+        impl<$($param: $bound),*> ::std::fmt::Display for $name<$($param),*> {
             fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 $crate::serie::display_leaf(self, formatter)
             }
@@ -281,8 +281,8 @@ mod text;
 mod variant;
 
 pub use nested::{
-    GenericSequenceSerie, LargeSequenceSerie, MappingSerie, SequenceOffset, SequenceSerie,
-    StructSerie,
+    Entries, GenericSequenceSerie, Items, LargeSequenceSerie, MappingSerie, SequenceKind,
+    SequenceSerie, StructSerie,
 };
 pub use primitive::{
     BooleanSerie, Date32Serie, Date64Serie, DateTimeMicrosecondSerie, DateTimeMillisecondSerie,
@@ -295,9 +295,10 @@ pub use primitive::{
     UInt32Serie, UInt64Serie,
 };
 pub use text::{
-    BinarySerie, BinaryStringSerie, BinaryViewSerie, BinaryViewStringSerie, ByteSerie,
-    ByteViewSerie, FixedBytesSerie, FixedStringSerie, LargeBinarySerie, LargeBinaryStringSerie,
-    LargeUtf8StringSerie, Utf8StringSerie, Utf8ViewStringSerie,
+    BinarySerie, BinaryStringSerie, BinaryViewSerie, BinaryViewStringSerie, ByteKind, ByteLeaf,
+    ByteSerie, ByteViewSerie, FixedBytesSerie, FixedLeaf, FixedSerie, FixedStringSerie,
+    LargeBinarySerie, LargeBinaryStringSerie, LargeUtf8StringSerie, Raw, Text, Utf8StringSerie,
+    Utf8ViewStringSerie, ViewLeaf,
 };
 pub use variant::VariantSerie;
 
@@ -978,6 +979,10 @@ impl Ord for Serie {
             (Err(_), Ok(_)) => return Ordering::Greater,
             (Err(_), Err(_)) => Ordering::Equal,
         }
+        // The length breaks the tie the rows leave when neither can be read:
+        // a column hashes its field and its length, so two that compare
+        // equal have to agree on both or `Eq` and `Hash` disagree.
+        .then_with(|| self.len().cmp(&other.len()))
         .then_with(|| self.leaf_rank().cmp(&other.leaf_rank()))
         .then_with(|| match (self.field(), other.field()) {
             (Some(left), Some(right)) => left.cmp(right),

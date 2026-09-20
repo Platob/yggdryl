@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::OffsetSizeTrait;
 use arrow_array::types::{
     BinaryType, BinaryViewType, Date32Type, Date64Type, Decimal32Type, Decimal64Type,
     Decimal128Type, Decimal256Type, DurationMicrosecondType, DurationMillisecondType,
@@ -26,7 +27,7 @@ use arrow_array::{
     GenericByteViewArray, LargeListArray, ListArray, MapArray, PrimitiveArray, RecordBatch,
     RecordBatchOptions, RecordBatchReader, StructArray,
 };
-use arrow_buffer::NullBuffer;
+use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
 
 use super::Serie;
@@ -251,45 +252,57 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
         ArrowDataType::List(_) => {
             let lists = held::<ListArray>(&field_ref, array)?;
             let item = item_field(&field_ref)?;
-            let items = column_of(Arc::new(item), lists.values(), None)?;
-            Ok(SequenceSerie::new(
-                field,
-                lists.offsets().clone(),
-                items,
-                lists.nulls().cloned(),
-            )
-            .into_serie())
+            let (offsets, values) = rebased(lists.offsets(), lists.values());
+            let items = column_of(Arc::new(item), &values, None)?;
+            Ok(SequenceSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie())
         }
         ArrowDataType::LargeList(_) => {
             let lists = held::<LargeListArray>(&field_ref, array)?;
             let item = item_field(&field_ref)?;
-            let items = column_of(Arc::new(item), lists.values(), None)?;
-            Ok(LargeSequenceSerie::new(
-                field,
-                lists.offsets().clone(),
-                items,
-                lists.nulls().cloned(),
-            )
-            .into_serie())
+            let (offsets, values) = rebased(lists.offsets(), lists.values());
+            let items = column_of(Arc::new(item), &values, None)?;
+            Ok(LargeSequenceSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie())
         }
         ArrowDataType::Map(..) => {
             let maps = held::<MapArray>(&field_ref, array)?;
             let entries = entry_field(&field_ref)?;
             let entry_array: ArrayRef = Arc::new(maps.entries().clone());
-            let held_entries = column_of(Arc::new(entries), &entry_array, None)?;
-            Ok(MappingSerie::new(
-                field,
-                held_entries,
-                maps.offsets().clone(),
-                maps.nulls().cloned(),
-            )
-            .into_serie())
+            let (offsets, values) = rebased(maps.offsets(), &entry_array);
+            let held_entries = column_of(Arc::new(entries), &values, None)?;
+            // The argument order is the sequence leaf's, because a mapping
+            // column is that leaf read as entries.
+            Ok(MappingSerie::new(field, offsets, held_entries, maps.nulls().cloned()).into_serie())
         }
         other => Err(Error::Unsupported {
             kind: "serie",
             reason: format!("a column of {other} is not one this crate holds"),
         }),
     }
+}
+
+/// Rebase a cut onto exactly the items it reaches.
+///
+/// Arrow slices a list by slicing its offsets and keeping the whole child,
+/// so a sliced array's offsets start past zero and its values run past the
+/// end. Reading is unaffected - an offset is absolute - but a column that
+/// grows has to know where its items end, so the cut is rebased once here
+/// and the child sliced to match. An unsliced array is already in that
+/// shape and is returned untouched, so nothing is copied for it; a sliced
+/// one shares its buffers through Arrow's own slice.
+fn rebased<O: OffsetSizeTrait>(
+    offsets: &OffsetBuffer<O>,
+    values: &ArrayRef,
+) -> (OffsetBuffer<O>, ArrayRef) {
+    let first = offsets.first().copied().unwrap_or_default();
+    let last = offsets.last().copied().unwrap_or_default();
+    if first == O::zero() && last.as_usize() == values.len() {
+        return (offsets.clone(), ArrayRef::clone(values));
+    }
+    let shifted: Vec<O> = offsets.iter().map(|offset| *offset - first).collect();
+    (
+        OffsetBuffer::new(shifted.into()),
+        values.slice(first.as_usize(), (last - first).as_usize()),
+    )
 }
 
 /// The item field a list-shaped field repeats.

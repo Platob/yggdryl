@@ -724,9 +724,9 @@ fn a_mapping_column_holds_its_entries_as_a_record_column() {
     let maps = column.as_mapping().expect("a mapping column");
     assert_eq!(maps.range(0), Some((0, 1)));
 
-    // The entries are a record column, so the keys and the values are each a
-    // column of their own.
-    let pairs = maps.entries().as_struct().expect("a record entry column");
+    // A mapping column is the sequence leaf read as entries, so its items
+    // are the key-value records, and they are a column of their own.
+    let pairs = maps.items().as_struct().expect("a record entry column");
     assert_eq!(
         pairs
             .child("key")
@@ -1036,4 +1036,230 @@ fn the_two_leaves_answer_the_same_but_do_not_cost_the_same() {
 
     // The run was not changed by the refusal.
     assert_eq!(short.len(), 1);
+}
+
+#[test]
+fn a_mapping_column_is_the_sequence_leaf_read_as_entries() {
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let rows = [
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry"),
+        Scalar::from_mapping([
+            (Scalar::from("b"), Scalar::from(2_i64)),
+            (Scalar::from("c"), Scalar::from(3_i64)),
+        ])
+        .expect("two entries"),
+    ];
+
+    // `keys_sorted` is the leaf a mapping datatype is, and Arrow carries it
+    // in the datatype - so a column has to read it off its own field or it
+    // will not read back.
+    for sorted in [false, true] {
+        let dtype = DataType::map(pair.clone(), sorted).expect("a mapping datatype");
+        let field = Field::new("weights", dtype, false);
+        let column = Serie::from_scalars(field.clone(), rows.clone()).expect("two mapping rows");
+
+        let maps = column.as_mapping().expect("a mapping column");
+        assert_eq!(maps.range(0), Some((0, 1)));
+        assert_eq!(maps.range(1), Some((1, 3)));
+        assert_eq!(maps.offsets().as_ref(), &[0, 1, 3]);
+
+        // Its items are the key-value records, one serie of its own.
+        let pairs = maps.items().as_struct().expect("a record entry column");
+        assert_eq!(
+            pairs
+                .child("key")
+                .expect("the key column")
+                .as_utf8()
+                .expect("a utf8 key column")
+                .value(2),
+            Some("c")
+        );
+
+        // And it crosses out and back under the width and the flag it was
+        // declared with.
+        let array = column.into_arrow_array().expect("a column has buffers");
+        let arrow_schema::DataType::Map(_, exported) = array.data_type() else {
+            panic!("a mapping column lays out as an Arrow map, got {array:?}");
+        };
+        assert_eq!(
+            *exported, sorted,
+            "the declared keys_sorted rides the datatype out"
+        );
+        let back = Serie::from_arrow_array(field, array).expect("the same buffers read back");
+        assert_eq!(back.scalars().unwrap(), column.scalars().unwrap());
+        assert_eq!(back.scalar(1).unwrap(), rows[1]);
+    }
+}
+
+#[test]
+fn one_cut_reads_as_items_or_as_entries_and_never_as_the_other() {
+    let item = Field::new("item", DataType::Int64, false);
+    let sequence = Serie::from_scalars(
+        Field::new("rows", DataType::list(item), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a sequence column");
+
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mapping = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("a mapping column");
+
+    // One implementation, two shapes: the marker decides how a row reads and
+    // which leaf of the root it is, so narrowing to the other answers None.
+    assert!(sequence.as_sequence().is_some());
+    assert!(sequence.as_mapping().is_none());
+    assert!(mapping.as_mapping().is_some());
+    assert!(mapping.as_sequence().is_none());
+
+    // And a row reads as what its field says it is, not as the cut it shares.
+    assert_eq!(
+        sequence.scalar(0).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64)])
+    );
+    assert_eq!(mapping.scalar(0).unwrap().kind(), "mapping");
+
+    // A row of the wrong shape contributes no entries, so the cut refuses it
+    // rather than writing a mapping row as a sequence one.
+    let mut growing = mapping.clone();
+    assert!(
+        growing
+            .set(0, Scalar::from_sequence([Scalar::from(9_i64)]))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_sliced_cut_is_rebased_onto_the_items_it_reaches() {
+    use arrow_array::ListArray;
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::Field as ArrowField;
+
+    // Arrow slices a list by slicing its offsets and keeping the whole
+    // child, so a sliced array's offsets start past zero and its values run
+    // past the end.
+    let arrow_item = Arc::new(ArrowField::new(
+        "item",
+        arrow_schema::DataType::Int64,
+        false,
+    ));
+    let values: ArrayRef = Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4, 5]));
+    let lists = ListArray::new(
+        arrow_item,
+        OffsetBuffer::new(vec![0_i32, 2, 3, 5].into()),
+        values,
+        None,
+    );
+    let field = Field::new(
+        "rows",
+        DataType::list(Field::new("item", DataType::Int64, false)),
+        false,
+    );
+
+    // Take the middle row only: offsets [2, 3] over a child of five.
+    let middle: ArrayRef = Arc::new(lists.slice(1, 1));
+    let mut column =
+        Serie::from_arrow_array(field.clone(), middle).expect("a sliced sequence column");
+    assert_eq!(column.len(), 1);
+    assert_eq!(
+        column.scalar(0).unwrap(),
+        Scalar::from_sequence([Scalar::from(3_i64)])
+    );
+
+    // The cut was rebased, so the items are exactly what it reaches and a
+    // pushed row lands where the cut says it does - reading the stale
+    // offset would silently answer a value that was never pushed.
+    assert_eq!(
+        column
+            .as_sequence()
+            .expect("a sequence column")
+            .items()
+            .as_int64()
+            .expect("an int64 item serie")
+            .values(),
+        &[3]
+    );
+    column
+        .push(Scalar::from_sequence([Scalar::from(99_i64)]))
+        .expect("one more row");
+    assert_eq!(column.len(), 2);
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(99_i64)])
+    );
+
+    // An unsliced array is already in that shape, so it is taken untouched.
+    let whole: ArrayRef = Arc::new(lists);
+    let held = Serie::from_arrow_array(field, whole).expect("a sequence column");
+    assert_eq!(held.len(), 3);
+    assert_eq!(
+        held.as_sequence()
+            .expect("a sequence column")
+            .offsets()
+            .as_ref(),
+        &[0, 2, 3, 5]
+    );
+}
+
+#[test]
+fn two_series_that_compare_equal_hash_alike() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn digest(serie: &Serie) -> u64 {
+        let mut state = DefaultHasher::new();
+        serie.hash(&mut state);
+        state.finish()
+    }
+
+    let field = Field::new("price", DataType::Int64, false);
+    let one = Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).expect("one row");
+    let same = Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).expect("one row");
+    let longer =
+        Serie::from_scalars(field, [Scalar::from(1_i64), Scalar::from(2_i64)]).expect("two rows");
+    let run = Serie::new(vec![Scalar::from(1_i64)]);
+
+    // Equal implies equal hashes, which is what a column hashing its field
+    // and its length has to keep: two columns of one field that differ only
+    // in length must not compare equal, or the contract breaks.
+    assert_eq!(one, same);
+    assert_eq!(digest(&one), digest(&same));
+    assert_ne!(one, longer);
+    assert_ne!(one, run, "a run and a column are not one value");
+
+    // The order is total and antisymmetric across the pairings.
+    for (left, right) in [(&one, &longer), (&one, &run), (&longer, &run)] {
+        assert_eq!(
+            left.cmp(right).reverse(),
+            right.cmp(left),
+            "the order is antisymmetric"
+        );
+    }
+    assert_eq!(one.cmp(&same), std::cmp::Ordering::Equal);
 }

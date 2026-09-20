@@ -8,6 +8,7 @@
 //! is one column rather than one row.
 
 use std::fmt;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use arrow_array::OffsetSizeTrait;
@@ -19,7 +20,7 @@ use arrow_schema::Fields;
 
 use super::Serie;
 use crate::value::SerieValue;
-use crate::{Field, Result, Scalar};
+use crate::{DataType, Field, Result, Scalar};
 
 /// The validity bitmap `nulls` is, with row `index` marked present or absent.
 ///
@@ -334,20 +335,27 @@ serie_leaf!(StructSerie);
 /// and [`LargeUtf8StringSerie`](crate::LargeUtf8StringSerie) are. The width
 /// is the type, so nothing branches on it per row.
 #[derive(Clone)]
-pub struct GenericSequenceSerie<O: SequenceOffset> {
+pub struct GenericSequenceSerie<O: OffsetSizeTrait, K: SequenceKind<O>> {
     field: Arc<Field>,
     offsets: OffsetBuffer<O>,
     items: Serie,
     nulls: Option<NullBuffer>,
+    kind: PhantomData<K>,
 }
 
 /// A column of sequences, 32-bit offsets.
-pub type SequenceSerie = GenericSequenceSerie<i32>;
+pub type SequenceSerie = GenericSequenceSerie<i32, Items>;
 
 /// A column of sequences, 64-bit offsets.
-pub type LargeSequenceSerie = GenericSequenceSerie<i64>;
+pub type LargeSequenceSerie = GenericSequenceSerie<i64, Items>;
 
-impl<O: SequenceOffset> GenericSequenceSerie<O> {
+/// A column of mappings: the same cut, read as key-value entries.
+///
+/// Arrow has no large map, so there is no 64-bit twin - the pairing is
+/// unrepresentable rather than deleted.
+pub type MappingSerie = GenericSequenceSerie<i32, Entries>;
+
+impl<O: OffsetSizeTrait, K: SequenceKind<O>> GenericSequenceSerie<O, K> {
     /// Pair a sequence field with its cut and the serie it cuts.
     pub(crate) fn new(
         field: Arc<Field>,
@@ -360,6 +368,7 @@ impl<O: SequenceOffset> GenericSequenceSerie<O> {
             offsets,
             items,
             nulls,
+            kind: PhantomData,
         }
     }
 
@@ -399,7 +408,7 @@ impl<O: SequenceOffset> GenericSequenceSerie<O> {
     }
 }
 
-impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
+impl<O: OffsetSizeTrait, K: SequenceKind<O>> SerieValue for GenericSequenceSerie<O, K> {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -430,7 +439,7 @@ impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
         let items = (start..end)
             .map(|item| self.items.scalar(item))
             .collect::<Result<Vec<Scalar>>>()?;
-        Ok(Scalar::from_sequence(items))
+        K::row(items)
     }
 
     fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
@@ -444,13 +453,14 @@ impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
         let Some((start, end)) = self.range(index) else {
             return Ok(());
         };
-        let items = row.as_sequence().unwrap_or_default().to_vec();
+        let items = K::items(&row);
         if items.len() != end - start {
             return Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new(self.field.name()),
                 reason: smol_str::format_smolstr!(
-                    "a row of {} items does not fit the {} this cut names",
+                    "a row of {} {} does not fit the {} this cut names",
                     items.len(),
+                    K::ITEM,
                     end - start
                 ),
             });
@@ -469,7 +479,7 @@ impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
         // present empty row is the same cut, which is why the bitmap is the
         // only thing that tells the two apart.
         let present = !row.is_null();
-        let items = row.as_sequence().unwrap_or_default().to_vec();
+        let items = K::items(&row);
         let count = items.len();
         for item in items {
             self.items.push(item)?;
@@ -489,57 +499,102 @@ impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
         let Ok(item) = declared.clone().into_arrow_field_ref() else {
             return new_empty_array(&arrow_schema::DataType::Null);
         };
-        O::array(item, self.offsets.clone(), items, self.nulls.clone())
+        K::array(
+            &self.field,
+            item,
+            self.offsets.clone(),
+            items,
+            self.nulls.clone(),
+        )
+        .unwrap_or_else(|_| new_empty_array(&arrow_schema::DataType::Null))
     }
 
     fn into_serie(self) -> Serie {
-        O::into_serie(self)
+        K::into_serie(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        O::from_serie(value)
+        K::from_serie(value)
     }
 }
 
-/// Which leaf of the root one offset width widens to, and the Arrow array
-/// that width lays out.
+/// What a run of cut rows *is*, where two shapes share one layout.
 ///
-/// Arrow spells a sequence at two offset widths and keeps a type for each, so
-/// this is the one place that width is tied to the crate's own leaf - the way
-/// [`PrimitiveLeaf`](crate::PrimitiveLeaf) ties an Arrow width to its leaf.
-/// The bound is on the width, so [`GenericSequenceSerie`] stays one
-/// implementation over both.
-pub trait SequenceOffset: OffsetSizeTrait {
-    /// Lay these buffers out as the Arrow array this width names.
+/// Arrow lays a mapping out as a list of non-null key-value entry records, so
+/// a mapping column and a sequence column hold exactly the same four things:
+/// a field, offsets, one serie of what the offsets cut, and a validity
+/// bitmap. What differs is how a row reads, what Arrow type it lays out
+/// under, and which leaf of the root it is - so that is what this marker
+/// carries, and [`GenericSequenceSerie`] is one implementation over all of
+/// it. [`ByteKind`](crate::ByteKind) is the same idea over one run of bytes.
+///
+/// The bound is on the pair, so a shape that Arrow has no type for is
+/// unrepresentable rather than dead: Arrow has no large map, and there is no
+/// `SequenceKind<i64>` for [`Entries`].
+pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static {
+    /// Lay these buffers out as the Arrow array this shape names.
+    ///
+    /// `field` is the column's own, because a mapping reads `keys_sorted`
+    /// off it - Arrow carries that in the datatype, so a column that lost it
+    /// would not read back.
     fn array(
+        field: &Field,
         item: arrow_schema::FieldRef,
-        offsets: OffsetBuffer<Self>,
+        offsets: OffsetBuffer<O>,
         items: ArrayRef,
         nulls: Option<NullBuffer>,
-    ) -> ArrayRef;
+    ) -> Result<ArrayRef>;
 
-    /// Widen a column of this width to the serie root.
-    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie;
+    /// Read one row's cut of items as the value this shape is.
+    fn row(items: Vec<Scalar>) -> Result<Scalar>;
 
-    /// Narrow a serie root to a column of this width.
-    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>>;
+    /// The items one row contributes, in the order they are stored.
+    fn items(row: &Scalar) -> Vec<Scalar>;
+
+    /// What this shape calls a row, for the refusals that name one.
+    const ITEM: &'static str;
+
+    /// Widen a column of this shape to the serie root.
+    fn into_serie(column: GenericSequenceSerie<O, Self>) -> Serie;
+
+    /// Narrow a serie root to a column of this shape.
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<O, Self>>;
 }
 
-impl SequenceOffset for i32 {
+/// The marker for rows that are a sequence of items.
+#[derive(Clone, Copy, Debug)]
+pub struct Items;
+
+/// The marker for rows that are a mapping of key-value entries.
+#[derive(Clone, Copy, Debug)]
+pub struct Entries;
+
+impl SequenceKind<i32> for Items {
+    const ITEM: &'static str = "items";
+
     fn array(
+        _field: &Field,
         item: arrow_schema::FieldRef,
-        offsets: OffsetBuffer<Self>,
+        offsets: OffsetBuffer<i32>,
         items: ArrayRef,
         nulls: Option<NullBuffer>,
-    ) -> ArrayRef {
-        Arc::new(ListArray::new(item, offsets, items, nulls))
+    ) -> Result<ArrayRef> {
+        Ok(Arc::new(ListArray::new(item, offsets, items, nulls)))
     }
 
-    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie {
+    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+        Ok(Scalar::from_sequence(items))
+    }
+
+    fn items(row: &Scalar) -> Vec<Scalar> {
+        row.as_sequence().unwrap_or_default().to_vec()
+    }
+
+    fn into_serie(column: GenericSequenceSerie<i32, Self>) -> Serie {
         Serie::Sequence(Arc::new(column))
     }
 
-    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>> {
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<i32, Self>> {
         match value {
             Serie::Sequence(column) => Some(column.as_ref()),
             _ => None,
@@ -547,21 +602,32 @@ impl SequenceOffset for i32 {
     }
 }
 
-impl SequenceOffset for i64 {
+impl SequenceKind<i64> for Items {
+    const ITEM: &'static str = "items";
+
     fn array(
+        _field: &Field,
         item: arrow_schema::FieldRef,
-        offsets: OffsetBuffer<Self>,
+        offsets: OffsetBuffer<i64>,
         items: ArrayRef,
         nulls: Option<NullBuffer>,
-    ) -> ArrayRef {
-        Arc::new(LargeListArray::new(item, offsets, items, nulls))
+    ) -> Result<ArrayRef> {
+        Ok(Arc::new(LargeListArray::new(item, offsets, items, nulls)))
     }
 
-    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie {
+    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+        Ok(Scalar::from_sequence(items))
+    }
+
+    fn items(row: &Scalar) -> Vec<Scalar> {
+        row.as_sequence().unwrap_or_default().to_vec()
+    }
+
+    fn into_serie(column: GenericSequenceSerie<i64, Self>) -> Serie {
         Serie::LargeSequence(Arc::new(column))
     }
 
-    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>> {
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<i64, Self>> {
         match value {
             Serie::LargeSequence(column) => Some(column.as_ref()),
             _ => None,
@@ -569,98 +635,50 @@ impl SequenceOffset for i64 {
     }
 }
 
-impl<O: SequenceOffset> fmt::Debug for GenericSequenceSerie<O> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_leaf(self, "SequenceSerie", formatter)
-    }
-}
+impl SequenceKind<i32> for Entries {
+    const ITEM: &'static str = "entries";
 
-serie_leaf!(GenericSequenceSerie, O: SequenceOffset);
-
-/// One column of mappings: the offsets that cut it, and the entry column
-/// under them.
-///
-/// Arrow lays a mapping out as a list of non-null key-value entry records,
-/// so the entries are a [`StructSerie`] and reaching the keys or the values
-/// is reaching one of its children.
-#[derive(Clone)]
-pub struct MappingSerie {
-    field: Arc<Field>,
-    entries: Serie,
-    offsets: OffsetBuffer<i32>,
-    nulls: Option<NullBuffer>,
-}
-
-impl MappingSerie {
-    /// Pair a mapping field with its cut and the entries it cuts.
-    pub(crate) fn new(
-        field: Arc<Field>,
-        entries: Serie,
+    fn array(
+        field: &Field,
+        item: arrow_schema::FieldRef,
         offsets: OffsetBuffer<i32>,
+        items: ArrayRef,
         nulls: Option<NullBuffer>,
-    ) -> Self {
-        Self {
-            field,
-            entries,
-            offsets,
-            nulls,
-        }
-    }
-
-    /// Borrow the entry column every row is cut out of.
-    pub fn entries(&self) -> &Serie {
-        &self.entries
-    }
-
-    /// Borrow the validity bitmap, or `None` where no row is absent.
-    pub const fn nulls(&self) -> Option<&NullBuffer> {
-        self.nulls.as_ref()
-    }
-
-    /// Return the entry range row `index` occupies.
-    pub fn range(&self, index: usize) -> Option<(usize, usize)> {
-        let start = usize::try_from(*self.offsets.get(index)?).ok()?;
-        let end = usize::try_from(*self.offsets.get(index + 1)?).ok()?;
-        Some((start, end))
-    }
-}
-
-impl SerieValue for MappingSerie {
-    fn field(&self) -> &Field {
-        &self.field
-    }
-
-    fn len(&self) -> usize {
-        self.offsets.len().saturating_sub(1)
-    }
-
-    fn null_count(&self) -> usize {
-        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
-    }
-
-    fn is_null(&self, index: usize) -> bool {
-        index >= self.len()
-            || self
-                .nulls
-                .as_ref()
-                .is_some_and(|nulls| nulls.is_null(index))
-    }
-
-    fn scalar(&self, index: usize) -> Result<Scalar> {
-        if self.is_null(index) {
-            return Ok(Scalar::Null);
-        }
-        let Some((start, end)) = self.range(index) else {
-            return Ok(Scalar::Null);
+    ) -> Result<ArrayRef> {
+        let Some(records) = items.as_any().downcast_ref::<StructArray>() else {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(field.name()),
+                reason: smol_str::SmolStr::new_static(
+                    "a mapping's entries are a record of a key and a value",
+                ),
+            });
         };
-        let mut entries = Vec::with_capacity(end - start);
-        for entry in start..end {
-            let pair = self.entries.scalar(entry)?;
+        // Arrow carries `keys_sorted` in the datatype, and this crate carries
+        // it as the leaf a mapping datatype is. Reading it off the field is
+        // what makes a sorted map read back as one.
+        let sorted = match field.dtype() {
+            DataType::Mapping(mapping) => mapping.keys_sorted(),
+            _ => false,
+        };
+        Ok(Arc::new(MapArray::try_new(
+            item,
+            offsets,
+            records.clone(),
+            nulls,
+            sorted,
+        )?))
+    }
+
+    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+        let mut entries = Vec::with_capacity(items.len());
+        for pair in items {
             let cells = pair.as_sequence().unwrap_or_default();
             let [key, value] = cells else {
                 return Err(crate::Error::InvalidRecord {
-                    path: smol_str::SmolStr::new(self.field.name()),
-                    reason: smol_str::SmolStr::new_static("a map entry holds a key and a value"),
+                    path: smol_str::SmolStr::new_static("$"),
+                    reason: smol_str::SmolStr::new_static(
+                        "a mapping entry holds a key and a value",
+                    ),
                 });
             };
             entries.push((key.clone(), value.clone()));
@@ -668,85 +686,19 @@ impl SerieValue for MappingSerie {
         Scalar::from_mapping(entries)
     }
 
-    fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
-        let rows = self.len();
-        super::require_row(self.field.name(), index, rows)?;
-        let row = self.field.scalar(value)?;
-        if row.is_null() {
-            self.nulls = with_validity(self.nulls.as_ref(), rows, index, false);
-            return Ok(());
-        }
-        let Some((start, end)) = self.range(index) else {
-            return Ok(());
-        };
-        let pairs = row.as_mapping().unwrap_or_default().to_vec();
-        if pairs.len() != end - start {
-            return Err(crate::Error::InvalidRecord {
-                path: smol_str::SmolStr::new(self.field.name()),
-                reason: smol_str::format_smolstr!(
-                    "a row of {} entries does not fit the {} this cut names",
-                    pairs.len(),
-                    end - start
-                ),
-            });
-        }
-        for (offset, (key, held)) in (start..end).zip(pairs) {
-            self.entries
-                .set(offset, Scalar::from_sequence([key, held]))?;
-        }
-        self.nulls = with_validity(self.nulls.as_ref(), rows, index, true);
-        Ok(())
+    fn items(row: &Scalar) -> Vec<Scalar> {
+        row.as_mapping()
+            .unwrap_or_default()
+            .iter()
+            .map(|(key, value)| Scalar::from_sequence([key.clone(), value.clone()]))
+            .collect()
     }
 
-    fn push(&mut self, value: Scalar) -> Result<()> {
-        let rows = self.len();
-        let row = self.field.scalar(value)?;
-        let present = !row.is_null();
-        let pairs = row.as_mapping().unwrap_or_default().to_vec();
-        for (key, held) in &pairs {
-            self.entries
-                .push(Scalar::from_sequence([key.clone(), held.clone()]))?;
-        }
-        let mut held: Vec<i32> = self.offsets.iter().copied().collect();
-        let last = held.last().copied().unwrap_or_default();
-        held.push(last + i32::try_from(pairs.len()).unwrap_or_default());
-        self.offsets = OffsetBuffer::new(ScalarBuffer::from(held));
-        self.nulls = pushed_validity(self.nulls.as_ref(), rows, present);
-        Ok(())
+    fn into_serie(column: GenericSequenceSerie<i32, Self>) -> Serie {
+        Serie::Mapping(Arc::new(column))
     }
 
-    fn into_arrow_array(&self) -> ArrayRef {
-        // The entries must be a record column, for the reason a list's items
-        // must be a column: Arrow names the layout and a run names none.
-        let (Some(entries), Some(declared)) =
-            (self.entries.into_arrow_array(), self.entries.field())
-        else {
-            return new_empty_array(&arrow_schema::DataType::Null);
-        };
-        let Some(records) = entries.as_any().downcast_ref::<StructArray>() else {
-            return new_empty_array(&arrow_schema::DataType::Null);
-        };
-        let Ok(entry) = declared.clone().into_arrow_field_ref() else {
-            return new_empty_array(&arrow_schema::DataType::Null);
-        };
-        MapArray::try_new(
-            entry,
-            self.offsets.clone(),
-            records.clone(),
-            self.nulls.clone(),
-            false,
-        )
-        .map_or_else(
-            |_| new_empty_array(&arrow_schema::DataType::Null),
-            |array| Arc::new(array) as ArrayRef,
-        )
-    }
-
-    fn into_serie(self) -> Serie {
-        Serie::Mapping(Arc::new(self))
-    }
-
-    fn from_serie(value: &Serie) -> Option<&Self> {
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<i32, Self>> {
         match value {
             Serie::Mapping(column) => Some(column.as_ref()),
             _ => None,
@@ -754,10 +706,14 @@ impl SerieValue for MappingSerie {
     }
 }
 
-impl fmt::Debug for MappingSerie {
+impl<O: OffsetSizeTrait, K: SequenceKind<O>> fmt::Debug for GenericSequenceSerie<O, K> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_leaf(self, "MappingSerie", formatter)
+        super::debug_leaf(self, "SequenceSerie", formatter)
     }
 }
 
-serie_leaf!(MappingSerie);
+serie_leaf!(
+    GenericSequenceSerie,
+    O: arrow_array::OffsetSizeTrait,
+    K: SequenceKind<O>
+);

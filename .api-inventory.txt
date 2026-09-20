@@ -3348,7 +3348,7 @@ pub enum DataType
   pub fn require_field(&self) -> Result<&Field>  (the same read as a refusal; what a record's child, a sequence's items and a mapping's entries go through, since a run names no Arrow layout)
   pub fn as_slice(&self) -> Option<&[Scalar]>  (the run's own values; None for a column, which holds no Scalar to lend)
   pub fn rows(&self) -> Result<Cow<'_, [Scalar]>>  (borrows the run's values, builds the column's; keeps nothing either way)
-  pub const fn as_run(&self) -> Option<&List> / pub const fn is_column(&self) -> bool
+  pub fn as_run(&self) -> Option<&List> / pub const fn is_column(&self) -> bool
   pub fn into_arrow_array(&self) -> Option<ArrayRef>  (the buffers themselves; None for a run)
   pub fn require_arrow_array(&self) -> Result<ArrayRef>  (the same, as a refusal)
   pub fn len / is_empty / null_count / is_null  (constant for either leaf: a column knows its length without reading a row)
@@ -3360,7 +3360,7 @@ pub enum DataType
   pub fn as_null / as_boolean / as_struct / as_sequence / as_large_sequence / as_mapping / as_variant(&self) -> Option<&..>  (the column leaves the root holds directly; the two sequence widths are two leaves, so narrowing to the other answers None)
   pub fn as_integer / as_floating / as_decimal / as_temporal / as_string / as_bytes(&self) -> Option<&..>  (the family enums)
   pub fn as_int8 / as_int16 / as_int32 / as_int64 / as_uint8 / as_uint16 / as_uint32 / as_uint64 / as_float32 / as_float64 / as_utf8 / as_large_utf8 / as_binary(&self) -> Option<&..>  (straight to one leaf)
-  pub const fn as_int8_mut / as_int16_mut / as_int32_mut / as_int64_mut / as_uint8_mut / as_uint16_mut / as_uint32_mut / as_uint64_mut / as_float32_mut / as_float64_mut / as_utf8_mut / as_large_utf8_mut / as_binary_mut / as_null_mut / as_boolean_mut / as_struct_mut / as_list_mut / as_map_mut / as_variant_mut / as_integer_mut / as_floating_mut / as_decimal_mut / as_temporal_mut / as_string_mut / as_bytes_mut(&mut self) -> Option<&mut ..>  (the mutable twin of each accessor above; the buffer writers live on the leaf)
+  pub fn as_int8_mut / as_int16_mut / as_int32_mut / as_int64_mut / as_uint8_mut / as_uint16_mut / as_uint32_mut / as_uint64_mut / as_float32_mut / as_float64_mut / as_utf8_mut / as_large_utf8_mut / as_binary_mut / as_null_mut / as_boolean_mut / as_struct_mut / as_sequence_mut / as_large_sequence_mut / as_mapping_mut / as_variant_mut / as_integer_mut / as_floating_mut / as_decimal_mut / as_temporal_mut / as_string_mut / as_bytes_mut(&mut self) -> Option<&mut ..>  (the mutable twin of each accessor above, through Arc::make_mut: the buffer writers live on the leaf, and a shared column copies once on the first write)
   pub fn from_arrow_array(field: Field, array: ArrayRef) -> arrow::Result<Self>  (layout and nullability proven at every level in constant time; no row read, nothing copied)
   pub fn empty(field: Field) -> arrow::Result<Self>
   pub fn from_scalars(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, then one layout)
@@ -3403,11 +3403,11 @@ pub enum DataType
   pub fn children(&self) -> &[Serie] / pub fn child(&self, name: &str) -> Option<&Serie> / pub fn child_at(&self, index: usize) -> Option<&Serie> / pub fn child_mut(&mut self, name: &str) -> Option<&mut Serie>
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn with_child(&self, child: &Serie) -> Result<Self> / pub fn without_child(&self, name: &str) -> Result<Self>  (one field edit and one Vec of pointers; the children that stay are shared, not rebuilt)
-  pub trait SequenceOffset: OffsetSizeTrait  (fn array / into_serie / from_serie; the bound is on the offset WIDTH, the way PrimitiveLeaf is on the Arrow width, so GenericSequenceSerie is one implementation over both. Implemented by i32 and i64)
-  pub struct GenericSequenceSerie<O: SequenceOffset>  (one Arc<Field>, one OffsetBuffer<O>, one item Serie, the validity bitmap)
-  pub type SequenceSerie = GenericSequenceSerie<i32> / pub type LargeSequenceSerie = GenericSequenceSerie<i64>
-  pub fn items(&self) -> &Serie / items_mut / offsets(&self) -> &OffsetBuffer<O> / range(&self, index) -> Option<(usize, usize)> / nulls
-  pub struct MappingSerie  (pub fn entries(&self) -> &Serie / range / nulls)
+  pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static  (const ITEM; fn array / row / items / into_serie / from_serie. What a cut of rows IS where two shapes share one layout: Arrow lays a mapping out as a list of non-null key-value records, so a mapping column and a sequence column hold the same four things and differ only in how a row reads, which Arrow array it lays out, and which leaf it is. The bound is on the PAIR, so a shape Arrow has no type for is unrepresentable rather than dead - there is no SequenceKind<i64> for Entries, because Arrow has no large map)
+  pub struct Items / pub struct Entries  (the two markers, as ByteKind's Text and Raw are)
+  pub struct GenericSequenceSerie<O: OffsetSizeTrait, K: SequenceKind<O>>  (one Arc<Field>, one OffsetBuffer<O>, one item Serie, the validity bitmap)
+  pub type SequenceSerie = GenericSequenceSerie<i32, Items> / pub type LargeSequenceSerie = GenericSequenceSerie<i64, Items> / pub type MappingSerie = GenericSequenceSerie<i32, Entries>
+  pub fn items(&self) -> &Serie / items_mut / offsets(&self) -> &OffsetBuffer<O> / range(&self, index) -> Option<(usize, usize)> / nulls  (a mapping's items are its key-value records; one spelling, not two)
   pub struct VariantSerie  (one encoded run per row, over Arrow Binary. One width only: DataType::Variant projects to Binary and nothing else, so there is no Large twin - the encoding names the storage)
   pub fn bytes(&self, index: usize) -> Option<&[u8]>  (the encoded run where it lies, undecoded)
   pub fn payload(&self) -> &Buffer / pub fn offsets(&self) -> &OffsetBuffer<i32> / pub const fn array(&self) -> &BinaryArray / pub fn nulls
@@ -3874,7 +3874,7 @@ pub trait NestedValue: Value  (implemented by List, Serie, Mapping, Map and Stru
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
-pub trait SerieValue  (the fourth side: many values of one field, a column. Implemented by every leaf, by every family enum and by the Serie root that dispatches to them; the buffers are the state, so this trait carries no Value supertrait and holds no Scalar)
+pub trait SerieValue  (the fourth side: many values of one field, a column. Implemented by every column leaf and every family enum - NOT by Serie, whose run leaf carries no field to answer `field` with; the root answers the same verbs inherently, with Serie::field returning Option. The buffers are the state, so this trait carries no Value supertrait and holds no Scalar)
   fn field(&self) -> &Field
   fn len(&self) -> usize / fn is_empty(&self) -> bool  (provided)
   fn null_count(&self) -> usize / fn is_null(&self, index: usize) -> bool
@@ -3885,7 +3885,7 @@ pub trait SerieValue  (the fourth side: many values of one field, a column. Impl
   fn from_serie(value: &Serie) -> Option<&Self>
 pub enum Nested  (Sequence(Serie), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the Scalar variant is - Sequence holds a Serie, which is what that variant carries; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
   impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
-  impl From<Sequence>, From<Mapping>, From<Struct> for Nested
+  impl From<Serie>, From<Mapping>, From<Struct> for Nested
   impl From<Nested> for Scalar
 pub trait FieldSidecar: Clone + fmt::Debug + Default + Eq + Ord + Hash + Send + Sync + Sized + 'static  (the per-column facts only one datatype has; `()` for every datatype but the dictionary-encoded one)
   fn dictionary_id(&self) -> Option<i64>  (provided: None)

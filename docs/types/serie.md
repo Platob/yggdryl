@@ -9,7 +9,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | What it is | The fourth side of the value model: `DataType` is the shape, `Field` the schema, `Scalar` one value, `Serie` many of them |
 | Two leaves | `Serie::List` is a schema-free ordered run and holds its values; every other leaf is a column and holds Arrow buffers. What separates them is the field: a run declares none |
 | Storage | A column stores a values buffer, offsets where the layout has them, and a validity bitmap. No `Scalar` is stored anywhere in a column |
-| Recursion | A record's child, a sequence's items and a mapping's entries are each a `Serie`, so the nesting is the same type all the way down |
+| Recursion | A record's child, a sequence's items and a mapping's entries are each a `Serie`, so the nesting is the same type all the way down. A mapping's items are the key-value records |
 | Size | 24 bytes — the column leaves are shared behind one pointer each, the run is held inline because a row canonicalizes to one |
 | Shape | A family enum over one leaf per Arrow layout: `Int32Serie` lends `&[i32]`, `Utf8StringSerie` lends the offsets and the characters, `StructSerie` holds one child `Serie` per child field |
 | Proof from values | `from_scalars` and `push` send every row through `Field::scalar`, the one value contract, then lay the rows out once |
@@ -39,10 +39,14 @@ A leaf is one Arrow layout under one field, and its accessors are that layout's 
 | `NullSerie` | - | a length, and no buffer at all |
 | `StructSerie` | - | `children()` (each a `Serie`), `child(name)`, `child_at`, `nulls()` |
 | `SequenceSerie`, `LargeSequenceSerie` | - | `items()` (a `Serie`), `offsets()` typed at the leaf's own width, `range(row)`, `nulls()` |
-| `MappingSerie` | - | `entries()` (a `Serie`), `range(row)`, `nulls()` |
+| `MappingSerie` | - | the same leaf read as entries: `items()` are the key-value records, plus `offsets()`, `range(row)`, `nulls()` |
 | `VariantSerie` | - | `bytes(row)`, `payload()`, `offsets()`. One width only: `DataType::Variant` projects to Arrow `Binary` and nothing else |
 
-Arrow spells a sequence at two offset widths, so `SequenceSerie` and `LargeSequenceSerie` are two names for one implementation generic over the width — the same way `Utf8StringSerie` and `LargeUtf8StringSerie` are. The width is the leaf, so nothing branches on it per row, and narrowing to the other answers `None`.
+Arrow spells a sequence at two offset widths, and lays a mapping out as a list of non-null key-value entry records — so `SequenceSerie`, `LargeSequenceSerie` and `MappingSerie` are three names for one implementation, `GenericSequenceSerie<O, K>`, generic over the offset width and over a `SequenceKind` marker. All three hold the same four things: a field, offsets, one `Serie` of what the offsets cut, and a validity bitmap. The marker decides three things and nothing else — how a row reads (`from_sequence` or paired into `from_mapping`), which Arrow array it lays out (`ListArray`, `LargeListArray`, `MapArray`), and which leaf of the root it is.
+
+The bound is on the pair, so a shape Arrow has no type for is unrepresentable rather than dead: there is no `SequenceKind<i64> for Entries`, because Arrow has no large map. The same idea gives `ByteSerie<T, K>` a string leaf and a byte leaf over identical binary buffers, told apart by `Text` and `Raw`.
+
+The width and the shape are the leaf, so nothing branches on either per row, and narrowing to another answers `None`.
 
 A layout that is both a string leaf and a byte leaf - `Binary` under a windows-1252 column, `Binary` under a byte column - is told apart by the field rather than by the buffers, which is why `BinaryStringSerie` and `BinarySerie` are two names for one Arrow array.
 
