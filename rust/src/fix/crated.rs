@@ -131,9 +131,14 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");
 /// orders, joins and prunes on: which file of a day's capture a row came out
 /// of, and therefore which file to re-read when a row is disputed. A text
 /// read already answers it - its own `sourceurl` column is a URL - and this
-/// is the FIX field that column fills, so a capture naming it states the
-/// object once per line and the row carries it typed rather than as text
-/// nobody can resolve.
+/// is the FIX field that types that column, so a capture naming it states
+/// the object once per line, typed rather than as text nobody can resolve.
+///
+/// It is not a column of [the fixed row](super::fix_schema). Where a line
+/// was read from is the reader's word about the line and never the
+/// message's about itself, so it travels beside the row as one of the
+/// capture's own columns, with the body the line was cut from and its place
+/// in the object, and no column of the message restates it.
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 
 /// The tag and name counting the arrival records one message carried.
@@ -447,13 +452,15 @@ fn build() -> Result<Vec<Field>> {
              empty on every row no snapshot was taken of.",
         )?,
         // Where the line was read from, typed as the URL it is. A text read
-        // names its own column `sourceurl` too, so a capture fills this
-        // field by position without anyone spelling a mapping.
+        // names its own column `sourceurl` too, so a capture's column is
+        // this field without anyone spelling a mapping - and it stays the
+        // capture's, beside the row, because no column of the fixed row
+        // holds it.
         crated(
             SOURCEURL_TAG_NAME,
             "SourceUrl",
             DataType::url(),
-            "The object this message's line was read from.",
+            "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
         )?,
         // The arrival record's counter. The group it counts is not a registry
         // definition - a `fixentry` contains `fixentries`, and a definition

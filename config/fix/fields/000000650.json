@@ -131,7 +131,7 @@
     "metadata": {
       "FIX:tag": "65026",
       "FIX:transient": "false",
-      "description": "The object this message's line was read from.",
+      "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "SourceUrl"
     }
   },

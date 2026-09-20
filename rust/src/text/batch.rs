@@ -250,6 +250,12 @@ fn locate(schema: &arrow_schema::Schema, column: &TextColumn) -> Option<usize> {
 struct Intake {
     positions: Vec<Option<usize>>,
     field: crate::Field,
+    /// Where the `body` column sits in the plan.
+    ///
+    /// Read before any other cell, because a line is the line it holds and
+    /// [`TextLine`] has no door that takes an empty one: the body is what
+    /// the line is made from, and the rest is stated on it.
+    body_at: usize,
     capture_size: usize,
     /// Whether the batch carries a capture column at all: a line read back
     /// states its captures only where a column stated them, and matches
@@ -290,9 +296,20 @@ impl Intake {
             plan.columns().iter().zip(&positions).any(|(column, at)| {
                 at.is_some() && matches!(column.source, TextSource::Capture(_))
             });
+        // The plan always states exactly one body column, so this is a
+        // position and never a search.
+        let body_at = plan
+            .columns()
+            .iter()
+            .position(|column| matches!(column.source, TextSource::Body))
+            .ok_or_else(|| crate::Error::InvalidRecord {
+                path: SmolStr::new_static("$.body"),
+                reason: SmolStr::new_static("expected the plan to state one body column"),
+            })?;
         Ok(Self {
             positions,
             field,
+            body_at,
             capture_size: options.capture_names().len(),
             captures_located,
             start_rownum: options.start_rownum.unwrap_or_default(),
@@ -306,12 +323,14 @@ impl Intake {
 /// The reverse of [`into_arrow_batch`], so a caller can round-trip a text read
 /// through Arrow and get its lines back. A column the batch does not carry
 /// leaves that field at its default rather than failing, because absence is not
-/// a failure on the read path anywhere else here.
+/// a failure on the read path anywhere else here - the `body` alone excepted,
+/// because a line is the line it holds and a row stating none is no line.
 ///
 /// # Errors
 ///
-/// Returns the plan's refusals, and any value that will not read at the
-/// datatype its column declares.
+/// Returns the plan's refusals, any value that will not read at the datatype
+/// its column declares, a null under a column the plan declares non-nullable,
+/// and a row whose body is absent, null or empty.
 pub fn from_arrow_batch(
     batch: &arrow_array::RecordBatch,
     options: &TextOptions,
@@ -399,40 +418,27 @@ fn line_of(
 ) -> Result<TextLine> {
     let mut line = TextLine::from_bytes(
         ordinal,
-        super::TextBytes::new(),
+        body_of(plan, intake, batch, row, ordinal)?,
         Arc::clone(&intake.options),
     )?;
     let mut captures = vec![None; intake.capture_size];
     // The plan built the field one child per column, so the three walk together.
-    for ((column, child), at) in plan
+    for (index, ((column, child), at)) in plan
         .columns()
         .iter()
         .zip(intake.field.fields())
         .zip(&intake.positions)
+        .enumerate()
     {
+        // The body made the line above; restating it here would drop every
+        // reading the columns after it state.
+        if index == intake.body_at {
+            continue;
+        }
         let Some(at) = *at else {
             continue;
         };
-        let value =
-            crate::arrow::value::value_from_array(child.dtype(), batch.column(at).as_ref(), row)
-                .map_err(|error| {
-                    super::arrow::row_error(
-                        ordinal,
-                        None,
-                        line.sourceurl(),
-                        &column.name,
-                        smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
-                    )
-                })?;
-        let value = child.scalar(value).map_err(|error| {
-            super::arrow::row_error(
-                ordinal,
-                None,
-                line.sourceurl(),
-                &column.name,
-                smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
-            )
-        })?;
+        let value = cell_of(batch, at, row, ordinal, line.sourceurl(), column, child)?;
         apply(
             &mut line,
             &mut captures,
@@ -445,6 +451,81 @@ fn line_of(
         line.set_captures(captures)?;
     }
     Ok(line)
+}
+
+/// The body one batch row states, refused where it states none.
+///
+/// The one column whose absence is a failure. Everywhere else here a column
+/// the batch does not carry leaves its fact at the default, because absence
+/// is not a failure on the read path - but the body is what a line *is*, and
+/// a row with no body column, a null cell or an empty one is no line. The
+/// null is refused by the plan's own non-nullable column, on the way through
+/// [`crate::Field::scalar`]; the other two are refused here, under the same
+/// name.
+fn body_of(
+    plan: &TextPlan,
+    intake: &Intake,
+    batch: &arrow_array::RecordBatch,
+    row: usize,
+    ordinal: u64,
+) -> Result<super::TextBytes> {
+    let column = &plan.columns()[intake.body_at];
+    let child = &intake.field.fields()[intake.body_at];
+    // No line yet, so no URL to locate the refusal by: the row's own
+    // `sourceurl` is one of the columns read after this one.
+    let refused = |reason| super::arrow::row_error(ordinal, None, None, &column.name, reason);
+    let Some(at) = intake.positions[intake.body_at] else {
+        return Err(refused(SmolStr::new_static(
+            "expected a body column, got a batch that carries none",
+        )));
+    };
+    let value = cell_of(batch, at, row, ordinal, None, column, child)?;
+    let body = read_bytes(&value)
+        .map_err(|error| {
+            refused(smol_str::format_smolstr!(
+                "{}",
+                crate::text::elide_display(&error)
+            ))
+        })?
+        .filter(|body| !body.is_empty())
+        .ok_or_else(|| {
+            refused(SmolStr::new_static(
+                "expected a line body, got an empty one",
+            ))
+        })?;
+    Ok(body)
+}
+
+/// One cell, read at the datatype and under the nullability its column
+/// declares.
+///
+/// The plan's `nullable` is the check: a null under a column that cannot
+/// hold one is refused here, by the column's name, rather than reaching a
+/// builder that would answer for the whole batch.
+fn cell_of(
+    batch: &arrow_array::RecordBatch,
+    at: usize,
+    row: usize,
+    ordinal: u64,
+    url: Option<&crate::Url>,
+    column: &TextColumn,
+    child: &crate::Field,
+) -> Result<Scalar> {
+    // Both doors below refuse in their own error type, so the elision the
+    // message is built through is the only thing they share.
+    let refused = |error: &dyn std::fmt::Display| {
+        super::arrow::row_error(
+            ordinal,
+            None,
+            url,
+            &column.name,
+            smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
+        )
+    };
+    let value =
+        crate::arrow::value::value_from_array(child.dtype(), batch.column(at).as_ref(), row)
+            .map_err(|error| refused(&error))?;
+    child.scalar(value).map_err(|error| refused(&error))
 }
 
 /// The bytes one read value carries, whichever way it spells them.
@@ -544,11 +625,10 @@ fn apply(
                 line.set_bodytype(Some(bodytype));
             }
         }
-        TextSource::Body => {
-            if let Some(held) = text(value)? {
-                line.set_body(held)?;
-            }
-        }
+        // The body made the line before this loop opened, because a line
+        // cannot be made without one; restating it here would drop every
+        // reading stated since.
+        TextSource::Body => {}
         TextSource::DroppedByteSize => {
             let size = value
                 .as_i128()
@@ -733,19 +813,35 @@ mod tests {
         );
     }
 
+    /// One body column beside whatever a case is about, because a row with
+    /// no body states no line.
+    fn body_field() -> ArrowField {
+        ArrowField::new("body", ArrowType::Utf8, false)
+    }
+
+    fn body_column(rows: usize) -> ArrayRef {
+        Arc::new(StringArray::from(vec!["line"; rows]))
+    }
+
     #[test]
     fn malformed_present_numbers_types_and_media_are_refused() {
         let mut options = TextOptions::new();
         options.start_rownum = Some(10);
         let source = batch(
-            vec![ArrowField::new("rownum", ArrowType::Int64, false)],
-            vec![Arc::new(Int64Array::from(vec![9]))],
+            vec![
+                body_field(),
+                ArrowField::new("rownum", ArrowType::Int64, false),
+            ],
+            vec![body_column(1), Arc::new(Int64Array::from(vec![9]))],
         );
         let error = from_arrow_batch(&source, &options).expect_err("offset underflow");
         assert!(error.to_string().contains("$[0].rownum"));
         let source = batch(
-            vec![ArrowField::new("rownum", ArrowType::Utf8, false)],
-            vec![Arc::new(StringArray::from(vec!["wrong"]))],
+            vec![
+                body_field(),
+                ArrowField::new("rownum", ArrowType::Utf8, false),
+            ],
+            vec![body_column(1), Arc::new(StringArray::from(vec!["wrong"]))],
         );
         assert!(
             from_arrow_batch(&source, &options)
@@ -755,8 +851,14 @@ mod tests {
         );
         options.parse_mimetype = true;
         let source = batch(
-            vec![ArrowField::new("mimetype", ArrowType::Utf8, false)],
-            vec![Arc::new(StringArray::from(vec!["not a mime type"]))],
+            vec![
+                body_field(),
+                ArrowField::new("mimetype", ArrowType::Utf8, false),
+            ],
+            vec![
+                body_column(1),
+                Arc::new(StringArray::from(vec!["not a mime type"])),
+            ],
         );
         assert!(
             from_arrow_batch(&source, &options)
@@ -767,10 +869,12 @@ mod tests {
         // A row number restored by an earlier column never relocates a later refusal.
         let source = batch(
             vec![
+                body_field(),
                 ArrowField::new("rownum", ArrowType::Int64, false),
                 ArrowField::new("mimetype", ArrowType::Utf8, false),
             ],
             vec![
+                body_column(1),
                 Arc::new(Int64Array::from(vec![15])),
                 Arc::new(StringArray::from(vec!["not a mime type"])),
             ],
@@ -780,13 +884,46 @@ mod tests {
     }
 
     #[test]
+    fn a_row_that_states_no_body_states_no_line() {
+        let options = TextOptions::new();
+        // No column at all: the one absence the read path refuses, because
+        // the body is what a line is made from.
+        let source = batch(
+            vec![ArrowField::new("rownum", ArrowType::Int64, false)],
+            vec![Arc::new(Int64Array::from(vec![0]))],
+        );
+        let error = from_arrow_batch(&source, &options).expect_err("no body column");
+        assert!(error.to_string().contains("$[0].body"), "{error}");
+        assert!(
+            error.to_string().contains("carries none"),
+            "the refusal names the absence: {error}"
+        );
+        // A null cell, refused by the plan's own non-nullable column.
+        let error = from_arrow_batch(&bodies(vec![None]), &options).expect_err("null body");
+        assert!(error.to_string().contains("$[0].body"), "{error}");
+        // An empty cell, which is a row stating nothing rather than a line.
+        let error = from_arrow_batch(&bodies(vec![Some("")]), &options).expect_err("empty body");
+        assert!(error.to_string().contains("$[0].body"), "{error}");
+        assert!(
+            error.to_string().contains("got an empty one"),
+            "the refusal names the emptiness: {error}"
+        );
+    }
+
+    #[test]
     fn capture_holes_keep_indices_and_typed_values_have_canonical_text() {
         let options = TextOptions::new()
             .try_with_rowheader(r"^(?<first>[A-Z]+) (?<second>\d+) (?<third>[A-Z]+)")
             .expect("captures");
         let source = batch(
-            vec![ArrowField::new("second", ArrowType::Int64, true)],
-            vec![Arc::new(Int64Array::from(vec![Some(7), None]))],
+            vec![
+                body_field(),
+                ArrowField::new("second", ArrowType::Int64, true),
+            ],
+            vec![
+                body_column(2),
+                Arc::new(Int64Array::from(vec![Some(7), None])),
+            ],
         );
         let rows = from_arrow_batch(&source, &options).expect("captures");
         assert_eq!(rows[0].captures().len(), 3);

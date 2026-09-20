@@ -883,8 +883,10 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   paths.
 - Plain-text rows open with the sixteen event columns `EventColumn::ALL` names -
   the line as the event it is, `currunix` first and `state` last - then nullable
-  `sourceurl: url` and required `body: utf8` - a line is
-  text by construction - its bytes decoded at the transport in the charset the
+  `sourceurl: url` and required `body: utf8` - a line is never empty and text
+  by construction, refused at every door that sets one, and a blank physical
+  line is a separator rather than a record - its bytes decoded at the
+  transport in the charset the
   handle's media type declares other than UTF-8 or US-ASCII, and otherwise
   once where the line is made,
   each byte that is not UTF-8 read as the Windows-1252 character it is,
@@ -897,7 +899,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free
-  datetime captures; writes consume only non-null `utf8` `body`.
+  datetime captures; writes consume only non-null, non-empty `utf8` `body`.
 - Content coding belongs to the handle: reject outer compression for formats that
   compress internally, such as Parquet.
 
