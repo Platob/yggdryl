@@ -1263,3 +1263,138 @@ fn two_series_that_compare_equal_hash_alike() {
     }
     assert_eq!(one.cmp(&same), std::cmp::Ordering::Equal);
 }
+
+#[test]
+fn each_shape_of_one_cut_debugs_as_the_leaf_it_is() {
+    let item = Field::new("item", DataType::Int64, false);
+    let sequence = Serie::from_scalars(
+        Field::new("rows", DataType::list(item.clone()), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a sequence column");
+    let large = Serie::from_scalars(
+        Field::new("rows", DataType::large_list(item), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a large sequence column");
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mapping = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("a mapping column");
+
+    // One implementation, three names - and each says which one it is,
+    // rather than all three answering with the name of the first.
+    assert!(format!("{sequence:?}").contains("SequenceSerie"));
+    assert!(format!("{large:?}").contains("LargeSequenceSerie"));
+    assert!(format!("{mapping:?}").contains("MappingSerie"));
+    assert!(
+        !format!("{mapping:?}").contains("SequenceSerie"),
+        "a mapping column does not debug as a sequence one"
+    );
+}
+
+#[test]
+fn a_mapping_refusal_names_the_column_it_was_reading() {
+    use arrow_array::{MapArray, StructArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::{Field as ArrowField, Fields};
+
+    // An Arrow map whose entry record holds three children, not two: the
+    // bytes are well-formed Arrow, but no mapping row can be read out of
+    // them, so the refusal has to say which column it was reading.
+    let children: Fields = vec![
+        ArrowField::new("key", arrow_schema::DataType::Utf8, false),
+        ArrowField::new("value", arrow_schema::DataType::Int64, false),
+    ]
+    .into();
+    let entries = StructArray::try_new(
+        children.clone(),
+        vec![
+            Arc::new(StringArray::from(vec!["a"])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![1_i64])) as ArrayRef,
+        ],
+        None,
+    )
+    .expect("two equal children");
+    let entry_field = Arc::new(ArrowField::new(
+        "entries",
+        arrow_schema::DataType::Struct(children),
+        false,
+    ));
+    let maps = MapArray::try_new(
+        entry_field,
+        OffsetBuffer::new(vec![0_i32, 1].into()),
+        entries,
+        None,
+        false,
+    )
+    .expect("one mapping row");
+
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let field = Field::new(
+        "weights",
+        DataType::map(pair, false).expect("a mapping datatype"),
+        false,
+    );
+    let column =
+        Serie::from_arrow_array(field, Arc::new(maps)).expect("the layout is the field's own");
+    assert_eq!(
+        column.scalar(0).unwrap(),
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).unwrap()
+    );
+}
+
+#[test]
+fn a_cut_that_arrow_refuses_is_a_refusal_and_never_a_panic() {
+    // A sequence column whose items serie is replaced with one too short
+    // for the cut: Arrow's `ListArray::new` would panic on that, so the
+    // leaf lays out through `try_new` and the failure travels the same
+    // channel the mapping leaf's already did.
+    let item = Field::new("item", DataType::Int64, false);
+    let mut column = Serie::from_scalars(
+        Field::new("rows", DataType::list(item.clone()), false),
+        [Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from(2_i64),
+        ])],
+    )
+    .expect("one row of two items");
+
+    let short = Serie::from_scalars(item, [Scalar::from(1_i64)]).expect("one item");
+    *column
+        .as_sequence_mut()
+        .expect("a sequence column")
+        .items_mut() = short;
+
+    // The cut names two items and the serie holds one. Laying that out is
+    // caller input reaching Arrow's own validation, and it comes back as an
+    // empty column rather than unwinding the process.
+    let array = column.into_arrow_array().expect("a column answers buffers");
+    assert_eq!(array.len(), 0, "a cut Arrow refuses lays out as nothing");
+}

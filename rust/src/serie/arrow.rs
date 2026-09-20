@@ -33,7 +33,7 @@ use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTim
 use super::Serie;
 use super::nested::{LargeSequenceSerie, MappingSerie, SequenceSerie, StructSerie};
 use super::primitive::{BooleanSerie, NullSerie, PrimitiveSerie};
-use super::text::{ByteSerie, ByteViewSerie, FixedSerie, Raw, Text};
+use super::text::{ByteSerie, ByteViewSerie, FixedSerie, RawBytes, TextBytes};
 use super::variant::VariantSerie;
 use crate::arrow::{
     BatchReader, Error, Result, arrow_schema_from_field, batch_reader, field_from_arrow_schema,
@@ -182,17 +182,17 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
         ArrowDataType::Interval(IntervalUnit::YearMonth) => primitive!(IntervalYearMonthType),
         ArrowDataType::Interval(IntervalUnit::DayTime) => primitive!(IntervalDayTimeType),
         ArrowDataType::Interval(IntervalUnit::MonthDayNano) => primitive!(IntervalMonthDayNanoType),
-        ArrowDataType::Utf8 => Ok(ByteSerie::<Utf8Type, Text>::new(
+        ArrowDataType::Utf8 => Ok(ByteSerie::<Utf8Type, TextBytes>::new(
             field,
             held::<GenericByteArray<Utf8Type>>(&field_ref, array)?,
         )
         .into_serie()),
-        ArrowDataType::LargeUtf8 => Ok(ByteSerie::<LargeUtf8Type, Text>::new(
+        ArrowDataType::LargeUtf8 => Ok(ByteSerie::<LargeUtf8Type, TextBytes>::new(
             field,
             held::<GenericByteArray<LargeUtf8Type>>(&field_ref, array)?,
         )
         .into_serie()),
-        ArrowDataType::Utf8View => Ok(ByteViewSerie::<StringViewType, Text>::new(
+        ArrowDataType::Utf8View => Ok(ByteViewSerie::<StringViewType, TextBytes>::new(
             field,
             held::<GenericByteViewArray<StringViewType>>(&field_ref, array)?,
         )
@@ -200,33 +200,33 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
         ArrowDataType::Binary => {
             let runs = held::<GenericByteArray<BinaryType>>(&field_ref, array)?;
             Ok(if is_text(&dtype) {
-                ByteSerie::<BinaryType, Text>::new(field, runs).into_serie()
+                ByteSerie::<BinaryType, TextBytes>::new(field, runs).into_serie()
             } else {
-                ByteSerie::<BinaryType, Raw>::new(field, runs).into_serie()
+                ByteSerie::<BinaryType, RawBytes>::new(field, runs).into_serie()
             })
         }
         ArrowDataType::LargeBinary => {
             let runs = held::<GenericByteArray<LargeBinaryType>>(&field_ref, array)?;
             Ok(if is_text(&dtype) {
-                ByteSerie::<LargeBinaryType, Text>::new(field, runs).into_serie()
+                ByteSerie::<LargeBinaryType, TextBytes>::new(field, runs).into_serie()
             } else {
-                ByteSerie::<LargeBinaryType, Raw>::new(field, runs).into_serie()
+                ByteSerie::<LargeBinaryType, RawBytes>::new(field, runs).into_serie()
             })
         }
         ArrowDataType::BinaryView => {
             let runs = held::<GenericByteViewArray<BinaryViewType>>(&field_ref, array)?;
             Ok(if is_text(&dtype) {
-                ByteViewSerie::<BinaryViewType, Text>::new(field, runs).into_serie()
+                ByteViewSerie::<BinaryViewType, TextBytes>::new(field, runs).into_serie()
             } else {
-                ByteViewSerie::<BinaryViewType, Raw>::new(field, runs).into_serie()
+                ByteViewSerie::<BinaryViewType, RawBytes>::new(field, runs).into_serie()
             })
         }
         ArrowDataType::FixedSizeBinary(_) => {
             let runs = held::<FixedSizeBinaryArray>(&field_ref, array)?;
             Ok(if is_text(&dtype) {
-                FixedSerie::<Text>::new(field, runs).into_serie()
+                FixedSerie::<TextBytes>::new(field, runs).into_serie()
             } else {
-                FixedSerie::<Raw>::new(field, runs).into_serie()
+                FixedSerie::<RawBytes>::new(field, runs).into_serie()
             })
         }
         ArrowDataType::Struct(_) => {

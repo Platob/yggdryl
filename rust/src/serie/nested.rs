@@ -439,7 +439,7 @@ impl<O: OffsetSizeTrait, K: SequenceKind<O>> SerieValue for GenericSequenceSerie
         let items = (start..end)
             .map(|item| self.items.scalar(item))
             .collect::<Result<Vec<Scalar>>>()?;
-        K::row(items)
+        K::row(&self.field, items)
     }
 
     fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
@@ -546,13 +546,19 @@ pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static {
     ) -> Result<ArrayRef>;
 
     /// Read one row's cut of items as the value this shape is.
-    fn row(items: Vec<Scalar>) -> Result<Scalar>;
+    ///
+    /// `field` is the column's own, so a refusal names it rather than the
+    /// root.
+    fn row(field: &Field, items: Vec<Scalar>) -> Result<Scalar>;
 
     /// The items one row contributes, in the order they are stored.
     fn items(row: &Scalar) -> Vec<Scalar>;
 
     /// What this shape calls a row, for the refusals that name one.
     const ITEM: &'static str;
+
+    /// What this shape is called, for the debug rendering that names it.
+    const NAME: &'static str;
 
     /// Widen a column of this shape to the serie root.
     fn into_serie(column: GenericSequenceSerie<O, Self>) -> Serie;
@@ -571,6 +577,7 @@ pub struct Entries;
 
 impl SequenceKind<i32> for Items {
     const ITEM: &'static str = "items";
+    const NAME: &'static str = "SequenceSerie";
 
     fn array(
         _field: &Field,
@@ -579,10 +586,10 @@ impl SequenceKind<i32> for Items {
         items: ArrayRef,
         nulls: Option<NullBuffer>,
     ) -> Result<ArrayRef> {
-        Ok(Arc::new(ListArray::new(item, offsets, items, nulls)))
+        Ok(Arc::new(ListArray::try_new(item, offsets, items, nulls)?))
     }
 
-    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+    fn row(_field: &Field, items: Vec<Scalar>) -> Result<Scalar> {
         Ok(Scalar::from_sequence(items))
     }
 
@@ -604,6 +611,7 @@ impl SequenceKind<i32> for Items {
 
 impl SequenceKind<i64> for Items {
     const ITEM: &'static str = "items";
+    const NAME: &'static str = "LargeSequenceSerie";
 
     fn array(
         _field: &Field,
@@ -612,10 +620,12 @@ impl SequenceKind<i64> for Items {
         items: ArrayRef,
         nulls: Option<NullBuffer>,
     ) -> Result<ArrayRef> {
-        Ok(Arc::new(LargeListArray::new(item, offsets, items, nulls)))
+        Ok(Arc::new(LargeListArray::try_new(
+            item, offsets, items, nulls,
+        )?))
     }
 
-    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+    fn row(_field: &Field, items: Vec<Scalar>) -> Result<Scalar> {
         Ok(Scalar::from_sequence(items))
     }
 
@@ -637,6 +647,7 @@ impl SequenceKind<i64> for Items {
 
 impl SequenceKind<i32> for Entries {
     const ITEM: &'static str = "entries";
+    const NAME: &'static str = "MappingSerie";
 
     fn array(
         field: &Field,
@@ -669,13 +680,13 @@ impl SequenceKind<i32> for Entries {
         )?))
     }
 
-    fn row(items: Vec<Scalar>) -> Result<Scalar> {
+    fn row(field: &Field, items: Vec<Scalar>) -> Result<Scalar> {
         let mut entries = Vec::with_capacity(items.len());
         for pair in items {
             let cells = pair.as_sequence().unwrap_or_default();
             let [key, value] = cells else {
                 return Err(crate::Error::InvalidRecord {
-                    path: smol_str::SmolStr::new_static("$"),
+                    path: smol_str::SmolStr::new(field.name()),
                     reason: smol_str::SmolStr::new_static(
                         "a mapping entry holds a key and a value",
                     ),
@@ -708,7 +719,7 @@ impl SequenceKind<i32> for Entries {
 
 impl<O: OffsetSizeTrait, K: SequenceKind<O>> fmt::Debug for GenericSequenceSerie<O, K> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_leaf(self, "SequenceSerie", formatter)
+        super::debug_leaf(self, K::NAME, formatter)
     }
 }
 
