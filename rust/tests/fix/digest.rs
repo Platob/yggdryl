@@ -50,10 +50,10 @@ fn sibling_order_changes_the_wire_digest_and_structural_hash_but_not_event_ident
 fn repeated_scalar_order_remains_part_of_the_event_identity() {
     let reader = reader();
     let ordered = reader
-        .sole_line(b"MSGTYPE=D|BODYLENGTH=1|BODYLENGTH=2")
+        .sole_line(b"MSGTYPE=D|ACCOUNT=FIRST|ACCOUNT=SECOND")
         .unwrap();
     let reversed = reader
-        .sole_line(b"MSGTYPE=D|BODYLENGTH=2|BODYLENGTH=1")
+        .sole_line(b"MSGTYPE=D|ACCOUNT=SECOND|ACCOUNT=FIRST")
         .unwrap();
 
     assert_ne!(

@@ -470,12 +470,20 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 #[test]
 fn a_removed_field_is_kept_and_marked_deprecated() {
     let registry = seed();
-    // `MaxFloor(111)` went in 5.0, replaced by `DisplayQty`: the mark is the
-    // dictionary's, and what replaced it is the specification's own table
-    // in the crate, so the field states no document of its own.
+    // `MaxFloor(111)` went in 5.0. Its canonical metadata records the one
+    // specification replacement, so every version restates it as DisplayQty.
     let floor = registry.field_by_tag(111).expect("MaxFloor");
     assert_eq!(floor.as_fix().deprecated(), Some("5.0"), "{floor:?}");
-    assert!(floor.as_fix().replacements().next().is_none());
+    let mut replacements = floor.as_fix().replacements();
+    assert_eq!(
+        replacements
+            .next()
+            .expect("one rule")
+            .expect("a valid rule")
+            .plan(),
+        "select maxfloor as displayqty"
+    );
+    assert!(replacements.next().is_none(), "one canonical replacement");
     // `Signature(89)` went with it and nothing replaces it: the mark stands
     // on its own.
     let signature = registry.field_by_tag(89).expect("Signature");

@@ -2211,7 +2211,10 @@ fn read_line_picks_the_reader_the_row_shape_names() {
 /// answers is the message a line answers.
 #[test]
 fn every_batch_reader_answers_what_the_single_reader_answers() {
-    let codec = codec();
+    // A line keeps an unmarked direction absent; the batch door otherwise
+    // applies its documented default Send pin. Disable that batch-only pin
+    // so this test compares the same intake semantics.
+    let codec = codec().try_with_direction(None).expect("no direction pin");
     let rows = [
         b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
         b"8=FIX.4.4|35=8|37=O-9|55=MSFT|10=0|".to_vec(),

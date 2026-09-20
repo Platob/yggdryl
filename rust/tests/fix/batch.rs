@@ -1148,14 +1148,15 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     assert_eq!(first_tag_value(&filled, 151), super::decimal("60"));
     // One fill, so the average is that fill's price.
     assert_eq!(first_tag_value(&filled, 6), super::decimal("10.5"));
-    // Every stated field fits a fixed column, so this row carries no
-    // duplicate arrival entry.
-    assert_eq!(
-        first_value(&filled, "fixentries")
-            .as_sequence()
-            .map(<[Scalar]>::len),
-        Some(0),
-    );
+    // Projected fields do not also remain in the residual record. The one
+    // derived field this fixed schema does not project stays there instead,
+    // so reconstructing the row cannot lose it.
+    let residual = first_value(&filled, "fixentries");
+    let entries = residual.as_sequence().expect("the residual entries");
+    assert_eq!(entries.len(), 1);
+    let entry = entries[0].as_sequence().expect("a residual entry");
+    assert_eq!(entry[0].as_i64(), Some(381));
+    assert_eq!(entry[2].as_str(), Some("420"));
 }
 
 /// The batch door reads a row as the line it is, and states that line as the

@@ -795,7 +795,13 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert_eq!(set.codes().count(), 1);
     assert_eq!(set.code_name("B"), Some("Broker"));
     assert_eq!(set.name(), PARTY_CODESET);
-    assert!(loaded.field(448).unwrap().as_fix().get("codes").is_some());
+    let party = loaded.field(448).unwrap();
+    assert_eq!(party.as_fix().codeset(), Some(PARTY_CODESET));
+    assert_eq!(party.get_metadata("FIX:codeset"), Some(PARTY_CODESET));
+    assert!(
+        party.as_fix().get("codes").is_none(),
+        "members live in the registry set"
+    );
     // A definition is a field of the registry: the one namespace answers it
     // under the name it is stored by.
     assert!(loaded.get_field("Parties").is_some());

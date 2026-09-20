@@ -46,8 +46,8 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat and five normalized identifiers join the existing standard CFI column.
-    assert_eq!(tags.len(), 118);
+    // MsgCat and six normalized identifiers join the existing standard CFI column.
+    assert_eq!(tags.len(), 119);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the

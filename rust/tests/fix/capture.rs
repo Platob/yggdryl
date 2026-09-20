@@ -580,6 +580,11 @@ fn a_json_document_is_one_unknown_and_any_other_unreadable_body_is_none() {
 fn a_capture_writes_back_what_each_message_emits() {
     let source = handle();
     let codec = codec().with_separator(b'|');
+    let messages = codec
+        .parse_lines(CAPTURE)
+        .map(|message| message.expect("a source message"))
+        .collect::<Vec<_>>();
+    assert_eq!(messages.len(), MESSAGES);
 
     let reader = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
@@ -599,13 +604,65 @@ fn a_capture_writes_back_what_each_message_emits() {
     let held = String::from_utf8(written).expect("the wire is text here");
     let lines: Vec<&str> = held.lines().collect();
     assert_eq!(lines.len(), MESSAGES);
-    for line in [WORKING, FILLED] {
-        let emitted = codec
+    let target = super::format_target(codec.registry());
+    let group_columns = target
+        .fields()
+        .iter()
+        .enumerate()
+        .filter_map(|(at, field)| {
+            field
+                .as_fix()
+                .counter()
+                .expect("valid FIX metadata")
+                .filter(|counter| {
+                    !(yggdryl::CRATE_TAG_MIN..=yggdryl::CRATE_TAG_MAX).contains(counter)
+                })
+                .map(|_| (at, field.name()))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !group_columns.is_empty(),
+        "the fixed row has protocol groups"
+    );
+    for (at, (message, line)) in messages.iter().zip(&lines).enumerate() {
+        let emitted = message.into_text('|').expect("the source message emits");
+        let mut source_tokens = emitted
+            .split('|')
+            .filter(|token| !token.is_empty())
+            .collect::<Vec<_>>();
+        let mut written_tokens = line
+            .split('|')
+            .filter(|token| !token.is_empty())
+            .collect::<Vec<_>>();
+        source_tokens.sort_unstable();
+        written_tokens.sort_unstable();
+        assert_eq!(written_tokens, source_tokens, "row {at} changed a token");
+
+        // Root fields may move into schema order, but header/trailer bands and
+        // every repeating group's member and occurrence order remain wire
+        // structure rather than a token-set property.
+        if emitted.contains("|10=") {
+            assert!(line.starts_with("8="), "row {at}: {line}");
+            assert!(
+                line.rsplit('|')
+                    .nth(1)
+                    .is_some_and(|token| token.starts_with("10=")),
+                "row {at}: {line}"
+            );
+        }
+        let reparsed = codec
             .sole_line(line.as_bytes())
-            .expect("a report")
-            .into_text('|')
-            .unwrap();
-        assert!(lines.contains(&emitted.as_str()), "{emitted}\n{lines:?}");
+            .unwrap_or_else(|error| panic!("row {at} did not parse: {error}"));
+        let source_row = message.into_row(&target).expect("the source row");
+        let reparsed_row = reparsed.into_row(&target).expect("the reparsed row");
+        let source_cells = source_row.as_sequence().expect("source columns");
+        let reparsed_cells = reparsed_row.as_sequence().expect("reparsed columns");
+        for (column, name) in &group_columns {
+            assert_eq!(
+                reparsed_cells[*column], source_cells[*column],
+                "row {at} changed {name} occurrence order"
+            );
+        }
     }
     for silent in [PROSE, CHATTER] {
         assert!(
