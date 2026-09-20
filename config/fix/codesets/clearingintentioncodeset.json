@@ -1,0 +1,15 @@
+{
+  "name": "clearingintentioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DoNotIntendToClear",
+      "doc": "Do not intend to clear"
+    },
+    {
+      "value": "1",
+      "name": "IntendToClear",
+      "doc": "Intend to clear"
+    }
+  ]
+}

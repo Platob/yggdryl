@@ -1,0 +1,25 @@
+{
+  "name": "paymentstreamsettllevelcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Average",
+      "doc": "Average"
+    },
+    {
+      "value": "1",
+      "name": "Maximum",
+      "doc": "Maximum"
+    },
+    {
+      "value": "2",
+      "name": "Minimum",
+      "doc": "Minimum"
+    },
+    {
+      "value": "3",
+      "name": "Cumulative",
+      "doc": "Cumulative"
+    }
+  ]
+}

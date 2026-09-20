@@ -50,8 +50,12 @@ mod message;
 /// The threads a codec reads on.
 #[path = "fix/parallel.rs"]
 mod parallel;
+#[path = "fix/party_source.rs"]
+mod party_source;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
+#[path = "fix/residual.rs"]
+mod residual;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]

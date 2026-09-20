@@ -6,14 +6,14 @@ use std::process::ExitCode;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
 use yggdryl::local::Folder;
-use yggdryl::{DataType, Field, FixCategory, FixCode, FixDirection, FixRegistry, IOKind, Result};
+use yggdryl::{DataType, Field, FixCategory, FixDirection, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]' --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in FIX:codes metadata; --codes accepts that JSON document.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nA field reads its values by a named code set the dictionary holds: --codes names one, and codesets list/read/write/delete states its members.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -31,6 +31,11 @@ pub enum Command {
     Groups {
         #[command(subcommand)]
         command: CategoryCommand,
+    },
+    /// Named code sets: the vocabularies fields read their values by.
+    Codesets {
+        #[command(subcommand)]
+        command: CodesetCommand,
     },
     /// Read an Ullink `CBlock` into the dictionary.
     Ingest {
@@ -83,6 +88,54 @@ pub enum Command {
     },
 }
 
+/// Operations over one named code set.
+///
+/// A code set is a vocabulary rather than a definition: it holds no tag, no
+/// datatype and no reference, so it has its own verbs rather than a category
+/// of the definition ones. `merge` is the difference that matters - two
+/// sources state one set, and folding them keeps every spelling either named.
+#[derive(Subcommand)]
+#[command(
+    after_help = "Examples:\n  ygg fix codesets list side\n  ygg fix codesets read sidecodeset --json\n  ygg fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  ygg fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\"}]'\n  ygg fix fields update Side utf8 --tag 54 --codes sidecodeset\n\nwrite replaces the set; --merge folds by wire value instead, keeping every name and alias either side declared.\ndelete refuses a set a field still reads by."
+)]
+pub enum CodesetCommand {
+    /// List the code sets held, with how many fields read by each.
+    List {
+        /// Match part of a name, ignoring case.
+        filter: Option<String>,
+        /// Maximum number of rows printed.
+        #[arg(long, default_value_t = 40)]
+        limit: usize,
+    },
+    /// Read one code set: every member, or the document a store writes.
+    Read {
+        /// The set's name.
+        name: String,
+        /// Emit the JSON document a store writes under `codesets/<name>.json`.
+        #[arg(long)]
+        json: bool,
+    },
+    /// State a code set's members, replacing or folding into what it held.
+    #[command(
+        after_help = "Examples:\n  ygg fix codesets write sidecodeset --codes '[{\"value\":\"1\",\"name\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\"}]'\n  ygg fix codesets write sidecodeset --merge --codes '[{\"value\":\"7\",\"name\":\"Undisclosed\",\"aliases\":[\"Anon\"]}]'\n\n--codes takes the whole set as compact JSON, value before name; aliases, doc and group are optional on each code.\nWithout --merge the set is replaced; with it the codes fold in by wire value, the reading the dictionary already holds winning a shared one and every spelling either side declared kept as an alias.\nAn empty list removes the set, which is refused while a field still reads by it."
+    )]
+    Write {
+        /// The set's name.
+        name: String,
+        /// Compact code JSON, with value before name: [{"value":"1","name":"Buy"}].
+        #[arg(long)]
+        codes: String,
+        /// Fold into what the set already holds rather than replacing it.
+        #[arg(long)]
+        merge: bool,
+    },
+    /// Delete a code set; absence or a field still reading by it is an error.
+    Delete {
+        /// The set's name.
+        name: String,
+    },
+}
+
 /// Operations common to each explicitly selected category.
 #[derive(Subcommand)]
 #[command(
@@ -100,7 +153,7 @@ pub enum CategoryCommand {
         #[arg(long, default_value_t = 40)]
         limit: usize,
     },
-    /// Read one definition, its references and inline enum codes.
+    /// Read one definition, its references and the code set it reads by.
     Read {
         /// Definition name; fields also accept a tag.
         key: String,
@@ -126,7 +179,7 @@ pub enum CategoryCommand {
 /// Native Field intake; category semantics remain in the core registry.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]' --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to FIX:codes metadata. --codes accepts compact JSON with value before name, for example [{\"value\":\"1\",\"name\":\"Buy\"}].\nTag 385's direction rules belong to FIX:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example [{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]; an empty list removes the property so the crate's defaults read again."
+    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nA field names the code set it reads its values by; --codes takes that name, and `ygg fix codesets write` states its members.\nTag 385's direction rules belong to FIX:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example [{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]; an empty list removes the property so the crate's defaults read again."
 )]
 pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
@@ -153,7 +206,7 @@ pub struct DefinitionArgs {
     /// Existing component defining one occurrence of this group.
     #[arg(long)]
     component: Option<String>,
-    /// Compact inline enum JSON, with value before name: [{"value":"1","name":"Buy"}].
+    /// The code set this field reads its values by, by name (for example, sidecodeset).
     #[arg(long)]
     codes: Option<String>,
     /// Direction rules JSON for tag 385: [{"code":"S","patterns":["(?i)^TX\\b"]}].
@@ -188,14 +241,8 @@ impl DefinitionArgs {
             })?;
         let mut field = DataType::from_str(dtype)?.nullable_field(name);
         field.set_nullable(!self.required && self.msgtype.is_none());
-        if let Some(document) = &self.codes {
-            field.update_metadata([("FIX:codes", document.clone())])?;
-            let codes = field
-                .as_fix()
-                .codes()
-                .map(|code| code.map(FixCode::from))
-                .collect::<Result<Vec<_>>>()?;
-            field.as_fix_mut().set_codes(&codes)?;
+        if let Some(name) = &self.codes {
+            field.as_fix_mut().set_codeset(name)?;
         }
         if let Some(document) = &self.directions {
             field.update_metadata([("FIX:directions", document.clone())])?;
@@ -250,6 +297,7 @@ fn execute(store: &mut registry::Store, annotate: bool, command: &Command) -> Re
         Command::Fields { command } => category(store, FixCategory::Fields, command)?,
         Command::Components { command } => category(store, FixCategory::Components, command)?,
         Command::Groups { command } => category(store, FixCategory::Groups, command)?,
+        Command::Codesets { command } => codesets(store, command)?,
         Command::Ingest {
             path,
             dialect,
@@ -316,6 +364,20 @@ fn category(
         CategoryCommand::Create(args) => registry::create(store, category, args.field()?),
         CategoryCommand::Update(args) => registry::update(store, category, args.field()?),
         CategoryCommand::Delete { key } => registry::delete(store, category, key),
+    }
+}
+
+fn codesets(store: &mut registry::Store, command: &CodesetCommand) -> Result<()> {
+    match command {
+        CodesetCommand::List { filter, limit } => {
+            registry::list_codesets(store, filter.as_deref(), *limit);
+            Ok(())
+        }
+        CodesetCommand::Read { name, json } => registry::read_codeset(store, name, *json),
+        CodesetCommand::Write { name, codes, merge } => {
+            registry::write_codeset(store, name, codes, *merge)
+        }
+        CodesetCommand::Delete { name } => registry::delete_codeset(store, name),
     }
 }
 
@@ -434,6 +496,7 @@ fn interactive(store: &mut registry::Store) -> Result<()> {
         "fields",
         "components",
         "groups",
+        "codesets",
         "ingest",
         "sync",
         "schema",

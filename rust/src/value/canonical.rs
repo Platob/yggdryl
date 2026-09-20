@@ -835,6 +835,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => {
@@ -861,6 +862,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::CusipCode => Scalar::CusipCode(crate::CusipCode::new(text)?),
                 D::SedolCode => Scalar::SedolCode(crate::SedolCode::new(text)?),
                 D::BloombergCode => Scalar::BloombergCode(crate::BloombergCode::new(text)?),
+                D::FIGICode => Scalar::FIGICode(crate::FIGICode::new(text)?),
                 // A side and a state are read by their spelling: the wire
                 // code, the specification's name or a stored value all reach
                 // the one explicit value, and a spelling that names none is
@@ -1614,6 +1616,7 @@ fn validate_dtype_value(
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => match ascii_bytes(value) {

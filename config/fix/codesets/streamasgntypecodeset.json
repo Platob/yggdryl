@@ -1,0 +1,20 @@
+{
+  "name": "streamasgntypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Assignment",
+      "doc": "Assignment"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "3",
+      "name": "Terminate",
+      "doc": "Terminate/Unassign"
+    }
+  ]
+}

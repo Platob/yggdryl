@@ -1,0 +1,40 @@
+{
+  "name": "acctidsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BIC",
+      "doc": "BIC"
+    },
+    {
+      "value": "2",
+      "name": "SIDCode",
+      "doc": "SID Code"
+    },
+    {
+      "value": "3",
+      "name": "TFM",
+      "doc": "TFM (GSPTA)"
+    },
+    {
+      "value": "4",
+      "name": "OMGEO",
+      "doc": "OMGEO (Alert ID)"
+    },
+    {
+      "value": "5",
+      "name": "DTCCCode",
+      "doc": "DTCC Code"
+    },
+    {
+      "value": "6",
+      "name": "SPSAID",
+      "doc": "Special Segregated Account ID"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other (custom or proprietary)"
+    }
+  ]
+}

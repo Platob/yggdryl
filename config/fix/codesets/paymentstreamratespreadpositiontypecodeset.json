@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamratespreadpositiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Short",
+      "doc": "Short"
+    },
+    {
+      "value": "1",
+      "name": "Long",
+      "doc": "Long"
+    }
+  ]
+}

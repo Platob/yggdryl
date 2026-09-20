@@ -874,6 +874,7 @@ impl fmt::Display for DataType {
             | D::CusipCode
             | D::SedolCode
             | D::BloombergCode
+            | D::FIGICode
             | D::Side
             | D::State
             | D::TimeInForce

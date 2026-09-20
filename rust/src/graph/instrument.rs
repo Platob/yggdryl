@@ -5,7 +5,7 @@ use std::mem::{align_of, size_of};
 
 use super::MarketElement;
 use crate::bloomberg_code::BLOOMBERG_WIDTH;
-use crate::{BloombergCode, CfiCode, CusipCode, IsinCode, SedolCode};
+use crate::{BloombergCode, CfiCode, CusipCode, FIGICode, IsinCode, SedolCode};
 
 /// One lifecycle reserves at most 32 MiB for learned associations. Each first
 /// valid ISIN is charged conservatively for its full code set and hash-table
@@ -100,6 +100,7 @@ struct Codes {
     cusip: Association<CusipCode>,
     sedol: Association<SedolCode>,
     bloomberg: Association<BloombergCode>,
+    figi: Association<FIGICode>,
 }
 
 pub(crate) struct InstrumentCodes {
@@ -170,6 +171,9 @@ impl InstrumentCodes {
                     .any(|null| text.eq_ignore_ascii_case(null))
                 && BloombergCode::is_canonical(text)
         });
+        codes.figi.observe(event.get_figicode(), |code| {
+            FIGICode::is_canonical(code.as_str())
+        });
         let mut changed = false;
         macro_rules! fill {
             ($get:ident, $set:ident, $held:ident) => {
@@ -208,6 +212,7 @@ impl InstrumentCodes {
         fill!(get_cusipcode, set_cusipcode, cusip);
         fill!(get_sedolcode, set_sedolcode, sedol);
         fill!(get_bloombergcode, set_bloombergcode, bloomberg);
+        fill!(get_figicode, set_figicode, figi);
         if changed {
             event.finalize();
         }

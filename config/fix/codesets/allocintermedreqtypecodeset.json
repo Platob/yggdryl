@@ -1,0 +1,35 @@
+{
+  "name": "allocintermedreqtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "PendingAccept",
+      "doc": "Pending Accept"
+    },
+    {
+      "value": "2",
+      "name": "PendingRelease",
+      "doc": "Pending Release"
+    },
+    {
+      "value": "3",
+      "name": "PendingReversal",
+      "doc": "Pending Reversal"
+    },
+    {
+      "value": "4",
+      "name": "Accept",
+      "doc": "Accept"
+    },
+    {
+      "value": "5",
+      "name": "BlockLevelReject",
+      "doc": "Block Level Reject"
+    },
+    {
+      "value": "6",
+      "name": "AccountLevelReject",
+      "doc": "Account Level Reject"
+    }
+  ]
+}

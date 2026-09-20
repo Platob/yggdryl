@@ -1,0 +1,15 @@
+{
+  "name": "locatereqdcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "No",
+      "doc": "Indicates the broker is not required to locate"
+    },
+    {
+      "value": "Y",
+      "name": "Yes",
+      "doc": "Indicates the broker is responsible for locating the stock"
+    }
+  ]
+}

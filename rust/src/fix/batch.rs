@@ -271,8 +271,8 @@ impl FixCodec {
     /// holds through [`FixMsg::from_row`] - any schema that constructor
     /// accepts, the fixed row carrying a capture's columns or not - the
     /// messages are walked as `lifecycle` walks them, and each is written
-    /// back under the **same** schema. Nothing is parsed again, the arrival
-    /// record is carried through untouched, and [the capture's own
+    /// back under the **same** schema. Projected columns and residual entries
+    /// reconstruct the content without parsing a source line. [The capture's own
     /// columns](FixMsg::carried) travel with the message the walk moves, so
     /// the `body` a row was cut from and the `sourceurl` it names still
     /// belong to the message that came out of that line whatever order the
@@ -295,13 +295,11 @@ impl FixCodec {
     /// A stream of batches of FIX rows as the stream of messages it holds.
     ///
     /// Each row is one message through [`FixMsg::from_row`] under the
-    /// source's schema, its entries rebuilt from the
-    /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) where the schema carries it
-    /// and [the capture's own cells](FixMsg::carried) read into it, so a
-    /// batch written by [`Self::parse_text_arrow_reader`] comes back as the
-    /// messages that made it - re-emitting its lines, digesting, restating
-    /// and stamping as they did, and carrying what their rows said for
-    /// themselves - at the cost of the values it already holds and no parse.
+    /// source's schema, its entries rebuilt from projected columns and the
+    /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) where the schema carries it.
+    /// [The capture's own cells](FixMsg::carried) travel with the rebuilt message.
+    /// Recorded event identities survive; emitted wire may reorder or normalize
+    /// represented content. No source line is parsed again.
     /// One thread holds one batch at a time. Several threads retain bounded
     /// row chunks, which can span batches, and yield messages in source order.
     /// A source batch of another schema than the first is a conflict item,
@@ -521,10 +519,10 @@ impl FixCodec {
     /// The encode direction of the same exchange: each row is the message
     /// [`Self::messages`] reads out of it, and the line written is
     /// [`FixMsg::into_bytes`] with the separator [`Self::with_separator`]
-    /// pinned, else [`SOH`], then a newline. The wire is rebuilt from the
-    /// arrival record, never from the columns: the facets are a lossy
-    /// projection by construction, and rebuilding a frame from them would
-    /// emit a message that was never sent. A batch without the
+    /// pinned, else [`SOH`], then a newline. The wire combines projected
+    /// ordinary fields with residual entries; residual content owns any
+    /// overlapping tag or group. Represented content may reorder or normalize.
+    /// A batch without the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message
     /// held no pairs is an empty line - and the count of lines is answered.
@@ -547,7 +545,7 @@ impl FixCodec {
             return Err(Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static(FIXENTRIES_COLUMN),
                 reason: crate::text::expected_got(
-                    "a batch carrying its arrival record",
+                    "a batch carrying its residual entries",
                     "one holding only lifted columns",
                 ),
             });

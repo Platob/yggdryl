@@ -95,6 +95,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "cusip": types.cusip("value"),
         "sedol": types.sedol("value"),
         "bloomberg": types.bloomberg("value"),
+        "figi": types.figi("value"),
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),

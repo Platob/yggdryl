@@ -239,6 +239,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::CusipCode
             | DataType::SedolCode
             | DataType::BloombergCode
+            | DataType::FIGICode
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
@@ -351,6 +352,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),

@@ -70,9 +70,9 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
-    recognized_arrow_extension,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    code_refusal, recognized_arrow_extension,
 };
 use crate::{DataType, Field, Scalar};
 
@@ -1242,6 +1242,7 @@ mod typed {
     typed_array!(crate::CusipCodeType, arrow_array::StringArray);
     typed_array!(crate::SedolCodeType, arrow_array::StringArray);
     typed_array!(crate::BloombergCodeType, arrow_array::StringArray);
+    typed_array!(crate::FIGICodeType, arrow_array::StringArray);
     typed_array!(crate::SideType, arrow_array::StringArray);
     typed_array!(crate::StateType, arrow_array::StringArray);
     typed_array!(crate::TimeInForceType, arrow_array::StringArray);
@@ -2564,6 +2565,13 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::BloombergCode => ingest_code_array::<BLOOMBERG_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::FIGICode => ingest_code_array::<FIGI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

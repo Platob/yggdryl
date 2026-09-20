@@ -1,0 +1,21 @@
+{
+  "name": "duplicateclordidindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "UniqueClOrdID",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Unique ClOrdID(11)"
+    },
+    {
+      "value": "Y",
+      "name": "DuplicateClOrdID",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Duplicate ClOrdID(11)"
+    }
+  ]
+}

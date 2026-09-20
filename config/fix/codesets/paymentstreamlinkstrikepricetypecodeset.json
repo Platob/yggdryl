@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamlinkstrikepricetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Volatility",
+      "doc": "Volatility"
+    },
+    {
+      "value": "1",
+      "name": "Variance",
+      "doc": "Variance"
+    }
+  ]
+}

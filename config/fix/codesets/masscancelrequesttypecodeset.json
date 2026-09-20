@@ -1,0 +1,65 @@
+{
+  "name": "masscancelrequesttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CancelOrdersForASecurity",
+      "doc": "Cancel orders for a security"
+    },
+    {
+      "value": "2",
+      "name": "CancelOrdersForAnUnderlyingSecurity",
+      "doc": "Cancel orders for an underlying security"
+    },
+    {
+      "value": "3",
+      "name": "CancelOrdersForAProduct",
+      "doc": "Cancel orders for a product"
+    },
+    {
+      "value": "4",
+      "name": "CancelOrdersForACFICode",
+      "doc": "Cancel orders for a CFICode"
+    },
+    {
+      "value": "5",
+      "name": "CancelOrdersForASecurityType",
+      "doc": "Cancel orders for a security type"
+    },
+    {
+      "value": "6",
+      "name": "CancelOrdersForATradingSession",
+      "doc": "Cancel orders for a trading session"
+    },
+    {
+      "value": "7",
+      "name": "CancelAllOrders",
+      "doc": "Cancel all orders"
+    },
+    {
+      "value": "8",
+      "name": "CancelOrdersForAMarket",
+      "doc": "Cancel orders for a market"
+    },
+    {
+      "value": "9",
+      "name": "CancelOrdersForAMarketSegment",
+      "doc": "Cancel orders for a market segment"
+    },
+    {
+      "value": "A",
+      "name": "CancelOrdersForASecurityGroup",
+      "doc": "Cancel orders for a security group"
+    },
+    {
+      "value": "B",
+      "name": "CancelOrdersForSecurityIssuer",
+      "doc": "Cancel orders for an issuer"
+    },
+    {
+      "value": "C",
+      "name": "CancelForIssuerOfUnderlyingSecurity",
+      "doc": "Cancel orders for an issuer of underlying security"
+    }
+  ]
+}

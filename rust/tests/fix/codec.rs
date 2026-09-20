@@ -375,17 +375,18 @@ fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
 fn a_stated_absence_produces_no_field_and_no_entry() {
     let reader = reader();
     for spelling in [
-        "", "   ", "null", " NULL ", "<null>", " [n/a] ", "None", " NoNe ",
+        "", "   ", "null", " NULL ", "<null>", " n/A ", " [n/a] ", "None", " NoNe ",
     ] {
-        let row = format!("8=FIX.4.4|35=D|58={spelling}|VenueOwnThing={spelling}|10=0|");
+        let row =
+            format!("8=FIX.4.4|35=D|55={spelling}|58={spelling}|VenueOwnThing={spelling}|10=0|");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
+        assert!(message.get_by_tag(55).is_none(), "{spelling}");
         assert!(message.get_by_tag(58).is_none(), "{spelling}");
         assert!(message.get_by_name("venueownthing").is_none(), "{spelling}");
         assert!(
-            !message
-                .entries()
-                .iter()
-                .any(|entry| entry.tag() == 58 || entry.name() == "venueownthing"),
+            !message.entries().iter().any(|entry| {
+                entry.tag() == 55 || entry.tag() == 58 || entry.name() == "venueownthing"
+            }),
             "{spelling}"
         );
     }
@@ -397,9 +398,10 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
     assert_eq!(kept.by_tag(58).unwrap().as_str(), Some("nullable"));
 
     let literal_reader = reader.with_null_values::<[&str; 0], &str>([]);
-    for spelling in ["null", "[N/A]", "None"] {
-        let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
+    for spelling in ["null", "n/a", "[N/A]", "None"] {
+        let row = format!("8=FIX.4.4|35=D|55={spelling}|58={spelling}|10=0|");
         let literal = literal_reader.sole_line(row.as_bytes()).unwrap();
+        assert_eq!(literal.by_tag(55).unwrap().as_str(), Some(spelling));
         assert_eq!(literal.by_tag(58).unwrap().as_str(), Some(spelling));
     }
 }
@@ -654,7 +656,9 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // A bare twin that stated an absence was never sent, so the `#` is the
     // row's sole spelling and drops: the value lands under the dictionary
     // field exactly as a lone `#` key always did.
-    for spelling in ["", "null", "<null>", "[N/A]", "None", " [n/a] ", " NoNe "] {
+    for spelling in [
+        "", "null", "<null>", "n/a", "[N/A]", "None", " [n/a] ", " NoNe ",
+    ] {
         let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
         assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
@@ -2194,8 +2198,11 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         .expect("readable rows");
     assert_eq!(again.len(), 2);
     assert_eq!(again[0].by_tag(11).unwrap(), read[0].by_tag(11).unwrap());
-    assert_eq!(again[1].entries(), read[1].entries());
-    assert_eq!(again[1].into_bytes(b'|'), read[1].into_bytes(b'|'));
+    let schema = yggdryl::fix_schema(codec.registry(), "fix").expect("the fixed schema");
+    assert_eq!(
+        again[1].into_row(&schema).expect("a reconstructed row"),
+        read[1].into_row(&schema).expect("the parsed row")
+    );
 }
 
 #[test]

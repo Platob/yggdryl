@@ -21,9 +21,11 @@ impl Fixture {
             let mut field = DataType::Int32.nullable_field(format!("Field{tag}"));
             field.as_fix_mut().set_tag(tag)?;
             if tag == 54 {
-                field
-                    .as_fix_mut()
-                    .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])?;
+                registry.set_codeset(
+                    "sidecodeset",
+                    &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
+                )?;
+                field.as_fix_mut().set_codeset("sidecodeset")?;
             }
             registry.create_definition(FixCategory::Fields, field)?;
         }

@@ -1,0 +1,25 @@
+{
+  "name": "bidtradetypecodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Agency",
+      "doc": "Agency"
+    },
+    {
+      "value": "G",
+      "name": "VWAPGuarantee",
+      "doc": "VWAP Guarantee"
+    },
+    {
+      "value": "J",
+      "name": "GuaranteedClose",
+      "doc": "Guaranteed Close"
+    },
+    {
+      "value": "R",
+      "name": "RiskTrade",
+      "doc": "Risk Trade"
+    }
+  ]
+}

@@ -26,12 +26,18 @@ fn direction_registry() -> Arc<FixRegistry> {
     // Tag 385 as the dictionary types it: text carrying its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
+    registry
+        .set_codeset(
+            "msgdirectioncodeset",
+            &[
+                yggdryl::FixCode::new("Receive", "R"),
+                yggdryl::FixCode::new("Send", "S"),
+            ],
+        )
+        .unwrap();
     direction
         .as_fix_mut()
-        .set_codes(&[
-            yggdryl::FixCode::new("Receive", "R"),
-            yggdryl::FixCode::new("Send", "S"),
-        ])
+        .set_codeset("msgdirectioncodeset")
         .unwrap();
     registry.insert(direction).unwrap();
     Arc::new(registry)
@@ -211,7 +217,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
 }
 
 #[test]
-fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
+fn the_entries_column_keeps_only_content_the_columns_did_not_represent() {
     let reader = codec()
         .parse_text_arrow_reader(capture_reader(
             &["8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|"],
@@ -228,11 +234,16 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let digest = tag_column(&batch, yggdryl::CURRHASHCODE_TAG_NAME.0);
     assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
-    // And the arrival record is there in full, which is what makes the batch
-    // lossless rather than one reader's summary.
+    // Every scalar this fixture states has a fixed column, so its residual
+    // arrival record is present but empty rather than duplicating the row.
     let entries = column(&batch, "fixentries");
     assert!(entries.is_valid(0));
-    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        first_value(&batch, "fixentries")
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(0)
+    );
 }
 
 /// Two hundred wide orders, about 450 bytes each.
@@ -385,7 +396,7 @@ fn messages_to_batches_close_on_the_bytes_their_rows_land_as() {
 }
 
 #[test]
-fn messages_with_no_arrival_record_are_charged_by_their_row() {
+fn messages_without_residual_entries_are_charged_and_rebuilt_by_their_columns() {
     let codec = codec();
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     let whole = batches(
@@ -394,8 +405,7 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
             .unwrap(),
     );
     assert_eq!(whole.len(), 1);
-    // The lifted columns alone: the projection a consumer keeps, whose rows
-    // come back as messages holding no entries.
+    // The projected columns alone still state ordinary message content.
     let batch = &whole[0];
     let lifted: Vec<usize> = (0..batch.num_columns())
         .filter(|at| batch.schema().field(*at).name() != yggdryl::fix::FIXENTRIES_COLUMN)
@@ -403,6 +413,20 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
     let projected = batch.project(&lifted).unwrap();
     assert_eq!(projected.num_rows(), 200);
     let reader = || yggdryl::arrow::batch_reader(projected.schema(), [projected.clone()]);
+    let restored: Vec<FixMsg> = codec
+        .messages(reader())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(restored.len(), 200);
+    assert_eq!(
+        restored[0].by_tag(11).unwrap().as_str(),
+        Some("ORDER-000000")
+    );
+    let text = "x".repeat(400);
+    assert_eq!(
+        restored[0].by_tag(58).unwrap().as_str(),
+        Some(text.as_str())
+    );
 
     // Under a bound of about ten rows of leaves, the stream is cut into
     // batches of about ten - it is not one batch of everything, which is
@@ -862,6 +886,40 @@ fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes
 }
 
 #[test]
+fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous() {
+    let codec = codec();
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=US0378331005|{body}|10=0|"
+        )
+    };
+    let learned: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(2, "").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        learned[1].get_figicode().map(|value| value.as_str()),
+        Some("BBG000BLNQ16")
+    );
+
+    let ambiguous: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(3, "").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
+            codec.parse_fix_line(line(2, "figicode=BCG000000005").as_bytes()),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert!(
+        ambiguous[2].get_figicode().is_none(),
+        "a conflicting association stays unknown"
+    );
+}
+
+#[test]
 fn lifecycle_expiry_keeps_fix_content_and_retires_at_the_exact_deadline() {
     let codec = codec();
     let original = codec
@@ -973,13 +1031,13 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     assert_eq!(first_tag_value(&filled, 151), super::decimal("60"));
     // One fill, so the average is that fill's price.
     assert_eq!(first_tag_value(&filled, 6), super::decimal("10.5"));
-    // The record is the message read as a tree, so the row's arrival record
-    // is what the line read emits.
+    // Every stated field fits a fixed column, so this row carries no
+    // duplicate arrival entry.
     assert_eq!(
         first_value(&filled, "fixentries")
             .as_sequence()
             .map(<[Scalar]>::len),
-        Some(message.entries().len()),
+        Some(0),
     );
 }
 
@@ -1740,7 +1798,7 @@ fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
 }
 
 #[test]
-fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
+fn a_message_through_the_arrow_reader_and_back_states_the_same_semantic_row() {
     let codec = every_msgtype().with_null_values::<[&str; 0], &str>([]);
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     let parsed: Vec<FixMsg> = codec
@@ -1758,10 +1816,17 @@ fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
         .unwrap();
     assert_eq!(again.len(), parsed.len());
     for (held, message) in again.iter().zip(&parsed) {
-        // The arrival record is what the row carries the content in, so it is
-        // what comes back: none of this corpus nests a group inside a group,
-        // which is the one shape `FixMsg::from_row` names as inexact.
-        assert_eq!(held.entries(), message.entries());
+        // Represented fields rebuild from their columns; the residual keeps
+        // only content those columns could not state.
+        assert_eq!(
+            held.into_row(&schema).unwrap(),
+            message.into_row(&schema).unwrap(),
+            "semantic row"
+        );
+        assert_eq!(held.get_curruuid(), message.get_curruuid());
+        assert_eq!(held.get_crossuuid(), message.get_crossuuid());
+        assert_eq!(held.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(held.get_crosshashcode(), message.get_crosshashcode());
         for tag in [35, 11, 55, 54, 17, 37] {
             fn stated(message: &FixMsg, tag: i32) -> Option<Scalar> {
                 message.get_by_tag(tag).filter(|held| !held.is_null())

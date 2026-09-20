@@ -1,0 +1,45 @@
+{
+  "name": "dkreasoncodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "UnknownSymbol",
+      "doc": "Unknown security"
+    },
+    {
+      "value": "B",
+      "name": "WrongSide",
+      "doc": "Wrong side"
+    },
+    {
+      "value": "C",
+      "name": "QuantityExceedsOrder",
+      "doc": "Quantity exceeds order"
+    },
+    {
+      "value": "D",
+      "name": "NoMatchingOrder",
+      "doc": "No matching order"
+    },
+    {
+      "value": "E",
+      "name": "PriceExceedsLimit",
+      "doc": "Price exceeds limit"
+    },
+    {
+      "value": "F",
+      "name": "CalculationDifference",
+      "doc": "Calculation difference"
+    },
+    {
+      "value": "G",
+      "name": "NoMatchingExecutionReport",
+      "doc": "No matching ExecutionReport(35=8)"
+    },
+    {
+      "value": "Z",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -157,7 +157,11 @@ pub(super) fn emit_text(
 /// its name, so `BUY` under `Side(54)` is `1` on the wire and `BUY` in a
 /// dictionary that never coded it; everything else spells as it does
 /// under no field.
-pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Option<SmolStr> {
+pub(super) fn wire_text_under(
+    registry: &super::FixRegistry,
+    field: &crate::Field,
+    value: &crate::Scalar,
+) -> Option<SmolStr> {
     let coded = value.is_code()
         || matches!(
             field.dtype(),
@@ -166,7 +170,7 @@ pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Op
     if coded {
         if let Some(code) = value
             .as_str()
-            .and_then(|name| field.as_fix().code_by_name(name))
+            .and_then(|name| registry.codeset_of(field)?.code_by_name(name))
         {
             return Some(SmolStr::new(code.value()));
         }

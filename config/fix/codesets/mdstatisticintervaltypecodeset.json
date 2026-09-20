@@ -1,0 +1,45 @@
+{
+  "name": "mdstatisticintervaltypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "SlidingWindow",
+      "doc": "Sliding window"
+    },
+    {
+      "value": "2",
+      "name": "SlidingWindowPeak",
+      "doc": "Sliding window peak"
+    },
+    {
+      "value": "3",
+      "name": "FixedDateRange",
+      "doc": "Fixed date range"
+    },
+    {
+      "value": "4",
+      "name": "FixedTimeRange",
+      "doc": "Fixed time range"
+    },
+    {
+      "value": "5",
+      "name": "CurrentTimeUnit",
+      "doc": "Current time unit"
+    },
+    {
+      "value": "6",
+      "name": "PreviousTimeUnit",
+      "doc": "Previous time unit"
+    },
+    {
+      "value": "7",
+      "name": "MaximumRange",
+      "doc": "Maximum range"
+    },
+    {
+      "value": "8",
+      "name": "MaximumRangeUpToPreviousTimeUnit",
+      "doc": "Maximum range up to previous time unit"
+    }
+  ]
+}

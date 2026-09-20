@@ -732,6 +732,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::CusipCode(_)
             | Scalar::SedolCode(_)
             | Scalar::BloombergCode(_)
+            | Scalar::FIGICode(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)

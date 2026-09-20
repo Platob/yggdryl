@@ -193,9 +193,11 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         " CURRENCY ".parse::<DataType>().unwrap(),
         DataType::Currency
     );
-    // The grammar reports a word that names nothing as unknown.
-    let error = "figi".parse::<DataType>().unwrap_err().to_string();
-    assert!(error.contains("unknown datatype \"figi\""), "{error}");
+    // FIGI is its own checked twelve-character code, not a Bloomberg alias.
+    assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::FIGICode);
+    // The grammar still reports words that name nothing as unknown.
+    let error = "figx".parse::<DataType>().unwrap_err().to_string();
+    assert!(error.contains("unknown datatype \"figx\""), "{error}");
 }
 
 #[test]

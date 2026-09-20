@@ -12,7 +12,8 @@
 
 | Aspect | Rule |
 | --- | --- |
-| Enums | Each scalar field carries its own canonical `FIX:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
+| Enums | A vocabulary is a named code set the registry owns rather than a property of one field: the members are held once under the set's name and a scalar's `FIX:codeset` states that name. A registry refuses a field naming a set it does not hold, so a set is stated before a field reads by it. Every version's values are in the set: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
+| Code sets | `codesets` is a fourth thing the registry holds beside the three categories, and no `FixCategory`: a set carries no tag, no datatype and no reference, so `FixCategory::ALL` is still the three and the sets have doors of their own - `codeset`, `codeset_of`, `codesets`, `set_codeset`, `merge_codeset`, `remove_codeset`. A [store](store.md) writes them to `codesets/<name>.json` and a snapshot to a `codesets` key |
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `FIX:names`, and a field FIX retired is still in the dictionary under its own tag |
 | Replacements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; a registry states a rule of its own on the field as `FIX:replacements`, which wins whole over the table for that field, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
 | Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
@@ -26,9 +27,9 @@
 | Membership | `FIX:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
-| Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 28 definitions from tag 65003: 26 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 28 scalar fields and two groups: 30 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 28 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 29 definitions from tag 65003: 27 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 29 scalar fields and two groups: 31 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 29 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -610,23 +611,36 @@ These mutations preserve stored canonical spelling for case-only input changes. 
 
 Python registries are mutable and unhashable; `stable_hash()` explicitly computes the native content hash. Python `copy.copy` and Node `clone()` create independently mutable registries, including every category and each field's membership.
 
-## A field carries its code set
+## A field names the code set it reads by
 
-A scalar's enum vocabulary remains inline in `FIX:codes`, with required `value` and `name`, plus optional aliases, documentation, and grouping. The list is the vocabulary in the rank the specification gives it, so where a code sits *is* its presentation rank. Typed borrowed code lookups and `FixCode` construction are Rust-only; both bindings preserve the same metadata through native validation and snapshots.
+A vocabulary belongs to the dictionary rather than to one field. The specification names each set - `SideCodeSet`, `SecurityIDSourceCodeSet` - and names it from as many fields as draw on it, so the registry holds the members once under that name and a scalar's `FIX:codeset` states only which set it reads by. The committed source dictionary holds 735 sets read by 2,027 fields; the registry adds its builtin `msgcatcodeset`, so a live default registry holds 736. One time-unit set is read by 103 fields alone; `SecurityIDSource(22)` and `UnderlyingSecurityIDSource(305)` are two of the 36 fields that read `securityidsourcecodeset`, and a code named, aliased or documented once is named for every one of them.
+
+The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, FixCode, FixRegistry};
 
+    let mut registry = FixRegistry::new();
+    registry.set_codeset("sidecodeset", &[
+        FixCode::new("Buy", "1"),
+        FixCode::new("Sell", "2").with_aliases(["Sold"]),
+    ])?;
+
     let mut side = DataType::utf8().nullable_field("Side");
     side.as_fix_mut().set_tag(54)?;
-    side.as_fix_mut().set_codes(&[
-        FixCode::new("Buy", "1"), FixCode::new("Sell", "2"),
-    ])?;
-    let registry = FixRegistry::from_fields([side])?;
-    assert_eq!(registry.field(54)?.as_fix().code_value("Buy"), Some("1"));
-    assert_eq!(registry.field(54)?.as_fix().code_name("2"), Some("Sell"));
+    side.as_fix_mut().set_codeset("sidecodeset")?;
+    registry.insert(side)?;
+
+    // The field carries the name; the dictionary answers the members.
+    assert_eq!(registry.field(54)?.as_fix().codeset(), Some("sidecodeset"));
+    let set = registry.codeset_of(registry.field(54)?).expect("the set the field reads by");
+    assert_eq!(set.name(), "sidecodeset");
+    assert_eq!(set.code_value("Buy"), Some("1"));
+    assert_eq!(set.code_value("sold"), Some("2"));
+    assert_eq!(set.code_name("2"), Some("Sell"));
+    assert_eq!(set.codes().count(), 2);
     ```
 
 === "Python"
@@ -635,11 +649,24 @@ A scalar's enum vocabulary remains inline in `FIX:codes`, with required `value` 
     from yggdryl import Field
     from yggdryl.fix import FixRegistry
 
+    registry = FixRegistry()
+    registry.set_codeset("sidecodeset", [
+        {"value": "1", "name": "Buy"},
+        {"value": "2", "name": "Sell", "aliases": ["Sold"]},
+    ])
+
     side = Field("Side", "utf8")
     side.fix.tag = 54
-    side.metadata["FIX:codes"] = '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
-    registry = FixRegistry.from_fields([side])
-    assert '"name":"Buy"' in registry.field(54).metadata["FIX:codes"]
+    side.fix.codeset = "sidecodeset"
+    registry.insert(side)
+
+    # The field carries the name; the dictionary answers the members.
+    assert registry.field(54).fix.codeset == "sidecodeset"
+    assert registry.codeset_names() == ["sidecodeset"]
+    members = registry.codeset_of(registry.field(54))
+    assert members == registry.codeset("sidecodeset")
+    assert [code["name"] for code in members] == ["Buy", "Sell"]
+    assert members[1]["aliases"] == ["Sold"]
     assert FixRegistry.from_json(registry.into_json()) == registry
     ```
 
@@ -649,17 +676,32 @@ A scalar's enum vocabulary remains inline in `FIX:codes`, with required `value` 
     const assert = require('node:assert/strict')
     const { Field, fix } = require('yggdryl')
 
+    const registry = new fix.FixRegistry()
+    registry.setCodeset('sidecodeset', [
+      { value: '1', name: 'Buy' },
+      { value: '2', name: 'Sell', aliases: ['Sold'] },
+    ])
+
     const side = Field.from('Side: utf8')
     side.fix.tag = 54
-    side.set('FIX:codes', '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]')
-    const registry = fix.FixRegistry.fromFields([side])
-    assert.match(registry.field(54).get('FIX:codes'), /"name":"Buy"/)
+    side.fix.codeset = 'sidecodeset'
+    registry.insert(side)
+
+    // The field carries the name; the dictionary answers the members.
+    assert.equal(registry.field(54).fix.codeset, 'sidecodeset')
+    assert.deepEqual(registry.codesetNames(), ['sidecodeset'])
+    const set = registry.codesetOf(registry.field(54))
+    assert.equal(set.name, 'sidecodeset')
+    assert.equal(registry.codeValue('sidecodeset', 'sold'), '2')
+    assert.equal(registry.codeName('sidecodeset', '1'), 'Buy')
     assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
     ```
 
-`code_value` first accepts an exact wire value, then a folded symbolic name or alias, then an abbreviation from the leading description phrase. Ambiguous spellings answer no value; malformed documents report a located error through `codes()` and answer no value through optional lookup methods. `set_codes` validates and writes canonical JSON; an empty set removes the metadata.
+`FixCodeSet` is that set borrowed from the dictionary: `name()`, `document()` - the canonical text a store writes - and `codes()`, `code(value)`, `code_by_name(name)`, `code_value(text)` and `code_name(value)`, each read a slice of the stored document rather than a copy of it. `get_codeset` answers nothing where the dictionary holds no such set and `codeset` raises `Error::Absent` over `codesets`; `codeset_of` is the one door between a field and its members, answering nothing for a field that reads by no set; `codesets()` walks every set held, in name order. Where the specification names no set - a dialect's own file, a dictionary built in memory - `FixRegistry::derived_codeset_name(field)` is the name one takes: the folded field name and `codeset`, so `Side` states `sidecodeset`.
 
-| Inline code key | Meaning |
+`code_value` first accepts an exact wire value, then a folded symbolic name or alias, then an abbreviation from the leading description phrase. Ambiguous spellings answer no value; a malformed document reports a located error through `codes()` and answers no value through the optional lookups. `set_codeset` validates and writes canonical JSON under the folded name; an empty list removes the set.
+
+| Code key | Meaning |
 | --- | --- |
 | `value`, `name` | Required wire value and symbolic name; `value` leads the canonical record |
 | `aliases`, `doc` | Additional spellings and documentation |
@@ -668,7 +710,75 @@ A scalar's enum vocabulary remains inline in `FIX:codes`, with required `value` 
 The rank the specification gives a code is its position in the list, so there
 is no key beside the order that states one.
 
-`code`, `code_by_name`, `code_name`, and `code_value` borrow the selected code's data. An unknown spelling returns no match so the codec can retain the wire text. Duplicate names, empty names/values, and malformed documents are refused by the writer. Description abbreviations ignore numeric tag cross-references and later parenthesizations; two distinct wire values sharing one folded spelling remain ambiguous.
+`code`, `code_by_name`, `code_name`, and `code_value` borrow the selected code's data. An unknown spelling returns no match so the codec can retain the wire text. Duplicate names, empty names/values, malformed documents, and a name no store could file are refused by the writer. Description abbreviations ignore numeric tag cross-references and later parenthesizations; two distinct wire values sharing one folded spelling remain ambiguous.
+
+`set_codeset` replaces what the name held; `merge_codeset` folds into it, keyed by wire value: the reading the dictionary already holds wins a shared value, a placeholder name - a code named after its own wire value, which is what a source that knows the value but not what anyone calls it writes - yields to a real one, and every surviving spelling stays as an alias. So a second source widens a vocabulary and never narrows one, which is the same fold [`merge_with`](#one-merge-with-a-rule-per-key) runs over the other dictionary's sets before it folds a single field.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{FixCode, FixRegistry};
+
+    let mut registry = FixRegistry::new();
+    registry.set_codeset("sidecodeset", &[
+        FixCode::new("Buy", "1").with_description("the long side"),
+    ])?;
+    // A venue states the set it knows: the value it alone has arrives, and
+    // its spelling of a value the dictionary already reads joins as an alias.
+    registry.merge_codeset("sidecodeset", &[
+        FixCode::new("Bought", "1").with_description("the venue's wording"),
+        FixCode::new("Undisclosed", "7"),
+    ])?;
+
+    let set = registry.codeset("sidecodeset")?;
+    assert_eq!(set.code_name("1"), Some("Buy"));
+    assert_eq!(set.code_value("bought"), Some("1"));
+    assert_eq!(set.code_name("7"), Some("Undisclosed"));
+    assert_eq!(set.code("1").expect("the code").parse_doc()?.as_deref(), Some("the long side"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl.fix import FixRegistry
+
+    registry = FixRegistry()
+    registry.set_codeset("sidecodeset", [{"value": "1", "name": "Buy"}])
+    # A venue states the set it knows: the value it alone has arrives, and its
+    # spelling of a value the dictionary already reads joins as an alias.
+    registry.merge_codeset("sidecodeset", [
+        {"value": "1", "name": "Bought"},
+        {"value": "7", "name": "Undisclosed"},
+    ])
+
+    held = registry.codeset("sidecodeset")
+    assert [code["value"] for code in held] == ["1", "7"]
+    assert held[0]["name"] == "Buy" and held[0]["aliases"] == ["Bought"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { fix } = require('yggdryl')
+
+    const registry = new fix.FixRegistry()
+    registry.setCodeset('sidecodeset', [{ value: '1', name: 'Buy' }])
+    // A venue states the set it knows: the value it alone has arrives, and its
+    // spelling of a value the dictionary already reads joins as an alias.
+    registry.mergeCodeset('sidecodeset', [
+      { value: '1', name: 'Bought' },
+      { value: '7', name: 'Undisclosed' },
+    ])
+
+    const held = registry.codeset('sidecodeset').codes
+    assert.deepEqual(held.map((code) => code.value), ['1', '7'])
+    assert.equal(held[0].name, 'Buy')
+    assert.deepEqual(held[0].aliases, ['Bought'])
+    assert.equal(registry.codeValue('sidecodeset', 'Bought'), '1')
+    ```
+
+Python takes a set's members as records - `value` and `name` required, `description`, `aliases` and `group` optional - or as the canonical document in one `str`, and answers them as records; JavaScript takes and answers `{value, name, aliases, doc, group}` objects, with `codeset` and `codesetOf` answering `{name, codes}` and `codesetNames()` listing what is held. `FixCodes::parse` is the one text-to-typed-codes boundary underneath both, and what the [CLI](cli.md#code-sets)'s `--codes '<json>'` reads.
 
 ### Every version's values are in the set
 
@@ -695,13 +805,17 @@ used still reaches the value.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
 
-    // FIX 4.1 declared ExecType 1; 4.3 folded it into Trade. Both are codes.
-    let partial = registry.field_by_tag(150)?.as_fix().code("1").expect("a legacy code");
-    assert_eq!(partial.name(), "PartiallyFilled");
+    // FIX 4.1 declared ExecType 1; 4.3 folded it into Trade. Both are codes
+    // of the one set tag 150 reads by.
+    let exectype = registry.codeset_of(registry.field_by_tag(150)?).expect("the ExecType set");
+    assert_eq!(exectype.name(), "exectypecodeset");
+    assert_eq!(exectype.code("1").expect("a legacy code").name(), "PartiallyFilled");
     // A spelling an older version gave a surviving value is an alias of it.
-    assert_eq!(registry.field_by_tag(35)?.as_fix().code_value("ExecutionAcknowledgement"), Some("BN"));
+    let msgtype = registry.codeset_of(registry.field_by_tag(35)?).expect("the MsgType set");
+    assert_eq!(msgtype.code_value("ExecutionAcknowledgement"), Some("BN"));
     // A legacy name that folds onto a current one takes the suffix.
-    assert_eq!(registry.field_by_tag(327)?.as_fix().code_name("D"), Some("NewsDisseminationLegacy"));
+    let haltreason = registry.codeset_of(registry.field_by_tag(327)?).expect("the HaltReason set");
+    assert_eq!(haltreason.code_name("D"), Some("NewsDisseminationLegacy"));
     ```
 
 ## The dictionary holds one reading, and filters by no version
@@ -719,7 +833,7 @@ what was sent.
 
 How a retired field or value is restated travels on the field it is about:
 [`FIX:replacements`](#a-field-carries-what-replaced-it) says which field takes
-what, and a [code set](#a-field-carries-its-code-set) states one reading of
+what, and a [code set](#a-field-names-the-code-set-it-reads-by) states one reading of
 every value it declares. `FIX:deprecated` is the other half of that fact: it
 names the version at which FIX removed the field, and a
 [parse](message.md#restated-under-the-dictionary) then restates such a field's
@@ -1083,24 +1197,24 @@ Deliberately not derived, because the answer would be a guess: no amount whose s
 | `FIX:tag` | Must agree; identity is not merged |
 | `FIX:branches` | Union, folded, sorted: every dictionary that contributed either side |
 | `FIX:tags` | Combine alternate tags under collision validation |
-| `FIX:codes` | Merge by wire value, incoming code winning a shared value |
+| `FIX:codeset` | The stored name wins: a field keeps the set it already reads by, and the incoming field's set has already been folded into it, so the field is never moved to a vocabulary holding less than the one it read by |
 | `FIX:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
 | `FIX:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
 | `FIX:identifiers` | Incoming wins whole, then resolves against the final component's members into their canonical order; an omitted key preserves the stored declaration |
 | Other protocol keys | Incoming wins; preserve keys only the stored field declares |
 | Generic description, display, comment, aliases | The generic metadata merge accompanies the protocol merge |
 
-`FixFieldMut::merge_with` owns the protocol half; `FixRegistry::update` also merges generic metadata and updates indexes. A refusal changes nothing, and an update adding nothing leaves the definition unchanged.
+`FixFieldMut::merge_with` owns the protocol half; `FixRegistry::update` also merges generic metadata and updates indexes. A refusal changes nothing, and an update adding nothing leaves the definition unchanged. The members a field reads by are not on the field and so are not in this table: they fold in `codesets`, before the field is looked at, which is what lets the stored name win without losing anything the incoming set declared.
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. Both fall back to their own decimal, the name a tag declaring no `alt` already takes, and keep the declared spelling as `display`, so every tag is left named and nothing the file said is lost. Contention is decided by the key a name is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` contends with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
 A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag already answers to, or one the core could not store drops on its own.
 
-`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its code sets folded first, its named definitions folded member by member and each field's membership unioned - the sets lead because a field keeps the set it already reads by, so the members the other dictionary states have to be in that set by the time the field is folded, and a merge therefore widens a vocabulary and never narrows one; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a constraint naming a tag the file's own vocabulary never declared, a mapping to a type nothing listed, a `fix-version` the version grammar cannot read - is dropped and the rest of the file is still a dictionary. Each drop is a `log` record at warn level carrying the located sentence a refusal would have: the byte, what was expected, what arrived, and the element the file spells it in. Only a document that is not well-formed XML, or that stops with an element open, is refused across each binding as a native located error, because neither leaves anything to keep.
 
@@ -1154,7 +1268,7 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     assert.equal(message.compare(message.clone()), 0)
     ```
 
-Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. `new()` seeds no message type: every code a registry answers is one a dictionary or a caller registered. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
+Registration states the set tag 35 reads by - the one the field names, else `msgtypecodeset`, [derived](#a-field-names-the-code-set-it-reads-by) from the field and pointed at by it in the same mutation - and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. `new()` seeds no message type: every code a registry answers is one a dictionary or a caller registered. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
 
 ## One default registry per process
 
@@ -1216,7 +1330,7 @@ reads such a row as [one message stating nothing](capture.md#a-json-document-is-
 
 ### A direction is what the rules on tag 385 read in front of the payload
 
-Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one. The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too: tag 385's field carries them as `FIX:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
+Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one. The dictionary types the field as it types every coded field - text reading by a code set whose members are `R = Receive` and `S = Send`, extendable like any set, and held under the name tag 385's `FIX:codeset` states - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too: tag 385's field carries them as `FIX:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
 
 Where the field carries no property the defaults answer, keyed by the set's `Send` and `Receive` codes so an extended set still reads `sending >>` as its own `Send`:
 
@@ -1231,7 +1345,14 @@ Where the field carries no property the defaults answer, keyed by the set's `Sen
 
 `Request:` and `Response:` prose names the half of an exchange a bridge logged - a request went out, an answer came back - and a bare JSON document states nothing of itself: the half is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door. The direction is the line's and the document is [one message stating nothing](capture.md#a-json-document-is-one-message-stating-nothing), so the half the prose names is the one thing that message states beyond its clock, its version and its row's captures.
 
-`set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `FIX:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
+`set_directions` on the field's FIX view refuses what a field can answer alone: a code named twice under any folded spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. Whether a code is one of the set is no longer its question - the field carries no members, only the [name](#a-field-names-the-code-set-it-reads-by) of the set it reads by, and the dictionary holds them - so membership is checked where the rules are read: `MsgDirection::from_registry` resolves every code against the set in force and drops a rule naming one outside it, warning `expected a code of the set, one of ..., got ...`. A hand-edited dictionary reaches that reading without the setter at all, and every entry the setter would have refused is dropped there too, with a warning that is its refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update`, the vocabulary stated once beside it:
+
+```bash
+ygg fix codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
+ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
+```
+
+`--codes` names the set because an update replaces the definition whole and the name is what the definition carries; the members stay where they are, so restating a field never restates its vocabulary. The bindings read and write the rules as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
 
 Every door fills tag 385 from that reading where the wire states none - `parse_line`, `parse_text_line`, the single-dialect doors, the batch reader - and the batch reader's precedence is a stated `msgdirection` column, else the reading, else the codec's pin (`try_with_direction`, the `Send` code by default), which is a code of the set. `MsgDirection::code` resolves any spelling of a code - its value, its name, an alias - and a spelling outside the set is refused naming the set.
 
@@ -1294,9 +1415,9 @@ Rust lookup rows borrow the full seed's native definitions; binding rows include
 | Referenced metadata update in seed | 854 ms | Atomically refresh the full reference graph |
 | Per-field metadata merge | 6.89 us | `FixFieldMut::merge_with` |
 | Small-registry merged update | 23.3 us | `FixRegistry::update` |
-| Catalog merge with inline-code union | 99.8 us | Two scalar fields plus one component, group and message; imported references refresh against the merged fields |
+| Catalog merge with a code-set union | 99.8 us | Two scalar fields plus one component, group and message; imported references refresh against the merged fields |
 
-The catalog merge excludes the setup clone from its timer and includes source validation, code union, reference resolution and final validation. It uses a small catalog, separate from the seed mutation cases.
+The catalog merge excludes the setup clone from its timer and includes source validation, the code-set fold, reference resolution and final validation. It uses a small catalog, separate from the seed mutation cases; the figure predates the vocabularies moving from the fields into `codesets` and was not rerun for that change.
 
 ### Classifying a capture
 

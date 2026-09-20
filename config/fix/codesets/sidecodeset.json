@@ -1,0 +1,90 @@
+{
+  "name": "sidecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Buy",
+      "doc": "Buy"
+    },
+    {
+      "value": "2",
+      "name": "Sell",
+      "doc": "Sell"
+    },
+    {
+      "value": "3",
+      "name": "BuyMinus",
+      "doc": "Buy minus"
+    },
+    {
+      "value": "4",
+      "name": "SellPlus",
+      "doc": "Sell plus"
+    },
+    {
+      "value": "5",
+      "name": "SellShort",
+      "doc": "Sell short"
+    },
+    {
+      "value": "6",
+      "name": "SellShortExempt",
+      "doc": "Sell short exempt"
+    },
+    {
+      "value": "7",
+      "name": "Undisclosed",
+      "doc": "Undisclosed"
+    },
+    {
+      "value": "8",
+      "name": "Cross",
+      "doc": "Cross (orders where counterparty is an exchange, valid for all messages except IOIs)"
+    },
+    {
+      "value": "9",
+      "name": "CrossShort",
+      "doc": "Cross short"
+    },
+    {
+      "value": "A",
+      "name": "CrossShortExempt",
+      "doc": "Cross short exempt"
+    },
+    {
+      "value": "B",
+      "name": "AsDefined",
+      "doc": "\"As Defined\" (for use with multileg instruments)"
+    },
+    {
+      "value": "C",
+      "name": "Opposite",
+      "doc": "\"Opposite\" (for use with multileg instruments)"
+    },
+    {
+      "value": "D",
+      "name": "Subscribe",
+      "doc": "Subscribe (e.g. CIV)"
+    },
+    {
+      "value": "E",
+      "name": "Redeem",
+      "doc": "Redeem (e.g. CIV)"
+    },
+    {
+      "value": "F",
+      "name": "Lend",
+      "doc": "Lend (FINANCING - identifies direction of collateral)"
+    },
+    {
+      "value": "G",
+      "name": "Borrow",
+      "doc": "Borrow (FINANCING - identifies direction of collateral)"
+    },
+    {
+      "value": "H",
+      "name": "SellUndisclosed",
+      "doc": "Sell undisclosed"
+    }
+  ]
+}

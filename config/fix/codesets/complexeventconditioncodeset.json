@@ -1,0 +1,15 @@
+{
+  "name": "complexeventconditioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "And",
+      "doc": "And"
+    },
+    {
+      "value": "2",
+      "name": "Or",
+      "doc": "Or"
+    }
+  ]
+}

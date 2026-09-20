@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamaveragingmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unweighted",
+      "doc": "Unweighted"
+    },
+    {
+      "value": "1",
+      "name": "Weighted",
+      "doc": "Weighted"
+    }
+  ]
+}

@@ -183,6 +183,8 @@ pub enum DataTypeId {
     /// A Bloomberg identifier: ticker, market and yellow key, up to thirty-two
     /// ASCII bytes.
     BloombergCode = 0x7b,
+    /// ANSI X9.145 Financial Instrument Global Identifier, twelve ASCII bytes.
+    FIGICode = 0x7c,
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
@@ -220,7 +222,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 83] = [
+    pub const ALL: [Self; 84] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -289,6 +291,7 @@ impl DataTypeId {
         Self::CusipCode,
         Self::SedolCode,
         Self::BloombergCode,
+        Self::FIGICode,
         Self::Uuid,
         Self::List,
         Self::LargeList,
@@ -358,6 +361,7 @@ impl DataTypeId {
             Self::CusipCode => "cusip",
             Self::SedolCode => "sedol",
             Self::BloombergCode => "bloomberg",
+            Self::FIGICode => "figi",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -509,6 +513,7 @@ impl DataTypeId {
             | Self::CusipCode
             | Self::SedolCode
             | Self::BloombergCode
+            | Self::FIGICode
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
@@ -707,7 +712,7 @@ impl DataTypeId {
             Self::Side | Self::TimeInForce => Some(8),
             Self::CusipCode => Some(9),
             Self::State => Some(10),
-            Self::IsinCode => Some(12),
+            Self::IsinCode | Self::FIGICode => Some(12),
             Self::BloombergCode => Some(32),
             _ => None,
         }

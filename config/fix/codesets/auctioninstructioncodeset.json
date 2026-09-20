@@ -1,0 +1,15 @@
+{
+  "name": "auctioninstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AutomatedAuctionPermitted",
+      "doc": "Automatic auction permitted (default)"
+    },
+    {
+      "value": "1",
+      "name": "AutomatedAuctionNotPermitted",
+      "doc": "Automatic auction not permitted"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "batchprocessmodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Update",
+      "doc": "Update/incremental (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "Snapshot",
+      "doc": "Snapshot"
+    }
+  ]
+}

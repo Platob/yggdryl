@@ -1,0 +1,20 @@
+{
+  "name": "paymentsettlstylecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Standard",
+      "doc": "Standard"
+    },
+    {
+      "value": "1",
+      "name": "Net",
+      "doc": "Net"
+    },
+    {
+      "value": "2",
+      "name": "StandardfNet",
+      "doc": "Standard and net"
+    }
+  ]
+}

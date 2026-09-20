@@ -1,0 +1,15 @@
+{
+  "name": "noncashdividendtreatmentcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PotentialAdjustment",
+      "doc": "Potential adjustment event"
+    },
+    {
+      "value": "1",
+      "name": "CashEquivalent",
+      "doc": "Cash equivalent"
+    }
+  ]
+}

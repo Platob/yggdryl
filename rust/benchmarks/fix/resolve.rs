@@ -1,5 +1,5 @@
 //! Registry lookups: fields by tag, name, alias, identifier and path; the
-//! code sets a field carries, read borrowed.
+//! code sets a dictionary holds, read borrowed.
 
 use criterion::Criterion;
 use std::collections::HashMap;
@@ -7,7 +7,8 @@ use std::hint::black_box;
 use yggdryl::SequenceType;
 use yggdryl::graph::{Element, Event};
 use yggdryl::{
-    DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, MimeType,
+    DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, FixRegistry,
+    MimeType,
 };
 
 use super::{DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_dialects, venue};
@@ -283,24 +284,38 @@ pub fn benchmarks(criterion: &mut Criterion) {
     codes(criterion);
 }
 
-/// A code set of `count` members, each carrying a description tier 3 reads.
-fn vocabulary(count: usize) -> Field {
+/// The name a dictionary files the generated vocabulary under: the folded
+/// field name and `codeset`.
+const VOCABULARY: &str = "vocabularycodeset";
+
+/// A dictionary holding a code set of `count` members, each carrying a
+/// description tier 3 reads, beside the field that reads by it.
+fn vocabulary(count: usize) -> FixRegistry {
     let codes: Vec<FixCode> = (0..count)
         .map(|index| {
             FixCode::new(format!("Member{index:04}"), format!("{index:04}"))
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();
+    // The vocabulary first: a field names the set it reads by, and a registry
+    // refuses a field naming one it does not hold.
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(VOCABULARY, &codes)
+        .expect("a valid generated code set");
     let mut field = DataType::utf8().nullable_field("Vocabulary");
     field.as_fix_mut().set_tag(9995).expect("a static tag");
     field
         .as_fix_mut()
-        .set_codes(&codes)
-        .expect("a valid code set");
-    field
+        .set_codeset(VOCABULARY)
+        .expect("the set the dictionary holds");
+    registry
+        .insert(field)
+        .expect("a field reading by a held set");
+    registry
 }
 
-/// A field's code set read borrowed, at three sizes, against a map.
+/// A dictionary's code set read borrowed, at three sizes, against a map.
 fn codes(criterion: &mut Criterion) {
     // Three sizes, because a FIX code set is usually small and occasionally
     // not: `Side` has ten members and `PartyRole` has hundreds.
@@ -309,24 +324,29 @@ fn codes(criterion: &mut Criterion) {
     let large = vocabulary(300);
     let mut group = criterion.benchmark_group("fix/codes");
 
-    for (label, field) in [("10", &small), ("60", &medium), ("300", &large)] {
-        let view = field.as_fix();
-        let last = format!("{:04}", field.as_fix().codes().count() - 1);
+    for (label, registry) in [("10", &small), ("60", &medium), ("300", &large)] {
+        // The set is resolved once, outside every routine below: a caller
+        // reads a field's vocabulary by the name it states, and what is timed
+        // here is the scan over the document that name opens, not the lookup.
+        let view = registry
+            .codeset_of(registry.field(9995).expect("the coded field"))
+            .expect("the set the field reads by");
+        let last = format!("{:04}", view.codes().count() - 1);
 
         // Tier 1 stops at the match, so the first and last member bracket it.
         group.bench_function(format!("{label}/value_first"), |bencher| {
-            bencher.iter(|| black_box(&view).code(black_box("0000")));
+            bencher.iter(|| black_box(view).code(black_box("0000")));
         });
         group.bench_function(format!("{label}/value_last"), |bencher| {
-            bencher.iter(|| black_box(&view).code(black_box(last.as_str())));
+            bencher.iter(|| black_box(view).code(black_box(last.as_str())));
         });
         group.bench_function(format!("{label}/value_miss"), |bencher| {
-            bencher.iter(|| black_box(&view).code(black_box("absent")));
+            bencher.iter(|| black_box(view).code(black_box("absent")));
         });
         // Tier 2 runs the whole set whatever it finds, because two codes
         // folding to one spelling must answer nothing rather than the first.
         group.bench_function(format!("{label}/name_folded"), |bencher| {
-            bencher.iter(|| black_box(&view).code_value(black_box("member_0000")));
+            bencher.iter(|| black_box(view).code_value(black_box("member_0000")));
         });
 
         // The baseline: the same document as a map. Built once and read many
@@ -345,7 +365,7 @@ fn codes(criterion: &mut Criterion) {
         });
         group.bench_function(format!("{label}/baseline_map_build_and_hit"), |bencher| {
             bencher.iter(|| {
-                let built: HashMap<&str, FixCodeValue<'_>> = black_box(&view)
+                let built: HashMap<&str, FixCodeValue<'_>> = black_box(view)
                     .codes()
                     .filter_map(|code| code.ok().map(|code| (code.value(), code)))
                     .collect();
@@ -354,19 +374,20 @@ fn codes(criterion: &mut Criterion) {
         });
     }
 
-    let view = large.as_fix();
+    let view = large
+        .codeset(VOCABULARY)
+        .expect("the set the dictionary holds");
     // Writing renders the whole document once, which is what a generator pays.
     let codes: Vec<FixCode> = view
         .codes()
         .map(|code| FixCode::from(code.expect("a canonical document")))
         .collect();
-    group.bench_function("300/set_codes", |bencher| {
+    group.bench_function("300/set_codeset", |bencher| {
         bencher.iter_batched_ref(
-            || DataType::utf8().nullable_field("Vocabulary"),
-            |field| {
-                field
-                    .as_fix_mut()
-                    .set_codes(black_box(&codes))
+            FixRegistry::new,
+            |registry| {
+                registry
+                    .set_codeset(VOCABULARY, black_box(&codes))
                     .expect("a valid code set");
             },
             criterion::BatchSize::SmallInput,

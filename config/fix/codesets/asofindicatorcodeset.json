@@ -1,0 +1,15 @@
+{
+  "name": "asofindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "False",
+      "doc": "false - trade is not an AsOf trade"
+    },
+    {
+      "value": "1",
+      "name": "True",
+      "doc": "true - trade is an AsOf trade"
+    }
+  ]
+}

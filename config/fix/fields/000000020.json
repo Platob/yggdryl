@@ -6,58 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Asian",
-          "doc": "Asian"
-        },
-        {
-          "value": "2",
-          "name": "AustralianNewZealand",
-          "doc": "Australian and New Zealand"
-        },
-        {
-          "value": "3",
-          "name": "EuropeanEmergingMarkets",
-          "doc": "European emerging markets"
-        },
-        {
-          "value": "4",
-          "name": "Japanese",
-          "doc": "Japanese"
-        },
-        {
-          "value": "5",
-          "name": "NorthAmericanHighYield",
-          "doc": "North American high yield"
-        },
-        {
-          "value": "6",
-          "name": "NorthAmericanInsurance",
-          "doc": "North American insurance"
-        },
-        {
-          "value": "7",
-          "name": "NorthAmericanInvestmentGrade",
-          "doc": "North American investment grade"
-        },
-        {
-          "value": "8",
-          "name": "Singaporean",
-          "doc": "Singaporean"
-        },
-        {
-          "value": "9",
-          "name": "WesternEuropean",
-          "doc": "Western European"
-        },
-        {
-          "value": "10",
-          "name": "WesternEuropeanInsurance",
-          "doc": "Western European insurance"
-        }
-      ],
+      "FIX:codeset": "referenceentitytypecodeset",
       "FIX:tag": "2000",
       "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
       "display": "UnderlyingReferenceEntityType"
@@ -181,18 +130,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "P",
-          "name": "ProRata",
-          "doc": "Pro rata"
-        },
-        {
-          "value": "R",
-          "name": "Random",
-          "doc": "Random"
-        }
-      ],
+      "FIX:codeset": "instrmtassignmentmethodcodeset",
       "FIX:tag": "2010",
       "description": "Method under which assignment was conducted",
       "display": "UnderlyingAssignmentMethod"
@@ -205,63 +143,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Active",
-          "doc": "Active"
-        },
-        {
-          "value": "2",
-          "name": "Inactive",
-          "doc": "Inactive"
-        },
-        {
-          "value": "3",
-          "name": "ActiveClosingOrdersOnly",
-          "doc": "Active, closing orders only"
-        },
-        {
-          "value": "4",
-          "name": "Expired",
-          "doc": "Expired"
-        },
-        {
-          "value": "5",
-          "name": "Delisted",
-          "doc": "Delisted"
-        },
-        {
-          "value": "6",
-          "name": "KnockedOut",
-          "doc": "Knocked-out"
-        },
-        {
-          "value": "7",
-          "name": "KnockOutRevoked",
-          "doc": "Knock-out revoked"
-        },
-        {
-          "value": "8",
-          "name": "PendingExpiry",
-          "doc": "Pending Expiry"
-        },
-        {
-          "value": "9",
-          "name": "Suspended",
-          "doc": "Suspended"
-        },
-        {
-          "value": "10",
-          "name": "Published",
-          "doc": "Published"
-        },
-        {
-          "value": "11",
-          "name": "PendingDeletion",
-          "doc": "Pending Deletion"
-        }
-      ],
+      "FIX:codeset": "securitystatuscodeset",
       "FIX:tag": "2011",
       "description": "Indicates the current state of the underlying instrument.",
       "display": "UnderlyingSecurityStatus"
@@ -274,28 +156,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bond",
-          "doc": "Bond"
-        },
-        {
-          "value": "1",
-          "name": "ConvertibleBond",
-          "doc": "Convertible bond"
-        },
-        {
-          "value": "2",
-          "name": "Mortgage",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "3",
-          "name": "Loan",
-          "doc": "Loan"
-        }
-      ],
+      "FIX:codeset": "underlyingobligationtypecodeset",
       "FIX:tag": "2012",
       "description": "Type of reference obligation for credit derivatives contracts.",
       "display": "UnderlyingObligationType"
@@ -308,63 +169,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "2",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "3",
-          "name": "Credit",
-          "doc": "Credit"
-        },
-        {
-          "value": "4",
-          "name": "Equity",
-          "doc": "Equity"
-        },
-        {
-          "value": "5",
-          "name": "Commodity",
-          "doc": "Commodity"
-        },
-        {
-          "value": "6",
-          "name": "Other",
-          "doc": "Other"
-        },
-        {
-          "value": "7",
-          "name": "Cash",
-          "doc": "Cash"
-        },
-        {
-          "value": "8",
-          "name": "Debt",
-          "doc": "Debt"
-        },
-        {
-          "value": "9",
-          "name": "Fund",
-          "doc": "Fund"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "doc": "Index"
-        }
-      ],
+      "FIX:codeset": "assetclasscodeset",
       "FIX:tag": "2013",
       "description": "The broad asset category for assessing risk exposure.",
       "display": "UnderlyingAssetClass"
@@ -377,296 +182,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "SingleCurrency",
-          "group": "Interest Rate",
-          "doc": "Single currency"
-        },
-        {
-          "value": "2",
-          "name": "CrossCurrency",
-          "group": "Interest Rate",
-          "doc": "Cross currency"
-        },
-        {
-          "value": "3",
-          "name": "Basket",
-          "group": "Currency",
-          "doc": "Basket [for multi-currency]"
-        },
-        {
-          "value": "4",
-          "name": "SingleName",
-          "group": "Credit",
-          "doc": "Single name"
-        },
-        {
-          "value": "5",
-          "name": "CreditIndex",
-          "group": "Credit",
-          "doc": "Credit index"
-        },
-        {
-          "value": "6",
-          "name": "IndexTranche",
-          "group": "Credit",
-          "doc": "Index tranche"
-        },
-        {
-          "value": "7",
-          "name": "CreditBasket",
-          "group": "Credit",
-          "doc": "Credit basket"
-        },
-        {
-          "value": "8",
-          "name": "Exotic",
-          "group": "Other",
-          "doc": "Exotic"
-        },
-        {
-          "value": "9",
-          "name": "Common",
-          "group": "Equity",
-          "doc": "Common"
-        },
-        {
-          "value": "10",
-          "name": "Preferred",
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
-          "value": "20",
-          "name": "Government",
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
-          "value": "40",
-          "name": "FXMajors",
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "group": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "assetsubclasscodeset",
       "FIX:tag": "2014",
       "description": "An indication of the general description of the asset class.",
       "display": "UnderlyingAssetSubClass"
@@ -691,28 +207,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "BS",
-          "name": "BasisSwap",
-          "doc": "Basis swap"
-        },
-        {
-          "value": "IX",
-          "name": "IndexSwap",
-          "doc": "Index swap"
-        },
-        {
-          "value": "BB",
-          "name": "BroadBasedSecuritySwap",
-          "doc": "Broad-based security swap"
-        },
-        {
-          "value": "SK",
-          "name": "BasketSwap",
-          "doc": "Basket swap"
-        }
-      ],
+      "FIX:codeset": "swapclasscodeset",
       "FIX:tag": "2016",
       "description": "The type or classification of swap. Additional values may be used by mutual agreement of the counterparties.",
       "display": "UnderlyingSwapClass"
@@ -798,28 +293,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "FixedStrike",
-          "doc": "Fixed strike (default if not specified)"
-        },
-        {
-          "value": "2",
-          "name": "StrikeSetAtExpiration",
-          "doc": "Strike set at expiration to underlying or other value (lookback floating)"
-        },
-        {
-          "value": "3",
-          "name": "StrikeSetToAverageAcrossLife",
-          "doc": "Strike set to average of underlying settlement price across the life of the option"
-        },
-        {
-          "value": "4",
-          "name": "StrikeSetToOptimalValue",
-          "doc": "Strike set to optimal value"
-        }
-      ],
+      "FIX:codeset": "strikepricedeterminationmethodcodeset",
       "FIX:tag": "2023",
       "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
       "display": "UnderlyingStrikePriceDeterminationMethod"
@@ -832,33 +306,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "LessThan",
-          "doc": "Less than underlying price is in-the-money (ITM)"
-        },
-        {
-          "value": "2",
-          "name": "LessThanOrEqual",
-          "doc": "Less than or equal to the underlying price is in-the-money(ITM)"
-        },
-        {
-          "value": "3",
-          "name": "Equal",
-          "doc": "Equal to the underlying price is in-the-money(ITM)"
-        },
-        {
-          "value": "4",
-          "name": "GreaterThanOrEqual",
-          "doc": "Greater than or equal to underlying price is in-the-money(ITM)"
-        },
-        {
-          "value": "5",
-          "name": "GreaterThan",
-          "doc": "Greater than underlying is in-the-money(ITM)"
-        }
-      ],
+      "FIX:codeset": "strikepriceboundarymethodcodeset",
       "FIX:tag": "2024",
       "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
       "display": "UnderlyingStrikePriceBoundaryMethod"
@@ -909,53 +357,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Vanilla",
-          "doc": "Vanilla"
-        },
-        {
-          "value": "2",
-          "name": "Capped",
-          "doc": "Capped"
-        },
-        {
-          "value": "3",
-          "name": "Binary",
-          "doc": "Digital (Binary)"
-        },
-        {
-          "value": "4",
-          "name": "Asian",
-          "doc": "Asian"
-        },
-        {
-          "value": "5",
-          "name": "Barrier",
-          "doc": "Barrier"
-        },
-        {
-          "value": "6",
-          "name": "DigitalBarrier",
-          "doc": "Digital Barrier"
-        },
-        {
-          "value": "7",
-          "name": "Lookback",
-          "doc": "Lookback"
-        },
-        {
-          "value": "8",
-          "name": "OtherPathDependent",
-          "doc": "Other path dependent"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "optpayouttypecodeset",
       "FIX:tag": "2028",
       "description": "Indicates the type of valuation method or payout trigger for an in-the-money option.",
       "display": "UnderlyingOptPayoutType"
@@ -982,28 +384,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "STD",
-          "name": "Standard",
-          "doc": "Standard, money per unit of a physical"
-        },
-        {
-          "value": "INX",
-          "name": "Index",
-          "doc": "Index"
-        },
-        {
-          "value": "INT",
-          "name": "InterestRateIndex",
-          "doc": "Interest rate Index"
-        },
-        {
-          "value": "PCTPAR",
-          "name": "PercentOfPar",
-          "doc": "Percent of Par"
-        }
-      ],
+      "FIX:codeset": "pricequotemethodcodeset",
       "FIX:tag": "2030",
       "description": "Method for price quotation.",
       "display": "UnderlyingPriceQuoteMethod"
@@ -1016,33 +397,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "EQTY",
-          "name": "PremiumStyle",
-          "doc": "premium style"
-        },
-        {
-          "value": "FUT",
-          "name": "FuturesStyleMarkToMarket",
-          "doc": "futures style mark-to-market"
-        },
-        {
-          "value": "FUTDA",
-          "name": "FuturesStyleWithAnAttachedCashAdjustment",
-          "doc": "futures style with an attached cash adjustment"
-        },
-        {
-          "value": "CDS",
-          "name": "CDSStyleCollateralization",
-          "doc": "CDS style collateralization of market to market and coupon"
-        },
-        {
-          "value": "CDSD",
-          "name": "CDSInDeliveryUseRecoveryRateToCalculate",
-          "doc": "CDS in delivery - use recovery rate to calculate obligation"
-        }
-      ],
+      "FIX:codeset": "valuationmethodcodeset",
       "FIX:tag": "2031",
       "description": "Indicates type of valuation method used.",
       "display": "UnderlyingValuationMethod"
@@ -1055,18 +410,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "PreListedOnly",
-          "doc": "pre-listed only"
-        },
-        {
-          "value": "1",
-          "name": "UserRequested",
-          "doc": "user requested"
-        }
-      ],
+      "FIX:codeset": "listmethodcodeset",
       "FIX:tag": "2032",
       "description": "Indicates whether the instruments are pre-listed only or can also be defined via user request.",
       "display": "UnderlyingListMethod"
@@ -1207,28 +551,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoRestrictions",
-          "doc": "No restrictions"
-        },
-        {
-          "value": "1",
-          "name": "SecurityNotShortable",
-          "doc": "Security is not shortable"
-        },
-        {
-          "value": "2",
-          "name": "SecurityNotShortableAtOrBelowBestBid",
-          "doc": "Security not shortable at or below the best bid"
-        },
-        {
-          "value": "3",
-          "name": "SecurityNotShortableWithoutPreBorrow",
-          "doc": "Security is not shortable without pre-borrow"
-        }
-      ],
+      "FIX:codeset": "shortsalerestrictioncodeset",
       "FIX:tag": "2043",
       "description": "Indicates whether a restriction applies to short selling a security.",
       "display": "UnderlyingShortSaleRestriction"
@@ -1265,123 +588,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Capped",
-          "doc": "Capped"
-        },
-        {
-          "value": "2",
-          "name": "Trigger",
-          "doc": "Trigger"
-        },
-        {
-          "value": "3",
-          "name": "KnockInUp",
-          "doc": "Knock-in up"
-        },
-        {
-          "value": "4",
-          "name": "KnockInDown",
-          "doc": "Knock-in down"
-        },
-        {
-          "value": "5",
-          "name": "KnockOutUp",
-          "doc": "Knock-out up"
-        },
-        {
-          "value": "6",
-          "name": "KnockOutDown",
-          "doc": "Knock-out down"
-        },
-        {
-          "value": "7",
-          "name": "Underlying",
-          "doc": "Underlying"
-        },
-        {
-          "value": "8",
-          "name": "ResetBarrier",
-          "doc": "Reset Barrier"
-        },
-        {
-          "value": "9",
-          "name": "RollingBarrier",
-          "doc": "Rolling Barrier"
-        },
-        {
-          "value": "10",
-          "name": "OneTouch",
-          "doc": "One-touch"
-        },
-        {
-          "value": "11",
-          "name": "NoTouch",
-          "doc": "No-touch"
-        },
-        {
-          "value": "12",
-          "name": "DblOneTouch",
-          "doc": "Double one-touch"
-        },
-        {
-          "value": "13",
-          "name": "DblNoTouch",
-          "doc": "Double no-touch"
-        },
-        {
-          "value": "14",
-          "name": "FXComposite",
-          "doc": "Foreign exchange composite"
-        },
-        {
-          "value": "15",
-          "name": "FXQuanto",
-          "doc": "Foreign exchange Quanto"
-        },
-        {
-          "value": "16",
-          "name": "FXCrssCcy",
-          "doc": "Foreign exchange cross currency"
-        },
-        {
-          "value": "17",
-          "name": "StrkSpread",
-          "doc": "Strike spread"
-        },
-        {
-          "value": "18",
-          "name": "ClndrSpread",
-          "doc": "Calendar spread"
-        },
-        {
-          "value": "19",
-          "name": "PxObsvtn",
-          "doc": "Price observation (Asian or Lookback)"
-        },
-        {
-          "value": "20",
-          "name": "PassThrough",
-          "doc": "Pass-through"
-        },
-        {
-          "value": "21",
-          "name": "StrkSched",
-          "doc": "Strike schedule"
-        },
-        {
-          "value": "22",
-          "name": "EquityValuation",
-          "doc": "Equity valuation"
-        },
-        {
-          "value": "23",
-          "name": "DividendValuation",
-          "doc": "Dividend valuation"
-        }
-      ],
+      "FIX:codeset": "complexeventtypecodeset",
       "FIX:tag": "2046",
       "description": "Identifies the type of complex event.",
       "display": "UnderlyingComplexEventType"
@@ -1422,33 +629,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "LessThanComplexEventPrice",
-          "doc": "Less than ComplexEventPrice(1486)"
-        },
-        {
-          "value": "2",
-          "name": "LessThanOrEqualToComplexEventPrice",
-          "doc": "Less than or equal to ComplexEventPrice(1486)"
-        },
-        {
-          "value": "3",
-          "name": "EqualToComplexEventPrice",
-          "doc": "Equal to ComplexEventPrice(1486)"
-        },
-        {
-          "value": "4",
-          "name": "GreaterThanOrEqualToComplexEventPrice",
-          "doc": "Greater than or equal to ComplexEventPrice(1486)"
-        },
-        {
-          "value": "5",
-          "name": "GreaterThanComplexEventPrice",
-          "doc": "Greater than ComplexEventPrice(1486)"
-        }
-      ],
+      "FIX:codeset": "complexeventpriceboundarymethodcodeset",
       "FIX:tag": "2049",
       "description": "Specifies the boundary condition to be used for the event price relative to the UnderlyingComplexEventPrice(2048) at the point the complex event outcome takes effect as determined by the UnderlyingComplexEventPriceTimeType(2051).",
       "display": "UnderlyingComplexEventPriceBoundaryMethod"
@@ -1473,48 +654,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Expiration",
-          "doc": "Expiration"
-        },
-        {
-          "value": "2",
-          "name": "Immediate",
-          "doc": "Immediate (At Any Time)"
-        },
-        {
-          "value": "3",
-          "name": "SpecifiedDate",
-          "doc": "Specified Date/Time"
-        },
-        {
-          "value": "4",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "5",
-          "name": "Open",
-          "doc": "Open"
-        },
-        {
-          "value": "6",
-          "name": "OfficialSettlPrice",
-          "doc": "Official settlement price"
-        },
-        {
-          "value": "7",
-          "name": "DerivativesClose",
-          "doc": "Derivatives close"
-        },
-        {
-          "value": "8",
-          "name": "AsSpecifiedMasterConfirmation",
-          "doc": "As specified in Master Confirmation"
-        }
-      ],
+      "FIX:codeset": "complexeventpricetimetypecodeset",
       "FIX:tag": "2051",
       "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the UnderlyingComplexEventType(2046).",
       "display": "UnderlyingComplexEventPriceTimeType"
@@ -1527,18 +667,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "And",
-          "doc": "And"
-        },
-        {
-          "value": "2",
-          "name": "Or",
-          "doc": "Or"
-        }
-      ],
+      "FIX:codeset": "complexeventconditioncodeset",
       "FIX:tag": "2052",
       "description": "Specifies the condition between complex events when more than one event is specified.",
       "display": "UnderlyingComplexEventCondition"
@@ -1641,158 +770,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Put",
-          "doc": "Put"
-        },
-        {
-          "value": "2",
-          "name": "Call",
-          "doc": "Call"
-        },
-        {
-          "value": "3",
-          "name": "Tender",
-          "doc": "Tender"
-        },
-        {
-          "value": "4",
-          "name": "SinkingFundCall",
-          "doc": "Sinking fund call"
-        },
-        {
-          "value": "5",
-          "name": "Activation",
-          "doc": "Activation"
-        },
-        {
-          "value": "6",
-          "name": "Inactiviation",
-          "doc": "Inactivation"
-        },
-        {
-          "value": "7",
-          "name": "LastEligibleTradeDate",
-          "doc": "Last eligible trade date"
-        },
-        {
-          "value": "8",
-          "name": "SwapStartDate",
-          "doc": "Swap start date"
-        },
-        {
-          "value": "9",
-          "name": "SwapEndDate",
-          "doc": "Swap end date"
-        },
-        {
-          "value": "10",
-          "name": "SwapRollDate",
-          "doc": "Swap roll date"
-        },
-        {
-          "value": "11",
-          "name": "SwapNextStartDate",
-          "doc": "Swap next start date"
-        },
-        {
-          "value": "12",
-          "name": "SwapNextRollDate",
-          "doc": "Swap next roll date"
-        },
-        {
-          "value": "13",
-          "name": "FirstDeliveryDate",
-          "doc": "First delivery date"
-        },
-        {
-          "value": "14",
-          "name": "LastDeliveryDate",
-          "doc": "Last delivery date"
-        },
-        {
-          "value": "15",
-          "name": "InitialInventoryDueDate",
-          "doc": "Initial inventory due date"
-        },
-        {
-          "value": "16",
-          "name": "FinalInventoryDueDate",
-          "doc": "Final inventory due date"
-        },
-        {
-          "value": "17",
-          "name": "FirstIntentDate",
-          "doc": "First intent date"
-        },
-        {
-          "value": "18",
-          "name": "LastIntentDate",
-          "doc": "Last intent date"
-        },
-        {
-          "value": "19",
-          "name": "PositionRemovalDate",
-          "doc": "Position removal date"
-        },
-        {
-          "value": "20",
-          "name": "MinimumNotice",
-          "doc": "Minimum notice"
-        },
-        {
-          "value": "21",
-          "name": "DeliveryStartTime",
-          "doc": "Delivery start time"
-        },
-        {
-          "value": "22",
-          "name": "DeliveryEndTime",
-          "doc": "Delivery end time"
-        },
-        {
-          "value": "23",
-          "name": "FirstNoticeDate",
-          "doc": "First notice date"
-        },
-        {
-          "value": "24",
-          "name": "LastNoticeDate",
-          "doc": "Last notice date"
-        },
-        {
-          "value": "25",
-          "name": "FirstExerciseDate",
-          "doc": "First exercise date"
-        },
-        {
-          "value": "26",
-          "name": "RedemptionDate",
-          "doc": "Redemption date"
-        },
-        {
-          "value": "27",
-          "name": "TrdCntntnEfctvDt",
-          "doc": "Trade continuation effective date"
-        },
-        {
-          "value": "28",
-          "name": "FrontMonth",
-          "doc": "Front month"
-        },
-        {
-          "value": "29",
-          "name": "LeadMonth",
-          "doc": "Lead month"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "eventtypecodeset",
       "FIX:tag": "2060",
       "description": "Code to represent the type of event.",
       "display": "LegEventType"
@@ -1832,43 +810,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "eventtimeunitcodeset",
       "FIX:tag": "2063",
       "description": "Time unit associated with the event.",
       "display": "LegEventTimeUnit"
@@ -1919,63 +861,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "2",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "3",
-          "name": "Credit",
-          "doc": "Credit"
-        },
-        {
-          "value": "4",
-          "name": "Equity",
-          "doc": "Equity"
-        },
-        {
-          "value": "5",
-          "name": "Commodity",
-          "doc": "Commodity"
-        },
-        {
-          "value": "6",
-          "name": "Other",
-          "doc": "Other"
-        },
-        {
-          "value": "7",
-          "name": "Cash",
-          "doc": "Cash"
-        },
-        {
-          "value": "8",
-          "name": "Debt",
-          "doc": "Debt"
-        },
-        {
-          "value": "9",
-          "name": "Fund",
-          "doc": "Fund"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "doc": "Index"
-        }
-      ],
+      "FIX:codeset": "assetclasscodeset",
       "FIX:tag": "2067",
       "description": "The broad asset category for assessing risk exposure.",
       "display": "LegAssetClass"
@@ -1988,296 +874,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "SingleCurrency",
-          "group": "Interest Rate",
-          "doc": "Single currency"
-        },
-        {
-          "value": "2",
-          "name": "CrossCurrency",
-          "group": "Interest Rate",
-          "doc": "Cross currency"
-        },
-        {
-          "value": "3",
-          "name": "Basket",
-          "group": "Currency",
-          "doc": "Basket [for multi-currency]"
-        },
-        {
-          "value": "4",
-          "name": "SingleName",
-          "group": "Credit",
-          "doc": "Single name"
-        },
-        {
-          "value": "5",
-          "name": "CreditIndex",
-          "group": "Credit",
-          "doc": "Credit index"
-        },
-        {
-          "value": "6",
-          "name": "IndexTranche",
-          "group": "Credit",
-          "doc": "Index tranche"
-        },
-        {
-          "value": "7",
-          "name": "CreditBasket",
-          "group": "Credit",
-          "doc": "Credit basket"
-        },
-        {
-          "value": "8",
-          "name": "Exotic",
-          "group": "Other",
-          "doc": "Exotic"
-        },
-        {
-          "value": "9",
-          "name": "Common",
-          "group": "Equity",
-          "doc": "Common"
-        },
-        {
-          "value": "10",
-          "name": "Preferred",
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
-          "value": "20",
-          "name": "Government",
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
-          "value": "40",
-          "name": "FXMajors",
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "group": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "assetsubclasscodeset",
       "FIX:tag": "2068",
       "description": "The general subcategory description of the asset class.",
       "display": "LegAssetSubClass"
@@ -2302,28 +899,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "BS",
-          "name": "BasisSwap",
-          "doc": "Basis swap"
-        },
-        {
-          "value": "IX",
-          "name": "IndexSwap",
-          "doc": "Index swap"
-        },
-        {
-          "value": "BB",
-          "name": "BroadBasedSecuritySwap",
-          "doc": "Broad-based security swap"
-        },
-        {
-          "value": "SK",
-          "name": "BasketSwap",
-          "doc": "Basket swap"
-        }
-      ],
+      "FIX:codeset": "swapclasscodeset",
       "FIX:tag": "2070",
       "description": "Swap type.",
       "display": "LegSwapClass"
@@ -2408,63 +984,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "2",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "3",
-          "name": "Credit",
-          "doc": "Credit"
-        },
-        {
-          "value": "4",
-          "name": "Equity",
-          "doc": "Equity"
-        },
-        {
-          "value": "5",
-          "name": "Commodity",
-          "doc": "Commodity"
-        },
-        {
-          "value": "6",
-          "name": "Other",
-          "doc": "Other"
-        },
-        {
-          "value": "7",
-          "name": "Cash",
-          "doc": "Cash"
-        },
-        {
-          "value": "8",
-          "name": "Debt",
-          "doc": "Debt"
-        },
-        {
-          "value": "9",
-          "name": "Fund",
-          "doc": "Fund"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "doc": "Index"
-        }
-      ],
+      "FIX:codeset": "assetclasscodeset",
       "FIX:tag": "2077",
       "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
       "display": "LegSecondaryAssetClass"
@@ -2477,296 +997,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "SingleCurrency",
-          "group": "Interest Rate",
-          "doc": "Single currency"
-        },
-        {
-          "value": "2",
-          "name": "CrossCurrency",
-          "group": "Interest Rate",
-          "doc": "Cross currency"
-        },
-        {
-          "value": "3",
-          "name": "Basket",
-          "group": "Currency",
-          "doc": "Basket [for multi-currency]"
-        },
-        {
-          "value": "4",
-          "name": "SingleName",
-          "group": "Credit",
-          "doc": "Single name"
-        },
-        {
-          "value": "5",
-          "name": "CreditIndex",
-          "group": "Credit",
-          "doc": "Credit index"
-        },
-        {
-          "value": "6",
-          "name": "IndexTranche",
-          "group": "Credit",
-          "doc": "Index tranche"
-        },
-        {
-          "value": "7",
-          "name": "CreditBasket",
-          "group": "Credit",
-          "doc": "Credit basket"
-        },
-        {
-          "value": "8",
-          "name": "Exotic",
-          "group": "Other",
-          "doc": "Exotic"
-        },
-        {
-          "value": "9",
-          "name": "Common",
-          "group": "Equity",
-          "doc": "Common"
-        },
-        {
-          "value": "10",
-          "name": "Preferred",
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
-          "value": "20",
-          "name": "Government",
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
-          "value": "40",
-          "name": "FXMajors",
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "group": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "assetsubclasscodeset",
       "FIX:tag": "2078",
       "description": "An indication of the general description of the asset class.",
       "display": "LegSecondaryAssetSubClass"
@@ -2803,63 +1034,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "2",
-          "name": "Currency",
-          "doc": "Currency"
-        },
-        {
-          "value": "3",
-          "name": "Credit",
-          "doc": "Credit"
-        },
-        {
-          "value": "4",
-          "name": "Equity",
-          "doc": "Equity"
-        },
-        {
-          "value": "5",
-          "name": "Commodity",
-          "doc": "Commodity"
-        },
-        {
-          "value": "6",
-          "name": "Other",
-          "doc": "Other"
-        },
-        {
-          "value": "7",
-          "name": "Cash",
-          "doc": "Cash"
-        },
-        {
-          "value": "8",
-          "name": "Debt",
-          "doc": "Debt"
-        },
-        {
-          "value": "9",
-          "name": "Fund",
-          "doc": "Fund"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "doc": "Index"
-        }
-      ],
+      "FIX:codeset": "assetclasscodeset",
       "FIX:tag": "2081",
       "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
       "display": "UnderlyingSecondaryAssetClass"
@@ -2872,296 +1047,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "SingleCurrency",
-          "group": "Interest Rate",
-          "doc": "Single currency"
-        },
-        {
-          "value": "2",
-          "name": "CrossCurrency",
-          "group": "Interest Rate",
-          "doc": "Cross currency"
-        },
-        {
-          "value": "3",
-          "name": "Basket",
-          "group": "Currency",
-          "doc": "Basket [for multi-currency]"
-        },
-        {
-          "value": "4",
-          "name": "SingleName",
-          "group": "Credit",
-          "doc": "Single name"
-        },
-        {
-          "value": "5",
-          "name": "CreditIndex",
-          "group": "Credit",
-          "doc": "Credit index"
-        },
-        {
-          "value": "6",
-          "name": "IndexTranche",
-          "group": "Credit",
-          "doc": "Index tranche"
-        },
-        {
-          "value": "7",
-          "name": "CreditBasket",
-          "group": "Credit",
-          "doc": "Credit basket"
-        },
-        {
-          "value": "8",
-          "name": "Exotic",
-          "group": "Other",
-          "doc": "Exotic"
-        },
-        {
-          "value": "9",
-          "name": "Common",
-          "group": "Equity",
-          "doc": "Common"
-        },
-        {
-          "value": "10",
-          "name": "Preferred",
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
-          "value": "20",
-          "name": "Government",
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
-          "value": "40",
-          "name": "FXMajors",
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "group": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codeset": "assetsubclasscodeset",
       "FIX:tag": "2082",
       "description": "An indication of the general description of the asset class.",
       "display": "UnderlyingSecondaryAssetSubClass"
@@ -3249,18 +1135,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Divide",
-          "doc": "Divide"
-        },
-        {
-          "value": "M",
-          "name": "Multiply",
-          "doc": "Multiply"
-        }
-      ],
+      "FIX:codeset": "underlyingfxratecalccodeset",
       "FIX:tag": "2089",
       "description": "Specifies whether or not MarginAmtFXRate(2088) should be multipled or divided.",
       "display": "MarginAmtFXRateCalc"
@@ -3285,18 +1160,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Divide",
-          "doc": "Divide"
-        },
-        {
-          "value": "M",
-          "name": "Multiply",
-          "doc": "Multiply"
-        }
-      ],
+      "FIX:codeset": "underlyingfxratecalccodeset",
       "FIX:tag": "2091",
       "description": "Specifies whether or not CollateralFXRate(2090) should be multipled or divided.",
       "display": "CollateralFXRateCalc"
@@ -3345,18 +1209,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Divide",
-          "doc": "Divide"
-        },
-        {
-          "value": "M",
-          "name": "Multiply",
-          "doc": "Multiply"
-        }
-      ],
+      "FIX:codeset": "underlyingfxratecalccodeset",
       "FIX:tag": "2095",
       "description": "Specifies whether or not PayCollectFXRate(2094) should be multipled or divided.",
       "display": "PayCollectFXRateCalc"
@@ -3393,18 +1246,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Divide",
-          "doc": "Divide"
-        },
-        {
-          "value": "M",
-          "name": "Multiply",
-          "doc": "Multiply"
-        }
-      ],
+      "FIX:codeset": "underlyingfxratecalccodeset",
       "FIX:tag": "2098",
       "description": "Specifies whether or not PositionFXRate(2097) should be multipled or divided.",
       "display": "PositionFXRateCalc"

@@ -1,0 +1,15 @@
+{
+  "name": "netgrossindcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Net",
+      "doc": "Net"
+    },
+    {
+      "value": "2",
+      "name": "Gross",
+      "doc": "Gross"
+    }
+  ]
+}

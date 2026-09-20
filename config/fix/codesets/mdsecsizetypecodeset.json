@@ -1,0 +1,20 @@
+{
+  "name": "mdsecsizetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Customer",
+      "doc": "Customer"
+    },
+    {
+      "value": "2",
+      "name": "CustomerProfessional",
+      "doc": "Customer professional"
+    },
+    {
+      "value": "3",
+      "name": "DoNotTradeThrough",
+      "doc": "Do not trade through"
+    }
+  ]
+}

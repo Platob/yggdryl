@@ -687,8 +687,6 @@ impl Writer {
 /// [`Self::text_of`] restates that JSON as the canonical text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
-    /// [`super::codes`], under `FIX:codes`.
-    Codes,
     /// [`super::directions`], under `FIX:directions`.
     Directions,
     /// [`super::replacements`], under `FIX:replacements`.
@@ -712,8 +710,7 @@ enum Shape {
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 5] = [
-        Self::Codes,
+    pub(super) const ALL: [Self; 4] = [
         Self::Directions,
         Self::Replacements,
         Self::Names,
@@ -723,7 +720,6 @@ impl Kind {
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
         match self {
-            Self::Codes => "FIX:codes",
             Self::Directions => "FIX:directions",
             Self::Replacements => "FIX:replacements",
             Self::Names => "FIX:names",
@@ -739,7 +735,6 @@ impl Kind {
     /// What this document calls itself in a refusal, as its reader does.
     const fn target(self) -> &'static str {
         match self {
-            Self::Codes => "fix codes",
             Self::Directions => "fix directions",
             Self::Replacements => "fix replacements",
             Self::Names => "fix names",
@@ -755,7 +750,6 @@ impl Kind {
     /// back into this order and carrying each value as it arrived.
     const fn shape(self) -> Shape {
         match self {
-            Self::Codes => Shape::Entries(&super::codes::KEYS),
             Self::Directions => Shape::Entries(&super::directions::KEYS),
             Self::Replacements => Shape::Entries(&super::replacements::KEYS),
             Self::Names => Shape::Words,
@@ -867,28 +861,7 @@ impl Kind {
 
     /// One entry, its stated keys in the declared order and nothing else.
     fn order_entry(self, keys: &'static [&'static str], entry: &Scalar) -> Result<Scalar> {
-        if entry.as_struct().is_none() && entry.as_mapping().is_none() {
-            return Err(self.refused(crate::text::expected_got("an entry object", entry.kind())));
-        }
-        let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
-        for key in keys {
-            let Some(value) = entry.get_key_str(key) else {
-                continue;
-            };
-            // A flag exists only when it is true, and a key a file spelled
-            // null states nothing: both leave the entry rather than being
-            // written back as something the reader would refuse.
-            if matches!(value, Scalar::Null) || value.as_bool() == Some(false) {
-                continue;
-            }
-            held.push((Scalar::from(*key), value.clone()));
-        }
-        if let Some(unknown) = entry.keys().into_iter().find(|key| !keys.contains(key)) {
-            return Err(self.refused(format_args!("unknown key {unknown:?}")));
-        }
-        // A mapping rather than a record, because a record sorts its keys and
-        // the order this just settled is the whole point.
-        Scalar::from_mapping(held)
+        order_entry(self.target(), keys, entry)
     }
 
     /// The refusal a store raises, naming the property a caller has to fix.
@@ -902,11 +875,78 @@ impl Kind {
     /// This document's own refusal, so a reader names the document a caller
     /// has to fix rather than the JSON beneath it.
     fn refused(self, reason: impl fmt::Display) -> Error {
-        Error::Parse {
-            target: self.target(),
-            position: 0,
-            reason: format_smolstr!("{reason}"),
+        refused(self.target(), reason)
+    }
+}
+
+/// One array of entries with every entry's keys in the order `keys` states
+/// them: the one order a reader walks and a writer writes.
+///
+/// The elements keep the order the file gave them; what is settled is each
+/// entry's own keys. The shared half of [`Kind::ordered`] and of a document
+/// a store keeps in a file of its own, such as a [code set](super::codes).
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] naming `target` when the value is not an array of
+/// entry objects, or one states a key `keys` does not declare.
+pub(super) fn ordered_entries(
+    target: &'static str,
+    keys: &'static [&'static str],
+    value: &Scalar,
+) -> Result<Scalar> {
+    let elements = value.as_sequence().ok_or_else(|| {
+        refused(
+            target,
+            crate::text::expected_got("an array of entries", value.kind()),
+        )
+    })?;
+    elements
+        .iter()
+        .map(|entry| order_entry(target, keys, entry))
+        .collect::<Result<Vec<_>>>()
+        .map(Scalar::from_sequence)
+}
+
+/// One entry with its stated keys in the order `keys` declares them.
+fn order_entry(
+    target: &'static str,
+    keys: &'static [&'static str],
+    entry: &Scalar,
+) -> Result<Scalar> {
+    if entry.as_struct().is_none() && entry.as_mapping().is_none() {
+        return Err(refused(
+            target,
+            crate::text::expected_got("an entry object", entry.kind()),
+        ));
+    }
+    let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(value) = entry.get_key_str(key) else {
+            continue;
+        };
+        // A flag exists only when it is true, and a key a file spelled null
+        // states nothing: both leave the entry rather than being written back
+        // as something the reader would refuse.
+        if matches!(value, Scalar::Null) || value.as_bool() == Some(false) {
+            continue;
         }
+        held.push((Scalar::from(*key), value.clone()));
+    }
+    if let Some(unknown) = entry.keys().into_iter().find(|key| !keys.contains(key)) {
+        return Err(refused(target, format_args!("unknown key {unknown:?}")));
+    }
+    // A mapping rather than a record, because a record sorts its keys and the
+    // order this just settled is the whole point.
+    Scalar::from_mapping(held)
+}
+
+/// The refusal a document raises, naming the document it is.
+fn refused(target: &'static str, reason: impl fmt::Display) -> Error {
+    Error::Parse {
+        target,
+        position: 0,
+        reason: format_smolstr!("{reason}"),
     }
 }
 
@@ -919,27 +959,30 @@ impl Kind {
 /// document out of a store - what `ygg fix read --json` prints and
 /// `ygg fix ... --input` takes - writes the same shape the store does. It is
 /// the FIX spelling of [`Field::into_value`](crate::Field::into_value), and
-/// the only difference between them is those five properties.
+/// the only difference between them is those four properties.
+///
+/// A field's `FIX:codeset` is not one of them: it names the
+/// [code set](super::codes) the field reads by, and the members live in the
+/// store's own `codesets/` folder rather than in the field.
 ///
 /// ```
-/// use yggdryl::{DataType, FixCode, Scalar, fix};
+/// use yggdryl::{DataType, Scalar, fix};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut side = DataType::utf8().nullable_field("Side");
 /// side.as_fix_mut().set_tag(54)?;
-/// side.as_fix_mut().set_codes(&[FixCode::new("Buy", "1")])?;
+/// side.as_fix_mut().set_codeset("sidecodeset")?;
+/// side.as_fix_mut().set_names(["side"])?;
 ///
 /// let document = fix::into_fix_document(side.clone())?;
-/// let codes = document
-///     .get_key_str("metadata")
-///     .and_then(|metadata| metadata.get_key_str("FIX:codes"))
-///     .expect("the code set");
-/// // The JSON it is, not the text it is stored as.
-/// assert_eq!(codes.len(), 1);
+/// let metadata = document.get_key_str("metadata").expect("the metadata");
+/// // The set it names, carried as the text it is.
 /// assert_eq!(
-///     codes.get(0).and_then(|code| code.get_key_str("name")).and_then(Scalar::as_str),
-///     Some("Buy"),
+///     metadata.get_key_str("FIX:codeset").and_then(Scalar::as_str),
+///     Some("sidecodeset"),
 /// );
+/// // A list property is still the JSON it is, not the text it is stored as.
+/// assert_eq!(metadata.get_key_str("FIX:names").map(|names| names.len()), Some(1));
 /// assert_eq!(fix::from_fix_document(document)?, side);
 /// # Ok(())
 /// # }

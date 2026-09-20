@@ -1,0 +1,60 @@
+{
+  "name": "assetclasscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InterestRate",
+      "doc": "Interest rate"
+    },
+    {
+      "value": "2",
+      "name": "Currency",
+      "doc": "Currency"
+    },
+    {
+      "value": "3",
+      "name": "Credit",
+      "doc": "Credit"
+    },
+    {
+      "value": "4",
+      "name": "Equity",
+      "doc": "Equity"
+    },
+    {
+      "value": "5",
+      "name": "Commodity",
+      "doc": "Commodity"
+    },
+    {
+      "value": "6",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "7",
+      "name": "Cash",
+      "doc": "Cash"
+    },
+    {
+      "value": "8",
+      "name": "Debt",
+      "doc": "Debt"
+    },
+    {
+      "value": "9",
+      "name": "Fund",
+      "doc": "Fund"
+    },
+    {
+      "value": "10",
+      "name": "LoanFacility",
+      "doc": "Loan facility"
+    },
+    {
+      "value": "11",
+      "name": "Index",
+      "doc": "Index"
+    }
+  ]
+}

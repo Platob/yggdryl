@@ -1,0 +1,10 @@
+{
+  "name": "regulatorytradeidsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "UniqueTransactionIdentifier",
+      "doc": "Unique Transaction Identifier (ISO 23897)"
+    }
+  ]
+}

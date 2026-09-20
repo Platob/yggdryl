@@ -1,0 +1,15 @@
+{
+  "name": "settlobligmodecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Preliminary",
+      "doc": "Preliminary"
+    },
+    {
+      "value": "2",
+      "name": "Final",
+      "doc": "Final"
+    }
+  ]
+}

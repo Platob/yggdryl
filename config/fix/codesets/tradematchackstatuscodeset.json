@@ -1,0 +1,20 @@
+{
+  "name": "tradematchackstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ReceivedNotProcessed",
+      "doc": "Received, not yet processed"
+    },
+    {
+      "value": "1",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

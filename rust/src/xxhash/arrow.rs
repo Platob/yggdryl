@@ -1206,6 +1206,7 @@ fn feed_cell(
         | DataType::CusipCode
         | DataType::SedolCode
         | DataType::BloombergCode
+        | DataType::FIGICode
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce

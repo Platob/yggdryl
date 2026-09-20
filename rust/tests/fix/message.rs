@@ -19,6 +19,146 @@ fn reader() -> (Arc<FixRegistry>, FixCodec) {
     (registry, reader)
 }
 
+#[test]
+fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
+    let (registry, reader) = reader();
+    let message = reader
+        .sole_line(
+            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+        )
+        .unwrap();
+
+    assert_eq!(message.get_crosscode(), "ORDER-1", "FIX priority wins");
+    assert_eq!(
+        message
+            .get_identifiers()
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("clordid", "CLIENT-1"),
+            ("msgsectxid", "SESSION-1:CONTEXT-1"),
+            ("orderid", "ORDER-1"),
+            ("origclordid", "CLIENT-0"),
+        ],
+        "the component names remain beside the capture context"
+    );
+
+    let fallback = reader
+        .sole_line(
+            b"MSGTYPE=8|ORDERID=|CLORDID=|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1",
+        )
+        .unwrap();
+    assert_eq!(fallback.get_crosscode(), "CLIENT-0", "first stated FIX id");
+
+    let capture_only = reader
+        .sole_line(b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1")
+        .unwrap();
+    assert_eq!(
+        capture_only.get_crosscode(),
+        "",
+        "capture is not a chain id"
+    );
+    assert_eq!(
+        capture_only
+            .get_identifiers()
+            .get("msgsectxid")
+            .map(String::as_str),
+        Some("SESSION-1:CONTEXT-1")
+    );
+
+    for partial in [
+        b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1".as_slice(),
+        b"MSGTYPE=ZZ|MSGCTXID=CONTEXT-1".as_slice(),
+    ] {
+        let partial = reader.sole_line(partial).unwrap();
+        assert!(partial.get_identifiers().get("msgsectxid").is_none());
+        assert_eq!(partial.get_crosscode(), "");
+    }
+
+    let other_capture = reader
+        .sole_line(
+            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-2|MSGCTXID=CONTEXT-2",
+        )
+        .unwrap();
+    assert_ne!(message.get_identifiers(), other_capture.get_identifiers());
+    assert_eq!(
+        message.get_currhashcode(),
+        other_capture.get_currhashcode(),
+        "capture provenance is not message content"
+    );
+    assert_eq!(message.get_curruuid(), other_capture.get_curruuid());
+
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = message.into_row(&schema).unwrap();
+    let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(rebuilt.get_crosscode(), "ORDER-1");
+    assert_eq!(rebuilt.get_identifiers(), message.get_identifiers());
+    assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
+}
+
+#[test]
+fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names() {
+    let (_, reader) = reader();
+    let mut message = reader
+        .sole_line(
+            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+        )
+        .unwrap();
+
+    message
+        .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("SESSION-2"))
+        .unwrap();
+    assert_eq!(
+        message
+            .get_identifiers()
+            .get("msgsectxid")
+            .map(String::as_str),
+        Some("SESSION-2:CONTEXT-1")
+    );
+    assert_eq!(
+        message.get_identifiers().get("clordid").map(String::as_str),
+        Some("CLIENT-1")
+    );
+    assert_eq!(
+        message.get_identifiers().get("orderid").map(String::as_str),
+        Some("ORDER-1")
+    );
+
+    message
+        .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::Null)
+        .unwrap();
+    assert!(message.get_identifiers().get("msgsectxid").is_none());
+    assert_eq!(
+        message.get_identifiers().get("clordid").map(String::as_str),
+        Some("CLIENT-1")
+    );
+
+    message
+        .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("CONTEXT-2"))
+        .unwrap();
+    assert_eq!(
+        message
+            .get_identifiers()
+            .get("msgsectxid")
+            .map(String::as_str),
+        Some("SESSION-2:CONTEXT-2")
+    );
+
+    message.set_crosscode("EXPLICIT".to_owned());
+    message
+        .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("SESSION-3"))
+        .unwrap();
+    assert_eq!(message.get_crosscode(), "EXPLICIT");
+    assert_eq!(
+        message
+            .get_identifiers()
+            .get("msgsectxid")
+            .map(String::as_str),
+        Some("SESSION-3:CONTEXT-2")
+    );
+}
+
 const ORDER: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|";
 
 /// Every tag a message's children carry, beside the value each holds.
@@ -290,21 +430,8 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     // The root a row reads back is the content row, not the fixed schema:
     // the typed facts are the holders' and never children of it.
     assert_eq!(held.as_field().name(), schema.name());
-    assert_eq!(
-        held.as_field()
-            .fields()
-            .iter()
-            .map(Field::name)
-            .collect::<Vec<_>>(),
-        parsed
-            .as_field()
-            .fields()
-            .iter()
-            .map(Field::name)
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(held.entries(), parsed.entries());
-    assert_eq!(held.digest(), parsed.digest());
+    // A fixed row is semantic: represented fields live in their columns,
+    // so its reconstructed children need not retain wire arrival order.
     for tag in [8, 35, 11, 55, 54] {
         assert_eq!(
             held.by_tag(tag).unwrap(),
@@ -314,19 +441,19 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     }
     // And it makes the row it came from, whole.
     assert_eq!(held.into_row(&schema).unwrap(), row);
-    // The same message on the wire, and the code it digests to. The
-    // sending time is the one fact a row cannot give back: the line stated
-    // none, so it is intake's stand-in rather than something the message
-    // said, the row carries the instant under `currunix` alone, and the message
-    // a row makes stands one in again.
+    // Sending time was not stated by this line, so the row carries the
+    // settled instant. The complete identity is stated in columns and must
+    // survive rebuilding rather than being derived from a new entry order.
     assert!(!parsed.header().stated_sendingtime());
     assert!(!held.header().stated_sendingtime());
     assert_eq!(held.header().beginstring(), parsed.header().beginstring());
     assert_eq!(held.header().msgtype(), parsed.header().msgtype());
     assert_eq!(held.header().msgseqnum(), parsed.header().msgseqnum());
     assert_eq!(held.get_currunix(), parsed.get_currunix());
-    assert_eq!(held.into_bytes(b'|'), parsed.into_bytes(b'|'));
+    assert_eq!(held.get_curruuid(), parsed.get_curruuid());
+    assert_eq!(held.get_crossuuid(), parsed.get_crossuuid());
     assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
+    assert_eq!(held.get_crosshashcode(), parsed.get_crosshashcode());
 }
 
 #[test]
@@ -355,11 +482,14 @@ fn a_data_field_that_is_not_text_is_held_as_the_decode_a_row_can_hold() {
     assert_eq!(arrived.value(), Some("\u{FFFD}\u{FFFD} A"));
     assert_ne!(parsed.into_bytes(1), line);
 
-    // And the row round trip holds what the message holds.
+    // The residual record carries the decoded spelling, as it did on entry.
     let row = parsed.into_row(&schema).unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(held.entries(), parsed.entries());
-    assert_eq!(held.digest(), parsed.digest());
+    assert_eq!(held.by_tag(95).unwrap(), parsed.by_tag(95).unwrap());
+    assert_eq!(
+        held.by_tag(96).unwrap(),
+        Scalar::from("\u{FFFD}\u{FFFD} A".as_bytes().to_vec())
+    );
     assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
@@ -410,10 +540,11 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
     );
     assert_ne!(parsed.into_bytes(1), wire);
 
-    // And the row round-trips whole, which the byte door's line cannot.
+    // The semantic row preserves the typed data field and its length.
     let row = parsed.into_row(&schema).unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(held.entries(), parsed.entries());
+    assert_eq!(held.by_tag(95).unwrap(), parsed.by_tag(95).unwrap());
+    assert_eq!(held.by_tag(96).unwrap(), parsed.by_tag(96).unwrap());
     assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
@@ -443,7 +574,7 @@ fn a_captures_own_columns_are_carried_by_the_message_and_never_its_content() {
         assert!(row.get(at(carrier)).unwrap().is_null(), "{carrier}");
     }
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(held.entries(), parsed.entries());
+    assert_eq!(held.by_tag(55).unwrap(), parsed.by_tag(55).unwrap());
     assert_eq!(held.into_row(&schema).unwrap(), row);
 
     // A row a reader put its own statements in - the one the crate tags
@@ -528,7 +659,7 @@ fn writing_a_captures_own_column_onto_a_message_is_refused() {
 }
 
 #[test]
-fn a_row_without_the_entries_group_has_no_entries() {
+fn a_row_without_the_entries_group_rebuilds_its_projected_content() {
     let (registry, reader) = reader();
     let wide = fix_schema(&registry, "fix").unwrap();
     // The group and the counter that counts it are dropped together: a count
@@ -549,18 +680,22 @@ fn a_row_without_the_entries_group_has_no_entries() {
     let row = parsed.into_row(&narrow).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &row).unwrap();
-    assert!(held.entries().is_empty());
-    // The typed facts are the holders' and still on the wire - the frame
-    // and the identifier the message lifted - and the content is gone with
-    // the record, the side and the symbol among it.
+    // Ordinary tags rebuild from their projected columns even without the
+    // optional residual record and its counter.
+    for tag in [11, 54, 55] {
+        assert_eq!(
+            held.by_tag(tag).unwrap(),
+            parsed.by_tag(tag).unwrap(),
+            "tag {tag}"
+        );
+    }
     let wire = String::from_utf8(held.into_bytes(b'|')).unwrap();
     assert!(wire.starts_with("8=FIX.4.4|35=D|"), "{wire}");
-    assert!(wire.contains("|11=A1|"), "{wire}");
-    assert!(!wire.contains("54=") && !wire.contains("55="), "{wire}");
-    // A row that dropped the record cannot give the content back, so the
-    // row it makes is the one a message of typed facts alone fills - and
-    // that row is its own fixed point.
+    for field in ["|11=A1|", "|54=1|", "|55=AAPL|"] {
+        assert!(wire.contains(field), "{wire}");
+    }
     let again = held.into_row(&narrow).unwrap();
+    assert_eq!(again, row);
     let twice = FixMsg::from_row(Arc::clone(&registry), &narrow, &again).unwrap();
     assert_eq!(twice.into_row(&narrow).unwrap(), again);
 }

@@ -1,0 +1,60 @@
+{
+  "name": "securitytradingeventcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OrderImbalance",
+      "doc": "Order imbalance, auction is extended"
+    },
+    {
+      "value": "2",
+      "name": "TradingResumes",
+      "doc": "Trading resumes"
+    },
+    {
+      "value": "3",
+      "name": "PriceVolatilityInterruption",
+      "doc": "Price Volatility Interruption"
+    },
+    {
+      "value": "4",
+      "name": "ChangeOfTradingSession",
+      "doc": "Change of Trading Session"
+    },
+    {
+      "value": "5",
+      "name": "ChangeOfTradingSubsession",
+      "doc": "Change of Trading Subsession"
+    },
+    {
+      "value": "6",
+      "name": "ChangeOfSecurityTradingStatus",
+      "doc": "Change of Security Trading Status"
+    },
+    {
+      "value": "7",
+      "name": "ChangeOfBookType",
+      "doc": "Change of Book Type"
+    },
+    {
+      "value": "8",
+      "name": "ChangeOfMarketDepth",
+      "doc": "Change of Market Depth"
+    },
+    {
+      "value": "9",
+      "name": "CorporateAction",
+      "doc": "Corporate action"
+    },
+    {
+      "value": "10",
+      "name": "RestatementOfSecurityTradingStatus",
+      "doc": "Restatement of security trading status"
+    },
+    {
+      "value": "11",
+      "name": "OutageResolved",
+      "doc": "Outage resolved"
+    }
+  ]
+}

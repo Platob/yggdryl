@@ -1,0 +1,30 @@
+{
+  "name": "algocertificatestatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Draft",
+      "doc": "Draft"
+    },
+    {
+      "value": "1",
+      "name": "Approved",
+      "doc": "Approved"
+    },
+    {
+      "value": "2",
+      "name": "Submitted",
+      "doc": "Submitted"
+    },
+    {
+      "value": "3",
+      "name": "Registered",
+      "doc": "Registered"
+    },
+    {
+      "value": "4",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    }
+  ]
+}

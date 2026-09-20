@@ -77,11 +77,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // Building a whole dictionary, which is what a load costs above I/O:
     // the scalar fields, because a registry's iteration lists definitions
     // after the scalars in name order, and a message inserted before the
-    // component it references is refused.
+    // component it references is refused. The vocabularies stay behind: a
+    // dictionary built from bare fields states no code set, and a field
+    // naming one nothing states is refused.
     let fields: Vec<_> = large
         .iter()
         .filter(|field| !field.dtype().is_nested())
-        .cloned()
+        .map(|field| {
+            let mut field = field.clone();
+            field.as_fix_mut().remove_codeset();
+            field
+        })
         .collect();
     group.bench_function(format!("from_fields_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
@@ -250,8 +256,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The one FIX-aware merge, over two realistic definitions of one tag: a
     // generator folds several sources into every field it writes, so this is
     // what a regeneration costs per tag.
-    let stored = merge_source("the stored wording", "lastshares", "the stored reading");
-    let incoming = merge_source("the incoming wording", "qty", "the incoming reading");
+    let stored = merge_source("the stored wording", "lastshares", LASTQTY_CODESET);
+    let incoming = merge_source("the incoming wording", "qty", VENUE_LASTQTY_CODESET);
     group.bench_function("merge_with", |bencher| {
         bencher.iter_batched(
             || incoming.clone(),
@@ -266,8 +272,28 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
     // The same fold through the registry, which adds the generic metadata
-    // half and the reindexing a stored field needs.
-    let mut merging = FixRegistry::from_fields([stored.clone()]).expect("one field");
+    // half, the vocabularies the two sides name differently, and the
+    // reindexing a stored field needs.
+    let mut merging = FixRegistry::new();
+    merging
+        .set_codeset(
+            LASTQTY_CODESET,
+            &[
+                FixCode::new("Shared", "1").with_description("the stored reading"),
+                FixCode::new("Other", "2"),
+            ],
+        )
+        .expect("a valid code set");
+    merging
+        .set_codeset(
+            VENUE_LASTQTY_CODESET,
+            &[
+                FixCode::new("Shared", "1").with_description("the incoming reading"),
+                FixCode::new("Other", "2"),
+            ],
+        )
+        .expect("a valid code set");
+    merging.insert(stored.clone()).expect("one field");
     group.bench_function("update_merging", |bencher| {
         bencher.iter(|| {
             black_box(&mut merging)
@@ -278,13 +304,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     let target = coded_catalog();
     let mut source = target.clone();
-    let mut incoming = source.field(448).unwrap().clone();
-    incoming
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Client", "C")])
+    // The other dictionary's statement of the one set its field reads by:
+    // a member the target does not hold, which is the fold a merge pays.
+    source
+        .set_codeset(PARTY_CODESET, &[FixCode::new("Client", "C")])
         .unwrap();
-    source.insert(incoming).unwrap();
-    group.bench_function("merge_catalog_inline_codes", |bencher| {
+    group.bench_function("merge_catalog_codesets", |bencher| {
         bencher.iter_batched(
             || target.clone(),
             |mut target| {
@@ -298,16 +323,25 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The set `PartyID` reads by, named as a store files it: the folded field
+/// name and `codeset`.
+const PARTY_CODESET: &str = "partyidcodeset";
+
 fn coded_catalog() -> FixRegistry {
     let mut party = DataType::utf8().nullable_field("PartyID");
     party.as_fix_mut().set_tag(448).unwrap();
-    party
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Broker", "B")])
-        .unwrap();
+    party.as_fix_mut().set_codeset(PARTY_CODESET).unwrap();
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453).unwrap();
-    let mut registry = FixRegistry::from_fields([party.clone(), counter.clone()]).unwrap();
+    // The vocabulary first: a registry refuses a field naming a set it does
+    // not hold.
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(PARTY_CODESET, &[FixCode::new("Broker", "B")])
+        .unwrap();
+    for field in [party.clone(), counter.clone()] {
+        registry.insert(field).unwrap();
+    }
     party.as_fix_mut().set_field_ref("PartyID").unwrap();
     let component = StructType::from_fields([party])
         .map(DataType::from)
@@ -330,8 +364,13 @@ fn coded_catalog() -> FixRegistry {
     registry
 }
 
+/// The two names the sources of tag 32 file its vocabulary under: the
+/// specification's own, and a venue's naming after the field.
+const LASTQTY_CODESET: &str = "lastqtycodeset";
+const VENUE_LASTQTY_CODESET: &str = "venuelastqtycodeset";
+
 /// One realistic definition of tag 32: coded, described, aliased.
-fn merge_source(wording: &str, alias: &str, reading: &str) -> Field {
+fn merge_source(wording: &str, alias: &str, codeset: &str) -> Field {
     let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).expect("a static tag");
     field
@@ -348,10 +387,7 @@ fn merge_source(wording: &str, alias: &str, reading: &str) -> Field {
         .expect("a description");
     field
         .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Shared", "1").with_description(reading),
-            FixCode::new("Other", "2"),
-        ])
-        .expect("a valid code set");
+        .set_codeset(codeset)
+        .expect("the set its dictionary holds");
     field
 }

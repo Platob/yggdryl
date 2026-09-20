@@ -124,6 +124,7 @@ impl DataType {
         ("cusip", DataType::CusipCode),
         ("sedol", DataType::SedolCode),
         ("bloomberg", DataType::BloombergCode),
+        ("figi", DataType::FIGICode),
         // The remaining codes resolve to themselves. `side` is a FIX code
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.

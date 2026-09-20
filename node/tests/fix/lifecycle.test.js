@@ -146,14 +146,14 @@ test('the walk crosses Arrow both ways without a second parse', () => {
   assert.equal(back.length, LIFE.length)
   // The same walk the message stream answers, through the rows: each
   // message states its place in the chain, the one before it, and the
-  // content it was parsed from. The identity is the row's own - a clock
-  // the intake settled is not a column, so a message read back settles its
-  // own - and the chain it names is what the walk states.
+  // semantic row of the corresponding stream message. Projected columns and
+  // residual entries may rebuild in another child order; the row identity
+  // and the chain it names are what the walk states.
   const expected = [...codec.lifecycle(parsed)]
   for (const [at, message] of back.entries()) {
     assert.equal(message.seqnum, expected[at].seqnum, `message ${at}`)
     assert.equal(message.crosscode, expected[at].crosscode, `message ${at}`)
-    assert.deepEqual(message.entries(), expected[at].entries(), `message ${at}`)
+    assert.ok(message.intoRow(schema).equals(expected[at].intoRow(schema)), `message ${at}`)
     assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].curruuid, `message ${at}`)
     assert.deepEqual(message.parentuuids, back.slice(0, at).map((held) => held.curruuid), `message ${at}`)
     assert.deepEqual(message.srcuuids, [], `message ${at} was read from bytes`)

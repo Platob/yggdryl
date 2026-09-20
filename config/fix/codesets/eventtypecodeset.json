@@ -1,0 +1,155 @@
+{
+  "name": "eventtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Put",
+      "doc": "Put"
+    },
+    {
+      "value": "2",
+      "name": "Call",
+      "doc": "Call"
+    },
+    {
+      "value": "3",
+      "name": "Tender",
+      "doc": "Tender"
+    },
+    {
+      "value": "4",
+      "name": "SinkingFundCall",
+      "doc": "Sinking fund call"
+    },
+    {
+      "value": "5",
+      "name": "Activation",
+      "doc": "Activation"
+    },
+    {
+      "value": "6",
+      "name": "Inactiviation",
+      "doc": "Inactivation"
+    },
+    {
+      "value": "7",
+      "name": "LastEligibleTradeDate",
+      "doc": "Last eligible trade date"
+    },
+    {
+      "value": "8",
+      "name": "SwapStartDate",
+      "doc": "Swap start date"
+    },
+    {
+      "value": "9",
+      "name": "SwapEndDate",
+      "doc": "Swap end date"
+    },
+    {
+      "value": "10",
+      "name": "SwapRollDate",
+      "doc": "Swap roll date"
+    },
+    {
+      "value": "11",
+      "name": "SwapNextStartDate",
+      "doc": "Swap next start date"
+    },
+    {
+      "value": "12",
+      "name": "SwapNextRollDate",
+      "doc": "Swap next roll date"
+    },
+    {
+      "value": "13",
+      "name": "FirstDeliveryDate",
+      "doc": "First delivery date"
+    },
+    {
+      "value": "14",
+      "name": "LastDeliveryDate",
+      "doc": "Last delivery date"
+    },
+    {
+      "value": "15",
+      "name": "InitialInventoryDueDate",
+      "doc": "Initial inventory due date"
+    },
+    {
+      "value": "16",
+      "name": "FinalInventoryDueDate",
+      "doc": "Final inventory due date"
+    },
+    {
+      "value": "17",
+      "name": "FirstIntentDate",
+      "doc": "First intent date"
+    },
+    {
+      "value": "18",
+      "name": "LastIntentDate",
+      "doc": "Last intent date"
+    },
+    {
+      "value": "19",
+      "name": "PositionRemovalDate",
+      "doc": "Position removal date"
+    },
+    {
+      "value": "20",
+      "name": "MinimumNotice",
+      "doc": "Minimum notice"
+    },
+    {
+      "value": "21",
+      "name": "DeliveryStartTime",
+      "doc": "Delivery start time"
+    },
+    {
+      "value": "22",
+      "name": "DeliveryEndTime",
+      "doc": "Delivery end time"
+    },
+    {
+      "value": "23",
+      "name": "FirstNoticeDate",
+      "doc": "First notice date"
+    },
+    {
+      "value": "24",
+      "name": "LastNoticeDate",
+      "doc": "Last notice date"
+    },
+    {
+      "value": "25",
+      "name": "FirstExerciseDate",
+      "doc": "First exercise date"
+    },
+    {
+      "value": "26",
+      "name": "RedemptionDate",
+      "doc": "Redemption date"
+    },
+    {
+      "value": "27",
+      "name": "TrdCntntnEfctvDt",
+      "doc": "Trade continuation effective date"
+    },
+    {
+      "value": "28",
+      "name": "FrontMonth",
+      "doc": "Front month"
+    },
+    {
+      "value": "29",
+      "name": "LeadMonth",
+      "doc": "Lead month"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

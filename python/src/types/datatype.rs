@@ -474,6 +474,7 @@ impl PyDataType {
             "cusip" => CoreDataType::CusipCode,
             "sedol" => CoreDataType::SedolCode,
             "bloomberg" => CoreDataType::BloombergCode,
+            "figi" => CoreDataType::FIGICode,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,

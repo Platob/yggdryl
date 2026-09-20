@@ -1,0 +1,21 @@
+{
+  "name": "oddlotcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "TreatAsRoundLot",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Treat as round lot (default)"
+    },
+    {
+      "value": "Y",
+      "name": "TreatAsOddLot",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Treat as odd lot"
+    }
+  ]
+}

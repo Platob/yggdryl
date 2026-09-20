@@ -365,6 +365,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -489,6 +490,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -586,6 +588,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
@@ -697,6 +700,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),

@@ -1,0 +1,25 @@
+{
+  "name": "terminationtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Overnight",
+      "doc": "Overnight"
+    },
+    {
+      "value": "2",
+      "name": "Term",
+      "doc": "Term"
+    },
+    {
+      "value": "3",
+      "name": "Flexible",
+      "doc": "Flexible"
+    },
+    {
+      "value": "4",
+      "name": "Open",
+      "doc": "Open"
+    }
+  ]
+}

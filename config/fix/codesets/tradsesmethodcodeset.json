@@ -1,0 +1,25 @@
+{
+  "name": "tradsesmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Electronic",
+      "doc": "Electronic"
+    },
+    {
+      "value": "2",
+      "name": "OpenOutcry",
+      "doc": "Open Outcry"
+    },
+    {
+      "value": "3",
+      "name": "TwoParty",
+      "doc": "Two Party"
+    },
+    {
+      "value": "4",
+      "name": "Voice",
+      "doc": "Voice"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "name": "tradingcapacitycodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Customer",
+      "doc": "Customer"
+    },
+    {
+      "value": "2",
+      "name": "CustomerProfessional",
+      "doc": "Customer professional"
+    },
+    {
+      "value": "3",
+      "name": "BrokerDealer",
+      "doc": "Broker-dealer"
+    },
+    {
+      "value": "4",
+      "name": "CustomerBrokerDealer",
+      "doc": "Customer broker-dealer"
+    },
+    {
+      "value": "5",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "6",
+      "name": "MarketMaker",
+      "doc": "Market maker"
+    },
+    {
+      "value": "7",
+      "name": "AwayMarketMaker",
+      "doc": "Away market maker"
+    },
+    {
+      "value": "8",
+      "name": "SystematicInternaliser",
+      "doc": "Systematic internaliser"
+    }
+  ]
+}

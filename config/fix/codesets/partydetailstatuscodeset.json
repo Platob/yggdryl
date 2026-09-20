@@ -1,0 +1,20 @@
+{
+  "name": "partydetailstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Active",
+      "doc": "Active (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "Suspended",
+      "doc": "Suspended"
+    },
+    {
+      "value": "2",
+      "name": "Halted",
+      "doc": "Halted"
+    }
+  ]
+}

@@ -174,6 +174,7 @@ const px: string = message.px
 const qty: string = message.qty
 const side: string = message.side
 const currency: string = message.currency
+const figicode: string | null = message.figicode
 const messageCategory: string | null = message.msgcat
 // And the same facts on the event, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
@@ -182,6 +183,7 @@ const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprtime
 const eventIsin: string | null = event.isincode
+const eventFigi: string | null = event.figicode
 const eventBidPx: string | null = event.bidpx
 const eventAskCurrency: string | null = event.askcurrency
 const eventIdentifiers: Record<string, string> = event.identifiers
@@ -223,12 +225,14 @@ void px
 void qty
 void side
 void currency
+void figicode
 void eventCurrunix
 void eventCreated
 void eventPrevUnix
 void eventSnap
 void eventExpiry
 void eventIsin
+void eventFigi
 void eventBidPx
 void eventAskCurrency
 void eventIdentifiers

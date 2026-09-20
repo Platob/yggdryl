@@ -7,8 +7,8 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 | Surface | Contract |
 | --- | --- |
 | Source | `scripts/build_docs_fix.js` runs the native package over `config/fix`, retaining compact stored documents and adding the crate's own definitions, which the shipped seed does not state. |
-| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `FIX:msgtype`, and enum codes stay inline on fields. |
-| Search | Filters names, tags, `FIX:names`, `FIX:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
+| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `FIX:msgtype`. The [code sets](registry.md#a-field-names-the-code-set-it-reads-by) are the fourth thing the page holds and no category: each is stated once under its name, and a field's `FIX:codeset` is that name. |
+| Search | Filters names, tags, `FIX:names`, `FIX:identifiers`, the code set a field names and descriptions; it does not invoke registry lookup or parse FIX input. |
 | References | A member button selects a search in its target category. The browser does not resolve or merge schemas. |
 | Samples | [Decode](decode.md) and [Encode](encode.md) display recorded native codec results and emitted bytes. |
 
@@ -18,12 +18,13 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,258 |
+| Scalar fields | 6,241 | 6,268 |
 | Groups | 580 | 582 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
+| Code sets, read by 2,027 fields | 735 | 736 |
 
-The live additions are the crate's 26 scalar fields - `parentuuids` and `srcuuids` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks. The native fixed capture schema has 122 columns over 118 tags.
+The live additions are the crate's 27 scalar fields - `parentuuids`, `srcuuids` and `figicode` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 123 columns over 119 tags.
 
 === "Rust"
 
@@ -35,9 +36,9 @@ The live additions are the crate's 26 scalar fields - `parentuuids` and `srcuuid
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_777);
+    assert_eq!(registry.len(), 7_778);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_777);
+    assert_eq!(registry.iter().count(), 7_778);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -66,8 +67,8 @@ The live additions are the crate's 26 scalar fields - `parentuuids` and `srcuuid
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_777
-    assert sum(1 for _ in registry) == 6_267
+    assert len(registry) == 7_778
+    assert sum(1 for _ in registry) == 6_268
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -129,7 +130,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes and `FIX:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
+A field's detail panel names the code set it reads by and opens that one set's members under the name, however many fields state it; `FIX:identifiers` appears in its owning component's panel the same way, and the definition filter narrows the rows to the fields that read by a set at all. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 

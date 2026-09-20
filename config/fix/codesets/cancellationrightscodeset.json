@@ -1,0 +1,25 @@
+{
+  "name": "cancellationrightscodeset",
+  "codes": [
+    {
+      "value": "Y",
+      "name": "Yes",
+      "doc": "Yes"
+    },
+    {
+      "value": "N",
+      "name": "NoExecutionOnly",
+      "doc": "No - Execution Only"
+    },
+    {
+      "value": "M",
+      "name": "NoWaiverAgreement",
+      "doc": "No - Waiver agreement"
+    },
+    {
+      "value": "O",
+      "name": "NoInstitutional",
+      "doc": "No - Institutional"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "registtranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "2",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "1",
+      "name": "Replace",
+      "doc": "Replace"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "name": "trdrptstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "2",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    },
+    {
+      "value": "3",
+      "name": "AcceptedWithErrors",
+      "doc": "Accepted with errors"
+    },
+    {
+      "value": "4",
+      "name": "PendingNew",
+      "doc": "Pending New"
+    },
+    {
+      "value": "5",
+      "name": "PendingCancel",
+      "doc": "Pending Cancel"
+    },
+    {
+      "value": "6",
+      "name": "PendingReplace",
+      "doc": "Pending Replace"
+    },
+    {
+      "value": "7",
+      "name": "Terminated",
+      "doc": "Terminated"
+    },
+    {
+      "value": "8",
+      "name": "PendingVerification",
+      "doc": "Pending verification"
+    },
+    {
+      "value": "9",
+      "name": "DeemedVerified",
+      "doc": "Deemed verified"
+    },
+    {
+      "value": "10",
+      "name": "Verified",
+      "doc": "Verified"
+    },
+    {
+      "value": "11",
+      "name": "Disputed",
+      "doc": "Disputed"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "testgatewaydetailtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MarketDataGatewayIPAddress",
+      "doc": "Market data gateway IP address"
+    },
+    {
+      "value": "1",
+      "name": "MarketDataGatewayPortNumber",
+      "doc": "Market data gateway port number"
+    },
+    {
+      "value": "2",
+      "name": "MarketDataGatewayDataFormat",
+      "doc": "Market data gateway data format"
+    },
+    {
+      "value": "3",
+      "name": "MarketDataGatewayFormatVersion",
+      "doc": "Market data gateway format version"
+    },
+    {
+      "value": "4",
+      "name": "MarketDataGatewayRoutingIPAddress",
+      "doc": "Market data gateway routing IP address"
+    },
+    {
+      "value": "5",
+      "name": "OrderEntryGatewayIPAddress",
+      "doc": "Order entry gateway IP address"
+    },
+    {
+      "value": "6",
+      "name": "OrderEntryGatewayPortNumber",
+      "doc": "Order entry gateway port number"
+    },
+    {
+      "value": "7",
+      "name": "OrderEntryGatewayDataFormat",
+      "doc": "Order entry gateway data format"
+    },
+    {
+      "value": "8",
+      "name": "OrderEntryGatewayFormatVersion",
+      "doc": "Order entry gateway format version"
+    },
+    {
+      "value": "9",
+      "name": "OrderEntryGatewayRoutingIPAddress",
+      "doc": "Order entry gateway routing IP address"
+    }
+  ]
+}

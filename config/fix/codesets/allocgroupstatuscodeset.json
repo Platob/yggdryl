@@ -1,0 +1,30 @@
+{
+  "name": "allocgroupstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Added",
+      "doc": "Added"
+    },
+    {
+      "value": "1",
+      "name": "Canceled",
+      "doc": "Canceled"
+    },
+    {
+      "value": "2",
+      "name": "Replaced",
+      "doc": "Replaced"
+    },
+    {
+      "value": "3",
+      "name": "Changed",
+      "doc": "Changed"
+    },
+    {
+      "value": "4",
+      "name": "Pending",
+      "doc": "Pending"
+    }
+  ]
+}

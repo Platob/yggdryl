@@ -423,6 +423,7 @@ test('a registered code is its own datatype over its standard width', () => {
     // Nine and seven, each closed by its own check digit too.
     ['cusip', 9],
     ['sedol', 7],
+    ['figi', 12],
     // The lifecycle codes are held to the width their spellings need.
     ['side', 8],
     ['state', 10],
@@ -442,7 +443,9 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(currency.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
   assert.equal(currency.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
-  assert.throws(() => DataType.fromString('figi'), /unknown datatype/)
+  const figi = DataType.fromString('figi')
+  assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
+  assert.throws(() => figi.scalar('BBG000BLNQ17'), /FIGI|check/i)
 })
 
 test('the uuid is sixteen bytes spelled as one identifier', () => {
@@ -628,7 +631,7 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   assert.equal(StringEnum.fromLogicalName('isin').length, 0)
   assert.equal(StringEnum.fromLogicalName('cusip').length, 0)
   assert.equal(StringEnum.fromLogicalName('sedol').length, 0)
-  assert.throws(() => StringEnum.fromLogicalName('figi'), /currency/)
+  assert.equal(StringEnum.fromLogicalName('figi').length, 0)
 })
 
 test('the generated enum names each value by the integer it packs into', () => {

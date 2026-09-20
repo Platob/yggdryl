@@ -1,0 +1,50 @@
+{
+  "name": "userstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LoggedIn",
+      "doc": "Logged In"
+    },
+    {
+      "value": "2",
+      "name": "NotLoggedIn",
+      "doc": "Not Logged In"
+    },
+    {
+      "value": "3",
+      "name": "UserNotRecognised",
+      "doc": "User Not Recognised"
+    },
+    {
+      "value": "4",
+      "name": "PasswordIncorrect",
+      "doc": "Password Incorrect"
+    },
+    {
+      "value": "5",
+      "name": "PasswordChanged",
+      "doc": "Password Changed"
+    },
+    {
+      "value": "6",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "7",
+      "name": "ForcedUserLogoutByExchange",
+      "doc": "Forced user logout by Exchange"
+    },
+    {
+      "value": "8",
+      "name": "SessionShutdownWarning",
+      "doc": "Session shutdown warning"
+    },
+    {
+      "value": "9",
+      "name": "ThrottleParametersChanged",
+      "doc": "Throttle parameters changed"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "name": "massactionrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MassActionNotSupported",
+      "doc": "Mass action not supported"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnknownSecurity",
+      "doc": "Invalid or unknown security"
+    },
+    {
+      "value": "2",
+      "name": "InvalidOrUnknownUnderlyingSecurity",
+      "doc": "Invalid or unknown underlying security"
+    },
+    {
+      "value": "3",
+      "name": "InvalidOrUnknownProduct",
+      "doc": "Invalid or unknown product"
+    },
+    {
+      "value": "4",
+      "name": "InvalidOrUnknownCFICode",
+      "doc": "Invalid or unknown CFI Code"
+    },
+    {
+      "value": "5",
+      "name": "InvalidOrUnknownSecurityType",
+      "doc": "Invalid or unknown security type"
+    },
+    {
+      "value": "6",
+      "name": "InvalidOrUnknownTradingSession",
+      "doc": "Invalid or unknown trading session"
+    },
+    {
+      "value": "7",
+      "name": "InvalidOrUnknownMarket",
+      "doc": "Invalid or unknown market"
+    },
+    {
+      "value": "8",
+      "name": "InvalidOrUnknownMarketSegment",
+      "doc": "Invalid or unknown market segment"
+    },
+    {
+      "value": "9",
+      "name": "InvalidOrUnknownSecurityGroup",
+      "doc": "Invalid or unknown security group"
+    },
+    {
+      "value": "10",
+      "name": "InvalidOrUnknownSecurityIssuer",
+      "doc": "Invalid or unknown issuer"
+    },
+    {
+      "value": "11",
+      "name": "InvalidOrUnknownIssuerOfUnderlyingSecurity",
+      "doc": "Invalid or unknown issuer of underlying security"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

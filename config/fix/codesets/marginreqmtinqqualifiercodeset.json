@@ -1,0 +1,25 @@
+{
+  "name": "marginreqmtinqqualifiercodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Summary",
+      "doc": "Summary"
+    },
+    {
+      "value": "1",
+      "name": "Detail",
+      "doc": "Detail"
+    },
+    {
+      "value": "2",
+      "name": "ExcessDeficit",
+      "doc": "Excess/Deficit"
+    },
+    {
+      "value": "3",
+      "name": "NetPosition",
+      "doc": "Net Position"
+    }
+  ]
+}

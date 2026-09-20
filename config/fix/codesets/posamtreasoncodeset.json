@@ -1,0 +1,40 @@
+{
+  "name": "posamtreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "OptionsSettlement",
+      "doc": "Options settlement"
+    },
+    {
+      "value": "1",
+      "name": "PendingErosionAdjustment",
+      "doc": "Pending erosion adjustment"
+    },
+    {
+      "value": "2",
+      "name": "FinalErosionAdjustment",
+      "doc": "Final erosion adjustment"
+    },
+    {
+      "value": "3",
+      "name": "TearUpCouponAmount",
+      "doc": "Tear-up coupon amount"
+    },
+    {
+      "value": "4",
+      "name": "PriceAlignmentInterest",
+      "doc": "Price alignment interest"
+    },
+    {
+      "value": "5",
+      "name": "DeliveryInvoiceCharges",
+      "doc": "Delivery invoice charges"
+    },
+    {
+      "value": "6",
+      "name": "DeliveryStorageCharges",
+      "doc": "Delivery storage charges"
+    }
+  ]
+}

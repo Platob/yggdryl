@@ -1298,15 +1298,26 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     // bare code, whichever name sorts first and whichever arrived first, and
     // the code set arriving after both re-decides it.
     let mut msgtype = tagged("MsgType", 35, DataType::utf8());
-    msgtype
-        .as_fix_mut()
-        .set_codes(&[yggdryl::FixCode::new("NewOrderSingle", "D")])
+    msgtype.as_fix_mut().set_codeset("msgtypecodeset").unwrap();
+    // The field names the set and the dictionary holds its members, so the
+    // set is stated before the field that reads by it arrives.
+    registry
+        .set_codeset(
+            "msgtypecodeset",
+            &[yggdryl::FixCode::new("NewOrderSingle", "D")],
+        )
         .unwrap();
     assert!(registry.add_field(msgtype.clone()).unwrap());
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(registry.msgtype("AlgoOrder").unwrap().as_str(), "D");
 
     let mut target = catalog();
+    target
+        .set_codeset(
+            "msgtypecodeset",
+            &[yggdryl::FixCode::new("NewOrderSingle", "D")],
+        )
+        .unwrap();
     assert!(target.add_field(msgtype).unwrap());
     let mut source = FixRegistry::new();
     source.insert(algo).unwrap();

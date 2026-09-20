@@ -1,0 +1,130 @@
+{
+  "name": "trdregpublicationreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoBookOrderDueToAverageSpreadPrice",
+      "doc": "No preceding order in book as transaction price set within average spread of a liquid instrument"
+    },
+    {
+      "value": "1",
+      "name": "NoBookOrderDueToRefPrice",
+      "doc": "No preceding order in book as transaction price depends on system-set reference price for an illiquid instrument"
+    },
+    {
+      "value": "2",
+      "name": "NoBookOrderDueToOtherConditions",
+      "doc": "No preceding order in book as transaction price is for transaction subject to conditions other than current market price"
+    },
+    {
+      "value": "3",
+      "name": "NoPublicPriceDueToRefPrice",
+      "doc": "No public price for preceding order as public reference price was used for matching orders"
+    },
+    {
+      "value": "4",
+      "name": "NoPublicPriceDueToIlliquid",
+      "doc": "No public price quoted as instrument is illiquid"
+    },
+    {
+      "value": "5",
+      "name": "NoPublicPriceDueToOrderSize",
+      "doc": "No public price quoted due to \"Size\""
+    },
+    {
+      "value": "6",
+      "name": "DeferralDueToLargeInScale",
+      "doc": "Deferral due to \"Large in Scale\""
+    },
+    {
+      "value": "7",
+      "name": "DeferralDueToIlliquid",
+      "doc": "Deferral due to \"Illiquid Instrument\""
+    },
+    {
+      "value": "8",
+      "name": "DeferralDueToSizeSpecific",
+      "doc": "Deferral due to \"Size Specific\""
+    },
+    {
+      "value": "9",
+      "name": "NoPublicPriceDueToLargeInScale",
+      "doc": "No public price and/or size quoted as transaction is \"large in scale\""
+    },
+    {
+      "value": "10",
+      "name": "NoPublicPriceSizeDueToOrderHidden",
+      "doc": "No public price and/or size quoted due to order being hidden"
+    },
+    {
+      "value": "11",
+      "name": "ExemptedDueToSecuritiesFinancingTransaction",
+      "doc": "Exempted due to securities financing transaction"
+    },
+    {
+      "value": "12",
+      "name": "ExemptedDueToESCBPolicyTransaction",
+      "doc": "Exempted due to European System of Central Banks (ESCB) policy transaction"
+    },
+    {
+      "value": "13",
+      "name": "ExceptionDueToReportByPaper",
+      "doc": "Exception due to report by paper"
+    },
+    {
+      "value": "14",
+      "name": "ExceptionDueToTradeExecutedWithNonReportingParty",
+      "doc": "Exception due to trade with non-reporting party"
+    },
+    {
+      "value": "15",
+      "name": "ExceptionDueToIntraFirmOrder",
+      "doc": "Exception due to intra-firm order"
+    },
+    {
+      "value": "16",
+      "name": "ReportedOutsideReportingHours",
+      "doc": "Reported outside of reporting hours"
+    },
+    {
+      "value": "17",
+      "name": "NoPublicPxDueToPreTradeWaiver",
+      "doc": "No public price quoted due to usage of a pre-trade transparency waiver"
+    },
+    {
+      "value": "18",
+      "name": "DeferralDueToMediumLiquidInstrument",
+      "doc": "Deferral due to medium liquid instrument"
+    },
+    {
+      "value": "19",
+      "name": "DeferralDueToMediumIlliquidInstrument",
+      "doc": "Deferral due to medium illiquid instrument"
+    },
+    {
+      "value": "20",
+      "name": "DeferralDueToLargeLiquidInstrument",
+      "doc": "Deferral due to large liquid instrument"
+    },
+    {
+      "value": "21",
+      "name": "DeferralDueToLargeIlliquidInstrument",
+      "doc": "Deferral due to large illiquid instrument"
+    },
+    {
+      "value": "22",
+      "name": "DeferralDueToVeryLargeLiquidInstrument",
+      "doc": "Deferral due to very large liquid instrument"
+    },
+    {
+      "value": "23",
+      "name": "DeferralDueToVeryLargeIlliquidInstrument",
+      "doc": "Deferral due to very large illiquid instrument"
+    },
+    {
+      "value": "24",
+      "name": "DeferralDueToAssetClass",
+      "doc": "Deferral due to asset class"
+    }
+  ]
+}

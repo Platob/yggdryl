@@ -1,0 +1,130 @@
+{
+  "name": "paymentpricetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Percentage",
+      "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
+    },
+    {
+      "value": "2",
+      "name": "PerUnit",
+      "doc": "Per unit (i.e. per share or contract)"
+    },
+    {
+      "value": "3",
+      "name": "FixedAmount",
+      "doc": "Fixed amount (absolute value)"
+    },
+    {
+      "value": "4",
+      "name": "Discount",
+      "doc": "Discount - percentage points below par"
+    },
+    {
+      "value": "5",
+      "name": "Premium",
+      "doc": "Premium - percentage points over par"
+    },
+    {
+      "value": "6",
+      "name": "Spread",
+      "doc": "Spread (basis points spread)"
+    },
+    {
+      "value": "7",
+      "name": "TEDPrice",
+      "doc": "TED Price"
+    },
+    {
+      "value": "8",
+      "name": "TEDYield",
+      "doc": "TED Yield"
+    },
+    {
+      "value": "9",
+      "name": "Yield",
+      "doc": "Yield"
+    },
+    {
+      "value": "10",
+      "name": "FixedCabinetTradePrice",
+      "doc": "Fixed cabinet trade price (primarily for listed futures and options)"
+    },
+    {
+      "value": "11",
+      "name": "VariableCabinetTradePrice",
+      "doc": "Variable cabinet trade price (primarily for listed futures and options)"
+    },
+    {
+      "value": "12",
+      "name": "PriceSpread",
+      "doc": "Price spread"
+    },
+    {
+      "value": "13",
+      "name": "ProductTicksInHalves",
+      "doc": "Product ticks in halves"
+    },
+    {
+      "value": "14",
+      "name": "ProductTicksInFourths",
+      "doc": "Product ticks in fourths"
+    },
+    {
+      "value": "15",
+      "name": "ProductTicksInEighths",
+      "doc": "Product ticks in eighths"
+    },
+    {
+      "value": "16",
+      "name": "ProductTicksInSixteenths",
+      "doc": "Product ticks in sixteenths"
+    },
+    {
+      "value": "17",
+      "name": "ProductTicksInThirtySeconds",
+      "doc": "Product ticks in thirty-seconds"
+    },
+    {
+      "value": "18",
+      "name": "ProductTicksInSixtyFourths",
+      "doc": "Product ticks in sixty-fourths"
+    },
+    {
+      "value": "19",
+      "name": "ProductTicksInOneTwentyEighths",
+      "doc": "Product ticks in one-twenty-eighths"
+    },
+    {
+      "value": "20",
+      "name": "NormalRateRepresentation",
+      "doc": "Normal rate representation (e.g. FX rate)"
+    },
+    {
+      "value": "21",
+      "name": "InverseRateRepresentation",
+      "doc": "Inverse rate representation (e.g. FX rate)"
+    },
+    {
+      "value": "22",
+      "name": "BasisPoints",
+      "doc": "Basis points"
+    },
+    {
+      "value": "23",
+      "name": "UpfrontPoints",
+      "doc": "Up front points"
+    },
+    {
+      "value": "24",
+      "name": "InterestRate",
+      "doc": "Interest rate"
+    },
+    {
+      "value": "25",
+      "name": "PercentageNotional",
+      "doc": "Percentage of notional"
+    }
+  ]
+}

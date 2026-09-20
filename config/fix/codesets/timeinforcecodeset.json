@@ -1,0 +1,70 @@
+{
+  "name": "timeinforcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Day",
+      "doc": "Day (or session)"
+    },
+    {
+      "value": "1",
+      "name": "GoodTillCancel",
+      "doc": "Good Till Cancel (GTC)"
+    },
+    {
+      "value": "2",
+      "name": "AtTheOpening",
+      "doc": "At the Opening (OPG)"
+    },
+    {
+      "value": "3",
+      "name": "ImmediateOrCancel",
+      "doc": "Immediate Or Cancel (IOC)"
+    },
+    {
+      "value": "4",
+      "name": "FillOrKill",
+      "doc": "Fill Or Kill (FOK)"
+    },
+    {
+      "value": "5",
+      "name": "GoodTillCrossing",
+      "doc": "Good Till Crossing (GTX)"
+    },
+    {
+      "value": "6",
+      "name": "GoodTillDate",
+      "doc": "Good Till Date (GTD)"
+    },
+    {
+      "value": "7",
+      "name": "AtTheClose",
+      "doc": "At the Close"
+    },
+    {
+      "value": "8",
+      "name": "GoodThroughCrossing",
+      "doc": "Good Through Crossing"
+    },
+    {
+      "value": "9",
+      "name": "AtCrossing",
+      "doc": "At Crossing"
+    },
+    {
+      "value": "A",
+      "name": "GoodForTime",
+      "doc": "Good for Time (GFT)"
+    },
+    {
+      "value": "B",
+      "name": "GoodForAuction",
+      "doc": "Good for Auction (GFA)"
+    },
+    {
+      "value": "C",
+      "name": "GoodForMonth",
+      "doc": "Good for this Month (GFM)"
+    }
+  ]
+}

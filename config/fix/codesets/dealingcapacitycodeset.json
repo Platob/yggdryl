@@ -1,0 +1,25 @@
+{
+  "name": "dealingcapacitycodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Agent",
+      "doc": "Agent"
+    },
+    {
+      "value": "P",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "R",
+      "name": "RisklessPrincipal",
+      "doc": "Riskless Principal"
+    },
+    {
+      "value": "X",
+      "name": "CrossAsPrincipal",
+      "doc": "Cross as principal"
+    }
+  ]
+}

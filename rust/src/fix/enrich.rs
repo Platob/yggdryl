@@ -531,26 +531,6 @@ impl Refused {
     }
 }
 
-/// The fields the arrival record names that the message no longer holds.
-///
-/// A row is a projection. [`fix_schema`](super::fix_schema) names a column
-/// for the tags a book, a blotter, a quote feed and a monitor read, and a
-/// field outside that list reaches a message rebuilt from a row only through
-/// the arrival record - which the row carries whole, under
-/// [`FIXENTRIES_COLUMN`](super::schema::FIXENTRIES_COLUMN), whatever the columns
-/// made of it. `ExecBroker(76)` and `ClientID(109)` are two such fields, and
-/// the replacements that restate them write the `parties` group and its
-/// `NoPartyIDs(453)` counter, which do have columns. A pass reading only the
-/// columns would therefore answer two parties on the line door and none on
-/// the batch door for one message, which is the one thing the two doors may
-/// never do.
-///
-/// So the pass opens on the record rather than on the columns, and it costs
-/// nothing where nothing was dropped: a message parsed from a line already
-/// holds a child for every tag its record names, so the walk writes nothing
-/// and allocates nothing. Only a tag the message holds no child for at all is
-/// taken - a stated null is a child, and a message that said "nothing sent"
-/// said it.
 /// Fills what `msg` implies, leaving what it stated alone.
 ///
 /// Four steps in order, and the last step of every parse. The message is

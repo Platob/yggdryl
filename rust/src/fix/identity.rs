@@ -6,8 +6,8 @@ use smol_str::SmolStr;
 use crate::Decimal18;
 use crate::graph::{MarketElement, MarketEventData};
 use crate::{
-    BloombergCode, CusipCode, DataType, Error, Field, IsinCode, MicCode, Result, Scalar, SedolCode,
-    TimeUnit, Timezone, Value,
+    BloombergCode, CusipCode, DataType, Error, FIGICode, Field, IsinCode, MicCode, Result, Scalar,
+    SedolCode, TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -214,10 +214,10 @@ impl FixHeader {
 /// line's own bytes like every other fact a message holds. None of it is
 /// FIX and none of it is content, so none of it is an entry or a byte on
 /// the wire, and none of it reaches the code the message's content digests
-/// to; where the row header brackets both a session instance and a message
-/// context, the two name the chain through
-/// the cross code the [message](super::FixMsg) settles, which is the chain's identity
-/// and not the message's.
+/// to. Where the row header brackets both a session instance and a message
+/// context, the two are retained together under the message identifier
+/// `msgsectxid`; they remain capture provenance and do not become the
+/// message's content identity or its chain code.
 ///
 /// What the *reader* says about the line is not here: the object the line
 /// was read from, the body it was cut from, its place in that object are
@@ -724,6 +724,11 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
                     .and_then(|value| BloombergCode::new(value).ok())
             }))
         }
+        tag if tag == super::FIGICODE_TAG_NAME.0 => event.set_figicode(
+            FIGICode::from_scalar(value)
+                .cloned()
+                .or_else(|| value.as_str().and_then(|value| FIGICode::new(value).ok())),
+        ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             MicCode::from_scalar(value)
                 .cloned()
@@ -760,6 +765,9 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
                 .get_bloombergcode()
                 .cloned()
                 .map(Scalar::BloombergCode),
+            tag if tag == super::FIGICODE_TAG_NAME.0 => {
+                event.get_figicode().cloned().map(Scalar::FIGICode)
+            }
             tag if tag == super::MICCODE_TAG_NAME.0 => {
                 event.get_miccode().cloned().map(Scalar::MicCode)
             }

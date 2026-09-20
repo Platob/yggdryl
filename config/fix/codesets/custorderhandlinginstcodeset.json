@@ -1,0 +1,473 @@
+{
+  "name": "custorderhandlinginstcodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "PhoneSimple",
+      "group": "FIA Execution Source Code",
+      "doc": "Phone simple"
+    },
+    {
+      "value": "G",
+      "name": "GOrderAndFCMAPIorFIX",
+      "group": "SHARED",
+      "doc": "G Order(FINRA OATS), FCM API or FIX(FIA Execution Source)"
+    },
+    {
+      "value": "ADD",
+      "name": "AddOnOrder",
+      "group": "FINRA OATS",
+      "doc": "Add-on order"
+    },
+    {
+      "value": "B",
+      "name": "PhoneComplex",
+      "group": "FIA Execution Source Code",
+      "doc": "Phone complex"
+    },
+    {
+      "value": "AON",
+      "name": "AllOrNone",
+      "group": "FINRA OATS",
+      "doc": "All or none"
+    },
+    {
+      "value": "C",
+      "name": "FCMProvidedScreen",
+      "group": "FIA Execution Source Code",
+      "doc": "FCM provided screen"
+    },
+    {
+      "value": "CND",
+      "name": "ConditionalOrder",
+      "group": "FINRA OATS",
+      "doc": "Conditional order"
+    },
+    {
+      "value": "D",
+      "name": "OtherProvidedScreen",
+      "group": "FIA Execution Source Code",
+      "doc": "Other provided screen"
+    },
+    {
+      "value": "CNH",
+      "name": "CashNotHeld",
+      "group": "FINRA OATS",
+      "doc": "Cash not held"
+    },
+    {
+      "value": "E",
+      "name": "ClientProvidedPlatformControlledByFCM",
+      "group": "FIA Execution Source Code",
+      "doc": "Client provided platform controlled by FCM"
+    },
+    {
+      "value": "CSH",
+      "name": "DeliveryInstructionsCash",
+      "group": "FINRA OATS",
+      "doc": "Delivery instructions - cash"
+    },
+    {
+      "value": "F",
+      "name": "ClientProvidedPlatformDirectToExchange",
+      "group": "FIA Execution Source Code",
+      "doc": "Client provided platform direct to exchange"
+    },
+    {
+      "value": "DIR",
+      "name": "DirectedOrder",
+      "group": "FINRA OATS",
+      "doc": "Directed order"
+    },
+    {
+      "value": "DLO",
+      "name": "DiscretionaryLimitOrder",
+      "group": "FINRA OATS",
+      "doc": "Discretionary limit order"
+    },
+    {
+      "value": "H",
+      "name": "AlgoEngine",
+      "group": "FIA Execution Source Code",
+      "doc": "Algo engine"
+    },
+    {
+      "value": "E.W",
+      "name": "ExchangeForPhysicalTransaction",
+      "group": "FINRA OATS",
+      "doc": "Exchange for physical transaction"
+    },
+    {
+      "value": "J",
+      "name": "PriceAtExecution",
+      "group": "FIA Execution Source Code",
+      "doc": "Price at execution (price added at initial order entry, trading, middle office or time of give-up)"
+    },
+    {
+      "value": "FOK",
+      "name": "FillOrKill",
+      "group": "FINRA OATS",
+      "doc": "Fill or kill"
+    },
+    {
+      "value": "W",
+      "name": "DeskElectronic",
+      "group": "FIA Execution Source Code",
+      "doc": "Desk - electronic"
+    },
+    {
+      "value": "X",
+      "name": "DeskPit",
+      "group": "FIA Execution Source Code",
+      "doc": "Desk - pit"
+    },
+    {
+      "value": "IDX",
+      "name": "IntraDayCross",
+      "group": "FINRA OATS",
+      "doc": "Intraday cross"
+    },
+    {
+      "value": "Y",
+      "name": "ClientElectronic",
+      "group": "FIA Execution Source Code",
+      "doc": "Client - electronic"
+    },
+    {
+      "value": "IO",
+      "name": "ImbalanceOnly",
+      "group": "FINRA OATS",
+      "doc": "Imbalance only"
+    },
+    {
+      "value": "Z",
+      "name": "ClientPit",
+      "group": "FIA Execution Source Code",
+      "doc": "Client - pit"
+    },
+    {
+      "value": "IOC",
+      "name": "ImmediateOrCancel",
+      "group": "FINRA OATS",
+      "doc": "Immediate or cancel"
+    },
+    {
+      "value": "ISO",
+      "name": "IntermarketSweepOrder",
+      "group": "FINRA OATS",
+      "doc": "Intermarket sweep order"
+    },
+    {
+      "value": "LOO",
+      "name": "LimitOnOpen",
+      "group": "FINRA OATS",
+      "doc": "Limit on open"
+    },
+    {
+      "value": "LOC",
+      "name": "LimitOnClose",
+      "group": "FINRA OATS",
+      "doc": "Limit on Close"
+    },
+    {
+      "value": "MAO",
+      "name": "MarketAtOpen",
+      "group": "FINRA OATS",
+      "doc": "Market at Open"
+    },
+    {
+      "value": "MAC",
+      "name": "MarketAtClose",
+      "group": "FINRA OATS",
+      "doc": "Market at close"
+    },
+    {
+      "value": "MOO",
+      "name": "MarketOnOpen",
+      "group": "FINRA OATS",
+      "doc": "Market on open"
+    },
+    {
+      "value": "MOC",
+      "name": "MarketOnClose",
+      "group": "FINRA OATS",
+      "doc": "Market on close"
+    },
+    {
+      "value": "MPT",
+      "name": "MergerRelatedTransferPosition",
+      "group": "FINRA OATS",
+      "doc": "Merger related transfer position"
+    },
+    {
+      "value": "MQT",
+      "name": "MinimumQuantity",
+      "group": "FINRA OATS",
+      "doc": "Minimum quantity"
+    },
+    {
+      "value": "MTL",
+      "name": "MarketToLimit",
+      "group": "FINRA OATS",
+      "doc": "Market to limit"
+    },
+    {
+      "value": "ND",
+      "name": "DeliveryInstructionsNextDay",
+      "group": "FINRA OATS",
+      "doc": "Delivery instructions - next day"
+    },
+    {
+      "value": "NH",
+      "name": "NotHeld",
+      "group": "FINRA OATS",
+      "doc": "Not held"
+    },
+    {
+      "value": "OPT",
+      "name": "OptionsRelatedTransaction",
+      "group": "FINRA OATS",
+      "doc": "Options related transaction"
+    },
+    {
+      "value": "OVD",
+      "name": "OverTheDay",
+      "group": "FINRA OATS",
+      "doc": "Over the day"
+    },
+    {
+      "value": "PEG",
+      "name": "Pegged",
+      "group": "FINRA OATS",
+      "doc": "Pegged"
+    },
+    {
+      "value": "RSV",
+      "name": "ReserveSizeOrder",
+      "group": "FINRA OATS",
+      "doc": "Reserve size order"
+    },
+    {
+      "value": "S.W",
+      "name": "StopStockTransaction",
+      "group": "FINRA OATS",
+      "doc": "Stop stock transaction"
+    },
+    {
+      "value": "SCL",
+      "name": "Scale",
+      "group": "FINRA OATS",
+      "doc": "Scale"
+    },
+    {
+      "value": "SLR",
+      "name": "DeliveryInstructionsSellersOption",
+      "group": "FINRA OATS",
+      "doc": "Delivery instructions - sellers option"
+    },
+    {
+      "value": "TMO",
+      "name": "TimeOrder",
+      "group": "FINRA OATS",
+      "doc": "Time order"
+    },
+    {
+      "value": "TS",
+      "name": "TrailingStop",
+      "group": "FINRA OATS",
+      "doc": "Trailing stop"
+    },
+    {
+      "value": "WRK",
+      "name": "Work",
+      "group": "FINRA OATS",
+      "doc": "Work"
+    },
+    {
+      "value": "F0",
+      "name": "StayOnOfferside",
+      "group": "FINRA OATS",
+      "doc": "Stay on offerside"
+    },
+    {
+      "value": "F3",
+      "name": "GoAlong",
+      "group": "FINRA OATS",
+      "doc": "Go along"
+    },
+    {
+      "value": "F6",
+      "name": "ParticipateDoNotInitiate",
+      "group": "FINRA OATS",
+      "doc": "Participate do not initiate"
+    },
+    {
+      "value": "F7",
+      "name": "StrictScale",
+      "group": "FINRA OATS",
+      "doc": "Strict scale"
+    },
+    {
+      "value": "F8",
+      "name": "TryToScale",
+      "group": "FINRA OATS",
+      "doc": "Try to scale"
+    },
+    {
+      "value": "F9",
+      "name": "StayOnBidside",
+      "group": "FINRA OATS",
+      "doc": "Stay on bidside"
+    },
+    {
+      "value": "FA",
+      "name": "NoCross",
+      "group": "FINRA OATS",
+      "doc": "No cross"
+    },
+    {
+      "value": "FB",
+      "name": "OKToCross",
+      "group": "FINRA OATS",
+      "doc": "OK to cross"
+    },
+    {
+      "value": "FC",
+      "name": "CallFirst",
+      "group": "FINRA OATS",
+      "doc": "Call first"
+    },
+    {
+      "value": "FD",
+      "name": "PercentOfVolume",
+      "group": "FINRA OATS",
+      "doc": "Percent of volume"
+    },
+    {
+      "value": "FH",
+      "name": "ReinstateOnSystemFailure",
+      "group": "FINRA OATS",
+      "doc": "Reinstate on system failure"
+    },
+    {
+      "value": "FI",
+      "name": "InstitutionOnly",
+      "group": "FINRA OATS",
+      "doc": "Institution only"
+    },
+    {
+      "value": "FJ",
+      "name": "ReinstateOnTradingHalt",
+      "group": "FINRA OATS",
+      "doc": "Reinstate on trading halt"
+    },
+    {
+      "value": "FK",
+      "name": "CancelOnTradingHalf",
+      "group": "FINRA OATS",
+      "doc": "Cancel on trading half"
+    },
+    {
+      "value": "FL",
+      "name": "LastPeg",
+      "group": "FINRA OATS",
+      "doc": "Last peg"
+    },
+    {
+      "value": "FM",
+      "name": "MidPricePeg",
+      "group": "FINRA OATS",
+      "doc": "Mid-price peg"
+    },
+    {
+      "value": "FN",
+      "name": "NonNegotiable",
+      "group": "FINRA OATS",
+      "doc": "Non-negotiable"
+    },
+    {
+      "value": "FO",
+      "name": "OpeningPeg",
+      "group": "FINRA OATS",
+      "doc": "Opening peg"
+    },
+    {
+      "value": "FP",
+      "name": "MarketPeg",
+      "group": "FINRA OATS",
+      "doc": "Market peg"
+    },
+    {
+      "value": "FQ",
+      "name": "CancelOnSystemFailure",
+      "group": "FINRA OATS",
+      "doc": "Cancel on system failure"
+    },
+    {
+      "value": "FR",
+      "name": "PrimaryPeg",
+      "group": "FINRA OATS",
+      "doc": "Primary peg"
+    },
+    {
+      "value": "FS",
+      "name": "Suspend",
+      "group": "FINRA OATS",
+      "doc": "Suspend"
+    },
+    {
+      "value": "FT",
+      "name": "FixedPegToLocalBBO",
+      "group": "FINRA OATS",
+      "doc": "Fixed peg to local best bid or offer at time of order"
+    },
+    {
+      "value": "FW",
+      "name": "PegToVWAP",
+      "group": "FINRA OATS",
+      "doc": "Peg to VWAP"
+    },
+    {
+      "value": "FX",
+      "name": "TradeAlong",
+      "group": "FINRA OATS",
+      "doc": "Trade along"
+    },
+    {
+      "value": "FY",
+      "name": "TryToStop",
+      "group": "FINRA OATS",
+      "doc": "Try to stop"
+    },
+    {
+      "value": "FZ",
+      "name": "CancelIfNotBest",
+      "group": "FINRA OATS",
+      "doc": "Cancel if not best"
+    },
+    {
+      "value": "Fb",
+      "name": "StrictLimit",
+      "group": "FINRA OATS",
+      "doc": "Strict limit"
+    },
+    {
+      "value": "Fc",
+      "name": "IgnorePriceValidityChecks",
+      "group": "FINRA OATS",
+      "doc": "Ignore price validity checks"
+    },
+    {
+      "value": "Fd",
+      "name": "PegToLimitPrice",
+      "group": "FINRA OATS",
+      "doc": "Peg to Limit Price"
+    },
+    {
+      "value": "Fe",
+      "name": "WorkToTargetStrategy",
+      "group": "FINRA OATS",
+      "doc": "Work to target strategy"
+    }
+  ]
+}

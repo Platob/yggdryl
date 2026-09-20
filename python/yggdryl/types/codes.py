@@ -1,7 +1,7 @@
-"""The registered code field factories: eleven identities, one width each.
+"""The registered code field factories: twelve identities, one width each.
 
-The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the four
-securities identifiers ``isin``, ``cusip``, ``sedol`` and ``bloomberg``, and
+The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the five
+securities identifiers ``isin``, ``cusip``, ``sedol``, ``bloomberg`` and ``figi``, and
 FIX's own ``side``, ``state`` and ``timeinforce`` - are datatypes of their own, each
 storing as the ASCII text it is and held to the width its standard fixes, so
 a code factory is not a bounded string wearing a name: the field it builds
@@ -31,13 +31,14 @@ if TYPE_CHECKING:
     CusipCodeField: TypeAlias = TypedField[Literal["cusip"], str]
     SedolCodeField: TypeAlias = TypedField[Literal["sedol"], str]
     BloombergCodeField: TypeAlias = TypedField[Literal["bloomberg"], str]
+    FIGICodeField: TypeAlias = TypedField[Literal["figi"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
     CountryField = CurrencyField = MicCodeField = CfiCodeField = IsinCodeField = CusipCodeField = (
         SedolCodeField
-    ) = BloombergCodeField = SideField = StateField = TimeInForceField = Field
+    ) = BloombergCodeField = FIGICodeField = SideField = StateField = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
@@ -47,6 +48,7 @@ _ISIN = simple_dtype("isin")
 _CUSIP = simple_dtype("cusip")
 _SEDOL = simple_dtype("sedol")
 _BLOOMBERG = simple_dtype("bloomberg")
+_FIGI = simple_dtype("figi")
 _SIDE = simple_dtype("side")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
@@ -100,13 +102,19 @@ def bloomberg(
     nullable: bool = True,
     metadata: MetadataInput = None,
 ) -> BloombergCodeField:
-    """A Bloomberg identifier: a ticker, a market and a yellow key, or a FIGI.
+    """A Bloomberg identifier: a ticker, a market and a yellow key.
 
     The one code here whose width is only a bound - thirty-two bytes - because
     no standard fixes a length between those parts.
     """
 
     return new_field(BloombergCodeField, name, _BLOOMBERG, nullable, metadata)
+
+
+def figi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> FIGICodeField:
+    """ANSI X9.145's twelve-character Financial Instrument Global Identifier."""
+
+    return new_field(FIGICodeField, name, _FIGI, nullable, metadata)
 
 
 def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
@@ -135,6 +143,7 @@ def timeinforce(
 __all__ = [
     "BloombergCodeField",
     "CfiCodeField",
+    "FIGICodeField",
     "CountryField",
     "CurrencyField",
     "CusipCodeField",
@@ -148,6 +157,7 @@ __all__ = [
     "cfi",
     "country",
     "currency",
+    "figi",
     "cusip",
     "isin",
     "mic",

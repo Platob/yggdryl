@@ -1,0 +1,21 @@
+{
+  "name": "possresendcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "OriginalTransmission",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Original Transmission"
+    },
+    {
+      "value": "Y",
+      "name": "PossibleResend",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Possible Resend"
+    }
+  ]
+}

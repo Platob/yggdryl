@@ -1,0 +1,40 @@
+{
+  "name": "paymentstreamresetweeklyrollconventioncodeset",
+  "codes": [
+    {
+      "value": "MON",
+      "name": "Monday",
+      "doc": "Monday"
+    },
+    {
+      "value": "TUE",
+      "name": "Tuesday",
+      "doc": "Tuesday"
+    },
+    {
+      "value": "WED",
+      "name": "Wednesday",
+      "doc": "Wednesday"
+    },
+    {
+      "value": "THU",
+      "name": "Thursday",
+      "doc": "Thursday"
+    },
+    {
+      "value": "FRI",
+      "name": "Friday",
+      "doc": "Friday"
+    },
+    {
+      "value": "SAT",
+      "name": "Saturday",
+      "doc": "Saturday"
+    },
+    {
+      "value": "SUN",
+      "name": "Sunday",
+      "doc": "Sunday"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "trdregpublicationtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PreTradeTransparencyWaiver",
+      "doc": "Pre-trade transparency waiver"
+    },
+    {
+      "value": "1",
+      "name": "PostTradeDeferral",
+      "doc": "Post-trade deferral"
+    },
+    {
+      "value": "2",
+      "name": "ExemptFromPublication",
+      "doc": "Exempt from publication"
+    },
+    {
+      "value": "3",
+      "name": "OrderLevelPublicationToSubscribers",
+      "doc": "Order level publication to subscribers"
+    },
+    {
+      "value": "4",
+      "name": "PriceLevelPublicationToSubscribers",
+      "doc": "Price level publication to subscribers"
+    },
+    {
+      "value": "5",
+      "name": "OrderLevelPublicationToThePublic",
+      "doc": "Order level publication to the public"
+    },
+    {
+      "value": "6",
+      "name": "PublicationInternalToExecutionVenue",
+      "doc": "Publication internal to execution venue"
+    }
+  ]
+}

@@ -34,7 +34,6 @@ from yggdryl.fix import (
     FixRegistry,
     MarketEventData,
     MsgType,
-    fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
@@ -46,16 +45,16 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 28 definitions in tag
-# order from 65003, 26 scalar graph/category/identifier facts and two Map
-# groups. The five normalized identifiers are crate columns; CFI remains FIX's
+# What the crate itself adds beside the specification: 29 definitions in tag
+# order from 65003, 27 scalar graph/category/identifier facts and two Map
+# groups. The six normalized identifiers are crate columns; CFI remains FIX's
 # standard tag 461, as do prices, quantities and lanes.
-CRATED = 28
-# What ``FixRegistry()`` holds: those 26 scalar crate fields, SendingTime (52)
+CRATED = 29
+# What ``FixRegistry()`` holds: those 27 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the two Map groups. ``len`` counts groups;
-# iteration walks the 28 scalars alone.
-SEEDED = 30
-SEEDED_SCALARS = 28
+# iteration walks the 29 scalars alone.
+SEEDED = 31
+SEEDED_SCALARS = 29
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -130,6 +129,18 @@ def _field(
     if description is not None:
         field.fix.description = description
     return field
+
+
+def _declared(registry: FixRegistry) -> list[str]:
+    """The scalar names one source added, past what every dictionary holds.
+
+    A `CBlock` reads in as a whole dictionary now, so what the file declared
+    is what the crate's own definitions and the two seeded clocks are not.
+    Sorted, because a registry answers in identity order and a file declares
+    in its own.
+    """
+    seeded = {field.name for field in FixRegistry()}
+    return sorted(field.name for field in registry if field.name not in seeded)
 
 
 @pytest.fixture(scope="module")
@@ -431,9 +442,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 26 scalar event, category and
+    # In tag order, one block from 65003: 27 scalar event, category and
     # normalized-identifier facts plus the two Maps. ISIN, CUSIP, SEDOL,
-    # Bloomberg and MIC are crate columns; CFI keeps FIX's standard tag 461.
+    # Bloomberg, FIGI and MIC are crate columns; CFI keeps FIX's standard tag 461.
     # Price, quantity and lanes remain their standard FIX fields.
     assert list(fields) == [
         "currunix",
@@ -464,10 +475,11 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "sedolcode",
         "bloombergcode",
         "miccode",
+        "figicode",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65060
+    assert tags[0] == UNIX_TAG and tags[-1] == 65061
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -641,21 +653,15 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     path = tmp_path / "bloomberg.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
 
-    fields = fix_cfb_fields(path, "bloomberg")
-    assert [field.name for field in fields] == ["symbol", "excludeddealers"]
-    assert fields[0].description == "Ticker symbol."
-    assert fields[0].fix.branches == ["bloomberg"]
-
-    # Every location the registry takes, the vocabulary takes.
-    for location in (path, str(path), path.as_uri(), Url(path), IOBase(path)):
-        assert [field.name for field in fix_cfb_fields(location, "bloomberg")] == [
-            "symbol",
-            "excludeddealers",
-        ]
-
-    # The registry form is the same file read whole: the same vocabulary,
-    # plus the message roots its grammar bindings describe.
+    # One door: the file read whole is the dictionary its vocabulary states -
+    # code sets and all - and the message roots its grammar bindings describe.
     registry, roots = FixRegistry.from_cfb_file(path, dialect="Bloomberg")
+    assert _declared(registry) == ["excludeddealers", "symbol"]
+    symbol = registry.field_by_tag(55)
+    assert symbol.name == "symbol"
+    assert symbol.description == "Ticker symbol."
+    assert symbol.fix.branches == ["bloomberg"]
+
     assert [root.name for root in roots] == ["7"]
     message = registry.get_msgtype("7")
     assert message is not None and message.value == "7"
@@ -669,18 +675,25 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     excluded = next(codec.parse_line(b"8=FIX.4.4|35=D|10001=NONE|10=0|"))
     assert excluded.get_by_name("ExcludedDealers") is None
     assert excluded.get_by_tag(10001) is None
+    # Every location the registry takes reads the same file.
+    for location in (path, str(path), path.as_uri(), Url(path), IOBase(path)):
+        read, _ = FixRegistry.from_cfb_file(location, "bloomberg")
+        assert _declared(read) == ["excludeddealers", "symbol"], location
 
     unstamped, _ = FixRegistry.from_cfb_file(path)
     assert unstamped.dialects() == []
 
     # The vocabulary folds into a dictionary that already exists.
     dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
-    assert dictionary.add_fields(fix_cfb_fields(path, "bloomberg")) == (1, 1)
+    added, merged = dictionary.add_cfb_file(path, "bloomberg")
+    assert added == 1, "excludeddealers is the one definition nothing held"
+    assert merged >= 1, "symbol is the dictionary's own, stamped by the fold"
     assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]
+    assert dictionary.field_by_name("excludeddealers").fix.branches == ["bloomberg"]
 
     # A stem or a dialect that carries a comma is refused rather than stored.
     with pytest.raises(ValueError, match="FIX:branches"):
-        fix_cfb_fields(path, "b,loomberg")
+        FixRegistry.from_cfb_file(path, "b,loomberg")
 
 
 def test_a_cblock_warns_about_the_declaration_it_dropped(
@@ -703,17 +716,158 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
     assert "invalid cfb expression at byte" in warnings[0]
 
     # The tag went; every other declaration the file made stands.
-    assert [field.name for field in fix_cfb_fields(broken)] == ["excludeddealers"]
+    stripped, _ = FixRegistry.from_cfb_file(broken)
+    assert _declared(stripped) == ["excludeddealers"]
 
-    # A document that stops with an element open is refused through both
-    # doors, with one sentence.
+    # A document that stops with an element open is refused, in one sentence
+    # the dialect does not change: what the reader stopped on is the file's.
     truncated = tmp_path / "truncated.cfb"
     truncated.write_text(CBLOCK.replace("</vocabulary>", ""), encoding="utf-8")
     with pytest.raises(ValueError) as refused:
         FixRegistry.from_cfb_file(truncated, "bloomberg")
     with pytest.raises(ValueError) as also:
-        fix_cfb_fields(truncated)
+        FixRegistry.from_cfb_file(truncated)
     assert str(also.value) == str(refused.value)
+    assert "vocabulary" in str(refused.value)
+
+
+def test_a_code_set_is_named_once_and_every_field_reads_by_that_name() -> None:
+    """The dictionary owns the vocabulary; a field only states its name."""
+    registry = FixRegistry()
+    registry.set_codeset(
+        "sidecodeset",
+        [
+            {"value": "1", "name": "Buy", "aliases": ["Bought"]},
+            {"value": "2", "name": "Sell", "description": "the short side"},
+        ],
+    )
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
+    assert registry.codeset("sidecodeset") == [
+        {
+            "value": "1",
+            "name": "Buy",
+            "description": None,
+            "aliases": ["Bought"],
+            "group": None,
+        },
+        {
+            "value": "2",
+            "name": "Sell",
+            "description": "the short side",
+            "aliases": [],
+            "group": None,
+        },
+    ]
+    # The name folds the way every name folds, and absence is a `KeyError`.
+    assert registry.get_codeset("SideCodeSet") == registry.codeset("sidecodeset")
+    assert registry.get_codeset("nosuchcodeset") is None
+    with pytest.raises(KeyError, match="nosuchcodeset"):
+        registry.codeset("nosuchcodeset")
+
+    # A set is stated before a field points at it: a dictionary refuses a
+    # field naming a vocabulary nothing states.
+    side = _field("Side", "utf8", 54)
+    side.fix.codeset = "nosuchcodeset"
+    with pytest.raises(ValueError, match="nosuchcodeset"):
+        registry.insert(side)
+    assert registry.get_field_by_tag(54) is None
+
+    # The field carries the name and nothing else - `FIX:codeset` is one word.
+    side.fix.codeset = "sidecodeset"
+    assert side.metadata["FIX:codeset"] == "sidecodeset"
+    registry.insert(side)
+
+    # A second field reading by the same set reads the one set: resolution
+    # runs through the dictionary, never through a copy on the field.
+    other = _field("SideOfMarket", "utf8", 9054)
+    other.fix.codeset = "sidecodeset"
+    registry.insert(other)
+    held = registry.field_by_tag(54)
+    assert held.fix.codeset == "sidecodeset"
+    assert registry.codeset_of(held) == registry.codeset("sidecodeset")
+    assert registry.codeset_of(registry.field_by_tag(9054)) == registry.codeset_of(held)
+    assert registry.codeset_of(_field("Symbol", "utf8", 55)) is None
+
+    # Restating the set restates what both fields read by, at once.
+    registry.set_codeset("sidecodeset", [{"value": "1", "name": "Bought"}])
+    assert [code["name"] for code in registry.codeset("sidecodeset")] == ["Bought"]
+    assert registry.codeset_of(registry.field_by_tag(9054)) == registry.codeset(
+        "sidecodeset"
+    )
+
+    # A set a held field still reads by is not taken away, by either door.
+    for taking in (
+        lambda: registry.remove_codeset("sidecodeset"),
+        lambda: registry.set_codeset("sidecodeset", []),
+    ):
+        with pytest.raises(ValueError, match="sidecodeset"):
+            taking()
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
+
+    # Removed once nothing reads by it, answering the members it held. The
+    # reference is dropped by `insert`, which replaces: a merge keeps the
+    # vocabulary the stored field already read by.
+    for tag in (54, 9054):
+        moved = registry.field_by_tag(tag)
+        moved.fix.codeset = None
+        assert moved.fix.codeset is None
+        assert "FIX:codeset" not in moved.metadata
+        registry.insert(moved)
+    taken = registry.remove_codeset("sidecodeset")
+    assert taken is not None and [code["value"] for code in taken] == ["1"]
+    assert registry.codeset_names() == ["msgcatcodeset"]
+    assert registry.remove_codeset("sidecodeset") is None
+
+
+def test_a_code_set_merge_keeps_what_the_dictionary_already_held() -> None:
+    """A fold widens a vocabulary; it never narrows one."""
+    registry = FixRegistry()
+    registry.set_codeset(
+        "lastqtycodeset",
+        [
+            {"value": "5", "name": "HeldOnly"},
+            {"value": "1", "name": "Shared", "description": "the held reading"},
+        ],
+    )
+    registry.merge_codeset(
+        "lastqtycodeset",
+        [
+            {"value": "9", "name": "FoldedOnly"},
+            {"value": "1", "name": "Folded", "description": "the folded reading"},
+        ],
+    )
+    folded = registry.codeset("lastqtycodeset")
+
+    # Keyed by wire value: a value only one side stated is kept, and the
+    # reading the dictionary already held wins the one they share.
+    assert [code["value"] for code in folded] == ["5", "1", "9"]
+    shared = folded[1]
+    assert shared["name"] == "Shared"
+    assert shared["description"] == "the held reading"
+    # What the fold would otherwise have dropped is kept as a spelling.
+    assert shared["aliases"] == ["Folded"]
+
+    # Two dictionaries fold the same way, and a field keeps the name it
+    # already reads by: the members are the dictionary's to widen.
+    source = FixRegistry()
+    source.set_codeset("lastqtycodeset", [{"value": "7", "name": "SourceOnly"}])
+    lastqty = _field("LastQty", "utf8", 32)
+    lastqty.fix.codeset = "lastqtycodeset"
+    source.insert(lastqty)
+    registry.insert(lastqty)
+    registry.merge_with(source)
+
+    assert registry.field_by_tag(32).fix.codeset == "lastqtycodeset"
+    assert [code["value"] for code in registry.codeset("lastqtycodeset")] == [
+        "5",
+        "1",
+        "9",
+        "7",
+    ]
+
+    # A set no dictionary held yet arrives whole.
+    registry.merge_codeset("newcodeset", [{"value": "A", "name": "Arrived"}])
+    assert registry.codeset_names() == ["lastqtycodeset", "msgcatcodeset", "newcodeset"]
 
 
 def test_registry_mutation_refuses_while_something_shares_it(seed: FixRegistry) -> None:
@@ -997,6 +1151,57 @@ def test_a_message_settles_its_identity_from_what_it_states(seed: FixRegistry) -
     written.set("crosscode", "X-1")
     assert written.crosscode == "X-1"
     assert written.crossuuid != order.crossuuid
+
+
+def test_bridge_capture_context_is_an_identifier_but_never_the_crosscode_or_content(
+    seed: FixRegistry,
+) -> None:
+    """FIX names the chain; a complete bridge bracket names its capture."""
+    codec = _fixed(seed)
+    message = codec.parse_ullink_line(
+        b"MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|"
+        b"#MSGCTXID=CONTEXT-1|#SYMBOL=n/A|#VENUEOWNTHING=n/A|"
+    )
+
+    assert message.crosscode == "ORDER-1"
+    assert message.identifiers == {
+        "clordid": "CLIENT-1",
+        "msgsectxid": "SESSION-1:CONTEXT-1",
+        "orderid": "ORDER-1",
+    }
+    assert message.get_by_tag(55) is None
+    assert message.get_by_name("venueownthing") is None
+    content_hash = message.currhashcode
+    content_uuid = message.curruuid
+
+    message.set("msgsessionid", "SESSION-2")
+    assert message.capture().msgsessionid == "SESSION-2"
+    assert message.identifiers == {
+        "clordid": "CLIENT-1",
+        "msgsectxid": "SESSION-2:CONTEXT-1",
+        "orderid": "ORDER-1",
+    }
+    assert message.currhashcode == content_hash
+    assert message.curruuid == content_uuid
+
+    message.set("msgctxid", None)
+    assert message.capture().msgctxid is None
+    assert message.identifiers == {
+        "clordid": "CLIENT-1",
+        "orderid": "ORDER-1",
+    }
+    assert message.currhashcode == content_hash
+
+    message.set("msgctxid", "CONTEXT-2")
+    assert message.identifiers["msgsectxid"] == "SESSION-2:CONTEXT-2"
+    assert message.currhashcode == content_hash
+
+    schema = fix_schema(seed)
+    row = message.into_row(schema)
+    rebuilt = FixMsg.from_row(schema, row, seed)
+    assert rebuilt.crosscode == message.crosscode
+    assert rebuilt.identifiers == message.identifiers
+    assert rebuilt.into_row(schema) == row
 
 
 def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixRegistry) -> None:
@@ -1478,6 +1683,33 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     assert next(mixed, None) is None
 
 
+def test_party_id_source_alias_redirects_to_its_standard_code(seed: FixRegistry) -> None:
+    message = _fixed(seed).parse_fix_line(
+        b"8=FIX.4.4|35=D|11=P|453=1|448=BRK|447=proprietary/customcode|452=1|10=0|"
+    )
+    assert b"447=D" in message.into_bytes(124)
+
+
+def test_figi_redirects_through_datatype_sources_and_the_fixed_row(seed: FixRegistry) -> None:
+    codec = _fixed(seed)
+    schema = fix_schema(seed)
+    for line in (
+        b"8=FIX.4.4|35=D|11=P|22=S|48=BBG000BLNQ16|10=0|",
+        b"8=FIX.4.4|35=D|11=A|454=1|455=BBG000BLNQ16|456=S|10=0|",
+    ):
+        message = codec.parse_fix_line(line)
+        assert message.figicode is not None and message.figicode.as_py() == "BBG000BLNQ16"
+        assert message.event().figicode == message.figicode
+        assert message.bloombergcode is None
+        assert FixMsg.from_row(schema, message.into_row(schema), seed).into_row(schema) == message.into_row(schema)
+    bloomberg = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|")
+    assert bloomberg.figicode is None
+    assert bloomberg.bloombergcode is not None
+    direct = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=X|10=0|")
+    direct.set(65061, "BBG000BLNQ16")
+    assert direct.figicode is not None and direct.figicode.as_py() == "BBG000BLNQ16"
+
+
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
     """Python forwards the settled lifecycle contract without changing sources."""
     assert FixCodec(seed).snapshot_ns is None
@@ -1616,7 +1848,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("ordstatus")] is None
     assert row[schema.index_of("prevunix")] is None
     assert row[schema.index_of("msgsessionid")] is None
-    assert row[schema.index_of("nofixentries")] == len(message.entries())
+    assert row[schema.index_of("nofixentries")] == len(row[schema.index_of("fixentries")])
 
     # The record closes the row with everything that arrived, a key no
     # dictionary explained under tag 0 and its own name.
@@ -1627,7 +1859,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     arrived = row[schema.index_of("fixentries")]
     assert [entry[0] for entry in arrived] == [0, 0, 59]
     assert [entry[1] for entry in arrived if entry[0] == 0] == ["9999", "venueownthing"]
-    assert arrived == [list(entry) for entry in message.entries()]
+    assert FixMsg.from_row(schema, row, seed).into_row(schema).as_py() == row
 
 
 def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:

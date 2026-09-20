@@ -1,0 +1,35 @@
+{
+  "name": "risklimitcheckrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidParty",
+      "doc": "Invalid party"
+    },
+    {
+      "value": "2",
+      "name": "ReqExceedsCreditLimit",
+      "doc": "Requested amount exceeds credit limit"
+    },
+    {
+      "value": "3",
+      "name": "ReqExceedsClipSizeLimit",
+      "doc": "Requested amount exceeds clip size limit"
+    },
+    {
+      "value": "4",
+      "name": "ReqExceedsMaxNotional",
+      "doc": "Request exceeds maximum notional order amount"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

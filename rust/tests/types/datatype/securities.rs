@@ -14,7 +14,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructType, Term,
 };
-use yggdryl::{CusipCode, CusipCodeField, SedolCode, SedolCodeField};
+use yggdryl::{CusipCode, CusipCodeField, FIGICode, FIGICodeField, SedolCode, SedolCodeField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
@@ -38,7 +38,7 @@ fn cells(array: &ArrayRef) -> Vec<Option<&str>> {
 /// The two identifiers: the name, the datatype, the width, one identifier
 /// its standard closes, the same one in lower case, the same one with its
 /// check digit off by one, and one a character short.
-const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 2] = [
+const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 3] = [
     (
         "cusip",
         DataType::CusipCode,
@@ -56,6 +56,15 @@ const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 2] = [
         "b0ybkj7",
         "B0YBKJ8",
         "B0YBKJ",
+    ),
+    (
+        "figi",
+        DataType::FIGICode,
+        12,
+        "BBG000BLNQ16",
+        "bbg000blnq16",
+        "BBG000BLNQ17",
+        "BBG000BLNQ1",
     ),
 ];
 
@@ -157,6 +166,51 @@ fn a_sedol_is_seven_characters_closed_by_its_check_digit() {
     assert_eq!(SedolCode::closing_digit("B0Y-KJ"), None);
     assert_eq!(SedolCode::closing_digit("B0YBK"), None);
     assert_eq!(SedolCode::closing_digit("b0ybkj"), None);
+}
+
+#[test]
+fn a_figi_is_twelve_characters_with_its_own_check_and_prefix_rules() {
+    let official = FIGICode::new("bbg000blnq16").expect("the OpenFIGI vector");
+    assert_eq!(official.as_str(), "BBG000BLNQ16");
+    assert!(FIGICode::is_valid("BBG000BLNQ16"));
+    assert!(
+        FIGICode::is_valid("BCG000000005"),
+        "a permitted consonant prefix"
+    );
+    assert!(!FIGICode::is_canonical("bbg000blnq16"));
+    for invalid in [
+        "BBG000BLNQ1",
+        "BBG000BLNQ160",
+        "BBG000BLNQ1A",
+        "BAG000BLNQ16",
+        "BSG000BLNQ16",
+        "BBX000BLNQ16",
+        "BBG000BLNQ17",
+        "B?G000BLNQ16",
+    ] {
+        assert!(FIGICode::new(invalid).is_err(), "{invalid}");
+    }
+}
+
+#[test]
+fn direct_figi_serde_validates_and_canonicalizes_the_identifier() {
+    let canonical = FIGICode::new("BBG000BLNQ16").unwrap();
+    let rendered = serde_json::to_string(&canonical).unwrap();
+    assert_eq!(rendered, r#""BBG000BLNQ16""#);
+    assert_eq!(
+        serde_json::from_str::<FIGICode>(&rendered).unwrap(),
+        canonical
+    );
+    assert_eq!(
+        serde_json::from_str::<FIGICode>(r#""bbg000blnq16""#).unwrap(),
+        canonical
+    );
+    for invalid in [r#""""#, r#""BBG000BLNQ17""#, r#""BBG000BLNQ160""#] {
+        assert!(
+            serde_json::from_str::<FIGICode>(invalid).is_err(),
+            "{invalid} bypassed FIGI validation"
+        );
+    }
 }
 
 #[test]
@@ -379,11 +433,13 @@ fn the_identifiers_sit_in_the_code_family() {
     assert_eq!(DataTypeId::CusipCode.as_u8(), 0x79);
     assert_eq!(DataTypeId::SedolCode.as_u8(), 0x7a);
     assert_eq!(DataTypeId::BloombergCode.as_u8(), 0x7b);
+    assert_eq!(DataTypeId::FIGICode.as_u8(), 0x7c);
     for id in [
         DataTypeId::IsinCode,
         DataTypeId::CusipCode,
         DataTypeId::SedolCode,
         DataTypeId::BloombergCode,
+        DataTypeId::FIGICode,
     ] {
         assert_eq!(
             DataTypeKind::of_u8(id.as_u8()),
@@ -402,6 +458,7 @@ fn the_identifiers_sit_in_the_code_family() {
         DataType::SedolCode,
         DataType::IsinCode,
         DataType::CusipCode,
+        DataType::FIGICode,
         DataType::Country,
         DataType::MediaType,
     ];
@@ -414,6 +471,7 @@ fn the_identifiers_sit_in_the_code_family() {
             DataType::MediaType,
             DataType::CusipCode,
             DataType::SedolCode,
+            DataType::FIGICode,
         ]
     );
 
@@ -445,9 +503,11 @@ fn the_typed_fields_name_their_identifier() {
     assert_eq!(cusip.to_field().dtype(), &DataType::CusipCode);
     let sedol: SedolCodeField = SedolCodeField::unit("sedol", false);
     assert_eq!(sedol.to_field().dtype(), &DataType::SedolCode);
+    let figi: FIGICodeField = FIGICodeField::unit("figi", true);
+    assert_eq!(figi.to_field().dtype(), &DataType::FIGICode);
     assert!(!&sedol.to_field().is_nullable());
     // A shared field is kept for each, as for every parameter-free leaf.
-    for dtype in [DataType::CusipCode, DataType::SedolCode] {
+    for dtype in [DataType::CusipCode, DataType::SedolCode, DataType::FIGICode] {
         let shared = dtype.shared_field().unwrap();
         assert_eq!(shared.dtype(), &dtype);
         assert!(std::ptr::eq(shared, dtype.shared_field().unwrap()));

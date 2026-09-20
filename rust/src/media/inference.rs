@@ -194,6 +194,7 @@ impl Scalar {
             Self::CusipCode(_) => Ok(DataType::CusipCode),
             Self::SedolCode(_) => Ok(DataType::SedolCode),
             Self::BloombergCode(_) => Ok(DataType::BloombergCode),
+            Self::FIGICode(_) => Ok(DataType::FIGICode),
             Self::Version(_) => Ok(DataType::Version),
             Self::Url(_) => Ok(DataType::url()),
             Self::Urn(_) => Ok(DataType::urn()),

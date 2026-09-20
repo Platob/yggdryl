@@ -1,0 +1,15 @@
+{
+  "name": "upfrontpricetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Percentage",
+      "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
+    },
+    {
+      "value": "3",
+      "name": "FixedAmount",
+      "doc": "Fixed amount (absolute value)"
+    }
+  ]
+}

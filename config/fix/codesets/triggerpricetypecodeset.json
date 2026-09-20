@@ -1,0 +1,35 @@
+{
+  "name": "triggerpricetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BestOffer",
+      "doc": "Best Offer"
+    },
+    {
+      "value": "2",
+      "name": "LastTrade",
+      "doc": "Last Trade"
+    },
+    {
+      "value": "3",
+      "name": "BestBid",
+      "doc": "Best Bid"
+    },
+    {
+      "value": "4",
+      "name": "BestBidOrLastTrade",
+      "doc": "Best Bid or Last Trade"
+    },
+    {
+      "value": "5",
+      "name": "BestOfferOrLastTrade",
+      "doc": "Best Offer or Last Trade"
+    },
+    {
+      "value": "6",
+      "name": "BestMid",
+      "doc": "Best Mid"
+    }
+  ]
+}

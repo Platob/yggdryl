@@ -1,0 +1,35 @@
+{
+  "name": "contingencytypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OneCancelsTheOther",
+      "doc": "One Cancels the Other (OCO)"
+    },
+    {
+      "value": "2",
+      "name": "OneTriggersTheOther",
+      "doc": "One Triggers the Other (OTO)"
+    },
+    {
+      "value": "3",
+      "name": "OneUpdatesTheOtherAbsolute",
+      "doc": "One Updates the Other (OUO) - Absolute Quantity Reduction"
+    },
+    {
+      "value": "4",
+      "name": "OneUpdatesTheOtherProportional",
+      "doc": "One Updates the Other (OUO) - Proportional Quantity Reduction"
+    },
+    {
+      "value": "5",
+      "name": "BidAndOffer",
+      "doc": "Bid and Offer"
+    },
+    {
+      "value": "6",
+      "name": "BidAndOfferOCO",
+      "doc": "Bid and Offer OCO"
+    }
+  ]
+}

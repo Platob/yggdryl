@@ -1,0 +1,20 @@
+{
+  "name": "refrisklimitcheckidtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RiskLimitRequestID",
+      "doc": "RiskLimitRequestID(1666)"
+    },
+    {
+      "value": "1",
+      "name": "RiskLimitCheckID",
+      "doc": "RiskLimitCheckID(2319)"
+    },
+    {
+      "value": "3",
+      "name": "OutOfBandID",
+      "doc": "Out of band identifier"
+    }
+  ]
+}

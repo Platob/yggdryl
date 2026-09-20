@@ -1,0 +1,15 @@
+{
+  "name": "algorithmictradeindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NonAlgorithmicTrade",
+      "doc": "Non-algorithmic trade"
+    },
+    {
+      "value": "1",
+      "name": "AlgorithmicTrade",
+      "doc": "Algorithmic trade"
+    }
+  ]
+}

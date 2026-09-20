@@ -1,0 +1,25 @@
+{
+  "name": "applreporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ApplSeqNumReset",
+      "doc": "Reset ApplSeqNum to new value specified in ApplNewSeqNum(1399)"
+    },
+    {
+      "value": "1",
+      "name": "LastMessageSent",
+      "doc": "Reports that the last message has been sent for the ApplIDs Refer to RefApplLastSeqNum(1357) for the application sequence number of the last message."
+    },
+    {
+      "value": "2",
+      "name": "ApplicationAlive",
+      "doc": "Heartbeat message indicating that Application identified by RefApplID(1355) is still alive. Refer to RefApplLastSeqNum(1357) for the application sequence number of the previous message."
+    },
+    {
+      "value": "3",
+      "name": "ResendComplete",
+      "doc": "Application message re-send completed."
+    }
+  ]
+}

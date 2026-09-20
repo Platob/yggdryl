@@ -1,0 +1,15 @@
+{
+  "name": "deliverystreamtoleranceoptionsidecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Buyer",
+      "doc": "Buyer"
+    },
+    {
+      "value": "2",
+      "name": "Seller",
+      "doc": "Seller"
+    }
+  ]
+}

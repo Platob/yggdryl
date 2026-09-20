@@ -1,0 +1,40 @@
+{
+  "name": "regulatorytradeidtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Current",
+      "doc": "Current"
+    },
+    {
+      "value": "1",
+      "name": "Previous",
+      "doc": "Previous"
+    },
+    {
+      "value": "2",
+      "name": "Block",
+      "doc": "Block"
+    },
+    {
+      "value": "3",
+      "name": "Related",
+      "doc": "Related"
+    },
+    {
+      "value": "4",
+      "name": "ClearedBlockTrade",
+      "doc": "Cleared block trade"
+    },
+    {
+      "value": "5",
+      "name": "TradingVenueTransactionIdentifier",
+      "doc": "Trading venue transaction identifier"
+    },
+    {
+      "value": "6",
+      "name": "ReportTrackingNumber",
+      "doc": "Report tracking number"
+    }
+  ]
+}

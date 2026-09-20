@@ -1,0 +1,15 @@
+{
+  "name": "exercisemethodcodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Automatic",
+      "doc": "Automatic"
+    },
+    {
+      "value": "M",
+      "name": "Manual",
+      "doc": "Manual"
+    }
+  ]
+}

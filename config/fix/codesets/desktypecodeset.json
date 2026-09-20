@@ -1,0 +1,116 @@
+{
+  "name": "desktypecodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Agency",
+      "group": "FINRA OATS",
+      "doc": "Agency"
+    },
+    {
+      "value": "AR",
+      "name": "Arbitrage",
+      "group": "FINRA OATS",
+      "doc": "Arbitrage"
+    },
+    {
+      "value": "B",
+      "name": "BlockTrading",
+      "group": "FINRA OATS",
+      "doc": "Block trading"
+    },
+    {
+      "value": "C",
+      "name": "ConvertibleDesk",
+      "group": "FINRA OATS",
+      "doc": "Convertible desk"
+    },
+    {
+      "value": "CR",
+      "name": "CentralRiskBooks",
+      "group": "FINRA OATS",
+      "doc": "Central risk books"
+    },
+    {
+      "value": "D",
+      "name": "Derivatives",
+      "group": "FINRA OATS",
+      "doc": "Derivatives"
+    },
+    {
+      "value": "EC",
+      "name": "EquityCapitalMarkets",
+      "group": "FINRA OATS",
+      "doc": "Equity capital markets"
+    },
+    {
+      "value": "IN",
+      "name": "International",
+      "group": "FINRA OATS",
+      "doc": "International"
+    },
+    {
+      "value": "IS",
+      "name": "Institutional",
+      "group": "FINRA OATS",
+      "doc": "Institutional"
+    },
+    {
+      "value": "O",
+      "name": "Other",
+      "group": "FINRA OATS",
+      "doc": "Other"
+    },
+    {
+      "value": "PF",
+      "name": "PreferredTrading",
+      "group": "FINRA OATS",
+      "doc": "Preferred trading"
+    },
+    {
+      "value": "PR",
+      "name": "Proprietary",
+      "group": "FINRA OATS",
+      "doc": "Proprietary"
+    },
+    {
+      "value": "PT",
+      "name": "ProgramTrading",
+      "group": "FINRA OATS",
+      "doc": "Program trading"
+    },
+    {
+      "value": "S",
+      "name": "Sales",
+      "group": "FINRA OATS",
+      "doc": "Sales"
+    },
+    {
+      "value": "SW",
+      "name": "Swaps",
+      "group": "FINRA OATS",
+      "doc": "Swaps"
+    },
+    {
+      "value": "T",
+      "name": "TradingDeskSystem",
+      "group": "FINRA OATS",
+      "aliases": [
+        "Trading"
+      ],
+      "doc": "Trading desk or system non-market maker"
+    },
+    {
+      "value": "TR",
+      "name": "Treasury",
+      "group": "FINRA OATS",
+      "doc": "Treasury"
+    },
+    {
+      "value": "FB",
+      "name": "FloorBroker",
+      "group": "FINRA OATS",
+      "doc": "Floor Broker"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "pricequotemethodcodeset",
+  "codes": [
+    {
+      "value": "STD",
+      "name": "Standard",
+      "doc": "Standard, money per unit of a physical"
+    },
+    {
+      "value": "INX",
+      "name": "Index",
+      "doc": "Index"
+    },
+    {
+      "value": "INT",
+      "name": "InterestRateIndex",
+      "doc": "Interest rate Index"
+    },
+    {
+      "value": "PCTPAR",
+      "name": "PercentOfPar",
+      "doc": "Percent of Par"
+    }
+  ]
+}

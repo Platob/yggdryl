@@ -1,0 +1,90 @@
+{
+  "name": "risklimitrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidParty",
+      "doc": "Invalid party(-ies)"
+    },
+    {
+      "value": "2",
+      "name": "InvalidRelatedParty",
+      "doc": "Invalid related party(-ies)"
+    },
+    {
+      "value": "3",
+      "name": "InvalidRiskLimitType",
+      "doc": "Invalid risk limit type(s)"
+    },
+    {
+      "value": "4",
+      "name": "InvalidRiskLimitID",
+      "doc": "Invalid risk limit ID(s)"
+    },
+    {
+      "value": "5",
+      "name": "InvalidRiskLimitAmount",
+      "doc": "Invalid risk limit amount(s)"
+    },
+    {
+      "value": "6",
+      "name": "InvalidRiskWarningLevelAction",
+      "doc": "Invalid risk/warning level action(s)"
+    },
+    {
+      "value": "7",
+      "name": "InvalidRiskInstrumentScope",
+      "doc": "Invalid risk instrument scope(s)"
+    },
+    {
+      "value": "8",
+      "name": "RiskLimitActionsNotSupported",
+      "doc": "Risk limit actions not supported"
+    },
+    {
+      "value": "9",
+      "name": "WarningLevelsNotSupported",
+      "doc": "Warning levels not supported"
+    },
+    {
+      "value": "10",
+      "name": "WarningLevelActionsNotSupported",
+      "doc": "Warning level actions not supported"
+    },
+    {
+      "value": "11",
+      "name": "RiskInstrumentScopeNotSupported",
+      "doc": "Risk instrument scope not supported"
+    },
+    {
+      "value": "12",
+      "name": "RiskLimitNotApprovedForParty",
+      "doc": "Risk limit not approved for party(-ies)"
+    },
+    {
+      "value": "13",
+      "name": "RiskLimitAlreadyDefinedForParty",
+      "doc": "Risk limit already defined for party(-ies)"
+    },
+    {
+      "value": "14",
+      "name": "InstrumentNotApprovedForParty",
+      "doc": "Instrument not approved for party(-ies)"
+    },
+    {
+      "value": "98",
+      "name": "NotAuthorized",
+      "doc": "Not authorized"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "algocertificaterequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CertificateInformation",
+      "doc": "Certificate information"
+    },
+    {
+      "value": "1",
+      "name": "GenerateCertificate",
+      "doc": "Generate certificate"
+    },
+    {
+      "value": "2",
+      "name": "ChangeCertificateStatus",
+      "doc": "Change certificate status"
+    },
+    {
+      "value": "3",
+      "name": "ForwardCertificate",
+      "doc": "Forward certificate"
+    }
+  ]
+}

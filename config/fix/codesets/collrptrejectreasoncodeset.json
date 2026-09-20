@@ -1,0 +1,35 @@
+{
+  "name": "collrptrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownTrade",
+      "doc": "Unknown trade or transaction"
+    },
+    {
+      "value": "1",
+      "name": "UnknownInstrument",
+      "doc": "Unknown or invalid instrument"
+    },
+    {
+      "value": "2",
+      "name": "UnknownCounterparty",
+      "doc": "Unknown or invalid counterparty"
+    },
+    {
+      "value": "3",
+      "name": "UnknownPosition",
+      "doc": "Unknown or invalid position"
+    },
+    {
+      "value": "4",
+      "name": "UnacceptableCollateral",
+      "doc": "Unacceptable or invalid type of collateral"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

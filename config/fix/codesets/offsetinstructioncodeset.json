@@ -1,0 +1,15 @@
+{
+  "name": "offsetinstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Offset",
+      "doc": "Offset"
+    },
+    {
+      "value": "1",
+      "name": "Onset",
+      "doc": "Onset"
+    }
+  ]
+}

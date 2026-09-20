@@ -1,0 +1,15 @@
+{
+  "name": "dividendentitlementeventcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ExDate",
+      "doc": "Ex-date"
+    },
+    {
+      "value": "1",
+      "name": "RecordDate",
+      "doc": "Record date"
+    }
+  ]
+}

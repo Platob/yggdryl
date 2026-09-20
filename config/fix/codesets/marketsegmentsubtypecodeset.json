@@ -1,0 +1,10 @@
+{
+  "name": "marketsegmentsubtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InterProductSpread",
+      "doc": "Inter-product spread"
+    }
+  ]
+}

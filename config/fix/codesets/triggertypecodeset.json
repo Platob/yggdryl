@@ -1,0 +1,30 @@
+{
+  "name": "triggertypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "PartialExecution",
+      "doc": "Partial Execution"
+    },
+    {
+      "value": "2",
+      "name": "SpecifiedTradingSession",
+      "doc": "Specified Trading Session"
+    },
+    {
+      "value": "3",
+      "name": "NextAuction",
+      "doc": "Next Auction"
+    },
+    {
+      "value": "4",
+      "name": "PriceMovement",
+      "doc": "Price Movement"
+    },
+    {
+      "value": "5",
+      "name": "OnOrderEntryOrModification",
+      "doc": "On Order Entry or order modification entry"
+    }
+  ]
+}

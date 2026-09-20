@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamnegativeratetreatmentcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ZeroInterestRateMethod",
+      "doc": "Zero interest rate method"
+    },
+    {
+      "value": "1",
+      "name": "NegativeInterestRateMethod",
+      "doc": "Negative interest rate method"
+    }
+  ]
+}

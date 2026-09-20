@@ -1,0 +1,20 @@
+{
+  "name": "blocktrdallocindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BlockToBeAllocated",
+      "doc": "Block to be allocated"
+    },
+    {
+      "value": "1",
+      "name": "BlockNotToBeAllocated",
+      "doc": "Block not to be allocated"
+    },
+    {
+      "value": "2",
+      "name": "AllocatedTrade",
+      "doc": "Allocated trade"
+    }
+  ]
+}

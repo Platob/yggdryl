@@ -1,0 +1,50 @@
+{
+  "name": "cpprogramcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Program3a3",
+      "doc": "3(a)(3)"
+    },
+    {
+      "value": "2",
+      "name": "Program42",
+      "doc": "4(2)"
+    },
+    {
+      "value": "3",
+      "name": "Program3a2",
+      "doc": "3(a)(2)"
+    },
+    {
+      "value": "4",
+      "name": "Program3a3And3c7",
+      "doc": "3(a)(3) & 3(c)(7)"
+    },
+    {
+      "value": "5",
+      "name": "Program3a4",
+      "doc": "3(a)(4)"
+    },
+    {
+      "value": "6",
+      "name": "Program3a5",
+      "doc": "3(a)(5)"
+    },
+    {
+      "value": "7",
+      "name": "Program3a7",
+      "doc": "3(a)(7)"
+    },
+    {
+      "value": "8",
+      "name": "Program3c7",
+      "doc": "3(c)(7)"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

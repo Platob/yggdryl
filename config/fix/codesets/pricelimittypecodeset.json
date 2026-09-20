@@ -1,0 +1,20 @@
+{
+  "name": "pricelimittypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Price",
+      "doc": "Price (default)"
+    },
+    {
+      "value": "1",
+      "name": "Ticks",
+      "doc": "Ticks"
+    },
+    {
+      "value": "2",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "miscfeequalifiercodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Contributes",
+      "doc": "Contributes (default)"
+    },
+    {
+      "value": "1",
+      "name": "DoesNotContribute",
+      "doc": "Does not contribute"
+    }
+  ]
+}

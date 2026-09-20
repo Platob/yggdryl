@@ -1,0 +1,21 @@
+{
+  "name": "solicitedflagcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "WasNotSolicited",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Was not solicited"
+    },
+    {
+      "value": "Y",
+      "name": "WasSolicited",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Was solicited"
+    }
+  ]
+}

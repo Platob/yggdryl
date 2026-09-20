@@ -1,0 +1,97 @@
+{
+  "name": "rule80acodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "AgencySingleOrder"
+    },
+    {
+      "value": "B",
+      "name": "ShortExemptTransactionAType"
+    },
+    {
+      "value": "C",
+      "name": "ProprietaryNonAlgo"
+    },
+    {
+      "value": "D",
+      "name": "ProgramOrderMember"
+    },
+    {
+      "value": "E",
+      "name": "ShortExemptTransactionForPrincipal"
+    },
+    {
+      "value": "F",
+      "name": "ShortExemptTransactionWType"
+    },
+    {
+      "value": "H",
+      "name": "ShortExemptTransactionIType"
+    },
+    {
+      "value": "I",
+      "name": "IndividualInvestor"
+    },
+    {
+      "value": "J",
+      "name": "ProprietaryAlgo"
+    },
+    {
+      "value": "K",
+      "name": "AgencyAlgo"
+    },
+    {
+      "value": "L",
+      "name": "ShortExemptTransactionMemberAffliated"
+    },
+    {
+      "value": "M",
+      "name": "ProgramOrderOtherMember"
+    },
+    {
+      "value": "N",
+      "name": "AgentForOtherMember"
+    },
+    {
+      "value": "O",
+      "name": "ProprietaryTransactionAffiliated"
+    },
+    {
+      "value": "P",
+      "name": "Principal"
+    },
+    {
+      "value": "R",
+      "name": "TransactionNonMember"
+    },
+    {
+      "value": "S",
+      "name": "SpecialistTrades"
+    },
+    {
+      "value": "T",
+      "name": "TransactionUnaffiliatedMember"
+    },
+    {
+      "value": "U",
+      "name": "AgencyIndexArb"
+    },
+    {
+      "value": "W",
+      "name": "AllOtherOrdersAsAgentForOtherMember"
+    },
+    {
+      "value": "X",
+      "name": "ShortExemptTransactionMemberNotAffliated"
+    },
+    {
+      "value": "Y",
+      "name": "AgencyNonAlgo"
+    },
+    {
+      "value": "Z",
+      "name": "ShortExemptTransactionNonMember"
+    }
+  ]
+}

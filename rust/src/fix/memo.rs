@@ -66,7 +66,7 @@ type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 /// once: the spellings it declares as an absence, and its code set.
 pub(super) struct Facts {
     nulls: Box<[SmolStr]>,
-    codes: Option<Box<str>>,
+    codes: Option<Arc<str>>,
 }
 
 impl Facts {
@@ -75,6 +75,12 @@ impl Facts {
     /// answers with, over the spellings read off the field once.
     pub(super) fn is_null(&self, text: &str) -> bool {
         super::field::spells_absence(self.nulls.iter().map(SmolStr::as_str), text)
+    }
+
+    /// The document of the set this field reads by, as the dictionary held it
+    /// when the field was first asked about.
+    pub(super) fn codes(&self) -> Option<&str> {
+        self.codes.as_deref()
     }
 }
 
@@ -171,7 +177,11 @@ impl Memo {
 
     /// What `source`, a field the registry keeps, states about its values,
     /// read off its metadata the first time and remembered.
-    pub(super) fn facts(&self, source: &Field) -> Arc<Facts> {
+    pub(super) fn facts(
+        &self,
+        source: &Field,
+        codes: impl FnOnce() -> Option<Arc<str>>,
+    ) -> Arc<Facts> {
         let key = address(source);
         let id = self.id();
         let mirrored = MIRROR.with(|mirror| {
@@ -194,7 +204,10 @@ impl Memo {
                 let view = source.as_fix();
                 let facts = Arc::new(Facts {
                     nulls: view.nulls().map(SmolStr::new).collect(),
-                    codes: view.codes_document().map(Box::from),
+                    // The set the field names, resolved once here rather than
+                    // once per entry: a run translates a million spellings
+                    // through one document and looks its name up once.
+                    codes: codes(),
                 });
                 let mut table = held(&self.facts);
                 if table.len() < Self::CAPACITY {
@@ -214,7 +227,7 @@ impl Memo {
     }
 
     /// The wire value `text` spells for `source`, exactly as
-    /// [`FixField::code_value`](crate::FixField::code_value) answers it, read
+    /// [`FixCodeSet::code_value`](super::FixCodeSet::code_value) answers it, read
     /// once per distinct question. A field carrying no code set answers
     /// `None` without touching the table.
     pub(super) fn translation(&self, source: &Field, facts: &Facts, text: &str) -> Option<SmolStr> {
@@ -242,7 +255,7 @@ impl Memo {
         let answer = match known {
             Some(answer) => answer,
             None => {
-                let answer = super::field::translate(stored, text).map(SmolStr::new);
+                let answer = super::codes::translate(stored, text).map(SmolStr::new);
                 let mut table = held(&self.translations);
                 remember(table.entry(key).or_default(), text, &answer);
                 answer
@@ -291,5 +304,41 @@ impl Memo {
             }
         });
         answer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::DataType;
+
+    #[test]
+    fn field_facts_resolve_and_share_the_code_document_once_until_cleared() {
+        let memo = Memo::new();
+        let field = DataType::utf8().nullable_field("side");
+        let calls = Cell::new(0);
+        let first: Arc<str> = Arc::from(r#"[{"value":"1","name":"Buy"}]"#);
+        let supplied = || {
+            calls.set(calls.get() + 1);
+            Some(Arc::clone(&first))
+        };
+
+        let facts = memo.facts(&field, supplied);
+        let repeated = memo.facts(&field, supplied);
+        assert_eq!(calls.get(), 1);
+        assert!(Arc::ptr_eq(facts.codes.as_ref().unwrap(), &first));
+        assert!(Arc::ptr_eq(&facts, &repeated));
+
+        memo.clear();
+        let replacement: Arc<str> = Arc::from(r#"[{"value":"2","name":"Sell"}]"#);
+        let refreshed = memo.facts(&field, || {
+            calls.set(calls.get() + 1);
+            Some(Arc::clone(&replacement))
+        });
+        assert_eq!(calls.get(), 2);
+        assert!(Arc::ptr_eq(refreshed.codes.as_ref().unwrap(), &replacement));
+        assert!(!Arc::ptr_eq(&facts, &refreshed));
     }
 }

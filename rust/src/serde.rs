@@ -595,6 +595,8 @@ enum DataTypeRef<'a> {
     SedolCode {},
     #[serde(rename = "bloomberg")]
     BloombergCode {},
+    #[serde(rename = "figi")]
+    FIGICode {},
     Side {},
     State {},
     // One word on the wire, so it does not take the snake_case the rest
@@ -748,6 +750,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::CusipCode => Self::CusipCode {},
             D::SedolCode => Self::SedolCode {},
             D::BloombergCode => Self::BloombergCode {},
+            D::FIGICode => Self::FIGICode {},
             D::Side => Self::Side {},
             D::State => Self::State {},
             D::TimeInForce => Self::TimeInForce {},
@@ -895,6 +898,8 @@ enum DataTypeWire {
     SedolCode {},
     #[serde(rename = "bloomberg")]
     BloombergCode {},
+    #[serde(rename = "figi")]
+    FIGICode {},
     Side {},
     #[serde(rename = "state")]
     State {},
@@ -1023,6 +1028,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::CusipCode {} => Self::CusipCode,
             DataTypeWire::SedolCode {} => Self::SedolCode,
             DataTypeWire::BloombergCode {} => Self::BloombergCode,
+            DataTypeWire::FIGICode {} => Self::FIGICode,
             DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
@@ -1156,6 +1162,7 @@ impl DataType {
             D::CusipCode => tag("cusip"),
             D::SedolCode => tag("sedol"),
             D::BloombergCode => tag("bloomberg"),
+            D::FIGICode => tag("figi"),
             D::Side => tag("side"),
             D::State => tag("state"),
             D::TimeInForce => tag("timeinforce"),
@@ -1431,6 +1438,7 @@ impl DataType {
             "cusip" => Self::CusipCode,
             "sedol" => Self::SedolCode,
             "bloomberg" => Self::BloombergCode,
+            "figi" => Self::FIGICode,
             "side" => Self::Side,
             "state" => Self::State,
             "timeinforce" => Self::TimeInForce,

@@ -1,0 +1,20 @@
+{
+  "name": "emailtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Reply",
+      "doc": "Reply"
+    },
+    {
+      "value": "2",
+      "name": "AdminReply",
+      "doc": "Admin Reply"
+    }
+  ]
+}

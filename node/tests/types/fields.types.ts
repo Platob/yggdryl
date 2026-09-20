@@ -7,6 +7,7 @@ import {
   type BytesDataTypeId,
   type BytesField,
   type CurrencyField,
+  type FIGICodeField,
   type FixedAsciiField,
   type FixedCp1252Field,
   type FixedUtf8Field,
@@ -95,6 +96,9 @@ const currency: CurrencyField = fields.currency('ccy', { nullable: false })
 const currencyId: 'currency' = currency.dtype.id
 const currencyKind: 'code' = currency.dtype.kind
 const currencyValue: string = currency.defaultJSValue()
+const figi: FIGICodeField = fields.figi('figi', { nullable: false })
+const figiId: 'figi' = figi.dtype.id
+const figiValue: string = figi.defaultJSValue()
 const note: AsciiField = fields.ascii('note', { nullable: false })
 const noteId: 'ascii' = note.dtype.id
 const noteKind: 'text' = note.dtype.kind
@@ -126,6 +130,9 @@ const blobValue: Uint8Array = blob.defaultJSValue()
 void currencyId
 void currencyKind
 void currencyValue
+void figi
+void figiId
+void figiValue
 void note
 void noteId
 void noteKind

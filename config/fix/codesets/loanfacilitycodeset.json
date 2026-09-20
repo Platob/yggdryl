@@ -1,0 +1,35 @@
+{
+  "name": "loanfacilitycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BridgeLoan",
+      "doc": "Bridge loan"
+    },
+    {
+      "value": "1",
+      "name": "LetterOfCredit",
+      "doc": "Letter of credit"
+    },
+    {
+      "value": "2",
+      "name": "RevolvingLoan",
+      "doc": "Revolving loan"
+    },
+    {
+      "value": "3",
+      "name": "SwinglineFunding",
+      "doc": "Swingline funding"
+    },
+    {
+      "value": "4",
+      "name": "TermLoan",
+      "doc": "Term loan"
+    },
+    {
+      "value": "5",
+      "name": "TradeClaim",
+      "doc": "Trade claim"
+    }
+  ]
+}

@@ -144,7 +144,7 @@
     "metadata": {
       "FIX:tag": "65027",
       "FIX:transient": "false",
-      "description": "How many pairs the message carried, in arrival order.",
+      "description": "How many residual entries remain outside the row's projected columns.",
       "display": "NoFixEntries"
     }
   },
@@ -291,96 +291,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "ACCT",
-          "name": "ACCT"
-        },
-        {
-          "value": "ALLO",
-          "name": "ALLO"
-        },
-        {
-          "value": "BOOK",
-          "name": "BOOK"
-        },
-        {
-          "value": "CERT",
-          "name": "CERT"
-        },
-        {
-          "value": "COLL",
-          "name": "COLL"
-        },
-        {
-          "value": "COMM",
-          "name": "COMM"
-        },
-        {
-          "value": "CONF",
-          "name": "CONF"
-        },
-        {
-          "value": "EXEC",
-          "name": "EXEC"
-        },
-        {
-          "value": "MKST",
-          "name": "MKST"
-        },
-        {
-          "value": "ORDR",
-          "name": "ORDR"
-        },
-        {
-          "value": "PAYM",
-          "name": "PAYM"
-        },
-        {
-          "value": "POSN",
-          "name": "POSN"
-        },
-        {
-          "value": "PRTY",
-          "name": "PRTY"
-        },
-        {
-          "value": "QUOT",
-          "name": "QUOT"
-        },
-        {
-          "value": "REGI",
-          "name": "REGI"
-        },
-        {
-          "value": "RISK",
-          "name": "RISK"
-        },
-        {
-          "value": "SECU",
-          "name": "SECU"
-        },
-        {
-          "value": "SESS",
-          "name": "SESS"
-        },
-        {
-          "value": "SETL",
-          "name": "SETL"
-        },
-        {
-          "value": "STRM",
-          "name": "STRM"
-        },
-        {
-          "value": "TRAD",
-          "name": "TRAD"
-        },
-        {
-          "value": "UNKN",
-          "name": "UNKN"
-        }
-      ],
+      "FIX:codeset": "msgcatcodeset",
       "FIX:tag": "65054",
       "description": "The four-byte business category of the message type.",
       "display": "MsgCat"
@@ -444,6 +355,18 @@
       "FIX:tag": "65060",
       "description": "The normalized market MIC the message identifies.",
       "display": "MicCode"
+    }
+  },
+  {
+    "name": "figicode",
+    "dtype": {
+      "type": "figi"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65061",
+      "description": "The normalized FIGI the message identifies.",
+      "display": "FIGICode"
     }
   }
 ]

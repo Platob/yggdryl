@@ -373,10 +373,10 @@ pub const SOH: u8 = 0x01;
 /// The spellings that mean "nothing was sent", by default.
 ///
 /// A bridge with nothing to say writes empty text, `null`, `<null>`, `none`,
-/// or `[n/a]`; these spellings are omitted from parsed fields and entries. The
+/// or `n/a` (with or without brackets); these spellings are omitted from parsed fields and entries. The
 /// raw ASCII bytes are trimmed and compared case-insensitively. A custom
 /// [`FixCodec::with_null_values`] replaces this set.
-pub const DEFAULT_NULL_VALUES: [&str; 5] = ["", "null", "<null>", "none", "[n/a]"];
+pub const DEFAULT_NULL_VALUES: [&str; 6] = ["", "null", "<null>", "none", "n/a", "[n/a]"];
 
 /// The column a payload is read from when nothing names another.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -2239,7 +2239,9 @@ impl FixCodec {
                 .fills
                 .iter()
                 .find(|fill| fill.tag == 52 && !fill.value.is_null())
-                .map(|fill| super::build::typed_fill(fill.field, fill.tag, fill.value))
+                .map(|fill| {
+                    super::build::typed_fill(&self.registry, fill.field, fill.tag, fill.value)
+                })
                 .transpose()?
         };
         let message = FixMsg::from_built(

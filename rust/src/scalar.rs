@@ -64,8 +64,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce, decimal,
+    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
+    Side, State, TimeInForce, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -247,6 +247,8 @@ pub enum Scalar {
     /// narrowing accessor - answers `None`; [`into_native`](Self::into_native)
     /// is the one crossing into the native tree, and it drains a stream.
     Arrow(Arc<crate::arrow::ArrowScalar>),
+    /// ANSI X9.145 Financial Instrument Global Identifier.
+    FIGICode(FIGICode),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -602,6 +604,8 @@ impl<'de> Deserialize<'de> for Scalar {
             Mapping(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
             Variant(Arc<[u8]>, Arc<[u8]>),
+            #[serde(rename = "figi")]
+            FIGICode(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -650,6 +654,9 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::BloombergCode(value) => crate::BloombergCode::new(value)
                 .map(Self::BloombergCode)
                 .map_err(serde::de::Error::custom),
+            StructuralWire::FIGICode(value) => crate::FIGICode::new(value)
+                .map(Self::FIGICode)
+                .map_err(D::Error::custom),
             StructuralWire::SedolCode(value) => crate::SedolCode::new(value)
                 .map(Self::SedolCode)
                 .map_err(D::Error::custom),
@@ -889,7 +896,8 @@ impl Ord for Scalar {
             | Self::IsinCode(_)
             | Self::CusipCode(_)
             | Self::SedolCode(_)
-            | Self::BloombergCode(_) => code_key(self).cmp(&code_key(other)),
+            | Self::BloombergCode(_)
+            | Self::FIGICode(_) => code_key(self).cmp(&code_key(other)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -980,7 +988,8 @@ impl Hash for Scalar {
             | Self::IsinCode(_)
             | Self::CusipCode(_)
             | Self::SedolCode(_)
-            | Self::BloombergCode(_) => code_key(self).hash(state),
+            | Self::BloombergCode(_)
+            | Self::FIGICode(_) => code_key(self).hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1044,7 +1053,7 @@ fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Ti
     ))
 }
 
-/// The eleven registered codes as one pattern.
+/// The twelve registered codes as one pattern.
 ///
 /// A guard does not count towards exhaustiveness, so a match that must cover
 /// every `Scalar` spells the codes out. This is where they are spelled, once;
@@ -1062,10 +1071,11 @@ macro_rules! code_scalars {
             | $crate::Scalar::CusipCode(_)
             | $crate::Scalar::SedolCode(_)
             | $crate::Scalar::BloombergCode(_)
+            | $crate::Scalar::FIGICode(_)
     };
 }
 
-/// The reading the eleven registered codes order and hash by.
+/// The reading the twelve registered codes order and hash by.
 ///
 /// They share one value rank, so the identity is what separates them: a
 /// currency and a country whose bytes agree are two values.
@@ -1131,7 +1141,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::IsinCode(_)
         | Scalar::CusipCode(_)
         | Scalar::SedolCode(_)
-        | Scalar::BloombergCode(_) => 18,
+        | Scalar::BloombergCode(_)
+        | Scalar::FIGICode(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1204,6 +1215,7 @@ impl Scalar {
             Self::CusipCode(_) => DataTypeId::CusipCode,
             Self::SedolCode(_) => DataTypeId::SedolCode,
             Self::BloombergCode(_) => DataTypeId::BloombergCode,
+            Self::FIGICode(_) => DataTypeId::FIGICode,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Timezone(_) => DataTypeId::Timezone,
@@ -1268,6 +1280,7 @@ impl Scalar {
             Self::CusipCode(_) => DataTypeId::CusipCode.as_str(),
             Self::SedolCode(_) => DataTypeId::SedolCode.as_str(),
             Self::BloombergCode(_) => DataTypeId::BloombergCode.as_str(),
+            Self::FIGICode(_) => DataTypeId::FIGICode.as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Timezone(_) => "timezone",
@@ -1493,7 +1506,7 @@ impl Scalar {
 
     /// Borrow the validated storage when this is a registered code.
     ///
-    /// The eleven codes are eleven variants, but every question but "which
+    /// The twelve codes are twelve variants, but every question but "which
     /// one" has the same answer for all of them, so this is where they are
     /// written out and [`Self::id`] is the other half: the identity leads, and
     /// the text follows it. A currency and a country whose bytes agree are two
@@ -1512,6 +1525,7 @@ impl Scalar {
             Self::CusipCode(value) => Some(value.storage()),
             Self::SedolCode(value) => Some(value.storage()),
             Self::BloombergCode(value) => Some(value.storage()),
+            Self::FIGICode(value) => Some(value.storage()),
             _ => None,
         }
     }
@@ -1760,6 +1774,7 @@ impl Scalar {
             | Self::CusipCode(_)
             | Self::SedolCode(_)
             | Self::BloombergCode(_)
+            | Self::FIGICode(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)

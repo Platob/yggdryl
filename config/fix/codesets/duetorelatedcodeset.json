@@ -1,0 +1,21 @@
+{
+  "name": "duetorelatedcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotRelatedToSecurityHalt",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Halt was not related to a halt of the related security"
+    },
+    {
+      "value": "Y",
+      "name": "RelatedToSecurityHalt",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Halt was due to related security being halted"
+    }
+  ]
+}

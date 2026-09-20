@@ -1,0 +1,45 @@
+{
+  "name": "paymentstreampricingdayofweekcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "EveryDay",
+      "doc": "Every day (the default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "Monday",
+      "doc": "Monday"
+    },
+    {
+      "value": "2",
+      "name": "Tuesday",
+      "doc": "Tuesday"
+    },
+    {
+      "value": "3",
+      "name": "Wednesday",
+      "doc": "Wednesday"
+    },
+    {
+      "value": "4",
+      "name": "Thursday",
+      "doc": "Thursday"
+    },
+    {
+      "value": "5",
+      "name": "Friday",
+      "doc": "Friday"
+    },
+    {
+      "value": "6",
+      "name": "Saturday",
+      "doc": "Saturday"
+    },
+    {
+      "value": "7",
+      "name": "Sunday",
+      "doc": "Sunday"
+    }
+  ]
+}

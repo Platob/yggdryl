@@ -1,0 +1,40 @@
+{
+  "name": "fundingsourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Repo",
+      "doc": "Repurchase agreement"
+    },
+    {
+      "value": "1",
+      "name": "Cash",
+      "doc": "Cash"
+    },
+    {
+      "value": "2",
+      "name": "FreeCedits",
+      "doc": "Free credits"
+    },
+    {
+      "value": "3",
+      "name": "CustomerShortSales",
+      "doc": "Customer short sales"
+    },
+    {
+      "value": "4",
+      "name": "BrokerShortSales",
+      "doc": "Broker short sales"
+    },
+    {
+      "value": "5",
+      "name": "UnsecuredBorrowing",
+      "doc": "Unsecured borrowing"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

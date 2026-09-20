@@ -1,0 +1,25 @@
+{
+  "name": "settlinstreqrejcodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnableToProcessRequest",
+      "doc": "Unable to process request"
+    },
+    {
+      "value": "1",
+      "name": "UnknownAccount",
+      "doc": "Unknown account"
+    },
+    {
+      "value": "2",
+      "name": "NoMatchingSettlementInstructionsFound",
+      "doc": "No matching settlement instructions found"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

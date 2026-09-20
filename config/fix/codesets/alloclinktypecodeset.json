@@ -1,0 +1,15 @@
+{
+  "name": "alloclinktypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "FXNetting",
+      "doc": "FX Netting"
+    },
+    {
+      "value": "1",
+      "name": "FXSwap",
+      "doc": "FX Swap"
+    }
+  ]
+}

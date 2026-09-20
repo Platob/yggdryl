@@ -1,0 +1,30 @@
+{
+  "name": "userrequesttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LogOnUser",
+      "doc": "Log On User"
+    },
+    {
+      "value": "2",
+      "name": "LogOffUser",
+      "doc": "Log Off User"
+    },
+    {
+      "value": "3",
+      "name": "ChangePasswordForUser",
+      "doc": "Change Password For User"
+    },
+    {
+      "value": "4",
+      "name": "RequestIndividualUserStatus",
+      "doc": "Request Individual User Status"
+    },
+    {
+      "value": "5",
+      "name": "RequestThrottleLimit",
+      "doc": "Request Throttle Limit"
+    }
+  ]
+}

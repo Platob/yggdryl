@@ -1,0 +1,15 @@
+{
+  "name": "deliverystreamtitletransferconditioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Transfers",
+      "doc": "Transfers with risk of loss"
+    },
+    {
+      "value": "1",
+      "name": "DoesNotTransfer",
+      "doc": "Does not transfer with risk of loss"
+    }
+  ]
+}

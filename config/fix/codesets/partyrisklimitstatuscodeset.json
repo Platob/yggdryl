@@ -1,0 +1,15 @@
+{
+  "name": "partyrisklimitstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Disabled",
+      "doc": "Disabled"
+    },
+    {
+      "value": "1",
+      "name": "Enabled",
+      "doc": "Enabled"
+    }
+  ]
+}

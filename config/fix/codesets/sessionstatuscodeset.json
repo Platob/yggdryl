@@ -1,0 +1,60 @@
+{
+  "name": "sessionstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "SessionActive",
+      "doc": "Session active"
+    },
+    {
+      "value": "1",
+      "name": "SessionPasswordChanged",
+      "doc": "Session password changed"
+    },
+    {
+      "value": "2",
+      "name": "SessionPasswordDueToExpire",
+      "doc": "Session password due to expire"
+    },
+    {
+      "value": "3",
+      "name": "NewSessionPasswordDoesNotComplyWithPolicy",
+      "doc": "New session password does not comply with policy"
+    },
+    {
+      "value": "4",
+      "name": "SessionLogoutComplete",
+      "doc": "Session logout complete"
+    },
+    {
+      "value": "5",
+      "name": "InvalidUsernameOrPassword",
+      "doc": "Invalid username or password"
+    },
+    {
+      "value": "6",
+      "name": "AccountLocked",
+      "doc": "Account locked"
+    },
+    {
+      "value": "7",
+      "name": "LogonsAreNotAllowedAtThisTime",
+      "doc": "Logons are not allowed at this time"
+    },
+    {
+      "value": "8",
+      "name": "PasswordExpired",
+      "doc": "Password expired"
+    },
+    {
+      "value": "9",
+      "name": "ReceivedMsgSeqNumTooLow",
+      "doc": "Received MsgSeqNum(34) is too low."
+    },
+    {
+      "value": "10",
+      "name": "ReceivedNextExpectedMsgSeqNumTooHigh",
+      "doc": "Received NextExpectedMsgSeqNum(789) is too high."
+    }
+  ]
+}

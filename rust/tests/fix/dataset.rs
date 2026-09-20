@@ -183,6 +183,27 @@ fn ulbridge_dataset_allocation_profile_is_sequential_and_staged() {
     });
     assert_eq!(canonical_rows.len(), ROWS);
 
+    let residual_column = target.index_of("fixentries").expect("the residual column");
+    let residual_count = target.index_of("nofixentries").expect("the residual count");
+    let original_entries: usize = messages.iter().map(|message| message.entries().len()).sum();
+    let mut residual_entries = 0;
+    for row in &canonical_rows {
+        let cells = row.as_sequence().expect("a row");
+        let count = cells[residual_column]
+            .as_sequence()
+            .expect("residual entries")
+            .len();
+        assert_eq!(cells[residual_count].as_i128(), Some(count as i128));
+        residual_entries += count;
+    }
+    assert!(
+        residual_entries < original_entries,
+        "represented columns remove duplicate entries"
+    );
+    eprintln!(
+        "ulbridge residual entries: {residual_entries} of {original_entries} content entries"
+    );
+
     let records = profiled("ulbridge FieldRecord::new", || {
         canonical_rows
             .iter()

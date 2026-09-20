@@ -1,0 +1,374 @@
+{
+  "name": "trdtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RegularTrade",
+      "doc": "Regular trade"
+    },
+    {
+      "value": "1",
+      "name": "BlockTrade",
+      "doc": "Block trade"
+    },
+    {
+      "value": "2",
+      "name": "EFP",
+      "doc": "Exchange for physical (EFP)"
+    },
+    {
+      "value": "3",
+      "name": "Transfer",
+      "doc": "Transfer"
+    },
+    {
+      "value": "4",
+      "name": "LateTrade",
+      "doc": "Late trade"
+    },
+    {
+      "value": "5",
+      "name": "TTrade",
+      "doc": "T trade"
+    },
+    {
+      "value": "6",
+      "name": "WeightedAveragePriceTrade",
+      "doc": "Weighted average price trade"
+    },
+    {
+      "value": "7",
+      "name": "BunchedTrade",
+      "doc": "Bunched trade"
+    },
+    {
+      "value": "8",
+      "name": "LateBunchedTrade",
+      "doc": "Late bunched trade"
+    },
+    {
+      "value": "9",
+      "name": "PriorReferencePriceTrade",
+      "doc": "Prior reference price trade"
+    },
+    {
+      "value": "10",
+      "name": "AfterHoursTrade",
+      "doc": "After hours trade"
+    },
+    {
+      "value": "11",
+      "name": "ExchangeForRisk",
+      "doc": "Exchange for risk (EFR)"
+    },
+    {
+      "value": "12",
+      "name": "ExchangeForSwap",
+      "doc": "Exchange for swap (EFS)"
+    },
+    {
+      "value": "13",
+      "name": "ExchangeOfFuturesFor",
+      "doc": "Exchange of futures for in market futures (EFM)"
+    },
+    {
+      "value": "14",
+      "name": "ExchangeOfOptionsForOptions",
+      "doc": "Exchange of options for options (EOO)"
+    },
+    {
+      "value": "15",
+      "name": "TradingAtSettlement",
+      "doc": "Trading at settlement"
+    },
+    {
+      "value": "16",
+      "name": "AllOrNone",
+      "doc": "All or none"
+    },
+    {
+      "value": "17",
+      "name": "FuturesLargeOrderExecution",
+      "doc": "Futures large order execution"
+    },
+    {
+      "value": "18",
+      "name": "ExchangeOfFuturesForFutures",
+      "doc": "Exchange of futures for external market futures (EFF)"
+    },
+    {
+      "value": "19",
+      "name": "OptionInterimTrade",
+      "doc": "Option interim trade"
+    },
+    {
+      "value": "20",
+      "name": "OptionCabinetTrade",
+      "doc": "Option cabinet trade"
+    },
+    {
+      "value": "22",
+      "name": "PrivatelyNegotiatedTrades",
+      "doc": "Privately negotiated trade"
+    },
+    {
+      "value": "23",
+      "name": "SubstitutionOfFuturesForForwards",
+      "doc": "Substitution of futures for forwards"
+    },
+    {
+      "value": "24",
+      "name": "ErrorTrade",
+      "group": "MiFID Values",
+      "doc": "Error trade"
+    },
+    {
+      "value": "25",
+      "name": "SpecialCumDividend",
+      "group": "MiFID Values",
+      "doc": "Special cum dividend (CD)"
+    },
+    {
+      "value": "26",
+      "name": "SpecialExDividend",
+      "group": "MiFID Values",
+      "doc": "Special ex dividend (XD)"
+    },
+    {
+      "value": "27",
+      "name": "SpecialCumCoupon",
+      "group": "MiFID Values",
+      "doc": "Special cum coupon (CC)"
+    },
+    {
+      "value": "28",
+      "name": "SpecialExCoupon",
+      "group": "MiFID Values",
+      "doc": "Special ex coupon (XC)"
+    },
+    {
+      "value": "29",
+      "name": "CashSettlement",
+      "group": "MiFID Values",
+      "doc": "Cash settlement (CS)"
+    },
+    {
+      "value": "30",
+      "name": "SpecialPrice",
+      "group": "MiFID Values",
+      "doc": "Special price (SP)"
+    },
+    {
+      "value": "31",
+      "name": "GuaranteedDelivery",
+      "group": "MiFID Values",
+      "doc": "Guaranteed delivery (GD)"
+    },
+    {
+      "value": "32",
+      "name": "SpecialCumRights",
+      "group": "MiFID Values",
+      "doc": "Special cum rights (CR)"
+    },
+    {
+      "value": "33",
+      "name": "SpecialExRights",
+      "group": "MiFID Values",
+      "doc": "Special ex rights (XR)"
+    },
+    {
+      "value": "34",
+      "name": "SpecialCumCapitalRepayments",
+      "group": "MiFID Values",
+      "doc": "Special cum capital repayments (CP)"
+    },
+    {
+      "value": "35",
+      "name": "SpecialExCapitalRepayments",
+      "group": "MiFID Values",
+      "doc": "Special ex capital repayments (XP)"
+    },
+    {
+      "value": "36",
+      "name": "SpecialCumBonus",
+      "group": "MiFID Values",
+      "doc": "Special cum bonus (CB)"
+    },
+    {
+      "value": "37",
+      "name": "SpecialExBonus",
+      "group": "MiFID Values",
+      "doc": "Special ex bonus (XB)"
+    },
+    {
+      "value": "38",
+      "name": "LargeTrade",
+      "group": "MiFID Values",
+      "doc": "Block trade"
+    },
+    {
+      "value": "39",
+      "name": "WorkedPrincipalTrade",
+      "group": "MiFID Values",
+      "doc": "Worked principal trade"
+    },
+    {
+      "value": "40",
+      "name": "BlockTrades",
+      "group": "MiFID Values",
+      "doc": "Block trades"
+    },
+    {
+      "value": "41",
+      "name": "NameChange",
+      "group": "MiFID Values",
+      "doc": "Name change"
+    },
+    {
+      "value": "42",
+      "name": "PortfolioTransfer",
+      "group": "MiFID Values",
+      "doc": "Portfolio transfer"
+    },
+    {
+      "value": "43",
+      "name": "ProrogationBuy",
+      "group": "MiFID Values",
+      "doc": "Prorogation buy"
+    },
+    {
+      "value": "44",
+      "name": "ProrogationSell",
+      "group": "MiFID Values",
+      "doc": "Prorogation sell"
+    },
+    {
+      "value": "45",
+      "name": "OptionExercise",
+      "group": "MiFID Values",
+      "doc": "Option exercise"
+    },
+    {
+      "value": "46",
+      "name": "DeltaNeutralTransaction",
+      "group": "MiFID Values",
+      "doc": "Delta neutral transaction"
+    },
+    {
+      "value": "47",
+      "name": "FinancingTransaction",
+      "group": "MiFID Values",
+      "doc": "Financing transaction"
+    },
+    {
+      "value": "48",
+      "name": "NonStandardSettlement",
+      "doc": "Non-standard settlement"
+    },
+    {
+      "value": "49",
+      "name": "DerivativeRelatedTransaction",
+      "doc": "Derivative related transaction"
+    },
+    {
+      "value": "50",
+      "name": "PortfolioTrade",
+      "doc": "Portfolio trade"
+    },
+    {
+      "value": "51",
+      "name": "VolumeWeightedAverageTrade",
+      "doc": "Volume weighted average trade"
+    },
+    {
+      "value": "52",
+      "name": "ExchangeGrantedTrade",
+      "doc": "Exchange granted trade"
+    },
+    {
+      "value": "53",
+      "name": "RepurchaseAgreement",
+      "doc": "Repurchase agreement"
+    },
+    {
+      "value": "54",
+      "name": "OTC",
+      "doc": "OTC"
+    },
+    {
+      "value": "55",
+      "name": "ExchangeBasisFacility",
+      "doc": "Exchange basis facility (EBF)"
+    },
+    {
+      "value": "56",
+      "name": "OpeningTrade",
+      "doc": "Opening trade"
+    },
+    {
+      "value": "57",
+      "name": "NettedTrade",
+      "doc": "Netted trade"
+    },
+    {
+      "value": "58",
+      "name": "BlockSwapTrade",
+      "doc": "Block swap trade"
+    },
+    {
+      "value": "59",
+      "name": "CreditEventTrade",
+      "doc": "Credit event trade"
+    },
+    {
+      "value": "60",
+      "name": "SuccessionEventTrade",
+      "doc": "Succession event trade"
+    },
+    {
+      "value": "61",
+      "name": "GiveUpGiveInTrade",
+      "doc": "Give-up Give-in trade"
+    },
+    {
+      "value": "62",
+      "name": "DarkTrade",
+      "doc": "Dark trade"
+    },
+    {
+      "value": "63",
+      "name": "TechnicalTrade",
+      "doc": "Technical trade"
+    },
+    {
+      "value": "64",
+      "name": "Benchmark",
+      "doc": "Benchmark"
+    },
+    {
+      "value": "65",
+      "name": "PackageTrade",
+      "doc": "Package trade"
+    },
+    {
+      "value": "66",
+      "name": "RollTrade",
+      "doc": "Roll trade"
+    },
+    {
+      "value": "67",
+      "name": "ClosingPriceTrade",
+      "doc": "Closing price trade"
+    },
+    {
+      "value": "68",
+      "name": "InterFundTransferTrade",
+      "doc": "Inter-fund transfer trade"
+    },
+    {
+      "value": "69",
+      "name": "NetAssetValueCalculatedTrade",
+      "doc": "Net asset value calculated trade"
+    }
+  ]
+}

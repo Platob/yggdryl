@@ -16,12 +16,12 @@ use crate::metadata::{
 };
 use crate::{
     BloombergCodeType, BooleanType, BytesType, CfiCodeType, CountryType, CurrencyType,
-    CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type,
-    Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type,
-    Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType, MimeTypeType,
-    NullType, RunEndType, SedolCodeType, SequenceType, SideType, StateType, StringType, StructType,
-    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UriType, UuidType, VariantType, VersionType,
+    CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType,
+    Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
+    Int32Type, Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType,
+    MimeTypeType, NullType, RunEndType, SedolCodeType, SequenceType, SideType, StateType,
+    StringType, StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type,
+    UInt32Type, UInt64Type, UnionType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1626,6 +1626,7 @@ field_leaves! {
     CusipCode => CusipCodeField / CusipCodeType,
     SedolCode => SedolCodeField / SedolCodeType,
     BloombergCode => BloombergCodeField / BloombergCodeType,
+    FIGICode => FIGICodeField / FIGICodeType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different

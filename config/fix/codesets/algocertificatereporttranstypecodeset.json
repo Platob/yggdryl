@@ -1,0 +1,20 @@
+{
+  "name": "algocertificatereporttranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "2",
+      "name": "Replace",
+      "doc": "Replace"
+    }
+  ]
+}

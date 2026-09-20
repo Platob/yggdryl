@@ -96,6 +96,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce
@@ -309,6 +310,7 @@ fn text_or_binary_to_js<'env>(
         | D::CusipCode
         | D::SedolCode
         | D::BloombergCode
+        | D::FIGICode
         | D::Side
         | D::State
         | D::TimeInForce => value

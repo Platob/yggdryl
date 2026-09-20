@@ -1,0 +1,35 @@
+{
+  "name": "paymentstreaminflationlagdaytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Business",
+      "doc": "Business"
+    },
+    {
+      "value": "1",
+      "name": "Calendar",
+      "doc": "Calendar"
+    },
+    {
+      "value": "2",
+      "name": "CommodityBusiness",
+      "doc": "Commodity business"
+    },
+    {
+      "value": "3",
+      "name": "CurrencyBusiness",
+      "doc": "Currency business"
+    },
+    {
+      "value": "4",
+      "name": "ExchangeBusiness",
+      "doc": "Exchange business"
+    },
+    {
+      "value": "5",
+      "name": "ScheduledTradingDay",
+      "doc": "Scheduled trading day"
+    }
+  ]
+}

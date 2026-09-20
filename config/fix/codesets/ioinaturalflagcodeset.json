@@ -1,0 +1,21 @@
+{
+  "name": "ioinaturalflagcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotNatural",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not Natural"
+    },
+    {
+      "value": "Y",
+      "name": "Natural",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Natural"
+    }
+  ]
+}

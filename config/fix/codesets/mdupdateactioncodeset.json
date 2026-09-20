@@ -1,0 +1,35 @@
+{
+  "name": "mdupdateactioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Change",
+      "doc": "Change"
+    },
+    {
+      "value": "2",
+      "name": "Delete",
+      "doc": "Delete"
+    },
+    {
+      "value": "3",
+      "name": "DeleteThru",
+      "doc": "Delete Thru"
+    },
+    {
+      "value": "4",
+      "name": "DeleteFrom",
+      "doc": "Delete From"
+    },
+    {
+      "value": "5",
+      "name": "Overlay",
+      "doc": "Overlay"
+    }
+  ]
+}

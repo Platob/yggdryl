@@ -1,0 +1,75 @@
+{
+  "name": "clearingfeeindicatorcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "FirstYearDelegate",
+      "doc": "1st year delegate trading for own account"
+    },
+    {
+      "value": "2",
+      "name": "SecondYearDelegate",
+      "doc": "2nd year delegate trading for own account"
+    },
+    {
+      "value": "3",
+      "name": "ThirdYearDelegate",
+      "doc": "3rd year delegate trading for own account"
+    },
+    {
+      "value": "4",
+      "name": "FourthYearDelegate",
+      "doc": "4th year delegate trading for own account"
+    },
+    {
+      "value": "5",
+      "name": "FifthYearDelegate",
+      "doc": "5th year delegate trading for own account"
+    },
+    {
+      "value": "9",
+      "name": "SixthYearDelegate",
+      "doc": "6th year delegate trading for own account"
+    },
+    {
+      "value": "B",
+      "name": "CBOEMember",
+      "doc": "CBOE Member"
+    },
+    {
+      "value": "C",
+      "name": "NonMemberAndCustomer",
+      "doc": "Non-member and Customer"
+    },
+    {
+      "value": "E",
+      "name": "EquityMemberAndClearingMember",
+      "doc": "Equity Member and Clearing Member"
+    },
+    {
+      "value": "F",
+      "name": "FullAndAssociateMember",
+      "doc": "Full and Associate Member trading for own account and as floor brokers"
+    },
+    {
+      "value": "H",
+      "name": "Firms106HAnd106J",
+      "doc": "106.H and 106.J firms"
+    },
+    {
+      "value": "I",
+      "name": "GIM",
+      "doc": "GIM, IDEM and COM Membership Interest Holders"
+    },
+    {
+      "value": "L",
+      "name": "Lessee106FEmployees",
+      "doc": "Lessee 106.F Employees"
+    },
+    {
+      "value": "M",
+      "name": "AllOtherOwnershipTypes",
+      "doc": "All other ownership types"
+    }
+  ]
+}

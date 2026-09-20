@@ -1,0 +1,20 @@
+{
+  "name": "mdvaluetiercodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Range1",
+      "doc": "Range 1"
+    },
+    {
+      "value": "2",
+      "name": "Range2",
+      "doc": "Range 2"
+    },
+    {
+      "value": "3",
+      "name": "Range3",
+      "doc": "Range 3"
+    }
+  ]
+}

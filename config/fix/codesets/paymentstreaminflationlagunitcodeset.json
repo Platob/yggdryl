@@ -1,0 +1,25 @@
+{
+  "name": "paymentstreaminflationlagunitcodeset",
+  "codes": [
+    {
+      "value": "D",
+      "name": "Day",
+      "doc": "Day"
+    },
+    {
+      "value": "Wk",
+      "name": "Week",
+      "doc": "Week"
+    },
+    {
+      "value": "Mo",
+      "name": "Month",
+      "doc": "Month"
+    },
+    {
+      "value": "Yr",
+      "name": "Year",
+      "doc": "Year"
+    }
+  ]
+}

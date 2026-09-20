@@ -230,7 +230,7 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
 | text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
-| registered codes | `Country`, `Currency`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode` |
+| registered codes | `Country`, `Currency`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |

@@ -1,0 +1,25 @@
+{
+  "name": "orderownershipindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoChange",
+      "doc": "No change of ownership (default)"
+    },
+    {
+      "value": "1",
+      "name": "ExecutingPartyChange",
+      "doc": "Change of ownership to executing party"
+    },
+    {
+      "value": "2",
+      "name": "EnteringPartyChange",
+      "doc": "Change of ownership to entering party"
+    },
+    {
+      "value": "3",
+      "name": "SpecifiedPartyChange",
+      "doc": "Change of ownership to specified party"
+    }
+  ]
+}

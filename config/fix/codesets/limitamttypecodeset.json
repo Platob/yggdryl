@@ -1,0 +1,35 @@
+{
+  "name": "limitamttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CreditLimit",
+      "doc": "Credit limit"
+    },
+    {
+      "value": "1",
+      "name": "GrossPositionLimit",
+      "doc": "Gross position limit"
+    },
+    {
+      "value": "2",
+      "name": "NetPositionLimit",
+      "doc": "Net position limit"
+    },
+    {
+      "value": "3",
+      "name": "RiskExposureLimit",
+      "doc": "Risk exposure limit"
+    },
+    {
+      "value": "4",
+      "name": "LongPositionLimit",
+      "doc": "Long position limit"
+    },
+    {
+      "value": "5",
+      "name": "ShortPositionLimit",
+      "doc": "Short position limit"
+    }
+  ]
+}

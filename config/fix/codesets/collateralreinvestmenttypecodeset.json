@@ -1,0 +1,30 @@
+{
+  "name": "collateralreinvestmenttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MoneyMarketFund",
+      "doc": "Money market fund"
+    },
+    {
+      "value": "1",
+      "name": "OtherComingledPool",
+      "doc": "Other comingled pool"
+    },
+    {
+      "value": "2",
+      "name": "RepoMarket",
+      "doc": "Repo market"
+    },
+    {
+      "value": "3",
+      "name": "DirectPurchaseOfSecurities",
+      "doc": "Direct purchase of securities"
+    },
+    {
+      "value": "4",
+      "name": "OtherInvestments",
+      "doc": "Other investments"
+    }
+  ]
+}

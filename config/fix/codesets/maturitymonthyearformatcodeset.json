@@ -1,0 +1,20 @@
+{
+  "name": "maturitymonthyearformatcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "YearMonthOnly",
+      "doc": "YearMonth Only (default)"
+    },
+    {
+      "value": "1",
+      "name": "YearMonthDay",
+      "doc": "YearMonthDay"
+    },
+    {
+      "value": "2",
+      "name": "YearMonthWeek",
+      "doc": "YearMonthWeek"
+    }
+  ]
+}

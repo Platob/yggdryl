@@ -1,0 +1,45 @@
+{
+  "name": "cashsettlvaluationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Market",
+      "doc": "Market"
+    },
+    {
+      "value": "1",
+      "name": "Highest",
+      "doc": "Highest"
+    },
+    {
+      "value": "2",
+      "name": "AverageMarket",
+      "doc": "Average market"
+    },
+    {
+      "value": "3",
+      "name": "AverageHighest",
+      "doc": "Average highest"
+    },
+    {
+      "value": "4",
+      "name": "BlendedMarket",
+      "doc": "Blended market"
+    },
+    {
+      "value": "5",
+      "name": "BlendedHighest",
+      "doc": "Blended highest"
+    },
+    {
+      "value": "6",
+      "name": "AverageBlendedMarket",
+      "doc": "Average blended market"
+    },
+    {
+      "value": "7",
+      "name": "AverageBlendedHighest",
+      "doc": "Average blended highest"
+    }
+  ]
+}

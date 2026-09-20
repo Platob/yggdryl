@@ -1,0 +1,40 @@
+{
+  "name": "ordercapacitycodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Agency",
+      "doc": "Agency"
+    },
+    {
+      "value": "G",
+      "name": "Proprietary",
+      "doc": "Proprietary"
+    },
+    {
+      "value": "I",
+      "name": "Individual",
+      "doc": "Individual"
+    },
+    {
+      "value": "P",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "R",
+      "name": "RisklessPrincipal",
+      "doc": "Riskless Principal"
+    },
+    {
+      "value": "W",
+      "name": "AgentForOtherMember",
+      "doc": "Agent for Other Member"
+    },
+    {
+      "value": "M",
+      "name": "MixedCapacity",
+      "doc": "Mixed capacity"
+    }
+  ]
+}

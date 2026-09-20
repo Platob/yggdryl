@@ -1,0 +1,25 @@
+{
+  "name": "swapclasscodeset",
+  "codes": [
+    {
+      "value": "BS",
+      "name": "BasisSwap",
+      "doc": "Basis swap"
+    },
+    {
+      "value": "IX",
+      "name": "IndexSwap",
+      "doc": "Index swap"
+    },
+    {
+      "value": "BB",
+      "name": "BroadBasedSecuritySwap",
+      "doc": "Broad-based security swap"
+    },
+    {
+      "value": "SK",
+      "name": "BasketSwap",
+      "doc": "Basket swap"
+    }
+  ]
+}

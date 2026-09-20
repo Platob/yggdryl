@@ -1,0 +1,21 @@
+{
+  "name": "publishtrdindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "DoNotReportTrade",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Do Not Report Trade"
+    },
+    {
+      "value": "Y",
+      "name": "ReportTrade",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Report Trade"
+    }
+  ]
+}

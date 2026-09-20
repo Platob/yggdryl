@@ -1,0 +1,15 @@
+{
+  "name": "tradevoltypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NumberOfUnits",
+      "doc": "Number of units (e.g. share, par, currency, contracts) (default)"
+    },
+    {
+      "value": "1",
+      "name": "NumberOfRoundLots",
+      "doc": "Number of round lots"
+    }
+  ]
+}

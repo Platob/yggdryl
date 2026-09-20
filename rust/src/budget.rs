@@ -345,6 +345,7 @@ mod limits {
                 | DataType::CusipCode
                 | DataType::SedolCode
                 | DataType::BloombergCode
+                | DataType::FIGICode
                 | DataType::Side
                 | DataType::State
                 | DataType::TimeInForce => {
@@ -460,6 +461,7 @@ mod limits {
                 | DataType::CusipCode
                 | DataType::SedolCode
                 | DataType::BloombergCode
+                | DataType::FIGICode
                 | DataType::Side
                 | DataType::State
                 | DataType::TimeInForce => {

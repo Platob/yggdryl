@@ -1,0 +1,30 @@
+{
+  "name": "posmaintstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "AcceptedWithWarnings",
+      "doc": "Accepted With Warnings"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "3",
+      "name": "Completed",
+      "doc": "Completed"
+    },
+    {
+      "value": "4",
+      "name": "CompletedWithWarnings",
+      "doc": "Completed With Warnings"
+    }
+  ]
+}

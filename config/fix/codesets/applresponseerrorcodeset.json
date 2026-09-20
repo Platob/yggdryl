@@ -1,0 +1,20 @@
+{
+  "name": "applresponseerrorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ApplicationDoesNotExist",
+      "doc": "Application does not exist"
+    },
+    {
+      "value": "1",
+      "name": "MessagesRequestedAreNotAvailable",
+      "doc": "Messages requested are not available"
+    },
+    {
+      "value": "2",
+      "name": "UserNotAuthorizedForApplication",
+      "doc": "User not authorized for application"
+    }
+  ]
+}

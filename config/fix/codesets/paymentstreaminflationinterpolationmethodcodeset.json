@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreaminflationinterpolationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "LinearZeroYield",
+      "doc": "Linear zero yield"
+    }
+  ]
+}

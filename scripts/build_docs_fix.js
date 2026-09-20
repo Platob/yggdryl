@@ -10,10 +10,14 @@
  * writes what it answered. The page displays the native catalog and decoded
  * sample frames without rebuilding the protocol's schemas.
  *
- * docs/assets/fix.json carries the native catalog, registry counts, fixed
- * capture columns, and recorded decoded/emitted sample results. Codes and
- * membership (`FIX:branches`, the dictionaries that contributed a field)
- * stay inline in their owning native Field metadata.
+ * docs/assets/fix.json carries the native catalog, the code sets its fields
+ * read by, registry counts, fixed capture columns, and recorded
+ * decoded/emitted sample results. A vocabulary belongs to the dictionary
+ * rather than to a field: the sets are listed once beside the catalog and a
+ * field's `FIX:codeset` states the name of the one it reads by, which is how
+ * one unit set is written once for the 165 fields that read it. Membership
+ * (`FIX:branches`, the dictionaries that contributed a field) stays inline
+ * in its owning native Field metadata.
  *
  * The manifest is committed, so the same build runs on any machine: fixed corpus,
  * fixed key order, two-space JSON, LF, no timestamps and no paths. `--check`
@@ -90,6 +94,11 @@ const FRAMES = [
     'isin',
     'An instrument named by ISIN rather than by symbol',
     '8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=000|',
+  ],
+  [
+    'figi',
+    'An instrument named by its Financial Instrument Global Identifier',
+    '8=FIX.4.4|35=D|48=BBG000BLNQ16|22=S|54=1|38=100|15=USD|10=000|',
   ],
   [
     'securitydefinition',
@@ -182,15 +191,24 @@ function dictionary() {
   return fix.FixRegistry.fromHandle(CONFIG)
 }
 
-/** The `FIX:` properties a store writes as the JSON they are. */
-const DOCUMENT_KEYS = ['FIX:codes', 'FIX:replacements', 'FIX:directions', 'FIX:names', 'FIX:tags']
+/** The `FIX:` properties a store writes as the JSON they are, `fix::document::Kind::ALL`. */
+const DOCUMENT_KEYS = ['FIX:replacements', 'FIX:directions', 'FIX:names', 'FIX:tags']
+
+/**
+ * The categories a snapshot files definitions under, `FixCategory::ALL`.
+ *
+ * `codesets` is the fourth key beside them and is not one of them: it holds
+ * vocabularies, which carry no tag, no datatype and no reference, so every
+ * walk over the catalog states these three rather than the snapshot's keys.
+ */
+const CATEGORIES = ['fields', 'components', 'groups']
 
 /**
  * One native Field document in the shape a store writes.
  *
  * `registry.toJSON()` already answers it; a definition only the package
  * itself carries comes from `field.toJSON()`, which is the core spelling
- * with those five properties still escaped. One manifest, one shape.
+ * with those four properties still escaped. One manifest, one shape.
  */
 function storeDocument(field) {
   if (field === null || typeof field !== 'object') return field
@@ -221,8 +239,8 @@ function storeDocument(field) {
  */
 function nativeCatalog(registry, snapshot) {
   const owner = new Map()
-  for (const [category, documents] of Object.entries(snapshot)) {
-    for (const document of documents) owner.set(document.name, category)
+  for (const category of CATEGORIES) {
+    for (const document of snapshot[category]) owner.set(document.name, category)
   }
   const native = { fields: [], components: [], groups: [] }
   for (const field of registry) {
@@ -234,11 +252,11 @@ function nativeCatalog(registry, snapshot) {
 }
 
 /** Live definitions, retaining persisted references and native-only builtins. */
-function liveCatalog(registry) {
+function liveCatalog(registry, snapshot) {
   const catalog = {}
-  const snapshot = registry.toJSON()
   const native = nativeCatalog(registry, snapshot)
-  for (const [category, documents] of Object.entries(snapshot)) {
+  for (const category of CATEGORIES) {
+    const documents = snapshot[category]
     const compact = new Map(documents.map((field) => [field.name, field]))
     if (compact.size !== documents.length) {
       throw new Error(`compact ${category} contain duplicate canonical names`)
@@ -271,22 +289,15 @@ function liveCatalog(registry) {
   return catalog
 }
 
-/** One stored JSON document, or null where the field carries none. */
-function document(field, key) {
-  const held = field.get(key)
-  return held === null ? null : JSON.parse(held)
-}
-
 /** Scalar summaries used to count the registry's metadata. */
-function fieldRecords(registry) {
+function fieldRecords(registry, snapshot) {
   const records = []
-  const fields = new Set(registry.toJSON().fields.map((document) => document.name))
+  const fields = new Set(snapshot.fields.map((document) => document.name))
   for (const field of registry) {
     if (!fields.has(field.name)) continue
     const view = field.fix
     const tag = view.tag
     if (tag === null) continue
-    const codes = document(field, 'FIX:codes')
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     const memberships = view.branches
@@ -296,8 +307,11 @@ function fieldRecords(registry) {
     if (names.length > 0) record.a = names
     const alternates = view.tags
     if (alternates.length > 0) record.g = alternates
-
-    if (codes !== null) record.c = codes.length
+    // The name of the set this field reads its values by; the members are
+    // the dictionary's, held once under that name however many fields
+    // state it.
+    const codeset = view.codeset
+    if (codeset !== null) record.c = codeset
     records.push(record)
   }
   // The registry's own order: tag-major, the tag's holder first, then id.
@@ -305,14 +319,13 @@ function fieldRecords(registry) {
 }
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
-function counts(records, catalog, row, dialects) {
+function counts(records, catalog, row, sets, dialects) {
   // Membership is provenance on the field: `FIX:branches` lists every
   // dictionary that contributed it, and a field the specification alone
   // defines lists none. The shipped dictionary carries no membership at all.
   const members = new Map(dialects.map((name) => [name, 0]))
   const dtypes = new Map()
   let enumFields = 0
-  let codes = 0
   let aliases = 0
   let alternates = 0
   let memberships = 0
@@ -322,18 +335,20 @@ function counts(records, catalog, row, dialects) {
       for (const name of record.m) members.set(name, (members.get(name) ?? 0) + 1)
     }
     dtypes.set(record.y, (dtypes.get(record.y) ?? 0) + 1)
-    if (record.c) {
-      enumFields += 1
-      codes += record.c
-    }
+    if (record.c) enumFields += 1
     if (record.a) aliases += record.a.length
     if (record.g) alternates += record.g.length
   }
+  // A vocabulary is counted where it is held. Summing a field's members
+  // counts one shared set once per field reading it - 165 times for the
+  // unit set - so the honest pair is how many sets the dictionary states
+  // and how many fields read by one.
   return {
     fields: catalog.fields.length,
     groups: catalog.groups.length,
     enumFields,
-    codes,
+    codesets: sets.length,
+    codes: sets.reduce((total, set) => total + set.codes.length, 0),
     aliases,
     alternates,
     // A message is a component carrying `FIX:msgtype`.
@@ -452,15 +467,19 @@ function manifest() {
   const registry = dictionary()
   const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date(SENDING), excludeMsgtypes: [] })
   const schema = fix.schema(registry, 'FixMessage')
-  const catalog = liveCatalog(registry)
+  const snapshot = registry.toJSON()
+  const catalog = liveCatalog(registry, snapshot)
+  // The sets in the shape the store writes them, `{name, codes}` per set,
+  // read straight off the snapshot's own `codesets` key.
+  const codesets = snapshot.codesets
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
-  const records = fieldRecords(registry)
+  const records = fieldRecords(registry, snapshot)
   if (records.length !== catalog.fields.length ||
       records.some((record, index) => record.n !== catalog.fields[index]?.name)) {
     throw new Error('live scalar catalog order differs from native scalar iteration')
   }
   const row = fixedRow(registry)
-  const kpi = counts(records, catalog, row, registry.dialects())
+  const kpi = counts(records, catalog, row, codesets, registry.dialects())
 
   const index = {
     version: VERSION,
@@ -481,6 +500,8 @@ function manifest() {
     // Native Field documents preserve category and contextual references.
     // The browser displays this graph; it does not resolve or union schemas.
     catalog,
+    // The vocabularies the catalog's fields name, each stated once.
+    codesets,
     row,
     frames: FRAMES.map(([key, label, line]) =>
       frameCase(registry, reader, schema, key, label, key === UNSEALED ? line : sealed(line)),
@@ -532,7 +553,7 @@ function main(argv) {
   const kpi = index.kpi
 
   console.log(
-    `fix: ${kpi.fields} fields, ${kpi.codes} inline codes across ${kpi.enumFields} fields, ` +
+    `fix: ${kpi.fields} fields, ${kpi.codes} codes in ${kpi.codesets} sets read by ${kpi.enumFields} fields, ` +
       `${kpi.messages} messages, ${kpi.columns} columns, ${index.frames.length} frames` +
       `${check ? ' checked' : ' generated'}`,
   )

@@ -1,0 +1,20 @@
+{
+  "name": "returnratevaluationpriceoptioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None (the default)"
+    },
+    {
+      "value": "1",
+      "name": "FuturesPrice",
+      "doc": "Futures price"
+    },
+    {
+      "value": "2",
+      "name": "OptionsPrice",
+      "doc": "Options price"
+    }
+  ]
+}

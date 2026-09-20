@@ -1,0 +1,20 @@
+{
+  "name": "progrptreqscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BuySideRequests",
+      "doc": "Buy-side explicitly requests status using Statue Request (default), the sell-side firm can, however, send a DONE status List STatus Response in an unsolicited fashion"
+    },
+    {
+      "value": "2",
+      "name": "SellSideSends",
+      "doc": "Sell-side periodically sends status using List Status. Period optionally specified in ProgressPeriod."
+    },
+    {
+      "value": "3",
+      "name": "RealTimeExecutionReports",
+      "doc": "Real-time execution reports (to be discourage)"
+    }
+  ]
+}

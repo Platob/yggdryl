@@ -1,0 +1,75 @@
+{
+  "name": "mdreqrejreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownSymbol",
+      "doc": "Unknown symbol"
+    },
+    {
+      "value": "1",
+      "name": "DuplicateMDReqID",
+      "doc": "Duplicate MDReqID"
+    },
+    {
+      "value": "2",
+      "name": "InsufficientBandwidth",
+      "doc": "Insufficient Bandwidth"
+    },
+    {
+      "value": "3",
+      "name": "InsufficientPermissions",
+      "doc": "Insufficient Permissions"
+    },
+    {
+      "value": "4",
+      "name": "UnsupportedSubscriptionRequestType",
+      "doc": "Unsupported SubscriptionRequestType"
+    },
+    {
+      "value": "5",
+      "name": "UnsupportedMarketDepth",
+      "doc": "Unsupported MarketDepth"
+    },
+    {
+      "value": "6",
+      "name": "UnsupportedMDUpdateType",
+      "doc": "Unsupported MDUpdateType"
+    },
+    {
+      "value": "7",
+      "name": "UnsupportedAggregatedBook",
+      "doc": "Unsupported AggregatedBook"
+    },
+    {
+      "value": "8",
+      "name": "UnsupportedMDEntryType",
+      "doc": "Unsupported MDEntryType"
+    },
+    {
+      "value": "9",
+      "name": "UnsupportedTradingSessionID",
+      "doc": "Unsupported TradingSessionID"
+    },
+    {
+      "value": "A",
+      "name": "UnsupportedScope",
+      "doc": "Unsupported Scope"
+    },
+    {
+      "value": "B",
+      "name": "UnsupportedOpenCloseSettleFlag",
+      "doc": "Unsupported OpenCloseSettleFlag"
+    },
+    {
+      "value": "C",
+      "name": "UnsupportedMDImplicitDelete",
+      "doc": "Unsupported MDImplicitDelete"
+    },
+    {
+      "value": "D",
+      "name": "InsufficientCredit",
+      "doc": "Insufficient credit"
+    }
+  ]
+}

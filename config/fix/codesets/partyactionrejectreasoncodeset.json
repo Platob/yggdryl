@@ -1,0 +1,25 @@
+{
+  "name": "partyactionrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "InvalidParty",
+      "doc": "Invalid party or parties"
+    },
+    {
+      "value": "1",
+      "name": "UnkReqParty",
+      "doc": "Unknown requesting party"
+    },
+    {
+      "value": "98",
+      "name": "NotAuthorized",
+      "doc": "Not authorized"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

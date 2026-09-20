@@ -1,0 +1,136 @@
+{
+  "name": "quoteentryrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "UnknownSymbol",
+      "doc": "Unknown symbol (security)"
+    },
+    {
+      "value": "2",
+      "name": "Exchange",
+      "doc": "Exchange (security) closed"
+    },
+    {
+      "value": "3",
+      "name": "QuoteRequestExceedsLimit",
+      "aliases": [
+        "QuoteExceedsLimit"
+      ],
+      "doc": "Quote Request exceeds limit"
+    },
+    {
+      "value": "4",
+      "name": "TooLateToEnter",
+      "doc": "Too late to enter"
+    },
+    {
+      "value": "5",
+      "name": "UnknownQuote",
+      "doc": "Unknown quote"
+    },
+    {
+      "value": "6",
+      "name": "DuplicateQuote",
+      "doc": "Duplicate quote"
+    },
+    {
+      "value": "7",
+      "name": "InvalidBid",
+      "aliases": [
+        "InvalidBidAskSpread"
+      ],
+      "doc": "Invalid bid/ask spread"
+    },
+    {
+      "value": "8",
+      "name": "InvalidPrice",
+      "doc": "Invalid price"
+    },
+    {
+      "value": "9",
+      "name": "NotAuthorizedToQuoteSecurity",
+      "doc": "Not authorized to quote security"
+    },
+    {
+      "value": "10",
+      "name": "PriceExceedsCurrentPriceBand",
+      "doc": "Price exceeds current price band"
+    },
+    {
+      "value": "11",
+      "name": "QuoteLocked",
+      "doc": "Quote locked - unable to update/cancel"
+    },
+    {
+      "value": "12",
+      "name": "InvalidOrUnknownSecurityIssuer",
+      "doc": "Invalid or unknown security issuer"
+    },
+    {
+      "value": "13",
+      "name": "InvalidOrUnknownIssuerOfUnderlyingSecurity",
+      "doc": "Invalid or unknown issuer of underlying security"
+    },
+    {
+      "value": "14",
+      "name": "NotionalValueExceedsThreshold",
+      "doc": "Notional value exceeds threshold"
+    },
+    {
+      "value": "15",
+      "name": "PriceExceedsCurrentPriceBandDepr",
+      "doc": "Price exceeds current price band"
+    },
+    {
+      "value": "16",
+      "name": "ReferencePriceNotAvailable",
+      "doc": "Reference price not available"
+    },
+    {
+      "value": "17",
+      "name": "InsufficientCreditLimit",
+      "doc": "Insufficient credit limit"
+    },
+    {
+      "value": "18",
+      "name": "ExceededClipSizeLimit",
+      "doc": "Exceeded clip size limit"
+    },
+    {
+      "value": "19",
+      "name": "ExceededMaxNotionalOrderAmt",
+      "doc": "Exceeded maximum notional order amount"
+    },
+    {
+      "value": "20",
+      "name": "ExceededDV01PV01Limit",
+      "doc": "Exceeded DV01/PV01 limit"
+    },
+    {
+      "value": "21",
+      "name": "ExceededCS01Limit",
+      "doc": "Exceeded CS01 limit"
+    },
+    {
+      "value": "22",
+      "name": "UnavailablePriceLiquidity",
+      "doc": "Unavailable price or liquidity"
+    },
+    {
+      "value": "23",
+      "name": "InvalidMissingEntitlements",
+      "doc": "Invalid or missing entitlements"
+    },
+    {
+      "value": "24",
+      "name": "UnknownAccounts",
+      "doc": "Unknown account(s)"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

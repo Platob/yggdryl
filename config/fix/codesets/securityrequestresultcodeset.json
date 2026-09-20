@@ -1,0 +1,35 @@
+{
+  "name": "securityrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ValidRequest",
+      "doc": "Valid request"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnsupportedRequest",
+      "doc": "Invalid or unsupported request"
+    },
+    {
+      "value": "2",
+      "name": "NoInstrumentsFound",
+      "doc": "No instruments found that match selection criteria"
+    },
+    {
+      "value": "3",
+      "name": "NotAuthorizedToRetrieveInstrumentData",
+      "doc": "Not authorized to retrieve instrument data"
+    },
+    {
+      "value": "4",
+      "name": "InstrumentDataTemporarilyUnavailable",
+      "doc": "Instrument data temporarily unavailable"
+    },
+    {
+      "value": "5",
+      "name": "RequestForInstrumentDataNotSupported",
+      "doc": "Request for instrument data not supported"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "tradecontingencycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DoesNotApply",
+      "doc": "Does not apply (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "ContingentTrade",
+      "doc": "Contingent trade"
+    },
+    {
+      "value": "2",
+      "name": "NonContingentTrade",
+      "doc": "Non-contingent trade"
+    }
+  ]
+}

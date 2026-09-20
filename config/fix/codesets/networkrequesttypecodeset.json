@@ -1,0 +1,25 @@
+{
+  "name": "networkrequesttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Snapshot",
+      "doc": "Snapshot"
+    },
+    {
+      "value": "2",
+      "name": "Subscribe",
+      "doc": "Subscribe"
+    },
+    {
+      "value": "4",
+      "name": "StopSubscribing",
+      "doc": "Stop Subscribing"
+    },
+    {
+      "value": "8",
+      "name": "LevelOfDetail",
+      "doc": "Level of Detail, then NoCompID's becomes required"
+    }
+  ]
+}

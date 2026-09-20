@@ -1,0 +1,25 @@
+{
+  "name": "securitylisttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "IndustryClassification",
+      "doc": "Industry Classification"
+    },
+    {
+      "value": "2",
+      "name": "TradingList",
+      "doc": "Trading List"
+    },
+    {
+      "value": "3",
+      "name": "Market",
+      "doc": "Market / Market Segment List"
+    },
+    {
+      "value": "4",
+      "name": "NewspaperList",
+      "doc": "Newspaper List"
+    }
+  ]
+}

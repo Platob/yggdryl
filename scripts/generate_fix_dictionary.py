@@ -14,13 +14,23 @@ Orchestra's fields, components and groups each have their own directory of
 native Field documents; a message is a component carrying ``FIX:msgtype`` and
 is written into ``components/`` beside the others. Only wire
 fields have tags. A group references its ordinary int32 counter and contains
-a non-null component. Each field stores its enum records directly in
-FIX:codes metadata. Datatypes resolve through the crate's logical-name table.
+a non-null component. Datatypes resolve through the crate's logical-name table.
 
-The two ``FIX:`` properties that hold a document - ``FIX:codes`` and
-``FIX:directions`` - are written as the JSON arrays they are rather than as one
-escaped line, so an indented document renders a code set as a code set; the
-crate restates each as its canonical compact text when it reads the store back.
+``codesets/`` is the fourth directory, and it holds vocabularies rather than
+fields. A code set is named by the specification - ``SideCodeSet``,
+``UnitOfMeasureCodeSet`` - and named from as many fields as draw on it, 165 of
+them for one unit set; so its members are written once under
+``codesets/<name>.json`` and a field's ``FIX:codeset`` states the name of the set
+it reads by. Where Orchestra names no set, or names one whose members differ
+between the fields claiming it, the set is named after the field that reads by
+it. The dictionary holds each set once and a merge folds two statements of one
+set together, so a code named, aliased or documented once is named for every
+field that reads it.
+
+The two remaining ``FIX:`` properties that hold a document - ``FIX:replacements``
+and ``FIX:directions`` - are written as the JSON arrays they are rather than as
+one escaped line; the crate restates each as its canonical compact text when it
+reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
 field is written under the one name and datatype the newest source gives it,
@@ -505,7 +515,7 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
 def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`FIX:codes`, in the rank the specification gives, `value` leading each record.
+    """`FIX:codeset`, in the rank the specification gives, `value` leading each record.
 
     Where a code sits in the list *is* its presentation rank, so the rank is
     the order rather than a key beside it. A code the source ranks keeps that
@@ -541,6 +551,28 @@ def camel_case(description: str) -> str:
 # QuickFIX description would spell them differently. `State::from_spelling`
 # knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
 LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
+
+# PartyIDSource is copied into every Party family member but reads one shared
+# vocabulary. The bridge spelling belongs to that family alone; another
+# Proprietary code keeps the standard spelling it declares.
+PARTY_ID_SOURCE_ALIASES = {("D", "Proprietary"): ("proprietary/customcode",)}
+
+
+def party_id_source_aliases(
+    name: str, declared: str | None, codes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Add the bridge spelling to the shared PartyIDSource vocabulary."""
+    if not name.endswith("partyidsource") and folded(declared or "") != "partyidsourcecodeset":
+        return codes
+    for code in codes:
+        aliases = PARTY_ID_SOURCE_ALIASES.get((code["value"], code["name"]))
+        if aliases is None:
+            continue
+        current = code.setdefault("aliases", [])
+        for alias in aliases:
+            if alias not in current:
+                current.append(alias)
+    return codes
 
 def fold_legacy_codes(
     tag: int,
@@ -617,6 +649,374 @@ def fold_legacy_codes(
             }
         )
     return held
+
+
+def quoted(text: str) -> str:
+    """One text literal of the crate's expression grammar."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def member_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
+    """The term one fill's value spells: a literal, another column, a join,
+    or - with none of them - the source column itself."""
+    if fill.get("value") is not None:
+        return quoted(fill["value"])
+    if fill.get("from") is not None:
+        return name_of[fill["from"]]
+    if fill.get("join") is not None:
+        parts = []
+        for part in fill["join"]:
+            name = name_of[part]
+            # An integer part is spelled with two digits, which is how a day
+            # completes a month-year.
+            if dtype_of[part] in ("int8", "int16", "int32", "int64"):
+                parts.append(f"substring(concat('0', cast({name} as utf8)), -2)")
+            else:
+                parts.append(name)
+        return f"concat({', '.join(parts)})"
+    return source
+
+
+def occurrence_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
+    """One group occurrence: a list of one record, a member per fill."""
+    members = ", ".join(
+        (name_of[member["tag"]] if "tag" in member else member["group"])
+        + ": "
+        + (
+            occurrence_term(member, name_of, dtype_of, source)
+            if "group" in member
+            else member_term(member, name_of, dtype_of, source)
+        )
+        for member in fill["members"]
+    )
+    return f"[{{{members}}}]"
+
+
+def plan_text(
+    entry: dict[str, Any],
+    source_tag: int,
+    name_of: dict[int, str],
+    dtype_of: dict[int, str],
+    multi_valued: set[int],
+) -> str:
+    """One rule as a plan of the crate's expression grammar.
+
+    The `select` names every column the rule fills and the term it takes; the
+    `where` is the rule's condition: the message type as the `:msgtype`
+    parameter, the enclosing group as `:group`, and the held value as an
+    equality on the source column - a containment for a `MultipleCharValue`
+    source, whose value is several codes in one text.
+    """
+    source = name_of[source_tag]
+    selects = ", ".join(
+        f"{occurrence_term(fill, name_of, dtype_of, source)} as {fill['group']}"
+        if "group" in fill
+        else f"{member_term(fill, name_of, dtype_of, source)} as {name_of[fill['tag']]}"
+        for fill in entry["fills"]
+    )
+    conditions = []
+    msgtypes = entry.get("msgtypes") or []
+    if len(msgtypes) == 1:
+        conditions.append(f":msgtype = {quoted(msgtypes[0])}")
+    elif msgtypes:
+        conditions.append(f":msgtype in ({', '.join(quoted(held) for held in msgtypes)})")
+    groups = entry.get("in") or []
+    if len(groups) == 1:
+        conditions.append(f":group = {quoted(groups[0])}")
+    elif groups:
+        conditions.append(f":group in ({', '.join(quoted(held) for held in groups)})")
+    if entry.get("when") is not None:
+        when = quoted(entry["when"])
+        conditions.append(f"contains({source}, {when})" if source_tag in multi_valued else f"{source} = {when}")
+    text = f"select {selects}"
+    if conditions:
+        text += " where " + " and ".join(conditions)
+    return text
+
+
+def replacements_document(
+    entries: list[dict[str, Any]],
+    source_tag: int,
+    name_of: dict[int, str],
+    dtype_of: dict[int, str],
+    multi_valued: set[int],
+) -> list[dict[str, Any]]:
+    """`FIX:replacements`: one plan per entry, its `doc` beside it.
+
+    Entries keep the order the table states them in - the first entry whose
+    condition a message meets answers, so a catch-all without one comes last
+    - and are never sorted.
+    """
+    rendered = []
+    for entry in entries:
+        held = {"plan": plan_text(entry, source_tag, name_of, dtype_of, multi_valued)}
+        if entry.get("doc"):
+            held["doc"] = entry["doc"]
+        rendered.append(held)
+    return rendered
+
+
+def rule(
+    fills: list[dict[str, Any]],
+    *,
+    when: str | None = None,
+    msgtypes: list[str] | None = None,
+    within: list[str] | None = None,
+    doc: str | None = None,
+) -> dict[str, Any]:
+    """One replacement entry, as the table states it before it is compiled to
+    a plan: `within` is the enclosing repeating group."""
+    return {"msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
+
+
+def fill(tag: int, value: str | None = None, *, source: int | None = None, join: list[int] | None = None) -> dict[str, Any]:
+    """One field target: a constant, another tag's value, a join, or - with
+    none of them - the source field's own value."""
+    return {"tag": tag, "value": value, "from": source, "join": join}
+
+
+def party(role: str) -> list[dict[str, Any]]:
+    """The one Parties occurrence a field naming a counterparty becomes."""
+    return [{"group": "parties", "members": [fill(448), fill(452, role)]}]
+
+
+def benchmark(currency: str, curve: str, point: str) -> list[dict[str, Any]]:
+    """The curve one Benchmark(219) value spelled, as its three fields."""
+    return [fill(220, currency), fill(221, curve), fill(222, point)]
+
+
+# Rule80A(47) as OrderCapacity(528) and, where the appendix states them, the
+# OrderRestrictions(529) tokens; a row whose restriction the appendix leaves to
+# Side fills only the capacity.
+RULE80A = {
+    "A": ("A", None), "B": ("A", None), "C": ("P", "1 3"), "D": ("P", "1 2"),
+    "E": ("P", None), "F": ("W", None), "H": ("I", None), "I": ("I", None),
+    "J": ("I", "1 2"), "K": ("I", "1 3"), "L": ("P", "4"), "M": ("W", "1 2"),
+    "N": ("W", "1 3"), "O": ("P", "4"), "P": ("P", None), "R": ("A", "4"),
+    "S": ("P", "5"), "T": ("W", "5"), "U": ("A", "1 2"), "W": ("W", None),
+    "X": ("W", "4"), "Y": ("A", "1 3"), "Z": ("A", "4"),
+}
+
+# The pegging ExecInst(18) values FIX 5.0 moved to PegPriceType(1094).
+PEG_PRICE_TYPES = {"L": "1", "M": "2", "O": "3", "P": "4", "R": "5", "W": "7", "a": "8", "d": "9"}
+
+# Source tag -> entries, in document order. A tag listed twice concatenates,
+# so a family's entries follow the earlier family's. A `doc` cites the
+# appendix only where the mapping is not the same value in the replacement;
+# the appendix's own version is the comment above each family and nothing
+# the document states.
+REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
+    # FIX 4.3 Appendix 6-F, Replaced features.
+    (20, [
+        rule([fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (150, [
+        rule([fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (47, [
+        rule([fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
+            when=code,
+            doc=f"Rule80A {code} is OrderCapacity {capacity}"
+            + (f" with OrderRestrictions {restrictions}" if restrictions else "")
+            + " (FIX 4.3 Appendix 6-F)",
+        )
+        for code, (capacity, restrictions) in RULE80A.items()
+    ]),
+    (204, [
+        rule([fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
+        rule([fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (76, [rule(party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
+    (92, [rule(party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
+    (109, [rule(party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
+    (439, [rule(party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
+    (440, [
+        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
+            doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (166, [
+        *(
+            rule([{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
+                when=code,
+                doc="SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+            )
+            for code in ("CED", "DTC", "EUR", "FED", "PNY", "PTC")
+        ),
+        rule([{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
+            doc="SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (46, [rule([fill(55)])]),
+    (205, [rule([fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (314, [rule([fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (370, [
+        rule([{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
+            doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (71, [
+        rule([fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
+        rule([fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
+    ]),
+    # FIX 4.4 Appendix 6-F Replaced features and Appendix 6-E Deprecated features.
+    (40, [
+        rule([fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+    ]),
+    (63, [rule([fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
+    *(
+        (tag, [
+            rule([fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
+            rule([fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
+        ])
+        for tag in (167, 310, 609)
+    ),
+    (18, [
+        rule([fill(835, "1"), fill(840, "1"), fill(18, "R")],
+            when="T",
+            doc="ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
+        ),
+    ]),
+    (219, [
+        rule(benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
+    ]),
+    (540, [rule([fill(159)])]),
+    (119, [rule([fill(737)], within=["allocgrp"])]),
+    (120, [rule([fill(736)], within=["allocgrp"])]),
+    (240, [rule([fill(696)])]),
+    (239, [rule([fill(310)])]),
+    (226, [
+        rule([fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
+        rule([fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
+    ]),
+    (227, [rule([fill(44)])]),
+    (465, [
+        rule([fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
+        *(
+            rule([fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
+            for code in ("1", "5", "8")
+        ),
+    ]),
+    # FIX 5.0 Appendix 6-E, Deprecated features.
+    (111, [rule([fill(1138)])]),
+    (210, [rule([fill(1082)])]),
+    (575, [rule([fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
+    (18, [
+        rule([fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
+        for code, price_type in PEG_PRICE_TYPES.items()
+    ]),
+    (687, [rule([fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
+    # FIX 5.0 SP1 Appendix 6-E, Deprecated features.
+    (687, [rule([fill(1418)], msgtypes=["AE", "AR"])]),
+    (852, [
+        rule([fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+        rule([fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+    ]),
+    (37, [rule([fill(1369)], msgtypes=["r"])]),
+    (198, [rule([fill(1369)], msgtypes=["r"])]),
+)
+
+
+def attach_replacements(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_values: dict[int, set[str]],
+    multi_valued: set[int],
+) -> dict[int, int]:
+    """Write the rules table onto its source fields, refusing one that does
+    not resolve against the dictionary it is written into.
+
+    A rule is data the crate reads at intake and never re-checks, so every
+    reference it makes is proven here: the source and every target tag are
+    fields, a `when` and every constant are codes of the set they are read
+    against (every space-separated token, for a MultipleCharValue or
+    MultipleStringValue target), group names are groups, message types are
+    messages, and a fill has exactly the shape the reader admits. Answers
+    the number of entries written per source tag.
+    """
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+    name_of = {tag: field["name"] for tag, field in by_tag.items()}
+    dtype_of = {tag: field["dtype"]["type"] for tag, field in by_tag.items()}
+    groups = {field["name"] for field in catalog["groups"]}
+    msgtypes = {field["metadata"]["FIX:msgtype"] for field in catalog["messages"]}
+
+    def check_code(tag: int, value: str, where: str) -> None:
+        codes = code_values.get(tag)
+        if codes is None:
+            return
+        for token in value.split() if tag in multi_valued else [value]:
+            if token not in codes:
+                raise ValueError(f"{where}: {token!r} is not a code of tag {tag}")
+
+    def check_fill(held: dict[str, Any], where: str) -> None:
+        if ("tag" in held) == ("group" in held):
+            raise ValueError(f"{where}: a fill names exactly one of tag or group")
+        if "group" in held:
+            if set(held) - {"group", "members"}:
+                raise ValueError(f"{where}: a group fill holds only members")
+            if held["group"] not in groups:
+                raise ValueError(f"{where}: unknown group {held['group']!r}")
+            if not held.get("members"):
+                raise ValueError(f"{where}: group {held['group']!r} fills no member")
+            for member in held["members"]:
+                check_fill(member, f"{where} in {held['group']}")
+            return
+        target = held["tag"]
+        if target not in by_tag:
+            raise ValueError(f"{where}: unknown target tag {target}")
+        stated = [key for key in ("value", "from", "join") if held.get(key) is not None]
+        if len(stated) > 1 or set(held) - {"tag", "value", "from", "join"}:
+            raise ValueError(f"{where}: tag {target} states more than one source")
+        if held.get("value") is not None:
+            check_code(target, held["value"], f"{where} tag {target}")
+        if held.get("from") is not None and held["from"] not in by_tag:
+            raise ValueError(f"{where}: unknown from tag {held['from']}")
+        if held.get("join") is not None:
+            if len(held["join"]) < 2:
+                raise ValueError(f"{where}: a join of tag {target} needs two tags")
+            for part in held["join"]:
+                if part not in by_tag:
+                    raise ValueError(f"{where}: unknown join tag {part}")
+
+    per_tag: dict[int, list[dict[str, Any]]] = {}
+    for tag, entries in REPLACEMENT_RULES:
+        per_tag.setdefault(tag, []).extend(entries)
+    for tag, entries in per_tag.items():
+        if tag not in by_tag:
+            raise ValueError(f"replacements for unknown tag {tag}")
+        for index, entry in enumerate(entries):
+            where = f"tag {tag} entry {index}"
+            for msgtype in entry.get("msgtypes") or []:
+                if msgtype not in msgtypes:
+                    raise ValueError(f"{where}: unknown MsgType {msgtype!r}")
+            for group in entry.get("in") or []:
+                if group not in groups:
+                    raise ValueError(f"{where}: unknown group {group!r}")
+            if entry.get("when") is not None:
+                check_code(tag, entry["when"], f"{where} when")
+            if not entry["fills"]:
+                raise ValueError(f"{where}: fills nothing")
+            for held in entry["fills"]:
+                check_fill(held, where)
+        metadata = by_tag[tag]["metadata"]
+        metadata["FIX:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
+        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
+    return {tag: len(entries) for tag, entries in per_tag.items()}
 
 
 # ---- Derivations: what a message implies, as expressions -------------------
@@ -941,7 +1341,7 @@ def expression_columns(text: str) -> list[str]:
 
 
 def attach_derivations(
-    catalog: dict[str, list[dict[str, Any]]]
+    catalog: dict[str, list[dict[str, Any]]], code_records: dict[int, list[dict[str, Any]]]
 ) -> dict[int, str]:
     """Write each derivation onto the field it fills, refusing one that does
     not resolve against the dictionary it is written into.
@@ -955,7 +1355,7 @@ def attach_derivations(
     names = {field["name"] for field in catalog["fields"]}
     names.update(field["name"] for field in catalog["groups"])
     rules = list(DERIVATION_RULES)
-    rules.append((460, product_case(by_tag[167]["metadata"]["FIX:codes"])))
+    rules.append((460, product_case(code_records[167])))
     written: dict[int, str] = {}
     for tag, text in rules:
         if tag in written:
@@ -1019,8 +1419,19 @@ def entry_name(group_name: str) -> str:
     return _singularize(matched[1]) + matched[2]
 
 
-def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Resolve the source graph once into the registry's five categories."""
+def build(
+    parsed: dict[str, dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+    """Resolve the source graph once into the catalog and the code sets.
+
+    A code set is a vocabulary rather than a property of one field: the
+    specification names it - ``SideCodeSet``, ``UnitOfMeasureCodeSet`` - and
+    names it from as many fields as draw on it. So the members are written
+    once under ``codesets/<name>.json`` and a field's ``FIX:codeset`` states
+    which set it reads by. The two answers are separate because a code set is
+    not a catalog category: it holds no ``Field`` document and resolves no
+    reference to one.
+    """
     latest = parsed["orchestra-latest"]
 
     # Per-tag history, oldest first, from the versions QuickFIX publishes:
@@ -1046,12 +1457,61 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 continue
             entries.append(entry)
 
-    def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-        """The field's `FIX:codes`, legacy values folded in, or nothing."""
+    # The wire values every field's set holds at any version, and the fields
+    # whose value is a space-separated list of them: what a replacement rule's
+    # constants and `when` are checked against.
+    code_values: dict[int, set[str]] = {}
+    code_records: dict[int, list[dict[str, Any]]] = {}
+    multi_valued: set[int] = set()
+    # Every named set, by the name a field's `FIX:codeset` states.
+    code_sets: dict[str, list[dict[str, Any]]] = {}
+
+    def name_codes(tag: int, name: str, declared: str | None, document: list[dict[str, Any]]) -> str:
+        """The name this set is filed under, claimed once and never shared.
+
+        The specification's own name leads, folded. Fields are walked in
+        ascending tag order, so the lowest tag holding a set claims its
+        spec name - and a second field whose *document* differs, which is
+        what per-tag legacy folding produces for fifteen of the shipped
+        sets, takes a name of its own rather than overwriting the first.
+        A tag the specification names no set for is filed under the field
+        that reads by it. Two sets are never merged by name alone: a name
+        is the identity, and equal members are what let one be shared.
+        """
+        for candidate in [folded(declared) if declared else None, f"{name}codeset", f"{name}{tag}codeset"]:
+            if candidate is None:
+                continue
+            if re.fullmatch(r"[a-z0-9][a-z0-9_.-]*", candidate) is None:
+                continue
+            held = code_sets.get(candidate)
+            if held is None:
+                code_sets[candidate] = document
+                return candidate
+            if held == document:
+                return candidate
+        raise ValueError(f"tag {tag}: no free code set name for {declared or name!r}")
+
+    def coded(
+        tag: int,
+        name: str,
+        fix_type: str,
+        codes: list[dict[str, Any]],
+        declared: str | None = None,
+    ) -> str | None:
+        """The name of the set this field reads by, or nothing for no set.
+
+        The members - legacy values folded in - are filed under that name,
+        and what the field carries is the name alone.
+        """
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
+        folded_codes = party_id_source_aliases(name, declared, folded_codes)
+        if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
+            multi_valued.add(tag)
         if not folded_codes:
             return None
-        return codes_document(folded_codes)
+        code_values[tag] = {code["value"] for code in folded_codes}
+        code_records[tag] = folded_codes
+        return name_codes(tag, name, declared, codes_document(folded_codes))
 
     fields: list[dict[str, Any]] = []
     # A tag some version declared and Latest no longer does was removed: its
@@ -1070,9 +1530,9 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
             metadata["FIX:names"] = list(dict.fromkeys(names))
-        codes = coded(tag, fix_type, [])
+        codes = coded(tag, name, fix_type, [])
         if codes is not None:
-            metadata["FIX:codes"] = codes
+            metadata["FIX:codeset"] = codes
         fields.append(
             {
                 "name": name,
@@ -1137,15 +1597,16 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
         if code_set_name in latest["code_sets"]:
             held = latest["code_sets"][code_set_name]
-            codes = coded(tag, held["type"], held["codes"])
+            codes = coded(tag, name, held["type"], held["codes"], code_set_name)
             if codes is not None:
-                metadata["FIX:codes"] = codes
+                metadata["FIX:codeset"] = codes
         elif listings.get(tag):
             # Latest declares no set, so every value an older version listed
-            # is a legacy code: the set is what those versions said.
-            codes = coded(tag, field["type"], [])
+            # is a legacy code: the set is what those versions said, and it
+            # is named after the field that reads by it.
+            codes = coded(tag, name, field["type"], [])
             if codes is not None:
-                metadata["FIX:codes"] = codes
+                metadata["FIX:codeset"] = codes
 
         fields.append(
             {
@@ -1155,7 +1616,10 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 "metadata": dict(sorted(metadata.items())),
             }
         )
-    return build_catalog(latest, fields)
+    catalog = build_catalog(latest, fields)
+    attach_replacements(catalog, code_values, multi_valued)
+    attach_derivations(catalog, code_records)
+    return catalog, code_sets
 
 
 def build_catalog(
@@ -1512,8 +1976,16 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
             field["metadata"] = dict(sorted(metadata.items()))
 
 
-def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
-    """Render native Field documents with compact references between owners."""
+def render_tree(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_sets: dict[str, list[dict[str, Any]]],
+) -> dict[str, str]:
+    """Render native Field documents, and the code sets they read by.
+
+    One `path -> text` map for the whole store, which is also what the
+    provenance manifest hashes: a document that is not here is not written,
+    not checksummed and not swept.
+    """
     shards: dict[int, list[dict[str, Any]]] = {}
     for field in catalog["fields"]:
         tag = int(field["metadata"]["FIX:tag"])
@@ -1531,18 +2003,30 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
             if path in documents:
                 raise ValueError(f"a message and a component share one document: {path}")
             documents[path] = field
+    # A code set is a vocabulary rather than a definition: it holds no tag,
+    # no datatype and no reference, so it lives in a folder of its own and
+    # states the name it is filed under.
+    for name, codes in code_sets.items():
+        path = f"codesets/{name}.json"
+        if path in documents:
+            raise ValueError(f"two code sets share one document: {path}")
+        documents[path] = {"name": name, "codes": codes}
     return {
         name: json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         for name, document in sorted(documents.items())
     }
 
 
-def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
+def summary(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_sets: dict[str, list[dict[str, Any]]],
+) -> str:
     """The counts as the store holds them: messages among the components."""
     components = len(catalog["components"]) + len(catalog["messages"])
     return (
         f"{len(catalog['fields'])} fields, {components} components "
-        f"({len(catalog['messages'])} of them messages), {len(catalog['groups'])} groups"
+        f"({len(catalog['messages'])} of them messages), {len(catalog['groups'])} groups, "
+        f"{len(code_sets)} code sets"
     )
 
 
@@ -1550,17 +2034,23 @@ def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
 CRATE_TAG_MIN = 65_000
 
 # The named documents the crate defines and a store dump writes: the fixed
-# row and the two Map groups whose keys are the crate's own vocabulary.
+# row, its message-category vocabulary, and the two Map groups whose keys are
+# the crate's own vocabulary.
 CRATE_DOCUMENTS = frozenset(
-    {"components/fixmsg.json", "groups/identifiers.json", "groups/metadata.json"}
+    {
+        "codesets/msgcatcodeset.json",
+        "components/fixmsg.json",
+        "groups/identifiers.json",
+        "groups/metadata.json",
+    }
 )
 
 
 def crate_owned(name: str) -> bool:
     """Whether a document under the output root is the crate's own dump.
 
-    The crate's own documents - its field shard, its two Map groups, and
-    the fixed row ``components/fixmsg.json`` - are written by
+    The crate's own documents - its field shard, code set, two Map groups,
+    and fixed row ``components/fixmsg.json`` - are written by
     ``FixRegistry::write_into`` and pinned by the Rust store tests; this
     generator neither writes nor checks them, and never removes them.
     """
@@ -1573,7 +2063,7 @@ def crate_owned(name: str) -> bool:
 def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
     """Replace generated files only; every target stays under the output root."""
     out = out.resolve()
-    for tree in ("fields", "components", "groups", "messages", "primitive", "nested"):
+    for tree in ("codesets", "fields", "components", "groups", "messages", "primitive", "nested"):
         for stale in sorted((out / tree).glob("*.json")):
             relative = stale.resolve().relative_to(out).as_posix()
             if relative not in documents and not crate_owned(relative):
@@ -1733,10 +2223,9 @@ def main() -> int:
         missing = ", ".join(sorted(message_types - set(MSGCAT_BY_TYPE)))
         extra = ", ".join(sorted(set(MSGCAT_BY_TYPE) - message_types))
         raise ValueError(f"message category coverage differs: missing={missing}; extra={extra}")
-    catalog = build(parsed)
-    attach_derivations(catalog)
+    catalog, code_sets = build(parsed)
     assign_definition_tags(catalog)
-    documents = render_tree(catalog)
+    documents = render_tree(catalog, code_sets)
     written = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in documents.items()}
     manifest = {
         "version": latest["version"],
@@ -1755,7 +2244,7 @@ def main() -> int:
             if actual != expected:
                 failures.append(f"changed {name}")
         expected_names = set(documents)
-        for category in ("fields", "components", "groups", "messages", "primitive", "nested"):
+        for category in ("codesets", "fields", "components", "groups", "messages", "primitive", "nested"):
             for path in (out / category).glob("*.json"):
                 name = path.relative_to(out).as_posix()
                 if name not in expected_names and not crate_owned(name):
@@ -1771,7 +2260,7 @@ def main() -> int:
         if failures:
             print("\n".join(failures), file=sys.stderr)
             return 1
-        print(f"verified {len(documents)} documents; " + summary(catalog))
+        print(f"verified {len(documents)} documents; " + summary(catalog, code_sets))
         return 0
     write_tree(out, documents)
 
@@ -1786,7 +2275,10 @@ def main() -> int:
         newline="\n",
     )
     write_constants(latest, parsed)
-    print(f"wrote {len(written)} documents ({summary(catalog)}) at FIX {latest['version']} EP{latest['ep']}")
+    print(
+        f"wrote {len(written)} documents ({summary(catalog, code_sets)})"
+        f" at FIX {latest['version']} EP{latest['ep']}"
+    )
     return 0
 
 

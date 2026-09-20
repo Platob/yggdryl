@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamdiscounttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Standard",
+      "doc": "Standard"
+    },
+    {
+      "value": "1",
+      "name": "FRA",
+      "doc": "Forward Rate Agreement (FRA)"
+    }
+  ]
+}

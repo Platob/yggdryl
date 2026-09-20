@@ -1,0 +1,158 @@
+{
+  "name": "allocrejcodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownAccount",
+      "doc": "Unknown or missing account(s)"
+    },
+    {
+      "value": "1",
+      "name": "IncorrectQuantity",
+      "doc": "Incorrect or missing block quantity"
+    },
+    {
+      "value": "2",
+      "name": "IncorrectAveragePrice",
+      "aliases": [
+        "IncorrectAveragegPrice"
+      ],
+      "doc": "Incorrect or missing average price"
+    },
+    {
+      "value": "3",
+      "name": "UnknownExecutingBrokerMnemonic",
+      "doc": "Unknown executing broker mnemonic"
+    },
+    {
+      "value": "4",
+      "name": "CommissionDifference",
+      "doc": "Incorrect or missing commission"
+    },
+    {
+      "value": "5",
+      "name": "UnknownOrderID",
+      "doc": "Unknown OrderID(37)"
+    },
+    {
+      "value": "6",
+      "name": "UnknownListID",
+      "doc": "Unknown ListID(66)"
+    },
+    {
+      "value": "7",
+      "name": "OtherSeeText",
+      "doc": "Other (further in Text (58))"
+    },
+    {
+      "value": "8",
+      "name": "IncorrectAllocatedQuantity",
+      "doc": "Incorrect or missing allocated quantity"
+    },
+    {
+      "value": "9",
+      "name": "CalculationDifference",
+      "doc": "Calculation difference"
+    },
+    {
+      "value": "10",
+      "name": "UnknownOrStaleExecID",
+      "doc": "Unknown or Stale ExecID(17)"
+    },
+    {
+      "value": "11",
+      "name": "MismatchedData",
+      "doc": "Mismatched data"
+    },
+    {
+      "value": "12",
+      "name": "UnknownClOrdID",
+      "doc": "Unknown ClOrdID(11)"
+    },
+    {
+      "value": "13",
+      "name": "WarehouseRequestRejected",
+      "doc": "Warehouse request rejected"
+    },
+    {
+      "value": "14",
+      "name": "DuplicateOrMissingIndividualAllocID",
+      "doc": "Duplicate or missing IndividualAllocID(467)"
+    },
+    {
+      "value": "15",
+      "name": "TradeNotRecognized",
+      "doc": "Trade not recognized"
+    },
+    {
+      "value": "16",
+      "name": "DuplicateTrade",
+      "doc": "Trade previously allocated"
+    },
+    {
+      "value": "17",
+      "name": "IncorrectOrMissingInstrument",
+      "doc": "Incorrect or missing instrument"
+    },
+    {
+      "value": "18",
+      "name": "IncorrectOrMissingSettlDate",
+      "doc": "Incorrect or missing settlement date"
+    },
+    {
+      "value": "19",
+      "name": "IncorrectOrMissingFundIDOrFundName",
+      "doc": "Incorrect or missing fund ID or fund name"
+    },
+    {
+      "value": "20",
+      "name": "IncorrectOrMissingSettlInstructions",
+      "doc": "Incorrect or missing settlement instructions"
+    },
+    {
+      "value": "21",
+      "name": "IncorrectOrMissingFees",
+      "doc": "Incorrect or missing fees"
+    },
+    {
+      "value": "22",
+      "name": "IncorrectOrMissingTax",
+      "doc": "Incorrect or missing tax"
+    },
+    {
+      "value": "23",
+      "name": "UnknownOrMissingParty",
+      "doc": "Unknown or missing party"
+    },
+    {
+      "value": "24",
+      "name": "IncorrectOrMissingSide",
+      "doc": "Incorrect or missing side"
+    },
+    {
+      "value": "25",
+      "name": "IncorrectOrMissingNetMoney",
+      "doc": "Incorrect or missing net-money"
+    },
+    {
+      "value": "26",
+      "name": "IncorrectOrMissingTradeDate",
+      "doc": "Incorrect or missing trade date"
+    },
+    {
+      "value": "27",
+      "name": "IncorrectOrMissingSettlCcyInstructions",
+      "doc": "Incorrect or missing settlement currency instructions"
+    },
+    {
+      "value": "28",
+      "name": "IncorrectOrMissingProcessCode",
+      "doc": "Incorrrect or missing ProcessCode(81)"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

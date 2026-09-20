@@ -1,0 +1,125 @@
+{
+  "name": "coupondaycountcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "OneOne",
+      "doc": "1/1"
+    },
+    {
+      "value": "1",
+      "name": "ThirtyThreeSixtyUS",
+      "doc": "30/360 (30U/360 or Bond Basis)"
+    },
+    {
+      "value": "2",
+      "name": "ThirtyThreeSixtySIA",
+      "doc": "30/360 (SIA)"
+    },
+    {
+      "value": "3",
+      "name": "ThirtyThreeSixtyM",
+      "doc": "30/360M"
+    },
+    {
+      "value": "4",
+      "name": "ThirtyEThreeSixty",
+      "doc": "30E/360 (Eurobond Basis)"
+    },
+    {
+      "value": "5",
+      "name": "ThirtyEThreeSixtyISDA",
+      "doc": "30E/360 (ISDA)"
+    },
+    {
+      "value": "6",
+      "name": "ActThreeSixty",
+      "doc": "Act/360"
+    },
+    {
+      "value": "7",
+      "name": "ActThreeSixtyFiveFixed",
+      "doc": "Act/365 (FIXED)"
+    },
+    {
+      "value": "8",
+      "name": "ActActAFB",
+      "doc": "Act/Act (AFB)"
+    },
+    {
+      "value": "9",
+      "name": "ActActICMA",
+      "doc": "Act/Act (ICMA)"
+    },
+    {
+      "value": "10",
+      "name": "ActActISMAUltimo",
+      "doc": "Act/Act (ICMA Ultimo)"
+    },
+    {
+      "value": "11",
+      "name": "ActActISDA",
+      "doc": "Act/Act (ISDA)"
+    },
+    {
+      "value": "12",
+      "name": "BusTwoFiftyTwo",
+      "doc": "BUS/252"
+    },
+    {
+      "value": "13",
+      "name": "ThirtyEPlusThreeSixty",
+      "doc": "30E+/360"
+    },
+    {
+      "value": "14",
+      "name": "ActThreeSixtyFiveL",
+      "doc": "Act/365L"
+    },
+    {
+      "value": "15",
+      "name": "NLThreeSixtyFive",
+      "doc": "NL365"
+    },
+    {
+      "value": "16",
+      "name": "NLThreeSixty",
+      "doc": "NL360"
+    },
+    {
+      "value": "17",
+      "name": "Act364",
+      "doc": "Act/364"
+    },
+    {
+      "value": "18",
+      "name": "ThirtyThreeSixtyFive",
+      "doc": "30/365"
+    },
+    {
+      "value": "19",
+      "name": "ThirtyActual",
+      "doc": "30/Actual"
+    },
+    {
+      "value": "20",
+      "name": "ThirtyThreeSixtyICMA",
+      "doc": "30/360 (ICMA or basis rule)"
+    },
+    {
+      "value": "21",
+      "name": "ThirtyETwoThreeSixty",
+      "doc": "30E2/360 (Eurobond basis model two)"
+    },
+    {
+      "value": "22",
+      "name": "ThirtyEThreeThreeSixty",
+      "doc": "30E3/360 (Eurobond basis model three)"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

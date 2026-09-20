@@ -30,7 +30,7 @@ fn text(values: &[&str]) -> ArrayRef {
 }
 
 /// The ten codes, each with its width and one value its standard names.
-const CODED: [(&str, DataType, usize, &str); 10] = [
+const CODED: [(&str, DataType, usize, &str); 11] = [
     ("country", DataType::Country, 2, "US"),
     ("currency", DataType::Currency, 3, "USD"),
     ("mic", DataType::MicCode, 4, "XPAR"),
@@ -38,6 +38,7 @@ const CODED: [(&str, DataType, usize, &str); 10] = [
     ("isin", DataType::IsinCode, 12, "US0378331005"),
     ("cusip", DataType::CusipCode, 9, "037833100"),
     ("sedol", DataType::SedolCode, 7, "B0YBKJ7"),
+    ("figi", DataType::FIGICode, 12, "BBG000BLNQ16"),
     ("side", DataType::Side, 8, "BUY"),
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),

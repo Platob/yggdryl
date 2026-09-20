@@ -1,0 +1,15 @@
+{
+  "name": "individualalloctypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "SubAllocate",
+      "doc": "Sub Allocate"
+    },
+    {
+      "value": "2",
+      "name": "ThirdPartyAllocation",
+      "doc": "Third Party Allocation"
+    }
+  ]
+}

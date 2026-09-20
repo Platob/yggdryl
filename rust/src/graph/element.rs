@@ -15,7 +15,7 @@ use std::hash::Hasher;
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
 use crate::{
-    BloombergCode, CfiCode, CodeValue, Currency, CusipCode, Decimal18, IsinCode, MicCode,
+    BloombergCode, CfiCode, CodeValue, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode,
     SedolCode, Side, State, Uuid,
 };
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
@@ -394,7 +394,7 @@ pub trait Element {
         if !self.get_crosscode().is_empty() {
             feed(&mut state, "crosscode", self.get_crosscode().as_bytes());
         }
-        feed_named(&mut state, self);
+        feed_named(&mut state, self, |_| true);
         state
     }
 
@@ -680,23 +680,32 @@ fn merge_timed<E: Event>(this: &mut E, other: &E) -> bool {
 /// Continues a digest with the names an element goes by and its parents,
 /// each under its own name: what [`Element::digest`] feeds behind the
 /// cross code.
-fn feed_named<E: Element + ?Sized>(state: &mut Xxh3, this: &E) {
+fn feed_named<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
+where
+    E: Element + ?Sized,
+    F: Fn(&str) -> bool,
+{
     for (scheme, identifier) in this.get_identifiers() {
-        feed(state, scheme, identifier.as_bytes());
+        if include_identifier(scheme) {
+            feed(state, scheme, identifier.as_bytes());
+        }
     }
     for parent in this.get_parentuuids() {
         feed(state, "parentuuid", &parent.into_bytes());
     }
 }
 
-/// Feeds what [`Event::digest_event`] feeds, less the cross code: the names
-/// the event goes by, its parents, its state, its place in the chain and
-/// its predecessor's identity. For a content code that names no chain -
-/// a FIX message's, whose cross code is the conversation one hop of a
-/// bridge bracketed it in, so a code over it would make one message as
-/// many messages as hops.
-pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
-    feed_named(state, this);
+/// Feeds what [`Event::digest_event`] feeds, less the cross code: the selected
+/// names the event goes by, its parents, its state, its place in the chain and
+/// its predecessor's identity. A holder can leave out a name that records
+/// capture provenance rather than event content without duplicating the
+/// framing this digest owns.
+pub(crate) fn feed_event_facts<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
+where
+    E: Event + ?Sized,
+    F: Fn(&str) -> bool,
+{
+    feed_named(state, this, include_identifier);
     feed_timed(state, this);
 }
 
@@ -1330,6 +1339,12 @@ pub trait MarketElement: Element {
     /// market named none.
     fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>);
 
+    /// The instrument's FIGI, where the market named it by one.
+    fn get_figicode(&self) -> Option<&FIGICode>;
+
+    /// Records the instrument's FIGI; `None` states the market named none.
+    fn set_figicode(&mut self, figicode: Option<FIGICode>);
+
     /// The instrument's CFI classification, where the market stated it.
     fn get_cficode(&self) -> Option<&CfiCode>;
 
@@ -1830,7 +1845,7 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
     }
     feed(state, "unit", this.get_unit().as_bytes());
     feed(state, "side", this.get_side().as_str().as_bytes());
-    let codes: [(&str, Option<&str>); 6] = [
+    let codes: [(&str, Option<&str>); 7] = [
         ("isincode", this.get_isincode().map(IsinCode::as_str)),
         ("cusipcode", this.get_cusipcode().map(CusipCode::as_str)),
         ("sedolcode", this.get_sedolcode().map(SedolCode::as_str)),
@@ -1838,6 +1853,7 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
             "bloombergcode",
             this.get_bloombergcode().map(BloombergCode::as_str),
         ),
+        ("figicode", this.get_figicode().map(FIGICode::as_str)),
         ("cficode", this.get_cficode().map(CfiCode::as_str)),
         ("miccode", this.get_miccode().map(MicCode::as_str)),
     ];
@@ -2008,6 +2024,11 @@ fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
             false,
         ),
         |code| this.set_bloombergcode(code),
+    );
+    changed |= moved(
+        this.get_figicode().cloned(),
+        better_stated(this.get_figicode().cloned(), previous.get_figicode(), false),
+        |code| this.set_figicode(code),
     );
     changed |= moved(
         this.get_cficode().cloned(),
@@ -2184,6 +2205,11 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
             later,
         ),
         |code| this.set_bloombergcode(code),
+    );
+    changed |= moved(
+        this.get_figicode().cloned(),
+        better_stated(this.get_figicode().cloned(), other.get_figicode(), later),
+        |code| this.set_figicode(code),
     );
     changed |= moved(
         this.get_cficode().cloned(),

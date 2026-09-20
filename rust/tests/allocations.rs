@@ -590,27 +590,37 @@ fn reading_which_way_a_line_moved_allocates_nothing() {
 
 #[test]
 fn a_fix_code_lookup_allocates_nothing() {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
+        )
+        .expect("a static code set");
     let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(9_995).expect("a static tag");
     field
         .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])
-        .expect("a static code set");
-    let view = field.as_fix();
+        .set_codeset("sidecodeset")
+        .expect("the set the field reads by");
+    // The field names the set and the dictionary holds its members, so the
+    // name is resolved here, once: what is counted below is the scan over
+    // the set alone.
+    let set = registry.codeset_of(&field).expect("a held code set");
     free("a code by its wire value", || {
-        let _ = black_box(view.code(black_box("1")));
+        let _ = black_box(set.code(black_box("1")));
     });
     free("a code by its name", || {
-        let _ = black_box(view.code_by_name(black_box("buy")));
+        let _ = black_box(set.code_by_name(black_box("buy")));
     });
     free("a name for a wire value", || {
-        let _ = black_box(view.code_name(black_box("2")));
+        let _ = black_box(set.code_name(black_box("2")));
     });
     free("a value no code spells", || {
-        let _ = black_box(view.code(black_box("9")));
+        let _ = black_box(set.code(black_box("9")));
     });
     free("the walk over the set", || {
-        let _ = black_box(view.codes().count());
+        let _ = black_box(set.codes().count());
     });
 }
 
@@ -1538,7 +1548,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 35] = [
+    let seeds: [(DataTypeId, Scalar); 36] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1568,6 +1578,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::CusipCode, Scalar::from("037833100")),
         (DataTypeId::SedolCode, Scalar::from("B0YBKJ7")),
         (DataTypeId::BloombergCode, Scalar::from("AAPL US EQUITY")),
+        (DataTypeId::FIGICode, Scalar::from("BBG000BLNQ16")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -2603,7 +2614,7 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
 }
 #[test]
 fn instrument_codes_construct_and_classify_without_allocating() {
-    use yggdryl::{BloombergCode, CfiCode, CusipCode, IsinCode, SedolCode};
+    use yggdryl::{BloombergCode, CfiCode, CusipCode, FIGICode, IsinCode, SedolCode};
     free("long Bloomberg validation", || {
         assert!(BloombergCode::is_canonical(
             "AAPL US Equity Long Identifier"
@@ -2617,6 +2628,13 @@ fn instrument_codes_construct_and_classify_without_allocating() {
     });
     free("SEDOL construction", || {
         std::hint::black_box(SedolCode::new("b0swjx3").unwrap());
+    });
+    let figi = FIGICode::new("BBG000BLNQ16").unwrap();
+    free("FIGI construction", || {
+        black_box(FIGICode::new("bbg000blnq16").unwrap());
+    });
+    free("FIGI clone", || {
+        black_box(figi.clone());
     });
     free("CFI validation", || {
         assert!(CfiCode::is_classified("ESVUFR"));

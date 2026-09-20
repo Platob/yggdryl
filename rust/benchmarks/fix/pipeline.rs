@@ -34,7 +34,9 @@ use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-use yggdryl::{FixCodec, FixMsg, IOMedia, State, Timezone, Url, fix_schema};
+use yggdryl::{
+    DataType, Field, FixCodec, FixMsg, IOMedia, State, StructType, Timezone, Url, fix_schema,
+};
 
 use super::seed;
 
@@ -295,6 +297,52 @@ pub fn benchmarks(criterion: &mut Criterion) {
             },
             BatchSize::LargeInput,
         );
+    });
+    // This is the same row shape without the residual arrival record. It
+    // retains every ordinary column and all root/child metadata, isolating
+    // the direct final-sequence path from residual coverage.
+    let columns = StructType::from_fields(
+        schema
+            .fields()
+            .iter()
+            .filter(|field| {
+                field.name() != yggdryl::fix::FIXENTRIES_COLUMN
+                    && field.name() != yggdryl::NOFIXENTRIES_TAG_NAME.1
+            })
+            .cloned(),
+    )
+    .expect("the fixed columns remain unique");
+    let columns = Field::new(schema.name(), DataType::from(columns), schema.is_nullable())
+        .try_with_metadata_entries(schema.as_metadata().iter())
+        .expect("the fixed metadata remains valid");
+    group.bench_function("into_row_columns", |bencher| {
+        bencher.iter(|| {
+            messages
+                .iter()
+                .map(|message| {
+                    black_box(message)
+                        .into_row(&columns)
+                        .expect("a projected row")
+                        .len()
+                })
+                .sum::<usize>()
+        });
+    });
+    // Rows are prepared once: the measured inverse is only the semantic
+    // reconstruction from the fixed row, not a second projection.
+    let rows: Vec<_> = messages
+        .iter()
+        .map(|message| message.into_row(&schema).expect("a row"))
+        .collect();
+    group.bench_function("from_row", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(
+                    FixMsg::from_row(Arc::clone(&registry), &schema, black_box(row))
+                        .expect("a rebuilt message"),
+                );
+            }
+        });
     });
     // The parse settled the identifiers a message goes by; the walk states
     // each message's place in its chain, and the rows carry both.

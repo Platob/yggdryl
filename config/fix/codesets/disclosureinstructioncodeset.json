@@ -1,0 +1,20 @@
+{
+  "name": "disclosureinstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "No",
+      "doc": "No"
+    },
+    {
+      "value": "1",
+      "name": "Yes",
+      "doc": "Yes"
+    },
+    {
+      "value": "2",
+      "name": "UseDefaultSetting",
+      "doc": "Use default setting"
+    }
+  ]
+}

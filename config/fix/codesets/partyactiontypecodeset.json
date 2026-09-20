@@ -1,0 +1,20 @@
+{
+  "name": "partyactiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Suspend",
+      "doc": "Suspend"
+    },
+    {
+      "value": "1",
+      "name": "HaltTrading",
+      "doc": "Halt trading"
+    },
+    {
+      "value": "2",
+      "name": "Reinstate",
+      "doc": "Reinstate"
+    }
+  ]
+}

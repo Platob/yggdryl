@@ -9,7 +9,7 @@ fn reader() -> FixCodec {
 }
 
 #[test]
-fn identical_entries_hash_equal_and_a_different_order_does_not() {
+fn sibling_order_changes_the_wire_digest_and_structural_hash_but_not_event_identity() {
     let reader = reader();
     let one = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
@@ -21,10 +21,9 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
     assert_eq!(one.stable_hash(), same.stable_hash());
     assert_eq!(one.stable_hash(), one.clone().stable_hash());
 
-    // Order carries meaning inside a repeating group, so it is never sorted
-    // away: the same pairs in another order are another message. The pairs
-    // have to be the row's own - `ClOrdID(11)` is a fact the message lifts
-    // and holds, and a held fact has no place in the row to have moved.
+    // The wire digest and structural hash retain independent siblings in
+    // arrival order. The event identity reads those siblings canonically, so
+    // a semantic row reconstructed in schema order remains the same event.
     let ordered = reader
         .sole_line(b"8=FIX.4.4|35=D|1=ACCT|55=AAPL|10=0|")
         .unwrap();
@@ -33,6 +32,10 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
         .unwrap();
     assert_ne!(ordered.digest(), reordered.digest());
     assert_ne!(ordered.stable_hash(), reordered.stable_hash());
+    assert_eq!(
+        yggdryl::graph::Element::get_currhashcode(&ordered),
+        yggdryl::graph::Element::get_currhashcode(&reordered)
+    );
     // And a lifted fact is held, so where the line put it changes nothing.
     let moved = reader
         .sole_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|")
@@ -41,6 +44,22 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
 
     // Two calls are the same walk twice, because nothing was stored.
     assert_eq!(one.digest(), one.digest());
+}
+
+#[test]
+fn repeated_scalar_order_remains_part_of_the_event_identity() {
+    let reader = reader();
+    let ordered = reader
+        .sole_line(b"MSGTYPE=D|BODYLENGTH=1|BODYLENGTH=2")
+        .unwrap();
+    let reversed = reader
+        .sole_line(b"MSGTYPE=D|BODYLENGTH=2|BODYLENGTH=1")
+        .unwrap();
+
+    assert_ne!(
+        yggdryl::graph::Element::get_currhashcode(&ordered),
+        yggdryl::graph::Element::get_currhashcode(&reversed)
+    );
 }
 
 #[test]
@@ -225,7 +244,7 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Twenty-eight definitions: the event and capture facts, MsgCat, and five
+    // Twenty-nine definitions: the event and capture facts, MsgCat, and six
     // normalized identifiers whose standard FIX representation is contextual.
     // CFI already has its own standard tag, so it adds no crate definition.
     assert_eq!(
@@ -259,6 +278,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "sedolcode",
             "bloombergcode",
             "miccode",
+            "figicode",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -293,6 +313,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("SedolCode"),
             Some("BloombergCode"),
             Some("MicCode"),
+            Some("FIGICode"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing

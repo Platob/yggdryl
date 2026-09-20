@@ -17,7 +17,7 @@
 //! | names | `FIX:names` | JSON array of names | alternate names, highest priority first |
 //! | identifiers | `FIX:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
-//! | codes | `FIX:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
+//! | code set | `FIX:codeset` | name | the registry-owned vocabulary this field reads by |
 //! | replacements | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the specification's retirements of the tag |
 //! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
 //! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
@@ -30,8 +30,8 @@
 //! 453, while `Parties` contains `Party` values, and `NoFixEntries` is the
 //! crate's own 65027 while `FixEntries` contains `FixEntry` values. A
 //! crate-owned Map group holds its native entries under its own counter,
-//! without a scalar count column. Each field keeps its enumeration in
-//! `FIX:codes` metadata.
+//! without a scalar count column. The registry keeps each enumeration once;
+//! fields name it through `FIX:codeset`.
 //!
 //! # Identity
 //!
@@ -172,13 +172,13 @@ mod ulbridge;
 
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, DEFAULT_REFUSED_MSGTYPES, FixCodec, SOH};
-pub use codes::{FixCode, FixCodeValue, FixCodes};
+pub use codes::{FixCode, FixCodeSet, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
     CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
-    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXPRTIME_TAG_NAME, FIXMSG_TAG_NAME,
+    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIXMSG_TAG_NAME,
     IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
     MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME,

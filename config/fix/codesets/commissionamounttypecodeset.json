@@ -1,0 +1,45 @@
+{
+  "name": "commissionamounttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unspecified",
+      "doc": "Unspecified"
+    },
+    {
+      "value": "1",
+      "name": "Acceptance",
+      "doc": "Acceptance"
+    },
+    {
+      "value": "2",
+      "name": "Broker",
+      "doc": "Broker"
+    },
+    {
+      "value": "3",
+      "name": "ClearingBroker",
+      "doc": "Clearing broker"
+    },
+    {
+      "value": "4",
+      "name": "Retail",
+      "doc": "Retail"
+    },
+    {
+      "value": "5",
+      "name": "SalesCommission",
+      "doc": "Sales commission"
+    },
+    {
+      "value": "6",
+      "name": "LocalCommission",
+      "doc": "Local commission"
+    },
+    {
+      "value": "7",
+      "name": "ResearchPayment",
+      "doc": "Research payment"
+    }
+  ]
+}

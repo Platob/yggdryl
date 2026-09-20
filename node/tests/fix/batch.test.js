@@ -260,7 +260,7 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.version, undefined)
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
-  assert.deepEqual(bare.nullValues, ['', 'null', '<null>', 'none', '[n/a]'])
+  assert.deepEqual(bare.nullValues, ['', 'null', '<null>', 'none', 'n/a', '[n/a]'])
   assert.equal(bare.direction, 'S')
   // The default target, stated once in the core and read here.
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
@@ -443,17 +443,10 @@ test('messages and arrowReader invert each other', () => {
   assert.equal(again.length, parsed.length)
   for (const [at, held] of again.entries()) {
     const message = parsed[at]
-    // The same arrival record, the same wire, the same digest, the same
-    // stated values by tag, and the same row again.
-    assert.deepEqual(held.entries(), message.entries())
+    // Projected columns and residual entries may rebuild in another child
+    // order; the semantic values, supplied identity and fixed row stay exact.
     assert.equal(held.currhashcode, message.currhashcode)
     assert.equal(held.curruuid, message.curruuid)
-    // The row states the sending clock, so a message read back emits it
-    // where a parsed one settled it silently.
-    assert.equal(
-      held.intoBytes(PIPE).toString().replace(/52=[^|]*\|/, ''),
-      message.intoBytes(PIPE).toString().replace(/52=[^|]*\|/, ''),
-    )
     for (const tag of [35, 11, 55, 54, 17, 37, 65017, 65039]) {
       const value = message.getByTag(tag)
       if (value !== null && value.kind !== 'null') assert.ok(held.byTag(tag).equals(value), `tag ${tag}`)
@@ -785,9 +778,8 @@ test('a row reads back into the message that made it', () => {
 
   const held = fix.FixMsg.fromRow(schema, row, registry)
 
-  // The content is the row's children, and the facts are read off the
-  // columns that hold them, so the message emits what it emitted.
-  assert.deepEqual(held.entries(), parsed.entries())
+  // Rebuilding combines projected fields with residual entries. Semantic row
+  // equality, rather than arrival entry order or wire spelling, is the contract.
   assert.equal(held.currhashcode, parsed.currhashcode)
   assert.equal(held.curruuid, parsed.curruuid)
   for (const tag of [8, 35, 11, 55, 54]) assert.ok(held.byTag(tag).equals(parsed.byTag(tag)), `tag ${tag}`)
@@ -802,10 +794,29 @@ test('a row reads back into the message that made it', () => {
   // into the same message, and the process default is the registry when none
   // is named.
   const named = fix.FixMsg.fromRow(schema, row.asJs(), registry)
-  assert.deepEqual(named.entries(), parsed.entries())
   assert.ok(named.byTag(55).equals(parsed.byTag(55)))
+  assert.ok(named.intoRow(schema).equals(row))
   assert.equal(named.currhashcode, held.currhashcode)
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
+})
+
+test('rows prune projected scalars and complete groups from residual entries', () => {
+  const registry = seed()
+  const codec = reading(registry)
+  const schema = fix.schema(registry)
+  const message = one(
+    codec,
+    Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|'),
+  )
+  const row = message.intoRow(schema)
+  const residual = row.asJs()[schema.indexOf('fixentries')]
+  assert.ok(residual.every((entry) => entry[0] !== 55 && entry[0] !== 453))
+  assert.ok(residual.some((entry) => entry[0] === 0))
+
+  const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
+  assert.equal(rebuilt.byTag(55).asJs(), 'AAPL')
+  assert.equal(rebuilt.byTag(453).asJs(), 1)
+  assert.ok(rebuilt.intoRow(schema).equals(row))
 })
 
 test("a capture's own columns are carried and never become facts", () => {
@@ -841,7 +852,7 @@ test("a capture's own columns are carried and never become facts", () => {
   stated[schema.indexOf('url')] = 'file:///capture.log'
   stated[schema.indexOf('rownum')] = 42n
   const again = fix.FixMsg.fromRow(schema, stated, registry)
-  assert.deepEqual(again.entries(), parsed.entries())
+  assert.ok(again.intoRow(schema).equals(schema.scalar(stated)))
   assert.equal(again.currhashcode, parsed.currhashcode)
   assert.deepEqual(Object.keys(again.carried).sort(), ['rownum', 'url'])
   assert.equal(again.carried.url.asJs(), 'file:///capture.log')
@@ -862,7 +873,7 @@ test("a capture's own columns are carried and never become facts", () => {
   assert.ok(!again.intoText('|').includes('65026='))
 })
 
-test('a row without the entries column has no entries', () => {
+test('a row without the entries column keeps projected content', () => {
   const registry = seed()
   const codec = reading(registry)
   const wideSchema = fix.schema(registry)
@@ -875,33 +886,13 @@ test('a row without the entries column has no entries', () => {
   const parsed = one(codec, ORDER)
   const row = parsed.intoRow(narrow)
   const held = fix.FixMsg.fromRow(narrow, row, registry)
-  assert.deepEqual(held.entries(), [])
-  // The typed facts survive the column that holds each; the content does
-  // not, because the record is what it was rebuilt from, so the wire is the
-  // header, the fields the message lifted and the trailer, with nothing
-  // between them.
-  const emitted = held.intoBytes(PIPE).toString()
-  assert.equal(emitted, '8=FIX.4.4|35=D|11=A1|10=0|')
+  // A row without residual entries still reconstructs projected content.
+  assert.equal(held.byTag(55).asJs(), 'AAPL')
   assert.equal(held.header().msgtype, parsed.header().msgtype)
-  assert.equal(held.crosscode, parsed.crosscode)
-  // The side does not survive: it is an ordinary child, and a row read back
-  // without the record has no content for the trait to read it off.
-  assert.equal(parsed.side, 'BUY')
-  assert.equal(held.side, 'UNKNOWN')
-  assert.equal(held.size, 0)
-  assert.equal(held.getByTag(55), null)
-  // The row it makes states the facts it kept and nothing of the content it
-  // could not rebuild - so the identity it writes is its own, over what it
-  // now says, rather than the one the parsed message settled.
-  const again = held.intoRow(narrow)
-  for (const name of ['currunix', 'creaunix', 'crossuuid', 'crosshashcode']) {
-    const at = narrow.indexOf(name)
-    assert.ok(again.at(at).equals(row.at(at)), name)
-  }
-  assert.equal(again.at(narrow.indexOf('curruuid')).asJs(), held.curruuid)
-  assert.notEqual(held.curruuid, parsed.curruuid)
-  assert.equal(again.at(narrow.indexOf('symbol')).kind, 'null')
-  assert.equal(row.at(narrow.indexOf('symbol')).asJs(), 'AAPL')
+  assert.equal(held.currunix, parsed.currunix)
+  const again = held.intoRow(narrow).asJs()
+  assert.equal(again[narrow.indexOf('symbol')], 'AAPL')
+  assert.deepEqual(again[narrow.indexOf('currunix')], row.asJs()[narrow.indexOf('currunix')])
   // A row that does not fit the schema is refused.
   assert.throws(() => fix.FixMsg.fromRow(narrow, { nosuchcolumn: 1 }, registry))
 })

@@ -1,0 +1,40 @@
+{
+  "name": "orderoriginationcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OrderReceivedFromCustomer",
+      "doc": "Order received from a customer"
+    },
+    {
+      "value": "2",
+      "name": "OrderReceivedFromWithinFirm",
+      "doc": "Order received from within the firm"
+    },
+    {
+      "value": "3",
+      "name": "OrderReceivedFromAnotherBrokerDealer",
+      "doc": "Order received from another broker-dealer"
+    },
+    {
+      "value": "4",
+      "name": "OrderReceivedFromCustomerOrWithFirm",
+      "doc": "Order received from a customer or originated from within the firm"
+    },
+    {
+      "value": "5",
+      "name": "OrderReceivedFromDirectAccessCustomer",
+      "doc": "Order received from a direct access or sponsored access customer"
+    },
+    {
+      "value": "6",
+      "name": "OrderReceivedFromForeignDealerEquivalent",
+      "doc": "Order received from a foreign dealer equivalent"
+    },
+    {
+      "value": "7",
+      "name": "OrderReceivedFromExecutionOnlyService",
+      "doc": "Order received from an execution-only service"
+    }
+  ]
+}

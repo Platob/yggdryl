@@ -1,0 +1,60 @@
+{
+  "name": "reforderidsourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "SecondaryOrderID",
+      "doc": "Secondary order ID"
+    },
+    {
+      "value": "1",
+      "name": "OrderID",
+      "doc": "Order ID"
+    },
+    {
+      "value": "2",
+      "name": "MDEntryID",
+      "doc": "Market data entry ID"
+    },
+    {
+      "value": "3",
+      "name": "QuoteEntryID",
+      "doc": "Quote entry ID"
+    },
+    {
+      "value": "4",
+      "name": "OriginalOrderID",
+      "doc": "Original order ID"
+    },
+    {
+      "value": "5",
+      "name": "QuoteID",
+      "doc": "Quote ID"
+    },
+    {
+      "value": "6",
+      "name": "QuoteReqID",
+      "doc": "Quote request ID"
+    },
+    {
+      "value": "7",
+      "name": "PreviousOrderIdentifier",
+      "doc": "Previous order identifier"
+    },
+    {
+      "value": "8",
+      "name": "PreviousQuoteIdentifier",
+      "doc": "Previous quote identifier"
+    },
+    {
+      "value": "9",
+      "name": "ParentOrderIdentifier",
+      "doc": "Parent order identifier"
+    },
+    {
+      "value": "A",
+      "name": "ManualOrderIdentifier",
+      "doc": "Manual order identifier"
+    }
+  ]
+}

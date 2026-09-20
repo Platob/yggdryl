@@ -1,0 +1,40 @@
+{
+  "name": "tradseseventcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TradingResumes",
+      "doc": "Trading resumes"
+    },
+    {
+      "value": "1",
+      "name": "ChangeOfTradingSession",
+      "doc": "Change of Trading Session"
+    },
+    {
+      "value": "2",
+      "name": "ChangeOfTradingSubsession",
+      "doc": "Change of Trading Subsession"
+    },
+    {
+      "value": "3",
+      "name": "ChangeOfTradingStatus",
+      "doc": "Change of Trading Status"
+    },
+    {
+      "value": "4",
+      "name": "ChangeOfSessionTime",
+      "doc": "Change of session time"
+    },
+    {
+      "value": "5",
+      "name": "RestatementOfTradingSessionStatus",
+      "doc": "Restatement of trading session status"
+    },
+    {
+      "value": "6",
+      "name": "OutageResolved",
+      "doc": "Outage resolved"
+    }
+  ]
+}

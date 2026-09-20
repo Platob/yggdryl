@@ -1,0 +1,15 @@
+{
+  "name": "appllevelrecoveryindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoApplRecoveryNeeded",
+      "doc": "Application level recovery is not needed (default)"
+    },
+    {
+      "value": "1",
+      "name": "ApplRecoveryNeeded",
+      "doc": "Application level recovery is needed"
+    }
+  ]
+}

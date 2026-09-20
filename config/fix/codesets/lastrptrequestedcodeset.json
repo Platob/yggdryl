@@ -1,0 +1,21 @@
+{
+  "name": "lastrptrequestedcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotLastMessage",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not last message"
+    },
+    {
+      "value": "Y",
+      "name": "LastMessage",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Last message"
+    }
+  ]
+}

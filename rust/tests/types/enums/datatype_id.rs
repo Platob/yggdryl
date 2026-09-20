@@ -34,7 +34,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 83);
+    assert_eq!(DataTypeId::ALL.len(), 84);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -195,6 +195,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::CusipCode, 0x79),
         (DataTypeId::SedolCode, 0x7a),
         (DataTypeId::BloombergCode, 0x7b),
+        (DataTypeId::FIGICode, 0x7c),
         (DataTypeId::Uuid, 0x81),
         (DataTypeId::List, 0x91),
         (DataTypeId::LargeList, 0x92),
@@ -219,6 +220,7 @@ fn every_discriminant_is_stated_and_pinned() {
     assert_eq!(DataTypeId::IsinCode.code_width(), Some(12));
     assert_eq!(DataTypeId::CusipCode.code_width(), Some(9));
     assert_eq!(DataTypeId::SedolCode.code_width(), Some(7));
+    assert_eq!(DataTypeId::FIGICode.code_width(), Some(12));
 }
 
 #[test]

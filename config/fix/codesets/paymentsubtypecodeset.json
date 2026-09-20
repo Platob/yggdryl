@@ -1,0 +1,60 @@
+{
+  "name": "paymentsubtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial (principal exchange)"
+    },
+    {
+      "value": "1",
+      "name": "Intermediate",
+      "doc": "Intermediate (principal exchange)"
+    },
+    {
+      "value": "2",
+      "name": "Final",
+      "doc": "Final (principal exchange)"
+    },
+    {
+      "value": "3",
+      "name": "Prepaid",
+      "doc": "Prepaid (premium forward)"
+    },
+    {
+      "value": "4",
+      "name": "Postpaid",
+      "doc": "Postpaid (premium forward)"
+    },
+    {
+      "value": "5",
+      "name": "Variable",
+      "doc": "Variable (premium forward)"
+    },
+    {
+      "value": "6",
+      "name": "Fixed",
+      "doc": "Fixed (premium forward)"
+    },
+    {
+      "value": "7",
+      "name": "Swap",
+      "doc": "Swap (premium)"
+    },
+    {
+      "value": "8",
+      "name": "Conditional",
+      "doc": "Conditional (principal exchange on exercise)"
+    },
+    {
+      "value": "9",
+      "name": "FixedRate",
+      "doc": "Fixed rate"
+    },
+    {
+      "value": "10",
+      "name": "FloatingRate",
+      "doc": "Floating rate"
+    }
+  ]
+}

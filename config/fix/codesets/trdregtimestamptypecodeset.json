@@ -1,0 +1,188 @@
+{
+  "name": "trdregtimestamptypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ExecutionTime",
+      "doc": "Execution time"
+    },
+    {
+      "value": "2",
+      "name": "TimeIn",
+      "doc": "Time in"
+    },
+    {
+      "value": "3",
+      "name": "TimeOut",
+      "doc": "Time out"
+    },
+    {
+      "value": "4",
+      "name": "BrokerReceipt",
+      "doc": "Broker receipt"
+    },
+    {
+      "value": "5",
+      "name": "BrokerExecution",
+      "doc": "Broker execution"
+    },
+    {
+      "value": "6",
+      "name": "DeskReceipt",
+      "doc": "Desk receipt"
+    },
+    {
+      "value": "7",
+      "name": "SubmissionToClearing",
+      "doc": "Submission to clearing"
+    },
+    {
+      "value": "8",
+      "name": "TimePriority",
+      "doc": "Time priority"
+    },
+    {
+      "value": "9",
+      "name": "OrderbookEntryTime",
+      "doc": "Orderbook entry time"
+    },
+    {
+      "value": "10",
+      "name": "OrderSubmissionTime",
+      "doc": "Order submission time"
+    },
+    {
+      "value": "11",
+      "name": "PubliclyReported",
+      "doc": "Publicly reported"
+    },
+    {
+      "value": "12",
+      "name": "PublicReportUpdated",
+      "doc": "Public report updated"
+    },
+    {
+      "value": "13",
+      "name": "NonPubliclyReported",
+      "doc": "Non-publicly reported"
+    },
+    {
+      "value": "14",
+      "name": "NonPublicReportUpdated",
+      "doc": "Non-public report updated"
+    },
+    {
+      "value": "15",
+      "name": "SubmittedForConfirmation",
+      "doc": "Submitted for confirmation"
+    },
+    {
+      "value": "16",
+      "name": "UpdatedForConfirmation",
+      "doc": "Updated for confirmation"
+    },
+    {
+      "value": "17",
+      "name": "Confirmed",
+      "doc": "Confirmed"
+    },
+    {
+      "value": "18",
+      "name": "UpdatedForClearing",
+      "doc": "Updated for clearing"
+    },
+    {
+      "value": "19",
+      "name": "Cleared",
+      "doc": "Cleared"
+    },
+    {
+      "value": "20",
+      "name": "AllocationsSubmitted",
+      "doc": "Allocations submitted"
+    },
+    {
+      "value": "21",
+      "name": "AllocationsUpdated",
+      "doc": "Allocations updated"
+    },
+    {
+      "value": "22",
+      "name": "AllocationsCompleted",
+      "doc": "Allocations completed"
+    },
+    {
+      "value": "23",
+      "name": "SubmittedToRepository",
+      "doc": "Submitted to repository"
+    },
+    {
+      "value": "24",
+      "name": "PostTrdContntnEvnt",
+      "doc": "Post-trade continuation event"
+    },
+    {
+      "value": "25",
+      "name": "PostTradeValuation",
+      "doc": "Post-trade valuation"
+    },
+    {
+      "value": "26",
+      "name": "PreviousTimePriority",
+      "doc": "Previous time priority"
+    },
+    {
+      "value": "27",
+      "name": "IdentifierAssigned",
+      "doc": "Identifier assigned"
+    },
+    {
+      "value": "28",
+      "name": "PreviousIdentifierAssigned",
+      "doc": "Previous identifier assigned"
+    },
+    {
+      "value": "29",
+      "name": "OrderCancellationTime",
+      "doc": "Order cancellation time"
+    },
+    {
+      "value": "30",
+      "name": "OrderModificationTime",
+      "doc": "Order modification time"
+    },
+    {
+      "value": "31",
+      "name": "OrderRoutingTime",
+      "doc": "Order routing time"
+    },
+    {
+      "value": "32",
+      "name": "TradeCancellationTime",
+      "doc": "Trade cancellation time"
+    },
+    {
+      "value": "33",
+      "name": "TradeModificationTime",
+      "doc": "Trade modification time"
+    },
+    {
+      "value": "34",
+      "name": "ReferenceTimeForBBO",
+      "aliases": [
+        "ReferenceTimeForNbbo"
+      ],
+      "doc": "Reference time for BBO"
+    },
+    {
+      "value": "35",
+      "name": "Affirmed",
+      "doc": "Affirmed"
+    },
+    {
+      "value": "36",
+      "name": "UpdateTime",
+      "doc": "Update time"
+    }
+  ]
+}

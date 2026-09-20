@@ -49,6 +49,7 @@ mod enumeration;
 pub mod enums;
 pub mod expression;
 mod field;
+pub mod figi_code;
 pub mod fix;
 pub mod floating;
 pub mod fs;
@@ -151,17 +152,17 @@ pub use fix::{
     BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
     CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
     CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN,
-    DEFAULT_REFUSED_MSGTYPES, EXPRTIME_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FixCapture,
-    FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixDirection, FixDirectionEntry,
-    FixDirections, FixEntry, FixFieldIter, FixHeader, FixId, FixKey, FixLifted, FixMessages,
-    FixMsg, FixPatterns, FixRegistry, FixSpellings, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME,
-    METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
-    MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME,
-    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOH, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
-    STATE_TAG_NAME, ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields,
-    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag,
+    DEFAULT_REFUSED_MSGTYPES, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS,
+    FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec, FixCodes, FixDedup,
+    FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId,
+    FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
+    IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME,
+    SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME,
+    ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
+    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -227,6 +228,7 @@ pub use duration::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
 pub use field::*;
+pub use figi_code::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;

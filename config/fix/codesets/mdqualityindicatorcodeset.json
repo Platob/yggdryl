@@ -1,0 +1,15 @@
+{
+  "name": "mdqualityindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoQualityIssue",
+      "doc": "No data quality issue"
+    },
+    {
+      "value": "1",
+      "name": "QualityIssue",
+      "doc": "Data quality issue"
+    }
+  ]
+}

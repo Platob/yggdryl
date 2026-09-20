@@ -59,8 +59,8 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
-    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 
 use crate::parser;
@@ -590,6 +590,7 @@ pub(crate) mod casts {
             DataType::CusipCode => crate::CusipCode::is_canonical(text),
             DataType::SedolCode => crate::SedolCode::is_canonical(text),
             DataType::BloombergCode => crate::BloombergCode::is_canonical(text),
+            DataType::FIGICode => crate::FIGICode::is_canonical(text),
             _ => true,
         };
         if !canonical {
@@ -601,7 +602,7 @@ pub(crate) mod casts {
     }
 }
 
-// The ten registered codes' values.
+// The twelve registered codes' values.
 // ------------------------------------------------------------------------
 // What a [`CfiCode`] code means: ISO 10962, six characters.
 //
@@ -668,6 +669,7 @@ impl DataType {
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
         ("bloomberg", DataType::BloombergCode, BLOOMBERG_WIDTH),
+        ("figi", DataType::FIGICode, FIGI_WIDTH),
     ];
 }
 
@@ -1092,7 +1094,7 @@ impl DataType {
 }
 
 // ------------------------------------------------------------------------
-// Every string's field marker: the one family and the ten codes.
+// Every string's field marker: the one family and the twelve codes.
 //
 // One file because a marker is one line per datatype and the family is one
 // family; splitting them would be two lists to keep in step rather than one.
@@ -2087,8 +2089,8 @@ impl StringEnum {
     /// agree about what a side is. A FIX code or the specification's name
     /// reaches the value through [`Side::from_spelling`](crate::Side::from_spelling),
     /// which is how a registry maps tag 54 onto it; per-member pedigree stays
-    /// in the field's own `FIX:codes` document, because that is where a
-    /// version can be asked about. A spelling that names no side is refused
+    /// in the registry's vocabulary named by the field's `FIX:codeset`, where
+    /// a version can be asked about. A spelling that names no side is refused
     /// rather than stored, exactly as a state is.
     pub const SIDES: &'static [&'static str] = &[
         "ASDEF", "BORROW", "BUY", "BUYMINUS", "CROSS", "CROSSSH", "CROSSSHX", "LEND", "OPPOSITE",

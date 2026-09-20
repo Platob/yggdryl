@@ -11,7 +11,7 @@ use crate::budget::{
 use crate::string::is_text_storage;
 use crate::{
     BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
+    FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
@@ -174,6 +174,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::CusipCode => code_array::<CUSIP_WIDTH>(dtype, values)?,
         DataType::SedolCode => code_array::<SEDOL_WIDTH>(dtype, values)?,
         DataType::BloombergCode => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
+        DataType::FIGICode => code_array::<FIGI_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -579,6 +580,13 @@ pub(crate) fn value_from_array(
         DataType::BloombergCode => {
             let text = downcast::<StringArray>(array)?;
             Scalar::BloombergCode(crate::BloombergCode::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?)
+        }
+        DataType::FIGICode => {
+            let text = downcast::<StringArray>(array)?;
+            Scalar::FIGICode(crate::FIGICode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)

@@ -1,0 +1,20 @@
+{
+  "name": "assetgroupcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Financials",
+      "doc": "Financials"
+    },
+    {
+      "value": "2",
+      "name": "Commodities",
+      "doc": "Commodities"
+    },
+    {
+      "value": "3",
+      "name": "AlternativeInvestments",
+      "doc": "Alternative investments"
+    }
+  ]
+}

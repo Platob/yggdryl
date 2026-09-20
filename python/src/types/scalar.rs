@@ -25,8 +25,8 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce,
+    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
+    Side, State, TimeInForce,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
@@ -640,6 +640,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "bloomberg" => BloombergCode::new(payload()?.extract::<String>()?)
             .map(Scalar::BloombergCode)
+            .map_err(value_error),
+        "figi" => FIGICode::new(payload()?.extract::<String>()?)
+            .map(Scalar::FIGICode)
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(Scalar::Side)

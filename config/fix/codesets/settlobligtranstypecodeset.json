@@ -1,0 +1,25 @@
+{
+  "name": "settlobligtranstypecodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "N",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "R",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "T",
+      "name": "Restate",
+      "doc": "Restate"
+    }
+  ]
+}

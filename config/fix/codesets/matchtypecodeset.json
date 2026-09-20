@@ -1,0 +1,203 @@
+{
+  "name": "matchtypecodeset",
+  "codes": [
+    {
+      "value": "A1",
+      "name": "ExactMatchPlus4BadgesExecTime",
+      "group": "NYSE and AMEX",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator plus four badges and execution time (within two-minute window)"
+    },
+    {
+      "value": "A2",
+      "name": "ExactMatchPlus4Badges",
+      "group": "NYSE and AMEX",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus four badges"
+    },
+    {
+      "value": "A3",
+      "name": "ExactMatchPlus2BadgesExecTime",
+      "group": "NYSE and AMEX",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus two badges and execution time (within two-minute window)"
+    },
+    {
+      "value": "M3",
+      "name": "ACTAcceptedTrade",
+      "group": "NASDAQ",
+      "doc": "ACT Accepted Trade"
+    },
+    {
+      "value": "A4",
+      "name": "ExactMatchPlus2Badges",
+      "group": "NYSE and AMEX",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus two badges"
+    },
+    {
+      "value": "M4",
+      "name": "ACTDefaultTrade",
+      "group": "NASDAQ",
+      "doc": "ACT Default Trade"
+    },
+    {
+      "value": "A5",
+      "name": "ExactMatchPlusExecTime",
+      "group": "NYSE and AMEX",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, TradeType, and Special Trade Indicator plus execution time (within two-minute window)"
+    },
+    {
+      "value": "M5",
+      "name": "ACTDefaultAfterM2",
+      "group": "NASDAQ",
+      "doc": "ACT Default After M2"
+    },
+    {
+      "value": "AQ",
+      "name": "StampedAdvisoriesOrSpecialistAccepts",
+      "group": "NYSE and AMEX",
+      "doc": "Compared records resulting from stamped advisories or specialist accepts/pair-offs"
+    },
+    {
+      "value": "M6",
+      "name": "ACTM6Match",
+      "group": "NASDAQ",
+      "doc": "ACT M6 Match"
+    },
+    {
+      "value": "S1",
+      "name": "A1ExactMatchSummarizedQuantity",
+      "group": "NYSE and AMEX",
+      "doc": "Summarized match using A1 exact match criteria except quantity is summaried"
+    },
+    {
+      "value": "S2",
+      "name": "A2ExactMatchSummarizedQuantity",
+      "group": "NYSE and AMEX",
+      "doc": "Summarized match using A2 exact match criteria except quantity is summarized"
+    },
+    {
+      "value": "S3",
+      "name": "A3ExactMatchSummarizedQuantity",
+      "group": "NYSE and AMEX",
+      "doc": "Summarized match using A3 exact match criteria except quantity is summarized"
+    },
+    {
+      "value": "S4",
+      "name": "A4ExactMatchSummarizedQuantity",
+      "group": "NYSE and AMEX",
+      "doc": "Summarized match using A4 exact match criteria except quantity is summarized"
+    },
+    {
+      "value": "S5",
+      "name": "A5ExactMatchSummarizedQuantity",
+      "group": "NYSE and AMEX",
+      "doc": "Summarized match using A5 exact match criteria except quantity is summarized"
+    },
+    {
+      "value": "M1",
+      "name": "ExactMatchMinusBadgesTimes",
+      "group": "NYSE, AMEX and NASDAQ",
+      "doc": "Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator minus badges And times: ACT M1 match"
+    },
+    {
+      "value": "M2",
+      "name": "SummarizedMatchMinusBadgesTimes",
+      "group": "NYSE, AMEX and NASDAQ",
+      "doc": "Summarized match minus badges and times: ACT M2 Match"
+    },
+    {
+      "value": "MT",
+      "name": "OCSLockedIn",
+      "group": "NYSE, AMEX and NASDAQ",
+      "doc": "OCS Locked In: Non-ACT"
+    },
+    {
+      "value": "1",
+      "name": "OnePartyTradeReport",
+      "group": "General Purpose",
+      "doc": "One-Party Trade Report (privately negotiated trade)"
+    },
+    {
+      "value": "2",
+      "name": "TwoPartyTradeReport",
+      "group": "General Purpose",
+      "doc": "Two-Party Trade Report (privately negotiated trade)"
+    },
+    {
+      "value": "3",
+      "name": "ConfirmedTradeReport",
+      "group": "General Purpose",
+      "doc": "Confirmed Trade Report (reporting from recognized markets)"
+    },
+    {
+      "value": "4",
+      "name": "AutoMatch",
+      "group": "General Purpose",
+      "doc": "Auto-match"
+    },
+    {
+      "value": "5",
+      "name": "CrossAuction",
+      "group": "General Purpose",
+      "doc": "Cross Auction"
+    },
+    {
+      "value": "6",
+      "name": "CounterOrderSelection",
+      "group": "General Purpose",
+      "doc": "Counter-Order Selection"
+    },
+    {
+      "value": "7",
+      "name": "CallAuction",
+      "group": "General Purpose",
+      "doc": "Call Auction"
+    },
+    {
+      "value": "8",
+      "name": "Issuing",
+      "group": "General Purpose",
+      "doc": "Issuing/Buy Back Auction"
+    },
+    {
+      "value": "9",
+      "name": "SystematicInternaliser",
+      "group": "General Purpose",
+      "doc": "Systematic Internaliser (SI)"
+    },
+    {
+      "value": "10",
+      "name": "AutoMatchLastLook",
+      "group": "General Purpose",
+      "doc": "Auto-match with last look"
+    },
+    {
+      "value": "11",
+      "name": "CrossAuctionLastLook",
+      "group": "General Purpose",
+      "doc": "Cross auction with last look"
+    },
+    {
+      "value": "60",
+      "name": "OnePartyPrivatelyNegotiatedTradeReport"
+    },
+    {
+      "value": "61",
+      "name": "TwoPartyPrivatelyNegotiatedTradeReport"
+    },
+    {
+      "value": "62",
+      "name": "ContinuousAutoMatch"
+    },
+    {
+      "value": "63",
+      "name": "CrossAuctionLegacy"
+    },
+    {
+      "value": "64",
+      "name": "CounterOrderSelectionLegacy"
+    },
+    {
+      "value": "65",
+      "name": "CallAuctionLegacy"
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "name": "ordtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Market",
+      "doc": "Market"
+    },
+    {
+      "value": "2",
+      "name": "Limit",
+      "doc": "Limit"
+    },
+    {
+      "value": "3",
+      "name": "Stop",
+      "doc": "Stop/Stop Loss."
+    },
+    {
+      "value": "4",
+      "name": "StopLimit",
+      "doc": "Stop Limit."
+    },
+    {
+      "value": "5",
+      "name": "MarketOnClose",
+      "doc": "Market On Close (No longer used)"
+    },
+    {
+      "value": "6",
+      "name": "WithOrWithout",
+      "doc": "With Or Without"
+    },
+    {
+      "value": "7",
+      "name": "LimitOrBetter",
+      "doc": "Limit Or Better"
+    },
+    {
+      "value": "8",
+      "name": "LimitWithOrWithout",
+      "doc": "Limit With Or Without"
+    },
+    {
+      "value": "9",
+      "name": "OnBasis",
+      "doc": "On Basis"
+    },
+    {
+      "value": "A",
+      "name": "OnClose",
+      "doc": "On Close (No longer used)"
+    },
+    {
+      "value": "B",
+      "name": "LimitOnClose",
+      "doc": "Limit On Close (No longer used)"
+    },
+    {
+      "value": "C",
+      "name": "ForexMarket",
+      "doc": "Forex Market (No longer used)"
+    },
+    {
+      "value": "D",
+      "name": "PreviouslyQuoted",
+      "doc": "Previously Quoted"
+    },
+    {
+      "value": "E",
+      "name": "PreviouslyIndicated",
+      "doc": "Previously Indicated"
+    },
+    {
+      "value": "F",
+      "name": "ForexLimit",
+      "doc": "Forex Limit (No longer used)"
+    },
+    {
+      "value": "G",
+      "name": "ForexSwap",
+      "doc": "Forex Swap"
+    },
+    {
+      "value": "H",
+      "name": "ForexPreviouslyQuoted",
+      "doc": "Forex Previously Quoted (No longer used)"
+    },
+    {
+      "value": "I",
+      "name": "Funari",
+      "doc": "Funari (Limit day order with unexecuted portion handles as Market On Close. E.g. Japan)"
+    },
+    {
+      "value": "J",
+      "name": "MarketIfTouched",
+      "doc": "Market If Touched (MIT)"
+    },
+    {
+      "value": "K",
+      "name": "MarketWithLeftOverAsLimit",
+      "doc": "Market With Left Over as Limit"
+    },
+    {
+      "value": "L",
+      "name": "PreviousFundValuationPoint",
+      "doc": "Previous Fund Valuation Point (Historic pricing; for CIV)"
+    },
+    {
+      "value": "M",
+      "name": "NextFundValuationPoint",
+      "doc": "Next Fund Valuation Point (Forward pricing; for CIV)"
+    },
+    {
+      "value": "P",
+      "name": "Pegged",
+      "doc": "Pegged"
+    },
+    {
+      "value": "Q",
+      "name": "CounterOrderSelection",
+      "doc": "Counter-order selection"
+    },
+    {
+      "value": "R",
+      "name": "StopOnBidOrOffer",
+      "doc": "Stop on Bid or Offer"
+    },
+    {
+      "value": "S",
+      "name": "StopLimitOnBidOrOffer",
+      "doc": "Stop Limit on Bid or Offer"
+    },
+    {
+      "value": "T",
+      "name": "MarketWithinPriceBand",
+      "doc": "Market within price band"
+    }
+  ]
+}

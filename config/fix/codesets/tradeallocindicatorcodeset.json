@@ -1,0 +1,40 @@
+{
+  "name": "tradeallocindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AllocationNotRequired",
+      "doc": "Allocation not required"
+    },
+    {
+      "value": "1",
+      "name": "AllocationRequired",
+      "doc": "Allocation required (give-up trade) allocation information not provided (incomplete)"
+    },
+    {
+      "value": "2",
+      "name": "UseAllocationProvidedWithTheTrade",
+      "doc": "Use allocation provided with the trade"
+    },
+    {
+      "value": "3",
+      "name": "AllocationGiveUpExecutor",
+      "doc": "Allocation give-up executor"
+    },
+    {
+      "value": "4",
+      "name": "AllocationFromExecutor",
+      "doc": "Allocation from executor"
+    },
+    {
+      "value": "5",
+      "name": "AllocationToClaimAccount",
+      "doc": "Allocation to claim account"
+    },
+    {
+      "value": "6",
+      "name": "TradeSplit",
+      "doc": "Trade split"
+    }
+  ]
+}

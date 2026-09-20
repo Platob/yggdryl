@@ -1,0 +1,45 @@
+{
+  "name": "execpricetypecodeset",
+  "codes": [
+    {
+      "value": "B",
+      "name": "BidPrice",
+      "doc": "Bid price"
+    },
+    {
+      "value": "C",
+      "name": "CreationPrice",
+      "doc": "Creation price"
+    },
+    {
+      "value": "D",
+      "name": "CreationPricePlusAdjustmentPercent",
+      "doc": "Creation price plus adjustment percent"
+    },
+    {
+      "value": "E",
+      "name": "CreationPricePlusAdjustmentAmount",
+      "doc": "Creation price plus adjustment amount"
+    },
+    {
+      "value": "O",
+      "name": "OfferPrice",
+      "doc": "Offer price"
+    },
+    {
+      "value": "P",
+      "name": "OfferPriceMinusAdjustmentPercent",
+      "doc": "Offer price minus adjustment percent"
+    },
+    {
+      "value": "Q",
+      "name": "OfferPriceMinusAdjustmentAmount",
+      "doc": "Offer price minus adjustment amount"
+    },
+    {
+      "value": "S",
+      "name": "SinglePrice",
+      "doc": "Single price"
+    }
+  ]
+}

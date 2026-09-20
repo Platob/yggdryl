@@ -1,0 +1,20 @@
+{
+  "name": "regulatorytransactiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "SEFRequiredTransaction",
+      "doc": "Swap Execution Facility (SEF) required transaction"
+    },
+    {
+      "value": "2",
+      "name": "SEFPermittedTransaction",
+      "doc": "Swap Execution Facility (SEF) permitted transaction"
+    }
+  ]
+}

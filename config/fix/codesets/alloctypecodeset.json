@@ -1,0 +1,132 @@
+{
+  "name": "alloctypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Calculated",
+      "doc": "Calculated (includes MiscFees and NetMoney)"
+    },
+    {
+      "value": "2",
+      "name": "Preliminary",
+      "doc": "Preliminary (without MiscFees and NetMoney)"
+    },
+    {
+      "value": "5",
+      "name": "ReadyToBook",
+      "doc": "Ready-To-Book"
+    },
+    {
+      "value": "7",
+      "name": "WarehouseInstruction",
+      "doc": "Warehouse instruction"
+    },
+    {
+      "value": "8",
+      "name": "RequestToIntermediary",
+      "doc": "Request to intermediary"
+    },
+    {
+      "value": "9",
+      "name": "Accept",
+      "doc": "Accept"
+    },
+    {
+      "value": "10",
+      "name": "Reject",
+      "doc": "Reject"
+    },
+    {
+      "value": "11",
+      "name": "AcceptPending",
+      "doc": "Accept Pending"
+    },
+    {
+      "value": "12",
+      "name": "IncompleteGroup",
+      "doc": "Incomplete group"
+    },
+    {
+      "value": "13",
+      "name": "CompleteGroup",
+      "doc": "Complete group"
+    },
+    {
+      "value": "14",
+      "name": "ReversalPending",
+      "doc": "Reversal Pending"
+    },
+    {
+      "value": "15",
+      "name": "ReopenGroup",
+      "doc": "Reopen group"
+    },
+    {
+      "value": "16",
+      "name": "CancelGroup",
+      "doc": "Cancel group"
+    },
+    {
+      "value": "17",
+      "name": "Giveup",
+      "doc": "Give-up"
+    },
+    {
+      "value": "18",
+      "name": "Takeup",
+      "doc": "Take-up"
+    },
+    {
+      "value": "19",
+      "name": "RefuseTakeup",
+      "doc": "Refuse take-up"
+    },
+    {
+      "value": "20",
+      "name": "InitiateReversal",
+      "doc": "Initiate reversal"
+    },
+    {
+      "value": "21",
+      "name": "Reverse",
+      "doc": "Reverse"
+    },
+    {
+      "value": "22",
+      "name": "RefuseReversal",
+      "doc": "Refuse reversal"
+    },
+    {
+      "value": "23",
+      "name": "SubAllocationGiveup",
+      "doc": "Sub-allocation give-up"
+    },
+    {
+      "value": "24",
+      "name": "ApproveGiveup",
+      "doc": "Approve give-up"
+    },
+    {
+      "value": "25",
+      "name": "ApproveTakeup",
+      "doc": "Approve take-up"
+    },
+    {
+      "value": "26",
+      "name": "NotionalValueAveragePxGroupAlloc",
+      "doc": "Notional value average price group allocation"
+    },
+    {
+      "value": "3",
+      "name": "SellsideCalculatedUsingPreliminary"
+    },
+    {
+      "value": "4",
+      "name": "SellsideCalculatedWithoutPreliminary"
+    },
+    {
+      "value": "6",
+      "name": "BuysideReadyToBook"
+    }
+  ]
+}

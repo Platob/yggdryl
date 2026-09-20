@@ -1,0 +1,20 @@
+{
+  "name": "scopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LocalMarket",
+      "doc": "Local Market (Exchange, ECN, ATS)"
+    },
+    {
+      "value": "2",
+      "name": "National",
+      "doc": "National"
+    },
+    {
+      "value": "3",
+      "name": "Global",
+      "doc": "Global"
+    }
+  ]
+}

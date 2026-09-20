@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use super::{Element, Event, MarketElement, MarketEvent};
 use crate::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
-    State, Uuid,
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    Side, State, Uuid,
 };
 
 /// The concrete market element: every fact [`Element`] and
@@ -80,6 +80,7 @@ pub struct MarketElementData {
     cusipcode: Option<CusipCode>,
     sedolcode: Option<SedolCode>,
     bloombergcode: Option<BloombergCode>,
+    figicode: Option<FIGICode>,
     cficode: Option<CfiCode>,
     miccode: Option<MicCode>,
     lastpx: Option<Decimal18>,
@@ -133,6 +134,7 @@ impl Default for MarketElementData {
             cusipcode: None,
             sedolcode: None,
             bloombergcode: None,
+            figicode: None,
             cficode: None,
             miccode: None,
             bidpx: None,
@@ -320,6 +322,14 @@ impl MarketElement for MarketElementData {
 
     fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.bloombergcode = bloombergcode;
+    }
+
+    fn get_figicode(&self) -> Option<&FIGICode> {
+        self.figicode.as_ref()
+    }
+
+    fn set_figicode(&mut self, figicode: Option<FIGICode>) {
+        self.figicode = figicode;
     }
 
     fn get_cficode(&self) -> Option<&CfiCode> {
@@ -569,6 +579,12 @@ impl MarketEventData {
             snapunix: None,
         }
     }
+
+    /// The names this event goes by, for a holder synchronizing one derived
+    /// name before it finalizes the event.
+    pub(crate) fn identifiers_mut(&mut self) -> &mut BTreeMap<String, String> {
+        &mut self.element.identifiers
+    }
 }
 
 impl Default for MarketEventData {
@@ -810,6 +826,14 @@ impl MarketElement for MarketEventData {
         self.element.set_bloombergcode(bloombergcode);
     }
 
+    fn get_figicode(&self) -> Option<&FIGICode> {
+        self.element.figicode.as_ref()
+    }
+
+    fn set_figicode(&mut self, figicode: Option<FIGICode>) {
+        self.element.set_figicode(figicode);
+    }
+
     fn get_cficode(&self) -> Option<&CfiCode> {
         self.element.cficode.as_ref()
     }
@@ -1007,6 +1031,7 @@ fn copy_market<T: MarketElement + ?Sized, E: MarketElement + ?Sized>(this: &mut 
     this.set_cusipcode(other.get_cusipcode().cloned());
     this.set_sedolcode(other.get_sedolcode().cloned());
     this.set_bloombergcode(other.get_bloombergcode().cloned());
+    this.set_figicode(other.get_figicode().cloned());
     this.set_cficode(other.get_cficode().cloned());
     this.set_miccode(other.get_miccode().cloned());
     this.set_bidpx(other.get_bidpx());

@@ -1,0 +1,15 @@
+{
+  "name": "triggerpricedirectioncodeset",
+  "codes": [
+    {
+      "value": "U",
+      "name": "Up",
+      "doc": "Trigger if the price of the specified type goes UP to or through the specified Trigger Price."
+    },
+    {
+      "value": "D",
+      "name": "Down",
+      "doc": "Trigger if the price of the specified type goes DOWN to or through the specified Trigger Price."
+    }
+  ]
+}

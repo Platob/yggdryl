@@ -1,0 +1,40 @@
+{
+  "name": "applreqtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Retransmission",
+      "doc": "Retransmission of application messages for the specified Applications"
+    },
+    {
+      "value": "1",
+      "name": "Subscription",
+      "doc": "Subscription to the specified Applications"
+    },
+    {
+      "value": "2",
+      "name": "RequestLastSeqNum",
+      "doc": "Request for the last ApplLastSeqNum published for the specified Applications"
+    },
+    {
+      "value": "3",
+      "name": "RequestApplications",
+      "doc": "Request valid set of Applications"
+    },
+    {
+      "value": "4",
+      "name": "Unsubscribe",
+      "doc": "Unsubscribe to the specified Applications"
+    },
+    {
+      "value": "5",
+      "name": "CancelRetransmission",
+      "doc": "Cancel retransmission"
+    },
+    {
+      "value": "6",
+      "name": "CancelRetransmissionUnsubscribe",
+      "doc": "Cancel retransmission and unsubscribe to the specified applications"
+    }
+  ]
+}

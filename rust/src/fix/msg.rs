@@ -15,8 +15,8 @@ use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::sequence::SequenceType;
 use crate::xxhash;
 use crate::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
-    State, StructType, Uuid,
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    Side, State, StructType, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 
@@ -38,6 +38,7 @@ const ROW_STATED_CUSIP: u8 = 1 << 3;
 const ROW_STATED_SEDOL: u8 = 1 << 4;
 const ROW_STATED_BLOOMBERG: u8 = 1 << 5;
 const ROW_STATED_MIC: u8 = 1 << 6;
+const ROW_STATED_FIGI: u8 = 1 << 7;
 
 /// The row-owned facts whose non-null value must survive market derivation.
 fn row_stated_bit(tag: i32) -> Option<u8> {
@@ -55,6 +56,8 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
         Some(ROW_STATED_BLOOMBERG)
     } else if tag == super::MICCODE_TAG_NAME.0 {
         Some(ROW_STATED_MIC)
+    } else if tag == super::FIGICODE_TAG_NAME.0 {
+        Some(ROW_STATED_FIGI)
     } else {
         None
     }
@@ -91,10 +94,10 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
 /// lifted and the named content of the row - everything but the standard
 /// header and trailer, less `MsgType`, and never the chain it is in - the
 /// identity the UUIDv7 the instant and the code derive, and the cross
-/// identity the UUIDv8 the cross code's digest derives - the bridge's
-/// conversation, `session:context`, where the row header bracketed one,
-/// else the first chain identifier the message spells, `OrderID` before
-/// `ClOrdID`. Every write settles it again, so a written code or identity
+/// identity the UUIDv8 the cross code's digest derives - the first chain
+/// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
+/// bracketed `session:context` is retained among the message identifiers as
+/// capture provenance and never replaces that chain code. Every write settles it again, so a written code or identity
 /// is overwritten by the settled one. [`Self::entries`] is the row read as a tree, for a
 /// consumer that walks one shape, and [`Self::into_bytes`] re-emits the
 /// message from it.
@@ -206,6 +209,9 @@ pub struct FixMsg {
     /// the column of its name by [`Self::into_row`].
     carried: Vec<(SmolStr, Scalar)>,
 }
+
+/// The one derived identifier formed from a bridge capture's two brackets.
+const MSGSECTXID_IDENTIFIER: &str = "msgsectxid";
 
 /// One child a write lands: replaced at `at`, appended when there is none,
 /// its field and value already resolved and typed.
@@ -426,6 +432,28 @@ impl FixMsg {
     ) -> Result<Self> {
         let super::build::Built { field, value, .. } = built;
         Self::assemble(registry, field, value, fallback_sending_time, source, false)
+    }
+
+    /// Builds a message from the content reconstructed out of a semantic row.
+    /// The rebuilt nested tree is canonicalized once against its newly built
+    /// root. A row carrying its complete event identity keeps that recorded
+    /// identity; a narrower row is settled from the facts it does carry.
+    pub(super) fn from_rebuilt_row(
+        registry: Arc<FixRegistry>,
+        field: Field,
+        value: Scalar,
+        retains_identity: bool,
+    ) -> Result<Self> {
+        let value = field.canonicalize_value(value)?;
+        let mut message = Self::assemble(registry, field, value, None, None, false)?;
+        message.sync_capture_identifier();
+        if retains_identity {
+            message.derive_market();
+            message.event.fill_market();
+        } else {
+            message.settle();
+        }
+        Ok(message)
     }
 
     /// One message from a root and its canonical row: the typed facts are
@@ -701,27 +729,18 @@ impl FixMsg {
     /// the content digests to, and the identity the instant and the code
     /// derive.
     ///
-    /// The cross code names the chain. A bridge brackets every line it
-    /// writes with the session instance and the message context the line
-    /// belongs to, and those two name the conversation the message is one
-    /// hop of: where the row header stated both, the code is the two as
-    /// the bridge spells them, `session:context`. A line stating neither -
-    /// a wire capture - is named by the first stated of the identifiers a
-    /// chain is named by, `OrderID(37)` first; a line stating one of the
-    /// two and not the other has bracketed nothing, and is named as a wire
-    /// capture is.
+    /// The cross code names the chain and defaults to the first nonempty FIX
+    /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. Capture
+    /// session and context name where a bridge observed the message instead:
+    /// when both are present, `sync_capture_identifier` retains their
+    /// `session:context` spelling under `msgsectxid` without making it content.
     pub(super) fn settle(&mut self) {
+        self.sync_capture_identifier();
         if self.event.get_crosscode().is_empty() {
-            let bracketed = match (self.capture.msgsessionid(), self.capture.msgctxid()) {
-                (Some(session), Some(context)) => Some(format!("{session}:{context}")),
-                _ => None,
-            };
-            let code = bracketed.or_else(|| {
-                identity::CROSS_TAGS.iter().find_map(|tag| {
-                    self.get_by_tag(*tag)
-                        .and_then(|value| value.as_str().map(str::to_owned))
-                        .filter(|code| !code.is_empty())
-                })
+            let code = identity::CROSS_TAGS.iter().find_map(|tag| {
+                self.get_by_tag(*tag)
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .filter(|code| !code.is_empty())
             });
             if let Some(code) = code {
                 self.event.set_crosscode(code);
@@ -734,6 +753,39 @@ impl FixMsg {
         self.event.sync_cross();
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
+    }
+
+    /// Synchronizes the capture's complete session/context pair into the
+    /// event identifier map. Existing component identifiers stay in place;
+    /// an incomplete pair removes only this derived capture name.
+    fn sync_capture_identifier(&mut self) {
+        let pair = match (self.capture.msgsessionid(), self.capture.msgctxid()) {
+            (Some(session), Some(context)) if !session.is_empty() && !context.is_empty() => {
+                Some((session, context))
+            }
+            _ => None,
+        };
+        let identifiers = self.event.identifiers_mut();
+        let Some((session, context)) = pair else {
+            identifiers.remove(MSGSECTXID_IDENTIFIER);
+            return;
+        };
+        if identifiers.get(MSGSECTXID_IDENTIFIER).is_some_and(|held| {
+            held.strip_prefix(session)
+                .and_then(|held| held.strip_prefix(':'))
+                == Some(context)
+        }) {
+            return;
+        }
+        let mut joined = String::with_capacity(session.len() + 1 + context.len());
+        joined.push_str(session);
+        joined.push(':');
+        joined.push_str(context);
+        if let Some(held) = identifiers.get_mut(MSGSECTXID_IDENTIFIER) {
+            *held = joined;
+        } else {
+            identifiers.insert(MSGSECTXID_IDENTIFIER.to_owned(), joined);
+        }
     }
 
     /// What the message implies about its market, read off the FIX fields
@@ -798,7 +850,8 @@ impl FixMsg {
         let isincode = self.identifier(&["4"], |held| IsinCode::new(held).ok());
         let cusipcode = self.identifier(&["1"], |held| CusipCode::new(held).ok());
         let sedolcode = self.identifier(&["2"], |held| SedolCode::new(held).ok());
-        let bloombergcode = self.identifier(&["A", "S"], |held| BloombergCode::new(held).ok());
+        let bloombergcode = self.identifier(&["A"], |held| BloombergCode::new(held).ok());
+        let figicode = self.identifier(&["S"], |held| FIGICode::new(held).ok());
         // The market it is listed on, routed to, or last traded on.
         let miccode = word(207)
             .or_else(|| word(100))
@@ -875,6 +928,9 @@ impl FixMsg {
         if row_stated & ROW_STATED_BLOOMBERG == 0 {
             event.set_bloombergcode(bloombergcode);
         }
+        if row_stated & ROW_STATED_FIGI == 0 {
+            event.set_figicode(figicode);
+        }
         if row_stated & ROW_STATED_MIC == 0 {
             event.set_miccode(miccode);
         }
@@ -948,9 +1004,10 @@ impl FixMsg {
     /// [the wire digest](super::digest) states too. A capture logs one
     /// message at every hop it passes and each hop frames it in a session
     /// of its own, so a code over the rest of the frame would make one
-    /// message as many messages as hops; and so would the cross code, where
-    /// a bridge bracketed the hop's own conversation as it, which is why
-    /// the chain is the one fact of the event this code leaves out.
+    /// message as many messages as hops. The cross code names a chain and
+    /// stays outside the content digest too. The derived `msgsectxid`
+    /// identifier records capture provenance and is excluded for the same
+    /// reason as the capture fields it combines.
     ///
     /// The market is not here either: every market fact the event answers
     /// is derived from a FIX field the content already digests, so feeding
@@ -958,7 +1015,9 @@ impl FixMsg {
     /// forward would move the code of a message whose line never named it.
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
-        crate::graph::element::feed_event_facts(&mut state, &*self.event);
+        crate::graph::element::feed_event_facts(&mut state, &*self.event, |identifier| {
+            identifier != MSGSECTXID_IDENTIFIER
+        });
         let mut cells: Vec<(SmolStr, Scalar)> =
             Vec::with_capacity(self.field.fields().len() + identity::LIFTED_TAGS.len() + 2);
         if let Some(text) = self.text.as_deref() {
@@ -1203,7 +1262,7 @@ impl FixMsg {
                 return;
             };
             let text = match self.registry.get_field_by_tag(tag) {
-                Some(field) => wire_text_under(field, &fact),
+                Some(field) => wire_text_under(&self.registry, field, &fact),
                 None => wire_text(&fact),
             };
             if let Some(text) = text {
@@ -2126,21 +2185,58 @@ impl FixMsg {
     }
 }
 
-/// Feeds one level of the entry tree to a digest, in the order it stands:
-/// each entry's name, the value it states, and the entries under it.
-///
-/// Pre-order and framed by what each entry holds, so an entry heading
-/// others is never the same as one stating their text: an entry that
-/// states nothing feeds its name and no value, and its children follow.
+/// The canonical entry order keeps up to 128 indexes (one KiB) on the stack.
+const DIGEST_ENTRY_STACK_INDICES: usize = 128;
+
+/// Feeds one level of the entry tree to a digest in canonical name order.
+/// Equal names retain their arrival order, which keeps occurrences of one
+/// repeating group distinct while making a reconstructed Struct's members
+/// answer the same code as the parsed message's.
 fn feed_entries(state: &mut crate::xxhash::Xxh3, entries: &[FixEntry]) {
-    for entry in entries {
-        state.write(entry.name().as_bytes());
-        if let Some(value) = entry.value() {
-            state.write(value.as_bytes());
+    if entries
+        .windows(2)
+        .all(|pair| pair[0].name() <= pair[1].name())
+    {
+        for entry in entries {
+            feed_entry(state, entry);
         }
-        state.write_usize(entry.entries().len());
-        feed_entries(state, entry.entries());
+        return;
     }
+    let mut inline = [0_usize; DIGEST_ENTRY_STACK_INDICES];
+    let mut heap = Vec::new();
+    let order = if entries.len() <= inline.len() {
+        &mut inline[..entries.len()]
+    } else {
+        heap.resize(entries.len(), 0);
+        heap.as_mut_slice()
+    };
+    for (index, slot) in order.iter_mut().enumerate() {
+        *slot = index;
+    }
+    order.sort_unstable_by(|left, right| {
+        entries[*left]
+            .name()
+            .cmp(entries[*right].name())
+            .then(left.cmp(right))
+    });
+    for index in order {
+        feed_entry(state, &entries[*index]);
+    }
+}
+
+/// Feeds one entry with boundaries around each variable-length member.
+fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
+    state.write_usize(entry.name().len());
+    state.write(entry.name().as_bytes());
+    if let Some(value) = entry.value() {
+        state.write_u8(1);
+        state.write_usize(value.len());
+        state.write(value.as_bytes());
+    } else {
+        state.write_u8(0);
+    }
+    state.write_usize(entry.entries().len());
+    feed_entries(state, entry.entries());
 }
 
 /// One level of the row as the entries it states, in its order: every
@@ -2234,7 +2330,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
         _ => Some(FixEntry::new(
             tag,
             field.name(),
-            wire_text_under(field, value),
+            wire_text_under(registry, field, value),
         )),
     }
 }
@@ -2613,6 +2709,15 @@ impl MarketElement for FixMsg {
     fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.forced = true;
         self.event.set_bloombergcode(bloombergcode);
+    }
+
+    fn get_figicode(&self) -> Option<&FIGICode> {
+        self.event.get_figicode()
+    }
+
+    fn set_figicode(&mut self, figicode: Option<FIGICode>) {
+        self.forced = true;
+        self.event.set_figicode(figicode);
     }
 
     fn get_cficode(&self) -> Option<&CfiCode> {

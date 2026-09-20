@@ -1,0 +1,25 @@
+{
+  "name": "exercisestylecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "European",
+      "doc": "European"
+    },
+    {
+      "value": "1",
+      "name": "American",
+      "doc": "American"
+    },
+    {
+      "value": "2",
+      "name": "Bermuda",
+      "doc": "Bermuda"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

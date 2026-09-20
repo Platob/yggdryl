@@ -1,0 +1,40 @@
+{
+  "name": "tradingsessionidcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Day",
+      "doc": "Day"
+    },
+    {
+      "value": "2",
+      "name": "HalfDay",
+      "doc": "HalfDay"
+    },
+    {
+      "value": "3",
+      "name": "Morning",
+      "doc": "Morning"
+    },
+    {
+      "value": "4",
+      "name": "Afternoon",
+      "doc": "Afternoon"
+    },
+    {
+      "value": "5",
+      "name": "Evening",
+      "doc": "Evening"
+    },
+    {
+      "value": "6",
+      "name": "AfterHours",
+      "doc": "After-hours"
+    },
+    {
+      "value": "7",
+      "name": "Holiday",
+      "doc": "Holiday"
+    }
+  ]
+}

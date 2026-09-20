@@ -11,6 +11,8 @@
 //! whichever the index happened to hold; a field with no tag cannot be
 //! written back at all.
 
+use std::collections::HashMap;
+
 use yggdryl::{Field, FixCategory, FixRegistry};
 
 use crate::style;
@@ -55,7 +57,10 @@ pub struct Report {
     pub findings: Vec<Finding>,
     /// How many definitions were walked in each category.
     pub categories: Vec<(FixCategory, usize)>,
-    /// How many code records were walked.
+    /// How many code sets were walked.
+    pub codesets: usize,
+    /// How many code records were walked, once per set rather than once per
+    /// field reading by it.
     pub codes: usize,
 }
 
@@ -82,8 +87,10 @@ pub fn check(registry: &FixRegistry) -> Report {
     let mut report = Report {
         findings: Vec::new(),
         categories: Vec::new(),
+        codesets: 0,
         codes: 0,
     };
+    check_codesets(&mut report, registry);
     for category in FixCategory::ALL {
         let mut count = 0;
         for field in registry.definitions(category) {
@@ -111,25 +118,18 @@ pub fn check(registry: &FixRegistry) -> Report {
                 }
             }
 
-            // A borrowed walk ends at a refusal, so one malformed record removes
-            // every record after it from resolution - silently.
-            for code in view.codes() {
-                match code {
-                    Ok(_) => report.codes += 1,
-                    Err(error) => {
-                        report.findings.push(Finding {
-                            level: Level::Fail,
-                            check: "codes",
-                            subject: named.clone(),
-                            detail: format!(
-                                "its code set stops at {error} - every code after it is invisible"
-                            ),
-                        });
-                        break;
-                    }
+            // The set a field names has to be one the dictionary holds, or
+            // every value of that field resolves to nothing.
+            if let Some(set) = view.codeset() {
+                if registry.get_codeset(set).is_none() {
+                    report.findings.push(Finding {
+                        level: Level::Fail,
+                        check: "codes",
+                        subject: named.clone(),
+                        detail: format!("reads by {set:?}, which this dictionary does not hold"),
+                    });
                 }
             }
-            duplicated_codes(&mut report, field, &named);
             shaped_group(&mut report, field, &named);
         }
         report.categories.push((category, count));
@@ -146,20 +146,61 @@ pub fn check(registry: &FixRegistry) -> Report {
     report
 }
 
-/// A code set with two records at one value cannot answer either.
-fn duplicated_codes(report: &mut Report, field: &Field, named: &str) {
-    let mut values: Vec<String> = Vec::new();
-    for code in field.as_fix().codes().filter_map(std::result::Result::ok) {
-        let held = code.value().to_owned();
-        if values.contains(&held) {
+/// Every vocabulary the dictionary holds, walked once.
+///
+/// Once per set rather than once per field reading by it: 103 fields read by
+/// one offset-unit set in the shipped dictionary, and a malformed record in
+/// it is one finding about one vocabulary, not 103 about the fields that
+/// name it.
+fn check_codesets(report: &mut Report, registry: &FixRegistry) {
+    let mut read_by: HashMap<&str, usize> = HashMap::new();
+    for field in registry {
+        if let Some(name) = field.as_fix().codeset() {
+            *read_by.entry(name).or_default() += 1;
+        }
+    }
+    for set in registry.codesets() {
+        report.codesets += 1;
+        let named = format!("codesets/{}", set.name());
+        // A borrowed walk ends at a refusal, so one malformed record removes
+        // every record after it from resolution - silently.
+        let mut values: Vec<String> = Vec::new();
+        for code in set.codes() {
+            match code {
+                Ok(code) => {
+                    report.codes += 1;
+                    let held = code.value().to_owned();
+                    if values.contains(&held) {
+                        report.findings.push(Finding {
+                            level: Level::Warn,
+                            check: "codes",
+                            subject: named.clone(),
+                            detail: format!("declares {held:?} twice"),
+                        });
+                    } else {
+                        values.push(held);
+                    }
+                }
+                Err(error) => {
+                    report.findings.push(Finding {
+                        level: Level::Fail,
+                        check: "codes",
+                        subject: named.clone(),
+                        detail: format!("stops at {error} - every code after it is invisible"),
+                    });
+                    break;
+                }
+            }
+        }
+        // A vocabulary nothing reads by is one a store writes, a reader loads
+        // and no value ever reaches.
+        if !read_by.contains_key(set.name()) {
             report.findings.push(Finding {
-                level: Level::Warn,
+                level: Level::Note,
                 check: "codes",
-                subject: named.to_owned(),
-                detail: format!("declares {held:?} twice"),
+                subject: named,
+                detail: "no field reads by it".to_owned(),
             });
-        } else {
-            values.push(held);
         }
     }
 }
@@ -193,6 +234,7 @@ pub fn render(report: &Report) {
     for (category, count) in &report.categories {
         style::entry(category.as_str(), &count.to_string());
     }
+    style::entry("codesets", &report.codesets.to_string());
     style::entry("codes", &report.codes.to_string());
 
     if report.findings.is_empty() {

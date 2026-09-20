@@ -9,10 +9,13 @@ use yggdryl::{
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
         use yggdryl::graph::{MarketElement, MarketElementData};
-        use yggdryl::{CfiCode, IsinCode};
+        use yggdryl::{CfiCode, FIGICode, IsinCode};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
             bench.iter(|| IsinCode::new(black_box("us0378331005")).unwrap());
+        });
+        codes.bench_function("figi", |bench| {
+            bench.iter(|| FIGICode::new(black_box("bbg000blnq16")).unwrap());
         });
         codes.bench_function("cfi_classification", |bench| {
             bench.iter(|| CfiCode::is_classified(black_box("ESVUFR")));

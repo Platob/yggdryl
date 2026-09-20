@@ -1,0 +1,95 @@
+{
+  "name": "orderrestrictionscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ProgramTrade",
+      "doc": "Program Trade"
+    },
+    {
+      "value": "2",
+      "name": "IndexArbitrage",
+      "doc": "Index Arbitrage"
+    },
+    {
+      "value": "3",
+      "name": "NonIndexArbitrage",
+      "doc": "Non-Index Arbitrage"
+    },
+    {
+      "value": "4",
+      "name": "CompetingMarketMaker",
+      "doc": "Competing Market Maker"
+    },
+    {
+      "value": "5",
+      "name": "ActingAsMarketMakerOrSpecialistInSecurity",
+      "doc": "Acting as Market Maker or Specialist in the security"
+    },
+    {
+      "value": "6",
+      "name": "ActingAsMarketMakerOrSpecialistInUnderlying",
+      "doc": "Acting as Market Maker or Specialist in the underlying security of a derivative security"
+    },
+    {
+      "value": "7",
+      "name": "ForeignEntity",
+      "doc": "Foreign Entity (of foreign government or regulatory jurisdiction)"
+    },
+    {
+      "value": "8",
+      "name": "ExternalMarketParticipant",
+      "doc": "External Market Participant"
+    },
+    {
+      "value": "9",
+      "name": "ExternalInterConnectedMarketLinkage",
+      "doc": "External Inter-connected Market Linkage"
+    },
+    {
+      "value": "A",
+      "name": "RisklessArbitrage",
+      "doc": "Riskless Arbitrage"
+    },
+    {
+      "value": "B",
+      "name": "IssuerHolding",
+      "doc": "Issuer Holding"
+    },
+    {
+      "value": "C",
+      "name": "IssuePriceStabilization",
+      "doc": "Issue Price Stabilization"
+    },
+    {
+      "value": "D",
+      "name": "NonAlgorithmic",
+      "doc": "Non-algorithmic"
+    },
+    {
+      "value": "E",
+      "name": "Algorithmic",
+      "doc": "Algorithmic"
+    },
+    {
+      "value": "F",
+      "name": "Cross",
+      "doc": "Cross"
+    },
+    {
+      "value": "G",
+      "name": "InsiderAccount",
+      "doc": "Insider Account"
+    },
+    {
+      "value": "H",
+      "name": "SignificantShareholder",
+      "doc": "Significant Shareholder"
+    },
+    {
+      "value": "I",
+      "name": "NormalCourseIssuerBid",
+      "doc": "Normal Course Issuer Bid (NCIB)"
+    }
+  ]
+}

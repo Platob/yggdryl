@@ -1,0 +1,20 @@
+{
+  "name": "financialstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Bankrupt",
+      "doc": "Bankrupt"
+    },
+    {
+      "value": "2",
+      "name": "PendingDelisting",
+      "doc": "Pending delisting"
+    },
+    {
+      "value": "3",
+      "name": "Restricted",
+      "doc": "Restricted"
+    }
+  ]
+}

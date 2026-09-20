@@ -1,0 +1,50 @@
+{
+  "name": "tradingservicetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "1",
+      "name": "Trading",
+      "doc": "Trading"
+    },
+    {
+      "value": "2",
+      "name": "MarketData",
+      "doc": "Market data"
+    },
+    {
+      "value": "3",
+      "name": "ReferenceData",
+      "doc": "Reference data"
+    },
+    {
+      "value": "4",
+      "name": "PostTrade",
+      "doc": "Post-Trade"
+    },
+    {
+      "value": "5",
+      "name": "GUI",
+      "doc": "GUI"
+    },
+    {
+      "value": "6",
+      "name": "TradeReporting",
+      "doc": "Trade reporting"
+    },
+    {
+      "value": "7",
+      "name": "ReportDistribution",
+      "doc": "Report distribution"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -289,19 +289,11 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
         }
     }
 
-    // And the arrival record - the fact the wire is rebuilt from - is the same
-    // on both paths, so the round trip closes either way.
+    // The batch retains only arrival content the fixed columns cannot state;
+    // the typed-column checks above prove represented facts arrive identically.
     let entries = column(batch, "fixentries");
-    for (at, message) in one_at_a_time.iter().enumerate() {
-        assert_eq!(
-            message.entries().len(),
-            entries[at]
-                .as_sequence()
-                .map(<[Scalar]>::len)
-                .unwrap_or_default(),
-            "row {at} carries a different arrival record",
-        );
-    }
+    assert_eq!(entries.len(), one_at_a_time.len());
+    assert!(entries.iter().all(|entry| entry.as_sequence().is_some()));
 
     // Which way a message moved is FIX's own tag 385, a code of its set,
     // retained once per row and shared by every message that row states.

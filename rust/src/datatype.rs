@@ -214,6 +214,8 @@ pub enum DataType {
     /// bytes closed by a check digit.
     SedolCode,
     BloombergCode,
+    /// ANSI X9.145 Financial Instrument Global Identifier.
+    FIGICode,
 }
 
 impl DataType {
@@ -299,6 +301,7 @@ impl DataType {
             Self::CusipCode => DataTypeId::CusipCode,
             Self::SedolCode => DataTypeId::SedolCode,
             Self::BloombergCode => DataTypeId::BloombergCode,
+            Self::FIGICode => DataTypeId::FIGICode,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
@@ -654,6 +657,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::SedolCode => 63,
         DataType::BloombergCode => 64,
         DataType::Uri(UriType::Urn) => 65,
+        DataType::FIGICode => 66,
     }
 }
 
@@ -837,6 +841,7 @@ mod arrow {
                 | R::CusipCode
                 | R::SedolCode
                 | R::BloombergCode
+                | R::FIGICode
                 | R::Side
                 | R::State
                 | R::TimeInForce => code::code_arrow_storage(self)?,

@@ -1,0 +1,15 @@
+{
+  "name": "risklimitcheckrequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AllOrNone",
+      "doc": "All or none (default if not specified)."
+    },
+    {
+      "value": "1",
+      "name": "Partial",
+      "doc": "Partial"
+    }
+  ]
+}

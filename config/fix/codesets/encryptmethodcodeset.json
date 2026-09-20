@@ -1,0 +1,40 @@
+{
+  "name": "encryptmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None / Other"
+    },
+    {
+      "value": "1",
+      "name": "PKCS",
+      "doc": "PKCS (Proprietary)"
+    },
+    {
+      "value": "2",
+      "name": "DES",
+      "doc": "DES (ECB Mode)"
+    },
+    {
+      "value": "3",
+      "name": "PKCSDES",
+      "doc": "PKCS / DES (Proprietary)"
+    },
+    {
+      "value": "4",
+      "name": "PGPDES",
+      "doc": "PGP / DES (Defunct)"
+    },
+    {
+      "value": "5",
+      "name": "PGPDESMD5",
+      "doc": "PGP / DES-MD5 (See app note on FIX web site)"
+    },
+    {
+      "value": "6",
+      "name": "PEM",
+      "doc": "PEM / DES-MD5 (see app note on FIX web site)"
+    }
+  ]
+}

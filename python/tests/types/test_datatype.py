@@ -757,8 +757,11 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert currency.ascii_value(0x555344) == "USD"
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
-    with pytest.raises(ValueError, match="unknown datatype"):
-        DataType("figi")
+    figi = DataType("figi")
+    assert (figi.id, figi.code_width, figi.kind) == ("figi", 12, "code")
+    assert figi.scalar("bbg000blnq16").as_py() == "BBG000BLNQ16"
+    with pytest.raises(ValueError, match="check digit"):
+        figi.scalar("BBG000BLNQ17")
 
     # An ISIN is closed by its own check digit: a spelling one digit off is a
     # typo and is refused rather than stored as a security, and lower case
@@ -1084,8 +1087,7 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     assert len(StringEnum.from_logical_name("isin")) == 0
     assert len(StringEnum.from_logical_name("cusip")) == 0
     assert len(StringEnum.from_logical_name("sedol")) == 0
-    with pytest.raises(ValueError, match="currency"):
-        StringEnum.from_logical_name("figi")
+    assert len(StringEnum.from_logical_name("figi")) == 0
 
 
 def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:

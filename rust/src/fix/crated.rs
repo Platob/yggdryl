@@ -68,9 +68,11 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty-six scalar fields and two Map groups, each registered by its shape.
+//! Twenty-seven scalar fields and two Map groups, each registered by its shape.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
+
+use smol_str::SmolStr;
 
 use crate::graph::EventColumn;
 use crate::{DataType, Field, Result};
@@ -139,12 +141,12 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");
 /// in the object, and no column of the message restates it.
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 
-/// The tag and name counting the arrival records one message carried.
+/// The tag and name counting the residual entries of one FIX row.
 ///
 /// The counter of the `fixentries` group, and a counter in the ordinary FIX
-/// sense: `NoPartyIDs` counts `Parties`, and this counts the pairs a line
-/// stated. A reader prunes on it without opening the list, which is what a
-/// count column is for.
+/// sense: `NoPartyIDs` counts `Parties`, and this counts entries not fully
+/// represented by the row's projected columns. A reader prunes on it without
+/// opening the list.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
@@ -222,6 +224,28 @@ pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
 
 /// The tag and name carrying the fixed business category of the message type.
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
+/// The registry-owned vocabulary the crate's MsgCat column reads by.
+pub(super) const MSGCAT_CODESET_NAME: &str = "msgcatcodeset";
+
+/// The canonical MsgCat document every registry shares.
+static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
+    let codes = super::constants::MSGCATEGORIES
+        .iter()
+        .copied()
+        .map(|value| super::FixCode::new(value, value))
+        .collect::<Vec<_>>();
+    match super::FixCodes::render(&codes) {
+        Ok(document) => Some(Arc::from(document)),
+        Err(error) => {
+            log::warn!("building FIX MsgCat code set: {error}");
+            None
+        }
+    }
+});
+
+pub(super) fn msgcat_codeset() -> Option<Arc<str>> {
+    MSGCAT_CODESET.as_ref().map(Arc::clone)
+}
 /// The tag and name carrying the normalized ISIN the message identifies.
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");
 /// The tag and name carrying the normalized CUSIP the message identifies.
@@ -232,6 +256,8 @@ pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_058, "sedolcode");
 pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");
 /// The tag and name carrying the normalized market MIC the message identifies.
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");
+/// The tag and name carrying the normalized FIGI the message identifies.
+pub const FIGICODE_TAG_NAME: (i32, &str) = (65_061, "figicode");
 
 /// The graph event column one crate tag is, for the sixteen that are one.
 ///
@@ -377,12 +403,7 @@ fn msgcat() -> Result<Field> {
         DataType::fixed_ascii(4)?,
         "The four-byte business category of the message type.",
     )?;
-    let codes = super::constants::MSGCATEGORIES
-        .iter()
-        .copied()
-        .map(|value| super::FixCode::new(value, value))
-        .collect::<Vec<_>>();
-    field.as_fix_mut().set_codes(&codes)?;
+    field.as_fix_mut().set_codeset(MSGCAT_CODESET_NAME)?;
     Ok(field)
 }
 
@@ -401,8 +422,9 @@ fn build() -> Result<Vec<Field>> {
         EventColumn::Identifiers,
         "Identifiers",
         "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; repeating-group members are \
-         not flattened.",
+         field that stated it, in sorted order; a capture stating both a session \
+         instance and a message context adds `msgsectxid` as `session:context`; \
+         repeating-group members are not flattened.",
     )?;
     identifiers
         .as_fix_mut()
@@ -497,7 +519,7 @@ fn build() -> Result<Vec<Field>> {
             NOFIXENTRIES_TAG_NAME,
             "NoFixEntries",
             DataType::Int32,
-            "How many pairs the message carried, in arrival order.",
+            "How many residual entries remain outside the row's projected columns.",
         )?,
         // The session instance the bridge handled a line on, which its own
         // row header states and no FIX message carries: `SenderCompID` names
@@ -510,7 +532,7 @@ fn build() -> Result<Vec<Field>> {
             "The session instance a bridge handled a line on, as its own row \
              header brackets it - never what the message states about itself.",
         )?,
-        // The three identifiers beside `isincode`, each typed as the code it
+        // The four identifiers beside `isincode`, each typed as the code it
         // is so a row joins on it rather than on text that looks like one.
         // The identities: the message's own, the one its lifecycle shares,
         // and the ones it descends from.
@@ -613,6 +635,12 @@ fn build() -> Result<Vec<Field>> {
             DataType::mic(),
             "The normalized market MIC the message identifies.",
         )?,
+        crated(
+            FIGICODE_TAG_NAME,
+            "FIGICode",
+            DataType::figi(),
+            "The normalized FIGI the message identifies.",
+        )?,
     ])
 }
 
@@ -625,7 +653,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 28);
+/// assert_eq!(held.len(), 29);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
@@ -633,7 +661,7 @@ fn build() -> Result<Vec<Field>> {
 /// // materialized copy of that instant was a second owner of it.
 /// assert!(held.iter().all(|field| !field.is_partition()));
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
-/// // The five normalized instrument and market codes have their own columns;
+/// // The six normalized instrument and market codes have their own columns;
 /// // other graph facts remain answers off the FIX fields the message lifted,
 /// // so nothing here declares a `FIX:derivation`.
 /// assert!(held.iter().all(|field| !field.has_metadata("FIX:derivation")));
@@ -694,14 +722,24 @@ impl super::FixRegistry {
         description: Option<&str>,
     ) -> Result<&super::MsgType> {
         let field = self.field_by_tag(MSGTYPE_TAG_NAME.0)?;
-        let view = field.as_fix();
-        let mut codes: Vec<super::FixCode> = view
-            .codes()
-            .map(|code| code.map(super::FixCode::from))
-            .collect::<Result<_>>()?;
+        // The set tag 35 reads by, which the dictionary owns: a field naming
+        // none is registering the first code of a set of its own, and that
+        // set is named after the field.
+        let stated = field.as_fix().codeset().map(SmolStr::new);
+        let set_name = stated.unwrap_or_else(|| super::FixRegistry::derived_codeset_name(field));
+        let held = self.get_codeset(&set_name);
+        let mut codes: Vec<super::FixCode> = held
+            .map(|set| {
+                set.codes()
+                    .map(|code| code.map(super::FixCode::from))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let spelled = |text: &str| held.and_then(|set| set.code_value(text));
         // Every spelling this registration states, the value's own first.
         let named = name.unwrap_or(spelling);
-        let (value, at) = match view.code_value(spelling) {
+        let (value, at) = match spelled(spelling) {
             // Already spelled, by name, alias or wire value: the set answers,
             // and this states whatever it did not already hold.
             Some(held) => {
@@ -723,7 +761,7 @@ impl super::FixRegistry {
         // A spelling another code already answers to is refused rather than
         // added: two codes one spelling reaches resolve to neither.
         for spelling in [named, spelling] {
-            if let Some(taken) = view.code_value(spelling) {
+            if let Some(taken) = spelled(spelling) {
                 if taken != value.as_str() {
                     return Err(crate::Error::Conflict {
                         expected: "a free message type spelling",
@@ -745,9 +783,15 @@ impl super::FixRegistry {
             }
         }
         let mut next = self.clone();
-        let mut field = field.clone();
-        field.as_fix_mut().set_codes(&codes)?;
-        next.update(field)?;
+        // The set first: a field may not name a vocabulary the dictionary
+        // does not hold, so the members are stated before the field points
+        // at them.
+        next.set_codeset(&set_name, &codes)?;
+        if field.as_fix().codeset().is_none() {
+            let mut field = field.clone();
+            field.as_fix_mut().set_codeset(&set_name)?;
+            next.update(field)?;
+        }
         if next.get_msgtype(&value).is_none() {
             let normalized = crate::normalized(codes[at].name());
             let canonical = if !normalized.is_empty()

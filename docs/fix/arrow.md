@@ -8,7 +8,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | --- | --- |
 | Owns | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`, `FixCodec::DEFAULT_BATCH_BYTE_SIZE`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader`, JavaScript a `BatchReader` |
-| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `fix_schema(&registry, "fix")` answers the fixed row: 122 columns over 118 tags |
+| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `fix_schema(&registry, "fix")` answers the fixed row: 123 columns over 119 tags |
 | Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
@@ -19,7 +19,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Per row | `beginstring` and `msgdirection` are parameters read from the row; a `sourceurl` column is neither a parameter nor a fill - it is [the capture's own](message.md#a-row-is-a-message-again) and is restated onto the output row from the source row; any other column named after a field - `msgpluginid` among them - fills it where the message did not state it; a capture `timestamp` is carried context, never a FIX clock |
 | Errors | typed I/O, schema and parsing failures; a source batch of another schema than the first is a conflict; pooled parsing reports errors in source order, and dropping its reader joins dispatched work; `arrow_reader` yields its completed prefix, then an item's error, then fuses |
 | Lazy | one worker parses with no pool; capture Arrow parsing pools batches, while line, message and write doors retain bounded 64-row chunks, two per worker; lifecycle retains finite-capture history |
-| Wire | `write_arrow_reader` rebuilds every line from `fixentries` and never from the columns; a batch without that column is refused before a row is read |
+| Wire | `write_arrow_reader` rebuilds every semantic message from its projected columns and residual `fixentries`; a batch without that residual column is refused before a row is read |
 | Bindings | Rust; Python (`FixCodec.parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`); JavaScript (`parseTextArrowReader`, `lifecycleArrowReader`, `messages`, `arrowReader`, `writeArrowReader`); `FixDedup` is Rust-only |
 
 ## Use
@@ -309,7 +309,7 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 
 The session instance, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
-Every capture is named for the field it fills, so the registry's one namespace is what lands it and nothing translates in between. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, the context and the plugin are the [capture's own facts](message.md#typed-tags), held by `FixCapture` rather than in the content row, so they are outside the code the message's content digests to: what a bridge wrote around one message is not that message; where the row header brackets both a session instance and a context, the two name the chain through the [cross code](lifecycle.md#a-chain-is-named-by-its-cross-code), which is the chain's identity and not the message's. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
+Every capture is named for the field it fills, so the registry's one namespace is what lands it and nothing translates in between. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, context and plugin are [capture facts](message.md#typed-tags), held by `FixCapture` rather than the content row. Where both session and context are present, `identifiers["msgsectxid"]` records their `session:context` pair as provenance; it is excluded from the FIX content UUID. A cross code instead comes from an explicit nonempty value or the message's ordered FIX identifiers, as [the lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) defines. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
 
 The plugin is a fill and nothing more: it lands in the crate's own `msgpluginid` column by name, like any capture named after a field, and selects no dictionary and no version - the registry is one namespace, and which dictionaries a field belongs to is the field's own `FIX:branches`, which no read consults.
 
@@ -415,7 +415,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
 ## Rows are messages again, and messages rows
 
-`messages` reads a stream of batches back as the messages that made them, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the schema read off the source - its entries rebuilt from `fixentries`, so the message re-emits its line, digests, restates and stamps exactly as the parsed one did - at the cost of the values the row already holds, and no parse. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other over everything a message holds, [the capture's own columns](message.md#a-row-is-a-message-again) included: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
+`messages` reads a stream of batches back as semantic messages, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the source schema: projected columns and residual `fixentries` rebuild the message without parsing. Its recorded identity cells remain stated while market getters refill from the reconstructed content. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other at the canonical row: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
 
 === "Rust"
 
@@ -433,15 +433,12 @@ A source row is read for every message it carries, so a capture answers one row 
     let lines = ["8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|10=0|", "8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|"];
     let parsed: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 
-    // Into batches, and back: the same arrival record, the same digest, and
-    // the same row again.
+    // Into batches, and back: the same canonical row and content identity.
     let again: Vec<FixMsg> = codec
         .messages(codec.arrow_reader(schema.clone(), parsed.clone())?)
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(again.len(), parsed.len());
     for (held, message) in again.iter().zip(&parsed) {
-        assert_eq!(held.entries(), message.entries());
-        assert_eq!(held.digest(), message.digest());
         assert_eq!(held.into_row(&schema)?, message.into_row(&schema)?);
     }
 
@@ -471,13 +468,11 @@ A source row is read for every message it carries, so a capture answers one row 
     lines = [b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|10=0|", b"8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|"]
     parsed = list(codec.parse_lines(lines))
 
-    # Into batches, and back: the same arrival record, the same digest, and
-    # the same row again.
+    # Into batches, and back: the same canonical row and content identity.
     again = list(codec.messages(codec.arrow_reader(schema, parsed)))
     assert len(again) == len(parsed)
     for held, message in zip(again, parsed):
-        assert held.entries() == message.entries()
-        assert held.digest() == message.digest()
+        assert held.currhashcode == message.currhashcode
         assert held.into_row(schema) == message.into_row(schema)
 
     # And out to the wire: one line per row, rebuilt from the message's own
@@ -505,13 +500,11 @@ A source row is read for every message it carries, so a capture answers one row 
     const lines = ['8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|10=0|', '8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|']
     const parsed = [...codec.parseLines(lines.map((line) => Buffer.from(line)))]
 
-    // Into batches, and back: the same arrival record, the same digest, and
-    // the same row again.
+    // Into batches, and back: the same canonical row and content identity.
     const again = [...codec.messages(codec.arrowReader(schema, parsed))]
     assert.equal(again.length, parsed.length)
     again.forEach((held, at) => {
-      assert.deepEqual(held.entries(), parsed[at].entries())
-      assert.deepEqual(held.digest(), parsed[at].digest())
+      assert.equal(held.currhashcode, parsed[at].currhashcode)
       assert.ok(held.intoRow(schema).equals(parsed[at].intoRow(schema)))
     })
 
@@ -528,7 +521,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
 ## Back to the wire
 
-`write_arrow_reader` streams a batch back out as lines, one per row and so [one per message](#one-row-per-message) - a source line that held two frames comes back as two lines, each the bytes its own frame arrived as - rebuilt from each row's `fixentries` and never from its columns: the fixed columns are a *reading* of the message, so a frame rebuilt from them would be one nobody sent. Each line is [`into_bytes`](encode.md) with the codec's `separator`, `SOH` unless pinned, then a newline, and the count of lines is answered; the [round trip above](#rows-are-messages-again-and-messages-rows) ends there. The walk is pre-order, so a group's members follow the counter that heads them, exactly as they arrived. A batch carrying no `fixentries` column cannot be written and says so before a row is read. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held.
+`write_arrow_reader` streams a batch back out as lines, one per row and so [one per message](#one-row-per-message). It first rebuilds each semantic message from its projected columns and residual `fixentries`, then calls [`into_bytes`](encode.md) with the codec's `separator`, `SOH` unless pinned, and a newline. The output is canonical message wire rather than a promise to reproduce original arrival order. The count of lines is answered; the [round trip above](#rows-are-messages-again-and-messages-rows) ends there. A batch carrying no `fixentries` column cannot be written and says so before a row is read. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held.
 
 ## Chained where it sits
 

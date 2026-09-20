@@ -1,0 +1,15 @@
+{
+  "name": "instrumentscopeoperatorcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Include",
+      "doc": "Include"
+    },
+    {
+      "value": "2",
+      "name": "Exclude",
+      "doc": "Exclude"
+    }
+  ]
+}

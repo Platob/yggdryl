@@ -1,0 +1,25 @@
+{
+  "name": "applqueueresolutioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoActionTaken",
+      "doc": "No Action Taken"
+    },
+    {
+      "value": "1",
+      "name": "QueueFlushed",
+      "doc": "Queue Flushed"
+    },
+    {
+      "value": "2",
+      "name": "OverlayLast",
+      "doc": "Overlay Last"
+    },
+    {
+      "value": "3",
+      "name": "EndSession",
+      "doc": "End Session"
+    }
+  ]
+}

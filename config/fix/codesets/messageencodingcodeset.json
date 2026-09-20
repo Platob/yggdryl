@@ -1,0 +1,21 @@
+{
+  "name": "messageencodingcodeset",
+  "codes": [
+    {
+      "value": "EUC-JP",
+      "name": "Eucjp"
+    },
+    {
+      "value": "ISO-2022-JP",
+      "name": "Iso2022Jp"
+    },
+    {
+      "value": "Shift_JIS",
+      "name": "ShiftJis"
+    },
+    {
+      "value": "UTF-8",
+      "name": "Utf8"
+    }
+  ]
+}

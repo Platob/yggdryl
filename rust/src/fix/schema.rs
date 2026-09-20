@@ -25,20 +25,17 @@
 //! is queried by; the three repeating groups worth persisting whole; the five
 //! facts this crate derives; and then, last, everything else.
 //!
-//! # Nothing is lost at the end
+//! # Values not represented by columns stay at the end
 //!
-//! `fixentries` closes every row with the whole arrival record: every pair, in
-//! arrival order, under the `nofixentries` that counts them. It is what makes
-//! a row lossless - the fixed columns are a reading of the message and the
-//! entries are the message, so the wire is rebuilt from them and never from
-//! the columns.
+//! `fixentries` closes every row with the residual arrival record, under the
+//! `nofixentries` that counts it. A scalar a column successfully represents is
+//! stated once, in that column. Unknown, unprojected, conflicting and partly
+//! represented nested content remains in the record, in arrival order.
 //!
-//! Each pair carries both facts about itself: `tagkey` and `tagvalue` are the
-//! ranges of the line, untranslated, and `tagnum` and `tagname` are what the
-//! dictionary made of that key when the message was parsed. The arrival is
-//! what the wire is rebuilt from; the translation is there so a consumer
-//! reading the record can group and filter by a name without a dictionary of
-//! its own.
+//! Each residual entry carries the resolved tag, its dictionary name, its
+//! canonical wire value and the entries nested below it. A message read back
+//! from a row combines its columns with that residual, and a consumer can
+//! group or filter the residual by name without a dictionary of its own.
 //!
 //! Unresolved keys have tag zero in that same record; their original key,
 //! value and children remain in place, and `tagname` spells the key itself
@@ -46,7 +43,7 @@
 
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use crate::graph::MarketElement;
 
@@ -153,14 +150,11 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 /// first place, so moving a column between bands is one edit and never a
 /// duplicate.
 ///
-/// This is the shape a capture lands in, and it is a *reading* of a message
-/// rather than the message: what the codec made of a line, in columns. The
-/// message itself is the arrival record beside them, and it is what lets a
-/// [format](super::FixCodec::format_messages) answer a target this row does
-/// not hold: a narrower one is the caller's own choice of what to keep, and
-/// a wider one - a capture's own columns in front of these, through
-/// [`fix_schema_carrying`](super::fix_schema_carrying) - reads the record
-/// for the rest.
+/// This is the shape a capture lands in: projected, typed message columns
+/// followed by the residual arrival record. Rebuilding combines both, so a
+/// narrow projection chooses only its columns without losing the rest of the
+/// message. Capture columns remain separate in front through
+/// [`fix_schema_carrying`](super::fix_schema_carrying).
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
@@ -250,6 +244,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             super::CUSIPCODE_TAG_NAME.0,
             super::SEDOLCODE_TAG_NAME.0,
             super::BLOOMBERGCODE_TAG_NAME.0,
+            super::FIGICODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
             167,
             762,
@@ -680,9 +675,10 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
     Ok(Arc::from(columns))
 }
 
-/// One schema's plan as this thread read it, beside the schema and the
-/// registry it was read against: aliases belong to the resolving registry.
-type PlannedSchema = (StructType, Arc<FixRegistry>, ColumnPlan);
+/// One schema's plan as this thread read it, beside the schema and a weak
+/// identity for the registry it was read against: aliases belong to the
+/// resolving registry, but a plan does not keep it alive.
+type PlannedSchema = (StructType, Weak<FixRegistry>, ColumnPlan);
 
 /// The plans one thread has read, by the shape of the schema each is for.
 type ColumnPlans = super::registry::FixMap<u64, Vec<PlannedSchema>>;
@@ -700,16 +696,15 @@ const REMEMBERED_COLUMN_PLANS: usize = 4_096;
 
 /// How many schemas of one shape one thread remembers plans for - one
 /// per registry they were planned against - past which the oldest is
-/// forgotten: a service planning one schema against a registry per request
-/// keeps this many registries alive and no more.
+/// forgotten. These are plans, not retained registries.
 const REMEMBERED_SCHEMAS_PER_SHAPE: usize = 4;
 
 /// The schemas this thread planned last, by the address of each one's
 /// children and of the registry it was planned against: a door filling a
 /// million rows under one schema holds the one `Field` for all of them, so
 /// the plan is found by the address before the shape is digested at all.
-/// Each entry keeps the schema and the registry alive, so neither address
-/// is given to another while it is remembered.
+/// A weak registry identity keeps its allocation address reserved, so a
+/// dropped resolver's address is not reused while this plan is remembered.
 type PlannedByAddress = Vec<((usize, usize), PlannedSchema)>;
 
 thread_local! {
@@ -738,7 +733,9 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
         let mut held = held.borrow_mut();
         let at = held.iter().position(|(held, _)| *held == address)?;
         let (_, (known, resolver, plan)) = &held[at];
-        if !(Arc::ptr_eq(resolver, registry) && known.shares_storage_with(columns)) {
+        if !(std::ptr::eq(resolver.as_ptr(), Arc::as_ptr(registry))
+            && known.shares_storage_with(columns))
+        {
             return None;
         }
         let plan = Arc::clone(plan);
@@ -754,7 +751,7 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
     let plan = COLUMN_PLANS.with(|held| -> Result<ColumnPlan> {
         if let Some(planned) = held.borrow().get(&shape) {
             for (known, resolver, plan) in planned {
-                if Arc::ptr_eq(resolver, registry)
+                if std::ptr::eq(resolver.as_ptr(), Arc::as_ptr(registry))
                     && (known.shares_storage_with(columns) || known == columns)
                 {
                     return Ok(Arc::clone(plan));
@@ -768,7 +765,7 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
             if planned.len() >= REMEMBERED_SCHEMAS_PER_SHAPE {
                 planned.remove(0);
             }
-            planned.push((columns.clone(), Arc::clone(registry), Arc::clone(&plan)));
+            planned.push((columns.clone(), Arc::downgrade(registry), Arc::clone(&plan)));
         }
         Ok(plan)
     })?;
@@ -784,7 +781,7 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
             0,
             (
                 address,
-                (columns.clone(), Arc::clone(registry), Arc::clone(&plan)),
+                (columns.clone(), Arc::downgrade(registry), Arc::clone(&plan)),
             ),
         );
     });
@@ -874,7 +871,7 @@ fn entries_field() -> Result<Field> {
     let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
     field.set_display("FixEntries")?;
     field.set_description(
-        "Every pair the message carried, in arrival order, beside what the dictionary made of it.",
+        "Content not represented by another column, in arrival order, beside what the dictionary made of it.",
     )?;
     // A group says which counter counts it, the way every other group in this
     // crate says it. It does not name its occurrence as a component: a
@@ -1108,10 +1105,31 @@ fn content_from_entries(
     let mut fields: Vec<Field> = Vec::with_capacity(entries.len());
     let mut values: Vec<crate::Scalar> = Vec::with_capacity(entries.len());
     for entry in entries {
-        let (field, value) = child_from_entry(registry, entry, None)?;
+        let (mut field, value) = child_from_entry(registry, entry, None)?;
+        preserve_contended_name(entries, entry, &mut field);
         push_child(registry, &mut fields, &mut values, field, value);
     }
     Ok((fields, values))
+}
+
+/// Keeps distinct names when several residual entries contend for one tag.
+/// The registry still supplies their datatype and metadata; the row name is
+/// the fact that keeps both children addressable instead of collapsing them.
+fn preserve_contended_name(
+    entries: &[super::FixEntry],
+    entry: &super::FixEntry,
+    field: &mut Field,
+) {
+    if entry.tag() != 0
+        && entries
+            .iter()
+            .filter(|held| held.tag() == entry.tag())
+            .count()
+            > 1
+        && !crate::folds_equal(field.name(), entry.name())
+    {
+        field.set_name(entry.held_name().clone());
+    }
 }
 
 /// Adds one rebuilt child to a level, as the builder adds one: a group
@@ -1133,7 +1151,7 @@ fn push_child(
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
             if !taken(fields, scalar.name()) {
                 let count = value.as_sequence().map_or(0, <[crate::Scalar]>::len);
-                let count = super::build::typed_spelling(scalar, &count.to_string());
+                let count = super::build::typed_spelling(registry, scalar, &count.to_string());
                 let mut scalar = scalar.clone();
                 scalar.set_nullable(count.is_null());
                 fields.push(scalar);
@@ -1148,18 +1166,244 @@ fn push_child(
     values.push(value);
 }
 
-/// Whether one declared child is what an entry states: by tag where the
-/// entry carries one, by folded name where it carries none.
-fn declares(field: &Field, entry: &super::FixEntry) -> bool {
-    if entry.tag() != 0 {
-        return field.as_fix().tag().ok().flatten() == Some(entry.tag());
+/// Whether one output child names an entry for residual coverage. A group is
+/// identified by its counter, while an ordinary child is identified by its
+/// tag; a tagless bridge child keeps its folded name.
+fn covers_identity(registry: &FixRegistry, field: &Field, entry: &super::FixEntry) -> bool {
+    if entry.tag() == 0 {
+        return crate::folds_equal(field.name(), entry.name());
     }
-    crate::folds_equal(field.name(), entry.name())
+    let (tag, counter) = tag_and_counter(registry, field);
+    tag == Some(entry.tag()) || counter == Some(entry.tag())
+}
+
+/// The one declared member an entry owns. A group column owns its counter's
+/// entry before the scalar counter beside it; that scalar is the same fact,
+/// checked separately against the occurrence count.
+fn covered_member_index(
+    registry: &FixRegistry,
+    fields: &[Field],
+    entry: &super::FixEntry,
+) -> Option<usize> {
+    let unique = |counter: bool| {
+        let mut found = fields.iter().enumerate().filter(|(_, field)| {
+            let (tag, held_counter) = tag_and_counter(registry, field);
+            if entry.tag() == 0 {
+                !counter && crate::folds_equal(field.name(), entry.name())
+            } else if counter {
+                held_counter == Some(entry.tag())
+            } else {
+                held_counter.is_none() && tag == Some(entry.tag())
+            }
+        });
+        let (index, _) = found.next()?;
+        found.next().is_none().then_some(index)
+    };
+    unique(true).or_else(|| unique(false))
+}
+
+/// Whether a final fitted column value represents one entry whole.
+///
+/// Coverage is deliberately all or nothing. A group or component stays in
+/// the residual when any stated descendant is absent, ambiguous, null or
+/// changed by fitting; no subtree is partly removed.
+fn covers_entry(
+    registry: &FixRegistry,
+    field: &Field,
+    value: &crate::Scalar,
+    entry: &super::FixEntry,
+) -> bool {
+    if value.is_null() || !covers_identity(registry, field, entry) {
+        return false;
+    }
+    match field.dtype() {
+        DataType::Struct(_) => {
+            entry.value().is_none()
+                && covers_members(registry, field.fields(), value, entry.entries())
+        }
+        DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
+            let Some(occurrences) = value.as_sequence() else {
+                return false;
+            };
+            if entry.value().and_then(|count| count.parse::<usize>().ok())
+                != Some(occurrences.len())
+                || entry.entries().len() != occurrences.len()
+            {
+                return false;
+            }
+            entry
+                .entries()
+                .iter()
+                .zip(occurrences)
+                .all(|(occurrence, value)| match item.dtype() {
+                    DataType::Struct(_) => {
+                        occurrence.value().is_none()
+                            && covers_identity(registry, item, occurrence)
+                            && covers_members(registry, item.fields(), value, occurrence.entries())
+                    }
+                    _ => covers_entry(registry, item, value, occurrence),
+                })
+        }
+        DataType::Mapping(_) | DataType::Sequence(_) => false,
+        _ => {
+            entry.entries().is_empty()
+                && super::entry::wire_text_under(registry, field, value).as_deref() == entry.value()
+        }
+    }
+}
+
+/// Whether every stated member is represented once in a fitted Struct value.
+fn covers_members(
+    registry: &FixRegistry,
+    fields: &[Field],
+    value: &crate::Scalar,
+    entries: &[super::FixEntry],
+) -> bool {
+    let Some(values) = value.as_sequence() else {
+        return false;
+    };
+    if fields.len() != values.len() {
+        return false;
+    }
+    let stated = entries.iter().enumerate().all(|(at, entry)| {
+        let Some(index) = covered_member_index(registry, fields, entry) else {
+            return false;
+        };
+        if entries[..at]
+            .iter()
+            .any(|held| covered_member_index(registry, fields, held) == Some(index))
+        {
+            return false;
+        }
+        values
+            .get(index)
+            .is_some_and(|value| covers_entry(registry, &fields[index], value, entry))
+    });
+    stated
+        && fields
+            .iter()
+            .zip(values)
+            .enumerate()
+            .filter(|(_, (_, value))| !value.is_null())
+            .all(|(index, (field, value))| {
+                if entries
+                    .iter()
+                    .any(|entry| covered_member_index(registry, fields, entry) == Some(index))
+                {
+                    return true;
+                }
+                // A group's scalar counter is represented by the same entry
+                // as its List. It is covered only when both fitted values say
+                // the same occurrence count.
+                let (tag, counter) = tag_and_counter(registry, field);
+                let Some(tag) = tag.filter(|_| counter.is_none()) else {
+                    return false;
+                };
+                let mut groups = fields
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, held)| tag_and_counter(registry, held).1 == Some(tag));
+                let Some((group_index, _)) = groups.next() else {
+                    return false;
+                };
+                if groups.next().is_some() {
+                    return false;
+                }
+                let mut owners = entries.iter().filter(|entry| entry.tag() == tag);
+                let Some(owner) = owners.next() else {
+                    return false;
+                };
+                owners.next().is_none()
+                    && covered_member_index(registry, fields, owner) == Some(group_index)
+                    && values[group_index]
+                        .as_sequence()
+                        .is_some_and(|occurrences| {
+                            value.as_i128() == i128::try_from(occurrences.len()).ok()
+                        })
+            })
+}
+
+/// Settle the one member order every occurrence agrees with. Encounter order
+/// breaks ties between unrelated members; adjacent members in an occurrence
+/// are ordering constraints, and contradictory constraints refuse the row.
+fn ordered_group_union(
+    union: Vec<Field>,
+    stated: &[Vec<(SmolStr, crate::Scalar)>],
+    group: &str,
+) -> Result<Vec<Field>> {
+    let refusal = |reason: String| {
+        let root = crate::path::Path::root();
+        let entries = root.field(FIXENTRIES_COLUMN);
+        let group = entries.field(group);
+        crate::Error::InvalidRecord {
+            path: group.render().into(),
+            reason: reason.into(),
+        }
+    };
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+    for occurrence in stated {
+        let mut previous = None;
+        for (name, _) in occurrence {
+            let Some(index) = union
+                .iter()
+                .position(|field| crate::folds_equal(field.name(), name))
+            else {
+                return Err(refusal(format!(
+                    "member {name} is absent from its group schema"
+                )));
+            };
+            if let Some(before) = previous {
+                if before != index {
+                    edges.push((before, index));
+                }
+            }
+            previous = Some(index);
+        }
+    }
+    edges.sort_unstable();
+    edges.dedup();
+    if edges.iter().all(|(before, after)| before < after) {
+        return Ok(union);
+    }
+
+    let mut incoming = vec![0_usize; union.len()];
+    for (_, after) in &edges {
+        incoming[*after] += 1;
+    }
+    let mut selected = vec![false; union.len()];
+    let mut order = Vec::with_capacity(union.len());
+    while order.len() < union.len() {
+        let Some(next) = (0..union.len()).find(|index| !selected[*index] && incoming[*index] == 0)
+        else {
+            let unresolved = union
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| !selected[*index])
+                .map(|(_, field)| field.name())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(refusal(format!(
+                "contradictory member order among {unresolved}"
+            )));
+        };
+        selected[next] = true;
+        order.push(next);
+        for (before, after) in &edges {
+            if *before == next {
+                incoming[*after] -= 1;
+            }
+        }
+    }
+    let mut fields: Vec<Option<Field>> = union.into_iter().map(Some).collect();
+    Ok(order
+        .into_iter()
+        .map(|index| fields[index].take().expect("each member is selected once"))
+        .collect())
 }
 
 /// One group entry as the list it states: an occurrence per entry under it,
 /// each holding the members that occurrence stated, laid out on the union of
-/// every occurrence's members in the order they were first met.
+/// every occurrence's members in their consistent relative order.
 ///
 /// `item` is the occurrence the dictionary declares, where it declares one:
 /// a member it names types through its own field, and the list keeps the
@@ -1181,8 +1425,10 @@ fn group_from_entry(
         let mut fields = Vec::with_capacity(occurrence.entries().len());
         let mut values = Vec::with_capacity(occurrence.entries().len());
         for member in occurrence.entries() {
-            let slot = declared.iter().find(|held| declares(held, member));
-            let (field, value) = child_from_entry(registry, member, slot)?;
+            let slot = covered_member_index(registry, declared, member)
+                .and_then(|index| declared.get(index));
+            let (mut field, value) = child_from_entry(registry, member, slot)?;
+            preserve_contended_name(occurrence.entries(), member, &mut field);
             push_child(registry, &mut fields, &mut values, field, value);
         }
         let mut members = Vec::with_capacity(fields.len());
@@ -1212,6 +1458,7 @@ fn group_from_entry(
         }
         stated.push(members);
     }
+    let union = ordered_group_union(union, &stated, entry.name())?;
     // Each occurrence is stated by name rather than by position, so the
     // members land in the slots the union settled on whatever order the
     // occurrence stated them in: the root's own contract places a record.
@@ -1242,6 +1489,117 @@ fn group_from_entry(
     Ok((field, crate::Scalar::from_sequence(rows)))
 }
 
+/// A scalar stated at indexed positions as the List the builder made of it.
+/// If every spelling types, the dictionary's scalar remains the item; if one
+/// does not, every raw spelling stays under UTF-8 so no sibling changes type
+/// or disappears on a later write.
+fn scalar_list_from_entry(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+    known: &Field,
+) -> Result<(Field, crate::Scalar)> {
+    let typed: Vec<crate::Scalar> = entry
+        .entries()
+        .iter()
+        .map(|occurrence| {
+            occurrence.value().map_or(crate::Scalar::Null, |text| {
+                super::build::typed_spelling_remembered(registry, known, text)
+            })
+        })
+        .collect();
+    let raw = entry
+        .entries()
+        .iter()
+        .zip(&typed)
+        .any(|(occurrence, value)| occurrence.value().is_some() && value.is_null());
+    let mut item = if raw {
+        Field::new_with_metadata(
+            entry
+                .entries()
+                .first()
+                .map_or(entry.name(), |held| held.name()),
+            DataType::utf8(),
+            true,
+            known.as_metadata().clone(),
+        )
+    } else {
+        known.clone()
+    };
+    if let Some(occurrence) = entry.entries().first() {
+        item.set_name(occurrence.held_name().clone());
+    }
+    let values = if raw {
+        entry
+            .entries()
+            .iter()
+            .map(|occurrence| {
+                occurrence
+                    .value()
+                    .map_or(crate::Scalar::Null, crate::Scalar::from)
+            })
+            .collect()
+    } else {
+        typed
+    };
+    let field = Field::new_with_metadata(
+        entry.held_name().clone(),
+        DataType::list(item),
+        true,
+        known.as_metadata().clone(),
+    );
+    Ok((field, crate::Scalar::from_sequence(values)))
+}
+
+/// An unexplained nested entry as the shape its children state. Repeated
+/// tagless occurrence names identify a List; otherwise the children are the
+/// members of one Struct component.
+fn unknown_nested_from_entry(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+) -> Result<(Field, crate::Scalar)> {
+    let first = entry.entries().first();
+    let repeated = entry.entries().len() > 1
+        && first.is_some_and(|first| {
+            first.tag() == 0
+                && entry
+                    .entries()
+                    .iter()
+                    .all(|held| held.tag() == 0 && crate::folds_equal(held.name(), first.name()))
+        });
+    if repeated {
+        let mut known = DataType::utf8().nullable_field(entry.held_name().clone());
+        if entry.tag() != 0 {
+            known.as_fix_mut().set_tag(entry.tag())?;
+        }
+        if entry
+            .entries()
+            .iter()
+            .all(|occurrence| occurrence.entries().is_empty())
+        {
+            return scalar_list_from_entry(registry, entry, &known);
+        }
+        return group_from_entry(registry, entry, &known, None);
+    }
+    let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
+    let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
+    for member in entry.entries() {
+        let (mut field, value) = child_from_entry(registry, member, None)?;
+        preserve_contended_name(entry.entries(), member, &mut field);
+        push_child(registry, &mut fields, &mut values, field, value);
+    }
+    let named: Vec<(SmolStr, crate::Scalar)> = fields
+        .iter()
+        .map(|field| SmolStr::new(field.name()))
+        .zip(values)
+        .collect();
+    let mut field =
+        DataType::from(StructType::from_fields(fields)?).nullable_field(entry.held_name().clone());
+    if entry.tag() != 0 {
+        field.as_fix_mut().set_tag(entry.tag())?;
+    }
+    Ok((field, crate::Scalar::from_struct(named)?))
+}
+
 /// One entry as the child it states and the value under it.
 ///
 /// `declared` is the field the enclosing level declares for it - a
@@ -1250,8 +1608,9 @@ fn group_from_entry(
 /// is the `utf8` child the builder keeps an unexplained key as. A group's
 /// occurrences hold the members they stated, in the order they stated
 /// them, as the builder lays them out; a component holds its stated
-/// members; a scalar types its wire spelling under its field, and a
-/// spelling that will not type is that child's null.
+/// members; a scalar types its wire spelling under its field. A spelling the
+/// field will not hold stays as UTF-8 under the same name and metadata, so an
+/// unrelated later write cannot erase residual input.
 fn child_from_entry(
     registry: &FixRegistry,
     entry: &super::FixEntry,
@@ -1277,6 +1636,9 @@ fn child_from_entry(
         .or_else(|| registry.get_field_by_name(entry.name()))
         .or_else(|| (entry.tag() != 0).then(|| registry.get_field_by_tag(entry.tag()))?);
     let Some(known) = known else {
+        if !entry.entries().is_empty() {
+            return unknown_nested_from_entry(registry, entry);
+        }
         let mut field = DataType::utf8().nullable_field(entry.name());
         if entry.tag() != 0 {
             field.as_fix_mut().set_tag(entry.tag())?;
@@ -1291,12 +1653,14 @@ fn child_from_entry(
     // counter's own name - and the entries are the only statement of its
     // shape. It rebuilds as the list it is rather than as the scalar the
     // name reaches, which would answer null and lose the occurrences.
-    if !known.dtype().is_nested()
-        && entry
+    if !known.dtype().is_nested() && !entry.entries().is_empty() {
+        if entry
             .entries()
             .iter()
-            .any(|occurrence| !occurrence.entries().is_empty())
-    {
+            .all(|occurrence| occurrence.entries().is_empty())
+        {
+            return scalar_list_from_entry(registry, entry, known);
+        }
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
@@ -1312,8 +1676,10 @@ fn child_from_entry(
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             for member in entry.entries() {
-                let slot = known.fields().iter().find(|held| declares(held, member));
-                let (field, value) = child_from_entry(registry, member, slot)?;
+                let slot = covered_member_index(registry, known.fields(), member)
+                    .and_then(|index| known.fields().get(index));
+                let (mut field, value) = child_from_entry(registry, member, slot)?;
+                preserve_contended_name(entry.entries(), member, &mut field);
                 push_child(registry, &mut fields, &mut values, field, value);
             }
             let named: Vec<(SmolStr, crate::Scalar)> = fields
@@ -1331,8 +1697,19 @@ fn child_from_entry(
         }
         _ => {
             let value = entry.value().map_or(crate::Scalar::Null, |text| {
-                super::build::typed_spelling_remembered(registry.memo(), known, text)
+                super::build::typed_spelling_remembered(registry, known, text)
             });
+            if value.is_null() {
+                if let Some(text) = entry.value() {
+                    let field = Field::new_with_metadata(
+                        entry.held_name().clone(),
+                        DataType::utf8(),
+                        true,
+                        known.as_metadata().clone(),
+                    );
+                    return Ok((field, crate::Scalar::from(text)));
+                }
+            }
             let mut field = known.clone();
             field.set_nullable(value.is_null());
             Ok((field, value))
@@ -1346,12 +1723,11 @@ impl super::FixMsg {
     /// The root is `schema` and the value is `row`, checked and canonicalized
     /// exactly as [`Self::with_registry`] checks one. The typed facts - the
     /// header, the event, the capture, the text and the metadata - are read
-    /// off the columns that hold them, and the content is rebuilt from the
-    /// [`FIXENTRIES_COLUMN`]: every level the row materialized, and the leaf
-    /// the deepest level folded into decoded through the crate's own JSON
-    /// reader, each entry typed through the dictionary exactly as the builder
-    /// types a pair, so every lookup reaches the rebuilt message as it
-    /// reaches a parsed one.
+    /// off the columns that hold them. Ordinary tagged columns rebuild the
+    /// content they represent, and [`FIXENTRIES_COLUMN`] supplies everything
+    /// that no column represented. A residual entry owns its tag where both
+    /// are present, so an unreadable or partial value is never replaced by a
+    /// column's narrower reading.
     ///
     /// # The capture's own columns are carried
     ///
@@ -1371,26 +1747,19 @@ impl super::FixMsg {
     /// said for itself, and how a walk answers messages in their own order
     /// with each row's cells still beside the message they were read with.
     ///
-    /// Nothing is parsed again: this is
-    /// what makes a batch of rows a stream of messages at the cost of the
-    /// values it already holds. A row without the entries column rebuilds a
-    /// message with the typed facts and no content.
+    /// Nothing is parsed again: this is what makes a batch of rows a stream
+    /// of messages at the cost of the values it already holds. A row without
+    /// the entries column still rebuilds the content its tagged columns state;
+    /// content projected out of both places is absent.
+    /// Residual values use canonical wire text: non-text binary data retains
+    /// its decoded spelling there, while a binary column can preserve bytes.
     ///
-    /// The round trip is exact for an entry whose bytes are text - which is
-    /// every entry a log wrote. It cannot be for one whose bytes are not:
-    /// the row spells a value as `utf8` because a column a reader can read
-    /// is what a row is for, and a `data` field carrying bytes no text holds
-    /// reaches that column as the decode of them.
-    ///
-    /// One shape is not exact yet, and it is worth naming rather than
-    /// discovering: a repeating group whose occurrences nest a second group
-    /// that only some of them state. The row holds each occurrence on the
-    /// union of the members any of them stated, and the entries state each
-    /// occurrence's own members, so rebuilding lays the nested level out in
-    /// the order the entries met it rather than the order the parse did.
-    /// Over `rust/tests/fix/ulbridge.log` - a bridge capture of 94 messages,
-    /// the hardest shapes this crate is tested against - 83 rebuild exactly
-    /// and the 11 that do not are all parties nesting `PtysSubGrp`.
+    /// A fixed row is a semantic representation rather than an arrival-order
+    /// transcript. Reading it back may order represented content by its
+    /// columns and render its canonical wire spelling. A complete row keeps
+    /// the event identity it recorded instead of deriving a different one
+    /// from that ordering; a row without the identity columns is settled from
+    /// the facts it does carry.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -1408,22 +1777,10 @@ impl super::FixMsg {
     /// let row = order.into_row(&schema)?;
     /// let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
     ///
-    /// // The same message, reached the same way and emitted byte for byte as
-    /// // the parsed one emits itself - the fields the dictionary derived
-    /// // for it, `TimeInForce` on an order, included.
+    /// // The same facts are reached through the semantic row.
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
-    /// assert_eq!(held.entries(), order.entries());
-    /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
-    /// // The emission is the standard header, then the facts the message
-    /// // lifts and holds - `ClOrdID(11)` here - then what arrived in the
-    /// // order it arrived, the derived `TimeInForce(59)` among it, then the
-    /// // trailer.
-    /// assert_eq!(
-    ///     held.into_text('|')?,
-    ///     "8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|54=1|55=AAPL|9999=x|59=0|10=0|",
-    /// );
     /// assert_eq!(held.get_currhashcode(), order.get_currhashcode());
-    /// // And the row it came from is the row it makes.
+    /// // And the row it came from is its fixed point.
     /// assert_eq!(held.into_row(&schema)?, row);
     /// # Ok(())
     /// # }
@@ -1431,10 +1788,10 @@ impl super::FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns the refusal [`Self::with_registry`] raises when the row does
-    /// not fit the schema, or [`crate::Error::InvalidRecord`] at the arrival
-    /// path when the entries column holds something that is not an arrival
-    /// entry, a folded leaf that does not decode included.
+    /// Returns the schema's refusal when the row does not fit, or
+    /// [`crate::Error::InvalidRecord`] at the arrival path when the entries
+    /// column holds something that is not an arrival entry, a folded leaf that
+    /// does not decode included.
     pub fn from_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
@@ -1464,14 +1821,14 @@ impl super::FixMsg {
         let plan = column_plan_of(schema, &registry)?;
         let mut members: Vec<Field> = Vec::with_capacity(schema.fields().len());
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(schema.fields().len());
-        let mut content: Option<(Vec<Field>, Vec<crate::Scalar>)> = None;
+        let mut residual: Option<Vec<super::FixEntry>> = None;
+        let mut projected: Vec<(i32, Field, crate::Scalar)> = Vec::new();
         let mut carried: Vec<(smol_str::SmolStr, crate::Scalar)> = Vec::new();
         let held = value.as_sequence().unwrap_or_default();
         for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
             if column.name() == FIXENTRIES_COLUMN {
                 let root = crate::path::Path::root();
-                let entries = entries_from_scalar(value, &root.field(FIXENTRIES_COLUMN))?;
-                content = Some(content_from_entries(&registry, &entries)?);
+                residual = Some(entries_from_scalar(value, &root.field(FIXENTRIES_COLUMN))?);
                 continue;
             }
             if column.name() == NOFIXENTRIES_COLUMN {
@@ -1489,8 +1846,24 @@ impl super::FixMsg {
                         carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
                     }
                 }
-                Some(_) => {}
-                None if planned.counter.is_some() => {}
+                Some(tag) => {
+                    if !value.is_null() {
+                        projected.push((
+                            planned.counter.unwrap_or(tag),
+                            column.clone(),
+                            value.clone(),
+                        ));
+                    }
+                }
+                None if planned.counter.is_some() => {
+                    if !value.is_null() {
+                        projected.push((
+                            planned.counter.expect("the guarded counter"),
+                            column.clone(),
+                            value.clone(),
+                        ));
+                    }
+                }
                 // A key spelled under a namespace is a bridge's own
                 // statement and the message's to keep: it is carried over
                 // so the assembly below lands it in the metadata, exactly
@@ -1514,7 +1887,9 @@ impl super::FixMsg {
                 }
             }
         }
-        if let Some((fields, held)) = content {
+        let residual = residual.unwrap_or_default();
+        if !residual.is_empty() {
+            let (fields, held) = content_from_entries(&registry, &residual)?;
             for (field, value) in fields.into_iter().zip(held) {
                 if members
                     .iter()
@@ -1526,6 +1901,32 @@ impl super::FixMsg {
                 values.push(value);
             }
         }
+        // A residual entry is the authoritative statement of its tag. Every
+        // other non-null projected value is content the row stated only in
+        // its column, so rebuild it through the same child insertion rule as
+        // an entry.
+        for (tag, field, value) in projected {
+            if let Some(owner) = residual.iter().find(|entry| entry.tag() == tag) {
+                // A group entry owns the occurrences, while its separate
+                // scalar counter column owns an explicitly stated count (or
+                // the derived count a semantic row records). Keep that scalar
+                // beside the group so a conflicting explicit count is not
+                // silently replaced by the occurrence length.
+                if !owner.entries().is_empty() && !field.dtype().is_nested() {
+                    if let Some(index) = members.iter().position(|member| {
+                        !member.dtype().is_nested()
+                            && tag_and_counter(&registry, member).0 == Some(tag)
+                    }) {
+                        members[index] = field;
+                        values[index] = value;
+                    } else {
+                        push_child(&registry, &mut members, &mut values, field, value);
+                    }
+                }
+                continue;
+            }
+            push_child(&registry, &mut members, &mut values, field, value);
+        }
         // The columns are the schema's, validated when it was built, and
         // the content is the dictionary's fields, each kept only where no
         // column folds to its name: named once by construction, so the
@@ -1536,8 +1937,26 @@ impl super::FixMsg {
             schema.is_nullable(),
             schema.as_metadata().clone(),
         );
-        let mut message =
-            Self::with_registry(registry, root, crate::Scalar::from_sequence(values))?;
+        let retains_identity = [
+            super::CURRUNIX_TAG_NAME.0,
+            super::CREAUNIX_TAG_NAME.0,
+            super::CURRHASHCODE_TAG_NAME.0,
+            super::CROSSHASHCODE_TAG_NAME.0,
+            super::CURRUUID_TAG_NAME.0,
+            super::CROSSUUID_TAG_NAME.0,
+        ]
+        .into_iter()
+        .all(|tag| {
+            plan.iter().zip(held).any(|(column, value)| {
+                column.tag == Some(tag) && !column.shared && !value.is_null()
+            })
+        });
+        let mut message = Self::from_rebuilt_row(
+            registry,
+            root,
+            crate::Scalar::from_sequence(values),
+            retains_identity,
+        )?;
         message.set_carried(carried);
         Ok(message)
     }
@@ -1556,9 +1975,11 @@ impl super::FixMsg {
     /// carries is what whoever read its row stated. Nothing derives one:
     /// where a line was read from is whoever read it to say.
     ///
-    /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
-    /// stays lossless whatever the columns made of it. Keys no dictionary
-    /// explained have tag zero in that same record, with their raw text intact.
+    /// The residual record closes the row under [`FIXENTRIES_COLUMN`]. A
+    /// scalar or complete group successfully represented by one unambiguous
+    /// column is omitted from it. Unknown, unprojected, conflicting, partially
+    /// represented and unreadable content remains there whole; keys no
+    /// dictionary explained keep tag zero and their text intact.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -1587,10 +2008,9 @@ impl super::FixMsg {
     /// ```
     /// A value a column will not hold is that column's null rather than a
     /// refusal - a five-byte MIC under a four-byte column, an identifier
-    /// whose check digit does not close - because the arrival record carries
-    /// what arrived and a capture of ten million rows must not end on one of
-    /// them. A column that cannot be null keeps the refusal, which is what
-    /// separates an unreadable value from a broken contract.
+    /// whose check digit does not close - and the residual keeps what the
+    /// column could not represent. A column that cannot be null keeps the
+    /// refusal, which separates an unreadable value from a broken contract.
     ///
     /// # Errors
     ///
@@ -1604,68 +2024,158 @@ impl super::FixMsg {
         // gathered off this message once for the three of them, and only
         // when one is asked for.
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
-        crate::Scalar::try_sequence(columns.len(), |index| {
+        let has_residual_columns = columns
+            .iter()
+            .any(|column| matches!(column.name(), FIXENTRIES_COLUMN | NOFIXENTRIES_COLUMN));
+        let mut fitted_cell = |index: usize| -> Result<crate::Scalar> {
             let column = &columns[index];
             let planned = &plan[index];
-            let value = match column.name() {
-                FIXENTRIES_COLUMN => {
-                    let entries = self.entries();
-                    let record = crate::Scalar::try_sequence(entries.len(), |index| {
-                        entry_scalar(&entries[index], 1)
-                    })?;
-                    // Built as the column declares it, so the two walks a
-                    // fit pays to prove that are skipped for the largest
-                    // value of the row.
-                    if planned.entries {
-                        return Ok(record);
-                    }
-                    record
-                }
-                // The group's counter counts the occurrences beside it, as
-                // every counter does: read off the record rather than derived,
-                // so a reader prunes on it without opening the list.
-                NOFIXENTRIES_COLUMN => {
-                    crate::Scalar::from(i32::try_from(self.entries().len()).unwrap_or(i32::MAX))
-                }
+            if matches!(column.name(), FIXENTRIES_COLUMN | NOFIXENTRIES_COLUMN) {
+                return Ok(crate::Scalar::Null);
+            }
+            let value = match (planned.tag, planned.counter) {
                 // A column declaring a group's `FIX:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one
                 // that carries none is a capture's own column, which the
                 // message answers from the cell it carries under that name,
                 // else from a content child spelled exactly as it is.
-                _ => match (planned.tag, planned.counter) {
-                    // A typed fact is its holder's, whatever shape its
-                    // column takes: the identifiers Map is the event's.
-                    (Some(tag), _) if super::identity::is_typed_tag(tag) => {
-                        self.column_value(tag, &mut derived)?
-                    }
-                    // The one the crate tags - `sourceurl` - is carried.
-                    (Some(tag), _) if super::identity::is_capture_tag(tag) => {
-                        self.carried_cell(column.name())
-                    }
-                    (_, Some(counter)) => {
-                        let value = self
-                            .index_of_group(counter)
-                            .and_then(|index| self.as_value().get(index))
-                            .cloned()
-                            .unwrap_or(crate::Scalar::Null);
-                        self.regrouped(counter, column, value)
-                    }
-                    (Some(tag), None) => {
-                        self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
-                    }
-                    (None, None) => match self.carried_cell(column.name()) {
-                        crate::Scalar::Null => self
-                            .index_of_name(column.name())
-                            .and_then(|at| self.as_value().get(at))
-                            .cloned()
-                            .unwrap_or(crate::Scalar::Null),
-                        carried => carried,
-                    },
+                // A typed fact is its holder's, whatever shape its
+                // column takes: the identifiers Map is the event's.
+                (Some(tag), _) if super::identity::is_typed_tag(tag) => {
+                    self.column_value(tag, &mut derived)?
+                }
+                // The one the crate tags - `sourceurl` - is carried.
+                (Some(tag), _) if super::identity::is_capture_tag(tag) => {
+                    self.carried_cell(column.name())
+                }
+                (_, Some(counter)) => {
+                    let value = self
+                        .index_of_group(counter)
+                        .and_then(|index| self.as_value().get(index))
+                        .cloned()
+                        .unwrap_or(crate::Scalar::Null);
+                    self.regrouped(counter, column, value)
+                }
+                (Some(tag), None) => {
+                    self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
+                }
+                (None, None) => match self.carried_cell(column.name()) {
+                    crate::Scalar::Null => self
+                        .index_of_name(column.name())
+                        .and_then(|at| self.as_value().get(at))
+                        .cloned()
+                        .unwrap_or(crate::Scalar::Null),
+                    carried => carried,
                 },
             };
             fitted(column, value)
-        })
+        };
+
+        if !has_residual_columns {
+            return crate::Scalar::try_sequence(columns.len(), fitted_cell);
+        }
+        let mut values = Vec::with_capacity(columns.len());
+        for index in 0..columns.len() {
+            values.push(fitted_cell(index)?);
+        }
+        let entries = self.entries();
+        let prunes = plan.iter().any(|column| column.entries);
+        let mut represented = Vec::with_capacity(if prunes {
+            columns.len().min(entries.len())
+        } else {
+            0
+        });
+        if prunes {
+            for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
+                let Some(tag) = planned.counter.or(planned.tag) else {
+                    continue;
+                };
+                if planned.shared || values[index].is_null() {
+                    continue;
+                }
+                let source = match planned.counter {
+                    Some(counter) => self.index_of_group(counter),
+                    None => self.unique_index_of_tag(tag),
+                };
+                let Some(source) = source else {
+                    continue;
+                };
+                let Some(source_field) = self.as_field().get_field_at(source) else {
+                    continue;
+                };
+                let Some(source_value) = self.as_value().get(source) else {
+                    continue;
+                };
+                let mut matching = entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.tag() == tag);
+                let Some((entry_index, entry)) = matching.next() else {
+                    continue;
+                };
+                if matching.next().is_some() {
+                    continue;
+                }
+                if column.dtype().is_nested() {
+                    if planned.counter.is_some()
+                        && plan
+                            .iter()
+                            .filter(|held| held.counter == planned.counter)
+                            .count()
+                            != 1
+                    {
+                        continue;
+                    }
+                    if !source_field.dtype().is_nested()
+                        || !covers_entry(self.registry(), column, &values[index], entry)
+                    {
+                        continue;
+                    }
+                } else if source_field.dtype().is_nested()
+                    || !crate::folds_equal(source_field.name(), entry.name())
+                    || !entry.entries().is_empty()
+                    || source_value != &values[index]
+                    || !covers_entry(self.registry(), column, &values[index], entry)
+                {
+                    continue;
+                }
+                represented.push(entry_index);
+            }
+            represented.sort_unstable();
+            represented.dedup();
+        }
+        let mut residual = Vec::with_capacity(entries.len() - represented.len());
+        for (index, entry) in entries.iter().enumerate() {
+            if represented.binary_search(&index).is_err() {
+                residual.push(entry);
+            }
+        }
+        let record = columns
+            .iter()
+            .any(|column| column.name() == FIXENTRIES_COLUMN)
+            .then(|| {
+                crate::Scalar::try_sequence(residual.len(), |index| {
+                    entry_scalar(residual[index], 1)
+                })
+            })
+            .transpose()?;
+        let count = crate::Scalar::from(i32::try_from(residual.len()).unwrap_or(i32::MAX));
+        for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
+            values[index] = match column.name() {
+                FIXENTRIES_COLUMN => {
+                    let record = record.clone().unwrap_or(crate::Scalar::Null);
+                    if planned.entries {
+                        record
+                    } else {
+                        fitted(column, record)?
+                    }
+                }
+                NOFIXENTRIES_COLUMN => fitted(column, count.clone())?,
+                _ => continue,
+            };
+        }
+        Ok(crate::Scalar::from_sequence(values))
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -1699,21 +2209,50 @@ impl super::FixMsg {
             .unwrap_or_default();
         // Where each declared member stands among the message's own, a fact
         // of the two schemas alone and so read once for every occurrence.
-        let placed: Vec<Option<usize>> = members
+        let placed: Vec<(Option<usize>, Option<usize>)> = members
             .iter()
             .map(|member| {
-                spelled
+                let at = spelled
                     .iter()
-                    .position(|field| crate::folds_equal(field.name(), member.name()))
+                    .position(|field| crate::folds_equal(field.name(), member.name()));
+                // A group counter may be absent from the message's physical
+                // member row while its group is present. Resolve that
+                // relationship once for the schemas, then state the count
+                // only where no explicit non-null counter value exists.
+                let group_at = if member.dtype().is_nested() {
+                    None
+                } else {
+                    let (Some(tag), None) = tag_and_counter(self.registry(), member) else {
+                        return (at, None);
+                    };
+                    let mut groups = spelled.iter().enumerate().filter_map(|(index, field)| {
+                        (tag_and_counter(self.registry(), field).1 == Some(tag)).then_some(index)
+                    });
+                    let first = groups.next();
+                    if first.is_some() && groups.next().is_none() {
+                        first
+                    } else {
+                        None
+                    }
+                };
+                (at, group_at)
             })
             .collect();
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
                 return occurrence.clone();
             };
-            crate::Scalar::from_sequence(placed.iter().map(|at| {
-                at.and_then(|at| stated.get(at))
-                    .cloned()
+            crate::Scalar::from_sequence(placed.iter().map(|(at, group_at)| {
+                let explicit = at.and_then(|at| stated.get(at));
+                if let Some(value) = explicit.filter(|value| !value.is_null()) {
+                    return value.clone();
+                }
+                group_at
+                    .and_then(|at| stated.get(at))
+                    .and_then(crate::Scalar::as_sequence)
+                    .map(|occurrences| {
+                        crate::Scalar::from(i32::try_from(occurrences.len()).unwrap_or(i32::MAX))
+                    })
                     .unwrap_or(crate::Scalar::Null)
             }))
         }))
@@ -1762,6 +2301,20 @@ impl super::FixMsg {
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
             return Ok(held);
+        }
+        // A group is the statement its counter counts. Where no scalar
+        // counter was stated, derive the column from the occurrences; an
+        // explicit non-null counter returned above remains authoritative even
+        // when it conflicts.
+        if let Some(count) = self
+            .index_of_group(tag)
+            .and_then(|index| self.as_value().get(index))
+            .and_then(crate::Scalar::as_sequence)
+            .map(<[crate::Scalar]>::len)
+        {
+            return Ok(crate::Scalar::from(
+                i32::try_from(count).unwrap_or(i32::MAX),
+            ));
         }
         // The version a message that states none is said to be read at,
         // derived here for a message built from a schema and a value exactly
@@ -1953,3 +2506,38 @@ pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::Dat
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn occurrence(names: &[&str]) -> Vec<(SmolStr, crate::Scalar)> {
+        names
+            .iter()
+            .map(|name| (SmolStr::new(*name), crate::Scalar::Null))
+            .collect()
+    }
+
+    #[test]
+    fn group_member_order_respects_every_occurrence() {
+        let union: Vec<Field> = ["a", "c", "b", "d"]
+            .map(|name| DataType::utf8().nullable_field(name))
+            .into();
+        let stated = [
+            occurrence(&["a", "c"]),
+            occurrence(&["b", "d"]),
+            occurrence(&["a", "b", "c"]),
+        ];
+        let ordered = ordered_group_union(union, &stated, "example").expect("consistent order");
+        assert_eq!(
+            ordered.iter().map(Field::name).collect::<Vec<_>>(),
+            ["a", "b", "c", "d"]
+        );
+
+        let contradictory = [occurrence(&["a", "b"]), occurrence(&["b", "a"])];
+        assert!(matches!(
+            ordered_group_union(ordered, &contradictory, "example"),
+            Err(crate::Error::InvalidRecord { .. })
+        ));
+    }
+}

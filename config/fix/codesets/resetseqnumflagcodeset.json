@@ -1,0 +1,15 @@
+{
+  "name": "resetseqnumflagcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "No",
+      "doc": "No"
+    },
+    {
+      "value": "Y",
+      "name": "Yes",
+      "doc": "Yes, reset sequence numbers"
+    }
+  ]
+}

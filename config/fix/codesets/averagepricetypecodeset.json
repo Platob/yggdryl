@@ -1,0 +1,25 @@
+{
+  "name": "averagepricetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TimeWeightedAveragePrice",
+      "doc": "Time weighted average price"
+    },
+    {
+      "value": "1",
+      "name": "VolumeWeightedAveragePrice",
+      "doc": "Volume weighted average price"
+    },
+    {
+      "value": "2",
+      "name": "PercentOfVolumeAveragePrice",
+      "doc": "Percent of volume average price"
+    },
+    {
+      "value": "3",
+      "name": "LimitOrderAveragePrice",
+      "doc": "Limit order average price"
+    }
+  ]
+}

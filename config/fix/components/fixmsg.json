@@ -454,6 +454,17 @@
         }
       },
       {
+        "name": "figicode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "figicode",
+          "FIX:tag": "65061"
+        }
+      },
+      {
         "name": "miccode",
         "dtype": {
           "type": "null"
@@ -1481,7 +1492,7 @@
         "nullable": true,
         "metadata": {
           "FIX:counter": "65027",
-          "description": "Every pair the message carried, in arrival order, beside what the dictionary made of it.",
+          "description": "Content not represented by another column, in arrival order, beside what the dictionary made of it.",
           "display": "FixEntries"
         }
       }
