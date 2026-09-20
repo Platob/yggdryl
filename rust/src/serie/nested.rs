@@ -453,7 +453,7 @@ impl<O: OffsetSizeTrait, K: SequenceKind<O>> SerieValue for GenericSequenceSerie
         let Some((start, end)) = self.range(index) else {
             return Ok(());
         };
-        let items = K::items(&row);
+        let items = K::items(&self.field, &row)?;
         if items.len() != end - start {
             return Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new(self.field.name()),
@@ -478,8 +478,14 @@ impl<O: OffsetSizeTrait, K: SequenceKind<O>> SerieValue for GenericSequenceSerie
         // An absent row is a cut of no items and a cleared validity bit; a
         // present empty row is the same cut, which is why the bitmap is the
         // only thing that tells the two apart.
+        // An absent row is a cut of no items and a cleared validity bit, so
+        // there is nothing to read out of it.
         let present = !row.is_null();
-        let items = K::items(&row);
+        let items = if present {
+            K::items(&self.field, &row)?
+        } else {
+            Vec::new()
+        };
         let count = items.len();
         for item in items {
             self.items.push(item)?;
@@ -563,7 +569,17 @@ pub trait SequenceKind<O: OffsetSizeTrait>: Copy + Send + Sync + 'static {
     fn row(field: &Field, items: Vec<Scalar>) -> Result<Scalar>;
 
     /// The items one row contributes, in the order they are stored.
-    fn items(row: &Scalar) -> Vec<Scalar>;
+    ///
+    /// The row is read for what it *means*, never borrowed for what it
+    /// happens to store: a sequence row may itself be a column, which lends
+    /// no slice, and borrowing one would silently contribute nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal naming `field` where the row is not the shape this
+    /// marker reads, and the row's own where a column it holds cannot be
+    /// read.
+    fn items(field: &Field, row: &Scalar) -> Result<Vec<Scalar>>;
 
     /// What this shape calls a row, for the refusals that name one.
     const ITEM: &'static str;
@@ -604,8 +620,17 @@ impl SequenceKind<i32> for Items {
         Ok(Scalar::from_sequence(items))
     }
 
-    fn items(row: &Scalar) -> Vec<Scalar> {
-        row.as_sequence().unwrap_or_default().to_vec()
+    fn items(field: &Field, row: &Scalar) -> Result<Vec<Scalar>> {
+        let Some(rows) = row.sequence_rows() else {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(field.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected a sequence of items, got {}",
+                    row.kind()
+                ),
+            });
+        };
+        Ok(rows?.into_owned())
     }
 
     fn into_serie(column: GenericSequenceSerie<i32, Self>) -> Serie {
@@ -640,8 +665,17 @@ impl SequenceKind<i64> for Items {
         Ok(Scalar::from_sequence(items))
     }
 
-    fn items(row: &Scalar) -> Vec<Scalar> {
-        row.as_sequence().unwrap_or_default().to_vec()
+    fn items(field: &Field, row: &Scalar) -> Result<Vec<Scalar>> {
+        let Some(rows) = row.sequence_rows() else {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(field.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected a sequence of items, got {}",
+                    row.kind()
+                ),
+            });
+        };
+        Ok(rows?.into_owned())
     }
 
     fn into_serie(column: GenericSequenceSerie<i64, Self>) -> Serie {
@@ -708,12 +742,20 @@ impl SequenceKind<i32> for Entries {
         Scalar::from_mapping(entries)
     }
 
-    fn items(row: &Scalar) -> Vec<Scalar> {
-        row.as_mapping()
-            .unwrap_or_default()
+    fn items(field: &Field, row: &Scalar) -> Result<Vec<Scalar>> {
+        let Some(pairs) = row.as_mapping() else {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(field.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected a mapping of entries, got {}",
+                    row.kind()
+                ),
+            });
+        };
+        Ok(pairs
             .iter()
             .map(|(key, value)| Scalar::from_sequence([key.clone(), value.clone()]))
-            .collect()
+            .collect())
     }
 
     fn into_serie(column: GenericSequenceSerie<i32, Self>) -> Serie {

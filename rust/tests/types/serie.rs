@@ -1398,3 +1398,64 @@ fn a_cut_that_arrow_refuses_is_a_refusal_and_never_a_panic() {
     let array = column.into_arrow_array().expect("a column answers buffers");
     assert_eq!(array.len(), 0, "a cut Arrow refuses lays out as nothing");
 }
+
+#[test]
+fn a_row_that_is_itself_a_column_contributes_every_item_it_holds() {
+    let item = Field::new("item", DataType::Int64, false);
+    let field = Field::new("rows", DataType::list(item.clone()), false);
+
+    // A sequence value whose serie is a column lends no slice - it holds
+    // buffers. Reading it for what it stores rather than what it means once
+    // made `push` answer Ok while dropping every item.
+    let inner =
+        Serie::from_scalars(item, [Scalar::from(1_i64), Scalar::from(2_i64)]).expect("two rows");
+    let row = Scalar::from(inner);
+    assert_eq!(row.kind(), "serie");
+    assert_eq!(row.as_sequence(), None, "a column lends no slice");
+
+    let mut column = Serie::from_scalars(field, [Scalar::from_sequence([Scalar::from(9_i64)])])
+        .expect("one row");
+    column.push(row.clone()).expect("a column-backed row");
+    assert_eq!(column.len(), 2);
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+        "every item the row held is in the cut"
+    );
+
+    // The same row rewritten over a cut of its own width.
+    column.set(1, row).expect("the same two items");
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)])
+    );
+
+    // And a mapping column reads a column-backed row the same way round.
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mut maps = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("one mapping row");
+    maps.push(Scalar::from_mapping([(Scalar::from("b"), Scalar::from(2_i64))]).expect("one entry"))
+        .expect("one more row");
+    assert_eq!(maps.len(), 2);
+    assert_eq!(
+        maps.scalar(1).unwrap(),
+        Scalar::from_mapping([(Scalar::from("b"), Scalar::from(2_i64))]).unwrap()
+    );
+}

@@ -297,7 +297,7 @@ pub use primitive::{
 pub use text::{
     BinarySerie, BinaryStringSerie, BinaryViewSerie, BinaryViewStringSerie, ByteKind, ByteLeaf,
     ByteSerie, ByteViewSerie, FixedBytesSerie, FixedLeaf, FixedSerie, FixedStringSerie,
-    LargeBinarySerie, LargeBinaryStringSerie, LargeUtf8StringSerie, RawBytes, TextBytes,
+    LargeBinarySerie, LargeBinaryStringSerie, LargeUtf8StringSerie, RawRun, TextRun,
     Utf8StringSerie, Utf8ViewStringSerie, ViewLeaf,
 };
 pub use variant::VariantSerie;

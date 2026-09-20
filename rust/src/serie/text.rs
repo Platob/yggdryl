@@ -12,7 +12,7 @@
 //! which of the crate's eighteen string leaves, which of its eleven codes,
 //! a UUID, a geospatial reading. That split is why one layout can be a
 //! string leaf and a byte leaf at once, and why the two are told apart by a
-//! marker rather than by the buffers: [`TextBytes`] and [`RawBytes`] are what
+//! marker rather than by the buffers: [`TextRun`] and [`RawRun`] are what
 //! [`BinaryStringSerie`] and [`BinarySerie`] differ by.
 
 use std::fmt;
@@ -46,15 +46,20 @@ pub trait ByteKind: Send + Sync + Clone + Copy + fmt::Debug + 'static {
 }
 
 /// The marker for a run of bytes a field reads as text.
+///
+/// Named for the run rather than for the bytes, because this crate already
+/// has a [`TextBytes`](crate::text::TextBytes) - the payload of one text
+/// line - and a reader should not have to know which of the two a name
+/// means.
 #[derive(Clone, Copy, Debug)]
-pub struct TextBytes;
+pub struct TextRun;
 
 /// The marker for a run of bytes a field reads as bytes.
 #[derive(Clone, Copy, Debug)]
-pub struct RawBytes;
+pub struct RawRun;
 
-impl ByteKind for TextBytes {}
-impl ByteKind for RawBytes {}
+impl ByteKind for TextRun {}
+impl ByteKind for RawRun {}
 
 /// Which leaf of the root one byte layout under one marker widens to.
 pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized {
@@ -274,7 +279,7 @@ byte_leaf!(
     /// A column of UTF-8 text, 32-bit offsets.
     Utf8StringSerie,
     Utf8Type,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     Utf8
@@ -283,7 +288,7 @@ byte_leaf!(
     /// A column of UTF-8 text, 64-bit offsets.
     LargeUtf8StringSerie,
     LargeUtf8Type,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     LargeUtf8
@@ -292,7 +297,7 @@ byte_leaf!(
     /// A column of text in a charset Arrow cannot state, 32-bit offsets.
     BinaryStringSerie,
     BinaryType,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     Binary
@@ -301,7 +306,7 @@ byte_leaf!(
     /// A column of text in a charset Arrow cannot state, 64-bit offsets.
     LargeBinaryStringSerie,
     LargeBinaryType,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     LargeBinary
@@ -310,7 +315,7 @@ byte_leaf!(
     /// A column of byte runs, 32-bit offsets.
     BinarySerie,
     BinaryType,
-    RawBytes,
+    RawRun,
     Bytes,
     BytesSerie,
     Binary
@@ -319,7 +324,7 @@ byte_leaf!(
     /// A column of byte runs, 64-bit offsets.
     LargeBinarySerie,
     LargeBinaryType,
-    RawBytes,
+    RawRun,
     Bytes,
     BytesSerie,
     LargeBinary
@@ -508,7 +513,7 @@ view_leaf!(
     /// A column of UTF-8 text held as views.
     Utf8ViewStringSerie,
     StringViewType,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     Utf8View
@@ -517,7 +522,7 @@ view_leaf!(
     /// A column of text in another charset, held as views.
     BinaryViewStringSerie,
     BinaryViewType,
-    TextBytes,
+    TextRun,
     String,
     StringSerie,
     BinaryView
@@ -526,7 +531,7 @@ view_leaf!(
     /// A column of byte runs held as views.
     BinaryViewSerie,
     BinaryViewType,
-    RawBytes,
+    RawRun,
     Bytes,
     BytesSerie,
     BinaryView
@@ -691,7 +696,7 @@ pub trait FixedLeaf: Sized {
     fn from_serie(serie: &Serie) -> Option<&Self>;
 }
 
-impl FixedLeaf for FixedSerie<TextBytes> {
+impl FixedLeaf for FixedSerie<TextRun> {
     fn into_serie(column: Self) -> Serie {
         Serie::String(Arc::new(super::StringSerie::Fixed(column)))
     }
@@ -707,7 +712,7 @@ impl FixedLeaf for FixedSerie<TextBytes> {
     }
 }
 
-impl FixedLeaf for FixedSerie<RawBytes> {
+impl FixedLeaf for FixedSerie<RawRun> {
     fn into_serie(column: Self) -> Serie {
         Serie::Bytes(Arc::new(super::BytesSerie::Fixed(column)))
     }
@@ -743,10 +748,10 @@ where
 }
 
 /// A column of fixed-width text, a padded code or an enum member.
-pub type FixedStringSerie = FixedSerie<TextBytes>;
+pub type FixedStringSerie = FixedSerie<TextRun>;
 
 /// A column of fixed-width bytes: a UUID, or any identity stored as one.
-pub type FixedBytesSerie = FixedSerie<RawBytes>;
+pub type FixedBytesSerie = FixedSerie<RawRun>;
 
 // ------------------------------------------------------------------------
 // The identity every byte column has. Written out rather than macroed,
