@@ -740,8 +740,9 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// delegates to; [`Self::merging`] is what merging means, which its
 /// [`Element::merge_with`] delegates to. Both fold the lifecycle the same
 /// way: the earliest creation, the latest expiration, the furthest state,
-/// and the identifiers the other knew. The order an event states through
-/// [`Element::is_after`] is its instant: later is after.
+/// and the identifiers the other knew. Following then keeps a newer explicit
+/// expiration, including one that shortens the lifetime. The order an event
+/// states through [`Element::is_after`] is its instant: later is after.
 ///
 /// ```
 /// use std::collections::BTreeMap;
@@ -1228,7 +1229,7 @@ pub trait Event: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::{CfiCode, Currency, Decimal18, IsinCode, Side};
+/// use yggdryl::{CfiCode, Currency, CusipCode, Decimal18, IsinCode, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
@@ -1252,7 +1253,8 @@ pub trait Event: Element {
 /// let held: &dyn MarketElement = &trade;
 /// assert_eq!(held.get_side().as_str(), "BUY");
 /// assert_eq!(held.get_isincode().map(IsinCode::as_str), Some("US0378331005"));
-/// assert!(held.get_cusipcode().is_none(), "an instrument is named the way the market names it");
+/// // A validated US ISIN fills its embedded, checksum-valid CUSIP.
+/// assert_eq!(held.get_cusipcode().map(CusipCode::as_str), Some("037833100"));
 /// // Finalized, its identity is what it states.
 /// trade.finalize();
 /// let mut same = trade.clone();

@@ -625,7 +625,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 22);
+/// assert_eq!(held.len(), 28);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
@@ -633,9 +633,9 @@ fn build() -> Result<Vec<Field>> {
 /// // materialized copy of that instant was a second owner of it.
 /// assert!(held.iter().all(|field| !field.is_partition()));
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
-/// // And no derived column: a fact a message implies about its market is
-/// // what the traits answer off the FIX fields it lifted, never a second
-/// // column beside them, so nothing here declares a `FIX:derivation`.
+/// // The five normalized instrument and market codes have their own columns;
+/// // other graph facts remain answers off the FIX fields the message lifted,
+/// // so nothing here declares a `FIX:derivation`.
 /// assert!(held.iter().all(|field| !field.has_metadata("FIX:derivation")));
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
