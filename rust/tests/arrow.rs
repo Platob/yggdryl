@@ -13,16 +13,10 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         .required_field("row")
 }
 
-#[path = "arrow/arrow_scalar.rs"]
-mod arrow_scalar;
-#[path = "arrow/cast_coverage.rs"]
-mod cast_coverage;
-#[path = "arrow/cast_plan.rs"]
-mod cast_plan;
-#[path = "arrow/combined.rs"]
-mod combined;
-#[path = "arrow/row_value.rs"]
-mod row_value;
+#[path = "arrow/mod_.rs"]
+mod mod_;
+#[path = "arrow/rows.rs"]
+mod rows;
 #[path = "arrow/scalars.rs"]
 mod scalars;
 #[path = "arrow/value.rs"]

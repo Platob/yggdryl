@@ -3678,11 +3678,11 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   })
 }
 
-// The digest surface, grouped under one `hashing` owner the way the core
-// groups it: `hashing.xxhash` and `hashing.txhash`. The native halves carry a
-// leading underscore so only this namespace is the public spelling, and every
-// one of them takes bytes the wrapper has already narrowed to a window over
-// the caller's own memory.
+// The digest surface, one top-level owner per family the way the core has one
+// root folder per implementation: `xxhash` and `txhash`. The native halves
+// carry a leading underscore so only these two are the public spelling, and
+// every one of them takes bytes the wrapper has already narrowed to a window
+// over the caller's own memory.
 {
   const xxh32Native = binding._xxh32Native
   const xxh64Native = binding._xxh64Native
@@ -3959,7 +3959,8 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     },
   })
 
-  binding.hashing = Object.freeze({ xxhash, txhash })
+  binding.xxhash = xxhash
+  binding.txhash = txhash
 }
 
 binding.codec = codec

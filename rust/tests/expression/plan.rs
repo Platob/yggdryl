@@ -1,5 +1,6 @@
-//! Plans: the sections they spell, the locations they name, the sequences
-//! they form, and what running one does to a stream and to a store.
+//! `rust/src/expression/plan.rs`: plans: the sections they spell, the
+//! locations they name, the sequences they form, and what running one does
+//! to a stream and to a store.
 
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 

@@ -22,15 +22,15 @@ use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::arrow::PyArrowScalar;
+use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
     core_record_options_from_value, core_root_field_from_value, frame_batch_reader,
     frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
+use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::value_error;
 
@@ -2325,7 +2325,7 @@ impl PyIOBase {
         &self,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<crate::text_line::PyTextLines> {
+    ) -> PyResult<crate::text::line::PyTextLines> {
         let options = self.resolve_options(options, properties)?;
         let RecordOptions::Text(text) = options else {
             return Err(PyValueError::new_err(
@@ -2334,7 +2334,7 @@ impl PyIOBase {
         };
         let lines = yggdryl::text::read_text_lines(self.inner()?, text.as_ref())
             .map_err(crate::holder::fs::storage_error)?;
-        Ok(crate::text_line::PyTextLines::from_core(lines))
+        Ok(crate::text::line::PyTextLines::from_core(lines))
     }
 
     /// Replace this resource with the batches `reader` yields.
@@ -2578,7 +2578,7 @@ impl PyIOBase {
             yggdryl::Field::from_arrow_schema("row", &reader.schema()).map_err(value_error)?;
         let from_dict = cls
             .map(|cls| {
-                let from_dict = py.import("yggdryl.types._classes")?.getattr("from_dict")?;
+                let from_dict = py.import("yggdryl._classes")?.getattr("from_dict")?;
                 Ok::<_, PyErr>((from_dict.unbind(), cls.clone().unbind()))
             })
             .transpose()?;
@@ -3131,7 +3131,7 @@ impl PyIOBaseIterator {
 /// value crosses under its datatype - an ASCII width reads back trimmed, a
 /// nested struct crosses as a mapping - and nothing binding-side reinterprets
 /// storage. A requested dataclass is built from that mapping by
-/// `yggdryl.types._classes.from_dict`, one row at a time.
+/// `yggdryl._classes.from_dict`, one row at a time.
 #[pyclass(name = "RecordIterator", module = "yggdryl._native", unsendable)]
 pub(crate) struct PyRecordIterator {
     reader: yggdryl::arrow::BatchReader,
@@ -3156,7 +3156,7 @@ impl PyRecordIterator {
         loop {
             if let Some(row) = self.rows.as_sequence().and_then(|rows| rows.get(self.next)) {
                 self.next += 1;
-                let record = crate::types::scalar::as_py_with_field(py, row, &self.field)?;
+                let record = crate::scalar::as_py_with_field(py, row, &self.field)?;
                 return match &self.from_dict {
                     Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
                     None => Ok(Some(record)),

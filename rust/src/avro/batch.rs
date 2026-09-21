@@ -708,18 +708,26 @@ struct VariantReader {
     nulls: NullBufferBuilder,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{ColumnReader, RootStep};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/avro/batch.rs` pins and a caller cannot reach.
+    //!
+    //! One decoder is built per column, so a variant payload widening the
+    //! shared enum is paid for by every column in the file. The two enums are
+    //! file-private, and only their width is pinned, so each is measured
+    //! behind a forwarder.
 
-    #[test]
-    fn variant_payload_does_not_widen_other_column_readers() {
-        let column = std::mem::size_of::<ColumnReader>();
-        let root = std::mem::size_of::<RootStep>();
-        assert!(
-            column <= 240 && root <= 240,
-            "ColumnReader is {column} bytes and RootStep is {root} bytes"
-        );
+    /// Bytes one column's decoder occupies.
+    #[must_use]
+    pub const fn column_reader_size() -> usize {
+        std::mem::size_of::<super::ColumnReader>()
+    }
+
+    /// Bytes one root-level decoding step occupies.
+    #[must_use]
+    pub const fn root_step_size() -> usize {
+        std::mem::size_of::<super::RootStep>()
     }
 }
 

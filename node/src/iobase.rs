@@ -19,6 +19,7 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
     JsByteWriter as HandlerByteWriter, JsFileSystem,
@@ -26,11 +27,10 @@ use crate::holder::fs::{
 };
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
-use crate::media::text::JsTextOptions;
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
-use crate::types::field::JsField;
+use crate::text::options::JsTextOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
@@ -1603,13 +1603,13 @@ impl JsIOBase {
     #[napi(ts_return_type = "TextLineIterator")]
     pub fn read_text_lines(
         &self,
-        options: Option<&crate::media::text::JsTextOptions>,
-    ) -> Result<crate::text_line::JsTextLineIterator> {
-        let defaulted = crate::media::text::JsTextOptions::new();
+        options: Option<&crate::text::options::JsTextOptions>,
+    ) -> Result<crate::text::line::JsTextLineIterator> {
+        let defaulted = crate::text::options::JsTextOptions::new();
         let options = options.map_or(&defaulted, |options| options);
         let lines =
             yggdryl::text::read_text_lines(&self.inner, &options.inner).map_err(napi_error)?;
-        Ok(crate::text_line::JsTextLineIterator::from_core(lines))
+        Ok(crate::text::line::JsTextLineIterator::from_core(lines))
     }
 
     /// Replace this resource's rows with every batch `batches` yields.

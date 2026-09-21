@@ -1103,6 +1103,31 @@ fn held_f64(value: i128) -> f64 {
     value as f64
 }
 
-#[cfg(test)]
-#[path = "eval/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/expression/eval.rs` pins and a caller cannot reach.
+    //!
+    //! `convert` is the value cast every `cast` operator and every bound
+    //! projection goes through, and `order` the comparison every relational
+    //! operator asks; what each answers per target leaf, and what `convert`
+    //! refuses, is the contract behind a grammar a caller only ever spells.
+    use std::cmp::Ordering;
+
+    use crate::expression::Safety;
+    use crate::{DataType, Result, Scalar};
+
+    /// Cast `value` to `target`, under `safety`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value does not hold under `target`.
+    pub fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Result<Scalar> {
+        super::convert(target, value, safety)
+    }
+
+    /// Order `left` against `right` as `dtype` orders its values.
+    pub fn order(dtype: &DataType, left: &Scalar, right: &Scalar) -> Option<Ordering> {
+        super::order(dtype, left, right)
+    }
+}

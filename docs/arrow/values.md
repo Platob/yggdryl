@@ -312,6 +312,6 @@ declared `field` off them.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/arrow
+    python/.venv/bin/python -m pytest python/tests/test_arrow.py
     python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     ```

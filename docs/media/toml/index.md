@@ -1,28 +1,23 @@
 # TOML
 
-One natural record document backed by the shared Rust codec.
+One natural record document over the shared [`Scalar`](../../types/scalar.md) codec.
 
 ## Contract
 
-| | |
+| facet | contract |
 | --- | --- |
-| Root | one table as a sorted `Record`; repeated writes are byte-identical |
-| Proves | strings, `i64`, `f64`, booleans, arrays, tables, four date/time forms |
-| Lacks | null, non-string keys, scalar root, streams, private markers |
-| Exact | decimal scale, binary, string temporals, Struct order need a [`Field`](../../types/field.md) |
-| Selector | Python `cls=Scalar`, JavaScript `{ scalar: true }`; omitted returns natural mappings |
-| Limits | byte, depth, decoded-node, document; nullable binding options, snake_case in Python and camelCase in JavaScript, core defaults when omitted |
-| Errors | name TOML and a byte offset; `validate_for_write` rejects before a destination opens |
-| `IOBase` | `from_io` / `into_io` infer TOML and outer [coding](../../coding/index.md) from the media type |
-
-## Surfaces
-
-| Page | Owns |
-| --- | --- |
-| [Scalars](scalar.md) | `loads` / `dumps`, the one string-key record, formatting, `read_scalar` / `write_scalar` over a handle |
-| [Arrow](arrow.md) | the document as Arrow rows: one array of tables under the root's name |
-
-The format-agnostic facade, limits, and `Format` vocabulary are on [Structured documents](../structured.md).
+| Root | exactly one table, read and written as a name-sorted `Record`; repeated writes are byte-identical |
+| Proves | strings, `i64`, `f64`, booleans, arrays, tables, and the four date/time forms; anything else needs a [`Field`](values.md) |
+| Lacks | null, non-string keys, a scalar root, several documents, streams, private markers |
+| Reads | `from_utf8`, `from_bytes`, `from_reader` with their `_with_field`, `_with_limits` and `_all` siblings |
+| Writes | `into_utf8`, `into_bytes`, `into_writer` with `_with_formatting`; `validate_for_write` refuses before a destination opens |
+| Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return it, else natural mappings |
+| Exact types | `_with_field` / `field=` / `{ field }` recovers `D128`, `D256`, `Bytes`, durations and string temporals from quoted strings |
+| Handle | `read_scalar` / `write_scalar` derive TOML and any outer [coding](../../coding/index.md) from the handle's `MediaType`, so `quotes.toml.gz` needs no argument |
+| Arrow | `read_arrow` and `write_arrow` are the one bridge to rows; [`RecordOptions`](../options.md) names no structured format, so `read_arrow_reader` and the three write intents refuse the name |
+| Placeholders | opt-in `{{ }}` substitution inside quoted strings, at any table depth |
+| Limits | nullable input bytes, depth, decoded nodes and document count; snake_case in Python and camelCase in JavaScript, core defaults when omitted |
+| Errors | name TOML and a byte offset |
 
 ## Use
 
@@ -53,7 +48,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     natural = toml.loads(source)
@@ -89,126 +84,54 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     assert.ok(toml.loads(encoded, { scalar: true }).equals(value))
     ```
 
+## Pages
+
+| Page | Owns |
+| --- | --- |
+| [Read](read.md) | a document as a native scalar, from content, a location or a handle; then rows as Arrow batches |
+| [Write](write.md) | a scalar as a document, to bytes, a location or a handle; formatting; then Arrow batches |
+| [Values](values.md) | what a bare parse answers, what a declared `Field` changes, and the four date/time forms |
+
+Every scheme answers the same two surfaces. TOML answers native scalars in all three bindings, and Arrow rows in Rust and Python only - JavaScript binds neither `read_arrow` nor `write_arrow`. The format-agnostic facade, the `Format` and `Limits` vocabulary, and the shared `Formatting` rules are on [Structured documents](../structured.md).
+
 ## Inferring entry point
 
-`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](../structured.md#raw-document-codecs), answering a `Record`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
-
-## Natural values and exact Fields
-
-Unspellable Scalars are rejected before a destination opens, never encoded into a side format.
-
-| input or native value | natural TOML behavior |
-| --- | --- |
-| table / inline table | sorted `Record` |
-| date | `Date32` |
-| local time | `Time32` or `Time64` |
-| local or offset date-time | `DateTime64` with explicit timezone |
-| `D128`, `D256` | quoted scale-preserving string |
-| bytes / geospatial | quoted base64 string |
-| duration | quoted ISO duration |
-| null | error |
-| integer outside `i64` | error |
-
-A Struct Field yields a row `Sequence` in Rust; bindings restore field names, and Python may add `cls=YourDataclass`.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar, StructType};
-    use yggdryl::toml;
-
-    let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
-    let row = Field::new(
-        "row",
-        DataType::from(StructType::from_fields([amount])?),
-        false,
-    );
-    let decoded = toml::from_utf8_with_field("amount = '12.50'\n", &row)?;
-
-    assert_eq!(decoded.as_sequence().unwrap()[0], Scalar::d128(1_250, 2));
-    ```
-
-=== "Python"
-
-    ```python
-    from decimal import Decimal
-
-    from yggdryl import Field, types
-    from yggdryl.text import toml
-
-    row = types.struct(
-        "row",
-        [Field("amount", "decimal128(8, 2)", nullable=False)],
-        nullable=False,
-    )
-
-    assert toml.loads("amount = '12.50'\n", field=row) == {
-        "amount": Decimal("12.50")
-    }
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { fields, toml } = require('yggdryl')
-
-    const row = fields.struct(
-      'row',
-      [fields.decimal128('amount', 8, 2, { nullable: false })],
-      { nullable: false },
-    )
-    const decoded = toml.loads("amount = '12.50'\n", { field: row })
-
-    assert.equal(decoded.amount.kind, 'd128')
-    assert.equal(decoded.amount.unscaled, 1250n)
-    ```
-
-### Dates and times
-
-Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/temporal.md#timezone).
-
-| value | TOML behavior |
-| --- | --- |
-| offset date-time | `DateTime64` instant; a local date-time uses `Timezone::NAIVE` |
-| date, local time | zone-free |
-| outside the grammar, or named zone | ISO string or count, never a rewritten offset |
-| bindings | closest lossless native temporal; `Scalar` keeps the rest |
+`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](../structured.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`, answering the root `Record`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Placeholders
 
-Opt-in, inside quoted strings, substituted after parsing and before Field interpretation, at any table depth; each quoted placeholder becomes the variable's own typed value. [Placeholders](../placeholders.md) shows a TOML table taking a string and an integer variable.
+TOML substitutes opt-in Jinja-style `{{ }}` variables inside quoted strings, at any table depth, after parsing and before Field interpretation: [Placeholders](../placeholders.md) owns the contract and shows a TOML table taking a string and an integer variable.
 
 ## Edges
 
 - empty or comment-only document -> empty `Record`.
 - null, non-record root, non-string key, `i64` overflow, excessive depth -> `validate_for_write` error, no partial destination.
 - an existing file name as text -> parsed as TOML; fails as a bare word.
-- Rust `_all` forms -> exactly one value; bindings expose no `loads_all`, `dump_all`, or streams.
-- user key spelled like a private marker -> ordinary data.
-- placeholder mapping -> wins over the environment, never read unless enabled.
-- Arrow batches -> [Text records](../text/index.md), which refuse keyed merge.
+- Rust `_all` forms -> exactly one value; the bindings expose no `loads_all` or `dump_all`, and JavaScript's `loadStream` / `dumpStream` carry that one document, never several.
+- a user key spelled like a private marker -> ordinary data.
+- placeholder mapping -> wins over the process environment, which is never read unless enabled.
+- streamed Arrow batches -> [Text records](../text/index.md), which refuse keyed merge.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
+    cargo test --features "parquet iceberg" -p yggdryl --test toml -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test toml -- wire
     cargo bench -p yggdryl --bench text -- codec/toml
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/toml
+    python/.venv/bin/python -m pytest python/tests/toml/test_init.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/text/toml.test.js
+    node --test node/tests/text/codec.test.js
     npm run --prefix node bench:text
     ```

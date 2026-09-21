@@ -29,7 +29,7 @@ A path says which value to take. An alias says what to call the thing holding
 it, and it is the one question a selector cannot answer by itself. It is spelled
 the way SQL spells it, and the keyword is read in any case:
 
-```
+```text
 order.line[0].price as price
 "55" as symbol
 tags['k'] as "the key"
@@ -107,30 +107,31 @@ paths already resolved. Applying a resolved path allocates nothing.
 === "JavaScript"
 
     ```javascript
+    const assert = require('node:assert/strict')
     const { FieldPath } = require('yggdryl')
 
     const path = new FieldPath('order.line[0].price')
-    console.assert(path.length === 4)
-    console.assert(path.toString() === 'order.line[0].price')
-    console.assert(path.parent().toString() === 'order.line[0]')
+    assert.equal(path.length, 4)
+    assert.equal(path.toString(), 'order.line[0].price')
+    assert.equal(path.parent().toString(), 'order.line[0]')
 
     const built = new FieldPath('order').join(1)
-    console.assert(built.toString() === 'order[1]')
+    assert.equal(built.toString(), 'order[1]')
 
     const aliased = new FieldPath('order.line[0].price as price')
-    console.assert(aliased.alias === 'price')
-    console.assert(aliased.columnName === 'price')
-    console.assert(aliased.length === 4)
+    assert.equal(aliased.alias, 'price')
+    assert.equal(aliased.columnName, 'price')
+    assert.equal(aliased.length, 4)
 
-    console.assert(new FieldPath('"a.b"').length === 1)
-    console.assert(new FieldPath('a.b').length === 2)
+    assert.equal(new FieldPath('"a.b"').length, 1)
+    assert.equal(new FieldPath('a.b').length, 2)
     ```
 
 ## Where it is used
 
 - The [expression grammar](../expression/index.md) writes the same steps and
   shares the one segment type, which is why the path value lives beside it.
-- [Text lines](../media/text/index.md#entries-and-paths) address one entry of a
+- [Text lines](../media/text/lines.md#entries-and-paths) address one entry of a
   decoded line, and `lift_names` names the entry paths that become columns,
   each taking its alias where it writes one.
 

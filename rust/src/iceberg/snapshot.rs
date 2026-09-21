@@ -669,57 +669,21 @@ fn invalid(reason: SmolStr) -> Error {
     }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/snapshot.rs` pins and a caller cannot reach.
 
-#[cfg(test)]
-mod strict_json_tests {
-    use super::{Snapshot, SnapshotRef};
+    use super::Snapshot;
+    use crate::Result;
     use crate::iceberg::FormatVersion;
 
-    #[test]
-    fn snapshot_optional_values_are_exact_when_present() {
-        for text in [
-            r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":3}"#,
-            r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","schema-id":2147483648}"#,
-            r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","summary":{"operation":3}}"#,
-            r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","sequence-number":-1}"#,
-        ] {
-            let document = crate::json::from_utf8(text).unwrap();
-            assert!(Snapshot::from_json(&document).is_err(), "{text}");
-        }
-    }
-
-    #[test]
-    fn snapshot_requires_one_manifest_location_shape() {
-        let missing = crate::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2}"#).unwrap();
-        assert!(Snapshot::from_json(&missing).is_err());
-
-        let both = crate::json::from_utf8(
-            r#"{"snapshot-id":1,"timestamp-ms":2,"manifest-list":"m","manifests":[]}"#,
-        )
-        .unwrap();
-        assert!(Snapshot::from_json(&both).is_err());
-
-        let v1 =
-            crate::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2,"manifests":["m.avro"]}"#)
-                .unwrap();
-        let snapshot = Snapshot::from_json(&v1).unwrap();
-        snapshot.validate_for_version(FormatVersion::V1).unwrap();
-    }
-
-    #[test]
-    fn reference_json_requires_type_ranges_and_positive_retention() {
-        for text in [
-            r#"{"snapshot-id":1}"#,
-            r#"{"snapshot-id":1,"type":"branch","min-snapshots-to-keep":2147483648}"#,
-            r#"{"snapshot-id":1,"type":"branch","min-snapshots-to-keep":0}"#,
-            r#"{"snapshot-id":1,"type":"branch","max-snapshot-age-ms":-1}"#,
-            r#"{"snapshot-id":1,"type":"tag","min-snapshots-to-keep":1}"#,
-            r#"{"snapshot-id":1,"type":"other"}"#,
-        ] {
-            let document = crate::json::from_utf8(text).unwrap();
-            assert!(SnapshotRef::from_json(&document).is_err(), "{text}");
-        }
+    /// Validate the fields one snapshot may carry in one table version.
+    ///
+    /// A caller never checks a snapshot alone - the table does it on the way
+    /// in and on the way out - so the per-version rules are only nameable
+    /// here.
+    pub fn validate_for_version(snapshot: &Snapshot, version: FormatVersion) -> Result<()> {
+        snapshot.validate_for_version(version)
     }
 }

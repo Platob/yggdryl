@@ -1,9 +1,10 @@
-//! A message restated at its registry's newest version - the first step of
-//! the one enriching pass, and reached only through it: every child under
-//! the dictionary's own field, every retired field and value filling what
-//! stands in for it, the wire untouched, and a second pass changing nothing.
-//! What the pass fills after restating lands in these cases too, because
-//! there is one door and no way to stop at the first step.
+//! `rust/src/fix/latest.rs`: a message restated at its registry's newest
+//! version - the first step of the one enriching pass, and reached only
+//! through it: every child under the dictionary's own field, every retired
+//! field and value filling what stands in for it, the wire untouched, and a
+//! second pass changing nothing. What the pass fills after restating lands
+//! in these cases too, because there is one door and no way to stop at the
+//! first step.
 
 use super::SoleMessage;
 use super::path;

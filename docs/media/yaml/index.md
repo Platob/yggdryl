@@ -1,30 +1,24 @@
 # YAML
 
-Owns the YAML codec: natural types, exact Fields, documents and streams, formatting, quoted placeholders, and limits.
+YAML documents and document streams as one scheme over the shared [`Scalar`](../../types/scalar.md) codec.
 
 ## Contract
 
 | Aspect | Contract |
 | --- | --- |
-| Owns | `yggdryl::yaml`; `yggdryl.text.yaml`; `yaml` from `yggdryl` |
-| Natural types | null, boolean, integer, float, string, sequence, mapping, standard `!!binary` |
+| Owns | `yggdryl::yaml`; `yggdryl.yaml`; `yaml` from `yggdryl` |
+| Proves | null, boolean, integer, float, string, sequence, mapping, the standard `!!binary` tag; anything else needs a [`Field`](values.md) |
 | Records | string keys: sorted `Record`; other keys: insertion-ordered `Mapping` |
-| Exact tree | `cls=Scalar` (Python), `{ scalar: true }` (JavaScript); omitted: natural objects |
-| One document | `from_utf8`, `from_bytes`, `from_reader`, `loads`, `dumps` |
-| Stream | `*_all`, `into_writer_all`, `loads_all` / `dumps_all`, `loadsAll` / `dumpAll` |
-| Lazy | `from_reader_iter[_with_field]`, `load_all`, `loadAll`; fused after the first error |
-| Formatting | two-space block default; `Formatting::indented(n)` / `indent=n`; `Formatting::compact()` / `indent=None` / `{ indent: null }` is flow |
+| Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return it, else natural objects |
+| One document | `from_utf8`, `from_bytes`, `from_reader` in; `into_utf8`, `into_bytes`, `into_writer` out; `loads` / `dumps` in both bindings |
+| Streams | `*_all` and `into_writer_all`; `loads_all` / `dumps_all`, `loadsAll` / `dumpAll` - one value per `---` separated document |
+| Lazy | `from_reader_iter[_with_field]`, Python `load_all`, JavaScript `loadAll`; fused after the first error |
+| Handle | `read_scalar` / `write_scalar`, and the generic `from_io` / `into_io` facade, derive YAML and any outer [coding](../../coding/index.md) from the handle's `MediaType`, so `quotes.yaml.gz` needs no argument |
+| Arrow | `read_arrow` and `write_arrow` are the one bridge to rows, one document per row; [`RecordOptions`](../options.md) names no structured format, so `read_arrow_reader` and the three write intents refuse the name |
+| Formatting | two-space block style by default; `Formatting::indented(n)` / `indent=n` / `{ indent: n }` keeps block style at that width; `Formatting::compact()` / `indent=None` / `{ indent: null }` is flow |
+| Placeholders | quoted `{{ }}` substitution, off by default, string values only |
 | Limits | `max_input_bytes` / `maxInputBytes`, depth, decoded nodes, documents; held input and streams alike; omitted means core defaults |
 | Errors | invalid UTF-8, duplicate keys, malformed syntax, exhaustion, Field conversion: YAML plus byte offset |
-
-## Surfaces
-
-| Page | Owns |
-| --- | --- |
-| [Scalars](scalar.md) | `loads` / `dumps`, document streams, block or flow layout, `read_scalar` / `write_scalar` over a handle |
-| [Arrow](arrow.md) | the document stream as Arrow rows, one document per row |
-
-The format-agnostic facade, limits, and `Format` vocabulary are on [Structured documents](../structured.md).
 
 ## Use
 
@@ -55,7 +49,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
     value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
@@ -86,93 +80,45 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
     assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
     ```
 
+## Pages
+
+| Page | Owns |
+| --- | --- |
+| [Read](read.md) | a document as a native scalar, from content, a location or a handle; multi-document loads; then rows as Arrow batches |
+| [Write](write.md) | a scalar as a document, to bytes, a location or a handle; multi-document dumps; block and flow layout; then Arrow batches |
+| [Values](values.md) | what a bare parse answers, and what a declared `Field` changes |
+
+Every scheme answers the same two surfaces - native scalars and Arrow rows. YAML answers native scalars in all three bindings, and Arrow rows in Rust and Python only - JavaScript binds neither `read_arrow` nor `write_arrow`. The format-agnostic facade, the `Format` and `Limits` vocabulary, and the shared `Formatting` rules are on [Structured documents](../structured.md).
+
 ## One inferring entry point
 
 `yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](../structured.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
-## Natural values and exact Fields
-
-Schemaless reads keep only syntax-proven types; unknown custom tags read by their natural shape, never as private runtime classes.
-
-| native value | natural YAML |
-| --- | --- |
-| `D128`, `D256` | quoted scale-preserving string |
-| `Bytes`, `Geospatial` | standard `!!binary` base64 |
-| date, time, `DateTime64`, duration | ISO scalar when representable |
-| `F16`, `F32`, `F64` | YAML float, including non-finite values |
-
-`!!binary` is a YAML standard tag, not a private marker envelope; no private tag is written.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::yaml;
-
-    let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
-    let decoded = yaml::from_utf8_with_field("'12.50'\n", &amount)?;
-
-    assert_eq!(decoded, Scalar::d128(1_250, 2));
-    ```
-
-=== "Python"
-
-    ```python
-    from decimal import Decimal
-
-    from yggdryl import Field
-    from yggdryl.text import yaml
-
-    amount = Field("amount", "decimal128(8, 2)", nullable=False)
-
-    assert yaml.loads("'12.50'\n", field=amount) == Decimal("12.50")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field, yaml } = require('yggdryl')
-
-    const amount = new Field('amount', 'decimal128(8, 2)', false)
-    const decoded = yaml.loads("'12.50'\n", { field: amount })
-
-    assert.equal(decoded.kind, 'd128')
-    assert.equal(decoded.scale, 2)
-    ```
-
-A Struct Field resolves record names into its child order: a row `Sequence` in Rust, a dictionary or object in Python and JavaScript.
-
 ## Placeholders
 
-Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure; a quoted `"{{ PORT }}"` becomes the variable's own typed value. Quote placeholders, since unquoted braces are YAML flow-mapping syntax: `port: {{ PORT }}` parses as a mapping before substitution runs. The YAML example, syntax, security, and measured overhead live on [Placeholders](../placeholders.md).
+Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure; the contract, the syntax, the security note, and the measured overhead are on [Placeholders](../placeholders.md).
 
 ## Edges
 
-- A second document through a one-document form -> error; use the stream forms.
-- Stream failure -> the error names the document start and the failing byte offset; the iterator is then exhausted.
-- Quoted `"AP8="` -> a string unless a [`Field`](../../types/field.md) declares it binary.
-- Malformed exact value or missing required Struct child -> Field conversion error.
-- Text naming an existing file -> that plain string scalar, not the file's content.
-- Unquoted `port: {{ PORT }}` -> a flow mapping, not a placeholder.
-- Placeholder sources -> the supplied mapping wins; environment lookup is a separate switch, off by default.
-- Placeholder under a Field -> interpretation runs after substitution, so the resolved string becomes the exact typed value.
-- `.yaml.gz` handle -> `from_io` / `into_io` infer YAML and the outer coding; Python takes `PathLike`, JavaScript paths, descriptors, file URLs, streams.
-- Line-record media -> use [Text records](../text/index.md) for Arrow batches with overwrite and append; keyed merge is refused.
+- unquoted `port: {{ PORT }}` -> a flow mapping, not a placeholder; braces the grammar reads structurally are parsed before substitution runs, so quote the placeholder.
+- placeholder options on [JSON](../json/index.md) -> refused; only YAML and [TOML](../toml/index.md) substitute.
+- depth above `yaml::MAX_PARSER_DEPTH` -> refused, whatever a caller's limit asks; `[` and `{` flow syntax is bounded first, by `yaml::MAX_FLOW_DEPTH`.
+- `_with_limits` / `_with_formatting` -> explicit form only; the inferring entry point has neither.
+- streamed Arrow batches with overwrite, append, and a schema -> [Text records](../text/index.md); keyed merge is refused there, since a line has no row identity.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text yaml::
+    cargo test --features "parquet iceberg" -p yggdryl --test yaml
     cargo bench -p yggdryl --bench text -- codec/yaml
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/yaml
+    python/.venv/bin/python -m pytest python/tests/yaml/test_init.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 
@@ -180,6 +126,5 @@ Substitution is opt-in, runs after parsing, and touches string values only, neve
 
     ```bash
     node --test node/tests/text/codec.test.js
-    node --test --test-name-pattern="yaml" node/tests/text/codec.test.js
     npm run --prefix node bench:text
     ```

@@ -14,7 +14,7 @@ use std::borrow::Borrow;
 use std::io::{Read, Write};
 
 mod parser;
-mod wire;
+pub(crate) mod wire;
 
 use crate::text::{Formatting, Limits, Scalar, ScalarIter, check_input_size};
 use crate::{Error, Field, Result};

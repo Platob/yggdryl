@@ -139,11 +139,11 @@ The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test arrow -- scalars:: arrow_scalar::
-    cargo test --features "parquet iceberg" -p yggdryl --test types -- typed::arrow value_bounds::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- budget typed::pairing::arrow
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_field.py -k arrow_scalar
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_field.py -k arrow_scalar
     ```

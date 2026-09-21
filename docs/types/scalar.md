@@ -180,7 +180,7 @@ Text is the one place this is wider than Python. `false`, `no`, `off`, `f`,
 `n` and `0` read as false, case-insensitively and trimmed, where Python calls
 every non-empty string true. Values arrive as text from CSV, FIX and query
 strings, and a column that spells false is not asking to be read as true.
-[`Boolean`](numeric.md)'s own text reader stays strict, because that
+[`Boolean`](numeric/boolean.md)'s own text reader stays strict, because that
 one is the String-to-Boolean *cast*, not a coercion.
 
 `len` counts a container's direct children and answers zero for everything
@@ -409,10 +409,10 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
   `concat`, which is a variadic text function that also renders a version.
 - `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader or `as_<family>` accessor on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
-- Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
+- Physical Arrow identity -> exact constructors, [Rust only](numeric/index.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
-- Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial.md).
-- [Code](codes.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
+- Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial/index.md).
+- [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
 - `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
@@ -422,8 +422,10 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- scalar::tests arithmetic::tests decimal::tests
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums:: scalar:: temporal::
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- scalar::internal arithmetic decimal::internal::reading
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test mime_type -- registry::mime
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean datatype_id datatype_kind::names date::temporal datetime::temporal default::scalars duration::temporal edge_algorithm enumeration interval::temporal iokind::enums iomode::enums lib::enums media_type::vocabulary mime_type::mime parser::aliases protocol::enums scalar scheme::vocabulary temporal::datatypes temporal::fields temporal::scalars time::temporal time_unit::enums
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test text -- format::mime
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(enum_accessors|mime_parse|media_infer)/'
     ```
@@ -431,14 +433,14 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py python/tests/types/test_scalar.py python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/native-scalar-returns.test.js node/tests/enums.test.js
+    node --test node/tests/value.test.js node/tests/enums/vocabulary.test.js
     ```
 
 ## Performance

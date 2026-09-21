@@ -462,6 +462,3 @@ fn invalid(reason: SmolStr) -> Error {
         reason,
     }
 }
-
-#[cfg(test)]
-mod tests;

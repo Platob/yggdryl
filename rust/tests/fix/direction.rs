@@ -1,5 +1,6 @@
-//! Which way a message moved: FIX's tag 385, read by the registry (decision
-//! 14) through the rules the dictionary carries on it.
+//! `rust/src/fix/direction.rs`: which way a message moved: FIX's tag 385,
+//! read by the registry (decision 14) through the rules the dictionary
+//! carries on it.
 
 use std::sync::Arc;
 

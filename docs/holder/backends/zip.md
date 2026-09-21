@@ -467,7 +467,7 @@ assert!(root.is_tabular());
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --lib zip::
+    cargo test --features internals -p yggdryl --test zip
     cargo test -p yggdryl --test iobase_calls zip::
     cargo test -p yggdryl --test interop zip::
     python3 scripts/check_zip_interop.py

@@ -1,12 +1,20 @@
 //! Resource-identifier integration tests.
 
-#[path = "uri/encoding.rs"]
-mod encoding;
-#[path = "uri/fuzz.rs"]
-mod fuzz;
+#[path = "uri/authority.rs"]
+mod authority;
+#[path = "uri/datatype.rs"]
+mod datatype;
+#[path = "uri/mod_.rs"]
+mod mod_;
+#[path = "uri/parameters.rs"]
+mod parameters;
 #[path = "uri/parser.rs"]
 mod parser;
+#[path = "uri/path.rs"]
+mod path;
 #[path = "uri/pattern.rs"]
 mod pattern;
-#[path = "uri/value.rs"]
-mod value;
+#[path = "uri/url.rs"]
+mod url;
+#[path = "uri/urn.rs"]
+mod urn;

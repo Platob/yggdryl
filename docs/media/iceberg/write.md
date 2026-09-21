@@ -1,13 +1,14 @@
 # Iceberg writes
 
-This page owns committing rows to an Iceberg table: the record methods, data-file sizing and compaction, `IcebergOptions`, the data-file format, commit retries, and refs.
+Rows into a table - as native scalars, as Arrow batches - with the intent in the method name and one commit per call.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
+| Native rows | `overwrite_records`, `append_records`, `merge_records` over the table or its folder; Python and JavaScript hand plain rows straight to `Table.overwrite` / `append` / `merge`, typed against the stored schema |
 | Owns | `append`, `overwrite`, `merge` commits; `compact`; `IcebergOptions`; `data_mime_type`; the commit gate; branches and tags |
-| Commit | Every record call, `compact`, and ref change is one commit through one retry gate; a failed commit leaves no visible change |
+| Commit | Every record call, `compact`, and ref change is one commit through one retry gate, publishing one new [metadata document](metadata.md); a failed commit leaves no visible change |
 | Reads | A table folder reads through the current snapshot; a replaced or uncommitted file is never read |
 | Target size | `write.target-file-size-bytes`, then the root's `ICEBERG:write.target-file-size-bytes`, then 512 MiB; a partition group is cut into files of about the target, measured as its Arrow in-memory bytes per row |
 | Keys | The identity partition columns lead every merge key, once each, then `merge_by`; a merge naming no key replaces the partitions its rows fall in; a merge reads and rewrites only the files of the partitions its rows fall in |
@@ -22,6 +23,123 @@ This page owns committing rows to an Iceberg table: the record methods, data-fil
 | Bindings | Python takes `options=` and never the generic [`RecordOptions`](../options.md); JavaScript takes a trailing `IcebergOptions`; Python and JavaScript tables keep their own scan and commit vocabulary, so the folder handle is their generic route |
 
 ## Use
+
+Native rows first - a tuple, a mapping, a plain object - typed against the schema the table already stores, so no row carries an Arrow holder or a schema of its own. Each call is one commit.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType};
+
+    struct Quote(i64, &'static str);
+
+    impl From<Quote> for Scalar {
+        fn from(row: Quote) -> Self {
+            Scalar::from_sequence([Scalar::from(row.0), Scalar::from(row.1)])
+        }
+    }
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?)
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-native-write");
+    let _ = std::fs::remove_dir_all(&path);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema, spec)?;
+
+    // The table's stored schema declares the rows, so a native row is an ordered
+    // sequence under it and carries no schema of its own.
+    let base = table.record_options()?;
+    let options = base.clone().with_field(table.read_arrow_field(&base)?);
+    table.overwrite_records([Quote(1, "XNAS"), Quote(2, "XNYS")], &options)?;
+    table.append_records([Quote(3, "XLON")], &options)?;
+
+    // A match key upserts: `2` is stored and updates, `9` is new and appends.
+    let merging = options.clone().with_merge_by("id")?;
+    table.merge_records([Quote(2, "XNYS"), Quote(9, "XLON")], &merging)?;
+
+    let total: usize = table
+        .read_arrow_reader(&options)?
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(total, 4);
+
+    // Each call was one commit, and the table value followed them without
+    // reopening anything.
+    assert_eq!(table.metadata().snapshots().len(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["venue"])
+
+    # Plain rows type against the table's stored schema, so they need no Arrow
+    # holder and no schema of their own.
+    table.overwrite([{"id": 1, "venue": "XNAS"}, {"id": 2, "venue": "XNYS"}])
+    table.append([{"id": 3, "venue": "XLON"}])
+
+    # A match key upserts: `2` is stored and updates, `9` is new and appends.
+    table.merge([{"id": 2, "venue": "XNYS"}, {"id": 9, "venue": "XLON"}], ["id"])
+
+    assert table.scan().read_all().num_rows == 4
+
+    # Each call was one commit, and the read went through the last one.
+    assert len(table.snapshots) == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+
+    // Plain objects are rows, typed against the table's stored schema.
+    table.overwrite([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: 'XNYS' }])
+    table.append([{ id: 3n, venue: 'XLON' }])
+
+    // A match key upserts: `2` is stored and updates, `9` is new and appends.
+    table.merge([{ id: 2n, venue: 'XNYS' }, { id: 9n, venue: 'XLON' }], ['id'])
+
+    assert.equal(table.scan().intoTable().numRows, 4)
+
+    // Each call was one commit, and the read went through the last one.
+    assert.equal(table.snapshots.length, 3)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+## Rows as Arrow batches
 
 The folder *is* the table, so the shared [record surface](../../holder/iobase/records.md) reaches it and each call is one commit.
 
@@ -93,7 +211,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -266,7 +384,7 @@ assert_eq!(matching, 1);
 
 ## Partition keys are the primary keys
 
-A merge joins on the identity partition columns first and the caller's key after them, each named once, so a row can only ever update a row of its own partition. The incoming rows are grouped by partition tuple - the grouping an append lays files out by - and each group joins with its own partition's files alone: the plan opens the manifests and files of those partitions, the key bounds narrow them further, and everything else is carried into the new snapshot under its own path. What is in memory at once is one group's rows and the files it selected. Within one write, the last of the rows arriving with one key wins. A merge that names no key is keyed by the partition alone and replaces the partitions its rows fall in; an unpartitioned table has nothing to match on then and refuses by name.
+A merge joins on the identity partition columns first and the caller's key after them, each named once, so a row can only ever update a row of its own partition. The incoming rows are grouped by partition tuple - the grouping an append lays files out by - and each group joins with its own partition's files alone: the plan opens the manifests and files of those partitions, the key bounds narrow them further, and everything else is carried into the new snapshot under its own path. What is in memory at once is one group's rows and the files it selected. Within one write, the last of the rows arriving with one key wins. A merge that names no key is keyed by the partition alone and replaces the partitions its rows fall in; an unpartitioned table has nothing to match on then and refuses by name. The spec those columns come from is on [Partitions](partitions.md).
 
 === "Rust"
 
@@ -344,7 +462,7 @@ A merge joins on the identity partition columns first and the caller's key after
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -560,7 +678,7 @@ The partition groups of one commit are independent - each writes its own files u
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -698,7 +816,7 @@ The option resolves like every other: the explicit value, then the table propert
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -825,7 +943,7 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
 
     import pyarrow as pa
 
-    from yggdryl.media.iceberg import Catalog
+    from yggdryl.iceberg import Catalog
 
     warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
     catalog = Catalog(warehouse)
@@ -954,7 +1072,7 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
 
     import pyarrow as pa
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
@@ -1092,7 +1210,7 @@ The JavaScript constructor takes an object naming any of the eleven fields, and 
     import pyarrow as pa
 
     from yggdryl import IOBase, MimeType
-    from yggdryl.media.iceberg import IcebergOptions, Table, assign_field_ids
+    from yggdryl.iceberg import IcebergOptions, Table, assign_field_ids
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     table = Table.create(
@@ -1312,7 +1430,7 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     import pytest
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
@@ -1445,12 +1563,12 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::handles
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::concurrency_and_compaction
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::data_mime_type
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::line_projection
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
-    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::handles
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::concurrency_and_compaction
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::data_mime_type
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::line_projection
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- partition::iceberg scan::iceberg staging::iceberg table::iceberg types::iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^compact/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^merge/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^commit/'
@@ -1459,13 +1577,13 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py python/tests/media/test_iceberg_planning.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     YGGDRYL_BENCH_FILTER=iceberg/append npm run --prefix node bench:media
     ```

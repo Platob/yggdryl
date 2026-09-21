@@ -1,68 +1,11 @@
 //! FIX integration tests.
 
-#[path = "fix/aliases.rs"]
-mod aliases;
-#[path = "fix/allocations.rs"]
+#[path = "support/allocations.rs"]
 mod allocations;
-#[path = "fix/batch.rs"]
-mod batch;
-#[path = "fix/capture.rs"]
-mod capture;
-#[path = "fix/categories.rs"]
-mod categories;
-#[path = "fix/cfb.rs"]
-mod cfb;
-/// The instrument's classification, at the seam between its value and FIX.
-#[path = "fix/classification.rs"]
-mod classification;
-#[path = "fix/codec.rs"]
-mod codec;
-#[path = "fix/dataset.rs"]
-mod dataset;
-#[path = "fix/dictionary.rs"]
-mod dictionary;
-#[path = "fix/digest.rs"]
-mod digest;
-#[path = "fix/direction.rs"]
-mod direction;
-#[path = "fix/enrich.rs"]
-mod enrich;
-#[path = "fix/equivalence.rs"]
-mod equivalence;
-#[path = "fix/format.rs"]
-mod format;
-#[path = "fix/global_env.rs"]
-mod global_env;
-#[path = "fix/global_home.rs"]
-mod global_home;
-#[path = "fix/global_install.rs"]
-mod global_install;
-#[path = "fix/identifiers.rs"]
-mod identifiers;
-#[path = "fix/latest.rs"]
-mod latest;
-#[path = "fix/map_groups.rs"]
-mod map_groups;
-#[path = "fix/merge.rs"]
-mod merge;
-#[path = "fix/message.rs"]
-mod message;
-/// The threads a codec reads on.
-#[path = "fix/parallel.rs"]
-mod parallel;
-#[path = "fix/party_source.rs"]
-mod party_source;
-#[path = "fix/pipeline.rs"]
-mod pipeline;
-#[path = "fix/residual.rs"]
-mod residual;
-#[path = "fix/schema.rs"]
-mod schema;
-#[path = "fix/store.rs"]
-mod store;
-#[path = "fix/zero_entries.rs"]
-mod zero_entries;
 
+/// The instrument's classification, at the seam between its value and FIX.
+/// The FIX module's own edge cases, driven with explicit inputs.
+/// The threads a codec reads on.
 #[global_allocator]
 static ALLOCATOR: allocations::CountingAllocator = allocations::CountingAllocator;
 
@@ -355,3 +298,57 @@ fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
 fn decimal(text: &str) -> yggdryl::Scalar {
     yggdryl::Scalar::from(yggdryl::Decimal18::parse(text).expect("an exact number"))
 }
+
+#[path = "fix/aliases.rs"]
+mod aliases;
+#[path = "fix/batch.rs"]
+mod batch;
+#[path = "fix/cfb.rs"]
+mod cfb;
+#[path = "fix/cfi.rs"]
+mod cfi;
+#[path = "fix/codec.rs"]
+mod codec;
+#[path = "fix/codes.rs"]
+mod codes;
+#[path = "fix/component.rs"]
+mod component;
+#[path = "fix/crated.rs"]
+mod crated;
+#[path = "fix/digest.rs"]
+mod digest;
+#[path = "fix/direction.rs"]
+mod direction;
+#[path = "fix/enrich.rs"]
+mod enrich;
+#[path = "fix/entry.rs"]
+mod entry;
+#[path = "fix/global.rs"]
+mod global;
+#[cfg(feature = "internals")]
+#[path = "fix/group_plan.rs"]
+mod group_plan;
+#[path = "fix/identity.rs"]
+mod identity;
+#[path = "fix/latest.rs"]
+mod latest;
+#[cfg(feature = "internals")]
+#[path = "fix/memo.rs"]
+mod memo;
+#[path = "fix/messages.rs"]
+mod messages;
+#[path = "fix/mod_.rs"]
+mod mod_;
+#[path = "fix/msg.rs"]
+mod msg;
+#[path = "fix/registry.rs"]
+mod registry;
+#[cfg(feature = "internals")]
+#[path = "fix/retired.rs"]
+mod retired;
+#[path = "fix/schema.rs"]
+mod schema;
+#[path = "fix/store.rs"]
+mod store;
+#[path = "fix/ulbridge.rs"]
+mod ulbridge;

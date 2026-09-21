@@ -1,4 +1,5 @@
-//! The value digest, the dedup adapter, and the crate definitions.
+//! `rust/src/fix/digest.rs`: the value digest, the dedup adapter, and the
+//! crate definitions.
 
 use super::SoleMessage;
 

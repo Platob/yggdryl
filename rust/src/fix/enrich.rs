@@ -212,11 +212,12 @@ impl Input {
 
 /// The `FIX:derivation` plan a registry carries, selected once.
 ///
-/// Built by [`FixRegistry::derivations`] and kept on the registry until a
+/// Built by `FixRegistry::derivations`, which is private, and kept on the
+/// registry until a
 /// field changes; every codec and every message reading that registry
 /// evaluates through the same instance, the line door, the batch door and
 /// the row fill alike.
-pub(super) struct Derivations {
+pub struct Derivations {
     /// Whether this registry carries the complete shipped rule set over the
     /// canonical field and group shapes the native evaluator implements.
     /// Any customization selects the generic list for the whole registry.
@@ -375,8 +376,8 @@ impl Derivations {
     /// The working schema: the Struct every term is bound against, one
     /// column per field or group any derivation reads or fills, as the
     /// first bound term holds it; `None` where no term bound.
-    #[cfg(test)]
-    pub(super) fn schema(&self) -> Option<&Field> {
+    #[cfg(feature = "internals")]
+    pub fn schema(&self) -> Option<&Field> {
         self.list
             .iter()
             .find_map(|derivation| derivation.bound.as_ref())
@@ -384,16 +385,16 @@ impl Derivations {
     }
 
     /// Each derived tag in sweep order, beside whether its term bound.
-    #[cfg(test)]
-    pub(super) fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
+    #[cfg(feature = "internals")]
+    pub fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
         self.list
             .iter()
             .map(|derivation| (derivation.tag, derivation.bound.is_some()))
     }
 
     /// Whether the complete shipped rule set takes the direct evaluator.
-    #[cfg(test)]
-    pub(super) const fn is_native(&self) -> bool {
+    #[cfg(feature = "internals")]
+    pub const fn is_native(&self) -> bool {
         self.native
     }
 
@@ -1120,3 +1121,17 @@ impl Iterator for Walked {
 }
 
 impl FusedIterator for Walked {}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! `fix::enrich` is a private module of a published one, so `Derivations`
+    //! being `pub` reaches nobody: this door is the only path to it, and it
+    //! exists under the `internals` feature alone. A registry's compiled
+    //! derivations are reached through
+    //! [`fix_registry::derivations`](crate::internals::fix_registry::derivations);
+    //! the type is named here so that signature is public.
+    pub use super::Derivations;
+}

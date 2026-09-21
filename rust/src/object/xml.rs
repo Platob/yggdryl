@@ -26,7 +26,7 @@ const MAX_DEPTH: usize = 32;
 /// A body that is not the document it was expected to be: malformed XML, a
 /// different root, or a required element missing or unreadable.
 #[derive(Debug)]
-pub(crate) struct XmlError(pub(crate) String);
+pub struct XmlError(pub String);
 
 impl fmt::Display for XmlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -77,7 +77,7 @@ pub(crate) fn escape_text(text: &str) -> String {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Element {
+pub struct Element {
     /// The tag name without any namespace prefix.
     name: String,
     /// The element's own character data, children excluded.
@@ -88,27 +88,27 @@ pub(crate) struct Element {
 
 impl Element {
     /// The tag name, without any namespace prefix.
-    pub(crate) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.name
     }
 
     /// The first child named `name`.
-    pub(crate) fn child(&self, name: &str) -> Option<&Element> {
+    pub fn child(&self, name: &str) -> Option<&Element> {
         self.children.iter().find(|child| child.name == name)
     }
 
     /// Every child named `name`, in document order.
-    pub(crate) fn children<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Element> + 'a {
+    pub fn children<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Element> + 'a {
         self.children.iter().filter(move |child| child.name == name)
     }
 
     /// The text of the first child named `name`.
-    pub(crate) fn child_text(&self, name: &str) -> Option<&str> {
+    pub fn child_text(&self, name: &str) -> Option<&str> {
         self.child(name).map(|child| child.text.as_str())
     }
 
     /// The text of the first child named `name`, whose absence is an error.
-    pub(crate) fn required(&self, name: &str) -> Result<&str, XmlError> {
+    pub fn required(&self, name: &str) -> Result<&str, XmlError> {
         self.child_text(name)
             .ok_or_else(|| XmlError(format!("<{}> without <{name}>", self.name)))
     }
@@ -360,47 +360,36 @@ fn character_reference(reference: &str) -> Option<char> {
         .filter(|character| *character != '\0')
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/xml.rs` and the two dialect readers' suites pin
+    //! and a caller cannot reach.
+    //!
+    //! The scanner is the reading every XML answer goes through, and what it
+    //! refuses is the whole contract. `object::xml` is a private module of a
+    //! published one, so [`Element`] and [`XmlError`] being `pub` reaches
+    //! nobody; the readings themselves forward, and change no visibility.
+    pub use super::{Element, XmlError};
 
-    /// The namespace an S3 document declares; Azure's differs and neither is
-    /// read, which is the point.
-    const NS: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
+    use crate::object::answer::ErrorBody;
 
-    #[test]
-    fn an_error_document_is_read_with_its_ids() {
-        let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-             <Error xmlns=\"{NS}\"><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message>
-             <Key>missing.txt</Key><RequestId>4442587FB7D0A2F9</RequestId><HostId>abc=</HostId></Error>"
-        );
-        assert_eq!(
-            parse_error(xml.as_bytes()),
-            Some(ErrorBody {
-                code: "NoSuchKey".to_owned(),
-                message: "The specified key does not exist.".to_owned(),
-                request_id: Some("4442587FB7D0A2F9".to_owned()),
-                resource: None,
-            })
-        );
-        let xml = "<Error><Code>AccessDenied</Code><Message>Access Denied</Message><Resource>/bucket/key</Resource></Error>";
-        assert_eq!(
-            parse_error(xml.as_bytes()).unwrap().resource.as_deref(),
-            Some("/bucket/key")
-        );
-        assert_eq!(parse_error(b"<Error/>").unwrap().code, "");
+    /// Read the refusal document both XML stores answer with.
+    pub fn parse_error(xml: &[u8]) -> Option<ErrorBody> {
+        super::parse_error(xml)
     }
 
-    #[test]
-    fn bytes_that_are_not_an_error_document_answer_none() {
-        assert_eq!(parse_error(b""), None);
-        assert_eq!(
-            parse_error(b"<html><body>502 Bad Gateway</body></html>"),
-            None
-        );
-        assert_eq!(parse_error(b"not xml at all"), None);
-        assert_eq!(parse_error(b"<ListBucketResult />"), None);
-        assert_eq!(parse_error(b"<Error><Code>Unclosed</Error>"), None);
+    /// The root element of `xml`, prolog and trailing comments allowed.
+    ///
+    /// # Errors
+    ///
+    /// Malformed XML, or anything but comments outside the root element.
+    pub fn parse_document(xml: &[u8]) -> Result<Element, XmlError> {
+        super::parse_document(xml)
+    }
+
+    /// `text` with the five XML metacharacters escaped.
+    pub fn escape_text(text: &str) -> String {
+        super::escape_text(text)
     }
 }

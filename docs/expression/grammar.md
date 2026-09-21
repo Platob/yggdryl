@@ -163,8 +163,8 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_parse_failure_names_where_it_stopped expression::tests::nesting_past_the_limit_is_refused_not_crashed expression::tests::quoted_names_survive_every_encapsulator expression::tests::a_pattern_that_changes_per_row_is_refused_at_bind expression::tests::a_pattern_with_no_wildcard_becomes_an_equality expression::tests::substring_takes_the_window_the_standard_names expression::tests::a_column_named_twice_in_two_cases_is_ambiguous expression::tests::an_exact_quotient_keeps_room_to_be_a_quotient expression::tests::scalar_casts_return_the_exact_target_leaf expression::tests::scalar_arithmetic_propagates_checked_failures expression::tests::operands_meet_in_the_column_type_or_as_text expression::tests::a_struct_term_produces_and_reprints_a_row_sequence
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::every_verb_and_its_aliases_print_one_way expression::plan::tests::a_location_keeps_its_parts_whatever_quotes_them expression::plan::tests::a_sequence_is_plans_separated_by_semicolons
+    cargo test --features "iceberg internals parquet" -p yggdryl --test expression -- bind::grammar eval::grammar eval::internal parser::grammar term::grammar typing::grammar
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan
     cargo test --features "parquet iceberg" -p yggdryl --test expression -- predicate_segment inside_brackets
     cargo bench -p yggdryl --bench expression -- expression_parse
     ```
@@ -172,11 +172,11 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "never_taken or operators_build or arithmetic_builders or whichever_clause"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "never_taken or operators_build or arithmetic_builders or whichever_clause"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="never taken|either spelling|arithmetic builders|whichever clause" node/tests/expression
+    node --test --test-name-pattern="never taken|either spelling|arithmetic builders|whichever clause" node/tests/expression.test.js
     ```

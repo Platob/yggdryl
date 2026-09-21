@@ -89,7 +89,7 @@ Rust only.
 
 ## Strings and bytes
 
-Each column of a root projects through its own field, so a [string or bytes](../types/text.md) column crosses as that family's Arrow storage: text storage (`Utf8`, `LargeUtf8`, `Utf8View`) for the UTF-8 and US-ASCII leaves, the matching binary storage for the windows-1252 ones, and `FixedSizeBinary(width)` on a fixed leaf. A [registered code](../types/codes.md) crosses as `Utf8` under its own extension name, because a code is the text it is. A `yggdryl.string` or `yggdryl.bytes` extension document rides beside the storage only when Arrow cannot say what the field declares - `sized_cp1252(8)` is `Binary` with `{"layout":"sized_cp1252","charset":"windows-1252","max":8}` - and every projection reads back as the field that wrote it. The storage table and its Rust and Python round trips are on [Strings & bytes](../types/text.md), where JavaScript shows the stored Arrow field through a struct cast; JavaScript has no field projection, and `Field.fromArrow` reads a datatype expression.
+Each column of a root projects through its own field, so a [string or bytes](../types/text/index.md) column crosses as that family's Arrow storage: text storage (`Utf8`, `LargeUtf8`, `Utf8View`) for the UTF-8 and US-ASCII leaves, the matching binary storage for the windows-1252 ones, and `FixedSizeBinary(width)` on a fixed leaf. A [registered code](../types/codes/index.md) crosses as `Utf8` under its own extension name, because a code is the text it is. A `yggdryl.string` or `yggdryl.bytes` extension document rides beside the storage only when Arrow cannot say what the field declares - `sized_cp1252(8)` is `Binary` with `{"layout":"sized_cp1252","charset":"windows-1252","max":8}` - and every projection reads back as the field that wrote it. The storage table and its Rust and Python round trips are on [Strings & bytes](../types/text/index.md), where JavaScript shows the stored Arrow field through a struct cast; JavaScript has no field projection, and `Field.fromArrow` reads a datatype expression.
 
 ## Edges
 
@@ -104,7 +104,7 @@ Each column of a root projects through its own field, so a [string or bytes](../
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test types field::arrow::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- field::arrow
     cargo bench -p yggdryl --bench types -- arrow/struct_field
     # Wider context: per-field and per-datatype projections of the same group.
     cargo bench -p yggdryl --bench types -- arrow/
@@ -113,7 +113,7 @@ Each column of a root projects through its own field, so a [string or bytes](../
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field_classes_arrow.py
+    python/.venv/bin/python -m pytest python/tests/test__classes.py
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     ```
 

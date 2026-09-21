@@ -38,15 +38,15 @@ use yggdryl::{
     Selector as CoreSelector,
 };
 
+use crate::datatype::{
+    PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow, core_dtype_from_value,
+};
+use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     batch_reader_from_arrow_reader, batch_reader_from_arrow_table, batch_reader_to_pyarrow,
     batch_to_pyarrow, record_batch_from_value,
 };
-use crate::types::datatype::{
-    PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow, core_dtype_from_value,
-};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::scalar::PyScalar;
+use crate::scalar::PyScalar;
 use crate::value_error;
 
 // ---------------------------------------------------------------------------
@@ -58,12 +58,7 @@ fn supplied_parameters(parameters: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(
     match parameters {
         Some(parameters) => parameters
             .iter()
-            .map(|(name, value)| {
-                Ok((
-                    name.extract::<String>()?,
-                    crate::types::scalar::from_py(&value)?,
-                ))
-            })
+            .map(|(name, value)| Ok((name.extract::<String>()?, crate::scalar::from_py(&value)?)))
             .collect(),
         None => Ok(Vec::new()),
     }
@@ -87,7 +82,7 @@ pub(crate) fn term_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
     if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
         return Ok(filter.inner.term().clone());
     }
-    CoreTerm::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreTerm::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read one projection: a `Term`, or any scalar [`CoreProjection::from_scalar`]
@@ -96,7 +91,7 @@ fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
     if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
         return Ok(CoreProjection::new(term.inner.clone()));
     }
-    CoreProjection::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreProjection::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read a list of operands, each a term or a value.
@@ -120,7 +115,7 @@ pub(crate) fn filter_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFilter
     if let Ok(expression) = value.extract::<PyRef<'_, PyExpression>>() {
         return expression.inner.clone().into_filter().map_err(value_error);
     }
-    CoreFilter::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreFilter::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read a selector from a `Selector`, a `Term`, an `Expression`, or any
@@ -140,7 +135,7 @@ pub(crate) fn selector_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSele
             .into_selector()
             .map_err(value_error);
     }
-    CoreSelector::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreSelector::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read a plan from a `Plan`, a clause, an `Expression`, a `Field`, or the
@@ -161,7 +156,7 @@ pub(crate) fn plan_from_value(value: &Bound<'_, PyAny>) -> PyResult<CorePlan> {
     if let Ok(field) = value.extract::<PyRef<'_, PyField>>() {
         return Ok(CorePlan::from_field(&field.inner));
     }
-    CorePlan::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CorePlan::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read an expression from an `Expression`, a `Plan`, a clause, or any
@@ -179,7 +174,7 @@ pub(crate) fn expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
     if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
         return Ok(CoreExpression::Filter(filter.inner.clone()));
     }
-    CoreExpression::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreExpression::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read one target: text a location is spelled as, quoted URL or catalog path.
@@ -281,7 +276,7 @@ fn segment_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSegment> {
     if let Ok(index) = value.extract::<i64>() {
         return Ok(CoreSegment::index(index));
     }
-    CoreSegment::key(crate::types::scalar::from_py(value)?).map_err(value_error)
+    CoreSegment::key(crate::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read one comparison from the grammar's own spelling of it.
@@ -322,14 +317,11 @@ fn rows_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
         if let Ok(mapping) = row.cast::<PyDict>() {
             let mut entries = Vec::with_capacity(mapping.len());
             for (name, value) in mapping.iter() {
-                entries.push((
-                    name.extract::<String>()?,
-                    crate::types::scalar::from_py(&value)?,
-                ));
+                entries.push((name.extract::<String>()?, crate::scalar::from_py(&value)?));
             }
             rows.push(Scalar::from_struct(entries).map_err(value_error)?);
         } else {
-            rows.push(crate::types::scalar::from_py(&row)?);
+            rows.push(crate::scalar::from_py(&row)?);
         }
     }
     Ok(rows)
@@ -343,14 +335,14 @@ fn row_value(schema: &CoreField, row: &Bound<'_, PyAny>) -> PyResult<Scalar> {
         for field in schema.fields() {
             let held = mapping.get_item(field.name())?;
             values.push(match held {
-                Some(held) => crate::types::scalar::from_py(&held)?,
+                Some(held) => crate::scalar::from_py(&held)?,
                 None => Scalar::Null,
             });
         }
         return Ok(Scalar::from_sequence(values));
     }
     if row.is_instance_of::<PyList>() || row.is_instance_of::<PyTuple>() {
-        return crate::types::scalar::from_py(row);
+        return crate::scalar::from_py(row);
     }
     Err(value_error(
         "expected a sequence of column values in schema order, or a mapping of column to value",
@@ -449,9 +441,9 @@ impl PyTerm {
     /// Hold one constant.
     #[staticmethod]
     fn literal(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self::from_core(CoreTerm::literal(
-            crate::types::scalar::from_py(value)?,
-        )))
+        Ok(Self::from_core(CoreTerm::literal(crate::scalar::from_py(
+            value,
+        )?)))
     }
 
     /// Hold a constant in an explicitly named datatype.
@@ -462,7 +454,7 @@ impl PyTerm {
     fn typed_literal(dtype: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
         CoreTerm::typed_literal(
             core_dtype_from_value(dtype)?,
-            crate::types::scalar::from_py(value)?,
+            crate::scalar::from_py(value)?,
         )
         .map(Self::from_core)
         .map_err(value_error)
@@ -1045,7 +1037,7 @@ impl PyBound {
             .inner
             .eval(&row_value(self.inner.schema(), row)?)
             .map_err(value_error)?;
-        crate::types::scalar::as_py(py, &value)
+        crate::scalar::as_py(py, &value)
     }
 
     /// Answer this predicate for one row, reading unknown as "no".
@@ -1852,7 +1844,7 @@ impl PyBoundSelector {
     fn apply_row(&self, py: Python<'_>, row: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let row = row_value(self.inner.schema(), row)?;
         let published = self.inner.apply_scalar(&row).map_err(value_error)?;
-        crate::types::scalar::as_py_with_field(py, &published, self.inner.output())
+        crate::scalar::as_py_with_field(py, &published, self.inner.output())
     }
 
     /// Project one `pyarrow.RecordBatch` through the bound plan.
@@ -2694,7 +2686,7 @@ impl PyRecords {
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         match self.next_row()? {
-            Some(row) => Ok(Some(crate::types::scalar::as_py_with_field(
+            Some(row) => Ok(Some(crate::scalar::as_py_with_field(
                 py,
                 &row,
                 &self.field,
@@ -2830,8 +2822,8 @@ impl PyBounds {
         Ok(Self {
             inner: self.inner.clone().with_column(
                 name,
-                minimum.map(crate::types::scalar::from_py).transpose()?,
-                maximum.map(crate::types::scalar::from_py).transpose()?,
+                minimum.map(crate::scalar::from_py).transpose()?,
+                maximum.map(crate::scalar::from_py).transpose()?,
                 nulls,
             ),
         })
@@ -2851,8 +2843,8 @@ impl PyBounds {
         Ok(Self {
             inner: self.inner.clone().with_attribute(
                 attribute_from_name(name, key)?,
-                minimum.map(crate::types::scalar::from_py).transpose()?,
-                maximum.map(crate::types::scalar::from_py).transpose()?,
+                minimum.map(crate::scalar::from_py).transpose()?,
+                maximum.map(crate::scalar::from_py).transpose()?,
                 nulls,
             ),
         })
@@ -2920,12 +2912,10 @@ impl PyUserFunction {
     fn call_py(&self, py: Python<'_>, arguments: &[yggdryl::Scalar]) -> PyResult<yggdryl::Scalar> {
         let mut values = Vec::with_capacity(arguments.len());
         for (argument, parameter) in arguments.iter().zip(self.signature.parameters()) {
-            values.push(crate::types::scalar::as_py_with_field(
-                py, argument, parameter,
-            )?);
+            values.push(crate::scalar::as_py_with_field(py, argument, parameter)?);
         }
         let answer = self.callable.call1(py, PyTuple::new(py, values)?)?;
-        crate::types::scalar::from_py(&answer.into_bound(py))
+        crate::scalar::from_py(&answer.into_bound(py))
     }
 }
 
@@ -3023,7 +3013,7 @@ fn returns_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
     if let Ok(field) = value.extract::<PyRef<'_, PyField>>() {
         return Ok(field.inner.clone().with_name("returns"));
     }
-    let dtype = crate::types::datatype::core_dtype_from_value(value)?;
+    let dtype = crate::datatype::core_dtype_from_value(value)?;
     Ok(CoreField::new("returns", dtype, true))
 }
 
@@ -3058,7 +3048,7 @@ pub(crate) fn register_user_function(
                         "expected a default for one of the parameters, got {parameter:?}"
                     ))
                 })?;
-            let value = crate::types::scalar::from_py(&default)?;
+            let value = crate::scalar::from_py(&default)?;
             fields[position] =
                 CoreFunctionSignature::with_default(fields[position].clone(), &value)
                     .map_err(value_error)?;

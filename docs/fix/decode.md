@@ -151,7 +151,7 @@ is a duplicate tag rather than a new message. A key the bridge marked is the
 bridge's own spelling, so a `#8=` opens nothing and a `#10=` closes nothing.
 
 A run of named pairs is a bridge row rather than prose carrying an `=` where the
-line [named a separator](../media/text/index.md#where-a-pair-ends) for it - a pipe, a
+line [named a separator](../media/text/lines.md#where-a-pair-ends) for it - a pipe, a
 `SOH`, or [a spelling a log escaped one with](capture.md#a-printed-separator-is-still-the-separator),
 never whitespace - or where the bridge marked one of its keys with `#`. A
 numeric frame needs neither: a run of tag-keyed pairs is FIX whatever separated
@@ -307,12 +307,12 @@ This section renders `assets/fix.json` and needs JavaScript.
 - A row a data field carries is a message of its own type, at its own version, and is read against both. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's `BeginString` is the envelope's version and says nothing about which FIX the row was written to, which is routinely a later one than the session speaks. When the row states no version, it uses the crate's own 4.4. Nested scalar values can restate envelope fields; a repeating group already stated by the frame keeps its counter and all its occurrences together, while absent groups can be filled from the payload.
 - A key nothing names at all is kept under its own spelling and its arrival value, its arrival entry carrying tag 0 - a name or a numeric key alike, since tag 0 is never a registry identity. Nothing is dropped for being unexplained.
 - A JSON document, a bulk or wildcard answer as much as a single one, is one `unknown` message carrying only what the row stated; nothing inside the document is read.
-- The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text/index.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.
+- The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text/lines.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.
 
 ## Commands
 
 ```bash
 cargo test -p yggdryl --test fix
-node --test "node/tests/fix/*.test.js"
+node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
 node scripts/build_docs_fix.js --check
 ```

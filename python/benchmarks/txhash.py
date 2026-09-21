@@ -20,7 +20,7 @@ import timeit
 import pyarrow as pa
 
 from yggdryl import Field, Scalar
-from yggdryl.hashing import txhash, xxhash
+from yggdryl import txhash, xxhash
 
 PAYLOAD = b'{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n' * 20_000
 INSTANT = 1_700_000_000_000_000

@@ -550,66 +550,60 @@ pub(crate) fn order<E: Element>(left: &E, right: &E) -> Ordering {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/graph/iterator.rs` pins and a caller cannot reach.
+    //!
+    //! The name index is how an event arriving under no live identity finds
+    //! the chain it belongs to, and it is bookkeeping a caller only ever sees
+    //! the result of: the walk hands out events, never the two maps it kept
+    //! them by. Settling and retiring an identity directly is what pins that
+    //! retiring a name forgets exactly the records it opened.
+    use super::EventIterator;
+    use crate::Uuid;
+    use crate::graph::Event;
 
-    use super::*;
-    use crate::graph::MarketEventData;
-
-    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> MarketEventData {
-        let mut event = MarketEventData::at(unix);
-        event.set_crosscode(cross.to_owned());
-        event.set_identifiers(BTreeMap::from([(scheme.to_owned(), name.to_owned())]));
-        event.finalize();
-        event
+    /// Settle `element` as the element alive under `identity`, arriving as
+    /// `arrived`.
+    pub fn settle<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid, element: &E, arrived: Uuid)
+    where
+        E: Event + Clone,
+        I: Iterator<Item = E>,
+    {
+        walk.settle(identity, element, arrived);
     }
 
-    #[test]
-    fn retiring_the_last_name_removes_its_whole_index() {
-        let event = named("A", 1, "venue-order", "A-1");
-        let identity = event.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
-        walk.settle(identity, &event, event.get_curruuid());
-        assert_eq!(walk.named.len(), 1);
-        assert_eq!(walk.names_of.len(), 1);
-
-        walk.retire(identity).expect("the live identity retires");
-        assert!(walk.named.is_empty());
-        assert!(walk.names_of.is_empty());
+    /// Retire the element alive under `identity`, answering whether one was.
+    pub fn retire<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid) -> bool
+    where
+        E: Event + Clone,
+        I: Iterator<Item = E>,
+    {
+        walk.retire(identity).is_some()
     }
 
-    #[test]
-    fn alternating_name_ownership_keeps_one_reverse_record() {
-        let first = named("A", 1, "venue-order", "SHARED");
-        let second = named("B", 2, "venue-order", "SHARED");
-        let first_identity = first.get_crossuuid();
-        let second_identity = second.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
+    /// How many schemes the walk currently indexes names under.
+    pub fn named_schemes<E, I>(walk: &EventIterator<E, I>) -> usize {
+        walk.named.len()
+    }
 
-        for turn in 0..64 {
-            let (identity, event) = if turn % 2 == 0 {
-                (first_identity, &first)
-            } else {
-                (second_identity, &second)
-            };
-            walk.settle(identity, event, event.get_curruuid());
-            assert_eq!(
-                walk.named["venue-order"]["SHARED"], identity,
-                "the latest owner remains the lookup target"
-            );
-            assert_eq!(
-                walk.names_of.values().map(Vec::len).sum::<usize>(),
-                1,
-                "one current lookup retains one reverse ownership record"
-            );
-        }
+    /// The identity `scheme`/`name` currently looks up to.
+    pub fn named_identity<E, I>(
+        walk: &EventIterator<E, I>,
+        scheme: &str,
+        name: &str,
+    ) -> Option<Uuid> {
+        walk.named.get(scheme)?.get(name).copied()
+    }
 
-        walk.retire(first_identity)
-            .expect("the first owner retires");
-        walk.retire(second_identity)
-            .expect("the second owner retires");
-        assert!(walk.named.is_empty());
-        assert!(walk.names_of.is_empty());
+    /// How many identities hold a reverse record of the names they go by.
+    pub fn named_identities<E, I>(walk: &EventIterator<E, I>) -> usize {
+        walk.names_of.len()
+    }
+
+    /// How many reverse ownership records the walk holds in all.
+    pub fn name_records<E, I>(walk: &EventIterator<E, I>) -> usize {
+        walk.names_of.values().map(Vec::len).sum()
     }
 }

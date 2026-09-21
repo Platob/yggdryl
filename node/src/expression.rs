@@ -28,11 +28,11 @@ use yggdryl::{
     Selector as CoreSelector,
 };
 
+use crate::datatype::{DataTypeInput, dtype_from_input};
+use crate::field::{JsField, MetadataEntry};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::types::datatype::{DataTypeInput, dtype_from_input};
-use crate::types::field::{JsField, MetadataEntry};
 
 // ---------------------------------------------------------------------------
 // Reading JavaScript values as the core's

@@ -71,22 +71,41 @@ impl LineOffsets {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{LineOffsets, line_column_to_byte_offset};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/text/position.rs` pins and a caller cannot reach.
+    //!
+    //! A byte offset is what a parser's refusal names, and a caller reads the
+    //! offset rather than the accounting that produced it. `LineOffsets` is a
+    //! running state rather than a value, so it is opened as a forwarding
+    //! wrapper: the real type keeps its `pub(crate)` visibility.
 
-    #[test]
-    fn positions_are_bounded_byte_offsets() {
-        let input = b"one\ntwo\nthree";
-        assert_eq!(line_column_to_byte_offset(input, 2, 2), 5);
-        assert_eq!(line_column_to_byte_offset(input, 2, 1), 4);
-        assert_eq!(line_column_to_byte_offset(input, 9, 1), input.len());
-        assert_eq!(line_column_to_byte_offset(input, 9, 9), input.len());
+    /// Convert a one-based line and column pair to a bounded byte offset.
+    #[must_use]
+    pub fn line_column_to_byte_offset(input: &[u8], line: usize, column: usize) -> usize {
+        super::line_column_to_byte_offset(input, line, column)
+    }
 
-        let mut offsets = LineOffsets::new(2);
-        offsets.observe(b"one\ntwo\n");
-        offsets.observe(b"three");
-        assert_eq!(offsets.position(2, 2), 5);
-        assert_eq!(offsets.position(1, 1), input.len());
+    /// The recent line starts a streaming parser tracks.
+    pub struct LineOffsets(super::LineOffsets);
+
+    impl LineOffsets {
+        /// Track at most `window` recent line starts.
+        #[must_use]
+        pub fn new(window: usize) -> Self {
+            Self(super::LineOffsets::new(window))
+        }
+
+        /// Account for the next run of bytes the parser consumed.
+        pub fn observe(&mut self, input: &[u8]) {
+            self.0.observe(input);
+        }
+
+        /// The bounded byte offset of a one-based line and column.
+        #[must_use]
+        pub fn position(&self, line: usize, column: usize) -> usize {
+            self.0.position(line, column)
+        }
     }
 }

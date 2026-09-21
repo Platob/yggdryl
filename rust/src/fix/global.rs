@@ -123,3 +123,29 @@ fn from_location(location: &str) -> Result<FixRegistry> {
     }
     FixRegistry::from_handle(&folder)
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! [`FixRegistry::global`](crate::FixRegistry::global) resolves once per
+    //! process and reads the environment, so the order it resolves in is
+    //! pinned through the pure step underneath it instead.
+    use super::FixRegistry;
+    use crate::Result;
+    use crate::local::Folder;
+
+    /// Resolve the default from its two inputs, in the documented order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where a stated location names nothing, names a
+    /// scheme this crate has no backend for, or holds a malformed shard.
+    pub fn autoload(
+        registry_location: Option<&str>,
+        config: Option<Folder>,
+    ) -> Result<FixRegistry> {
+        super::autoload(registry_location, config)
+    }
+}

@@ -1,3 +1,7 @@
+//! `rust/src/text/codec.rs`: one codec surface over the four structured
+//! formats, read and written through a handle that applies its own content
+//! coding.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;

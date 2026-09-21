@@ -1,12 +1,12 @@
-//! An element states its identity, its cross identity, its codes, its names
-//! and its parents; an event its instant, its state and the optional facts
-//! of its lifecycle; a market element its price, quantity and side. The
-//! traits are signatures and provided readings, so what a caller can rely
-//! on is that a value implementing them answers through them, including as
-//! a trait object, and that following, merging and syncing fold the
-//! lifecycle the way the traits say - over the crate's own holders,
-//! [`MarketElementData`] and [`MarketEventData`], and over a foreign type
-//! that implements only the signatures.
+//! `rust/src/graph/element.rs`: an element states its identity, its cross
+//! identity, its codes, its names and its parents; an event its instant,
+//! its state and the optional facts of its lifecycle; a market element its
+//! price, quantity and side. The traits are signatures and provided
+//! readings, so what a caller can rely on is that a value implementing them
+//! answers through them, including as a trait object, and that following,
+//! merging and syncing fold the lifecycle the way the traits say - over the
+//! crate's own holders, [`MarketElementData`] and [`MarketEventData`], and
+//! over a foreign type that implements only the signatures.
 
 use std::collections::BTreeMap;
 use std::hash::Hasher;

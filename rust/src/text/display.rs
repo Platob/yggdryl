@@ -95,7 +95,7 @@ pub(crate) const fn elide_display<T: fmt::Display>(value: &T) -> ElidedDisplay<'
 }
 
 /// Render any [`fmt::Display`] value through an explicit byte budget.
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) const fn elide_display_to<T: fmt::Display>(
     value: &T,
     limit: usize,
@@ -156,66 +156,35 @@ pub(crate) fn expected_got(expected: impl fmt::Display, actual: impl fmt::Displa
     format_smolstr!("expected {expected}, got {actual}")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{ERROR_TEXT_LIMIT, elide_display_to, elide_to, expected_got};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/text/display.rs` pins and a caller cannot reach.
+    //!
+    //! Bounded interpolation is what keeps an error message from growing with
+    //! the payload it names: a caller reads the sentence, never the budget or
+    //! the eliding that built it. Every door here forwards to the real item
+    //! and hands back a public value, so `text::display` stays exactly as
+    //! private as it was.
 
-    #[test]
-    fn short_text_is_unchanged() {
-        assert_eq!(elide_to("id", ERROR_TEXT_LIMIT).to_string(), "id");
-        assert_eq!(format!("{:?}", elide_to("id", ERROR_TEXT_LIMIT)), "\"id\"");
+    use std::fmt;
+
+    /// The byte budget caller text crosses before it reaches a message.
+    pub const ERROR_TEXT_LIMIT: usize = super::ERROR_TEXT_LIMIT;
+
+    /// Borrow caller text for bounded interpolation: `Display` renders it
+    /// unquoted, `Debug` quoted and escaped.
+    pub fn elide_to(value: &str, limit: usize) -> impl fmt::Debug + fmt::Display {
+        super::elide_to(value, limit)
     }
 
-    #[test]
-    fn debug_keeps_empty_and_whitespace_visible() {
-        let quoted = |value: &str| format!("{:?}", elide_to(value, ERROR_TEXT_LIMIT));
-        assert_eq!(quoted(""), "\"\"");
-        assert_eq!(quoted("a "), "\"a \"");
-        assert_eq!(quoted("a\tb"), "\"a\\tb\"");
+    /// Render any [`fmt::Display`] value through an explicit byte budget.
+    pub fn elide_display_to<T: fmt::Display>(value: &T, limit: usize) -> impl fmt::Display {
+        super::elide_display_to(value, limit)
     }
 
-    #[test]
-    fn long_text_is_bounded_and_marked() {
-        let long = "x".repeat(ERROR_TEXT_LIMIT * 4);
-        let rendered = elide_to(&long, ERROR_TEXT_LIMIT).to_string();
-        assert!(rendered.len() <= ERROR_TEXT_LIMIT + 4, "{}", rendered.len());
-        assert!(rendered.ends_with('\u{2026}'), "{rendered}");
-    }
-
-    #[test]
-    fn truncation_never_splits_a_character() {
-        // Each `é` is two bytes, so a 5-byte budget must stop at 4.
-        let text = "ééé";
-        let rendered = elide_to(text, 5).to_string();
-        assert_eq!(rendered, "éé\u{2026}");
-    }
-
-    #[test]
-    fn debug_truncation_stays_a_balanced_literal() {
-        let rendered = format!("{:?}", elide_to("abcdefgh", 3));
-        assert_eq!(rendered, "\"abc\u{2026}\"");
-    }
-
-    #[test]
-    fn display_values_are_bounded_without_rendering_the_whole_value() {
-        struct Wide(usize);
-        impl std::fmt::Display for Wide {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                for index in 0..self.0 {
-                    write!(formatter, "field_{index},")?;
-                }
-                Ok(())
-            }
-        }
-
-        let rendered = elide_display_to(&Wide(10_000), 32).to_string();
-        assert!(rendered.len() <= 36, "{}", rendered.len());
-        assert!(rendered.ends_with('\u{2026}'), "{rendered}");
-        assert!(rendered.starts_with("field_0,"), "{rendered}");
-    }
-
-    #[test]
-    fn expected_got_uses_the_contract_sentence() {
-        assert_eq!(expected_got("int64", "utf8"), "expected int64, got utf8");
+    /// Build the canonical `expected ..., got ...` failure sentence.
+    pub fn expected_got(expected: impl fmt::Display, actual: impl fmt::Display) -> String {
+        super::expected_got(expected, actual).to_string()
     }
 }

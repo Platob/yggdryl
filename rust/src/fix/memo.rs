@@ -38,7 +38,7 @@ use crate::xxhash::Xxh64;
 type TextMap<K, V> = HashMap<K, V, Xxh64>;
 
 /// What a run has learned, shared by every stream the codec is cloned into.
-pub(super) struct Memo {
+pub struct Memo {
     /// The number this memo's answers are mirrored under: a memo dropped
     /// and another built at its address answer different dictionaries, a
     /// memo cleared answers a changed one, and a number is never given
@@ -64,7 +64,7 @@ type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 
 /// What one field states about the values it takes, read off its metadata
 /// once: the spellings it declares as an absence, and its code set.
-pub(super) struct Facts {
+pub struct Facts {
     nulls: Box<[SmolStr]>,
     codes: Option<Arc<str>>,
 }
@@ -307,38 +307,47 @@ impl Memo {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/memo.rs` pins and a caller cannot reach.
+    //!
+    //! The memo is invisible except through the work it does *not* repeat, so
+    //! the pin counts the calls a supplier is asked for rather than reading an
+    //! answer. `fix::memo` is a private module of a published one, so these
+    //! being `pub` reaches nobody: this door is the only path to them, and it
+    //! exists under the `internals` feature alone.
+    use std::sync::Arc;
 
-    use super::*;
-    use crate::DataType;
+    use crate::Field;
 
-    #[test]
-    fn field_facts_resolve_and_share_the_code_document_once_until_cleared() {
-        let memo = Memo::new();
-        let field = DataType::utf8().nullable_field("side");
-        let calls = Cell::new(0);
-        let first: Arc<str> = Arc::from(r#"[{"value":"1","name":"Buy"}]"#);
-        let supplied = || {
-            calls.set(calls.get() + 1);
-            Some(Arc::clone(&first))
-        };
+    pub use super::{Facts, Memo};
 
-        let facts = memo.facts(&field, supplied);
-        let repeated = memo.facts(&field, supplied);
-        assert_eq!(calls.get(), 1);
-        assert!(Arc::ptr_eq(facts.codes.as_ref().unwrap(), &first));
-        assert!(Arc::ptr_eq(&facts, &repeated));
+    /// A dictionary that has answered nothing yet.
+    #[must_use]
+    pub fn new() -> Memo {
+        Memo::new()
+    }
 
+    /// Forget every answer, as a changed dictionary does.
+    pub fn clear(memo: &Memo) {
         memo.clear();
-        let replacement: Arc<str> = Arc::from(r#"[{"value":"2","name":"Sell"}]"#);
-        let refreshed = memo.facts(&field, || {
-            calls.set(calls.get() + 1);
-            Some(Arc::clone(&replacement))
-        });
-        assert_eq!(calls.get(), 2);
-        assert!(Arc::ptr_eq(refreshed.codes.as_ref().unwrap(), &replacement));
-        assert!(!Arc::ptr_eq(&facts, &refreshed));
+    }
+
+    /// What `source` states about its values, read off its metadata the first
+    /// time and remembered, `codes` supplying the document that first time.
+    pub fn facts(
+        memo: &Memo,
+        source: &Field,
+        codes: impl FnOnce() -> Option<Arc<str>>,
+    ) -> Arc<Facts> {
+        memo.facts(source, codes)
+    }
+
+    /// The code document these facts resolved to, as the shared handle the
+    /// memo kept, so a second ask can be shown to be the same one.
+    #[must_use]
+    pub fn codes(facts: &Facts) -> Option<&Arc<str>> {
+        facts.codes.as_ref()
     }
 }

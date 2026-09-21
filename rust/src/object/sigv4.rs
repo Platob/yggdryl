@@ -131,20 +131,12 @@ impl Signer {
         }
     }
 
-    /// The region every credential scope names.
-    ///
-    /// Only the tests read it back: the scope the signer builds is where it
-    /// otherwise appears.
-    #[cfg(test)]
-    pub(crate) fn region(&self) -> &str {
-        &self.region
-    }
-
     /// The access key id every authorization header carries.
     ///
-    /// Only the tests read it back: the header the signer builds is where it
-    /// otherwise appears.
-    #[cfg(test)]
+    /// The header the signer builds is where it otherwise appears; this reads
+    /// it back for the client's own door, which holds a signer rather than a
+    /// request to read the header off.
+    #[cfg(feature = "internals")]
     pub(crate) fn access_key_id(&self) -> &str {
         &self.access_key_id
     }
@@ -360,413 +352,138 @@ pub(crate) fn civil_from_days(days: u64) -> (u64, u64, u64) {
     (year, month, day)
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/sigv4.rs` pins and a caller cannot reach.
+    //!
+    //! The signature is what every S3 request stands or falls on, so it is
+    //! pinned against AWS's own published example vectors - which means
+    //! reaching the canonical request and the string to sign, not only the
+    //! headers that come out. Each item here forwards to the real one, so
+    //! nothing in this module is a visibility the crate would otherwise have.
+    use std::sync::PoisonError;
+    use std::time::SystemTime;
 
-    use super::*;
+    /// SHA-256 of the empty payload, lowercase hex.
+    pub const EMPTY_PAYLOAD_SHA256: &str = super::EMPTY_PAYLOAD_SHA256;
 
-    // The examples of the S3 API reference page "Authenticating Requests: Using the Authorization
-    // Header (AWS Signature Version 4)", with its documented credentials, host, region and time.
-    const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
-    const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-    const HOST: &str = "examplebucket.s3.amazonaws.com";
-    const SCOPE: &str = "20130524/us-east-1/s3/aws4_request";
-    const CREDENTIAL: &str = "AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request";
-    const MAY_24_2013: u64 = 1_369_353_600;
+    /// What `x-amz-content-sha256` carries when the body is not hashed.
+    pub const UNSIGNED_PAYLOAD: &str = super::UNSIGNED_PAYLOAD;
 
-    fn at(seconds: u64) -> SystemTime {
-        UNIX_EPOCH + Duration::from_secs(seconds)
+    /// Lowercase hex SHA-256 of `bytes`.
+    pub fn sha256_hex(bytes: &[u8]) -> String {
+        super::sha256_hex(bytes)
     }
 
-    fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
-        list.iter()
-            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-            .collect()
+    /// Percent-encode one raw object key for the request path.
+    pub fn encode_key(key: &str) -> String {
+        super::encode_key(key)
     }
 
-    fn example_signer(token: Option<&str>) -> Signer {
-        Signer::new(
-            ACCESS_KEY,
-            SECRET_KEY,
-            token.map(str::to_owned),
-            "us-east-1",
-        )
+    /// Percent-encode one query name or value, the separator included.
+    pub fn encode_query_component(text: &str) -> String {
+        super::encode_query_component(text)
     }
 
-    /// Canonical request, string to sign, and emitted headers for one example request.
-    fn gold(
+    /// The canonical query string, which is also what goes on the wire.
+    pub fn canonical_query(query: &[(String, String)]) -> String {
+        super::canonical_query(query)
+    }
+
+    /// The `(date, datetime)` pair every scope and `x-amz-date` is built from.
+    pub fn amz_date(now: SystemTime) -> (String, String) {
+        super::amz_date(now)
+    }
+
+    /// The canonical request over an already canonical header list.
+    pub fn canonical_request(
         method: &str,
         path: &str,
-        query: &[(&str, &str)],
-        headers: &[(&str, &str)],
+        query: &[(String, String)],
+        canonical_headers: &[(String, String)],
         payload_hash: &str,
-    ) -> (String, String, Vec<(String, String)>) {
-        let signer = example_signer(None);
-        let (query, headers) = (pairs(query), pairs(headers));
-        let canonical = signer.canonical_headers(HOST, "20130524T000000Z", payload_hash, &headers);
-        let request = canonical_request(method, path, &query, &canonical, payload_hash);
-        let to_sign = string_to_sign("20130524T000000Z", SCOPE, &request);
-        let emitted = signer.sign(
-            method,
-            HOST,
-            path,
-            &query,
-            &headers,
-            payload_hash,
-            at(MAY_24_2013),
-        );
-        (request, to_sign, emitted)
+    ) -> String {
+        super::canonical_request(method, path, query, canonical_headers, payload_hash)
     }
 
-    fn expected_headers(
-        signed: &str,
-        signature: &str,
-        payload_hash: &str,
-    ) -> Vec<(String, String)> {
-        pairs(&[
-            ("x-amz-date", "20130524T000000Z"),
-            ("x-amz-content-sha256", payload_hash),
-            (
-                "authorization",
-                &format!(
-                    "AWS4-HMAC-SHA256 Credential={CREDENTIAL}, SignedHeaders={signed}, Signature={signature}"
-                ),
-            ),
-        ])
+    /// The string the signing key signs.
+    pub fn string_to_sign(datetime: &str, scope: &str, canonical_request: &str) -> String {
+        super::string_to_sign(datetime, scope, canonical_request)
     }
 
-    #[test]
-    fn get_object_with_a_range_matches_the_aws_example() {
-        let (request, to_sign, emitted) = gold(
-            "GET",
-            "/test.txt",
-            &[],
-            &[("Range", "bytes=0-9")],
-            EMPTY_PAYLOAD_SHA256,
-        );
-        assert_eq!(
-            request,
-            "GET\n\
-             /test.txt\n\
-             \n\
-             host:examplebucket.s3.amazonaws.com\n\
-             range:bytes=0-9\n\
-             x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\
-             x-amz-date:20130524T000000Z\n\
-             \n\
-             host;range;x-amz-content-sha256;x-amz-date\n\
-             e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            to_sign,
-            "AWS4-HMAC-SHA256\n\
-             20130524T000000Z\n\
-             20130524/us-east-1/s3/aws4_request\n\
-             7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
-        );
-        assert_eq!(
-            emitted,
-            expected_headers(
-                "host;range;x-amz-content-sha256;x-amz-date",
-                "f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
-                EMPTY_PAYLOAD_SHA256,
-            )
-        );
-    }
+    /// One credential set bound to a region, forwarding to the real signer.
+    pub struct Signer(super::Signer);
 
-    #[test]
-    fn put_object_matches_the_aws_example() {
-        let payload_hash = sha256_hex(b"Welcome to Amazon S3.");
-        assert_eq!(
-            payload_hash,
-            "44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072"
-        );
-        let (request, to_sign, emitted) = gold(
-            "PUT",
-            &encode_key("/test$file.text"),
-            &[],
-            &[
-                ("x-amz-storage-class", "REDUCED_REDUNDANCY"),
-                ("Date", "Fri, 24 May 2013 00:00:00 GMT"),
-            ],
-            &payload_hash,
-        );
-        assert_eq!(
-            request,
-            "PUT\n\
-             /test%24file.text\n\
-             \n\
-             date:Fri, 24 May 2013 00:00:00 GMT\n\
-             host:examplebucket.s3.amazonaws.com\n\
-             x-amz-content-sha256:44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072\n\
-             x-amz-date:20130524T000000Z\n\
-             x-amz-storage-class:REDUCED_REDUNDANCY\n\
-             \n\
-             date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class\n\
-             44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072"
-        );
-        assert_eq!(
-            to_sign,
-            "AWS4-HMAC-SHA256\n\
-             20130524T000000Z\n\
-             20130524/us-east-1/s3/aws4_request\n\
-             9e0e90d9c76de8fa5b200d8c849cd5b8dc7a3be3951ddb7f6a76b4158342019d"
-        );
-        assert_eq!(
-            emitted,
-            expected_headers(
-                "date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class",
-                "98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd",
-                &payload_hash,
-            )
-        );
-    }
-
-    #[test]
-    fn get_bucket_lifecycle_matches_the_aws_example() {
-        let (request, to_sign, emitted) =
-            gold("GET", "/", &[("lifecycle", "")], &[], EMPTY_PAYLOAD_SHA256);
-        assert_eq!(
-            request,
-            "GET\n\
-             /\n\
-             lifecycle=\n\
-             host:examplebucket.s3.amazonaws.com\n\
-             x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\
-             x-amz-date:20130524T000000Z\n\
-             \n\
-             host;x-amz-content-sha256;x-amz-date\n\
-             e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            to_sign,
-            "AWS4-HMAC-SHA256\n\
-             20130524T000000Z\n\
-             20130524/us-east-1/s3/aws4_request\n\
-             9766c798316ff2757b517bc739a67f6213b4ab36dd5da2f94eaebf79c77395ca"
-        );
-        assert_eq!(
-            emitted,
-            expected_headers(
-                "host;x-amz-content-sha256;x-amz-date",
-                "fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543",
-                EMPTY_PAYLOAD_SHA256,
-            )
-        );
-    }
-
-    #[test]
-    fn get_bucket_list_objects_matches_the_aws_example() {
-        // Given out of order: the canonical query sorts by name.
-        let (request, to_sign, emitted) = gold(
-            "GET",
-            "/",
-            &[("prefix", "J"), ("max-keys", "2")],
-            &[],
-            EMPTY_PAYLOAD_SHA256,
-        );
-        assert_eq!(
-            request,
-            "GET\n\
-             /\n\
-             max-keys=2&prefix=J\n\
-             host:examplebucket.s3.amazonaws.com\n\
-             x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\
-             x-amz-date:20130524T000000Z\n\
-             \n\
-             host;x-amz-content-sha256;x-amz-date\n\
-             e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            to_sign,
-            "AWS4-HMAC-SHA256\n\
-             20130524T000000Z\n\
-             20130524/us-east-1/s3/aws4_request\n\
-             df57d21db20da04d7fa30298dd4488ba3a2b47ca3a489c74750e0f1e7df1b9b7"
-        );
-        assert_eq!(
-            emitted,
-            expected_headers(
-                "host;x-amz-content-sha256;x-amz-date",
-                "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7",
-                EMPTY_PAYLOAD_SHA256,
-            )
-        );
-    }
-
-    #[test]
-    fn the_empty_payload_constant_is_the_sha256_of_nothing() {
-        assert_eq!(sha256_hex(b""), EMPTY_PAYLOAD_SHA256);
-    }
-
-    #[test]
-    fn encode_key_keeps_separators_and_unreserved_bytes_and_escapes_the_rest() {
-        assert_eq!(encode_key("a/b c.txt"), "a/b%20c.txt");
-        assert_eq!(encode_key("caf\u{e9}/\u{1f600}"), "caf%C3%A9/%F0%9F%98%80");
-        assert_eq!(encode_key("a+b=c~d%e"), "a%2Bb%3Dc~d%25e");
-        assert_eq!(encode_key("-_.~09AZaz"), "-_.~09AZaz");
-        assert_eq!(encode_key("already%20encoded"), "already%2520encoded");
-        assert_eq!(encode_key(""), "");
-    }
-
-    #[test]
-    fn encode_query_component_escapes_the_slash_too() {
-        assert_eq!(encode_query_component("a/b c"), "a%2Fb%20c");
-        assert_eq!(encode_query_component("x=&y"), "x%3D%26y");
-        assert_eq!(encode_query_component("safe-_.~"), "safe-_.~");
-    }
-
-    #[test]
-    fn canonical_query_sorts_by_name_then_value_and_renders_empty_values() {
-        let query = pairs(&[
-            ("prefix", "a/b"),
-            ("list-type", "2"),
-            ("delimiter", ""),
-            ("continuation-token", "z"),
-            ("continuation-token", "a"),
-        ]);
-        assert_eq!(
-            canonical_query(&query),
-            "continuation-token=a&continuation-token=z&delimiter=&list-type=2&prefix=a%2Fb"
-        );
-        assert_eq!(canonical_query(&[]), "");
-    }
-
-    #[test]
-    fn amz_date_renders_known_epochs_in_utc() {
-        let cases: [(u64, &str); 7] = [
-            (0, "19700101T000000Z"),
-            (MAY_24_2013, "20130524T000000Z"),
-            (946_684_799, "19991231T235959Z"),
-            (951_868_799, "20000229T235959Z"),
-            (1_709_210_096, "20240229T123456Z"),
-            (4_107_542_399, "21000228T235959Z"),
-            (4_107_542_400, "21000301T000000Z"),
-        ];
-        for (seconds, expected) in cases {
-            let (date, datetime) = amz_date(at(seconds));
-            assert_eq!(datetime, expected);
-            assert_eq!(date, &expected[..8]);
+    impl Signer {
+        /// Bind credentials to `region`; no key is derived until the first
+        /// [`Signer::sign`].
+        pub fn new(
+            access_key_id: impl Into<String>,
+            secret_access_key: impl Into<String>,
+            session_token: Option<String>,
+            region: impl Into<String>,
+        ) -> Self {
+            Self(super::Signer::new(
+                access_key_id,
+                secret_access_key,
+                session_token,
+                region,
+            ))
         }
-        assert_eq!(amz_date(UNIX_EPOCH - Duration::from_secs(5)).0, "19700101");
-    }
 
-    #[test]
-    fn the_signing_key_is_reused_within_a_day_and_rederived_across_days() {
-        let signer = example_signer(None);
-        let empty: [(String, String); 0] = [];
-        let cached = |signer: &Signer| signer.key.lock().unwrap().clone();
-        assert!(cached(&signer).is_none());
-        signer.sign(
-            "GET",
-            HOST,
-            "/",
-            &empty,
-            &empty,
-            EMPTY_PAYLOAD_SHA256,
-            at(MAY_24_2013),
-        );
-        let (date, key) = cached(&signer).unwrap();
-        assert_eq!(date, "20130524");
-        assert_eq!(key, signer.signing_key("20130524"));
-        signer.sign(
-            "GET",
-            HOST,
-            "/",
-            &empty,
-            &empty,
-            EMPTY_PAYLOAD_SHA256,
-            at(MAY_24_2013 + 86_399),
-        );
-        assert_eq!(cached(&signer), Some(("20130524".to_owned(), key)));
-        signer.sign(
-            "GET",
-            HOST,
-            "/",
-            &empty,
-            &empty,
-            EMPTY_PAYLOAD_SHA256,
-            at(MAY_24_2013 + 86_400),
-        );
-        let (next_date, next_key) = cached(&signer).unwrap();
-        assert_eq!(next_date, "20130525");
-        assert_ne!(next_key, key);
-    }
+        /// The headers to add to the request, in the order they are emitted.
+        // The argument list is the wire request's parts, exactly as the signer
+        // takes them; a struct would only rename them.
+        #[allow(clippy::too_many_arguments)]
+        pub fn sign(
+            &self,
+            method: &str,
+            host: &str,
+            path: &str,
+            query: &[(String, String)],
+            headers: &[(String, String)],
+            payload_hash: &str,
+            now: SystemTime,
+        ) -> Vec<(String, String)> {
+            self.0
+                .sign(method, host, path, query, headers, payload_hash, now)
+        }
 
-    #[test]
-    fn a_session_token_is_emitted_and_signed() {
-        let signer = example_signer(Some("token/with+chars="));
-        let empty: [(String, String); 0] = [];
-        let emitted = signer.sign(
-            "GET",
-            HOST,
-            "/",
-            &empty,
-            &empty,
-            EMPTY_PAYLOAD_SHA256,
-            at(0),
-        );
-        let names: Vec<&str> = emitted.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(
-            names,
-            [
-                "x-amz-date",
-                "x-amz-content-sha256",
-                "x-amz-security-token",
-                "authorization"
-            ]
-        );
-        assert_eq!(emitted[2].1, "token/with+chars=");
-        assert!(
-            emitted[3].1.contains(
-                "SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token,"
-            )
-        );
-        let without = example_signer(None).sign(
-            "GET",
-            HOST,
-            "/",
-            &empty,
-            &empty,
-            EMPTY_PAYLOAD_SHA256,
-            at(0),
-        );
-        assert_eq!(without.len(), 3);
-        assert!(
-            without[2]
-                .1
-                .contains("SignedHeaders=host;x-amz-content-sha256;x-amz-date,")
-        );
-    }
+        /// The canonical header list one request signs over.
+        pub fn canonical_headers(
+            &self,
+            host: &str,
+            datetime: &str,
+            payload_hash: &str,
+            headers: &[(String, String)],
+        ) -> Vec<(String, String)> {
+            self.0
+                .canonical_headers(host, datetime, payload_hash, headers)
+        }
 
-    #[test]
-    fn header_values_are_trimmed_collapsed_lowercased_and_merged() {
-        let signer = example_signer(None);
-        let headers = pairs(&[
-            ("X-Amz-Meta-B", "  two   words\t here "),
-            ("x-amz-meta-a", "first"),
-            ("X-AMZ-META-A", "second"),
-            ("Host", "ignored.example"),
-            ("x-amz-date", "19990101T000000Z"),
-        ]);
-        let canonical = signer.canonical_headers("h:9000", "20130524T000000Z", "hash", &headers);
-        assert_eq!(
-            canonical,
-            pairs(&[
-                ("host", "h:9000"),
-                ("x-amz-content-sha256", "hash"),
-                ("x-amz-date", "20130524T000000Z"),
-                ("x-amz-meta-a", "first,second"),
-                ("x-amz-meta-b", "two words here"),
-            ])
-        );
-    }
+        /// The signing key derived for `date`.
+        pub fn signing_key(&self, date: &str) -> [u8; 32] {
+            self.0.signing_key(date)
+        }
 
-    #[test]
-    fn accessors_answer_the_bound_credentials() {
-        let signer = Signer::new("id", "secret", None, "eu-west-3");
-        assert_eq!(signer.access_key_id(), "id");
-        assert_eq!(signer.region(), "eu-west-3");
+        /// The `(date, key)` pair the signer is holding, if it derived one.
+        pub fn cached_key(&self) -> Option<(String, [u8; 32])> {
+            self.0
+                .key
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+        }
+
+        /// The access key id every authorization header carries.
+        pub fn access_key_id(&self) -> &str {
+            &self.0.access_key_id
+        }
+
+        /// The region every credential scope names.
+        pub fn region(&self) -> &str {
+            &self.0.region
+        }
     }
 }

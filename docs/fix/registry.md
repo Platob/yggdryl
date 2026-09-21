@@ -78,7 +78,8 @@
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
     from yggdryl.fix import FixRegistry
 
     counter = Field("NoPartyIDs", "int32")
@@ -93,7 +94,7 @@
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
     registry.insert(party)
-    parties = types.list("Parties", party)
+    parties = yggdryl.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
     registry.insert(parties)
@@ -790,7 +791,7 @@ The committed dictionary folds the FIX 4.0 to 5.0 SP2 listings into each set,
 so a value an older version declared and the newest dropped is a code of the
 set like any other: `ExecType(150)` `1` and `2`, the partial fill and the fill
 FIX 4.3 folded into `Trade`, are `PartiallyFilled` and `Filled`, the names an
-element's [state](../types/codes.md) reads. The set states one reading of each and dates
+element's [state](../types/codes/state.md) reads. The set states one reading of each and dates
 none of them.
 
 A legacy name that folds onto a current one takes the suffix `Legacy`, and so
@@ -1380,23 +1381,23 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 
     ```bash
     cargo test -p yggdryl --test fix
-    cargo test -p yggdryl --lib fix::tests::
-    cargo test -p yggdryl --lib -- fix::tests::the_fold_table_holds_through_add_field_and_through_merge_with fix::tests::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one fix::tests::three_spellings_of_one_name_under_one_tag_are_one_identity fix::tests::name_indexes_fold_ascii_and_membership_never_resolves
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal::the_fold_table_holds_through_add_field_and_through_merge_with mod_::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one mod_::internal::three_spellings_of_one_name_under_one_tag_are_one_identity mod_::internal::name_indexes_fold_ascii_and_membership_never_resolves
     cargo test -p yggdryl --test fix -- merge:: cfb::a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_standard_field
-    cargo test -p yggdryl --lib -- fix::tests::a_replacement_document_round_trips_canonically_and_in_order fix::tests::the_replacement_writer_refuses_what_the_document_cannot_state fix::tests::a_merge_lets_the_incoming_replacements_win_whole fix::tests::the_specifications_retirements_restate_as_documents_of_the_same_rules_would
-    cargo test -p yggdryl --test fix latest::the_dictionary_carries_the_rules_the_engine_reads
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal::a_replacement_document_round_trips_canonically_and_in_order mod_::internal::the_replacement_writer_refuses_what_the_document_cannot_state mod_::internal::a_merge_lets_the_incoming_replacements_win_whole mod_::internal::the_specifications_retirements_restate_as_documents_of_the_same_rules_would
+    cargo test -p yggdryl --test fix latest::
     ```
 
 === "Python"
 
     ```bash
-    python -m pytest python/tests/fix
+    python -m pytest python/tests/test_fix.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/fix/*.test.js
+    node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
     ```
 
 ## Performance

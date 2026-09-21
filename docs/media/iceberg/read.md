@@ -1,11 +1,12 @@
 # Iceberg reads
 
-Scans, plans, time travel, the inspection readers, the filtered writes that share the planner, and parallel decoding.
+Rows out of a table - as native scalars, as Arrow batches - planned from the metadata before a data file opens.
 
 ## Contract
 
 | Item | Behavior |
 | --- | --- |
+| Native rows | the folder *is* the table, so Python `read_records` and JavaScript `readRecords` reach it; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Projection | `scan(Some(&field))` gives each file its own projection mask; `None` reads every column |
 | Filter | `(column, value)` pairs, text parsed through the column's datatype, are sugar over `*_matching`, which takes a whole [expression](../../expression/index.md); a `where` on the record options is pushed into the plan whole, and the read decodes only the columns the `select` and `where` name |
 | `ScanPlan` | `record_count`, `files_planned`, `files_skipped`, `manifests_read`, `manifests_skipped`, decided before any data file opens |
@@ -18,6 +19,115 @@ Scans, plans, time travel, the inspection readers, the filtered writes that shar
 | Parallel read | needs `read.parallelism` >= 2 and `read.parallel.min-files` (default 16) files of `read.parallel.min-file-size-bytes` (default 4 MiB); default parallelism is the host's, clamped to 1..=8; plan order |
 
 ## Use
+
+Native rows first: the folder *is* the table, so the ordinary record surface reaches it and hands back one mapping per row. Rust reads Arrow and crosses into the value model in the same call.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType};
+
+    struct Quote(i64, &'static str);
+
+    impl From<Quote> for Scalar {
+        fn from(row: Quote) -> Self {
+            Scalar::from_sequence([Scalar::from(row.0), Scalar::from(row.1)])
+        }
+    }
+
+    let schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+    ])?)
+    .required_field("row");
+
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-native-read");
+    let _ = std::fs::remove_dir_all(&path);
+    Table::create(Folder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
+
+    // The folder *is* the table, so the ordinary record surface reaches it, and
+    // its options come from the metadata before a single data file exists.
+    let mut folder = Folder::new(&path)?;
+    let base = folder.record_options()?;
+    // The table's stored schema declares the rows: a native row is an ordered
+    // sequence under it.
+    let options = base.clone().with_field(folder.read_arrow_field(&base)?);
+    folder.overwrite_records([Quote(1, "XNAS"), Quote(2, "XNYS")], &options)?;
+
+    // Rust reads Arrow, then crosses into the value model in one call: a scan
+    // answers a sequence of ordered row sequences.
+    let rows = folder.read_arrow(Some(&options))?.into_scalar()?;
+    let venues = rows
+        .as_sequence()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|row| row.as_sequence().and_then(|row| row[1].as_str()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(venues, ["XNAS", "XNYS"]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string(), nullable=False),
+    ])
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns)
+
+    # A table takes plain rows, with no Arrow holder and no schema of their own.
+    table.append([{"id": 1, "venue": "XNAS"}, {"id": 2, "venue": "XNYS"}])
+
+    # The folder *is* the table, so the ordinary record surface reads it back.
+    folder = IOBase(path)
+    rows = list(folder.read_records(options=folder.record_options()))
+    assert len(rows) == 2
+    assert [row["venue"] for row in rows] == ["XNAS", "XNYS"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, IOBase, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+
+    const table = iceberg.Table.create(root, schema)
+    // A table takes plain objects, with no Arrow holder and no schema of their own.
+    table.append([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: 'XNYS' }])
+
+    // The folder *is* the table, so the ordinary record surface reads it back.
+    const folder = IOBase.from(root)
+    const rows = [...folder.readRecords(folder.recordOptions())]
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map((row) => row.venue), ['XNAS', 'XNYS'])
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+## Rows as Arrow batches
 
 The target names the columns to keep; the cast to the scan's root reads an evolved table as one shape.
 
@@ -77,7 +187,7 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -201,7 +311,7 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -282,32 +392,162 @@ Every level prunes:
 | Manifest entry | the file's partition tuple | one data file, unopened |
 | Data file | per-column bounds and null counts | one data file, unopened |
 
-Each level answers the [expression](../../expression/index.md) from its own statistics; a file's path answers every free [`&holder.*`](../../expression/holder.md) attribute before a byte is read. `scan_where` and `plan` build the expression from pairs; `scan_matching` and `plan_matching` take the whole language.
+Each level answers the [expression](../../expression/index.md) from its own statistics; a file's path answers every free [`&holder.*`](../../expression/holder.md) attribute before a byte is read. `scan_where` and `plan` build the expression from pairs; `scan_matching` and `plan_matching` take the whole language. What each level stores is on [Metadata](metadata.md), and the partition tuple it prunes by on [Partitions](partitions.md).
+
+One predicate crosses every level. Four rows are committed one at a time, so each is its own manifest and its own data file: the partition conjunct settles the 2023 manifest from the manifest-list summary alone, the range and the equality skip two more files on their own statistics, and one file is opened.
 
 === "Rust"
 
-    ```{ .rust .ignore }
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, IOMedia, StructType, arrow};
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("ccy"),
+        DataType::Int64.required_field("price"),
+        DataType::utf8().required_field("year"),
+    ])?)
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    let root = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-planning");
+    let _ = std::fs::remove_dir_all(&root);
+    let spec = PartitionSpec::identity(1, &schema, &["year"])?;
+    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let arrow_schema = schema.into_arrow_schema()?;
+    for (id, ccy, price, year) in [
+        (1_i64, "EUR", 150_i64, "2024"),
+        (2, "EUR", 50, "2024"),
+        (3, "USD", 200, "2024"),
+        (4, "EUR", 300, "2023"),
+    ] {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(Int64Array::from(vec![id])),
+                Arc::new(StringArray::from(vec![ccy])),
+                Arc::new(Int64Array::from(vec![price])),
+                Arc::new(StringArray::from(vec![year])),
+            ],
+        )?;
+        table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    }
+
     // Ranges, null tests, and questions about the file, in one predicate.
-    let reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
-        None,
-    )?;
+    let predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'";
+    let plan = table.plan_matching(predicate)?;
+    assert_eq!(plan.manifests_skipped(), 1);
+    assert_eq!(plan.files_skipped(), 2);
+    assert_eq!(plan.record_count()?, 1);
+
+    let mut rows = 0;
+    for batch in table.scan_matching(predicate, None)? {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 1);
+
+    let _ = std::fs::remove_dir_all(&root);
     ```
 
 === "Python"
 
-    ```{ .python .ignore }
-    reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
-    )
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ccy", pa.string(), nullable=False),
+        pa.field("price", pa.int64(), nullable=False),
+        pa.field("year", pa.string(), nullable=False),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["year"])
+    for id_, ccy, price, year in [
+        (1, "EUR", 150, "2024"),
+        (2, "EUR", 50, "2024"),
+        (3, "USD", 200, "2024"),
+        (4, "EUR", 300, "2023"),
+    ]:
+        table.append(
+            pa.record_batch(
+                {"id": [id_], "ccy": [ccy], "price": [price], "year": [year]},
+                schema=columns,
+            )
+        )
+
+    # Ranges, null tests, and questions about the file, in one predicate.
+    predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
+    plan = table.plan_matching(predicate)
+    assert plan["manifests_skipped"] == 1
+    assert plan["files_skipped"] == 2
+    assert plan["tasks"] == 1
+
+    read = table.scan_matching(predicate).read_all()
+    assert read.num_rows == 1
+    assert read.column("id").to_pylist() == [1]
     ```
 
 === "JavaScript"
 
-    ```{ .javascript .ignore }
-    const reader = table.scanMatching(
-      "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct(
+      'row',
+      [
+        Field.from('id: int64'),
+        Field.from('ccy: utf8'),
+        Field.from('price: int64'),
+        Field.from('year: utf8'),
+      ],
+      { nullable: false },
     )
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['year'])
+    for (const [id, ccy, price, year] of [
+      [1n, 'EUR', 150n, '2024'],
+      [2n, 'EUR', 50n, '2024'],
+      [3n, 'USD', 200n, '2024'],
+      [4n, 'EUR', 300n, '2023'],
+    ]) {
+      table.append(
+        new arrow.Table({
+          id: arrow.vectorFromArray([id], new arrow.Int64()),
+          ccy: arrow.vectorFromArray([ccy], new arrow.Utf8()),
+          price: arrow.vectorFromArray([price], new arrow.Int64()),
+          year: arrow.vectorFromArray([year], new arrow.Utf8()),
+        }),
+      )
+    }
+
+    // Ranges, null tests, and questions about the file, in one predicate.
+    const predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
+    const plan = table.planMatching(predicate)
+    assert.equal(plan.manifestsSkipped, 1)
+    assert.equal(plan.filesSkipped, 2)
+    assert.equal(plan.tasks, 1)
+
+    const read = table.scanMatching(predicate).intoTable()
+    assert.equal(read.numRows, 1)
+    assert.deepEqual([...read.getChild('id')], [1n])
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
 ## Time travel and the inspection tables
@@ -368,7 +608,7 @@ Nothing a commit writes is mutated in place, so a retained snapshot is read by a
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
@@ -556,7 +796,7 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -769,10 +1009,10 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::planning
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::manifest_planning
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
-    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::planning
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::manifest_planning
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- partition::iceberg scan::iceberg staging::iceberg table::iceberg types::iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^plan/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^read/'
     ```
@@ -780,12 +1020,12 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg_planning.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     YGGDRYL_BENCH_FILTER=iceberg/scan npm run --prefix node bench:media
     ```

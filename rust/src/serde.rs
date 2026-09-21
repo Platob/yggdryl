@@ -358,7 +358,7 @@ mod field {
     // for the serde ecosystem - it is nested inside other derived structures
     // across the tree, and AGENTS.md requires those traits on a native value. The
     // two are not a second structural model: the parity test in
-    // `tests/field/serde.rs` dumps every shape through both routes and compares the
+    // `rust/tests/root/serde.rs` dumps every shape through both routes and compares the
     // bytes, so the Serde impl cannot drift from the `Scalar` mapping without
     // failing a test. Every *other* format goes through `into_value` alone.
     // ---------------------------------------------------------------------------
@@ -1799,7 +1799,7 @@ pub(crate) fn invalid(
 // for the serde ecosystem - it is nested inside other derived structures
 // across the tree, and AGENTS.md requires those traits on a native value. The
 // two are not a second structural model: the parity test in
-// `tests/field/serde.rs` dumps every shape through both routes and compares the
+// `rust/tests/root/serde.rs` dumps every shape through both routes and compares the
 // bytes, so the Serde impl cannot drift from the `Scalar` mapping without
 // failing a test. Every *other* format goes through `into_value` alone.
 // ---------------------------------------------------------------------------

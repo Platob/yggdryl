@@ -80,7 +80,7 @@ An [Iceberg table](../../media/iceberg/index.md) over a store touches only the
 files its metadata names - never a listing of `data/`, never a `HEAD` for a
 size the manifest already states, never a listing to learn the role of a
 handle the table already knows - so every commit and scan is a number the
-accounting suite (`object::tests::accounting::iceberg`) holds exactly.
+accounting suite (`accounting::iceberg` in `rust/tests/object/mod_.rs`) holds exactly.
 Before local staging and the leaf handles, the same sequence cost 9, 25, 40,
 40, 5, 21, 9 and 29 requests.
 

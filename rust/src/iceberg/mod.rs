@@ -85,19 +85,19 @@ mod catalog;
 mod evolve;
 mod field;
 mod inspect;
-mod manifest;
-mod metadata;
+pub(crate) mod manifest;
+pub(crate) mod metadata;
 mod official;
-mod options;
-mod partition;
-mod scan;
+pub(crate) mod options;
+pub(crate) mod partition;
+pub(crate) mod scan;
 mod schema;
-mod snapshot;
-mod staging;
-mod statistics;
-mod table;
+pub(crate) mod snapshot;
+pub(crate) mod staging;
+pub(crate) mod statistics;
+pub(crate) mod table;
 mod types;
-mod value;
+pub(crate) mod value;
 
 pub use catalog::{Catalog, Catalogs, Names, Namespace, Namespaces, Tables};
 pub use evolve::{SchemaUpdate, can_promote};
@@ -436,6 +436,3 @@ impl Located {
 pub(crate) fn located(handle: &(impl IOBase + ?Sized)) -> Result<Option<Located>> {
     Located::of(handle)
 }
-
-#[cfg(test)]
-mod tests;

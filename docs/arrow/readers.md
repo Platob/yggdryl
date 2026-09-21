@@ -154,8 +154,8 @@ assert_eq!(rows, 3);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow combined::
-    cargo test --features "parquet iceberg" -p yggdryl --lib arrow::rows::
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow cast_coverage::
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow cast_plan::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test arrow -- rows::row_values rows::widening
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::coverage
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::plans
     ```

@@ -161,24 +161,25 @@ passes.
 | Loop | Command | Answers |
 | --- | --- | --- |
 | it builds | `cargo check -p yggdryl --all-targets`, plus `--keep-going --message-format=short` when a change reaches every caller | types and borrows, and every test and benchmark still compiling against the changed signature; with the two flags, one line per diagnostic across every target rather than a stop at the first failing one, re-run because the compiler reports the errors of the phase it reached |
-| it behaves | `cargo test -p yggdryl --test <theme> <filter>` | the `rust/tests/<theme>.rs` suite mirroring the `src/` subtree touched |
-| a private pin holds | `cargo test -p yggdryl --lib <module>::` | the `#[cfg(test)]` module beside code no integration test can reach |
+| it behaves | `cargo test -p yggdryl --test <entry> <filter>` | the `rust/tests/<entry>.rs` harness over the source entry touched - the folder's own name, or `root` for a file the crate root holds ([Where a test lives](#where-a-test-lives)) |
+| a private pin holds | the same loop plus `--features internals` | the `internal` module of the mirrored file, which is where what no caller can name is pinned |
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
-| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
-| the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
+| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
+| the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
-The measured costs that shape the loop: an already-built theme suite is under a
-second (`--test types` is 603 tests in 0.45s), the first build of a target is
-about a minute and a half, re-checking the crate after an edit is about thirty
-seconds, `--all-targets` costs roughly ten seconds more than `--lib` and is
-worth it because it catches a test or benchmark left behind by a changed
-signature, and `--test iobase_calls` unfiltered is half a minute - so filter it
-to the surface touched.
+The measured costs that shape the loop: an already-built harness is under a
+second (`--test root` is 946 tests in 0.6s), the first build of a
+target is about a minute and a half, re-checking the crate after an edit is
+about thirty seconds, `--all-targets` costs roughly ten seconds more than
+`--lib` and is worth it because it is the only build with any test in it at
+all - and it catches a test or benchmark left behind by a changed signature -
+and `--test iobase_calls` unfiltered is half a minute, so filter it to the
+surface touched.
 
 Three habits are what make the loop pay:
 
@@ -292,9 +293,18 @@ with string leaves - is a root file or folder of its own name; a parent
 folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`)
 holds only what its implementations share. A folder is never a
 facade over root-owned vocabulary, and a module owns implementation rather
-than an empty facade. Tests, benchmarks, bindings and docs are grouped by
-theme - `types`, `holder`, `media` and the rest - which is a caller's
-vocabulary, not a source path.
+than an empty facade. A binding's `src/` is flat the same way and for the same
+reason: `python/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs` and the
+rest hold one type each at the crate root, `avro.rs` and `iceberg.rs` are
+implementations of their own name, and `media/` keeps only the handle classes
+and the partition renderer every medium shares - there is no `types/` or
+`media/` facade over vocabulary the root owns. The caller-facing packages -
+`python/yggdryl/` and the Node JavaScript files - are laid out the same way,
+and so are the tests: `rust/tests/` mirrors `rust/src/` file for file
+([Where a test lives](#where-a-test-lives)), and `python/tests/` and
+`node/tests/` mirror their own sources the same way. Benchmarks and docs are
+grouped by theme - `types`, `holder`, `media` and the rest - which is a
+caller's vocabulary rather than a source path.
 
 Paths below are under `rust/src/` unless stated otherwise.
 
@@ -342,6 +352,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `parallel.rs` | the one ordered map over persistent stream workers the FIX doors read on: line, message-row and write doors use 64-item chunks at lane depth two; Arrow capture parsing holds at most one whole input batch per worker; answers stay in input order and one thread is the lazy sequential map |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
+| binding `src/` | the crate layout above, one layer thinner: one type per root file (`datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `parameters.rs`, `timezone.rs`, `protocol.rs`, `value.rs`, `version.rs`), one root file per implementation (`avro.rs`, `iceberg.rs`), `text/` holding `codec.rs`, `line.rs` and Node's `options.rs`, and `media/` holding only what every medium shares - Python's `handles.rs` and `partition.rs`, Node's `options.rs` |
 
 Parquet is feature-gated; Avro's scalar codec is unconditional and its record
 surface uses Arrow; Iceberg sits on these codecs. `Text<H>` keeps only options
@@ -352,27 +363,71 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 
 ### Where a test lives
 
-`rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
-theme - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
-`expression`, `graph`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]`
-modules under `tests/<theme>/`. A theme is the caller's vocabulary and the docs
-tab, not a source folder: `types` covers every root type file, `media` the
-root media folders, `hashing` the root `xxhash/` and `txhash/`. A test there
-reaches the crate through `yggdryl::` and
-nothing else, so what it proves is what a caller can rely on, and a fixture
-builds its own inputs rather than borrowing the code under test.
+`rust/tests/` mirrors `rust/src/`, file for file: `rust/src/avro/schema.rs` is
+pinned by `rust/tests/avro/schema.rs`, and a file the crate root holds -
+`datatype.rs`, `field.rs`, `scalar.rs` - by `rust/tests/root/<name>.rs`. One
+harness target per top-level source entry declares those files as `#[path]`
+modules: `rust/tests/<folder>.rs` per source folder, and `rust/tests/root.rs`
+for the root files. The mirror is the rule, so a new source file gets its test
+file at the matching path and nothing has to be decided. A file that pins no
+source file is not a suite: a fixture several targets share lives in
+`rust/tests/support/` and is declared by each of them, and what is pinned as a
+cost or an exchange rather than as a file - `allocations.rs`,
+`iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` - is its
+own target.
 
-A `#[cfg(test)]` module stays in `src/` only where the thing tested is not
-reachable from outside, and its module doc says which private item that is and
-where the rest of the suite lives. That is the whole rule: `Iceberg`'s nine
-private modules and `TableMetadata`'s fields, the object client's signing and
-XML, the ZIP format readers, `canonicalize_dtype_value`, the ISO readers, the
-bundled zone registry, and roughly twenty single-item pins - `value_rank`,
-`low_64`, `read_at`, `convert`, `open_builder`, `home_from` and their kind.
-A shared measuring instrument crosses that line by being written twice -
-`Counting` in `tests/support/` and a smaller one beside the pins that need it -
-because an integration test cannot see a `#[cfg(test)]` item and publishing one
-would put a test fixture in the crate's API.
+A test file opens with a `//!` line naming the source file it pins, and holds
+no module named after itself: `avro::schema::schema::x` says the name twice, so
+what would carry it sits at the file's top level instead.
+
+A test reaches the crate through `yggdryl::` and nothing else, so what it
+proves is what a caller can rely on, and a fixture builds its own inputs rather
+than borrowing the code under test.
+
+`src/` holds no test code at all. What a caller cannot reach - a signing step,
+a format reader, a canonical rewrite, the bundled zone registry, the
+single-item pins - is reached through `yggdryl::internals::<module path>`,
+which exists only under the non-default `internals` feature. A module opts in
+by declaring its own, beside what it owns:
+
+```rust
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/utf8.rs` pins and a caller cannot reach.
+    pub fn transcribe_into(input: &[u8], target: &mut String) -> usize {
+        super::transcribe_into(input, target)
+    }
+}
+```
+
+A forwarding `pub fn` is the shape to reach for: it changes no visibility, so
+the item stays exactly as private as it was and a default build's API is
+untouched. `pub use super::Item` is for a module the crate root declares
+privately, where raising the item to `pub` reaches nobody. Never make an item
+`pub` inside a module the crate root publishes - that is an API change wearing
+a feature's name.
+
+`scripts/generate_internals.py` writes the crate-level re-export from those
+declarations, so no two changes edit one file to add theirs; `--check` fails a
+stale one. `--all-features` turns the feature on, which is how CI's second lane
+runs these tests; a default build compiles `yggdryl::internals` out entirely.
+
+One source file has one test file, so a file that pins both kinds keeps the
+reaching half in its own `#[cfg(feature = "internals")] mod internal`. What a
+caller can observe then stays at the file's top level and runs in a default
+build, and only the module naming `yggdryl::internals` drops out; gating the
+whole file would take the caller-facing tests out of the default lane with it.
+
+The bindings hold to the same rule against their own sources, which carry the
+crate's layout: `python/tests/` mirrors `python/yggdryl/` and `python/src/` -
+one shape, so `charset/__init__.py` and `src/charset.rs` are pinned by the one
+`python/tests/charset/test_init.py` - and `node/tests/` mirrors `node/src/` and
+the JavaScript files beside it, `node/src/text/line.rs` by
+`node/tests/text/line.test.js` and `node/records.js` by
+`node/tests/records.test.js`. A folder's `__init__.py` or `mod.rs` is pinned by
+`test_init.py` or `index.test.js`, the way a Rust folder's `mod.rs` is pinned by
+`mod_.rs`.
 
 ## Ownership
 
@@ -1321,7 +1376,7 @@ dictionary:
 | `rust/src/charset/tables.rs` | `python scripts/generate_charset_tables.py` | a charset row changes |
 | `config/fix/`, `provenance.json` and `rust/src/fix/constants.rs` | `python scripts/generate_fix_dictionary.py`, which fetches the FIX standard | a pinned source commit, `StringEnum::COUNTRIES` in `rust/src/string.rs` or the generator changes, the `FIX:` keys it writes included; never a crate field alone, which the generator neither writes nor checks |
 | the crate's own documents under `config/fix/` - the crate's field shard, the fixed row and its two groups | `YGGDRYL_FIX_DUMP_WRITE=1 cargo test --locked -p yggdryl --test fix the_committed_store_carries_the_crate_dump` | a crate field, the fixed row or one of its two groups changes (`rust/src/fix/crated.rs`), or the dictionary is regenerated |
-| the dictionary hash in `rust/tests/fix/dictionary.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
+| the dictionary hash in `rust/tests/fix/store.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
 | `node/index.js`, `node/index.d.ts` | `npm run --prefix node build:debug` | any Node binding or its doc comments change |
 | `docs/assets/fix.json`, `docs/assets/playground.json` | `node scripts/build_docs_fix.js`, `node scripts/build_docs_playground.js` | the dictionary, the crate dump or the addon changes, the addon rebuilt first: `build_docs_fix.js` runs the addon over `config/fix` |
 | `.api-inventory.txt`, `.api-bindings.txt` | by hand, in the same change; the inventories row of the [smoke loop](#smoke-loop) proves it | a public name is added or retired |
@@ -1449,10 +1504,10 @@ the same over the whole tree plus the type checker:
 ```bash
 V=python/.venv/bin/python
 $V -m maturin develop -m python/Cargo.toml     # in place, debug, no wheel
-$V -m pytest python/tests/<area> -x -q         # the loop
+$V -m pytest python/tests/<file> -x -q         # the loop
 $V -m pytest python/tests                      # before pushing
 $V -m mypy --strict --config-file python/pyproject.toml \
-  python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
+  python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
 - `python/.venv` is where the extension is installed and where
@@ -1470,8 +1525,8 @@ $V -m mypy --strict --config-file python/pyproject.toml \
   and only pin a second interpreter when a failure names the version.
 - Iceberg-with-Spark has its own CI job and is opt-in locally - `python
   scripts/setup_spark_interop.py`, then `python -m pytest
-  python/tests/media/test_spark_interop.py -m spark_interop` - so run it only
-  when changing that boundary.
+  python/tests/test_spark_interop.py -m spark_interop` - so run it only when
+  changing that boundary.
 
 # 4. Node
 
@@ -1503,7 +1558,7 @@ The loop is the debug addon and one test file:
 ```bash
 npm ci --prefix node                                     # once
 npm run --prefix node build:debug                        # after a Rust or binding edit
-node --test node/tests/<area>/<file>.test.js
+node --test node/tests/<file>.test.js
 ```
 
 Before pushing a Node change, the audit and the files the build generates:
@@ -1540,10 +1595,20 @@ section change together. What binds every page:
   in that page's Python or JavaScript tab, so one operation is described once
   and every language spelling of it sits beside the others.
   `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
-  Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
-  `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
-  batches; `json/`, `yaml/` and `toml/` document there too, as three of those
-  schemes, and `text/` as the plain-text one.
+  Avro, plain text, JSON, YAML, TOML, Iceberg - each holding `index.md` for the
+  scheme, `read.md` and `write.md` for the two directions, and one page per
+  feature that scheme alone has. A read page and a write page each show native
+  scalars first and Arrow batches second, in Rust, Python and JavaScript tabs,
+  so a reader picks a direction rather than a surface; `json/`, `yaml/` and
+  `toml/` document there too, as three of those schemes, and `text/` as the
+  plain-text one.
+  `docs/types/` is the same shape one level down: the Core pages - `datatype.md`,
+  `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
+  subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,
+  `geospatial/`), each an `index.md` for what the family shares and one page per
+  type in it. A type page reads in the order its core file is written -
+  Contract, DataType, Field, Scalar, Arrow storage - then its features, its
+  edges and its commands, with every example in the three languages.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
   binding. Every block is self-contained with an assertion and runs through

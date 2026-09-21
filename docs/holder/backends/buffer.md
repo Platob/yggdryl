@@ -66,7 +66,7 @@ assert handle.url.scheme == "mem"
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::conformance
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iobase::backends
     cargo bench --bench holder --features parquet -- 'fs_bytes/.*/buffer'
     cargo bench --bench holder --features parquet -- 'io_buffered/.*/buffer'
     ```
@@ -74,12 +74,12 @@ assert handle.url.scheme == "mem"
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k memory_handle
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k memory_handle
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern "memory handle" "node/tests/holder/io.test.js"
+    node --test --test-name-pattern "memory handle" "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```

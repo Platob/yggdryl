@@ -820,82 +820,18 @@ impl DataType {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/valuestream.rs` pins and a caller cannot reach.
+    //!
+    //! The compression flag a payload carries is private: a caller sees the
+    //! bytes and the value they read back, never the byte that says whether
+    //! zstd was used. The pins are on the wire itself, so they name the two
+    //! spellings, restated here rather than made public in the encoder.
 
-    #[test]
-    fn a_number_is_its_identifier_and_its_bytes() {
-        let bytes = Scalar::from(7_i32).into_value_bytes();
-        assert_eq!(
-            bytes,
-            [VALUE_STREAM_VERSION, DataTypeId::Int32.as_u8(), 7, 0, 0, 0]
-        );
-        assert_eq!(
-            Scalar::decode_value_bytes(&bytes).unwrap(),
-            Scalar::from(7_i32)
-        );
-    }
-
-    #[test]
-    fn a_text_states_its_compression_and_its_size() {
-        let bytes = Scalar::from("abc").into_value_bytes();
-        assert_eq!(
-            bytes,
-            [
-                VALUE_STREAM_VERSION,
-                DataTypeId::Utf8String.as_u8(),
-                UNCOMPRESSED,
-                3,
-                b'a',
-                b'b',
-                b'c'
-            ]
-        );
-        let long = "x".repeat(COMPRESS_FROM + 1);
-        let bytes = Scalar::from(long.as_str()).into_value_bytes();
-        assert_eq!(bytes[2], ZSTD);
-        assert!(bytes.len() < 64, "{}", bytes.len());
-        assert_eq!(
-            Scalar::decode_value_bytes(&bytes).unwrap(),
-            Scalar::from(long.as_str())
-        );
-    }
-
-    #[test]
-    fn a_tree_streams_one_leaf_per_chunk_and_reads_back_whole() {
-        let value = Scalar::from_struct([
-            ("id", Scalar::from(1_i64)),
-            (
-                "tags",
-                Scalar::from_sequence([Scalar::from("a"), Scalar::Null]),
-            ),
-        ])
-        .unwrap();
-        let chunks: Vec<Vec<u8>> = value.encode_value_stream_bytes().collect();
-        assert_eq!(chunks.len(), 7, "{chunks:?}");
-        assert_eq!(chunks.concat(), value.into_value_bytes());
-        assert_eq!(Scalar::decode_value_stream_bytes(&chunks).unwrap(), value);
-    }
-
-    #[test]
-    fn the_refusals_name_the_byte() {
-        let error = Scalar::decode_value_bytes(&[1, 0]).unwrap_err().to_string();
-        assert!(error.contains("version 1"), "{error}");
-        let error = Scalar::decode_value_bytes(&[0, 0x10])
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("placeholder") && error.contains("integer"),
-            "{error}"
-        );
-        let error = Scalar::decode_value_bytes(&[0, DataTypeId::Int32.as_u8(), 1])
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("4 bytes announced"), "{error}");
-        let error = Scalar::decode_value_bytes(&[0, 0, 0])
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("1 bytes left"), "{error}");
-    }
+    /// The flag byte a payload written as-is carries.
+    pub const UNCOMPRESSED: u8 = super::UNCOMPRESSED;
+    /// The flag byte a payload written as a zstd frame carries.
+    pub const ZSTD: u8 = super::ZSTD;
 }

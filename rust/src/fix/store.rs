@@ -932,49 +932,17 @@ impl FixRegistry {
     }
 }
 
-#[cfg(test)]
-mod clock_seed_tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A shard is where a scalar definition is filed on disk; a caller reads
+    //! the folder, never the arithmetic that picks the document inside it.
 
-    #[test]
-    fn stored_clocks_replace_seeds_but_duplicate_documents_refuse() {
-        let registry = FixRegistry::new();
-        let mut sending = registry.field_by_tag(52).unwrap().clone();
-        sending
-            .set_description("store owns this declaration")
-            .unwrap();
-        let field = sending.clone().into_json().unwrap();
-        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
-        let loaded = FixRegistry::from_json(&document).unwrap();
-        assert_eq!(loaded.field_by_tag(52).unwrap(), &sending);
-        assert_eq!(
-            loaded.field_by_tag(60).unwrap().dtype(),
-            &super::super::schema::CLOCK_DATATYPE
-        );
-        assert_eq!(
-            FixRegistry::from_json(&loaded.into_json().unwrap()).unwrap(),
-            loaded
-        );
-        let duplicate = format!(r#"{{"fields":[{field},{field}],"components":[],"groups":[]}}"#);
-        assert!(matches!(
-            FixRegistry::from_json(&duplicate),
-            Err(Error::Conflict { .. })
-        ));
-    }
-
-    #[test]
-    fn renamed_loaded_clock_keeps_its_canonical_identity() {
-        let registry = FixRegistry::new();
-        let sending = registry
-            .field_by_tag(52)
-            .unwrap()
-            .clone()
-            .with_name("VenueSendingClock");
-        let field = sending.into_json().unwrap();
-        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
-        let loaded = FixRegistry::from_json(&document).unwrap();
-        assert_eq!(loaded.field_by_tag(52).unwrap().name(), "VenueSendingClock");
-        assert!(loaded.get_field_by_name("SendingTime").is_none());
-        assert_eq!(loaded.field_by_tag(60).unwrap().name(), "transacttime");
+    /// The shard document that holds the definition of `tag`.
+    #[must_use]
+    pub const fn shard_of(tag: i32) -> i32 {
+        super::shard_of(tag)
     }
 }

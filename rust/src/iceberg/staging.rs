@@ -77,12 +77,6 @@ impl Staging {
         })
     }
 
-    /// The directory this commit stages into, when it stages at all.
-    #[cfg(test)]
-    pub(super) fn directory(&self) -> Option<&std::path::Path> {
-        self.directory.as_deref()
-    }
-
     /// Write one file of the commit and answer what `write` answered beside
     /// the file's size.
     ///
@@ -326,4 +320,56 @@ fn poisoned() -> crate::Error {
     crate::Error::Io(std::io::Error::other(
         "the iceberg staging record was poisoned by a panicking writer",
     ))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! Staging is invisible from outside a commit: the caller sees files
+    //! appear at the table and nothing of the local directory they went
+    //! through, or of the rollback that removes them when the commit never
+    //! ends. [`Staging`] here is a forwarding wrapper, so nothing in
+    //! `iceberg::staging` changes visibility.
+
+    use crate::holder::Holder;
+    use crate::iceberg::WriteStaging;
+    use crate::{IOBase, MediaType, Result};
+
+    /// One commit's staging, forwarding to the real one.
+    pub struct Staging(super::Staging);
+
+    impl Staging {
+        /// Begin the staging one commit publishes through.
+        pub fn begin(
+            staging: Option<&WriteStaging>,
+            remote: bool,
+            snapshot_id: i64,
+        ) -> Result<Self> {
+            super::Staging::begin(staging, remote, snapshot_id).map(Self)
+        }
+
+        /// The directory this commit stages into, when it stages at all.
+        pub fn directory(&self) -> Option<&std::path::Path> {
+            self.0.directory.as_deref()
+        }
+
+        /// Write one file of the commit and answer what `write` answered
+        /// beside the file's size.
+        pub fn publish<T>(
+            &self,
+            root: &dyn IOBase,
+            relative: &str,
+            media_type: &MediaType,
+            write: impl FnOnce(&mut Holder) -> Result<T>,
+        ) -> Result<(T, u64)> {
+            self.0.publish(root, relative, media_type, write)
+        }
+
+        /// Mark the commit ended, so dropping keeps what it published.
+        pub fn commit(&self) {
+            self.0.commit();
+        }
+    }
 }

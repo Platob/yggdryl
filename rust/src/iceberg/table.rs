@@ -2683,46 +2683,6 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
         .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
 }
 
-#[cfg(test)]
-mod retry_tests {
-    use super::{CommitSettings, backoff_ms, reserve_retry_backoff, retry_wait_ms};
-
-    #[test]
-    fn retry_budget_includes_its_exact_boundary_and_exhaustion_is_a_conflict() {
-        let mut spent = 4;
-        assert!(reserve_retry_backoff(&mut spent, 1, 5));
-        assert_eq!(spent, 5);
-        assert!(!reserve_retry_backoff(&mut spent, 1, 5));
-        assert_eq!(spent, 5, "a refused wait does not consume budget");
-
-        let settings = CommitSettings {
-            retries: 1,
-            min_backoff_ms: 0,
-            max_backoff_ms: 0,
-            total_timeout_ms: 0,
-        };
-        let mut beaten = 0;
-        let mut spent = 0;
-        assert_eq!(
-            retry_wait_ms(&settings, &mut beaten, &mut spent, 2, 2).unwrap(),
-            0
-        );
-        let error = retry_wait_ms(&settings, &mut beaten, &mut spent, 2, 2).unwrap_err();
-        assert!(error.is_conflict(), "{error}");
-    }
-
-    #[test]
-    fn full_jitter_never_exceeds_its_exponential_window() {
-        for attempt in 0..8 {
-            let cap = 10_u64.saturating_mul(1_u64 << attempt).min(100);
-            for _ in 0..32 {
-                assert!(backoff_ms(attempt, 10, 100) <= cap);
-            }
-        }
-        assert_eq!(backoff_ms(4, 0, 100), 0);
-    }
-}
-
 /// One partition's rows to write, and the stored files they merge with.
 struct PartitionWrite {
     /// The partition tuple every row computes to, in spec order.
@@ -3461,109 +3421,6 @@ impl KeyBound {
     }
 }
 
-#[cfg(test)]
-mod key_bound_tests {
-    use std::sync::Arc;
-
-    use arrow_array::Float64Array;
-
-    use super::*;
-
-    #[test]
-    fn malformed_external_bounds_cannot_exclude_a_merge_file() {
-        let incoming = 37_i64.to_le_bytes().to_vec();
-        let bound = KeyBound {
-            id: 1,
-            dtype: DataType::Int64,
-            unbounded: false,
-            has_null: false,
-            lower: Some(incoming.clone()),
-            upper: Some(incoming),
-        };
-        let file = DataFile {
-            record_count: 1,
-            lower_bounds: vec![(1, vec![0; 3])],
-            upper_bounds: vec![(1, vec![0; 9])],
-            null_value_counts: vec![(1, 0)],
-            ..DataFile::default()
-        };
-        assert!(bound.may_hold(&file));
-
-        let incoming = 1.5_f64.to_le_bytes().to_vec();
-        let float_bound = KeyBound {
-            id: 1,
-            dtype: DataType::Float64,
-            unbounded: false,
-            has_null: false,
-            lower: Some(incoming.clone()),
-            upper: Some(incoming),
-        };
-        let nan = f64::NAN.to_le_bytes().to_vec();
-        let file = DataFile {
-            record_count: 1,
-            lower_bounds: vec![(1, nan.clone())],
-            upper_bounds: vec![(1, nan)],
-            null_value_counts: vec![(1, 0)],
-            ..DataFile::default()
-        };
-        assert!(float_bound.may_hold(&file));
-    }
-
-    #[test]
-    fn generated_nan_merge_bounds_are_conservatively_unbounded() {
-        let mut schema = StructType::from_fields([DataType::Float64.required_field("ratio")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-        let arrow_schema = crate::arrow::arrow_schema_from_field(&schema).unwrap();
-        let batch = RecordBatch::try_new(
-            arrow_schema,
-            vec![Arc::new(Float64Array::from(vec![1.5, f64::NAN]))],
-        )
-        .unwrap();
-
-        let bounds =
-            KeyBounds::of(&[batch], &schema, &crate::Selector::from_columns(["ratio"])).unwrap();
-        assert!(bounds.columns[0].unbounded);
-    }
-
-    #[test]
-    fn partition_summaries_omit_nan_bounds() {
-        let mut schema = StructType::from_fields([DataType::Float64.required_field("ratio")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-        let spec = PartitionSpec::identity(0, &schema, &["ratio"]).unwrap();
-        let entry = |value| {
-            ManifestEntry::added(
-                1,
-                DataFile {
-                    record_count: 1,
-                    partition: vec![value],
-                    ..DataFile::default()
-                },
-            )
-        };
-
-        let only_nan = summaries(&spec, &schema, &[entry(Scalar::from(f64::NAN))]).unwrap();
-        assert!(only_nan[0].lower_bound.is_none());
-        assert!(only_nan[0].upper_bound.is_none());
-
-        let finite = Scalar::from(1.5_f64);
-        let encoded = single_value(&finite, &DataType::Float64).unwrap();
-        let mixed = summaries(
-            &spec,
-            &schema,
-            &[entry(Scalar::from(f64::NAN)), entry(finite)],
-        )
-        .unwrap();
-        assert_eq!(mixed[0].lower_bound.as_deref(), Some(encoded.as_slice()));
-        assert_eq!(mixed[0].upper_bound.as_deref(), Some(encoded.as_slice()));
-    }
-}
-
 /// Encode the smallest or largest value one column holds.
 ///
 /// The extreme is found by a bounded sort rather than a scan of decoded values:
@@ -3892,42 +3749,6 @@ fn metadata_version_from_name(name: &str) -> Option<u32> {
     }
 }
 
-#[cfg(test)]
-mod metadata_name_tests {
-    use super::metadata_version_from_name;
-
-    #[test]
-    fn accepts_exact_hadoop_and_official_metadata_names() {
-        for (name, version) in [
-            ("v3.metadata.json", 3),
-            ("v00003.gz.metadata.json", 3),
-            (
-                "00003-2cd22b57-5127-4198-92ba-e4e67c79821b.metadata.json",
-                3,
-            ),
-            ("9-2cd22b57-5127-4198-92ba-e4e67c79821b.gz.metadata.json", 9),
-        ] {
-            assert_eq!(metadata_version_from_name(name), Some(version), "{name}");
-        }
-    }
-
-    #[test]
-    fn rejects_metadata_lookalikes() {
-        for name in [
-            "v.metadata.json",
-            "v2backup.metadata.json",
-            "vv2.metadata.json",
-            "00002-not-a-uuid.metadata.json",
-            "00002-2cd22b57-5127-4198-92ba-e4e67c79821b.extra.metadata.json",
-            "00002-2cd22b57-5127-4198-92ba-e4e67c79821b.zst.metadata.json",
-            "2.metadata.json",
-            "v2.json",
-        ] {
-            assert_eq!(metadata_version_from_name(name), None, "{name}");
-        }
-    }
-}
-
 /// List exact metadata filenames at one version, deterministically.
 fn metadata_names_at_version(metadata_dir: &Holder, version: u32) -> Result<Vec<SmolStr>> {
     let mut names = Vec::new();
@@ -4009,52 +3830,6 @@ fn relative_location(base: &str, location: &str) -> Result<String> {
     Err(invalid(format_smolstr!(
         "expected a location inside the table at {normalized_base:?}, got {location:?}"
     )))
-}
-
-#[cfg(test)]
-mod location_tests {
-    use super::relative_location;
-
-    #[test]
-    fn an_empty_uri_authority_is_the_same_place_spelled_shorter() {
-        // Whichever writer spelled which: the crate writes the table location
-        // with the authority, Spark commits its manifest lists without it.
-        for (base, location) in [
-            (
-                "file:///warehouse/db/t",
-                "file:/warehouse/db/t/metadata/snap-1.avro",
-            ),
-            (
-                "file:/warehouse/db/t",
-                "file:///warehouse/db/t/metadata/snap-1.avro",
-            ),
-            (
-                "file:/warehouse/db/t",
-                "file:/warehouse/db/t/metadata/snap-1.avro",
-            ),
-        ] {
-            assert_eq!(
-                relative_location(base, location).unwrap(),
-                "metadata/snap-1.avro",
-                "{base} -> {location}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_real_authority_and_a_windows_drive_are_left_alone() {
-        assert_eq!(
-            relative_location("s3://bucket/db/t", "s3://bucket/db/t/data/0.parquet").unwrap(),
-            "data/0.parquet"
-        );
-        assert_eq!(
-            relative_location("C:\\warehouse\\t", "C:\\warehouse\\t\\data\\0.parquet").unwrap(),
-            "data/0.parquet"
-        );
-        // A neighbour is not a child, however either side is spelled.
-        relative_location("file:///warehouse/db/t", "file:/warehouse/db/other/x").unwrap_err();
-        relative_location("s3://bucket/db/t", "s3://other/db/t/x").unwrap_err();
-    }
 }
 
 /// Refuse a data-file MIME type this build has no encoder for, by name.
@@ -4189,4 +3964,148 @@ fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Filter {
             |field| crate::Filter::partition_equals(column, value, field.dtype()),
         )
     }))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/table.rs` pins and a caller cannot reach.
+    //!
+    //! A commit is one call to a caller, so the decisions it makes on the way
+    //! - the retry ladder's arithmetic, the merge pruning a malformed bound
+    //! must not win, the partition summary a NaN must not enter, the metadata
+    //! names a directory listing accepts, the relative location two writers
+    //! spell differently - are each forwarded here to be pinned on their own.
+    //! [`CommitSettings`], [`KeyBound`] and [`KeyBounds`] are forwarding
+    //! wrappers holding the real value, so nothing in `iceberg::table` or
+    //! `iceberg::options` changes visibility.
+
+    use arrow_array::RecordBatch;
+
+    use crate::iceberg::{DataFile, FieldSummary, ManifestEntry, PartitionSpec};
+    use crate::{DataType, Field, Result, Selector};
+
+    /// One commit's resolved retry ladder, forwarding to the real one.
+    ///
+    /// A caller states retries and waits as table properties; what the ladder
+    /// runs with is what those resolve to, which is only nameable here.
+    pub struct CommitSettings(crate::iceberg::options::CommitSettings);
+
+    impl CommitSettings {
+        /// The resolved ladder, spelled out attempt budget first.
+        pub fn new(
+            retries: u32,
+            min_backoff_ms: u64,
+            max_backoff_ms: u64,
+            total_timeout_ms: u64,
+        ) -> Self {
+            Self(crate::iceberg::options::CommitSettings {
+                retries,
+                min_backoff_ms,
+                max_backoff_ms,
+                total_timeout_ms,
+            })
+        }
+    }
+
+    /// One match-key column's incoming range, forwarding to the real one.
+    pub struct KeyBound(super::KeyBound);
+
+    impl KeyBound {
+        /// One column's incoming range, as a merge holds it before pruning.
+        pub fn new(
+            id: i32,
+            dtype: DataType,
+            unbounded: bool,
+            has_null: bool,
+            lower: Option<Vec<u8>>,
+            upper: Option<Vec<u8>>,
+        ) -> Self {
+            Self(super::KeyBound {
+                id,
+                dtype,
+                unbounded,
+                has_null,
+                lower,
+                upper,
+            })
+        }
+
+        /// Return whether one file's statistics leave room for these keys.
+        pub fn may_hold(&self, file: &DataFile) -> bool {
+            self.0.may_hold(file)
+        }
+    }
+
+    /// Every match-key column's incoming range, forwarding to the real ones.
+    pub struct KeyBounds(super::KeyBounds);
+
+    impl KeyBounds {
+        /// Measure the incoming rows' range for every match-key column.
+        pub fn of(batches: &[RecordBatch], schema: &Field, merge_by: &Selector) -> Result<Self> {
+            super::KeyBounds::of(batches, schema, merge_by).map(Self)
+        }
+
+        /// Whether the bound at one position can exclude nothing.
+        pub fn column_is_unbounded(&self, index: usize) -> bool {
+            self.0.columns[index].unbounded
+        }
+    }
+
+    /// The wait before one retry attempt, exponential with full jitter.
+    pub fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
+        super::backoff_ms(attempt, min, max)
+    }
+
+    /// Reserve one randomized wait from the total retry-delay budget.
+    pub fn reserve_retry_backoff(spent_ms: &mut u64, wait_ms: u64, limit_ms: u64) -> bool {
+        super::reserve_retry_backoff(spent_ms, wait_ms, limit_ms)
+    }
+
+    /// Count one conflict and answer the wait it earns, or give up.
+    pub fn retry_wait_ms(
+        settings: &CommitSettings,
+        beaten: &mut u32,
+        backoff_spent_ms: &mut u64,
+        expected_version: u32,
+        last_seen_version: u32,
+    ) -> Result<u64> {
+        super::retry_wait_ms(
+            &settings.0,
+            beaten,
+            backoff_spent_ms,
+            expected_version,
+            last_seen_version,
+        )
+    }
+
+    /// Summarize the partition values a manifest's entries hold, in spec order.
+    pub fn summaries(
+        spec: &PartitionSpec,
+        schema: &Field,
+        entries: &[ManifestEntry],
+    ) -> Result<Vec<FieldSummary>> {
+        super::summaries(spec, schema, entries)
+    }
+
+    /// Parse the version prefix of a Hadoop or official metadata file name.
+    pub fn metadata_version_from_name(name: &str) -> Option<u32> {
+        super::metadata_version_from_name(name)
+    }
+
+    /// Turn one absolute location into a name relative to the table's folder.
+    pub fn relative_location(base: &str, location: &str) -> Result<String> {
+        super::relative_location(base, location)
+    }
+
+    /// Resolve one recorded location into a child of the table's folder.
+    ///
+    /// A caller reads rows, not files; a suite that has to open the file a
+    /// manifest named resolves it the way the table itself does.
+    pub fn child_at<H: crate::IOBase>(
+        table: &crate::iceberg::Table<H>,
+        location: &str,
+    ) -> Result<crate::holder::Holder> {
+        table.child_at(location)
+    }
 }

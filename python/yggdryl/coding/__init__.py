@@ -1,12 +1,12 @@
-"""Content codings over bytes and storage handles.
+"""What every content coding shares: the transparent handle over a coded one.
 
-The lowercase modules are the whole-buffer codecs; the capitalized classes are
-the handles that present the decoded bytes of a coded resource, which is what
-``IOBase("app.log.gz")`` composes.
+Each codec itself is a module of its own beside this one - :mod:`yggdryl.gzip`,
+:mod:`yggdryl.zlib` and :mod:`yggdryl.zstd` - as the crate gives every codec a
+root file. The capitalized classes are the handles that present the decoded
+bytes of a coded resource, which is what ``IOBase("app.log.gz")`` composes.
 """
 
 from .._native import Coded, Gzip, Identity, Zlib, Zstd
-from . import gzip, zlib, zstd
 
 __all__ = [
     "Coded",
@@ -14,7 +14,4 @@ __all__ = [
     "Identity",
     "Zlib",
     "Zstd",
-    "gzip",
-    "zlib",
-    "zstd",
 ]

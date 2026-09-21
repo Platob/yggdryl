@@ -33,20 +33,20 @@
 
 /// One retirement of one value, or of a whole field, of the tag it is
 /// listed under.
-pub(super) struct Rule {
+pub struct Rule {
     /// The held value the rule is about, where it is about one.
-    pub(super) when: When,
+    pub when: When,
     /// The message types the rule applies within; empty for every type.
-    pub(super) msgtypes: &'static [&'static str],
+    pub msgtypes: &'static [&'static str],
     /// The repeating group the rule applies inside, where it applies inside
     /// one only and never at the root.
-    pub(super) within: Option<&'static str>,
+    pub within: Option<&'static str>,
     /// What the rule fills, all or nothing.
-    pub(super) fills: &'static [Fill],
+    pub fills: &'static [Fill],
 }
 
 /// The condition on the held value.
-pub(super) enum When {
+pub enum When {
     /// Every value: the field itself was retired.
     Any,
     /// The value spells this code.
@@ -57,7 +57,7 @@ pub(super) enum When {
 }
 
 /// One target a rule fills.
-pub(super) enum Fill {
+pub enum Fill {
     /// A constant, read as the target's field reads its wire text; written
     /// over the rule's own source it replaces the token the condition named.
     Constant { tag: i32, text: &'static str },
@@ -78,7 +78,7 @@ pub(super) enum Fill {
 }
 
 /// One part of a join.
-pub(super) enum Part {
+pub enum Part {
     /// The field's wire text as it is.
     Text(i32),
     /// A number spelled with two digits, which is how a day completes a
@@ -88,7 +88,7 @@ pub(super) enum Part {
 
 /// The retirements of `tag`, in the specification's order; `None` where the
 /// specification retired nothing of it.
-pub(super) fn rules_of(tag: i32) -> Option<&'static [Rule]> {
+pub fn rules_of(tag: i32) -> Option<&'static [Rule]> {
     RULES
         .binary_search_by_key(&tag, |(held, _)| *held)
         .ok()
@@ -99,7 +99,7 @@ pub(super) fn rules_of(tag: i32) -> Option<&'static [Rule]> {
 ///
 /// The entries a tag lists in one appendix stand before the ones a later
 /// appendix added, which is the order the specification retired them in.
-pub(super) static RULES: &[(i32, &[Rule])] = &[
+pub static RULES: &[(i32, &[Rule])] = &[
     (
         18,
         &[
@@ -1518,47 +1518,16 @@ pub(super) static RULES: &[(i32, &[Rule])] = &[
     ),
 ];
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_table_is_sorted_by_tag_with_each_tag_once() {
-        for pair in RULES.windows(2) {
-            assert!(pair[0].0 < pair[1].0, "{} before {}", pair[0].0, pair[1].0);
-        }
-        assert_eq!(RULES.len(), 37);
-        assert_eq!(
-            RULES.iter().map(|(_, rules)| rules.len()).sum::<usize>(),
-            100
-        );
-    }
-
-    #[test]
-    fn a_lookup_answers_the_tag_it_is_asked_for() {
-        assert!(rules_of(47).is_some_and(|rules| rules.len() == 23));
-        assert!(rules_of(18).is_some_and(|rules| rules.len() == 9));
-        assert!(rules_of(687).is_some_and(|rules| rules.len() == 2));
-        assert!(rules_of(1).is_none());
-        assert!(rules_of(9_999).is_none());
-    }
-
-    #[test]
-    fn every_rule_fills_something_and_a_catch_all_comes_last() {
-        for (tag, rules) in RULES {
-            for (at, rule) in rules.iter().enumerate() {
-                assert!(!rule.fills.is_empty(), "tag {tag} entry {at} fills nothing");
-                if matches!(rule.when, When::Any)
-                    && rule.msgtypes.is_empty()
-                    && rule.within.is_none()
-                {
-                    assert_eq!(
-                        at + 1,
-                        rules.len(),
-                        "tag {tag}: a catch-all is the last entry"
-                    );
-                }
-            }
-        }
-    }
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/retired.rs` and `rust/tests/fix/mod_.rs` pin and a
+    //! caller cannot reach.
+    //!
+    //! The table is the crate's own reading of what the specification retired,
+    //! applied by every parse; a caller sees the restated message and never the
+    //! rules. `fix::retired` is a private module of a published one, so these
+    //! being `pub` reaches nobody: this door is the only path to them, and it
+    //! exists under the `internals` feature alone.
+    pub use super::{Fill, Part, RULES, Rule, When, rules_of};
 }

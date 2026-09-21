@@ -172,18 +172,18 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_selector_publishes_the_field_it_computes expression::tests::a_selector_computes_rows_on_both_tiers expression::tests::a_projection_reorders_without_touching_a_buffer expression::tests::a_declared_column_is_enforced_when_it_is_applied expression::tests::a_field_holds_a_selector_and_gives_it_back expression::tests::a_partition_declaration_is_a_transform expression::tests::projections_agree_between_the_tiers
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- arrow::grammar selector::grammar transform::grammar
     cargo bench -p yggdryl --bench expression -- expression_identity
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "selector or records_stream"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "selector or records_stream"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="selector|records stream" node/tests/expression
+    node --test --test-name-pattern="selector|records stream" node/tests/expression.test.js
     ```

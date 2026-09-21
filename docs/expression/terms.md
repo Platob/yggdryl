@@ -236,7 +236,7 @@ At bind, a literal meets the column it is compared with and is converted once in
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::binds_and_evaluates_rows expression::tests::a_literal_is_converted_once_into_the_column_it_meets expression::tests::a_constant_subtree_is_folded_by_evaluating_it expression::tests::binding_simplifies_before_it_lowers expression::tests::parameters_are_supplied_at_bind_and_never_again expression::tests::an_unknown_column_names_the_ones_there_are expression::tests::cheapest_first_is_stable_when_costs_tie expression::tests::a_simplification_has_fewer_nodes_and_one_shape expression::tests::a_simplification_answers_what_the_original_answered
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- bind::grammar literal::grammar pushdown::grammar
     cargo test --features "parquet iceberg" -p yggdryl --test expression -- predicate_segment
     cargo bench -p yggdryl --bench expression -- expression_bind expression_predicate_path
     ```
@@ -244,11 +244,11 @@ At bind, a literal meets the column it is compared with and is converted once in
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "binding_resolves or parameters or composes or simplification or nested_value"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "binding_resolves or parameters or composes or simplification or nested_value"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="binding resolves|arithmetic builders|either spelling" node/tests/expression
+    node --test --test-name-pattern="binding resolves|arithmetic builders|either spelling" node/tests/expression.test.js
     ```

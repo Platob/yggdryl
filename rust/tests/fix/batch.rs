@@ -1,5 +1,6 @@
-//! A capture in, columns out, and back to the wire - through the codec's
-//! Arrow twins, and the two converters they compose.
+//! `rust/src/fix/batch.rs`: a capture in, columns out, and back to the
+//! wire - through the codec's Arrow twins, and the two converters they
+//! compose.
 
 use std::sync::Arc;
 

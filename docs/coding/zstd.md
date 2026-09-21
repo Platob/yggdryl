@@ -47,7 +47,7 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
     ```python
     import pytest
 
-    from yggdryl.coding import zstd
+    from yggdryl import zstd
 
     frame = zstd.dumps(b"symbol,price\nAAPL,1\n")
     assert zstd.loads(frame) == b"symbol,price\nAAPL,1\n"
@@ -180,7 +180,8 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.coding import Zstd, zstd
+    from yggdryl import zstd
+    from yggdryl.coding import Zstd
     from yggdryl.holder import Path
 
     root = pathlib.Path(tempfile.mkdtemp())
@@ -241,14 +242,14 @@ assert_eq!(zstd::load(&inner.read_all_bytes()?)?, payload.as_bytes());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test coding -- zstd::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- zstd
     cargo bench -p yggdryl --bench coding -- zstd
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_codings.py -k zstd
+    python/.venv/bin/python -m pytest python/tests/coding/test_init.py -k zstd
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```
 

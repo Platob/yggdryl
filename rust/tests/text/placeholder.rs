@@ -1,5 +1,6 @@
-//! `{{ }}` placeholders: the closed grammar, the two typing rules, and the
-//! security switches that keep the environment out unless asked for.
+//! `rust/src/text/placeholder.rs`: `{{ }}` placeholders: the closed
+//! grammar, the two typing rules, and the security switches that keep the
+//! environment out unless asked for.
 
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;

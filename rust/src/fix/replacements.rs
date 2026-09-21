@@ -327,3 +327,25 @@ impl From<FixReplacementEntry<'_>> for FixReplacement {
         }
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A caller states replacements on a field and reads them back off it; the
+    //! canonical document they are stored as is the metadata key's business,
+    //! and this is the step that writes one.
+    use super::FixReplacement;
+    use crate::Result;
+
+    /// The canonical document a field's replacement rules persist as.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where an entry's plan names no column to fill
+    /// or is past the expression budget.
+    pub fn render(entries: &[FixReplacement]) -> Result<String> {
+        super::FixReplacements::render(entries)
+    }
+}

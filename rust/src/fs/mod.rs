@@ -41,7 +41,9 @@ use crate::holder::Holder;
 
 mod file;
 mod folder;
-mod local;
+// `pub(crate)` so `yggdryl::internals` can re-export this module's own
+// `internals`; the module itself stays unreachable from outside the crate.
+pub(crate) mod local;
 mod location;
 mod memory;
 mod path;

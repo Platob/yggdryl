@@ -2677,159 +2677,155 @@ fn poisoned() -> Error {
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        Answer, Client, DEFAULT_REGION, Endpoint, backoff, bucket_region_of, total_of_content_range,
-    };
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/client.rs` and `rust/tests/object/properties.rs`
+    //! pin and a caller cannot reach.
+    //!
+    //! Addressing, the retry schedule, and what a redirect or a `Content-Range`
+    //! says are settled before a single request goes out, so they are pinned
+    //! without a store to answer. Every item forwards to the real one, so the
+    //! client stays exactly as private as it was.
+    use std::time::{Duration, SystemTime};
+
+    use crate::Result;
     use crate::Url;
-    use crate::object::ObjectOptions;
+    use crate::object::{Credentials, ObjectOptions, Provider};
 
-    fn url(text: &str) -> Url {
-        Url::from_str(text).expect("a valid location")
+    /// The region a location that names no endpoint is signed for.
+    pub const DEFAULT_REGION: &str = super::DEFAULT_REGION;
+
+    /// The pause before the first retry; each further one doubles it.
+    pub const RETRY_BACKOFF: Duration = super::RETRY_BACKOFF;
+
+    /// How long the client waits before attempt `attempt`.
+    pub fn backoff(attempt: u32) -> Duration {
+        super::backoff(attempt)
     }
 
-    /// Options that consult nothing outside the test.
-    fn sealed() -> ObjectOptions {
-        ObjectOptions::default().with_environment(false)
-    }
-
-    #[test]
-    fn an_aws_location_is_addressed_virtual_hosted_and_signed_for_its_region() {
-        let client = Client::new(
-            &url("s3://trades.s3.eu-west-3.amazonaws.com/lake/part.parquet"),
-            sealed(),
-        )
-        .expect("a client");
-        assert_eq!(client.region(), "eu-west-3");
-        assert_eq!(
-            client.endpoint.host_header("trades"),
-            "trades.s3.eu-west-3.amazonaws.com"
-        );
-        assert_eq!(
-            client.endpoint.path("trades", "lake/part.parquet"),
-            "/lake/part.parquet"
-        );
-    }
-
-    #[test]
-    fn a_bucket_only_location_defaults_its_endpoint_from_the_region() {
-        let client =
-            Client::new(&url("s3://trades/lake/part.parquet"), sealed()).expect("a client");
-        assert_eq!(client.region(), DEFAULT_REGION);
-        assert_eq!(
-            client.endpoint.host_header("trades"),
-            "trades.s3.us-east-1.amazonaws.com"
-        );
-
-        // A dot in the bucket would break a TLS wildcard, so it stays in the path.
-        let dotted = Client::new(&url("s3://my.trades/part.parquet"), sealed()).expect("a client");
-        assert_eq!(
-            dotted.endpoint.host_header("my.trades"),
-            "s3.us-east-1.amazonaws.com"
-        );
-        assert_eq!(
-            dotted.endpoint.path("my.trades", "part.parquet"),
-            "/my.trades/part.parquet"
-        );
-    }
-
-    #[test]
-    fn a_local_endpoint_is_addressed_path_style_over_its_own_scheme_and_port() {
-        let client = Client::new(
-            &url("s3://localhost:9000/trades/lake/part.parquet"),
-            sealed().with_endpoint("http://localhost:9000"),
-        )
-        .expect("a client");
-        assert_eq!(client.endpoint.scheme, "http");
-        assert_eq!(client.endpoint.host_header("trades"), "localhost:9000");
-        assert_eq!(
-            client.endpoint.path("trades", "lake/part.parquet"),
-            "/trades/lake/part.parquet"
-        );
-    }
-
-    #[test]
-    fn a_key_is_encoded_once_and_its_separators_survive() {
-        let endpoint = Endpoint {
-            scheme: "https".to_owned(),
-            host: "s3.example.io".to_owned(),
-            port: None,
-            path_style: true,
-            account: None,
-            account_in_path: false,
-        };
-        assert_eq!(
-            endpoint.path("trades", "year=2026/a b/c+d.parquet"),
-            "/trades/year%3D2026/a%20b/c%2Bd.parquet"
-        );
-        // The bucket root has no trailing separator to sign over.
-        assert_eq!(endpoint.path("trades", ""), "/trades");
-    }
-
-    #[test]
-    fn explicit_credentials_beat_a_url_that_carries_its_own() {
-        let carried = Client::url_credentials(&url("s3://key:s3cr3t@trades/part.parquet"))
-            .expect("credentials off the URL");
-        assert_eq!(carried.access_key_id(), "key");
-
-        let explicit = Client::new(
-            &url("s3://key:s3cr3t@trades/part.parquet"),
-            sealed().with_credentials(crate::object::Credentials::new("other", "secret")),
-        )
-        .expect("a client");
-        let signer = explicit
-            .signer(std::time::SystemTime::UNIX_EPOCH)
-            .expect("a signer")
-            .expect("credentials");
-        assert_eq!(signer.access_key_id(), "other");
-    }
-
-    #[test]
-    fn a_content_range_states_the_total_and_a_redirect_states_the_region() {
-        assert_eq!(total_of_content_range(Some("bytes 0-9/1024")), Some(1024));
-        assert_eq!(total_of_content_range(Some("bytes */1024")), Some(1024));
-        assert_eq!(total_of_content_range(Some("bytes 0-9/*")), None);
-        assert_eq!(total_of_content_range(None), None);
-
-        let redirect = Answer {
-            status: 301,
-            headers: vec![("x-amz-bucket-region".to_owned(), "eu-west-3".to_owned())],
+    /// The region a redirect names, for an answer of `status` and `headers`.
+    ///
+    /// The body plays no part, so this builds the answer the reader reads
+    /// rather than handing one out.
+    pub fn bucket_region_of(status: u16, headers: &[(String, String)]) -> Option<String> {
+        super::bucket_region_of(&super::Answer {
+            status,
+            headers: headers.to_vec(),
             body: Vec::new(),
-        };
-        assert_eq!(bucket_region_of(&redirect), Some("eu-west-3".to_owned()));
-
-        // A 200 is never a redirect, whatever headers it carries.
-        let fine = Answer {
-            status: 200,
-            headers: vec![("x-amz-bucket-region".to_owned(), "eu-west-3".to_owned())],
-            body: Vec::new(),
-        };
-        assert_eq!(bucket_region_of(&fine), None);
+        })
     }
 
-    #[test]
-    fn the_backoff_doubles_and_stops_doubling() {
-        assert_eq!(backoff(1), super::RETRY_BACKOFF);
-        assert_eq!(backoff(2), super::RETRY_BACKOFF * 2);
-        assert_eq!(backoff(3), super::RETRY_BACKOFF * 4);
-        assert_eq!(backoff(20), super::RETRY_BACKOFF * 64);
+    /// The whole length a `Content-Range` states, when it states one.
+    pub fn total_of_content_range(header: Option<&str>) -> Option<u64> {
+        super::total_of_content_range(header)
     }
 
-    #[test]
-    fn an_endpoint_splits_into_scheme_host_and_port() {
-        assert_eq!(
-            Client::split_endpoint("http://localhost:9000").expect("a split endpoint"),
-            ("http".to_owned(), "localhost".to_owned(), Some(9000))
-        );
-        assert_eq!(
-            Client::split_endpoint("s3.example.io").expect("a split endpoint"),
-            ("https".to_owned(), "s3.example.io".to_owned(), None)
-        );
-        assert_eq!(
-            Client::split_endpoint("https://[::1]:9000").expect("a split endpoint"),
-            ("https".to_owned(), "[::1]".to_owned(), Some(9000))
-        );
-        Client::split_endpoint("https://host:notaport").expect_err("a refused port");
+    /// How one endpoint addresses a container and a key.
+    pub struct Endpoint(super::Endpoint);
+
+    impl Endpoint {
+        /// The endpoint its parts spell.
+        pub fn new(
+            scheme: &str,
+            host: &str,
+            port: Option<u16>,
+            path_style: bool,
+            account: Option<&str>,
+            account_in_path: bool,
+        ) -> Self {
+            Self(super::Endpoint {
+                scheme: scheme.to_owned(),
+                host: host.to_owned(),
+                port,
+                path_style,
+                account: account.map(str::to_owned),
+                account_in_path,
+            })
+        }
+
+        /// The `Host` header a request against `container` carries.
+        pub fn host_header(&self, container: &str) -> String {
+            self.0.host_header(container)
+        }
+
+        /// The request path `key` in `container` is sent as.
+        pub fn path(&self, container: &str, key: &str) -> String {
+            self.0.path(container, key)
+        }
+    }
+
+    /// One configured client, as much of it as a test can observe.
+    pub struct Client(super::Client);
+
+    impl Client {
+        /// Build the client `url` and `options` describe, touching nothing.
+        ///
+        /// # Errors
+        ///
+        /// Returns a refusal when the URL names no store, no container, or an
+        /// endpoint that cannot be read as a location.
+        pub fn new(url: &Url, options: ObjectOptions) -> Result<Self> {
+            super::Client::new(url, options).map(Self)
+        }
+
+        /// The region requests are currently signed for.
+        pub fn region(&self) -> String {
+            self.0.region()
+        }
+
+        /// The scheme the endpoint is reached over.
+        pub fn scheme(&self) -> &str {
+            &self.0.endpoint.scheme
+        }
+
+        /// The `Host` header a request against `container` carries.
+        pub fn host_header(&self, container: &str) -> String {
+            self.0.endpoint.host_header(container)
+        }
+
+        /// The request path `key` in `container` is sent as.
+        pub fn path(&self, container: &str, key: &str) -> String {
+            self.0.endpoint.path(container, key)
+        }
+
+        /// The Azure storage account a request against `url` addresses.
+        pub fn azure_account(
+            provider: Provider,
+            url: &Url,
+            options: &ObjectOptions,
+            handed: Option<&Credentials>,
+        ) -> Option<String> {
+            super::Client::azure_account(provider, url, options, handed)
+        }
+
+        /// The credentials a location carries, when it carries a pair.
+        pub fn url_credentials(url: &Url) -> Option<Credentials> {
+            super::Client::url_credentials(url)
+        }
+
+        /// The scheme, host and port one endpoint spelling splits into.
+        ///
+        /// # Errors
+        ///
+        /// Returns a refusal when the endpoint names a port that is not one.
+        pub fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
+            super::Client::split_endpoint(endpoint)
+        }
+
+        /// The access key id the client would sign with at `now`.
+        ///
+        /// `None` is an anonymous client, which is a way to reach a public
+        /// bucket rather than a failure.
+        ///
+        /// # Errors
+        ///
+        /// Whatever walking the credential chain refuses.
+        pub fn signer_access_key_id(&self, now: SystemTime) -> Result<Option<String>> {
+            Ok(self
+                .0
+                .signer(now)?
+                .map(|signer| signer.access_key_id().to_owned()))
+        }
     }
 }

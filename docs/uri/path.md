@@ -440,13 +440,13 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/uri -k "path_collection or joinpath or windows_and_unc or filename_mutators or mime_and_media"
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py::TestUrlPathlibParity -k "naming or joining or parents or renaming"
+    python/.venv/bin/python -m pytest python/tests/test_uri.py -k "path_collection or joinpath or windows_and_unc or filename_mutators or mime_and_media"
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py::TestUrlPathlibParity -k "naming or joining or parents or renaming"
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="path collections|path joining|fromPath|filename mutations|MIME and media|naming questions|joining and climbing|renaming a URL" node/tests/uri/uri.test.js
+    node --test --test-name-pattern="path collections|path joining|fromPath|filename mutations|MIME and media|naming questions|joining and climbing|renaming a URL" node/tests/uri.test.js
     ```

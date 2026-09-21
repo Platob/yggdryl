@@ -6,7 +6,7 @@
 
 | Key | Value |
 | --- | --- |
-| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
+| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.xxhash` / `yggdryl.txhash` and JavaScript `xxhash` / `txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
 | `xxhash` owns | `xxh32`, `xxh64`, `xxh3`, `xxh128` and their `_with_seed` forms (the XXH3 pair also `_with_secret` and `_with_seed_and_secret`), `digest`, `SECRET_MINIMUM_LENGTH`, the `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states, `reader` / `writer`, `Hashed<H>`, `arrow::row_digests` / `column_digests`, and the value methods `as_value_bytes`, `write_bytes`, `digest`, `stable_hash` |
 | `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `DIGEST:time` / `DIGEST:unit` on a holder |
 | Algorithms | `DigestAlgorithm::ALL`: `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`; `width()` 4, 8, 8, 16 bytes; XXH3-64 is the default and what every `stable_hash` answers |
@@ -72,7 +72,7 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 === "Python"
 
     ```python
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     assert xxhash.xxh32(b"abc") == 0x32D153FF
     assert xxhash.xxh64(b"abc") == 0x44BC2CF5AD770999
@@ -96,9 +96,8 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.from('abc')
     // XXH32 answers a number - 32 bits always fit one exactly - and the wider
     // algorithms answer bigints.
@@ -158,7 +157,7 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 === "Python"
 
     ```python
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     payload = b"AAPL,187.23"
     for split in (1, 4, len(payload)):
@@ -182,9 +181,8 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.from('AAPL,187.23')
     for (const split of [1, 4, payload.length]) {
       const state = new xxhash.Xxh3()
@@ -236,7 +234,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
     ```python
     import pytest
 
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     assert not xxhash.is_secretable("xxh64")
     assert xxhash.is_secretable("xxh3-64")
@@ -255,9 +253,8 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.alloc(241)
     const secret = new Uint8Array(xxhash.SECRET_MINIMUM_LENGTH)
     assert.notEqual(xxhash.xxh3(payload, { secret }), xxhash.xxh3(payload))
@@ -309,7 +306,7 @@ Digest an `IOBase` handle's bytes without reading them whole.
     from pathlib import Path
 
     from yggdryl import IOBase
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     with tempfile.TemporaryDirectory() as root:
         path = Path(root) / "trades.csv"
@@ -330,9 +327,8 @@ Digest an `IOBase` handle's bytes without reading them whole.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { IOBase, xxhash } = require('yggdryl')
+    
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-digest-'))
     try {
       const file = path.join(root, 'trades.csv')
@@ -445,7 +441,7 @@ assert_eq!(
 
     ```python
     from yggdryl import DataType, Scalar
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     symbol = Scalar.from_("AAPL")
     assert symbol.as_value_bytes() == b"AAPL"
@@ -468,9 +464,8 @@ assert_eq!(
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { Scalar, xxhash } = require('yggdryl')
+    
     const symbol = Scalar.from('AAPL')
     assert.ok(symbol.digest().equals(symbol.digest('xxh3-64')))
     assert.equal(symbol.digest().value(), symbol.stableHash())
@@ -490,7 +485,7 @@ assert_eq!(
 
 The tag byte is a wire contract laid out by family: every [`DataTypeKind`](types/datatype.md#identity-and-family) owns a range of bytes, its leaves sit in it and a leaf added later takes the next free byte of its family, so a stored digest never moves; the same byte is what the [value stream](types/value-stream.md) writes after its version. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text/string.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes/index.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
 The bytes moved once, together, when the identifiers were laid out by family: every stored digest of every value changed in that commit, and none has since; the family layout is what keeps the next leaf from moving any.
 
@@ -578,7 +573,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     import pyarrow as pa
 
     from yggdryl import DataType, Field, Scalar
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     holder = Field("row_digest", "uint64", nullable=False)
     holder.digest.set_holder()
@@ -614,9 +609,8 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, Field, Scalar, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { DataType, Field, Scalar, xxhash } = require('yggdryl')
+    
     const holder = new Field('row_digest', 'uint64', false, {
       'DIGEST:role': 'holder',
       'DIGEST:sources': '["symbol"]',
@@ -712,7 +706,7 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
     ```python
     import datetime as dt
 
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     instant = 1_700_000_000_000_000  # 2023-11-14T22:13:20Z in microseconds
     value = txhash.txh3(b"AAPL", instant)
@@ -740,9 +734,8 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Scalar, hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { DataType, Scalar, txhash, xxhash } = require('yggdryl')
+    
     const instant = 1_700_000_000_000_000n // 2023-11-14T22:13:20Z in microseconds
     const value = txhash.txh3('AAPL', instant)
     assert.deepEqual([value.unix, value.unit, value.width], [instant, 'us', 16])
@@ -826,8 +819,7 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     ```python
     import pytest
 
-    from yggdryl import DataType
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import DataType, txhash, xxhash
 
     one = xxhash.Digest.from_int("xxh64", 1)
     epoch = txhash.TxHash.from_parts(0, one, unit="ns")
@@ -863,9 +855,8 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { txhash, xxhash } = require('yggdryl')
+    
     const one = xxhash.Digest.from('xxh64:0000000000000001')
     const bytesOf = (value) => Buffer.from(value.bytes())
     const epoch = txhash.TxHash.fromParts(0n, one, 'ns')
@@ -935,7 +926,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
     ```python
     import datetime as dt
 
-    from yggdryl.hashing import txhash
+    from yggdryl import txhash
 
     aware = dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc)
     kolkata = aware.astimezone(dt.timezone(dt.timedelta(hours=5, minutes=30)))
@@ -957,9 +948,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { txhash } = hashing
-
+    const { txhash } = require('yggdryl')
+    
     const aware = new Date('2023-11-14T22:13:20Z')
     // A Date is its UTC instant; text with an offset already counts from the epoch.
     assert.equal(txhash.unixOf(aware), 1_700_000_000_000_000n)
@@ -1007,7 +997,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     seconds = txhash.TxHasher("xxh64", unit="s", seed=7)
     value = seconds.digest(b"AAPL", 1_700_000_000)
@@ -1030,9 +1020,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { Scalar, txhash, xxhash } = require('yggdryl')
+    
     const seconds = new txhash.TxHasher('xxh64', 's', 7n)
     const value = seconds.digest('AAPL', 1_700_000_000n)
     assert.equal(value.unit, 's')
@@ -1110,7 +1099,7 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
 
     import pyarrow as pa
 
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     batch = pa.record_batch({"symbol": pa.array(["AAPL", "AAPL"])})
     instants = pa.array([1_700_000_000_000_000, 1_700_000_000_000_001], pa.timestamp("us", tz="UTC"))
@@ -1193,7 +1182,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     import pyarrow as pa
 
     from yggdryl import DataType, Field, Scalar
-    from yggdryl.hashing import txhash
+    from yggdryl import txhash
 
     key = Field("key", "fixed_size_binary[16]", nullable=False)
     key.digest.set_holder()
@@ -1227,9 +1216,8 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, Field, Scalar, hashing } = require('yggdryl')
-    const { txhash } = hashing
-
+    const { DataType, Field, Scalar, txhash } = require('yggdryl')
+    
     const key = new Field('key', 'fixed_size_binary[16]', false, {
       'DIGEST:role': 'holder',
       'DIGEST:time': 'event',
@@ -1269,7 +1257,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - Python `bytearray` / `memoryview` -> a bounded window, never borrowed; 1.7x slower than `bytes`.
 - JavaScript string -> UTF-8 encoded on the way in; 7.5x slower than `Buffer`.
 - One-byte call -> 166 ns Python, 496 ns Node of binding overhead; gone by 64 KiB.
-- No `xxhash` C package in `python/.venv` -> `(C libxxhash)` rows skipped; `python/tests/hashing/xxhash` skipped by `pytest.importorskip`.
+- No `xxhash` C package in `python/.venv` -> `(C libxxhash)` rows skipped; `python/tests/test_xxhash.py` skipped by `pytest.importorskip`.
 - An empty chunk -> contributes nothing, wherever it sits.
 - A secret with a payload of 240 bytes or fewer -> never consulted; the derived secret and the seed answer.
 - A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or `at least 136 bytes, got 135`.
@@ -1334,16 +1322,16 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- xxhash:: txhash:: hashing::
+    cargo test --features "parquet iceberg internals" -p yggdryl --test hashing --test txhash --test xxhash
     cargo test --features "parquet iceberg" -p yggdryl --test allocations -- the_canonical_value_feed_allocates_nothing borrowed_value_bytes_allocate_nothing coupled_value_bytes_allocate_nothing reading_an_instant_out_of_a_value_allocates_nothing txhash_uuid_projection_allocates_nothing_at_any_corpus_size
-    cargo test --features "parquet iceberg" -p yggdryl --test types -- stable_hash
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- stable_hash
     cargo bench -p yggdryl --bench hashing
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/hashing
+    python/.venv/bin/python -m pytest python/tests/test_init.py python/tests/test_txhash.py python/tests/test_xxhash.py
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
     ```
@@ -1351,7 +1339,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 === "JavaScript"
 
     ```bash
-    node --test node/tests/hashing/xxhash/xxhash.test.js node/tests/hashing/txhash/txhash.test.js
+    node --test node/tests/hashing/xxhash.test.js node/tests/hashing/txhash.test.js
     npm run --prefix node bench:hashing:xxhash
     npm run --prefix node bench:hashing:txhash
     ```

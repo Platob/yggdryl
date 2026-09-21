@@ -7,36 +7,69 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | key | value |
 | --- | --- |
 | Owns | `DataType`, `Field`, `Scalar`, and the shared enums re-exported at the crate root |
+| Layout | the Core pages below, then one subsection per family, then one page per type inside it |
 | Arrow | projection is always compiled; the crate is Arrow-native |
 | Bindings | Rust, Python, JavaScript |
 | Rust bench target | one, `types`; each page scopes it with a Criterion filter |
 | Rust test target | one integration target, `types`, requiring `arrow` |
 
-## Pages
+## How a type page reads
 
-| group | page | owns |
+A type's core file holds its datatype, then its field, then its scalar, so its
+page is written in that order: **Contract**, **DataType**, **Field**,
+**Scalar**, **Arrow storage**, then one section per behaviour that type has -
+casts, grammar, parsing, arithmetic, bounds, vocabulary - then **Edges** and
+**Commands**. Every example appears in Rust, Python and JavaScript tabs, in that
+order; a call only one binding has is named as such rather than invented for the
+other two.
+
+A family subsection is a folder: `index.md` for what its leaves share - the
+family value enum, what `family()` answers, the casts and the Arrow rules they
+have in common - and one page per type in it. A type whose family is itself has
+a page at the root of this tab instead of a folder of one page.
+
+## Core
+
+| page | owns |
+| --- | --- |
+| [DataType](datatype.md) | The owned logical type: parsing, canonical display, Arrow projection, defaults |
+| [Field](field.md) | Name, datatype, nullability, metadata: the struct root, merge, and diffs |
+| [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
+| [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
+| [Paths](paths.md) | `FieldPath`: the one path into a nested schema or value, resolved once and applied many times |
+| [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |
+
+## Families
+
+| subsection | type pages | what the family shares |
 | --- | --- | --- |
-| Core | [DataType](datatype.md) | The owned logical type: parsing, canonical display, Arrow projection, defaults |
-| Core | [Field](field.md) | Name, datatype, nullability, metadata: the struct root, merge, and diffs |
-| Core | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
-| Core | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
-| Families | [Numeric](numeric.md) | Boolean, integer, floating, decimal, and the `Decimal18` value |
-| Families | [Temporal](temporal.md) | The five families - date, time, datetime, duration, interval - their leaves and units, the ISO spellings, the unit and zone vocabulary |
-| Families | [Strings & bytes](text.md) | The string family (eighteen leaves: six shapes in each of UTF-8, US-ASCII and windows-1252), the byte family (six leaves), `Str` and `Bytes`, the version value, the `uri` family's `url` and `urn` leaves, regex-capture schema inference |
-| Families | [Codes](codes.md) | The ten registered codes over `utf8` storage, `ascii_packed`, `StringEnum` and the ISO listings, the three securities identifiers and their check digits, the `state` lifecycle |
-| Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
-| Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
-| Families | [Geospatial](geospatial.md) | Geometry, geography, and the WKB reader |
-| Families | [Variant](variant.md) | the Apache Parquet Variant encoding: one metadata dictionary and one value payload, the pair Parquet, Avro, Arrow and Iceberg all state for a `variant` column |
-| Encoding | [Value stream](value-stream.md) | any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries |
-| Families | [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |
-| Reference | [Playground](playground.md) | Every US-ASCII string width, code, and refusal, as the package answered them |
+| [Numeric](numeric/index.md) | [Integer](numeric/integer.md), [Floating](numeric/floating.md), [Decimal](numeric/decimal.md), [Boolean](numeric/boolean.md) | The four families whose value is a number: one kind each, the widths they are spelled at, the selectors, the typed markers, and the widening and casts they share |
+| [Temporal](temporal/index.md) | [Date](temporal/date.md), [Time](temporal/time.md), [Datetime](temporal/datetime.md), [Duration](temporal/duration.md), [Interval](temporal/interval.md), [Time zone](temporal/timezone.md) | Eight leaves over one `TimeUnit` vocabulary and one `Timezone` value, the `Temporal` family enum, the ISO spellings, and the merge that refuses to cross families |
+| [Strings & bytes](text/index.md) | [String](text/string.md), [Bytes](text/bytes.md) | Two families whose value is a run of bytes: eighteen string leaves in three charsets, six byte leaves, `Str` and `Bytes`, the bound rule and the serialized shape |
+| [Codes](codes/index.md) | [Currency](codes/currency.md), [Country](codes/country.md), [MIC](codes/mic.md), [CFI](codes/cfi.md), [ISIN](codes/isin.md), [CUSIP](codes/cusip.md), [SEDOL](codes/sedol.md), [Bloomberg](codes/bloomberg.md), [FIGI](codes/figi.md), [Side](codes/side.md), [State](codes/state.md), [TimeInForce](codes/timeinforce.md) | Twelve identities over a published registry: `DataType::CODES`, the `Code` family enum, US-ASCII storage with its own Arrow extension name, `StringEnum` vocabularies and the check digits |
+| [Nested](nested/index.md) | [Struct](nested/struct.md), [List](nested/list.md), [Map](nested/map.md), [Union](nested/union.md), [Dictionary](nested/dictionary.md), [Run-end](nested/runend.md) | The datatypes that hold other datatypes: four layouts over child fields, two encodings over a value, one shared child allocation, and the `Nested` family value |
+| [Geospatial](geospatial/index.md) | [Geometry](geospatial/geometry.md), [Geography](geospatial/geography.md) | One Well-Known Binary payload under two readings, the shared `GeospatialParameters`, the CRS and edge vocabulary, and the dependency-free `wkb` reader |
+
+## Single types
+
+| page | owns |
+| --- | --- |
+| [UUID](uuid.md) | The 128-bit identifier, its spellings, and its `arrow.uuid` storage |
+| [Version](version.md) | Three numeric components in four bytes, numerically ordered, not lexicographic |
+| [Media types](mediatype.md) | `mimetype` and `mediatype`: what a record's bytes are, and what they were declared under |
+| [Variant](variant.md) | The Apache Parquet Variant encoding: one metadata dictionary and one value payload, the pair Parquet, Avro, Arrow and Iceberg all state for a `variant` column |
+| [Value stream](value-stream.md) | Any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries |
+
+The [playground](playground.md) renders every US-ASCII string width, every
+registered code, every refusal and a declared vocabulary as the package itself
+answered them.
 
 ## Edges
 
 - `cargo bench --bench types -- value` -> three groups carry that name; scope with a function prefix.
 - `Field::validate` and Scalar row validation against a struct root -> Rust and Python (`validate`, `validate_value`, `canonicalize_value`); JavaScript validates at every entry point.
 - `FieldScalar` and the `wkb` reader -> Rust only; a geospatial value crosses a binding as plain WKB bytes.
+- A family with one leaf has no family enum: the leaf is the family, and its page sits at this tab's root rather than in a folder.
 - A Python benchmark `--iterations` must be positive; Node benches read `YGGDRYL_BENCH_ITERATIONS`, default 100000.
 
 ## Commands
@@ -44,15 +77,16 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests decimal::tests diff::tests merge::tests metadata::tests path::tests protocol::tests scalar::tests string::tests timezone::tests version::tests
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test parquet -- metadata
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- arithmetic decimal::internal::reading diff::internal merge::internal metadata::internal path protocol::internal::tests scalar::internal string::codes timezone::internal version::internal
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression --test media_type --test metadata --test mime_type --test root --test text --test uri --test value
     cargo bench --manifest-path rust/Cargo.toml --bench types
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test__classes.py python/tests/test__defaults.py python/tests/test__hints.py python/tests/test_cast.py python/tests/test_datatype.py python/tests/test_field.py python/tests/test_protocol.py python/tests/test_scalar.py python/tests/test_timezone.py python/tests/test_version.py python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
@@ -61,7 +95,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/types/*.test.js" node/tests/enums.test.js
+    node --test node/tests/datatype.test.js node/tests/defaults.test.js node/tests/field.test.js node/tests/fields.test.js node/tests/timezone.test.js node/tests/value.test.js node/tests/version.test.js node/tests/enums/vocabulary.test.js
     npm run --prefix node bench:types
     npm run --prefix node bench:types:defaults
     ```

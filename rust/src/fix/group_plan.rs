@@ -9,7 +9,7 @@ use crate::{DataType, Error, Field, Result, Scalar, StructType};
 const MAX_DEPTH: usize = 64;
 
 #[derive(Clone, Debug)]
-pub(super) struct GroupPlan {
+pub struct GroupPlan {
     field: Field,
     columns: Vec<Field>,
     tags: HashMap<i32, Option<usize>>,
@@ -26,7 +26,7 @@ struct NestedGroup {
 }
 
 impl GroupPlan {
-    pub(super) fn from_field(field: &Field) -> Result<Self> {
+    pub fn from_field(field: &Field) -> Result<Self> {
         Self::from_projection(nullable_layout(field, false, 0)?, 0)
     }
 
@@ -97,22 +97,22 @@ impl GroupPlan {
         Ok(())
     }
 
-    pub(super) const fn field(&self) -> &Field {
+    pub const fn field(&self) -> &Field {
         &self.field
     }
-    pub(super) fn column(&self, index: usize) -> &Field {
+    pub fn column(&self, index: usize) -> &Field {
         &self.columns[index]
     }
-    pub(super) fn columns_len(&self) -> usize {
+    pub fn columns_len(&self) -> usize {
         self.columns.len()
     }
-    pub(super) fn tag_index(&self, tag: i32) -> Option<usize> {
+    pub fn tag_index(&self, tag: i32) -> Option<usize> {
         self.tags.get(&tag).copied().flatten()
     }
-    pub(super) const fn delimiter(&self) -> Option<i32> {
+    pub const fn delimiter(&self) -> Option<i32> {
         self.delimiter
     }
-    pub(super) fn nested(&self, tag: i32) -> Option<(usize, &Self)> {
+    pub fn nested(&self, tag: i32) -> Option<(usize, &Self)> {
         let nested = &self.nested[self.groups.get(&tag).copied().flatten()?];
         Some((nested.column, &nested.plan))
     }
@@ -121,7 +121,7 @@ impl GroupPlan {
             .iter()
             .map(|nested| (nested.path.as_slice(), &nested.plan))
     }
-    pub(super) fn row(&self, values: Vec<Scalar>) -> Scalar {
+    pub fn row(&self, values: Vec<Scalar>) -> Scalar {
         let item =
             super::catalog::occurrence_of(&self.field).expect("a compiled group has an occurrence");
         component_value(item, &mut values.into_iter(), true)
@@ -184,154 +184,22 @@ fn component_value(field: &Field, values: &mut std::vec::IntoIter<Scalar>, root:
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{FixCategory, FixRegistry, MsgType};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/group_plan.rs` pins and a caller cannot reach.
+    //!
+    //! A plan is compiled once per group definition and borrowed by every
+    //! message and every registry clone reading it; a caller sees the row it
+    //! lays out and never the layout. `fix::group_plan` is a private module of
+    //! a published one, so `GroupPlan` being `pub` reaches nobody: this door is
+    //! the only path to it, and it exists under the `internals` feature alone.
+    pub use super::GroupPlan;
 
-    fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
-        let mut field = dtype.required_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
-        field
-    }
-
-    fn parties() -> Field {
-        let subparty = StructType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("SubParty");
-        let mut nested = DataType::large_list(subparty).required_field("SubParties");
-        nested.as_fix_mut().set_counter(802).unwrap();
-        let attribution = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("Attribution");
-        let item = StructType::from_fields([
-            tagged("PartyID", 448, DataType::utf8()),
-            attribution,
-            tagged("NoPartySubIDs", 802, DataType::Int32),
-            nested,
-        ])
-        .map(DataType::from)
-        .unwrap()
-        .required_field("Party");
-        let mut group = DataType::list(item).required_field("Parties");
-        group.as_fix_mut().set_counter(453).unwrap();
-        group
-    }
-
-    #[test]
-    fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
-        let source = parties();
-        let plan = GroupPlan::from_field(&source).unwrap();
-        assert_eq!(plan.columns_len(), 4);
-        assert_eq!(plan.delimiter(), Some(448));
-        assert_eq!(plan.tag_index(452), Some(1));
-        assert_eq!(plan.tag_index(802), Some(2));
-        assert!(plan.column(1).is_nullable());
-        let (column, nested) = plan.nested(802).unwrap();
-        assert_eq!(column, 3);
-        assert!(matches!(
-            nested.field().dtype(),
-            DataType::Sequence(SequenceType::LargeList(_))
-        ));
-        assert_eq!(nested.tag_index(523), Some(0));
-        let row = plan.row(vec![
-            Scalar::from("broker"),
-            Scalar::Null,
-            Scalar::from(0_i32),
-            Scalar::Null,
-        ]);
-        assert_eq!(
-            row,
-            Scalar::from_sequence([
-                Scalar::from("broker"),
-                Scalar::Null,
-                Scalar::from(0_i32),
-                Scalar::Null,
-            ])
-        );
-        let DataType::Sequence(SequenceType::List(item)) = source.dtype() else {
-            panic!("list")
-        };
-        assert!(!item.fields()[0].is_nullable());
-    }
-
-    #[test]
-    fn message_and_nested_scope_borrow_one_precompiled_plan() {
-        let mut field = StructType::from_fields([parties()])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("Report");
-        field.as_fix_mut().set_msgtype("R").unwrap();
-        let message = MsgType::from_field(field).unwrap();
-        let outer = message.get_group_plan_by_tag(453).unwrap();
-        let nested = message.get_group_plan_by_tag(802).unwrap();
-        assert!(std::ptr::eq(outer.nested(802).unwrap().1, nested));
-        assert!(std::ptr::eq(
-            outer,
-            message.get_group_plan_by_tag(453).unwrap(),
-        ));
-        let cloned = message.clone();
-        assert!(std::ptr::eq(
-            outer,
-            cloned.get_group_plan_by_tag(453).unwrap(),
-        ));
-    }
-
-    #[test]
-    fn registry_clones_share_plans_and_replacements_recompile_once() {
-        let mut registry =
-            FixRegistry::from_fields([tagged("NoPartyIDs", 453, DataType::Int32)]).unwrap();
-        registry
-            .insert_definition(FixCategory::Groups, parties())
-            .unwrap();
-        let snapshot = registry.clone();
-        let original = snapshot.get_group_plan_by_tag(453).unwrap();
-        assert!(std::ptr::eq(
-            original,
-            registry.get_group_plan_by_tag(453).unwrap()
-        ));
-        let item = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("Party");
-        let mut replacement = DataType::list(item).required_field("Parties");
-        replacement.as_fix_mut().set_counter(453).unwrap();
-        registry
-            .update_definition(FixCategory::Groups, replacement)
-            .unwrap();
-        let current = registry.get_group_plan_by_tag(453).unwrap();
-        assert!(!std::ptr::eq(original, current));
-        assert_eq!(original.delimiter(), Some(448));
-        assert_eq!(current.delimiter(), Some(452));
-    }
-
-    #[test]
-    fn maps_keep_native_key_shape_and_declare_no_numeric_wire_layout() {
-        let mut field = DataType::map_of(DataType::utf8(), DataType::utf8(), true)
-            .unwrap()
-            .nullable_field("nativeids");
-        field.as_fix_mut().set_tag(65_090).unwrap();
-        field.as_fix_mut().set_counter(65_090).unwrap();
-        let plan = GroupPlan::from_field(&field).unwrap();
-        let DataType::Mapping(map) = plan.field().dtype() else {
-            panic!("the native Map layout is preserved")
-        };
-        assert!(map.keys_sorted());
-        assert!(!map.entries().is_nullable());
-        assert!(!map.entries().fields()[0].is_nullable());
-        assert_eq!(plan.delimiter(), None);
-        assert!(plan.tags.is_empty());
-        assert_eq!(
-            plan.row(vec![Scalar::from("orderid"), Scalar::from("O-1")]),
-            Scalar::from_sequence([Scalar::from("orderid"), Scalar::from("O-1")]),
-        );
-        let mut registry = FixRegistry::new();
-        registry
-            .insert_definition(FixCategory::Groups, field)
-            .unwrap();
-        assert!(registry.get_group_by_tag(65_090).is_some());
-        assert!(registry.get_group_plan_by_tag(65_090).is_none());
+    /// Whether the plan declares no numeric wire layout at all, which is what
+    /// a crate-owned Map group is.
+    #[must_use]
+    pub fn tags_is_empty(plan: &GroupPlan) -> bool {
+        plan.tags.is_empty()
     }
 }

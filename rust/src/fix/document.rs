@@ -1118,3 +1118,33 @@ fn named(value: &Scalar) -> Option<Vec<String>> {
     }
     Some(value.keys().into_iter().map(str::to_owned).collect())
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! [`into_fix_document`](crate::into_fix_document) and
+    //! [`from_fix_document`](crate::from_fix_document) are the published pair
+    //! over a whole field; these two are the same rewrite over one stored
+    //! value, which a snapshot comparison reads a definition at a time.
+    use crate::{Result, Scalar};
+
+    /// Write one stored definition value as its compact document.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the value is not a definition.
+    pub fn dump(value: Scalar) -> Result<Scalar> {
+        super::dump(value)
+    }
+
+    /// Read one compact document back as the stored definition value.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the document is malformed.
+    pub fn load(value: Scalar) -> Result<Scalar> {
+        super::load(value)
+    }
+}

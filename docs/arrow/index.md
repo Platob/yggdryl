@@ -186,20 +186,20 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test types default_scalar::
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow row_value::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- default::scalars
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow -- rows::row_values
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_defaults.py
+    python/.venv/bin/python -m pytest python/tests/test__defaults.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/defaults.test.js
+    node --test node/tests/defaults.test.js
     npm run --prefix node bench:types:defaults
     ```

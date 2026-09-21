@@ -26,6 +26,12 @@ iceberg = ["parquet", "dep:iceberg-official", "dep:uuid"]
 # SigV4, OAuth 2.0 bearer tokens, and Azure Shared Key over a synchronous
 # HTTP/1.1 client - so no SDK, runtime, or async executor rides in.
 object = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
+# The crate's own modules, reachable by `rust/tests/` alone. Every test lives
+# in `tests/`, and the handful that pin something a caller cannot reach - a
+# signing step, a format reader, a canonical rewrite - turn this on. No
+# published build does: it adds no dependency and changes no behaviour, it only
+# makes `yggdryl::internals` exist.
+internals = []
 
 [dependencies]
 arrow-array.workspace = true
@@ -208,9 +214,6 @@ harness = false
 name = "holder"
 path = "benchmarks/holder.rs"
 harness = false
-
-[[test]]
-name = "types"
 
 [[test]]
 name = "arrow"

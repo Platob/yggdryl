@@ -200,18 +200,18 @@
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib expression::plan::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::streams::a_plan_creates_inserts_upserts_deletes_and_reads_a_store expression::plan::tests::streams::a_sliced_reader_walks_batch_boundaries_without_copying_whole_batches expression::plan::tests::streams::a_holder_is_built_from_a_url_and_properties
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan::streams
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "plan or field_is_a_plan or whichever_clause"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "plan or field_is_a_plan or whichever_clause"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="plan|whichever clause" node/tests/expression
+    node --test --test-name-pattern="plan|whichever clause" node/tests/expression.test.js
     ```

@@ -54,11 +54,11 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level};
 
+use crate::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
-use crate::types::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
-use crate::types::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
-use crate::types::timezone::{PyTimezone, core_timezone_from_value};
+use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
+use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
 
@@ -772,7 +772,7 @@ impl Rows {
         }
         if is_dataclass_instance(row)? {
             return py
-                .import("yggdryl.types._classes")?
+                .import("yggdryl._classes")?
                 .getattr("into_dict")?
                 .call1((row,));
         }
@@ -1548,7 +1548,7 @@ impl PyRecordOptions {
     fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_merge_by_scalar(&crate::types::scalar::from_py(value)?)
+            .set_merge_by_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -1566,7 +1566,7 @@ impl PyRecordOptions {
     fn set_select(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_select_scalar(&crate::types::scalar::from_py(value)?)
+            .set_select_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -1583,7 +1583,7 @@ impl PyRecordOptions {
     fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_filter_scalar(&crate::types::scalar::from_py(value)?)
+            .set_filter_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -2033,7 +2033,7 @@ impl PyTextOptions {
     fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_merge_by_scalar(&crate::types::scalar::from_py(value)?)
+            .set_merge_by_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -2051,7 +2051,7 @@ impl PyTextOptions {
     fn set_select(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_select_scalar(&crate::types::scalar::from_py(value)?)
+            .set_select_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -2068,7 +2068,7 @@ impl PyTextOptions {
     fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_filter_scalar(&crate::types::scalar::from_py(value)?)
+            .set_filter_scalar(&crate::scalar::from_py(value)?)
             .map_err(value_error)
     }
 
@@ -2421,7 +2421,7 @@ impl PyTextOptions {
         };
         let mut paths = Vec::new();
         for held in value.try_iter()? {
-            paths.push(crate::text_line::core_path_from_value(&held?)?);
+            paths.push(crate::text::line::core_path_from_value(&held?)?);
         }
         self.inner.set_lift_paths(Some(paths));
         Ok(())

@@ -127,7 +127,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.coding import gzip
+    from yggdryl import gzip
     from yggdryl.holder import Buffer, Path
 
     # `Path` skips the composition, so the coding is the only layer retained.
@@ -213,7 +213,7 @@ The scan answers *candidates*: the pattern a coding restarts after can also occu
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_io_codings.py
+    python/.venv/bin/python -m pytest python/tests/coding/test_handles.py
     python/.venv/bin/python -m pytest python/tests/coding
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```

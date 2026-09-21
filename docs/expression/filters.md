@@ -135,19 +135,19 @@ A conjunct is the unit of pushdown, and each level answers only what it can prov
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_filter_keeps_the_rows_it_answers_true_for expression::tests::a_filter_has_to_be_a_predicate expression::tests::a_mask_that_keeps_everything_keeps_the_batch_itself expression::tests::unknown_is_not_true expression::tests::a_split_conjoins_back_to_what_it_split expression::tests::pruning_never_loses_a_row
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::options::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- arrow::grammar eval::grammar filter::grammar pushdown::grammar
+    cargo test --features "iceberg internals parquet" -p yggdryl --test media -- options
     cargo bench -p yggdryl --bench expression -- expression_filter
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "filter or unknown or statistics"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "filter or unknown or statistics"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="filter|holder attribute" node/tests/expression
+    node --test --test-name-pattern="filter|holder attribute" node/tests/expression.test.js
     ```

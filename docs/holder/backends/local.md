@@ -531,7 +531,8 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib local::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test fs -- local
+    cargo test --features "iceberg internals parquet" -p yggdryl --test local -- mod_::internal
     cargo test --features "parquet iceberg" -p yggdryl --test holder
     cargo bench --bench holder --features parquet -- io_listing
     cargo bench --bench holder --features parquet -- 'fs_bytes/.*/local_file'
@@ -541,5 +542,5 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_roles.py
+    python/.venv/bin/python -m pytest python/tests/holder/test_init.py
     ```

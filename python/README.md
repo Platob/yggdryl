@@ -106,7 +106,7 @@ assert price.parquet_field_id == 7
 
 ```python
 from yggdryl import Field, types
-from yggdryl.types import Int32Field, ListField
+from yggdryl import Int32Field, ListField
 
 trade_id: Int32Field = types.int32("trade_id", nullable=False)
 tags: ListField[str] = types.list("tags", types.utf8("item"))
@@ -116,7 +116,7 @@ assert tags.dtype.kind == "list"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```
 
-The categorized `yggdryl.types` package covers every native datatype variant.
+One module per type at the package root - `yggdryl.integer`, `yggdryl.string`, `yggdryl.temporal` and the rest - covers every native datatype variant, and every factory is re-exported from `yggdryl` itself.
 Its aliases preserve kind/value information for static typing while factories
 return the same generic native `Field`. `equals(..., with_metadata=False)` can
 ignore metadata recursively; `show_diffs` returns readable UTF-8 difference
@@ -140,7 +140,7 @@ assert Order.into_field().name == "Order"
 assert toml.loads(payload, cls=Order) == order
 ```
 
-`yggdryl.text.json`, `yggdryl.text.toml`, and `yggdryl.text.yaml` expose byte-first `dumps`/`loads`
+`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` expose byte-first `dumps`/`loads`
 plus declared `os.PathLike` and typed text/binary file-object `dump`/`load`.
 A source `str` is always document content; use `pathlib.Path` to name a source
 location. String destinations remain paths because output has no content/path

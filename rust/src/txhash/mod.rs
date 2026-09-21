@@ -103,6 +103,21 @@ pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash {
     TxHash::new(unix, algorithm.digest(input))
 }
 
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/txhash/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! `algorithm_of_width` is the crate-private table that decides which
+    //! digest a declared width carries; a caller sees only the widths and
+    //! datatypes it answers for. It is behind a forwarder, so nothing here is
+    //! more public than it was.
+
+    use crate::DigestAlgorithm;
+
+    /// The algorithm a stored width implies, when exactly one does.
+    #[must_use]
+    pub fn algorithm_of_width(width: u32) -> Option<DigestAlgorithm> {
+        super::value::algorithm_of_width(width)
+    }
+}

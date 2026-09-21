@@ -225,30 +225,20 @@ fn invalid(reason: SmolStr) -> Error {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/statistics.rs` pins and a caller cannot reach.
 
-    #[test]
-    fn malformed_encoded_candidates_never_become_written_bounds() {
-        let mut lower = None;
-        fold_encoded(&mut lower, &[0; 3], &DataType::Int64, true);
-        assert!(lower.is_none());
+    use crate::DataType;
 
-        let mut upper = None;
-        fold_encoded(
-            &mut upper,
-            &f64::NAN.to_le_bytes(),
-            &DataType::Float64,
-            false,
-        );
-        assert!(upper.is_none());
-
-        let promoted = 7_i32.to_le_bytes();
-        fold_encoded(&mut lower, &promoted, &DataType::Int64, true);
-        assert_eq!(lower.as_deref(), Some(promoted.as_slice()));
-
-        fold_encoded(&mut lower, &[0; 9], &DataType::Int64, true);
-        assert_eq!(lower.as_deref(), Some(promoted.as_slice()));
+    /// Keep the smaller or larger of a running bound and one encoded candidate.
+    pub fn fold_encoded(
+        current: &mut Option<Vec<u8>>,
+        candidate: &[u8],
+        dtype: &DataType,
+        minimum: bool,
+    ) {
+        super::fold_encoded(current, candidate, dtype, minimum);
     }
 }

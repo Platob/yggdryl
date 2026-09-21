@@ -48,7 +48,7 @@
 mod inference;
 mod magic;
 pub(crate) mod merge;
-mod options;
+pub(crate) mod options;
 pub mod partition;
 pub(crate) mod structured;
 

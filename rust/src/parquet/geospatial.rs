@@ -707,3 +707,36 @@ fn invalid(path: &str, expected: &str, actual: impl std::fmt::Display) -> Error 
         actual: format_smolstr!("{actual}"),
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/parquet/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A Parquet schema descriptor is what carries the geometry and variant
+    //! annotations a foreign Arrow footer does not spell, so both directions -
+    //! deriving the descriptor from a declared schema, and restoring the
+    //! extensions from a foreign one - are file-private steps of one public
+    //! read. Each item here forwards to the real one.
+
+    use arrow_schema::Schema;
+    use parquet::schema::types::SchemaDescriptor;
+
+    use crate::arrow::Result;
+
+    /// The Parquet schema descriptor a declared Arrow schema needs, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the declared schema has no Parquet
+    /// spelling.
+    pub fn extension_schema(schema: &Schema) -> Result<Option<SchemaDescriptor>> {
+        super::extension_schema(schema)
+    }
+
+    /// The Arrow schema a descriptor's variant annotations restore, if any.
+    #[must_use]
+    pub fn variant_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
+        super::variant_schema(parquet, arrow)
+    }
+}

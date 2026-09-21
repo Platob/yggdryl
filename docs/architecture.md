@@ -40,7 +40,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `DIGEST:time` holder |
 | [FIX](fix/index.md) | `fix/`: FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
-Tests, benchmarks, Python modules, JavaScript source groups, and documentation are grouped by these tab names - `rust/tests/<tab>.rs`, `python/tests/<tab>/`, and `docs/<tab>/` for a tab of several pages or `docs/<tab>.md` for a single-page tab such as Graph and Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it.
+Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Graph and Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
 
 ## Rules the layers share
 
@@ -53,7 +53,8 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation a
 | Traits say what, enums say which | `Codec`, `MediaType`, `IOKind`, `IOMode` dispatch; `Holder` and `Media` carry one native implementation across bindings. |
 | Arrow speaks batches | IPC, Parquet, text records, and Iceberg expose bounded `BatchReader` streams, never collected batches. |
 | Text speaks values | JSON, YAML, and TOML parse and render one [`Scalar`](media/structured.md); the exact field directs nullability, order, and dictionaries. |
-| A scheme owns three pages | Every [Media](media/index.md) scheme answers the same two surfaces, so it documents them the same way: what it is, rows as native scalars, rows as Arrow batches. |
+| A scheme owns a direction, not a surface | Every [Media](media/index.md) scheme answers the same two surfaces, so it documents them the same way: an overview, a read page, a write page, and one page per feature it alone has. Reading and writing each show native scalars first, then Arrow batches, in all three languages. |
+| A family owns a subsection | Every [Types](types/index.md) family is a folder: `index.md` for what its leaves share, and one page per type, each presenting its datatype, its field, its scalar, its Arrow storage, then its features. |
 | One expression, three tiers | [`Expression`](expression/index.md) parses once, binds once, then evaluates a row, a batch, or container statistics; statistics answer `false` only when no row can match. |
 | One shape per hierarchy level | Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, `is_empty`; dotted names descend. |
 | Bindings are views | Python and JavaScript coerce once at the boundary and call the core; parsing, validation, hashing, and conversion stay native. |
@@ -63,7 +64,7 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation a
 The native core narrates its work through Rust's `log` facade, so a Rust caller
 installs any `log` implementation. Python bridges it into `logging` under the
 package's own logger: a record's name is the Rust module path it came from, so
-`yggdryl.media.iceberg.table` and its siblings all hang off `yggdryl` and one
+`yggdryl.iceberg.table` and its siblings all hang off `yggdryl` and one
 `setLevel` is the whole switch. JavaScript has no bridge.
 
 Debug is an operation starting; info is one done, carrying the counts a monitor
@@ -82,7 +83,7 @@ this project and nothing else.
     import pyarrow as pa
 
     from yggdryl import IOBase, refresh_logging
-    from yggdryl.media.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table, assign_field_ids
 
     said: list[str] = []
 

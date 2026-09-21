@@ -1,6 +1,4 @@
-//! Python views over record media and table formats.
+//! What every Python record medium shares.
 
-pub(crate) mod avro;
 pub(crate) mod handles;
-pub(crate) mod iceberg;
 pub(crate) mod partition;

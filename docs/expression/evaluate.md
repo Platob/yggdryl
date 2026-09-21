@@ -228,7 +228,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     table = Table("/lake/trades")
 
@@ -272,9 +272,9 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::scalar_and_vectorized_agree expression::tests::projections_agree_between_the_tiers expression::tests::a_mask_that_keeps_everything_keeps_the_batch_itself expression::tests::a_projection_reorders_without_touching_a_buffer expression::tests::a_reader_filters_and_projects_in_one_pass expression::tests::binds_and_evaluates_rows
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::streams::a_plan_shapes_a_stream_in_section_order expression::plan::tests::streams::records_run_through_every_expression
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::planning
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- arrow::grammar bind::grammar selector::grammar
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan::streams
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::planning
     cargo bench -p yggdryl --bench expression -- expression_mask
     cargo bench -p yggdryl --bench expression -- kernel_mask
     cargo bench -p yggdryl --bench expression -- expression_filter
@@ -285,13 +285,13 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "shapes_a_stream or records or batch_at_once or partitioned_table or one_predicate or one_plan"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "shapes_a_stream or records or batch_at_once or partitioned_table or one_predicate or one_plan"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="shapes a stream|records|prunes manifests" node/tests/expression
+    node --test --test-name-pattern="shapes a stream|records|prunes manifests" node/tests/expression.test.js
     ```
 
 ## Performance

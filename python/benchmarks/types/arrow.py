@@ -16,7 +16,7 @@ from collections.abc import Callable
 import pyarrow as pa
 
 from yggdryl import Field, field, scalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 ARROW_SCHEMA = pa.schema(

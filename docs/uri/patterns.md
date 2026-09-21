@@ -105,17 +105,17 @@ This page reads a query off a URL path: glob detection and decomposition, `.giti
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib uri::pattern::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test uri -- pattern::decomposition pattern::detection pattern::hive pattern::matching pattern::segments
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py::TestUrlPathlibParity -k "matching or relative_to"
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py::TestUrlPathlibParity -k "matching or relative_to"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="gitignore rule|relative to|Hive partitions" node/tests/uri/uri.test.js
+    node --test --test-name-pattern="gitignore rule|relative to|Hive partitions" node/tests/uri.test.js
     ```

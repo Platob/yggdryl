@@ -1,0 +1,3925 @@
+//! Native Python view of Yggdryl fields and metadata.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use arrow_array::RecordBatch as ArrowRecordBatch;
+use arrow_pyarrow::FromPyArrow;
+use arrow_schema::{Field as ArrowField, Schema as ArrowSchema};
+use pyo3::class::basic::CompareOp;
+use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
+use pyo3::prelude::*;
+use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
+use yggdryl::FieldValue as _;
+use yggdryl::expression::Function as CoreFunction;
+use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
+
+use crate::datatype::{
+    PyDataType, PyDataTypeIterator, PyStringEnum, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
+    default_arrow_scalar_to_pyarrow,
+};
+use crate::enums::{
+    PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
+};
+use crate::fix::FixTag;
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
+use crate::protocol::{PyPythonMetadata, core_python_metadata_from_value};
+use crate::scalar::{PyScalar, from_py as scalar_from_py};
+use crate::uri::{PyUrl, core_url_from_value};
+use crate::{PyDifferenceIterator, cast_options, compare, value_error};
+
+pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
+        return Ok(value.inner.clone());
+    }
+    if let Ok(value) = value.extract::<&str>() {
+        return CoreField::from_str(value).map_err(value_error);
+    }
+
+    if value
+        .py()
+        .import("dataclasses")?
+        .getattr("is_dataclass")?
+        .call1((value,))?
+        .extract::<bool>()?
+    {
+        let field = python_field(value)?;
+        let field = field.extract::<PyRef<'_, PyField>>()?;
+        return Ok(field.inner.clone());
+    }
+
+    let imported = ArrowField::from_pyarrow_bound(value)
+        .and_then(|field| CoreField::try_from(field).map_err(value_error));
+    imported.map_err(|error| {
+        if error.is_instance_of::<PyTypeError>(value.py()) {
+            PyTypeError::new_err(
+                "expected a yggdryl.Field, dataclass, field string, or PyArrow Field",
+            )
+        } else {
+            error
+        }
+    })
+}
+
+/// Return the exact native `Field` object cached for a dataclass class or instance.
+fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let field = value
+        .py()
+        .import("yggdryl._classes")?
+        .getattr("field")?
+        .call1((value,))?;
+    {
+        let _field = field.extract::<PyRef<'_, PyField>>()?;
+    }
+    Ok(field)
+}
+
+/// Export a complete `PyArrow` Schema from exact standalone native Fields.
+/// The aggregate Arrow C Schema path drops nested datatype flags, so it is
+/// used only to calculate transport metadata (including reserved sidecars).
+pub(crate) fn core_schema_to_pyarrow<'py>(
+    py: Python<'py>,
+    root: &CoreField,
+) -> PyResult<Bound<'py, PyAny>> {
+    let transported = root
+        .clone()
+        .into_arrow_exchange_schema()
+        .map_err(value_error)?;
+    let fields = PyList::empty(py);
+    for field in root.fields() {
+        fields.append(core_field_to_pyarrow(py, field)?)?;
+    }
+    let metadata = PyDict::new(py);
+    for (key, value) in transported.metadata() {
+        metadata.set_item(key, value)?;
+    }
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("metadata", metadata)?;
+    py.import("pyarrow")?
+        .getattr("schema")?
+        .call((fields,), Some(&kwargs))
+}
+
+/// Resolve an Arrow root once and use the same exact native schema exporter.
+pub(crate) fn arrow_schema_to_pyarrow<'py>(
+    py: Python<'py>,
+    schema: &ArrowSchema,
+) -> PyResult<Bound<'py, PyAny>> {
+    let root = CoreField::from_arrow_schema("row", schema).map_err(value_error)?;
+    core_schema_to_pyarrow(py, &root)
+}
+
+fn extend_metadata_pairs(
+    value: &Bound<'_, PyAny>,
+    pairs: &mut BTreeMap<String, String>,
+) -> PyResult<()> {
+    let iterable = if value.hasattr("items")? {
+        value.call_method0("items")?
+    } else {
+        value.clone()
+    };
+    for item in iterable.try_iter()? {
+        let (key, value) = item?.extract::<(String, String)>()?;
+        pairs.insert(key, value);
+    }
+    Ok(())
+}
+
+/// A Yggdryl field whose mapping protocol directly manages core metadata.
+#[pyclass(name = "Field", module = "yggdryl._native", skip_from_py_object)]
+#[derive(Clone)]
+pub(crate) struct PyField {
+    pub(crate) inner: CoreField,
+    read_only: bool,
+    hash_locked: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FieldId(i32);
+
+#[derive(Clone, Copy)]
+struct ContentLength(u64);
+
+impl FromPyObject<'_, '_> for FieldId {
+    type Error = PyErr;
+
+    fn extract(value: Borrowed<'_, '_, PyAny>) -> PyResult<Self> {
+        if value.is_instance_of::<PyBool>() {
+            return Err(PyTypeError::new_err(
+                "field id must be an integer, not bool",
+            ));
+        }
+        value.extract::<i32>().map(Self)
+    }
+}
+
+impl FromPyObject<'_, '_> for ContentLength {
+    type Error = PyErr;
+
+    fn extract(value: Borrowed<'_, '_, PyAny>) -> PyResult<Self> {
+        if value.is_instance_of::<PyBool>() {
+            return Err(PyTypeError::new_err(
+                "content length must be an unsigned integer, not bool",
+            ));
+        }
+        value.extract::<u64>().map(Self)
+    }
+}
+
+impl PyField {
+    pub(crate) fn from_inner(inner: CoreField) -> Self {
+        Self::from_inner_with_read_only(inner, false)
+    }
+
+    pub(crate) fn from_inner_with_read_only(inner: CoreField, read_only: bool) -> Self {
+        Self {
+            inner,
+            read_only,
+            hash_locked: false,
+        }
+    }
+
+    /// Cast a polars `LazyFrame` while keeping it lazy.
+    ///
+    /// The plan's schema comes from `collect_schema`, which computes no rows;
+    /// the cast itself is mapped over the engine's batches, so the frame
+    /// stays streamable and nothing is collected until the caller collects.
+    fn cast_polars_lazy<'py>(
+        &self,
+        py: Python<'py>,
+        frame: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let nullability = nullability.to_owned();
+        let representation = representation.to_owned();
+        // Plan-only: proves the frame answers schema questions without rows.
+        frame.call_method0("collect_schema")?;
+
+        // The output schema is the target's, spelled as polars spells it -
+        // derived from a zero-row crossing, so no data moves here either.
+        let polars = py.import("polars")?;
+        let empty = {
+            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+            let schema = py
+                .import("pyarrow")?
+                .call_method1("schema", (arrow_field.getattr("type")?,))?;
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("schema", schema)?;
+            py.import("pyarrow")?.getattr("Table")?.call_method(
+                "from_batches",
+                (Vec::<Bound<'py, PyAny>>::new(),),
+                Some(&kwargs),
+            )?
+        };
+        let target_schema = polars
+            .call_method1("from_arrow", (empty,))?
+            .getattr("schema")?;
+
+        let field = self.inner.clone();
+        let cast_one = pyo3::types::PyCFunction::new_closure(
+            py,
+            None,
+            None,
+            move |args: &Bound<'_, pyo3::types::PyTuple>,
+                  _kwargs: Option<&Bound<'_, PyDict>>|
+                  -> PyResult<Py<PyAny>> {
+                let frame = args.get_item(0)?;
+                let py = frame.py();
+                let this = Self::from_inner(field.clone());
+                let table = crate::iomedia::polars_to_arrow(&frame)?;
+                let cast = this.cast_arrow(py, &table, safe, &nullability, &representation)?;
+                Ok(py
+                    .import("polars")?
+                    .call_method1("from_arrow", (cast,))?
+                    .unbind())
+            },
+        )?;
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("schema", target_schema)?;
+        frame.call_method("map_batches", (cast_one,), Some(&kwargs))
+    }
+
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.read_only {
+            Err(PyTypeError::new_err("frozen fields are read-only"))
+        } else if self.hash_locked {
+            Err(PyTypeError::new_err(
+                "a hashed Field is frozen; copy it before mutation",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[pymethods]
+impl PyField {
+    #[new]
+    #[pyo3(signature = (name, dtype, nullable=true, metadata=None))]
+    fn new(
+        name: String,
+        dtype: &Bound<'_, PyAny>,
+        nullable: bool,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let dtype = core_dtype_from_value(dtype)?;
+        if let Some(metadata) = metadata {
+            let mut pairs = BTreeMap::new();
+            extend_metadata_pairs(metadata, &mut pairs)?;
+            return CoreField::from_parts(name, dtype, nullable, pairs)
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        let field = CoreField::new(name, dtype, nullable);
+        field.validate().map_err(value_error)?;
+        Ok(Self::from_inner(field))
+    }
+
+    #[staticmethod]
+    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        core_field_from_value(value).map(Self::from_inner)
+    }
+
+    /// Infers a native field from a name and Python type annotation.
+    #[staticmethod]
+    #[pyo3(signature = (name, hint, metadata=None))]
+    fn from_pyhint(
+        name: &str,
+        hint: &Bound<'_, PyAny>,
+        metadata: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let module = hint.py().import("yggdryl._hints")?;
+        let inferred = if let Some(metadata) = metadata {
+            module
+                .getattr("field_from_pyhint")?
+                .call1((name, hint, metadata))?
+        } else {
+            module.getattr("field_from_pyhint")?.call1((name, hint))?
+        };
+        let inferred = inferred.extract::<PyRef<'_, Self>>()?;
+        Ok(inferred.clone())
+    }
+
+    #[staticmethod]
+    fn from_str(value: &str) -> PyResult<Self> {
+        CoreField::from_str(value)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Rebuild pickle state without carrying a transient hash lock.
+    #[staticmethod]
+    fn _from_pickle(value: &str, read_only: bool) -> PyResult<Self> {
+        CoreField::from_str(value)
+            .map(|inner| Self::from_inner_with_read_only(inner, read_only))
+            .map_err(value_error)
+    }
+
+    #[staticmethod]
+    fn from_arrow(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        core_field_from_value(value).map(Self::from_inner)
+    }
+
+    /// Imports one complete Arrow Schema through Yggdryl's Arrow IPC metadata
+    /// rules as a non-nullable Struct Field.
+    #[staticmethod]
+    #[pyo3(signature = (schema, name = "row"))]
+    fn from_arrow_schema(schema: &Bound<'_, PyAny>, name: &str) -> PyResult<Self> {
+        let schema = ArrowSchema::from_pyarrow_bound(schema)?;
+        CoreField::from_arrow_schema(name, &schema)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Projects a complete Struct root as an Arrow transport Schema while
+    /// keeping the reserved dictionary-ID sidecar out of Field metadata.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arrow_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        core_schema_to_pyarrow(py, &self.inner)
+    }
+
+    /// Builds a plain dataclass whose fields follow this native Struct field.
+    #[pyo3(signature = (name = None, *, module = None))]
+    fn into_dataclass<'py>(
+        slf: &Bound<'py, Self>,
+        name: Option<&str>,
+        module: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let invalid_root = {
+            let field = slf.borrow();
+            !field.inner.is_struct() || field.inner.is_nullable()
+        };
+        if invalid_root {
+            return Err(PyTypeError::new_err(
+                "into_dataclass requires a non-nullable Struct Field",
+            ));
+        }
+        let py = slf.py();
+        let kwargs = PyDict::new(py);
+        if let Some(name) = name {
+            kwargs.set_item("name", name)?;
+        }
+        if let Some(module) = module {
+            kwargs.set_item("module", module)?;
+        }
+        py.import("yggdryl._classes")?
+            .getattr("_dataclass_from_field")?
+            .call((slf,), Some(&kwargs))
+    }
+
+    #[staticmethod]
+    fn from_json(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // One entry point for the three shapes a caller already has: the
+        // document as text, the same document as the bytes it was read from,
+        // or the structure `json.loads` already turned it into. Dispatching
+        // here rather than making the caller pick keeps `dict` and `str`
+        // equally first-class, which is what `into_dict` and `into_json`
+        // already imply.
+        if let Ok(text) = value.extract::<&str>() {
+            return CoreField::from_json(text)
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        // Bytes-like by downcast rather than by extracting `Vec<u8>`, which a
+        // list of small integers would also satisfy - and a JSON document that
+        // really is a sequence must still reach the native path below.
+        if let Ok(bytes) = value.cast::<pyo3::types::PyBytes>() {
+            return CoreField::from_json_bytes(bytes.as_bytes())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        if let Ok(bytes) = value.cast::<pyo3::types::PyByteArray>() {
+            return CoreField::from_json_bytes(&bytes.to_vec())
+                .map(Self::from_inner)
+                .map_err(value_error);
+        }
+        CoreField::from_value(crate::scalar::from_py(value)?)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Returns the cached Python annotation corresponding to this Field.
+    fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let field = Py::new(py, self.clone())?;
+        py.import("yggdryl._defaults")?
+            .getattr("_default_pyhint_from_field")?
+            .call1((field,))
+    }
+
+    /// Returns the core-selected Field default as an exact `PyArrow` Scalar.
+    /// Materializes this field's canonical default as a one-row `pyarrow.Array`.
+    ///
+    /// `default_arrow_scalar` is the same value pinned as a scalar; this is
+    /// the array a column of one default row is.
+    fn default_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
+    fn default_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        default_arrow_scalar_to_pyarrow(py, &self.inner, &array)
+    }
+
+    /// Returns the core-selected Field default as one generic `Scalar`.
+    ///
+    /// A default is a value, and every value in this runtime is a `Scalar`:
+    /// the same one an array or a row is built from, the same one `as_py`
+    /// renders. So a default is answered as that, and what a caller does with
+    /// it - read it, materialize an array of it, feed it back into a cast - is
+    /// the one conversion vocabulary rather than a second per-default one.
+    fn default_scalar(&self) -> PyResult<PyScalar> {
+        self.inner
+            .default_value()
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Check one value against this field and restate it as the field declares.
+    ///
+    /// This is `DataType.scalar` plus the field's own name and nullability, so
+    /// a refusal names the field it happened in. Anything a caller stores goes
+    /// through here, never through `PyArrow`.
+    fn scalar(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .scalar(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Check one row against this struct root, raising `ValueError` on a miss.
+    ///
+    /// The check is arity, then each child's datatype, then each child's
+    /// nullability.
+    fn validate_value(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner
+            .validate_value(&scalar_from_py(value)?)
+            .map_err(value_error)
+    }
+
+    /// Check one row and restate it in the exact form this root stores.
+    ///
+    /// The answer is an ordered sequence with one value per child field, each
+    /// at the width and unit its own field declares.
+    fn canonicalize_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .canonicalize_value(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Recover this field's typed value from a natural text-shaped one.
+    ///
+    /// This is the field-directed typing the structured codecs apply to the
+    /// strings and numbers a document proves nothing about.
+    #[allow(clippy::wrong_self_convention)]
+    fn from_natural_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .from_natural_value(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Require struct children, raising `ValueError` naming what this is.
+    fn require_struct(&self) -> PyResult<()> {
+        self.inner.require_struct().map_err(value_error)
+    }
+
+    /// Require what a record schema root is: valid, non-null, and a struct.
+    fn validate_struct_root(&self) -> PyResult<()> {
+        self.inner.validate_struct_root().map_err(value_error)
+    }
+
+    /// Re-check the recursive datatype and this field's own declarations.
+    fn validate(&self) -> PyResult<()> {
+        self.inner.validate().map_err(value_error)
+    }
+
+    /// Returns a recursively normalized field for a named compatibility target.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
+        let target = CoreScheme::from_str(target).map_err(value_error)?;
+        self.inner
+            .clone()
+            .into_scheme_compat(&target)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Constructs a `PyArrow` scalar with this field's exact datatype.
+    #[pyo3(signature = (value, *, safe=true))]
+    fn arrow_scalar<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let scalar = if crate::datatype::needs_core_value_rules(self.inner.dtype())
+            || crate::datatype::is_parsed_text(self.inner.dtype())
+        {
+            core_arrow_scalar(py, value, self.inner.dtype(), safe)?
+        } else {
+            // Project the complete Field so registered extension metadata can
+            // be rehydrated by PyArrow before selecting its scalar target type.
+            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+            let target = arrow_field.getattr("type")?;
+            arrow_scalar_to_pyarrow_type(py, value, target, safe)?
+        };
+        if !self.inner.is_nullable() && !scalar.getattr("is_valid")?.extract::<bool>()? {
+            return Err(PyValueError::new_err(format!(
+                "field {:?} is not nullable",
+                self.inner.name()
+            )));
+        }
+        Ok(scalar)
+    }
+
+    /// Casts one `PyArrow` Array through the exact Field.
+    ///
+    /// `safe` decides whether a failed conversion becomes null; `nullability`
+    /// decides what a non-null Field does with a null it cannot hold -
+    /// `"default"` writes its canonical default, `"strict"` refuses by path.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_array<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let input = arrow_array_from_pyarrow(value)?;
+        let array = self
+            .inner
+            .cast_arrow_array(
+                Arc::clone(&input),
+                cast_options(safe, nullability, representation)?,
+            )
+            .map_err(value_error)?;
+        if Arc::ptr_eq(&input, &array) {
+            let has_extension_metadata = self.inner.has_metadata("ARROW:extension:name")
+                || self.inner.has_metadata("ARROW:extension:metadata");
+            if !has_extension_metadata {
+                return Ok(value.clone());
+            }
+            // An Arrow Array carries only its storage datatype on the Rust
+            // side.  Extension identity is Field metadata, so a storage array
+            // can be a native no-op while still requiring an exact Field C
+            // Schema export to rehydrate its PyArrow ExtensionType.
+            let target = core_field_to_pyarrow(py, &self.inner)?.getattr("type")?;
+            if value.getattr("type")?.eq(&target)? {
+                return Ok(value.clone());
+            }
+        }
+        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
+    /// Applies this schema's metadata-declared columns to one `RecordBatch`.
+    ///
+    /// `cast` reconciles the batch to this root first, `transform` computes
+    /// every column a `TRANSFORM:expression` or a `PARTITION:transform` over
+    /// `PARTITION:sources` declares, and `digest` fills every holder last,
+    /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
+    /// root and leaves a column holding anything but its canonical default
+    /// alone, so applying twice writes nothing the first pass already did.
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        transform: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        let applied = self
+            .inner
+            .apply_arrow_batch(&batch, digest, transform, cast, options)
+            .map_err(value_error)?;
+        batch_to_pyarrow(py, applied)
+    }
+
+    /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
+    ///
+    /// The declarations name every column they add, so the applied shape is a
+    /// property of two schemas: nothing is decoded, and a declaration that
+    /// cannot be satisfied fails here rather than on the first batch.
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_schema<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        transform: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
+        let applied = self
+            .inner
+            .apply_arrow_schema(schema, digest, transform, cast, options)
+            .map_err(value_error)?;
+        arrow_schema_to_pyarrow(py, &applied)
+    }
+
+    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
+    ///
+    /// The applied schema is derived once, so the returned reader answers it
+    /// before the first batch is pulled and can be handed straight to a write.
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        transform: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let reader = batch_reader_from_arrow_reader(value)?;
+        let applied = self
+            .inner
+            .apply_arrow_reader(reader, digest, transform, cast, options)
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, applied)
+    }
+
+    /// Reconciles one `PyArrow` `RecordBatch` to this exact Struct Field.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        let source_schema = batch.schema();
+        let source_columns = batch.columns().to_vec();
+        let cast = self
+            .inner
+            .cast_arrow_batch(batch, cast_options(safe, nullability, representation)?)
+            .map_err(value_error)?;
+        if Arc::ptr_eq(&source_schema, &cast.schema())
+            && source_columns
+                .iter()
+                .zip(cast.columns())
+                .all(|(left, right)| Arc::ptr_eq(left, right))
+        {
+            return Ok(value.clone());
+        }
+        batch_to_pyarrow(py, cast)
+    }
+
+    /// Casts one `PyArrow` scalar - or a one-row Array - to this exact Field.
+    ///
+    /// A scalar has no row to repair, so a null entering a non-nullable Field
+    /// is refused under either nullability policy.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_scalar<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        cast_options(safe, nullability, representation)?;
+        if value.is_instance(&py.import("pyarrow")?.getattr("Array")?)? {
+            if value.len()? != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "a scalar cast takes exactly one row, got {}",
+                    value.len()?
+                )));
+            }
+            return self.arrow_scalar(py, &value.get_item(0)?, safe);
+        }
+        self.arrow_scalar(py, value, safe)
+    }
+
+    /// Casts one `pyarrow.Table` to this exact Struct Field, eagerly.
+    ///
+    /// A table is already held whole, so this is the eager half of the pair:
+    /// the reader is drained here rather than handed back. One
+    /// [`cast_arrow_reader`](Self::cast_arrow_reader) plan serves every batch
+    /// it holds.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_table<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let pyarrow = py.import("pyarrow")?;
+        if !value.is_instance(&pyarrow.getattr("Table")?)? {
+            return Err(PyTypeError::new_err(format!(
+                "expected a pyarrow.Table, got {}",
+                crate::iomedia::type_name(value)
+            )));
+        }
+        let reader = value.call_method0("to_reader")?;
+        self.cast_arrow_reader(py, &reader, safe, nullability, representation)?
+            .call_method0("read_all")
+    }
+
+    /// Casts anything that streams to this exact Struct Field, lazily.
+    ///
+    /// The returned `pyarrow.RecordBatchReader` holds one compiled cast plan
+    /// and one source batch at a time: nothing is collected, no Python row loop
+    /// runs, and a batch's failure surfaces when that batch is pulled. Closing
+    /// or dropping the reader releases the source C stream.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = crate::iomedia::batch_reader_from_any(
+            value,
+            &yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
+                .map_err(value_error)?,
+        )?;
+        let cast = yggdryl::arrow::cast_reader(
+            reader,
+            &self.inner,
+            cast_options(safe, nullability, representation)?,
+        )
+        .map_err(value_error)?;
+        crate::iomedia::batch_reader_to_pyarrow(py, cast)
+    }
+
+    /// Casts whatever Arrow-shaped thing `value` is to this exact Field.
+    ///
+    /// The kind is inferred and the result keeps it, by delegating to the named
+    /// method for that kind: a `pyarrow` `Scalar`, `Array`, `ChunkedArray`,
+    /// `RecordBatch`, `Table`, `RecordBatchReader`, `Dataset`, or `Scanner`
+    /// comes back as a scalar, array, batch, table, or streamed reader; a
+    /// `polars` `DataFrame` crosses at the newest compat level - view arrays
+    /// stay view arrays - and comes back a `DataFrame`; a `polars` `LazyFrame`
+    /// stays lazy, its schema read with `collect_schema` and the cast mapped
+    /// over its batches, so nothing is collected until the caller collects; a
+    /// `pandas` `DataFrame` or `Series` crosses through Arrow and comes back as
+    /// itself. A table is drained here and a reader is not - which is the
+    /// difference between the two named methods this delegates to.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        use crate::iomedia::declared_by;
+
+        // polars: the frame comes back a frame, the lazy frame stays lazy.
+        if declared_by(value, "polars", "DataFrame") {
+            let table = crate::iomedia::polars_to_arrow(value)?;
+            let cast = self.cast_arrow(py, &table, safe, nullability, representation)?;
+            return py.import("polars")?.call_method1("from_arrow", (cast,));
+        }
+        if declared_by(value, "polars", "LazyFrame") {
+            return self.cast_polars_lazy(py, value, safe, nullability, representation);
+        }
+        if declared_by(value, "polars", "Series") {
+            let array = value.call_method0("to_arrow")?;
+            let cast = self.cast_arrow_array(py, &array, safe, nullability, representation)?;
+            return py.import("polars")?.call_method1("from_arrow", (cast,));
+        }
+        // pandas: through Arrow and back, with pandas' own compat checks.
+        if declared_by(value, "pandas", "DataFrame") {
+            let table = py
+                .import("pyarrow")?
+                .getattr("Table")?
+                .call_method1("from_pandas", (value,))?;
+            let cast = self.cast_arrow(py, &table, safe, nullability, representation)?;
+            return cast.call_method0("to_pandas");
+        }
+        if declared_by(value, "pandas", "Series") {
+            let array = py
+                .import("pyarrow")?
+                .getattr("Array")?
+                .call_method1("from_pandas", (value,))?;
+            let cast = self.cast_arrow_array(py, &array, safe, nullability, representation)?;
+            return cast.call_method0("to_pandas");
+        }
+
+        let pyarrow = py.import("pyarrow")?;
+        let is = |name: &str| -> PyResult<bool> { value.is_instance(&pyarrow.getattr(name)?) };
+        if is("Scalar")? {
+            return self.cast_arrow_scalar(py, value, safe, nullability, representation);
+        }
+        if is("ChunkedArray")? {
+            let combined = value.call_method0("combine_chunks")?;
+            let cast = self.cast_arrow_array(py, &combined, safe, nullability, representation)?;
+            return pyarrow.call_method1("chunked_array", (vec![cast],));
+        }
+        if is("Array")? {
+            return self.cast_arrow_array(py, value, safe, nullability, representation);
+        }
+        if is("RecordBatch")? {
+            return self.cast_arrow_batch(py, value, safe, nullability, representation);
+        }
+        if is("Table")? {
+            return self.cast_arrow_table(py, value, safe, nullability, representation);
+        }
+        // Everything else that streams - a RecordBatchReader, a Dataset, a
+        // Scanner, anything exporting the C stream - stays a lazy reader.
+        self.cast_arrow_reader(py, value, safe, nullability, representation)
+    }
+
+    /// The generic cast: [`cast_arrow`](Self::cast_arrow) for anything
+    /// Arrow-shaped, and a typed scalar for a plain Python value.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        use crate::iomedia::declared_by;
+
+        let module_root = value
+            .get_type()
+            .module()
+            .and_then(|module| module.extract::<String>())
+            .unwrap_or_default();
+        let arrow_shaped = module_root.starts_with("pyarrow")
+            || module_root.starts_with("polars")
+            || declared_by(value, "pandas", "DataFrame")
+            || declared_by(value, "pandas", "Series")
+            || value.hasattr("__arrow_c_stream__")?
+            || value.hasattr("__arrow_c_array__")?;
+        if arrow_shaped {
+            return self.cast_arrow(py, value, safe, nullability, representation);
+        }
+        // A plain Python value becomes the typed scalar this Field declares.
+        cast_options(safe, nullability, representation)?;
+        self.arrow_scalar(py, value, safe)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        core_field_to_pyarrow(py, &self.inner)
+    }
+
+    /// Serialize as deterministic structural JSON.
+    ///
+    /// `indent=None` is compact - today's output and the default; an integer
+    /// pretty-prints with that many spaces per nesting level, exactly as
+    /// `json.dumps(indent=n)` reads.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Serialize to structural JSON bytes.
+    ///
+    /// The same document `into_json` renders, encoded rather than decoded, for
+    /// a caller writing it straight to a file or a socket. `from_json` reads
+    /// these bytes back without being told which of the three shapes it got.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_json_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        indent: Option<u8>,
+    ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        let text = self
+            .inner
+            .clone()
+            .into_json_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)?;
+        Ok(pyo3::types::PyBytes::new(py, text.as_bytes()))
+    }
+
+    /// Deserialize and validate from structural YAML.
+    ///
+    /// The same structure `from_json` reads, in YAML's syntax - so a config
+    /// document can carry a declared schema inline beside its other settings.
+    #[staticmethod]
+    fn from_yaml(value: &str) -> PyResult<Self> {
+        CoreField::from_yaml(value)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Serialize as YAML: block style, one key per line.
+    ///
+    /// `indent=2` is the default. `indent=None` asks for flow style -
+    /// `{a: 1, b: 2}` on one line - which is valid YAML and round-trips, and
+    /// is never what a caller gets by accident.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = Some(2)))]
+    fn into_yaml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .clone()
+            .into_yaml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Deserialize and validate from structural TOML.
+    #[staticmethod]
+    fn from_toml(value: &str) -> PyResult<Self> {
+        CoreField::from_toml(value)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Serialize as TOML.
+    ///
+    /// TOML has no null, and this model never needs one: an unset optional
+    /// attribute is omitted rather than faked, so nothing is lost.
+    #[allow(clippy::wrong_self_convention)]
+    #[pyo3(signature = (*, indent = None))]
+    fn into_toml(&self, indent: Option<u8>) -> PyResult<String> {
+        self.inner
+            .clone()
+            .into_toml_with_formatting(crate::formatting_of(indent))
+            .map_err(value_error)
+    }
+
+    /// Project this value onto a plain structural mapping.
+    ///
+    /// The core's one structural model - the model JSON, YAML, and TOML are
+    /// all expressed over - handed back as a `dict`, so a schema drops into any
+    /// document a caller already builds.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::scalar::as_py(py, &self.inner.clone().into_value())
+    }
+
+    /// Read this value back from a plain structural mapping.
+    ///
+    /// The inverse of `into_dict`, through the core's one conversion.
+    #[staticmethod]
+    fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        CoreField::from_value(crate::scalar::from_py(value)?)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// A readable, indented rendering of this value and everything under it.
+    ///
+    /// `str` and `repr` are unchanged - the compact constructor form, which
+    /// round-trips through `from_str` - because that is what a Python reader
+    /// expects of `repr` and what the parsers depend on. This is the form for
+    /// a human looking at a schema three levels deep.
+    fn pretty(&self) -> String {
+        format!("{:#}", self.inner)
+    }
+
+    /// The readable rendering, for `IPython` and notebook cells.
+    fn _repr_pretty_(&self, printer: &Bound<'_, PyAny>, _cycle: bool) -> PyResult<()> {
+        printer.call_method1("text", (self.pretty(),))?;
+        Ok(())
+    }
+
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    #[getter]
+    fn dtype(&self) -> PyDataType {
+        PyDataType {
+            inner: self.inner.dtype().clone(),
+            hash_locked: false,
+            borrowed_from_field: true,
+            children_read_only: self.read_only,
+        }
+    }
+
+    #[getter]
+    fn nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+
+    /// Replace the physical name this field is stored under.
+    ///
+    /// A populated Arrow projection is invalidated once, and only when the
+    /// name actually changes.
+    fn set_name(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_name(value);
+        Ok(())
+    }
+
+    /// Replace the datatype, validated against this field's own declarations.
+    ///
+    /// A refused datatype - one that contradicts the field's dictionary
+    /// options - leaves the field exactly as it was.
+    fn set_dtype(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_dtype(core_dtype_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    /// Replace whether a value of this field may be absent.
+    fn set_nullable(&mut self, value: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_nullable(value);
+        Ok(())
+    }
+
+    /// Whether this field's datatype carries struct children.
+    ///
+    /// A struct field is the only shape a record schema root can take.
+    #[getter]
+    fn is_struct(&self) -> bool {
+        self.inner.is_struct()
+    }
+
+    #[getter]
+    fn parquet_field_id(&self) -> PyResult<Option<i32>> {
+        self.inner.parquet_field_id().map_err(value_error)
+    }
+
+    /// The enum this field's values name, ``None`` when it declares none.
+    ///
+    /// The declaration is one ``FIELD:enum`` document, so it reaches Arrow, a
+    /// file, and another runtime as ordinary field metadata and comes back the
+    /// enum that was written.
+    #[getter]
+    fn string_enum(&self) -> PyResult<Option<PyStringEnum>> {
+        self.inner
+            .string_enum()
+            .map(|value| value.map(PyStringEnum::from_inner))
+            .map_err(value_error)
+    }
+
+    #[getter]
+    fn dictionary_id(&self) -> Option<i64> {
+        self.inner.dictionary_id()
+    }
+
+    #[getter]
+    fn dictionary_is_ordered(&self) -> Option<bool> {
+        self.inner.dictionary_is_ordered()
+    }
+
+    #[getter]
+    fn alias(&self) -> Option<&str> {
+        self.inner.alias()
+    }
+
+    #[getter]
+    fn comment(&self) -> Option<&str> {
+        self.inner.comment()
+    }
+
+    #[getter]
+    fn display(&self) -> Option<&str> {
+        self.inner.display()
+    }
+
+    #[getter]
+    fn description(&self) -> Option<&str> {
+        self.inner.description()
+    }
+
+    #[getter]
+    fn location(&self) -> PyResult<Option<PyUrl>> {
+        self.inner
+            .location()
+            .map(|value| value.map(PyUrl::from_core))
+            .map_err(value_error)
+    }
+
+    #[getter]
+    fn accept(&self) -> Option<&str> {
+        self.inner.as_http().accept()
+    }
+
+    #[getter]
+    fn accept_encoding(&self) -> Option<&str> {
+        self.inner.as_http().accept_encoding()
+    }
+
+    #[getter]
+    fn accept_language(&self) -> Option<&str> {
+        self.inner.as_http().accept_language()
+    }
+
+    #[getter]
+    fn accept_ranges(&self) -> Option<&str> {
+        self.inner.as_http().accept_ranges()
+    }
+
+    #[getter]
+    fn cache_control(&self) -> Option<&str> {
+        self.inner.as_http().cache_control()
+    }
+
+    #[getter]
+    fn content_disposition(&self) -> Option<&str> {
+        self.inner.as_http().content_disposition()
+    }
+
+    #[getter]
+    fn content_encoding(&self) -> Option<&str> {
+        self.inner.as_http().content_encoding()
+    }
+
+    #[getter]
+    fn content_language(&self) -> Option<&str> {
+        self.inner.as_http().content_language()
+    }
+
+    #[getter]
+    fn content_length(&self) -> PyResult<Option<u64>> {
+        self.inner.as_http().content_length().map_err(value_error)
+    }
+
+    #[getter]
+    fn content_location(&self) -> Option<&str> {
+        self.inner.as_http().content_location()
+    }
+
+    #[getter]
+    fn content_range(&self) -> Option<&str> {
+        self.inner.as_http().content_range()
+    }
+
+    #[getter]
+    fn content_type(&self) -> Option<&str> {
+        self.inner.as_http().content_type()
+    }
+
+    #[getter]
+    fn mime_type(&self) -> PyResult<PyMimeType> {
+        self.inner
+            .as_http()
+            .mime_type()
+            .map(PyMimeType::from_core)
+            .map_err(value_error)
+    }
+
+    #[getter]
+    fn media_type(&self) -> PyResult<PyMediaType> {
+        self.inner
+            .as_http()
+            .media_type()
+            .map(PyMediaType::from_core)
+            .map_err(value_error)
+    }
+
+    #[getter]
+    fn etag(&self) -> Option<&str> {
+        self.inner.as_http().etag()
+    }
+
+    #[getter]
+    fn expires(&self) -> Option<&str> {
+        self.inner.as_http().expires()
+    }
+
+    #[getter]
+    fn last_modified(&self) -> Option<&str> {
+        self.inner.as_http().last_modified()
+    }
+
+    #[getter]
+    fn http_location(&self) -> PyResult<Option<PyUrl>> {
+        self.inner
+            .as_http()
+            .location()
+            .map(|value| value.map(PyUrl::from_core))
+            .map_err(value_error)
+    }
+
+    #[getter]
+    fn range(&self) -> Option<&str> {
+        self.inner.as_http().range()
+    }
+
+    #[getter]
+    fn vary(&self) -> Option<&str> {
+        self.inner.as_http().vary()
+    }
+
+    fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_dictionary_options(id, is_ordered)
+            .map_err(value_error)
+    }
+
+    fn set_parquet_field_id(&mut self, id: FieldId) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_parquet_field_id(id.0);
+        Ok(())
+    }
+
+    fn remove_parquet_field_id(&mut self) -> PyResult<Option<i32>> {
+        self.require_mutable()?;
+        self.inner.remove_parquet_field_id().map_err(value_error)
+    }
+
+    /// The highest Arrow/Parquet field identifier anywhere in this tree.
+    ///
+    /// A schema evolution numbers above it, so an identifier is never reused
+    /// for a different column.
+    fn max_parquet_field_id(&self) -> PyResult<Option<i32>> {
+        self.inner.max_parquet_field_id().map_err(value_error)
+    }
+
+    /// The field anywhere in this tree carrying one Parquet identifier.
+    ///
+    /// The walk descends every child a datatype has: struct and union
+    /// members, a list's item, a map's entries, and a run-end layout's two.
+    fn field_by_parquet_field_id(&self, id: FieldId) -> Option<Self> {
+        self.inner
+            .field_by_parquet_field_id(id.0)
+            .cloned()
+            .map(Self::from_inner)
+    }
+
+    /// Number every field in this tree that carries no identifier yet.
+    ///
+    /// Children are numbered depth first in declaration order, a field that
+    /// already carries an identifier keeps it, and the next unused identifier
+    /// is returned - so numbering an evolved schema leaves the columns that
+    /// already existed alone.
+    #[pyo3(signature = (start = FieldId(1)))]
+    fn assign_parquet_field_ids(&mut self, start: FieldId) -> PyResult<i32> {
+        self.require_mutable()?;
+        self.inner
+            .assign_parquet_field_ids(start.0)
+            .map_err(value_error)
+    }
+
+    /// Whether a constructor may supply a value for this field.
+    ///
+    /// An absent marker means it may; an explicit `False` marks a field a
+    /// schema declares but a constructor must refuse.
+    #[getter]
+    fn is_init(&self) -> PyResult<bool> {
+        self.inner.is_init().map_err(value_error)
+    }
+
+    /// Record whether a constructor may supply a value for this field.
+    ///
+    /// `True` removes the reserved key rather than storing a redundant
+    /// default, so two schemas that say the same thing stay equal.
+    fn set_init(&mut self, init: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_init(init);
+        Ok(())
+    }
+
+    /// Declares the enum this field's values name: a fixed US-ASCII string of at
+    /// most sixteen bytes or a code, refused by name elsewhere.
+    fn set_string_enum(&mut self, value: &PyStringEnum) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_string_enum(value.as_inner())
+            .map_err(value_error)
+    }
+
+    /// Removes the declaration and returns the enum it held.
+    fn remove_string_enum(&mut self) -> PyResult<Option<PyStringEnum>> {
+        self.require_mutable()?;
+        self.inner
+            .remove_string_enum()
+            .map(|value| value.map(PyStringEnum::from_inner))
+            .map_err(value_error)
+    }
+
+    fn set_alias(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_alias(value).map_err(value_error)
+    }
+
+    fn remove_alias(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_alias())
+    }
+
+    fn set_comment(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_comment(value).map_err(value_error)
+    }
+
+    fn remove_comment(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_comment())
+    }
+
+    fn set_display(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_display(value).map_err(value_error)
+    }
+
+    fn remove_display(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_display())
+    }
+
+    fn set_description(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_description(value).map_err(value_error)
+    }
+
+    fn remove_description(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_description())
+    }
+
+    fn set_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_location(core_url_from_value(value)?);
+        Ok(())
+    }
+
+    fn remove_location(&mut self) -> PyResult<Option<PyUrl>> {
+        self.require_mutable()?;
+        self.inner
+            .remove_location()
+            .map(|value| value.map(PyUrl::from_core))
+            .map_err(value_error)
+    }
+
+    fn set_accept(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_accept(value)
+            .map_err(value_error)
+    }
+
+    fn remove_accept(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_accept())
+    }
+
+    fn set_accept_encoding(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_accept_encoding(value)
+            .map_err(value_error)
+    }
+
+    fn remove_accept_encoding(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_accept_encoding())
+    }
+
+    fn set_accept_language(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_accept_language(value)
+            .map_err(value_error)
+    }
+
+    fn remove_accept_language(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_accept_language())
+    }
+
+    fn set_accept_ranges(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_accept_ranges(value)
+            .map_err(value_error)
+    }
+
+    fn remove_accept_ranges(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_accept_ranges())
+    }
+
+    fn set_cache_control(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_cache_control(value)
+            .map_err(value_error)
+    }
+
+    fn remove_cache_control(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_cache_control())
+    }
+
+    fn set_content_disposition(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_disposition(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_disposition(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_disposition())
+    }
+
+    fn set_content_encoding(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_encoding(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_encoding(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_encoding())
+    }
+
+    fn set_content_language(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_language(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_language(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_language())
+    }
+
+    fn set_content_length(&mut self, value: ContentLength) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.as_http_mut().set_content_length(value.0);
+        Ok(())
+    }
+
+    fn remove_content_length(&mut self) -> PyResult<Option<u64>> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .remove_content_length()
+            .map_err(value_error)
+    }
+
+    fn set_content_location(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_location(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_location(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_location())
+    }
+
+    fn set_content_range(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_range(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_range(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_range())
+    }
+
+    fn set_content_type(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_content_type(value)
+            .map_err(value_error)
+    }
+
+    fn remove_content_type(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_content_type())
+    }
+
+    fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_mime_type(core_mime_type_from_value(value)?);
+        Ok(())
+    }
+
+    fn remove_mime_type(&mut self) -> PyResult<Option<PyMimeType>> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .remove_mime_type()
+            .map(|value| value.map(PyMimeType::from_core))
+            .map_err(value_error)
+    }
+
+    fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_media_type(core_media_type_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    fn remove_media_type(&mut self) -> PyResult<Option<PyMediaType>> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .remove_media_type()
+            .map(|value| value.map(PyMediaType::from_core))
+            .map_err(value_error)
+    }
+
+    fn set_etag(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_etag(value)
+            .map_err(value_error)
+    }
+
+    fn remove_etag(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_etag())
+    }
+
+    fn set_expires(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_expires(value)
+            .map_err(value_error)
+    }
+
+    fn remove_expires(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_expires())
+    }
+
+    fn set_last_modified(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_last_modified(value)
+            .map_err(value_error)
+    }
+
+    fn remove_last_modified(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_last_modified())
+    }
+
+    fn set_http_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_location(core_url_from_value(value)?);
+        Ok(())
+    }
+
+    fn remove_http_location(&mut self) -> PyResult<Option<PyUrl>> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .remove_location()
+            .map(|value| value.map(PyUrl::from_core))
+            .map_err(value_error)
+    }
+
+    fn set_range(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_range(value)
+            .map_err(value_error)
+    }
+
+    fn remove_range(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_range())
+    }
+
+    fn set_vary(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .as_http_mut()
+            .set_vary(value)
+            .map_err(value_error)
+    }
+
+    fn remove_vary(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.as_http_mut().remove_vary())
+    }
+
+    fn get_property(&self, scheme: &str, name: &str) -> PyResult<Option<&str>> {
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        Ok(self.inner.get_property(&scheme, name))
+    }
+
+    fn has_property(&self, scheme: &str, name: &str) -> PyResult<bool> {
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        Ok(self.inner.has_property(&scheme, name))
+    }
+
+    fn set_property(
+        &mut self,
+        scheme: &str,
+        name: &str,
+        value: String,
+    ) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        self.inner
+            .set_property(&scheme, name, value)
+            .map_err(value_error)
+    }
+
+    fn remove_property(&mut self, scheme: &str, name: &str) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        Ok(self.inner.remove_property(&scheme, name))
+    }
+
+    fn property_iter(&self, scheme: &str) -> PyResult<PyFieldPropertyIterator> {
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        Ok(PyFieldPropertyIterator::new(
+            &self.inner,
+            scheme,
+            PropertyIteratorKind::Items,
+        ))
+    }
+
+    fn clear_properties(&mut self, scheme: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        self.inner.clear_properties(&scheme);
+        Ok(())
+    }
+
+    /// Returns one protocol's properties as a live view of this field.
+    ///
+    /// The scheme accepts every spelling `get_property` accepts, so `HTTPS`
+    /// selects the one canonical `HTTP:` namespace.
+    fn protocol(slf: Py<Self>, scheme: &str) -> PyResult<PyProtocolField> {
+        let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
+        Ok(PyProtocolField::new(slf, scheme))
+    }
+
+    /// Returns the live HTTP and HTTPS property view.
+    #[getter]
+    fn http(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::HTTP)
+    }
+
+    /// Returns the live file protocol property view.
+    #[getter]
+    fn file(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FILE)
+    }
+
+    /// Returns the live uniform resource name property view.
+    #[getter]
+    fn urn(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::URN)
+    }
+
+    /// Returns the live short-spelling `PostgreSQL` property view.
+    #[getter]
+    fn postgres(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POSTGRES)
+    }
+
+    /// Returns the live long-spelling `PostgreSQL` property view.
+    #[getter]
+    fn postgresql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POSTGRESQL)
+    }
+
+    /// Returns the live `MySQL` property view.
+    #[getter]
+    fn mysql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::MYSQL)
+    }
+
+    /// Returns the live Arrow property view.
+    #[getter]
+    fn arrow(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::ARROW)
+    }
+
+    /// Returns the live generic SQL property view.
+    #[getter]
+    fn sql(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::SQL)
+    }
+
+    /// Returns the live AWS Glue property view.
+    #[getter]
+    fn glue(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::GLUE)
+    }
+
+    /// Returns the live Apache Iceberg property view.
+    #[getter]
+    fn iceberg(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::ICEBERG)
+    }
+
+    /// Returns the live Financial Information eXchange property view.
+    #[getter]
+    fn fix(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FIX)
+    }
+
+    /// Returns the live Yggdryl field property view.
+    ///
+    /// Named for the namespace it exposes rather than plain `field`, which on
+    /// a schema node reaches a nested child.
+    #[getter]
+    fn field_properties(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::FIELD)
+    }
+
+    /// Returns the live row-digest property view.
+    #[getter]
+    fn digest(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::DIGEST)
+    }
+
+    /// Returns the live generic field-identity property view.
+    #[getter]
+    fn identity(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::IDENTITY)
+    }
+
+    /// Returns the live generic partition-field property view.
+    #[getter]
+    fn partition(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PARTITION)
+    }
+
+    /// Returns the live generic transform-field property view.
+    #[getter]
+    fn transform(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::TRANSFORM)
+    }
+
+    /// Returns the live Amazon S3 property view.
+    #[getter]
+    fn s3(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::S3)
+    }
+
+    /// Returns the live Google Cloud Storage property view.
+    #[getter]
+    fn gs(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::GS)
+    }
+
+    /// Returns the live Azure Blob Storage property view.
+    #[getter]
+    fn az(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::AZ)
+    }
+
+    /// Returns the live Apache Spark property view.
+    #[getter]
+    fn spark(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::SPARK)
+    }
+
+    /// Returns the live Polars property view.
+    #[getter]
+    fn polars(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::POLARS)
+    }
+
+    /// Returns the live pandas property view.
+    #[getter]
+    fn pandas(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PANDAS)
+    }
+
+    /// Returns the live Python runtime property view.
+    ///
+    /// This is where the declaring class a schema was built from is read and
+    /// written: `field.python.class_metadata`, and the three parts behind it.
+    #[getter]
+    fn python(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PYTHON)
+    }
+
+    /// Returns the children a row digest reads by default, in declaration order.
+    #[getter]
+    fn digest_fields(&self) -> Vec<Self> {
+        self.inner
+            .digest_fields()
+            .cloned()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the names of the children a row digest reads by default.
+    #[getter]
+    fn digest_field_names(&self) -> Vec<&str> {
+        self.inner.digest_field_names().collect()
+    }
+
+    /// Returns how many fields contribute to each row digest.
+    #[getter]
+    fn digest_field_len(&self) -> usize {
+        self.inner.digest_field_len()
+    }
+
+    /// Returns this struct root holding only the children a digest reads.
+    fn only_digest_fields(&self) -> PyResult<Self> {
+        self.inner
+            .only_digest_fields()
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Returns whether this field carries the values a path spells out.
+    #[getter]
+    fn is_partition(&self) -> bool {
+        self.inner.is_partition()
+    }
+
+    /// Marks or unmarks this field as one a path spells out.
+    fn set_partition(&mut self, partition: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_partition(partition);
+        Ok(())
+    }
+
+    /// Returns the struct children that partition the rows.
+    #[getter]
+    fn partition_fields(&self) -> Vec<Self> {
+        self.inner
+            .partition_fields()
+            .cloned()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the names of the struct children that partition the rows.
+    #[getter]
+    fn partition_field_names(&self) -> Vec<&str> {
+        self.inner.partition_field_names().collect()
+    }
+
+    /// Returns how many struct children partition the rows.
+    #[getter]
+    fn partition_field_len(&self) -> usize {
+        self.inner.partition_field_len()
+    }
+
+    /// Returns whether any struct child partitions the rows.
+    #[getter]
+    fn has_partition_fields(&self) -> bool {
+        self.inner.has_partition_fields()
+    }
+
+    /// Returns this struct root holding only the columns a path spells out.
+    fn only_partition_fields(&self) -> PyResult<Self> {
+        self.inner
+            .only_partition_fields()
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Returns this struct root without the columns a path spells out.
+    fn without_partition_fields(&self) -> PyResult<Self> {
+        self.inner
+            .without_partition_fields()
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Returns this struct root with the named children marked as partitions.
+    fn with_partition_fields(&self, names: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let names = names.extract::<Vec<String>>()?;
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.inner
+            .with_partition_fields(&names)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Compare recursively, optionally ignoring metadata on every Field.
+    #[pyo3(signature = (other, with_metadata=true))]
+    fn equals(&self, other: &Self, with_metadata: bool) -> bool {
+        self.inner.equals(&other.inner, with_metadata)
+    }
+
+    /// Iterate stable, terminal-readable recursive difference lines.
+    #[pyo3(signature = (other, with_metadata=true, return_equal=false))]
+    fn show_diffs(
+        &self,
+        other: &Self,
+        with_metadata: bool,
+        return_equal: bool,
+    ) -> PyDifferenceIterator {
+        PyDifferenceIterator::from_fields(&self.inner, &other.inner, with_metadata, return_equal)
+    }
+
+    /// Join every recursive difference line.
+    ///
+    /// ``return_equal`` reports the equal marker instead of an empty
+    /// string when the two values match.
+    #[pyo3(signature = (other, with_metadata=true, return_equal=true))]
+    fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String {
+        self.inner
+            .show_diff(&other.inner, with_metadata, return_equal)
+    }
+
+    /// Makes a cached class field immutable at the Python boundary.
+    fn _freeze(&mut self) {
+        self.read_only = true;
+    }
+
+    /// A live mapping view of this field's metadata.
+    ///
+    /// Item access on a `Field` reaches a nested **child**, so this view is
+    /// where metadata is reached - `field.metadata["owner"]` - and it carries
+    /// the whole mapping protocol (`get`, `keys`, `values`, `items`, `update`,
+    /// `clear`). The view is live rather than a snapshot: it holds
+    /// this field and reads through it on every call, so a write on the field
+    /// is visible in the view and a write through the view is visible on the
+    /// field.
+    #[getter]
+    fn metadata(slf: Py<Self>) -> PyFieldMetadata {
+        PyFieldMetadata { field: slf }
+    }
+
+    /// Replace every metadata entry with exactly these, atomically.
+    ///
+    /// The live `metadata` view mutates entry by entry; this validates the
+    /// whole replacement first, so a rejected entry leaves the field with the
+    /// entries it already had rather than a half-applied set.
+    #[pyo3(signature = (values = None, /, **kwargs))]
+    fn set_metadata(
+        &mut self,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        self.require_mutable()?;
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        self.inner.set_metadata(pairs).map_err(value_error)
+    }
+
+    /// Reach a nested child by name or by position.
+    ///
+    /// Item access on a schema node means a **child**, never metadata: a `str`
+    /// is a child name and raises `KeyError` when absent, an `int` is a
+    /// position counting from the end when negative and raising `IndexError`
+    /// when out of range, and anything else raises `TypeError`. `DataType`
+    /// carries exactly the same behavior, so a caller walking one object graph
+    /// gets a child from every node in it. Metadata is reached through
+    /// `field.metadata[...]` or `field.get_metadata(...)`.
+    ///
+    /// Chained subscripts descend: `row["order"]["price"]`. There is no dotted
+    /// path form.
+    /// Returns the field that describes both this one and `other`.
+    ///
+    /// The datatype is `DataType.merge_with`'s answer; this adds the name
+    /// (kept from the receiver), nullability (either side being nullable
+    /// carries over), and metadata (the union, this field winning a clash).
+    #[pyo3(signature = (other, upscale=true))]
+    fn merge_with(&self, other: &Bound<'_, PyAny>, upscale: bool) -> PyResult<Self> {
+        let other = core_field_from_value(other)?;
+        self.inner
+            .merge_with(&other, upscale)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Compare name, nullability, and nested layout, ignoring all metadata.
+    ///
+    /// This is what two schemas agreeing on storage means, as opposed to
+    /// `==`, which also compares every property either one carries.
+    fn layout_eq(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.inner.layout_eq(&core_field_from_value(other)?))
+    }
+
+    /// The cross-language hash of name, datatype, and nullability alone.
+    ///
+    /// This is the hash counterpart of `layout_eq`, as `stable_hash` is of
+    /// `==`.
+    fn stable_layout_hash(&self) -> u64 {
+        self.inner.stable_layout_hash()
+    }
+
+    /// The position of the first struct child with this exact name.
+    fn index_of(&self, name: &str) -> Option<usize> {
+        self.inner.index_of(name)
+    }
+
+    /// This struct root with the named children removed.
+    ///
+    /// A name the root does not carry is ignored, and the root keeps its own
+    /// name, nullability, and metadata - this is the schema a partitioned
+    /// write stores, with the partition columns left in the path.
+    fn without_fields(&self, names: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let names = crate::enums::strings_from_iterable(names, "names")?;
+        let borrowed: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.inner
+            .without_fields(&borrowed)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Every leaf under this node, named by its dotted path.
+    ///
+    /// Struct nesting flattens all the way down, and a leaf under a nullable
+    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// column, and `explode_fields` is what reaches inside one. Every name
+    /// this answers is one `field_by_path` resolves.
+    fn unnest_fields(&self) -> Vec<Self> {
+        self.inner
+            .unnest_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// This node's children with every collection replaced by what it holds.
+    ///
+    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// node the values it encodes, and anything else itself - so the result
+    /// names the same columns in the same order. One level only, so the depth
+    /// is the caller's decision.
+    fn explode_fields(&self) -> Vec<Self> {
+        self.inner
+            .explode_fields()
+            .into_iter()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the nested child at `index`, or `None`.
+    ///
+    /// Negative positions count from the end, as everywhere else.
+    fn get_field_at(&self, index: isize) -> Option<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .ok()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to, or `None`.
+    ///
+    /// A child carrying the whole string wins before the string is decomposed
+    /// on `.`, so a name containing a dot stays reachable.
+    fn get_field_by_path(&self, path: &str) -> Option<Self> {
+        self.inner
+            .get_field_by_path(path)
+            .cloned()
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names, or `None`.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn get_field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Option<Self>> {
+        let found = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.inner.get_field_by_path(&path).cloned(),
+            crate::FieldKey::Position(index) => {
+                crate::normalize_index(index, self.inner.field_len())
+                    .and_then(|at| self.inner.get_field_at(at).cloned())
+            }
+        };
+        Ok(found.map(|field| Self::from_inner_with_read_only(field, self.read_only)))
+    }
+
+    /// Returns the nested child at `index`.
+    ///
+    /// Raises `IndexError` when there is no child at that position.
+    fn field_at(&self, index: isize) -> PyResult<Self> {
+        crate::field_at_of(self.inner.dtype(), index)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child `path` resolves to.
+    ///
+    /// Raises `KeyError` when no child carries that name and no decomposition
+    /// of it resolves.
+    fn field_by_path(&self, path: &str) -> PyResult<Self> {
+        crate::field_by_path_of(self.inner.dtype(), path)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Returns the nested child a position or a path names.
+    ///
+    /// The key may be positional, or named `idx=` or `path=`; naming more than
+    /// one is a `TypeError` rather than a silent precedence rule.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn field(
+        &self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        let resolved = match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => crate::field_by_path_of(self.inner.dtype(), &path),
+            crate::FieldKey::Position(index) => crate::field_at_of(self.inner.dtype(), index),
+        }?;
+        Ok(Self::from_inner_with_read_only(resolved, self.read_only))
+    }
+
+    /// Replaces the nested child at `index`.
+    fn set_field_at(&mut self, index: isize, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .set_field_at(position, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child `path` resolves to, appending an unresolved
+    /// name under it.
+    fn set_field_by_path(&mut self, path: &str, child: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(child)?;
+        self.inner
+            .set_field_by_path(path, child)
+            .map_err(value_error)
+    }
+
+    /// Replaces the nested child a position or a path names.
+    #[pyo3(signature = (key=None, child=None, *, idx=None, path=None))]
+    fn set_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        child: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        let child = child.ok_or_else(|| PyTypeError::new_err("set_field() needs a child"))?;
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.set_field_by_path(&path, child),
+            crate::FieldKey::Position(index) => self.set_field_at(index, child),
+        }
+    }
+
+    /// Removes and returns the nested child at `index`.
+    fn remove_field_at(&mut self, index: isize) -> PyResult<Self> {
+        self.require_mutable()?;
+        let position = crate::normalize_index(index, self.inner.field_len())
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+        self.inner
+            .remove_field_at(position)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Removes and returns the nested child `path` resolves to.
+    fn remove_field_by_path(&mut self, path: &str) -> PyResult<Self> {
+        self.require_mutable()?;
+        self.inner
+            .remove_field_by_path(path)
+            .map(Self::from_inner)
+            .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path.to_owned()))
+    }
+
+    /// Removes and returns the nested child a position or a path names.
+    #[pyo3(signature = (key=None, *, idx=None, path=None))]
+    fn remove_field(
+        &mut self,
+        key: Option<&Bound<'_, PyAny>>,
+        idx: Option<isize>,
+        path: Option<&str>,
+    ) -> PyResult<Self> {
+        match crate::one_field_key(key, idx, path)? {
+            crate::FieldKey::Path(path) => self.remove_field_by_path(&path),
+            crate::FieldKey::Position(index) => self.remove_field_at(index),
+        }
+    }
+
+    fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
+        crate::field_of(self.inner.dtype(), key)
+            .map(|field| Self::from_inner_with_read_only(field, self.read_only))
+    }
+
+    /// Replace a nested child, or append one under an unknown name.
+    ///
+    /// By name: an existing child is replaced in place, keeping its position;
+    /// an **unknown name appends** a new child, which is the natural way to
+    /// build a schema up. By position: replaces only - a position past the end
+    /// raises `IndexError` rather than growing the node silently.
+    ///
+    /// The assignment routes through the core's cache-aware child mutation, so
+    /// the child set is revalidated and any Arrow projection cache is
+    /// invalidated exactly once. No `&mut` child ever escapes to bypass it.
+    fn __setitem__(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let child = core_field_from_value(value)?;
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .set_field_by_path(&path, child)
+                .map_err(value_error),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .set_field_at(position, child)
+                    .map_err(value_error)
+            }
+        }
+    }
+
+    /// Remove a nested child by name or by position, closing the gap.
+    fn __delitem__(&mut self, key: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        match crate::FieldKey::from_py(key)? {
+            crate::FieldKey::Path(path) => self
+                .inner
+                .remove_field_by_path(&path)
+                .map(|_| ())
+                .map_err(|_| pyo3::exceptions::PyKeyError::new_err(path)),
+            crate::FieldKey::Position(index) => {
+                let position = crate::normalize_index(index, self.inner.field_len())
+                    .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err(index))?;
+                self.inner
+                    .remove_field_at(position)
+                    .map(|_| ())
+                    .map_err(value_error)
+            }
+        }
+    }
+
+    /// The number of nested children, as `DataType` reports it.
+    fn __len__(&self) -> usize {
+        self.inner.field_len()
+    }
+
+    /// Iterate the nested children, as `DataType` does.
+    fn __iter__(&self) -> PyDataTypeIterator {
+        PyDataTypeIterator::over(self.inner.dtype().clone(), self.read_only)
+    }
+
+    /// Whether a child name, position, or field is among the children.
+    fn __contains__(&self, value: &Bound<'_, PyAny>) -> bool {
+        crate::field_of(self.inner.dtype(), value).is_ok()
+            || value.extract::<PyRef<'_, Self>>().is_ok_and(|field| {
+                (0..self.inner.field_len())
+                    .filter_map(|index| self.inner.get_field(index))
+                    .any(|candidate| candidate == &field.inner)
+            })
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Field.from_str({:?})", self.inner.to_string())
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(other.py().NotImplemented());
+        };
+        Ok(compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(other.py())?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
+        crate::python_hash(self.inner.stable_hash())
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, bool))> {
+        let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
+        Ok((callable, (self.inner.to_string(), self.read_only)))
+    }
+
+    fn __copy__(&self) -> Self {
+        Self::from_inner_with_read_only(self.inner.clone(), self.read_only)
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        Self::from_inner_with_read_only(self.inner.clone(), self.read_only)
+    }
+}
+
+/// One protocol's field properties, addressed by their bare names.
+///
+/// The value is a live view rather than a snapshot: it holds the Python
+/// `Field` object and reaches the core through it on every call. A write
+/// through the view is therefore visible on the field, a write on the field is
+/// visible through the view, and two views of one field see each other's
+/// writes. Every mutation goes through the field's own frozen-schema gate.
+#[pyclass(name = "ProtocolField", module = "yggdryl._native")]
+pub(crate) struct PyProtocolField {
+    field: Py<PyField>,
+    scheme: CoreScheme,
+}
+
+impl PyProtocolField {
+    fn new(field: Py<PyField>, scheme: CoreScheme) -> Self {
+        Self { field, scheme }
+    }
+
+    /// Borrows the viewed field for reading.
+    fn borrow_field<'py>(&self, py: Python<'py>) -> PyResult<PyRef<'py, PyField>> {
+        Ok(self.field.bind(py).try_borrow()?)
+    }
+
+    /// Borrows the viewed field for writing, refusing a frozen one.
+    fn borrow_field_mut<'py>(&self, py: Python<'py>) -> PyResult<PyRefMut<'py, PyField>> {
+        let field = self.field.bind(py).try_borrow_mut()?;
+        field.require_mutable()?;
+        Ok(field)
+    }
+
+    /// Refuse a typed FIX property on a view of another protocol.
+    ///
+    /// The typed vocabulary belongs to one protocol, so it is answered only
+    /// by the view `field.fix` returns; every other scheme reads and writes
+    /// its own properties through the mapping protocol above.
+    fn require_fix(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::FIX {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a fix property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// Refuse a typed partition property on a view of another protocol.
+    ///
+    /// [`Self::require_fix`] carries the rule; this is the same one for the
+    /// view `field.partition` returns.
+    fn require_partition(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a partition property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// The same rule for the `DIGEST:` vocabulary.
+    fn require_digest(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::DIGEST {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a digest property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// The same rule for the `PYTHON:` vocabulary.
+    fn require_python(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PYTHON {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a python property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// `sources` is the one property both declaring protocols answer.
+    fn require_sources(&self) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION || self.scheme == CoreScheme::DIGEST {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "sources is a partition or digest property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+}
+
+#[pymethods]
+impl PyProtocolField {
+    // A view of mutable metadata cannot promise a stable hash, so it is
+    // unhashable for the same reason an explicitly mutated MediaType is.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Returns the protocol this view remembers.
+    #[getter]
+    fn scheme(&self) -> &str {
+        self.scheme.as_str()
+    }
+
+    /// Returns the canonical key prefix this view applies.
+    #[getter]
+    fn prefix(&self, py: Python<'_>) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).prefix().into_owned())
+    }
+
+    /// Returns the full metadata key one property name is stored under.
+    fn key(&self, py: Python<'_>, name: &str) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).key(name))
+    }
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).len())
+    }
+
+    /// Answers emptiness without counting the properties `len` would count.
+    fn __bool__(&self, py: Python<'_>) -> PyResult<bool> {
+        let field = self.borrow_field(py)?;
+        Ok(!field.inner.protocol(&self.scheme).is_empty())
+    }
+
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PyFieldPropertyIterator> {
+        self.keys(py)
+    }
+
+    fn __contains__(&self, py: Python<'_>, name: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let Ok(name) = name.extract::<&str>() else {
+            return Ok(false);
+        };
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).contains_key(name))
+    }
+
+    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        let protocol = field.inner.protocol(&self.scheme);
+        protocol
+            .get(name)
+            .map(str::to_owned)
+            // The core names a missing property by the key it is stored under,
+            // which is also the key a caller reads on the field itself.
+            .ok_or_else(|| PyKeyError::new_err(protocol.key(name)))
+    }
+
+    fn __setitem__(&self, py: Python<'_>, name: &str, value: String) -> PyResult<()> {
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .insert(name, value)
+            .map(|_| ())
+            .map_err(value_error)
+    }
+
+    fn __delitem__(&self, py: Python<'_>, name: &str) -> PyResult<()> {
+        let mut field = self.borrow_field_mut(py)?;
+        let mut protocol = field.inner.protocol_mut(&self.scheme);
+        let key = protocol.key(name);
+        protocol
+            .remove(name)
+            .map(|_| ())
+            .ok_or_else(|| PyKeyError::new_err(key))
+    }
+
+    #[pyo3(signature = (name, default=None, /))]
+    fn get(&self, py: Python<'_>, name: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).get(name).map_or_else(
+            || default.unwrap_or_else(|| py.None()),
+            |value| PyString::new(py, value).into_any().unbind(),
+        ))
+    }
+
+    fn keys(&self, py: Python<'_>) -> PyResult<PyFieldPropertyIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldPropertyIterator::new(
+            &field.inner,
+            self.scheme.clone(),
+            PropertyIteratorKind::Names,
+        ))
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<PyFieldPropertyIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldPropertyIterator::new(
+            &field.inner,
+            self.scheme.clone(),
+            PropertyIteratorKind::Values,
+        ))
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<PyFieldPropertyIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldPropertyIterator::new(
+            &field.inner,
+            self.scheme.clone(),
+            PropertyIteratorKind::Items,
+        ))
+    }
+
+    /// This protocol's comment, falling back to the field's straight one.
+    ///
+    /// `get`, iteration and `len` stay literal about what this protocol
+    /// carries; the fallback lives here so a view never reports a property
+    /// that iterating it would not yield.
+    #[getter]
+    fn comment(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .protocol(&self.scheme)
+            .comment()
+            .map(str::to_owned))
+    }
+
+    /// This protocol's display name, falling back to the field's straight one.
+    #[getter]
+    fn display(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .protocol(&self.scheme)
+            .display()
+            .map(str::to_owned))
+    }
+
+    /// The dictionaries that contributed this field, on the `fix` view.
+    ///
+    /// `FIX:branches` read as a list: folded to ASCII lowercase, sorted, and
+    /// empty when the specification alone defines the field. Membership is
+    /// provenance a caller filters on; no lookup consults it. Assigning a
+    /// sequence of names stores them deduplicated under the fold, and an
+    /// empty one removes the property; a name that is empty or carries a
+    /// comma is a `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn branches(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("branches")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().branches().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_branches(&self, dialects: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("branches")?;
+        let mut parsed = Vec::new();
+        for value in dialects.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(dialects.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_branches(parsed)
+            .map_err(value_error)
+    }
+
+    /// Add one dictionary to those that contributed this field.
+    ///
+    /// Idempotent under the fold: a name already listed is listed once.
+    fn add_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<()> {
+        self.require_fix("branches")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_fix_mut()
+            .add_branch(dialect)
+            .map_err(value_error)
+    }
+
+    /// Whether `dialect` is one of the dictionaries that contributed this
+    /// field, ASCII case folded.
+    fn has_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<bool> {
+        self.require_fix("branches")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().has_branch(dialect))
+    }
+
+    /// This field's identity, on the `fix` view.
+    ///
+    /// The `int` the core derives from the canonical tag and the field's own
+    /// name under the one fold - so `MsgType`, `msg_type` and `MSGTYPE`
+    /// under tag 35 are one id - on every read and never stored, so it is
+    /// `None` exactly when `FIX:tag` is absent and a rename is never stale.
+    /// It is what `FixRegistry.get_field_by_id` and `FixMsg.get_by_id` take.
+    #[getter]
+    fn id(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("id")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .id()
+            .map_err(value_error)?
+            .map(yggdryl::FixId::digest))
+    }
+
+    /// The canonical FIX tag, on the `fix` view.
+    ///
+    /// Reads and writes `FIX:tag` through the core's own typed accessors, so
+    /// the property name is never spelled at a call site. `del view["tag"]`
+    /// removes it, the way every other property is removed. A tag is a
+    /// positive `i32`: 0 or a negative is the core's `ValueError`, because
+    /// tag 0 is what an unresolved arrival entry records, never a field's
+    /// identity, and a `bool` is a `TypeError`.
+    #[getter]
+    fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("tag")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_fix().tag().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_tag(&self, tag: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("tag")?;
+        let value = tag.extract::<FixTag>()?;
+        let mut field = self.borrow_field_mut(tag.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_tag(value.0)
+            .map_err(value_error)
+    }
+
+    /// The positive tag of a group's count field or a Map's own counter.
+    ///
+    /// Assigning `None` removes it; 0 or a negative is the core's
+    /// `ValueError`, exactly as `tag` refuses one.
+    #[getter]
+    fn counter(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("counter")?;
+        self.borrow_field(py)?
+            .inner
+            .as_fix()
+            .counter()
+            .map_err(value_error)
+    }
+
+    #[setter]
+    fn set_counter(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("counter")?;
+        let tag = if value.is_none() {
+            None
+        } else {
+            Some(value.extract::<crate::fix::FixTag>()?.0)
+        };
+        let mut field = self.borrow_field_mut(value.py())?;
+        match tag {
+            Some(tag) => field
+                .inner
+                .as_fix_mut()
+                .set_counter(tag)
+                .map_err(value_error),
+            None => field
+                .inner
+                .as_fix_mut()
+                .remove_counter()
+                .map(|_| ())
+                .map_err(value_error),
+        }
+    }
+
+    #[getter]
+    fn component(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("component")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .component()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_component(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("component")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_component(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_component();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn field_ref(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("field_ref")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .field_ref()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_field_ref(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("field_ref")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_field_ref(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_field_ref();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn group(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("group")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .group()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_group(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("group")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_group(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_group();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn msgtype(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("msgtype")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .msgtype()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_msgtype(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("msgtype")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_msgtype(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_msgtype();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("msgcat")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .msgcat()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_msgcat(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("msgcat")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_msgcat(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_msgcat();
+            Ok(())
+        }
+    }
+
+    /// The alternate tags, highest priority first.
+    ///
+    /// An absent property is an empty list, and assigning an empty iterable
+    /// removes it: a field states alternate tags only when it has them. Each
+    /// is a positive `i32` stated once; 0, a negative or a repeat is the
+    /// core's `ValueError` and leaves the field unchanged.
+    #[getter]
+    fn tags(&self, py: Python<'_>) -> PyResult<Vec<i32>> {
+        self.require_fix("tags")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_fix().tags().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_tags(&self, tags: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("tags")?;
+        let mut parsed = Vec::new();
+        for value in tags.try_iter()? {
+            parsed.push(value?.extract::<FixTag>()?.0);
+        }
+        let mut field = self.borrow_field_mut(tags.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_tags(&parsed)
+            .map_err(value_error)
+    }
+
+    /// The alternate names, highest priority first.
+    ///
+    /// Assigning an empty iterable removes the property. Each is a non-empty
+    /// name holding no quote, backslash or control character, stated once
+    /// with ASCII case folded; anything else is the core's `ValueError` and
+    /// leaves the field unchanged.
+    #[getter]
+    fn names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("names")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().names().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_names(&self, names: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("names")?;
+        let mut parsed = Vec::new();
+        for value in names.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(names.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_names(parsed)
+            .map_err(value_error)
+    }
+
+    /// The component's direct scalar identifiers, in member order.
+    ///
+    /// Names, aliases and decimal tags resolve through the core setter;
+    /// assigning an empty iterable removes the property.
+    #[getter]
+    fn identifiers(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("identifiers")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .identifiers()
+            .map(str::to_owned)
+            .collect())
+    }
+
+    #[setter]
+    fn set_identifiers(&self, identifiers: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("identifiers")?;
+        let parsed = crate::enums::strings_from_iterable(identifiers, "identifiers")?;
+        let mut field = self.borrow_field_mut(identifiers.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_identifiers(parsed)
+            .map_err(value_error)
+    }
+
+    /// The spellings that mean "nothing was sent" for this field.
+    ///
+    /// A value the list names types as null in a row while the arrival record
+    /// keeps it exactly as it arrived. Assigning an empty iterable removes the
+    /// property.
+    #[getter]
+    fn nulls(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("nulls")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().nulls().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_nulls(&self, spellings: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("nulls")?;
+        let mut parsed = Vec::new();
+        for value in spellings.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(spellings.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_nulls(parsed)
+            .map_err(value_error)
+    }
+
+    /// The name of the FIX code set this field reads its values by, or
+    /// `None` for a field drawing on none.
+    ///
+    /// A field states the name; the dictionary holds the members, once, under
+    /// it - `FixRegistry.codeset` answers them and `FixRegistry.set_codeset`
+    /// states them. So a vocabulary is named, documented and aliased in one
+    /// place however many fields read by it.
+    ///
+    /// Assigning a name records it and assigning `None` removes the property;
+    /// a name no store can file is a `ValueError` that leaves the field
+    /// unchanged. A dictionary refuses a field naming a set it does not hold,
+    /// so the set is stated before the field points at it.
+    #[getter]
+    fn codeset(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("codeset")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .codeset()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_codeset(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("codeset")?;
+        let name = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(name) = name {
+            field
+                .inner
+                .as_fix_mut()
+                .set_codeset(&name)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_codeset();
+            Ok(())
+        }
+    }
+
+    /// The rules that read tag 385 off the prose in front of a payload, one
+    /// record per code of the set: `{"code", "patterns"}`.
+    ///
+    /// Assigning an empty iterable removes the property; a pattern the regex
+    /// crate refuses is a `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn directions<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.require_fix("directions")?;
+        let field = self.borrow_field(py)?;
+        let mut records = Vec::new();
+        for entry in field.inner.as_fix().directions() {
+            let rule = yggdryl::FixDirection::from(entry.map_err(value_error)?);
+            let record = PyDict::new(py);
+            record.set_item("code", rule.code())?;
+            let patterns: Vec<&str> = rule.patterns().iter().map(AsRef::as_ref).collect();
+            record.set_item("patterns", patterns)?;
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    #[setter]
+    fn set_directions(&self, directions: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("directions")?;
+        let mut rules = Vec::new();
+        for item in directions.try_iter()? {
+            let item = item?;
+            let code = item.get_item("code")?.extract::<String>()?;
+            let mut patterns = Vec::new();
+            for pattern in item.get_item("patterns")?.try_iter()? {
+                patterns.push(pattern?.extract::<String>()?);
+            }
+            rules.push(yggdryl::FixDirection::new(code, patterns));
+        }
+        let mut field = self.borrow_field_mut(directions.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_directions(&rules)
+            .map_err(value_error)
+    }
+
+    /// How this field's value is derived from the message where the message
+    /// states none: one expression over the message's fields, in its
+    /// canonical text, or `None` for a field nothing derives.
+    ///
+    /// Assigning text records it (a text that is not a term, or one past the
+    /// grammar's budget, is a `ValueError` that leaves the field unchanged);
+    /// assigning `None` removes the property.
+    #[getter]
+    fn derivation(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("derivation")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .derivation()
+            .map_err(value_error)?
+            .map(|term| term.to_string()))
+    }
+
+    #[setter]
+    fn set_derivation(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("derivation")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        match text {
+            Some(text) => {
+                let term: yggdryl::expression::Term = text.parse().map_err(value_error)?;
+                field
+                    .inner
+                    .as_fix_mut()
+                    .set_derivation(&term)
+                    .map_err(value_error)
+            }
+            None => field
+                .inner
+                .as_fix_mut()
+                .remove_derivation()
+                .map(|_| ())
+                .map_err(value_error),
+        }
+    }
+
+    /// The specification's own wording for this field.
+    #[getter]
+    fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("description")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().description().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_description(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("description")?;
+        let text = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_description(text)
+            .map_err(value_error)
+    }
+
+    /// The field paths this partition column derives its value from.
+    ///
+    /// Dotted paths, the way `Field.get_field` spells a nested one, in the one
+    /// shape every `sources` property has. One path is every transform the
+    /// core evaluates today; a longer list is stored and refused when the
+    /// column is applied.
+    #[getter]
+    fn sources(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
+        self.require_sources()?;
+        let field = self.borrow_field(py)?;
+        if self.scheme == CoreScheme::DIGEST {
+            return field.inner.as_digest().sources().map_err(value_error);
+        }
+        field.inner.as_partition().sources().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_sources(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_sources()?;
+        let mut paths = Vec::new();
+        for path in value.try_iter()? {
+            paths.push(path?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(value.py())?;
+        if self.scheme == CoreScheme::DIGEST {
+            return field
+                .inner
+                .as_digest_mut()
+                .set_sources(paths)
+                .map_err(value_error);
+        }
+        field
+            .inner
+            .as_partition_mut()
+            .set_sources(paths)
+            .map_err(value_error)
+    }
+
+    /// Whether this field holds a digest rather than contributing to one.
+    ///
+    /// A holder is what `apply_arrow_batch` fills; every other field in the
+    /// selection is an ordinary column that feeds it.
+    fn is_holder(&self, py: Python<'_>) -> PyResult<bool> {
+        self.require_digest("is_holder")?;
+        Ok(self.borrow_field(py)?.inner.as_digest().is_holder())
+    }
+
+    /// Mark this field as the one that holds the digest.
+    fn set_holder(&self, py: Python<'_>) -> PyResult<()> {
+        self.require_digest("set_holder")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_holder()
+            .map_err(value_error)
+    }
+
+    /// Remove the role, refusing while holder-only settings are still stored.
+    ///
+    /// A schema can never carry a holder's algorithm or sources on a field
+    /// that is no longer a holder, so those are removed first.
+    fn remove_role(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_role")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .remove_role()
+            .map_err(value_error)
+    }
+
+    /// The algorithm a holder computes, on the `digest` view.
+    ///
+    /// Writing it checks the two invariants the stored form cannot: this
+    /// field is a holder, and its datatype is one the algorithm's exact
+    /// width fits.
+    #[getter]
+    fn algorithm(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_digest("algorithm")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_digest()
+            .algorithm()
+            .map_err(value_error)?
+            .map(yggdryl::DigestAlgorithm::as_str))
+    }
+
+    #[setter]
+    fn set_algorithm(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("algorithm")?;
+        let algorithm = crate::hashing::xxhash::algorithm_from_str(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_algorithm(algorithm)
+            .map_err(value_error)
+    }
+
+    /// Remove a holder's declared algorithm, answering what was stored.
+    fn remove_algorithm(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_algorithm")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_algorithm())
+    }
+
+    /// Remove a holder's declared sources, answering what was stored.
+    ///
+    /// A holder with no sources reads every field beside it, so removing the
+    /// list is how a selection goes back to that default.
+    fn remove_sources(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_sources")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_sources())
+    }
+
+    /// The field whose instant a coupled holder stores in front of its digest.
+    ///
+    /// Writing it checks what the stored form cannot: this field is a holder
+    /// and its storage is the `fixed_size_binary` a coupled digest needs.
+    #[getter]
+    fn time(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("time")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_digest().time().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_time(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("time")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_time(value)
+            .map_err(value_error)
+    }
+
+    /// Remove the coupled instant, refusing while `DIGEST:unit` still stands.
+    fn remove_time(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_time")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .remove_time()
+            .map_err(value_error)
+    }
+
+    /// The clock resolution a coupled holder counts its instant in, or
+    /// `None` for the microsecond default.
+    #[getter]
+    fn unit(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_digest("unit")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_digest()
+            .unit()
+            .map_err(value_error)?
+            .map(yggdryl::TimeUnit::as_str))
+    }
+
+    #[setter]
+    fn set_unit(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("unit")?;
+        let unit = crate::hashing::txhash::unit_from_str(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_unit(unit)
+            .map_err(value_error)
+    }
+
+    /// Remove the explicit resolution, which is the microsecond default again.
+    fn remove_unit(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_unit")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_unit())
+    }
+
+    /// Whether this holder couples an instant with its digest.
+    fn is_coupled(&self, py: Python<'_>) -> PyResult<bool> {
+        self.require_digest("is_coupled")?;
+        Ok(self.borrow_field(py)?.inner.as_digest().is_coupled())
+    }
+
+    /// How this partition column derives its value, on the `partition` view.
+    ///
+    /// The vocabulary is the [expression](../expression/grammar.md) grammar's
+    /// own function set, and it crosses as its canonical name: a dialect alias
+    /// resolves on the way in, so `dayofmonth` reads back as `day`. An absent
+    /// transform is the identity - the source value unchanged.
+    #[getter]
+    fn transform(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_partition("transform")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_partition()
+            .transform()
+            .map_err(value_error)?
+            .map(|transform| transform.as_str().to_owned()))
+    }
+
+    /// The term this partition column derives its value with.
+    ///
+    /// The declared `transform` is compiled over the field paths in
+    /// `sources`, so `year(event)` is what the column actually computes. A
+    /// column that declares neither answers `None`; a transform with no
+    /// sources, or more sources than the transform reads, is a `ValueError`.
+    #[getter]
+    fn term(&self, py: Python<'_>) -> PyResult<Option<crate::expression::PyTerm>> {
+        self.require_partition("term")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_partition()
+            .term()
+            .map_err(value_error)?
+            .map(crate::expression::PyTerm::from_core))
+    }
+
+    #[setter]
+    fn set_transform(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_partition("transform")?;
+        let name = value.extract::<String>()?;
+        let transform = CoreFunction::from_name(&name).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "expected one of {}, got {name:?}",
+                CoreFunction::vocabulary()
+            ))
+        })?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_partition_mut()
+            .set_transform(transform)
+            .map_err(value_error)
+    }
+
+    /// Apply this protocol's declarations to one `pyarrow.RecordBatch`.
+    ///
+    /// The view is taken on the Struct root, and every declared Struct beneath
+    /// it is walked. `field.partition` computes each column its `transform`
+    /// and `source` declare; `field.digest` fills each holder. Both leave a
+    /// column holding anything but its canonical default alone, so applying
+    /// twice writes nothing the first pass already did.
+    ///
+    /// Every other protocol's view raises `TypeError` naming its own scheme.
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let field = self.borrow_field(py)?;
+        let applied = if self.scheme == CoreScheme::PARTITION
+            || self.scheme == CoreScheme::TRANSFORM
+        {
+            // A partition declaration is a transform: both views compute the
+            // columns their `transform` derives.
+            field.inner.as_transform().apply_arrow_batch(&batch)
+        } else if self.scheme == CoreScheme::DIGEST {
+            field.inner.as_digest().apply_arrow_batch(&batch)
+        } else {
+            return Err(PyTypeError::new_err(format!(
+                "apply_arrow_batch is a transform, partition or digest operation, and this is a {} view",
+                self.scheme.as_str()
+            )));
+        };
+        batch_to_pyarrow(py, applied.map_err(value_error)?)
+    }
+
+    /// The declaring Python class, on the `python` view.
+    ///
+    /// One crossing carries the whole declaration - module, qualified name and
+    /// form - and answers `None` unless all three are stored, because a field
+    /// holding only some of them names no class. Assigning writes the three in
+    /// one validated overlay; assigning `None` removes them.
+    #[getter]
+    fn class_metadata(&self, py: Python<'_>) -> PyResult<Option<PyPythonMetadata>> {
+        self.require_python("class_metadata")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_python()
+            .class()
+            .map_err(value_error)?
+            .map(PyPythonMetadata::from_core))
+    }
+
+    #[setter]
+    fn set_class_metadata(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("class_metadata")?;
+        let py = value.py();
+        if value.is_none() {
+            let mut field = self.borrow_field_mut(py)?;
+            field.inner.as_python_mut().remove_class();
+            return Ok(());
+        }
+        let declared = core_python_metadata_from_value(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_python_mut()
+            .set_class(&declared)
+            .map_err(value_error)
+    }
+
+    /// The dotted module path the declaring class lives in.
+    #[getter]
+    fn module(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("module")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().module().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_module(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("module")?;
+        let module = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_module(&module)
+            .map_err(value_error)
+    }
+
+    /// The qualified name the declaring class has inside its module.
+    #[getter]
+    fn qualname(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("qualname")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().qualname().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_qualname(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("qualname")?;
+        let qualname = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_qualname(&qualname)
+            .map_err(value_error)
+    }
+
+    /// The bare class name, derived from the qualified name on every read.
+    #[getter]
+    fn class_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("class_name")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().class_name().map(str::to_owned))
+    }
+
+    /// Which Python form the declaration takes.
+    #[getter]
+    fn kind(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_python("kind")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_python()
+            .kind()
+            .map_err(value_error)?
+            .map(CorePythonKind::as_str))
+    }
+
+    #[setter]
+    fn set_kind(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("kind")?;
+        let kind = CorePythonKind::from_str(&value.extract::<String>()?).map_err(value_error)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_kind(kind)
+            .map_err(value_error)
+    }
+
+    /// The dotted path an importing reader would spell.
+    ///
+    /// Absent exactly when either half of it is.
+    #[getter]
+    fn import_path(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("import_path")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().import_path())
+    }
+
+    /// Merges another protocol view's properties into this one, in place.
+    ///
+    /// A name this view already carries keeps its value, so the merge only
+    /// ever adds. Properties of other protocols are untouched.
+    fn merge_with(&self, py: Python<'_>, other: &Self) -> PyResult<()> {
+        // Collect before borrowing mutably: `other` may be a view of this same
+        // field, and a live borrow of it would collide with the write below.
+        let additions: Vec<(String, String)> = {
+            let source = other.borrow_field(py)?;
+            let held = self.borrow_field(py)?;
+            let view = held.inner.protocol(&self.scheme);
+            source
+                .inner
+                .protocol(&other.scheme)
+                .iter()
+                .filter(|(name, _)| view.get(name).is_none())
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect()
+        };
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(additions)
+            .map_err(value_error)
+    }
+
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn update(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        // Collect before borrowing: the overlay may itself be a view of this
+        // same field, and the core validates the whole overlay atomically.
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .update(pairs)
+            .map_err(value_error)
+    }
+
+    /// Replace this protocol's properties with exactly these.
+    ///
+    /// The replacement is atomic and reaches only this protocol: every other
+    /// protocol's keys and every shared key are left as they were. `update`
+    /// is the same call that keeps the names it does not mention.
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn set(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        // Collect before borrowing: the replacement may itself be a view of
+        // this same field, and the core validates the whole set atomically.
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .set(pairs)
+            .map_err(value_error)
+    }
+
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        let mut field = self.borrow_field_mut(py)?;
+        field.inner.protocol_mut(&self.scheme).clear();
+        Ok(())
+    }
+
+    fn __str__(&self, py: Python<'_>) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.protocol(&self.scheme).to_string())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        Ok(format!("{:?}", field.inner.protocol(&self.scheme)))
+    }
+
+    /// Compares the properties two views hold, not the fields behind them.
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(py.NotImplemented());
+        };
+        let left = self.borrow_field(py)?;
+        let right = other.borrow_field(py)?;
+        let equal = left.inner.protocol(&self.scheme) == right.inner.protocol(&other.scheme);
+        Ok(PyBool::new(py, equal).to_owned().into_any().unbind())
+    }
+}
+
+#[derive(Clone, Copy)]
+enum MetadataIteratorKind {
+    Keys,
+    Values,
+    Items,
+}
+
+#[derive(Clone, Copy)]
+enum PropertyIteratorKind {
+    Names,
+    Values,
+    Items,
+}
+
+/// Snapshot iterator over a field's sorted metadata.
+#[pyclass(module = "yggdryl._native")]
+pub(crate) struct PyFieldMetadataIterator {
+    inner: CoreField,
+    after_key: Option<String>,
+    remaining: usize,
+    kind: MetadataIteratorKind,
+}
+
+/// Snapshot iterator over one protocol's field properties.
+#[pyclass(module = "yggdryl._native")]
+pub(crate) struct PyFieldPropertyIterator {
+    inner: CoreField,
+    scheme: CoreScheme,
+    after_name: Option<String>,
+    remaining: usize,
+    kind: PropertyIteratorKind,
+}
+
+impl PyFieldPropertyIterator {
+    fn new(field: &CoreField, scheme: CoreScheme, kind: PropertyIteratorKind) -> Self {
+        let remaining = field.property_iter(&scheme).count();
+        Self {
+            inner: field.clone(),
+            scheme,
+            after_name: None,
+            remaining,
+            kind,
+        }
+    }
+}
+
+#[pymethods]
+impl PyFieldPropertyIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some((name, value)) = self
+            .inner
+            .next_property_entry(&self.scheme, self.after_name.as_deref())
+        else {
+            self.remaining = 0;
+            return Ok(None);
+        };
+        let name = name.to_owned();
+        let output = match self.kind {
+            PropertyIteratorKind::Names => PyString::new(py, &name).into_any().unbind(),
+            PropertyIteratorKind::Values => PyString::new(py, value).into_any().unbind(),
+            PropertyIteratorKind::Items => (name.as_str(), value)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+        };
+        self.after_name = Some(name);
+        self.remaining = self.remaining.saturating_sub(1);
+        Ok(Some(output))
+    }
+
+    fn __length_hint__(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl PyFieldMetadataIterator {
+    fn new(field: &CoreField, kind: MetadataIteratorKind) -> Self {
+        Self {
+            inner: field.clone(),
+            after_key: None,
+            remaining: field.metadata_len(),
+            kind,
+        }
+    }
+}
+
+#[pymethods]
+impl PyFieldMetadataIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some((key, value)) = self.inner.next_metadata_entry(self.after_key.as_deref()) else {
+            self.remaining = 0;
+            return Ok(None);
+        };
+        let key = key.to_owned();
+        let output = match self.kind {
+            MetadataIteratorKind::Keys => PyString::new(py, &key).into_any().unbind(),
+            MetadataIteratorKind::Values => PyString::new(py, value).into_any().unbind(),
+            MetadataIteratorKind::Items => {
+                (key.as_str(), value).into_pyobject(py)?.into_any().unbind()
+            }
+        };
+        self.after_key = Some(key);
+        self.remaining = self.remaining.saturating_sub(1);
+        Ok(Some(output))
+    }
+
+    fn __length_hint__(&self) -> usize {
+        self.remaining
+    }
+}
+
+/// A field's metadata, addressed by its keys.
+///
+/// This is where item syntax legitimately means "a key": every subscript on the
+/// view is a metadata key, while every subscript on the `Field` itself is a
+/// nested child. Reached as `field.metadata`.
+///
+/// The value is a live view rather than a snapshot: it holds the Python `Field`
+/// object and reaches the core through it on every call, so writes are visible
+/// in both directions. Mutation routes through the field's own cache-aware
+/// metadata methods.
+#[pyclass(name = "FieldMetadata", module = "yggdryl._native")]
+pub(crate) struct PyFieldMetadata {
+    field: Py<PyField>,
+}
+
+impl PyFieldMetadata {
+    /// Borrows the viewed field for reading.
+    fn borrow_field<'py>(&self, py: Python<'py>) -> PyResult<PyRef<'py, PyField>> {
+        Ok(self.field.bind(py).try_borrow()?)
+    }
+
+    /// Borrows the viewed field for writing, refusing a frozen one.
+    fn borrow_field_mut<'py>(&self, py: Python<'py>) -> PyResult<PyRefMut<'py, PyField>> {
+        let field = self.field.bind(py).try_borrow_mut()?;
+        field.require_mutable()?;
+        Ok(field)
+    }
+}
+
+#[pymethods]
+impl PyFieldMetadata {
+    // A live view of mutable metadata cannot promise a stable hash.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        Ok(self.borrow_field(py)?.inner.metadata_len())
+    }
+
+    fn __bool__(&self, py: Python<'_>) -> PyResult<bool> {
+        Ok(!self.borrow_field(py)?.inner.is_metadata_empty())
+    }
+
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        self.keys(py)
+    }
+
+    fn __contains__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let Ok(key) = key.extract::<&str>() else {
+            return Ok(false);
+        };
+        Ok(self.borrow_field(py)?.inner.has_metadata(key))
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<String> {
+        self.borrow_field(py)?
+            .inner
+            .get_metadata(key)
+            .map(str::to_owned)
+            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+    }
+
+    fn __setitem__(&self, py: Python<'_>, key: String, value: String) -> PyResult<()> {
+        self.borrow_field_mut(py)?
+            .inner
+            .insert_metadata(key, value)
+            .map(|_| ())
+            .map_err(value_error)
+    }
+
+    fn __delitem__(&self, py: Python<'_>, key: &str) -> PyResult<()> {
+        self.borrow_field_mut(py)?
+            .inner
+            .remove_metadata(key)
+            .map(|_| ())
+            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+    }
+
+    #[pyo3(signature = (key, default=None, /))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.get_metadata(key).map_or_else(
+            || default.unwrap_or_else(|| py.None()),
+            |value| PyString::new(py, value).into_any().unbind(),
+        ))
+    }
+
+    fn keys(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Keys,
+        ))
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Values,
+        ))
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<PyFieldMetadataIterator> {
+        let field = self.borrow_field(py)?;
+        Ok(PyFieldMetadataIterator::new(
+            &field.inner,
+            MetadataIteratorKind::Items,
+        ))
+    }
+
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn update(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        self.borrow_field_mut(py)?
+            .inner
+            .update_metadata(pairs)
+            .map_err(value_error)
+    }
+
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        self.borrow_field_mut(py)?.inner.clear_metadata();
+        Ok(())
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let field = self.borrow_field(py)?;
+        let entries: Vec<String> = field
+            .inner
+            .metadata_iter()
+            .map(|(key, value)| format!("{key:?}: {value:?}"))
+            .collect();
+        Ok(format!("FieldMetadata({{{}}})", entries.join(", ")))
+    }
+
+    /// Compare the metadata entries, independently of the fields behind them.
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return Ok(py.NotImplemented());
+        };
+        let left = self.borrow_field(py)?;
+        let right = other.borrow_field(py)?;
+        let equal = left.inner.metadata_iter().eq(right.inner.metadata_iter());
+        Ok(PyBool::new(py, equal).to_owned().into_any().unbind())
+    }
+}

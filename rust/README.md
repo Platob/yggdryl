@@ -19,14 +19,16 @@ src/iceberg/           Apache Iceberg tables over one container handle
 src/uri.rs             Identifier domain
 src/text/              Structured codecs, dispatch, limits, text utilities
 src/{json,yaml,toml}/  Format-specific parsers, streams, emitters
-tests/{datatype,enums,field,text}/
-                       Categorized edge cases
-tests/{datatype,enums,field,uri,text,json,toml,yaml}.rs
-                       Public test target wiring / edge cases
-tests/{batch_cast,default_scalar,value_bounds}.rs
-                       Arrow runtime, default, and allocation edge cases
+tests/<entry>.rs       One target per top-level source entry, declaring the
+                       mirror of each of its files; tests/root.rs declares the
+                       files the crate root holds
+tests/<entry>/         Those files: src/<entry>/<name>.rs is pinned by
+                       tests/<entry>/<name>.rs, and a folder's mod.rs by mod_.rs
+tests/support/         Fixtures several targets declare
+tests/{allocations,iobase_calls,benchmark_mode}.rs
+                       Allocation counts, IOBase call counts, benchmark smoke
 tests/docs_index.rs    The documentation index regression
-tests/iceberg_interop.rs
+tests/interop/iceberg.rs
                        The Iceberg exchange with PyIceberg (`iceberg` feature)
 benchmarks/{datatype,field,io,json,text,toml,yaml}/
                        Categorized benchmarks
@@ -77,7 +79,7 @@ python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
 python/.venv/Scripts/python -m maturin develop --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
-python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
+python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
 The field decorator, annotation mapping, dataclass field definitions, and codec

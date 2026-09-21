@@ -78,7 +78,7 @@ Add a column, then read the earlier file back with the new column null.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     schema = columns
@@ -180,7 +180,7 @@ Add a column, then read the earlier file back with the new column null.
     ```python
     import pyarrow as pa
 
-    from yggdryl.media.iceberg import assign_field_ids
+    from yggdryl.iceberg import assign_field_ids
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -290,7 +290,7 @@ Add a column, then read the earlier file back with the new column null.
     import pytest
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table, can_promote
+    from yggdryl.iceberg import Table, can_promote
 
     # Legal promotions pass; anything else is refused naming both sides.
     assert can_promote("int32", "int64") is None
@@ -407,7 +407,7 @@ Add a column, then read the earlier file back with the new column null.
     ```python
     import json
 
-    from yggdryl.media.iceberg import schema_from_json, schema_into_json
+    from yggdryl.iceberg import schema_from_json, schema_into_json
 
     document = json.loads("""{"type":"struct","schema-id":0,"fields":[
         {"id":1,"name":"id","required":true,"type":"long"},
@@ -694,22 +694,22 @@ assert!(!written.fields()[0].is_nullable());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::evolve::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::schema_documents
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::types
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::datatype_coverage
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
-    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- evolve::promotions evolve::schema_updates evolve::metadata_updates
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::schema_documents
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::types
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::datatype_coverage
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- partition::iceberg scan::iceberg staging::iceberg table::iceberg types::iceberg
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```

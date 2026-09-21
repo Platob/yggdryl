@@ -20,11 +20,13 @@
 
 ## Formats
 
-| Scheme | Overview | Scalars | Arrow |
-| --- | --- | --- | --- |
-| JSON, JSON Lines | [JSON](json/index.md) | [read and write](json/scalar.md) | [rows](json/arrow.md) |
-| YAML | [YAML](yaml/index.md) | [read and write](yaml/scalar.md) | [rows](yaml/arrow.md) |
-| TOML | [TOML](toml/index.md) | [read and write](toml/scalar.md) | [rows](toml/arrow.md) |
+Each format owns an overview, a read page, a write page, and a values page; the read and write pages show native scalars first, then Arrow rows.
+
+| Scheme | Overview | Read | Write | Values |
+| --- | --- | --- | --- | --- |
+| JSON, JSON Lines | [JSON](json/index.md) | [read](json/read.md) | [write](json/write.md) | [values](json/values.md) |
+| YAML | [YAML](yaml/index.md) | [read](yaml/read.md) | [write](yaml/write.md) | [values](yaml/values.md) |
+| TOML | [TOML](toml/index.md) | [read](toml/read.md) | [write](toml/write.md) | [values](toml/values.md) |
 
 [Placeholders](placeholders.md) states the Jinja-style `{{ }}` contract YAML and TOML share.
 
@@ -80,7 +82,7 @@ One facade reads and writes every format: it infers the format once, then redire
 
 ## Field-directed parsing
 
-Dumps use ordinary format values; exact values without native syntax become scaled-decimal, base64, or ISO strings. A schemaless read returns only what the grammar proves, so pass a `Field` for exact types: [JSON](json/index.md#natural-values-and-exact-fields) reads `"12.50"` under `decimal128(8, 2)` as `D128(1250, 2)`, a Python `Decimal("12.50")`, and a JavaScript `d128` scalar, and [YAML](yaml/index.md#natural-values-and-exact-fields) and [TOML](toml/index.md#natural-values-and-exact-fields) read their own spellings the same way.
+Dumps use ordinary format values; exact values without native syntax become scaled-decimal, base64, or ISO strings. A schemaless read returns only what the grammar proves, so pass a `Field` for exact types: [JSON](json/values.md) reads `"12.50"` under `decimal128(8, 2)` as `D128(1250, 2)`, a Python `Decimal("12.50")`, and a JavaScript `d128` scalar, and [YAML](yaml/values.md) and [TOML](toml/values.md) read their own spellings the same way.
 
 `field=` requests strict typing; other Python `cls=` targets are dataclass/object materializers with safe wrapper casts. Arrow columns [cast](../types/cast.md) by the same rules in both directions.
 
@@ -115,7 +117,7 @@ A document is not a record encoding: [`RecordOptions`](options.md) names none of
 | Read | one document, then one batch | every document, then one batch |
 | Write | one document, rows held | streamed, one batch of rows at a time |
 
-A document has no frame to read a prefix of, so a read holds the parsed document; a write has one wherever the format is document-per-row, and there nothing but the current batch is held. A structured document is written whole, so only `IOMode::Overwrite` applies. Both calls are Rust and Python; JavaScript binds neither. Each format's rules are on its own page: [JSON](json/arrow.md), [YAML](yaml/arrow.md), [TOML](toml/arrow.md).
+A document has no frame to read a prefix of, so a read holds the parsed document; a write has one wherever the format is document-per-row, and there nothing but the current batch is held. A structured document is written whole, so only `IOMode::Overwrite` applies. Both calls are Rust and Python; JavaScript binds neither. Each format's rules sit at the end of its own direction pages: JSON ([read](json/read.md#rows-as-arrow-batches), [write](json/write.md#rows-as-arrow-batches)), YAML ([read](yaml/read.md#rows-as-arrow-batches), [write](yaml/write.md#rows-as-arrow-batches)), TOML ([read](toml/read.md#rows-as-arrow-batches), [write](toml/write.md#rows-as-arrow-batches)).
 
 ## Formatting
 
@@ -161,7 +163,7 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 === "Python"
 
     ```python
-    from yggdryl.text import json, toml, yaml
+    from yggdryl import json, toml, yaml
 
     value = {"child": {"id": 1}}
 
@@ -224,10 +226,10 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test text
-    cargo test --features "parquet iceberg" -p yggdryl --test text value::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- scalar::values serde::value
     cargo test --features "parquet iceberg" -p yggdryl --test text format::
-    cargo test --features "parquet iceberg" -p yggdryl --test text structured::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::
+    cargo test --features "parquet iceberg" -p yggdryl --test text -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test text -- batch display io line::internal loading reader::internal
     cargo bench -p yggdryl --bench text -- codec/value
     ```
 
@@ -235,7 +237,7 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/text
-    python/.venv/bin/python -m pytest python/tests/text/test_codec_facade.py python/tests/text/test_codec_fields.py python/tests/text/test_codec_native_returns.py python/tests/text/test_codec_options.py
+    python/.venv/bin/python -m pytest python/tests/text/test_codec.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 

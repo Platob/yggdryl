@@ -28,7 +28,7 @@
 
 ## Use
 
-Text crosses this boundary once. A byte payload is decoded at intake - by a `Transcoded` handle, by the [structured plan](../media/structured.md), by the [text record reader's](../media/text/index.md#declaring-a-charset) transport from the charset its handle's media type declares, or by a direct `decode` - and everything past that point is `str`, a `Scalar::String`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
+Text crosses this boundary once. A byte payload is decoded at intake - by a `Transcoded` handle, by the [structured plan](../media/structured.md), by the [text record reader's](../media/text/lines.md#declaring-a-charset) transport from the charset its handle's media type declares, or by a direct `decode` - and everything past that point is `str`, a `Scalar::String`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
 
 === "Rust"
 
@@ -74,7 +74,7 @@ Text crosses this boundary once. A byte payload is decoded at intake - by a `Tra
 
 ## Declaring a charset
 
-A resource declares its charset on its [media type](../uri/path.md), the way it declares its codings, so a reader needs no argument. The structured codec and the [text record reader](../media/text/index.md#declaring-a-charset) both read the declaration where they build their transport, coding first and charset second, and neither takes a charset of its own: the media type is the one owner of which charset the bytes are in.
+A resource declares its charset on its [media type](../uri/path.md), the way it declares its codings, so a reader needs no argument. The structured codec and the [text record reader](../media/text/lines.md#declaring-a-charset) both read the declaration where they build their transport, coding first and charset second, and neither takes a charset of its own: the media type is the one owner of which charset the bytes are in.
 
 === "Rust"
 
@@ -118,7 +118,7 @@ A resource declares its charset on its [media type](../uri/path.md), the way it 
 
 ## Reading what cannot be read
 
-Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and marks each fault with `U+FFFD`, which is what a capture of arbitrary wire lines wants and never what a stored column wants. `transcribe` reads every byte it can: an unassigned byte becomes the scalar ISO 8859-1 gives it - which for the five bytes `windows-1252` leaves unassigned is what the WHATWG Encoding Standard's own index answers - and bytes offered as UTF-8, or as US-ASCII, that are not what they were offered as are read by one rule, written once in this layer: every valid UTF-8 run is kept as it is, and every other byte reads as the character Windows-1252 gives it, as the WHATWG Encoding Standard tables it, with the five bytes the classic table leaves undefined as the C1 controls of their number. Per invalid run rather than per buffer, because a buffer is mostly UTF-8 with a stray byte far more often than it is wholly Windows-1252, and reading a valid `é` as `Ã©` because a lone `0xE9` stands elsewhere would destroy what was right to repair what was wrong. US-ASCII reads exactly as UTF-8, because a US-ASCII declaration is a UTF-8 declaration with a narrower promise and a broken promise about UTF-8-compatible text has one rule. The [text record reader](../media/text/index.md#a-line-is-text) makes every line text by this rule and holds no table of its own. A [string column](../types/text.md) reads its bytes through one door, `Str::from_bytes`, and the leaf's charset picks which of these it opens: every UTF-8 and US-ASCII leaf - `utf8`, `ascii`, `sized_ascii(4)`, `fixed_utf8(8)` - goes through `decode`, so bytes that are not what they claim are refused and a US-ASCII value holds no NUL and no byte above `0x7F`; every windows-1252 leaf - `cp1252`, `fixed_cp1252(8)` - goes through `transcribe`, because it declares legacy bytes that still have to be read.
+Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and marks each fault with `U+FFFD`, which is what a capture of arbitrary wire lines wants and never what a stored column wants. `transcribe` reads every byte it can: an unassigned byte becomes the scalar ISO 8859-1 gives it - which for the five bytes `windows-1252` leaves unassigned is what the WHATWG Encoding Standard's own index answers - and bytes offered as UTF-8, or as US-ASCII, that are not what they were offered as are read by one rule, written once in this layer: every valid UTF-8 run is kept as it is, and every other byte reads as the character Windows-1252 gives it, as the WHATWG Encoding Standard tables it, with the five bytes the classic table leaves undefined as the C1 controls of their number. Per invalid run rather than per buffer, because a buffer is mostly UTF-8 with a stray byte far more often than it is wholly Windows-1252, and reading a valid `é` as `Ã©` because a lone `0xE9` stands elsewhere would destroy what was right to repair what was wrong. US-ASCII reads exactly as UTF-8, because a US-ASCII declaration is a UTF-8 declaration with a narrower promise and a broken promise about UTF-8-compatible text has one rule. The [text record reader](../media/text/lines.md#a-line-is-text) makes every line text by this rule and holds no table of its own. A [string column](../types/text/string.md) reads its bytes through one door, `Str::from_bytes`, and the leaf's charset picks which of these it opens: every UTF-8 and US-ASCII leaf - `utf8`, `ascii`, `sized_ascii(4)`, `fixed_utf8(8)` - goes through `decode`, so bytes that are not what they claim are refused and a US-ASCII value holds no NUL and no byte above `0x7F`; every windows-1252 leaf - `cp1252`, `fixed_cp1252(8)` - goes through `transcribe`, because it declares legacy bytes that still have to be read.
 
 === "Rust"
 
@@ -168,7 +168,7 @@ Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and
 - `Charset::from_bom` -> the charset and the mark's byte length; the mark is never stripped on a caller's behalf, so `decode` of a marked payload begins with `U+FEFF`. The [structured-text](../media/structured.md) plan is the one place a mark is treated as framing.
 - An unassigned byte -> `Err` naming the charset, the byte position, and the byte. Only `windows-1250`, `windows-1251` and `windows-1252` leave any unassigned; every other single-byte charset here answers for all 256, and for one that does `transcribe` and `decode_lossy` answer the same text. Under `utf-8` and `us-ascii` the two doors part: `transcribe` reads a stray byte as Windows-1252 where `decode_lossy` writes `U+FFFD`.
 - A lone UTF-16 surrogate -> `U+FFFD` from `transcribe` too: it is not a scalar in any encoding, so there is nothing to transcribe it to.
-- `encoded_len` -> the bytes the charset stores that text in, counted without building them. It counts rather than judges: a scalar the charset has no byte for still occupies the one it would occupy, because that is what a [length bound](../types/text.md) is asking. `encode` is the one door that refuses such a scalar, and it refuses it where the bytes are written.
+- `encoded_len` -> the bytes the charset stores that text in, counted without building them. It counts rather than judges: a scalar the charset has no byte for still occupies the one it would occupy, because that is what a [length bound](../types/text/string.md) is asking. `encode` is the one door that refuses such a scalar, and it refuses it where the bytes are written.
 - A scalar the charset has no byte for -> `Err` naming the scalar as `U+XXXX`. Every scalar has a UTF-16 form, so the Unicode forms never refuse an encode.
 - `Charset::Utf8` through `reader`, `writer` or `Transcoded` -> the bytes pass through unchanged and are not revalidated, exactly as `Codec::Identity` leaves bytes alone. `decode` is the validating door.
 
@@ -177,7 +177,7 @@ Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib charset::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test charset -- reader::internal
     cargo test --features "parquet iceberg" -p yggdryl --test charset
     cargo test -p yggdryl --test iobase_calls a_random_read
     cargo test -p yggdryl --test allocations charset
@@ -196,5 +196,5 @@ Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/charset/*.test.js"
+    node --test node/tests/charset.test.js
     ```

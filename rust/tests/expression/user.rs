@@ -1,4 +1,5 @@
-//! User-defined functions: registered outside the grammar, typed and called through their signature.
+//! `rust/src/expression/user.rs`: user-defined functions: registered
+//! outside the grammar, typed and called through their signature.
 
 use std::sync::Arc;
 
@@ -207,9 +208,20 @@ fn a_call_over_columns_is_stored_as_the_function_and_its_sources() {
         .unwrap();
     assert_eq!(twice.get_metadata("TRANSFORM:expression"), Some("size * 2"));
     assert_eq!(twice.get_metadata("TRANSFORM:function"), None);
-    assert!(
-        unregister_function(&UserRef::parse("rs.double").unwrap())
-            || registered_functions().is_empty()
-    );
-    registered();
+    // Unregistering answers whether it removed something, and it removes
+    // exactly what it names. The registry is process-global and the tests
+    // beside this one run against it on other threads, so what this asserts
+    // over is a function of its own that nothing else names.
+    let gone = FunctionSignature::new(
+        UserRef::new("rs", "gone").unwrap(),
+        [DataType::Int64.required_field("value")],
+        DataType::Int64.nullable_field("returns"),
+    )
+    .unwrap();
+    register_function(Arc::new(Double(gone))).unwrap();
+    let reference = UserRef::parse("rs.gone").unwrap();
+    assert!(registered_functions().contains(&reference));
+    assert!(unregister_function(&reference));
+    assert!(!unregister_function(&reference));
+    assert!(!registered_functions().contains(&reference));
 }

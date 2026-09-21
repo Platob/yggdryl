@@ -161,6 +161,17 @@ pub(super) fn matches_segment(segment: &str, pattern: &str) -> bool {
     table[text.len()]
 }
 
-#[cfg(test)]
-#[path = "pattern/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/uri/pattern.rs` pins and a caller cannot reach.
+    //!
+    //! A URL cannot carry a bracket, so the per-segment matcher behind
+    //! `matches_glob` has edges no identifier can spell - an unterminated
+    //! class among them - and they are matched here directly.
+
+    /// Whether `segment` matches the glob `pattern`, one path segment each.
+    pub fn matches_segment(segment: &str, pattern: &str) -> bool {
+        super::matches_segment(segment, pattern)
+    }
+}

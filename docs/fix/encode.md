@@ -121,6 +121,6 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ```bash
 cargo test -p yggdryl --test fix
-node --test "node/tests/fix/*.test.js"
+node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
 node scripts/build_docs_fix.js --check
 ```

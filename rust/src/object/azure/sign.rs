@@ -229,117 +229,63 @@ pub(crate) fn http_date(now: std::time::SystemTime) -> String {
     format!("{weekday}, {day:02} {month_name} {year:04} {hour:02}:{minute:02}:{second:02} GMT")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{Duration, UNIX_EPOCH};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/azure/sign.rs` pins and a caller cannot reach.
+    //!
+    //! The order of the signed document is not alphabetical and is
+    //! load-bearing, so the document itself is pinned rather than only the
+    //! header that comes out of it. Every item forwards, so the key stays
+    //! exactly as private as it was.
+    use std::time::SystemTime;
 
-    fn key() -> SharedKey {
-        // Azurite's published development key, which is not a secret.
-        SharedKey::new(
-            "devstoreaccount1",
-            "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==",
-        )
-        .expect("a base64 key")
+    use crate::Result;
+
+    /// The date every Azure request states, in the spelling a header uses.
+    pub fn http_date(now: SystemTime) -> String {
+        super::http_date(now)
     }
 
-    fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
-        list.iter()
-            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-            .collect()
-    }
+    /// One account key, forwarding to the real signer.
+    pub struct SharedKey(super::SharedKey);
 
-    #[test]
-    fn a_date_renders_the_way_a_header_spells_one() {
-        assert_eq!(http_date(UNIX_EPOCH), "Thu, 01 Jan 1970 00:00:00 GMT");
-        assert_eq!(
-            http_date(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
-            "Tue, 14 Nov 2023 22:13:20 GMT"
-        );
-    }
+    impl SharedKey {
+        /// Hold `key`, which is base64 exactly as the portal shows it.
+        ///
+        /// # Errors
+        ///
+        /// Returns a refusal when the key is not base64.
+        pub fn new(account: &str, key: &str) -> Result<Self> {
+            super::SharedKey::new(account, key).map(Self)
+        }
 
-    #[test]
-    fn the_signed_document_keeps_the_order_the_service_verifies() {
-        let document = key().string_to_sign(
-            "GET",
-            "/lake/part.parquet",
-            &pairs(&[("comp", "list"), ("restype", "container")]),
-            &pairs(&[
-                ("x-ms-version", "2025-05-05"),
-                ("x-ms-date", "Thu, 01 Jan 1970 00:00:00 GMT"),
-                ("content-length", "0"),
-            ]),
-        );
-        assert_eq!(
-            document,
-            "GET\n\n\n\n\n\n\n\n\n\n\n\n\
-             x-ms-date:Thu, 01 Jan 1970 00:00:00 GMT\nx-ms-version:2025-05-05\n\
-             /devstoreaccount1/lake/part.parquet\ncomp:list\nrestype:container"
-        );
-    }
+        /// The headers to add to the request: the date, then the signature.
+        pub fn sign(
+            &self,
+            method: &str,
+            path: &str,
+            query: &[(String, String)],
+            headers: &[(String, String)],
+            now: SystemTime,
+        ) -> Vec<(String, String)> {
+            self.0.sign(method, path, query, headers, now)
+        }
 
-    #[test]
-    fn a_zero_length_body_signs_as_nothing_and_a_real_one_signs_as_its_length() {
-        let signed = |length: &str| {
-            key().string_to_sign(
-                "PUT",
-                "/lake/part.bin",
-                &[],
-                &pairs(&[("content-length", length), ("x-ms-date", "d")]),
-            )
-        };
-        assert!(signed("0").starts_with("PUT\n\n\n\n"), "{}", signed("0"));
-        assert!(
-            signed("512").starts_with("PUT\n\n\n512\n"),
-            "{}",
-            signed("512")
-        );
-    }
+        /// The document the signature is taken over.
+        pub fn string_to_sign(
+            &self,
+            method: &str,
+            path: &str,
+            query: &[(String, String)],
+            headers: &[(String, String)],
+        ) -> String {
+            self.0.string_to_sign(method, path, query, headers)
+        }
 
-    #[test]
-    fn every_x_ms_header_is_signed_sorted_and_whitespace_collapsed() {
-        let document = key().string_to_sign(
-            "PUT",
-            "/lake/part.bin",
-            &[],
-            &pairs(&[
-                ("x-ms-meta-desk", "  power   trading "),
-                ("x-ms-blob-type", "BlockBlob"),
-                ("x-ms-date", "d"),
-                ("authorization", "should not be signed"),
-            ]),
-        );
-        let block = document
-            .split_once("x-ms-blob-type")
-            .expect("the first x-ms header")
-            .1;
-        assert!(
-            block.starts_with(":BlockBlob\nx-ms-date:d\nx-ms-meta-desk:power trading\n"),
-            "{document}"
-        );
-        assert!(!document.contains("should not be signed"));
-    }
-
-    #[test]
-    fn the_signature_is_a_header_and_the_key_is_never_in_it() {
-        let headers = key().sign("GET", "/lake", &[], &[], UNIX_EPOCH);
-        let authorization = headers
-            .iter()
-            .find(|(name, _)| name == "authorization")
-            .expect("an authorization header");
-        assert!(authorization.1.starts_with("SharedKey devstoreaccount1:"));
-        assert!(!authorization.1.contains("Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1"));
-    }
-
-    #[test]
-    fn a_repeated_query_name_contributes_its_values_sorted() {
-        let resource = key().canonical_resource(
-            "/lake",
-            &pairs(&[("include", "snapshots"), ("include", "metadata")]),
-        );
-        assert_eq!(
-            resource,
-            "/devstoreaccount1/lake\ninclude:metadata,snapshots"
-        );
+        /// The resource line: the account, the path as sent, then the query.
+        pub fn canonical_resource(&self, path: &str, query: &[(String, String)]) -> String {
+            self.0.canonical_resource(path, query)
+        }
     }
 }

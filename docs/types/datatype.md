@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the twelve [codes](codes.md) |
+| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
 | Identity | `id()`, `kind()`: 84 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -15,7 +15,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
 | Rust only | the enum itself |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
-| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([Strings & bytes](text.md#serialized-shape)) |
+| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
 
 ## Use
 
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -658,7 +658,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds:: logical:: vocabulary:: enums::datatype_id enums::datatype_kind
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings vocabulary::logical vocabulary::rows
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'
@@ -667,13 +667,13 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_defaults.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test__defaults.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/datatype.test.js node/tests/types/defaults.test.js
+    node --test node/tests/datatype.test.js node/tests/defaults.test.js
     npm run --prefix node bench:types:defaults
     ```

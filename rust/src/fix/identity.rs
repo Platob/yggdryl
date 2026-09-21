@@ -845,3 +845,19 @@ pub(super) fn now() -> Result<Scalar> {
     let nanos = crate::txhash::unix_now(TimeUnit::Nanosecond)?;
     Scalar::datetime64(nanos, TimeUnit::Nanosecond, Timezone::UTC)
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! [`FIX_TYPED_TAGS`](crate::FIX_TYPED_TAGS) is the published listing;
+    //! the predicate behind it is a step inside a lift, so the listing is
+    //! pinned against it here rather than against itself.
+
+    /// Whether a message lifts the tag into a typed fact of its own.
+    #[must_use]
+    pub fn is_typed_tag(tag: i32) -> bool {
+        super::is_typed_tag(tag)
+    }
+}

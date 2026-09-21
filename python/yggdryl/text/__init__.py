@@ -1,5 +1,25 @@
-"""Structured text values and JSON, YAML, and TOML codecs."""
+"""The plain-text medium, and the machinery its structured codecs share.
 
-from . import codec, json, toml, yaml
+:mod:`~yggdryl.text.codec` is the format-directed facade the three structured
+schemes ride on; each scheme is a package of its own beside this one -
+:mod:`yggdryl.json`, :mod:`yggdryl.yaml` and :mod:`yggdryl.toml`. The line
+values are here because a physical line is what this medium reads.
+"""
 
-__all__ = ["codec", "json", "toml", "yaml"]
+from .._native import (
+    TextEntries,
+    TextEntry,
+    TextLine,
+    TextLines,
+    TextOptions,
+)
+from . import codec
+
+__all__ = [
+    "TextEntries",
+    "TextEntry",
+    "TextLine",
+    "TextLines",
+    "TextOptions",
+    "codec",
+]

@@ -7,7 +7,7 @@ Field metadata the library reads: reserved keys, `SCHEME:name` properties behind
 | Key | Datatype and rule |
 | --- | --- |
 | `PARQUET:field_id` | i32, canonicalized on write |
-| `FIELD:enum` | the `StringEnum` document ([Codes](codes.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
+| `FIELD:enum` | the `StringEnum` document ([Codes](codes/index.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
 | `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors |
 | `FIELD:partition` | boolean; `true` on partition columns, absent elsewhere |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |
@@ -507,8 +507,8 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib protocol::tests
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- http protocol partition python
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- protocol::internal::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata --test root -- http protocol partition python
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(protocol_|http_|partition_|python_|without_partition|typed_location|typed_field_id)'
     cargo bench --manifest-path rust/Cargo.toml --features iceberg --bench types -- '^value/iceberg_'
     ```
@@ -516,13 +516,13 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "http or protocol or partition or python or typed_names"
+    python/.venv/bin/python -m pytest python/tests/test_field.py -k "http or protocol or partition or python or typed_names"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="HTTP|protocol|partition|python|typed names" node/tests/types/field.test.js
+    node --test --test-name-pattern="HTTP|protocol|partition|python|typed names" node/tests/field.test.js
     npm run --prefix node bench:types
     ```

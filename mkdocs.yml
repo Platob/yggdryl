@@ -133,20 +133,60 @@ nav:
     - Core:
       - DataType: types/datatype.md
       - Field: types/field.md
-      - Paths: types/paths.md
       - Scalar: types/scalar.md
       - Cast: types/cast.md
-    - Families:
-      - Numeric: types/numeric.md
-      - Temporal: types/temporal.md
-      - Strings & bytes: types/text.md
-      - Codes: types/codes.md
+      - Paths: types/paths.md
+      - Protocol: types/protocol.md
+    - Numeric:
+      - types/numeric/index.md
+      - Integer: types/numeric/integer.md
+      - Floating: types/numeric/floating.md
+      - Decimal: types/numeric/decimal.md
+      - Boolean: types/numeric/boolean.md
+    - Temporal:
+      - types/temporal/index.md
+      - Date: types/temporal/date.md
+      - Time: types/temporal/time.md
+      - Datetime: types/temporal/datetime.md
+      - Duration: types/temporal/duration.md
+      - Interval: types/temporal/interval.md
+      - Timezone: types/temporal/timezone.md
+    - Strings & bytes:
+      - types/text/index.md
+      - Strings: types/text/string.md
+      - Bytes: types/text/bytes.md
+    - Codes:
+      - types/codes/index.md
+      - Currency: types/codes/currency.md
+      - Country: types/codes/country.md
+      - MIC: types/codes/mic.md
+      - CFI: types/codes/cfi.md
+      - ISIN: types/codes/isin.md
+      - CUSIP: types/codes/cusip.md
+      - SEDOL: types/codes/sedol.md
+      - Bloomberg: types/codes/bloomberg.md
+      - FIGI: types/codes/figi.md
+      - Side: types/codes/side.md
+      - State: types/codes/state.md
+      - Time in force: types/codes/timeinforce.md
+    - Nested:
+      - types/nested/index.md
+      - Struct: types/nested/struct.md
+      - List: types/nested/list.md
+      - Map: types/nested/map.md
+      - Union: types/nested/union.md
+      - Dictionary: types/nested/dictionary.md
+      - Run-end: types/nested/runend.md
+    - Geospatial:
+      - types/geospatial/index.md
+      - Geometry: types/geospatial/geometry.md
+      - Geography: types/geospatial/geography.md
+    - Single types:
       - UUID: types/uuid.md
-      - Nested: types/nested.md
-      - Geospatial: types/geospatial.md
+      - Version: types/version.md
+      - Media types: types/mediatype.md
       - Variant: types/variant.md
       - Value stream: types/value-stream.md
-      - Protocol: types/protocol.md
     - Playground: types/playground.md
   - Holder:
     - holder/index.md
@@ -181,39 +221,52 @@ nav:
       - Placeholders: media/placeholders.md
     - Arrow IPC:
       - media/ipc/index.md
-      - Scalars: media/ipc/scalar.md
-      - Arrow: media/ipc/arrow.md
+      - Read: media/ipc/read.md
+      - Write: media/ipc/write.md
+      - Options: media/ipc/options.md
+      - Column pushdown: media/ipc/pushdown.md
     - Apache Parquet:
       - media/parquet/index.md
-      - Scalars: media/parquet/scalar.md
-      - Arrow: media/parquet/arrow.md
+      - Read: media/parquet/read.md
+      - Write: media/parquet/write.md
+      - Column pushdown: media/parquet/pushdown.md
+      - Compression: media/parquet/compression.md
       - Footer: media/parquet/footer.md
     - Apache Avro:
       - media/avro/index.md
-      - Scalars: media/avro/scalar.md
-      - Arrow: media/avro/arrow.md
+      - Read: media/avro/read.md
+      - Write: media/avro/write.md
+      - Schemas: media/avro/schemas.md
+      - Blocks: media/avro/blocks.md
     - Plain text:
       - media/text/index.md
-      - Scalars: media/text/scalar.md
-      - Arrow: media/text/arrow.md
+      - Read: media/text/read.md
+      - Write: media/text/write.md
+      - Lines: media/text/lines.md
+      - Options: media/text/options.md
     - JSON:
       - media/json/index.md
-      - Scalars: media/json/scalar.md
-      - Arrow: media/json/arrow.md
+      - Read: media/json/read.md
+      - Write: media/json/write.md
+      - Values: media/json/values.md
     - YAML:
       - media/yaml/index.md
-      - Scalars: media/yaml/scalar.md
-      - Arrow: media/yaml/arrow.md
+      - Read: media/yaml/read.md
+      - Write: media/yaml/write.md
+      - Values: media/yaml/values.md
     - TOML:
       - media/toml/index.md
-      - Scalars: media/toml/scalar.md
-      - Arrow: media/toml/arrow.md
+      - Read: media/toml/read.md
+      - Write: media/toml/write.md
+      - Values: media/toml/values.md
     - Iceberg:
       - media/iceberg/index.md
-      - Reading: media/iceberg/read.md
-      - Writing: media/iceberg/write.md
-      - Catalog: media/iceberg/catalog.md
+      - Read: media/iceberg/read.md
+      - Write: media/iceberg/write.md
+      - Metadata: media/iceberg/metadata.md
+      - Partitions: media/iceberg/partitions.md
       - Schemas: media/iceberg/schema.md
+      - Catalog: media/iceberg/catalog.md
   - URI:
     - uri/index.md
     - Path: uri/path.md

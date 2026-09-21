@@ -1,0 +1,1602 @@
+//! `rust/src/xxhash/arrow.rs`.
+
+mod columns {
+    use arrow_array::cast::AsArray as _;
+    use arrow_array::types::{Int32Type, Int64Type, UInt32Type, UInt64Type};
+    use arrow_array::{
+        Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray,
+        StructArray, UInt64Array,
+    };
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use std::sync::Arc;
+    use yggdryl::xxhash::arrow::{column_digests, row_digests};
+    use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+    use yggdryl::{
+        DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructType, TimeUnit,
+        Timezone,
+    };
+    use yggdryl::{DateTimeType, DurationType};
+
+    fn root(fields: impl IntoIterator<Item = Field>) -> Field {
+        DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
+    }
+
+    fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
+        let fields = fields
+            .iter()
+            .cloned()
+            .map(Field::into_arrow_field)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
+    }
+
+    fn holder(name: &str, dtype: DataType) -> Field {
+        let mut field = Field::new(name, dtype, false);
+        field.as_digest_mut().set_holder().unwrap();
+        field
+    }
+
+    fn row_digest(value: impl Into<Scalar>, algorithm: DigestAlgorithm) -> Digest {
+        Scalar::from_sequence([value.into()]).digest(algorithm)
+    }
+
+    fn seeded_xxh64_row(seed: u64, value: impl Into<Scalar>) -> u64 {
+        let mut state = Xxh64::with_seed(seed);
+        state.write_scalar(&Scalar::from_sequence([value.into()]));
+        state.as_u64()
+    }
+
+    /// Read one digest column back as the digests it holds.
+    fn digests(array: &ArrayRef, algorithm: DigestAlgorithm) -> Vec<Digest> {
+        match algorithm {
+            DigestAlgorithm::Xxh32 => array
+                .as_primitive::<UInt32Type>()
+                .values()
+                .iter()
+                .map(|value| Digest::new(algorithm, u128::from(*value)))
+                .collect(),
+            DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => array
+                .as_primitive::<UInt64Type>()
+                .values()
+                .iter()
+                .map(|value| Digest::new(algorithm, u128::from(*value)))
+                .collect(),
+            DigestAlgorithm::Xxh128 => {
+                let array = array
+                    .as_any()
+                    .downcast_ref::<FixedSizeBinaryArray>()
+                    .expect("the 128-bit column is fixed-size binary");
+                (0..array.len())
+                    .map(|index| {
+                        Digest::from_bytes(algorithm, array.value(index)).expect("the exact width")
+                    })
+                    .collect()
+            }
+            // `DigestAlgorithm` is non-exhaustive outside the crate; a new one
+            // reaching here has no column reading stated yet.
+            other => panic!("{other} has no digest column reading"),
+        }
+    }
+
+    /// One column per datatype family, each with the values that exercise it.
+    ///
+    /// Every family the core can read is here, because the contract is that the
+    /// buffer path and the fallback answer the same thing on all of them, and each
+    /// temporal resolution the buffer path downcasts for is its own column. The
+    /// exception is `variant`, whose binary encoding lands with the Iceberg v3
+    /// layer, so no array crosses the boundary yet and the refusal is pinned on
+    /// its own.
+    fn columns() -> Vec<(Field, Scalar)> {
+        let utc = Timezone::UTC;
+        let offset = Timezone::from_offset(5 * 3_600 + 1_800).unwrap();
+        vec![
+            (
+                Field::new("null", DataType::Null, true),
+                Scalar::from_sequence([Scalar::Null, Scalar::Null]),
+            ),
+            (
+                Field::new("boolean", DataType::Boolean, true),
+                Scalar::from_sequence([Scalar::from(true), Scalar::from(false), Scalar::Null]),
+            ),
+            (
+                Field::new("int8", DataType::Int8, true),
+                Scalar::from_sequence([Scalar::from(-1), Scalar::from(0), Scalar::Null]),
+            ),
+            (
+                Field::new("int16", DataType::Int16, false),
+                Scalar::from_sequence([Scalar::from(i16::MIN), Scalar::from(7), Scalar::from(0)]),
+            ),
+            (
+                Field::new("int32", DataType::Int32, false),
+                Scalar::from_sequence([
+                    Scalar::from(i32::MIN),
+                    Scalar::from(0x31),
+                    Scalar::from(0),
+                ]),
+            ),
+            (
+                Field::new("int64", DataType::Int64, true),
+                Scalar::from_sequence([Scalar::from(i64::MIN), Scalar::from(187), Scalar::Null]),
+            ),
+            (
+                Field::new("uint8", DataType::UInt8, false),
+                Scalar::from_sequence([Scalar::from(0), Scalar::from(0x31), Scalar::from(u8::MAX)]),
+            ),
+            (
+                Field::new("uint16", DataType::UInt16, false),
+                Scalar::from_sequence([Scalar::from(0), Scalar::from(7), Scalar::from(u16::MAX)]),
+            ),
+            (
+                Field::new("uint32", DataType::UInt32, false),
+                Scalar::from_sequence([Scalar::from(0), Scalar::from(7), Scalar::from(u32::MAX)]),
+            ),
+            (
+                Field::new("uint64", DataType::UInt64, true),
+                Scalar::from_sequence([Scalar::from(u64::MAX), Scalar::from(7), Scalar::Null]),
+            ),
+            (
+                Field::new("float16", DataType::Float16, true),
+                Scalar::from_sequence([
+                    Scalar::from_float(1.5, 16).unwrap(),
+                    Scalar::from_float(f64::NAN, 16).unwrap(),
+                    Scalar::from_float(-0.0, 16).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("float32", DataType::Float32, true),
+                Scalar::from_sequence([
+                    Scalar::from_float(1.5, 32).unwrap(),
+                    Scalar::from_float(f64::NAN, 32).unwrap(),
+                    Scalar::from_float(-0.0, 32).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("float64", DataType::Float64, true),
+                Scalar::from_sequence([
+                    Scalar::from_float(1.5, 64).unwrap(),
+                    Scalar::from_float(f64::NAN, 64).unwrap(),
+                    Scalar::from_float(-0.0, 64).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("decimal32", DataType::decimal32(9, 2).unwrap(), true),
+                Scalar::from_sequence([
+                    Scalar::d128(18_723, 2),
+                    Scalar::d128(-100, 2),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("decimal64", DataType::decimal64(18, 4).unwrap(), true),
+                Scalar::from_sequence([
+                    Scalar::d128(187_230_000, 4),
+                    Scalar::d128(-1, 4),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("decimal128", DataType::decimal128(12, 2).unwrap(), true),
+                Scalar::from_sequence([
+                    Scalar::d128(18_723, 2),
+                    Scalar::d128(-100, 2),
+                    Scalar::d128(0, 2),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("decimal256", DataType::decimal256(40, 3).unwrap(), true),
+                Scalar::from_sequence([Scalar::d128(18_723, 3), Scalar::d128(-1, 3), Scalar::Null]),
+            ),
+            (
+                Field::new("utf8", DataType::utf8(), true),
+                Scalar::from_sequence([
+                    Scalar::from(""),
+                    Scalar::from("AAPL"),
+                    Scalar::from("é—wide"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("large_utf8", DataType::large_utf8(), true),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
+            ),
+            (
+                Field::new("utf8_view", DataType::utf8_view(), true),
+                Scalar::from_sequence([
+                    Scalar::from("a short one"),
+                    Scalar::from("a long one that will not fit inline in a view buffer"),
+                    Scalar::Null,
+                ]),
+            ),
+            // The fifteen string leaves beside the three above, each declaring
+            // something Arrow cannot: a charset, a width, a maximum, or which
+            // view width it is.
+            (
+                Field::new("large_utf8_view", DataType::large_utf8_view(), true),
+                Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+            ),
+            (
+                Field::new("fixed_utf8", DataType::fixed_utf8(8).unwrap(), true),
+                Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
+            ),
+            (
+                Field::new("sized_utf8", DataType::sized_utf8(32).unwrap(), true),
+                // A maximum is the column's rule; the digest reads the payload
+                // the plain leaf underneath it holds.
+                Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+            ),
+            (
+                Field::new("ascii", DataType::ascii(), true),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
+            ),
+            (
+                Field::new("large_ascii", DataType::large_ascii(), true),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
+            ),
+            (
+                Field::new("ascii_view", DataType::ascii_view(), true),
+                Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+            ),
+            (
+                Field::new("large_ascii_view", DataType::large_ascii_view(), true),
+                Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+            ),
+            (
+                Field::new("fixed_ascii", DataType::fixed_ascii(4).unwrap(), true),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
+            ),
+            (
+                Field::new("sized_ascii", DataType::sized_ascii(8).unwrap(), true),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
+            ),
+            (
+                Field::new("cp1252", DataType::cp1252(), true),
+                Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from("AAPL"), Scalar::Null]),
+            ),
+            (
+                Field::new("large_cp1252", DataType::large_cp1252(), true),
+                Scalar::from_sequence([Scalar::from("20 €"), Scalar::Null]),
+            ),
+            (
+                Field::new("cp1252_view", DataType::cp1252_view(), true),
+                Scalar::from_sequence([Scalar::from("Grüße"), Scalar::Null]),
+            ),
+            (
+                Field::new("large_cp1252_view", DataType::large_cp1252_view(), true),
+                Scalar::from_sequence([Scalar::from("Grüße"), Scalar::Null]),
+            ),
+            (
+                Field::new("fixed_cp1252", DataType::fixed_cp1252(8).unwrap(), true),
+                Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
+            ),
+            (
+                Field::new("sized_cp1252", DataType::sized_cp1252(32).unwrap(), true),
+                Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from(""), Scalar::Null]),
+            ),
+            (
+                Field::new("country", DataType::Country, true),
+                Scalar::from_sequence([Scalar::from("US"), Scalar::Null]),
+            ),
+            (
+                Field::new("currency", DataType::Currency, true),
+                Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
+            ),
+            (
+                Field::new("mic", DataType::MicCode, true),
+                Scalar::from_sequence([Scalar::from("XNYS"), Scalar::Null]),
+            ),
+            (
+                Field::new("cfi", DataType::CfiCode, true),
+                Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
+            ),
+            (
+                Field::new("isin", DataType::IsinCode, true),
+                Scalar::from_sequence([Scalar::from("US0378331005"), Scalar::Null]),
+            ),
+            (
+                Field::new("cusip", DataType::CusipCode, true),
+                Scalar::from_sequence([Scalar::from("037833100"), Scalar::Null]),
+            ),
+            (
+                Field::new("sedol", DataType::SedolCode, true),
+                Scalar::from_sequence([Scalar::from("B0YBKJ7"), Scalar::Null]),
+            ),
+            (
+                Field::new("bloomberg", DataType::BloombergCode, true),
+                Scalar::from_sequence([Scalar::from("BBG000B9XRY4"), Scalar::Null]),
+            ),
+            (
+                Field::new("figi", DataType::FIGICode, true),
+                Scalar::from_sequence([
+                    Scalar::from("BBG000BLNQ16"),
+                    Scalar::from("BCG000000005"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("side", DataType::Side, true),
+                Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
+            ),
+            (
+                Field::new("msgtype", DataType::utf8(), true),
+                Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
+            ),
+            (
+                Field::new("state", DataType::State, true),
+                Scalar::from_sequence([
+                    Scalar::from("20NEW"),
+                    Scalar::from("80FILLED"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("timeinforce", DataType::TimeInForce, true),
+                Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
+            ),
+            (
+                Field::new("uuid", DataType::Uuid, true),
+                Scalar::from_sequence([
+                    DataType::uuid()
+                        .scalar("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+                        .unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("version", DataType::Version, true),
+                Scalar::from_sequence([
+                    DataType::Version.scalar("1.2.3").unwrap(),
+                    DataType::Version.scalar("1.10.300").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("url", DataType::url(), true),
+                Scalar::from_sequence([
+                    DataType::url().scalar("https://example.com/a").unwrap(),
+                    DataType::url().scalar("file:///lake/part.txt").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("urn", DataType::urn(), true),
+                Scalar::from_sequence([
+                    DataType::urn().scalar("urn:isbn:0451450523").unwrap(),
+                    DataType::urn().scalar("URN:example:a%20b").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("timezone", DataType::Timezone, true),
+                Scalar::from_sequence([
+                    DataType::Timezone.scalar("America/New_York").unwrap(),
+                    DataType::Timezone.scalar("+05:30").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("mimetype", DataType::MimeType, true),
+                Scalar::from_sequence([
+                    DataType::MimeType.scalar("application/json").unwrap(),
+                    DataType::MimeType.scalar("text/csv").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("mediatype", DataType::MediaType, true),
+                Scalar::from_sequence([
+                    DataType::MediaType
+                        .scalar("application/json; charset=utf-8")
+                        .unwrap(),
+                    DataType::MediaType.scalar("text/csv").unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("binary", DataType::binary(), true),
+                Scalar::from_sequence([
+                    Scalar::from(Arc::from(b"".as_slice())),
+                    Scalar::from(Arc::from(b"\x00\xff".as_slice())),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("large_binary", DataType::large_binary(), true),
+                Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            ),
+            (
+                Field::new("binary_view", DataType::binary_view(), true),
+                Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            ),
+            (
+                Field::new(
+                    "fixed_size_binary",
+                    DataType::fixed_binary(4).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
+            ),
+            (
+                Field::new("date32", DataType::date32(), true),
+                Scalar::from_sequence([
+                    Scalar::date32_in(20_000, TimeUnit::Day, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("date64", DataType::date64(), true),
+                Scalar::from_sequence([
+                    Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("time32", DataType::time32(TimeUnit::Second).unwrap(), true),
+                Scalar::from_sequence([
+                    Scalar::time32(3_600, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "time32_millisecond",
+                    DataType::time32(TimeUnit::Millisecond).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::time32(3_600_001, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "time64",
+                    DataType::time64(TimeUnit::Nanosecond).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "time64_microsecond",
+                    DataType::time64(TimeUnit::Microsecond).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::time64(1_000, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "timestamp_utc",
+                    DataType::DateTime(DateTimeType::DateTime64 {
+                        unit: TimeUnit::Microsecond,
+                        timezone: utc,
+                    }),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::datetime64(1_700_000_000_000_000, TimeUnit::Microsecond, utc).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "timestamp_naive",
+                    DataType::DateTime(DateTimeType::DateTime64 {
+                        unit: TimeUnit::Nanosecond,
+                        timezone: Timezone::NAIVE,
+                    }),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "timestamp_second",
+                    DataType::DateTime(DateTimeType::DateTime64 {
+                        unit: TimeUnit::Second,
+                        timezone: utc,
+                    }),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::datetime64(1_700_000_000, TimeUnit::Second, utc).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "timestamp_millisecond_offset",
+                    DataType::DateTime(DateTimeType::DateTime64 {
+                        unit: TimeUnit::Millisecond,
+                        timezone: offset,
+                    }),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::datetime64(1_700_000_000_123, TimeUnit::Millisecond, offset).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "duration64",
+                    DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::duration64_in(90, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "duration64_millisecond",
+                    DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::duration64(90_500, TimeUnit::Millisecond).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "duration64_microsecond",
+                    DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::duration64(-1, TimeUnit::Microsecond).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "duration64_nanosecond",
+                    DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::duration64(i64::MAX, TimeUnit::Nanosecond).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "duration32",
+                    DataType::duration32(TimeUnit::Millisecond).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::duration32(-90, TimeUnit::Millisecond).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "interval_year_month",
+                    DataType::interval(TimeUnit::YearMonth).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::Interval(
+                        yggdryl::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
+                    ),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "interval_day_time",
+                    DataType::interval(TimeUnit::DayTime).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::Interval(
+                        yggdryl::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
+                    ),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "interval_month_day_nano",
+                    DataType::interval(TimeUnit::MonthDayNano).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::Interval(
+                        yggdryl::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
+                    ),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "list",
+                    DataType::list(Field::new("item", DataType::Int64, true)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                    Scalar::from_sequence([]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "list_view",
+                    DataType::list_view(Field::new("item", DataType::Int64, true)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                    Scalar::from_sequence([]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "fixed_size_list",
+                    DataType::fixed_size_list(Field::new("item", DataType::Int64, true), 2)
+                        .unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                    Scalar::from_sequence([Scalar::from(3), Scalar::Null]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "large_list",
+                    DataType::large_list(Field::new("item", DataType::utf8(), true)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
+                    Scalar::from_sequence([]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "large_list_view",
+                    DataType::large_list_view(Field::new("item", DataType::utf8(), true)),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from("AAPL")]),
+                    Scalar::from_sequence([]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "struct",
+                    StructType::from_fields([
+                        Field::new("symbol", DataType::utf8(), false),
+                        Field::new("quantity", DataType::Int64, true),
+                    ])
+                    .map(DataType::from)
+                    .unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100)]),
+                    Scalar::from_sequence([Scalar::from("MSFT"), Scalar::Null]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "map",
+                    DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(100))]).unwrap(),
+                    Scalar::from_mapping([]).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("large_binary_view", DataType::large_binary_view(), true),
+                // Arrow has one view width where this crate declares two, so the
+                // two hash the same bytes out of the same array.
+                Scalar::from_sequence([
+                    Scalar::from(&b"AAPL"[..]),
+                    Scalar::from(&b""[..]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("sized_binary", DataType::sized_binary(8).unwrap(), true),
+                // A maximum is the column's rule; the digest reads the payload
+                // the plain binary underneath it holds.
+                Scalar::from_sequence([
+                    Scalar::from(&b"AAPL"[..]),
+                    Scalar::from(&b""[..]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "sorted_map",
+                    DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
+                    true,
+                ),
+                // The sorted leaf hashes its rows exactly as the unsorted one
+                // does: the promise is about key order within a row, and a digest
+                // reads the entries in the order the row stores them.
+                Scalar::from_sequence([
+                    Scalar::from_mapping([
+                        (Scalar::from("AAPL"), Scalar::from(100)),
+                        (Scalar::from("MSFT"), Scalar::from(200)),
+                    ])
+                    .unwrap(),
+                    Scalar::from_mapping([]).unwrap(),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "struct2",
+                    DataType::from(
+                        yggdryl::StructType::from_fields([
+                            Field::new("key", DataType::utf8(), false),
+                            Field::new("value", DataType::Int64, true),
+                        ])
+                        .unwrap(),
+                    ),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100)]),
+                    Scalar::from_sequence([Scalar::from("MSFT"), Scalar::Null]),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "dictionary",
+                    DataType::from_str("dictionary<int32, utf8>").unwrap(),
+                    true,
+                ),
+                Scalar::from_sequence([
+                    Scalar::from("AAPL"),
+                    Scalar::from("AAPL"),
+                    Scalar::from("MSFT"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new(
+                    "union",
+                    DataType::from_str("dense_union<a: int64, b: utf8>").unwrap(),
+                    true,
+                ),
+                // A union value is the `[type_id, payload]` pair its encoding
+                // stores, and its validity lives in the child rather than the
+                // parent - which is exactly the case the null shortcut skips.
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from(0), Scalar::from(1)]),
+                    Scalar::from_sequence([Scalar::from(1), Scalar::from("AAPL")]),
+                ]),
+            ),
+            (
+                Field::new(
+                    "run_end_encoded",
+                    DataType::run_end_encoded(
+                        Field::new("run_ends", DataType::Int32, false),
+                        Field::new("values", DataType::utf8(), true),
+                    )
+                    .unwrap(),
+                    true,
+                ),
+                // A run-end encoding hides its validity in the values child, which
+                // is the other case the parent null shortcut has to skip.
+                Scalar::from_sequence([
+                    Scalar::from("AAPL"),
+                    Scalar::from("AAPL"),
+                    Scalar::from("MSFT"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("geometry", DataType::from_str("geometry").unwrap(), true),
+                Scalar::from_sequence([
+                    // A minimal little-endian WKB point.
+                    Scalar::Geometry(
+                        yggdryl::Geometry::new([
+                            1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                        ])
+                        .unwrap(),
+                    ),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("geography", DataType::from_str("geography").unwrap(), true),
+                Scalar::from_sequence([
+                    Scalar::Geography(
+                        yggdryl::Geography::new([
+                            1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                        ])
+                        .unwrap(),
+                    ),
+                    Scalar::Null,
+                ]),
+            ),
+        ]
+    }
+
+    fn empty_batch() -> RecordBatch {
+        RecordBatch::new_empty(Arc::new(Schema::empty()))
+    }
+
+    #[test]
+    fn a_column_digest_equals_the_value_feed_on_every_datatype_family() {
+        for (field, values) in columns() {
+            let array = yggdryl::arrow::array_from_value(&field, &values)
+                .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            // Read the values back through the shared boundary rather than reusing
+            // the input, so a column that canonicalizes on the way in is compared
+            // against what it actually stores.
+            let stored = yggdryl::arrow::array_to_value(&field, array.as_ref())
+                .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            let stored = stored.as_sequence().expect("a sequence of values");
+
+            for algorithm in DigestAlgorithm::ALL {
+                let column = column_digests(Arc::clone(&array), &field, algorithm)
+                    .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+                assert_eq!(column.len(), stored.len(), "{}", field.name());
+                assert_eq!(
+                    digests(&column, algorithm),
+                    stored
+                        .iter()
+                        .map(|value| value.digest(algorithm))
+                        .collect::<Vec<_>>(),
+                    "{} under {algorithm}",
+                    field.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
+        // One batch holding every family at once, so the row framing is exercised
+        // across the buffer path and the fallback in the same row.
+        let width = columns()
+            .iter()
+            .map(|(_, values)| values.len())
+            .max()
+            .expect("the corpus is not empty");
+        let mut fields = Vec::new();
+        let mut arrays: Vec<ArrayRef> = Vec::new();
+        for (field, values) in columns() {
+            // Pad every column to the same height, which also puts a null in
+            // every family that can hold one. A union stores its validity in the
+            // child rather than the parent, so it repeats a real member instead.
+            let mut padded = values.as_sequence().expect("a sequence").to_vec();
+            let filler = if matches!(field.dtype(), DataType::Union(..)) {
+                padded
+                    .first()
+                    .cloned()
+                    .expect("the union column is not empty")
+            } else {
+                Scalar::Null
+            };
+            padded.resize(width, filler);
+            let field = field.clone().with_nullable(true);
+            let array = yggdryl::arrow::array_from_value(&field, &Scalar::from_sequence(padded))
+                .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            fields.push(field);
+            arrays.push(array);
+        }
+        let root = DataType::from(StructType::from_fields(fields).unwrap()).required_field("row");
+        let arrow_fields: Vec<ArrowField> = root
+            .dtype()
+            .as_fields()
+            .expect("a struct root")
+            .iter()
+            .map(|field| field.clone().into_arrow_field())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        let batch = RecordBatch::try_new(Arc::new(Schema::new(arrow_fields)), arrays).unwrap();
+
+        let rows = yggdryl::arrow::batch_to_value(&batch).unwrap();
+        let rows = rows.as_sequence().expect("a sequence of rows");
+        assert_eq!(rows.len(), width);
+
+        for algorithm in DigestAlgorithm::ALL {
+            let column = row_digests(&batch, algorithm).unwrap();
+            assert_eq!(column.len(), width);
+            assert_eq!(
+                digests(&column, algorithm),
+                rows.iter()
+                    .map(|row| row.digest(algorithm))
+                    .collect::<Vec<_>>(),
+                "{algorithm}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_corpus_names_every_datatype_a_column_can_hold() {
+        // The corpus is the contract the two tests above check, so it has to name
+        // every datatype rather than a selection of them: a family absent here is
+        // a family whose buffer arm and fallback were never compared.
+        let covered: std::collections::HashSet<DataTypeId> =
+            columns().iter().map(|(field, _)| field.id()).collect();
+        let missing: Vec<&str> = DataTypeId::ALL
+            .into_iter()
+            .filter(|id| {
+                !matches!(
+                    *id,
+                    // Two integer tags the value feed writes but no column spells,
+                    // and the variant, whose column digests as the values it
+                    // decodes to, which its own test below reads.
+                    DataTypeId::Int128 | DataTypeId::UInt128 | DataTypeId::Variant
+                )
+            })
+            .filter(|id| !covered.contains(id))
+            .map(DataTypeId::as_str)
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "datatypes missing from the digest corpus: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn a_variant_column_digests_as_the_values_it_holds() {
+        // A variant column is the variant encoding of each value, so its
+        // digests are the values' own: the decoded value feeds, never the
+        // bytes it was stored as.
+        let field = DataType::Variant.nullable_field("payload");
+        let values = [
+            Scalar::from(7_i64),
+            Scalar::from("AAPL"),
+            Scalar::from_struct([("id", Scalar::from(1_i32))]).unwrap(),
+            Scalar::Null,
+        ];
+        let variants: Vec<yggdryl::Variant> = values
+            .iter()
+            .map(|value| yggdryl::Variant::encode(value).unwrap())
+            .collect();
+        let array: ArrayRef = Arc::new(arrow_array::StructArray::new(
+            arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("metadata", arrow_schema::DataType::Binary, false),
+                arrow_schema::Field::new("value", arrow_schema::DataType::Binary, false),
+            ]),
+            vec![
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(yggdryl::Variant::metadata),
+                )) as ArrayRef,
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(yggdryl::Variant::value),
+                )) as ArrayRef,
+            ],
+            None,
+        ));
+        let held = digests(
+            &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        );
+        let expected: Vec<Digest> = values
+            .iter()
+            .map(|value| value.digest(DigestAlgorithm::Xxh3))
+            .collect();
+        assert_eq!(held, expected);
+    }
+
+    #[test]
+    fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
+        // `column_digests` takes the field and the array separately, so a caller
+        // can hand it a storage the declaration does not spell. The answer is the
+        // value model's rather than the layout's, so the same numbers under a
+        // narrower storage are the same value and answer the same digests.
+        let declared = Field::new("quantity", DataType::Int64, false);
+        let wide: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
+        let narrow: ArrayRef = Arc::new(arrow_array::Int32Array::from(vec![1, 2, 3]));
+        let expected = digests(
+            &column_digests(wide, &declared, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        );
+        assert_eq!(
+            digests(
+                &column_digests(narrow, &declared, DigestAlgorithm::Xxh3).unwrap(),
+                DigestAlgorithm::Xxh3,
+            ),
+            expected,
+        );
+
+        // The three text layouts are one value, and answer one digest.
+        let declared = Field::new("symbol", DataType::utf8(), true);
+        let expected = digests(
+            &column_digests(
+                Arc::new(StringArray::from(vec![Some("AAPL"), None])) as ArrayRef,
+                &declared,
+                DigestAlgorithm::Xxh3,
+            )
+            .unwrap(),
+            DigestAlgorithm::Xxh3,
+        );
+        let large: ArrayRef = Arc::new(arrow_array::LargeStringArray::from(vec![
+            Some("AAPL"),
+            None,
+        ]));
+        let view: ArrayRef = Arc::new(arrow_array::StringViewArray::from(vec![Some("AAPL"), None]));
+        for source in [large, view] {
+            assert_eq!(
+                digests(
+                    &column_digests(source, &declared, DigestAlgorithm::Xxh3).unwrap(),
+                    DigestAlgorithm::Xxh3,
+                ),
+                expected,
+            );
+        }
+
+        // A struct reconciles the same way: the declaration selects its children
+        // by name, so an order the stored columns do not share is not a refusal.
+        let pair: ArrayRef = Arc::new(StructArray::new(
+            arrow_schema::Fields::from(vec![
+                ArrowField::new("b", ArrowDataType::Int64, false),
+                ArrowField::new("a", ArrowDataType::Int64, false),
+            ]),
+            vec![
+                Arc::new(Int64Array::from(vec![2])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![1])) as ArrayRef,
+            ],
+            None,
+        ));
+        let declared = StructType::from_fields([
+            DataType::Int64.required_field("a"),
+            DataType::Int64.required_field("b"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("pair");
+        assert_eq!(
+            digests(
+                &column_digests(pair, &declared, DigestAlgorithm::Xxh3).unwrap(),
+                DigestAlgorithm::Xxh3,
+            ),
+            vec![
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2)])
+                    .digest(DigestAlgorithm::Xxh3)
+            ],
+        );
+    }
+
+    #[test]
+    fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
+        // Reconciling is not guessing, and it is not the safe cast a stored shape
+        // completes with: a value the declaration cannot hold is named, because a
+        // null is a value here and two unconvertible cells must not become one.
+        let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
+        let field = Field::new("when", DataType::date32(), false);
+        let error = column_digests(array, &field, DigestAlgorithm::Xxh3)
+            .expect_err("a symbol is not a date");
+        assert!(
+            matches!(
+                error,
+                yggdryl::arrow::Error::IncompatibleSchema(_) | yggdryl::arrow::Error::Core(_)
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn identical_rows_answer_identical_digests() {
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                ArrowField::new("symbol", ArrowDataType::Utf8, false),
+                ArrowField::new("quantity", ArrowDataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(StringArray::from(vec!["AAPL", "MSFT", "AAPL"])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![100, 250, 100])),
+            ],
+        )
+        .unwrap();
+
+        for algorithm in DigestAlgorithm::ALL {
+            let column = digests(&row_digests(&batch, algorithm).unwrap(), algorithm);
+            assert_eq!(column[0], column[2], "{algorithm}");
+            assert_ne!(column[0], column[1], "{algorithm}");
+            assert_eq!(column[0].algorithm(), algorithm);
+        }
+    }
+
+    #[test]
+    fn rows_with_only_digest_holders_hash_as_empty_sequences() {
+        let mut holder = Field::new("row_digest", DataType::Int64, false);
+        holder.as_digest_mut().set_holder().unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![holder.into_arrow_field().unwrap()])),
+            vec![Arc::new(Int64Array::from(vec![11, 22]))],
+        )
+        .unwrap();
+
+        for algorithm in DigestAlgorithm::ALL {
+            let expected = Scalar::from_sequence(Vec::<Scalar>::new()).digest(algorithm);
+            assert_eq!(
+                digests(&row_digests(&batch, algorithm).unwrap(), algorithm),
+                [expected, expected],
+                "{algorithm}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_null_never_collides_with_an_empty_value() {
+        let field = Field::new("symbol", DataType::utf8(), true);
+        let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
+        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+        let column = digests(
+            &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        );
+        assert_ne!(column[0], column[1]);
+        assert_eq!(column[0], Scalar::Null.digest(DigestAlgorithm::Xxh3));
+        assert_eq!(column[1], Scalar::from("").digest(DigestAlgorithm::Xxh3));
+    }
+
+    #[test]
+    fn the_column_width_follows_the_algorithm() {
+        let field = Field::new("quantity", DataType::Int64, false);
+        let values = Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]);
+        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+
+        let widths = [
+            (DigestAlgorithm::Xxh32, ArrowDataType::UInt32),
+            (DigestAlgorithm::Xxh64, ArrowDataType::UInt64),
+            (DigestAlgorithm::Xxh3, ArrowDataType::UInt64),
+            (DigestAlgorithm::Xxh128, ArrowDataType::FixedSizeBinary(16)),
+        ];
+        for (algorithm, expected) in widths {
+            let column = column_digests(Arc::clone(&array), &field, algorithm).unwrap();
+            assert_eq!(column.data_type(), &expected, "{algorithm}");
+            assert_eq!(column.null_count(), 0, "a digest is never null");
+        }
+    }
+
+    #[test]
+    fn an_empty_batch_answers_an_empty_column() {
+        let batch = RecordBatch::new_empty(Arc::new(Schema::new(vec![ArrowField::new(
+            "symbol",
+            ArrowDataType::Utf8,
+            false,
+        )])));
+        for algorithm in DigestAlgorithm::ALL {
+            assert_eq!(row_digests(&batch, algorithm).unwrap().len(), 0);
+        }
+    }
+
+    #[test]
+    fn a_row_is_the_sequence_of_its_columns() {
+        // The framing itself: a one-column row is not the same as the bare value,
+        // because a row is a sequence and a sequence carries its count.
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![ArrowField::new(
+                "quantity",
+                ArrowDataType::Int64,
+                false,
+            )])),
+            vec![Arc::new(Int64Array::from(vec![100])) as ArrayRef],
+        )
+        .unwrap();
+        let column = digests(
+            &row_digests(&batch, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        );
+        assert_eq!(
+            column[0],
+            Scalar::from_sequence([Scalar::from(100)]).digest(DigestAlgorithm::Xxh3)
+        );
+        assert_ne!(column[0], Scalar::from(100).digest(DigestAlgorithm::Xxh3));
+    }
+
+    #[test]
+    fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
+        let value = DataType::Int64.required_field("value");
+        let digest = holder("digest", DataType::UInt64);
+        let required_root = root([value.clone(), digest.clone()]);
+        let values = Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef;
+        let source = batch(std::slice::from_ref(&value), vec![Arc::clone(&values)]);
+
+        let mut state = Xxh64::with_seed(7);
+        state.write_bytes(b"prior bytes are not row input");
+        let before = state.as_u64();
+        let filled = state
+            .apply_arrow_batch(&required_root, source, false)
+            .unwrap();
+        assert_eq!(state.as_u64(), before, "the prototype is unchanged");
+        assert!(Arc::ptr_eq(filled.column(0), &values));
+        assert_eq!(
+            filled.column(1).as_primitive::<UInt64Type>().values(),
+            &[seeded_xxh64_row(7, 1), seeded_xxh64_row(7, 2)]
+        );
+
+        let populated = Arc::new(UInt64Array::from(vec![0, 99])) as ArrayRef;
+        let source = batch(
+            &[value.clone(), digest],
+            vec![Arc::clone(&values), populated],
+        );
+        let conditional = state
+            .apply_arrow_batch(&required_root, source.clone(), false)
+            .unwrap();
+        assert_eq!(
+            conditional.column(1).as_primitive::<UInt64Type>().values(),
+            &[seeded_xxh64_row(7, 1), 99]
+        );
+        let forced = state
+            .apply_arrow_batch(&required_root, source, true)
+            .unwrap();
+        assert_eq!(
+            forced.column(1).as_primitive::<UInt64Type>().values(),
+            &[seeded_xxh64_row(7, 1), seeded_xxh64_row(7, 2)]
+        );
+
+        let mut nullable = holder("digest", DataType::UInt64);
+        nullable.set_nullable(true);
+        let nullable_root = root([value.clone(), nullable.clone()]);
+        let source = batch(
+            &[value.clone(), nullable],
+            vec![
+                Arc::clone(&values),
+                Arc::new(UInt64Array::from(vec![None, Some(0)])),
+            ],
+        );
+        let conditional = state
+            .apply_arrow_batch(&nullable_root, source, false)
+            .unwrap();
+        let conditional = conditional.column(1).as_primitive::<UInt64Type>();
+        assert_eq!(conditional.value(0), seeded_xxh64_row(7, 1));
+        assert!(conditional.is_valid(0));
+        assert_eq!(
+            conditional.value(1),
+            0,
+            "a present zero is not a nullable holder's null default"
+        );
+
+        let empty = batch(
+            std::slice::from_ref(&value),
+            vec![Arc::new(Int64Array::from(Vec::<i64>::new()))],
+        );
+        let empty = state
+            .apply_arrow_batch(&required_root, empty, false)
+            .unwrap();
+        assert_eq!(empty.num_rows(), 0);
+        assert_eq!(empty.num_columns(), 2);
+    }
+
+    #[test]
+    fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
+        let inner_value = DataType::Int64.required_field("value");
+        let inner_digest = holder("digest", DataType::Int64);
+        let nested = StructType::from_fields([inner_value, inner_digest])
+            .map(DataType::from)
+            .unwrap()
+            .nullable_field("nested");
+        let outer_digest = holder("digest", DataType::UInt64);
+        let root = root([nested, outer_digest]);
+        let rows = Scalar::from_sequence([
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from(7), Scalar::from(-1_i64)]),
+                Scalar::from(0_u64),
+            ]),
+            Scalar::from_sequence([Scalar::Null, Scalar::from(0_u64)]),
+        ]);
+        let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+
+        let conditional = Xxh3::new()
+            .apply_arrow_batch(&root, source.clone(), false)
+            .unwrap();
+        let conditional_nested = conditional
+            .column(0)
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        assert_eq!(
+            conditional_nested
+                .column(1)
+                .as_primitive::<Int64Type>()
+                .value(0),
+            -1,
+            "a populated nested holder is preserved"
+        );
+        assert_eq!(
+            conditional.column(1).as_primitive::<UInt64Type>().value(0),
+            row_digest(u64::MAX, DigestAlgorithm::Xxh3)
+                .as_u64()
+                .unwrap(),
+            "the parent consumes the preserved holder's unsigned payload"
+        );
+
+        let filled = Xxh3::new().apply_arrow_batch(&root, source, true).unwrap();
+
+        let nested = filled
+            .column(0)
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .unwrap();
+        let inner = nested.column(1).as_primitive::<Int64Type>();
+        let inner_expected = row_digest(7, DigestAlgorithm::Xxh3).as_u64().unwrap();
+        assert_eq!(
+            u64::from_ne_bytes(inner.value(0).to_ne_bytes()),
+            inner_expected
+        );
+        assert_eq!(inner.value(1), 0, "a null parent hides its child holder");
+
+        let outer = filled.column(1).as_primitive::<UInt64Type>();
+        assert_eq!(
+            outer.value(0),
+            row_digest(inner_expected, DigestAlgorithm::Xxh3)
+                .as_u64()
+                .unwrap(),
+            "signed holder storage normalizes back to its unsigned digest payload"
+        );
+        assert_eq!(
+            outer.value(1),
+            row_digest(Scalar::Null, DigestAlgorithm::Xxh3)
+                .as_u64()
+                .unwrap(),
+            "the shortcut retains the selected Struct's null"
+        );
+    }
+
+    #[test]
+    fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
+        let value = DataType::utf8().required_field("value");
+        let signed32 = holder("signed32", DataType::Int32);
+        let unsigned32 = holder("unsigned32", DataType::UInt32);
+        let signed64 = holder("signed64", DataType::Int64);
+        let unsigned64 = holder("unsigned64", DataType::UInt64);
+        let all_holders_root = root([value.clone(), signed32, unsigned32, signed64, unsigned64]);
+        let source = batch(
+            std::slice::from_ref(&value),
+            vec![Arc::new(StringArray::from(vec!["AAPL", "8"]))],
+        );
+
+        let filled = Xxh3::new()
+            .apply_arrow_batch(&all_holders_root, source, false)
+            .unwrap();
+        let signed32 = filled.column(1).as_primitive::<Int32Type>();
+        let unsigned32 = filled.column(2).as_primitive::<UInt32Type>();
+        let signed64 = filled.column(3).as_primitive::<Int64Type>();
+        let unsigned64 = filled.column(4).as_primitive::<UInt64Type>();
+
+        for row in 0..filled.num_rows() {
+            assert_eq!(
+                u32::from_ne_bytes(signed32.value(row).to_ne_bytes()),
+                unsigned32.value(row)
+            );
+            assert_eq!(
+                u64::from_ne_bytes(signed64.value(row).to_ne_bytes()),
+                unsigned64.value(row)
+            );
+        }
+        // The bit patterns agree row for row, so a digest whose high bit is set
+        // lands in the signed holder as a negative rather than clamped.
+
+        let value = DataType::utf8().required_field("value");
+        let signed = holder("digest", DataType::Int64);
+        let root = root([value.clone(), signed.clone()]);
+        let source = batch(
+            &[value, signed],
+            vec![
+                Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+                Arc::new(Int64Array::from(vec![0, -1])),
+            ],
+        );
+        let stored = |value| {
+            i64::from_ne_bytes(
+                row_digest(value, DigestAlgorithm::Xxh3)
+                    .as_u64()
+                    .unwrap()
+                    .to_ne_bytes(),
+            )
+        };
+        let conditional = Xxh3::new()
+            .apply_arrow_batch(&root, source.clone(), false)
+            .unwrap();
+        assert_eq!(
+            conditional.column(1).as_primitive::<Int64Type>().values(),
+            &[stored("AAPL"), -1]
+        );
+        let forced = Xxh3::new().apply_arrow_batch(&root, source, true).unwrap();
+        assert_eq!(
+            forced.column(1).as_primitive::<Int64Type>().values(),
+            &[stored("AAPL"), stored("MSFT")]
+        );
+    }
+
+    #[test]
+    fn mixed_holder_widths_resolve_algorithms_per_holder() {
+        let value = DataType::Int64.required_field("value");
+        let h32 = holder("h32", DataType::UInt32);
+        let h64 = holder("h64", DataType::UInt64);
+        let mut explicit = holder("explicit", DataType::UInt64);
+        explicit
+            .as_digest_mut()
+            .set_algorithm(DigestAlgorithm::Xxh3)
+            .unwrap();
+        let h128 = holder("h128", DataType::fixed_binary(16).unwrap());
+        let root = root([value.clone(), h32, h64, explicit, h128]);
+        let source = batch(
+            std::slice::from_ref(&value),
+            vec![Arc::new(Int64Array::from(vec![17]))],
+        );
+
+        let mut state = Xxh64::with_seed(9);
+        state.write_bytes(b"ignored");
+        let before = state.as_u64();
+        let filled = state.apply_arrow_batch(&root, source, false).unwrap();
+        assert_eq!(state.as_u64(), before);
+        assert_eq!(
+            filled.column(1).as_primitive::<UInt32Type>().value(0),
+            row_digest(17, DigestAlgorithm::Xxh32).as_u32().unwrap(),
+            "mismatched uint32 selects unseeded xxh32"
+        );
+        assert_eq!(
+            filled.column(2).as_primitive::<UInt64Type>().value(0),
+            seeded_xxh64_row(9, 17),
+            "a matching receiver contributes its seed"
+        );
+        assert_eq!(
+            filled.column(3).as_primitive::<UInt64Type>().value(0),
+            row_digest(17, DigestAlgorithm::Xxh3).as_u64().unwrap(),
+            "an explicit different algorithm is fresh and unseeded"
+        );
+        let wide = filled
+            .column(4)
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .unwrap();
+        assert_eq!(
+            wide.value(0),
+            &*row_digest(17, DigestAlgorithm::Xxh128).into_bytes(),
+            "mismatched fixed-size binary selects unseeded xxh3-128"
+        );
+    }
+
+    #[test]
+    fn every_concrete_state_and_the_dispatcher_expose_batch_fill() {
+        let empty_root = root(Vec::<Field>::new());
+        let empty = RecordBatch::new_empty(Arc::new(Schema::empty()));
+        assert_eq!(
+            Xxh32::new()
+                .apply_arrow_batch(&empty_root, empty.clone(), false)
+                .unwrap()
+                .num_rows(),
+            0
+        );
+        assert_eq!(
+            Xxh64::new()
+                .apply_arrow_batch(&empty_root, empty.clone(), false)
+                .unwrap()
+                .num_rows(),
+            0
+        );
+        assert_eq!(
+            Xxh3::new()
+                .apply_arrow_batch(&empty_root, empty.clone(), false)
+                .unwrap()
+                .num_rows(),
+            0
+        );
+        assert_eq!(
+            Xxh128::new()
+                .apply_arrow_batch(&empty_root, empty.clone(), false)
+                .unwrap()
+                .num_rows(),
+            0
+        );
+        assert_eq!(
+            DigestAlgorithm::Xxh3
+                .digester()
+                .apply_arrow_batch(&empty_root, empty, false)
+                .unwrap()
+                .num_rows(),
+            0
+        );
+    }
+
+    #[test]
+    fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
+        // A fill plan descends into Struct children, because those are the ones
+        // that are columns of their own. A holder under any other layout would be
+        // planned by nobody and left at its default, and a containing holder would
+        // then hash that default as though it were an answer - so the schema is
+        // refused where the declaration is.
+        let element = StructType::from_fields([
+            DataType::Int64.nullable_field("value"),
+            holder("inner_digest", DataType::UInt64),
+        ])
+        .map(DataType::from)
+        .unwrap();
+        let item = element.clone().required_field("item");
+
+        let layouts = [
+            DataType::list(item.clone()),
+            DataType::list_view(item.clone()),
+            DataType::large_list(item.clone()),
+            DataType::large_list_view(item.clone()),
+            DataType::fixed_size_list(item.clone(), 1).unwrap(),
+            DataType::map_of(DataType::utf8(), element.clone(), false).unwrap(),
+            DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
+                .unwrap(),
+            DataType::dictionary(DataType::Int32, element.clone()).unwrap(),
+            DataType::dense_union([item.clone()]).unwrap(),
+        ];
+
+        for layout in layouts {
+            let root = root([
+                layout.clone().nullable_field("events"),
+                holder("row_digest", DataType::UInt64),
+            ]);
+            let error = root
+                .as_digest()
+                .apply_arrow_batch(&empty_batch())
+                .expect_err("a holder no plan can reach is not a schema this fills");
+            let error = error.to_string();
+            assert!(error.contains("inner_digest"), "{layout}: {error}");
+            assert!(error.contains("events"), "{layout}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_nested_struct_holder_is_read_rather_than_recomputed() {
+        // The bypass a nested holder earns: the level above feeds that holder's
+        // value instead of hashing the whole Struct a second time.
+        let inner_value = DataType::Int64.required_field("value");
+        let inner_digest = holder("inner_digest", DataType::UInt64);
+        let nested = StructType::from_fields([inner_value.clone(), inner_digest])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("nested");
+        let root = root([nested, holder("row_digest", DataType::UInt64)]);
+
+        let inner = StructArray::from(vec![(
+            Arc::new(inner_value.into_arrow_field().unwrap()),
+            Arc::new(Int64Array::from(vec![7])) as ArrayRef,
+        )]);
+        let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();
+
+        let filled = root.as_digest().apply_arrow_batch(&source).unwrap();
+
+        let inner_digest = filled
+            .column(0)
+            .as_struct()
+            .column(1)
+            .as_primitive::<UInt64Type>()
+            .value(0);
+        let expected = Scalar::from_sequence([Scalar::from(inner_digest)])
+            .digest(DigestAlgorithm::Xxh3)
+            .as_u64()
+            .unwrap();
+        assert_eq!(
+            filled.column(1).as_primitive::<UInt64Type>().value(0),
+            expected,
+            "the outer row feeds the nested digest, not the nested Struct"
+        );
+    }
+}

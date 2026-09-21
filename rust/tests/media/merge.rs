@@ -1,8 +1,19 @@
-//! An explicit merge updates and appends by key.
+//! `rust/src/media/merge.rs`: an explicit merge updates and appends by key.
+//!
+//! Everything but the last pin reaches the crate through `yggdryl::`. The
+//! reader every `IOMode::Merge` write pulls through is crate-private, and that
+//! it releases each incoming batch before pulling the next is what keeps a
+//! merge bounded, so that one is reached through `yggdryl::internals`.
 
 use std::sync::Arc;
+#[cfg(feature = "internals")]
+use std::sync::Weak;
 
+#[cfg(feature = "internals")]
+use arrow_array::ArrayRef;
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+#[cfg(feature = "internals")]
+use arrow_schema::{ArrowError, SchemaRef};
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
@@ -620,4 +631,73 @@ fn an_append_naming_no_match_key_still_appends_every_row() {
             (2, Some("MSFT".to_owned())),
         ]
     );
+}
+
+/// Produce payload batches only when the preceding one has been released.
+///
+/// This turns incoming-stream retention into a deterministic error instead of
+/// relying on an allocator or a process-wide memory watermark.
+#[cfg(feature = "internals")]
+struct ReleaseCheckedReader {
+    schema: SchemaRef,
+    next: i64,
+    previous: Option<Weak<dyn Array>>,
+}
+
+#[cfg(feature = "internals")]
+impl Iterator for ReleaseCheckedReader {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self
+            .previous
+            .as_ref()
+            .is_some_and(|array| array.strong_count() != 0)
+        {
+            return Some(Err(ArrowError::ComputeError(
+                "the preceding incoming payload batch was retained".to_owned(),
+            )));
+        }
+        if self.next == 2 {
+            return None;
+        }
+        let id: ArrayRef = Arc::new(Int64Array::from(vec![self.next]));
+        self.previous = Some(Arc::downgrade(&id));
+        let symbol: ArrayRef = Arc::new(StringArray::from(vec![format!("symbol-{}", self.next)]));
+        self.next += 1;
+        Some(RecordBatch::try_new(
+            Arc::clone(&self.schema),
+            vec![id, symbol],
+        ))
+    }
+}
+
+#[cfg(feature = "internals")]
+impl arrow_array::RecordBatchReader for ReleaseCheckedReader {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn incoming_payload_batches_are_released_before_the_next_is_pulled() {
+    let arrow = schema().into_arrow_schema().unwrap();
+    let stored = yggdryl::arrow::batch_reader(Arc::clone(&arrow), []);
+    let incoming: BatchReader = Box::new(ReleaseCheckedReader {
+        schema: arrow,
+        next: 0,
+        previous: None,
+    });
+
+    let merged = yggdryl::internals::media_merge::merged(
+        stored,
+        incoming,
+        &schema(),
+        &yggdryl::Selector::from_columns(["id"]),
+        true,
+    )
+    .unwrap();
+    let rows: usize = merged.map(|batch| batch.unwrap().num_rows()).sum();
+    assert_eq!(rows, 2);
 }

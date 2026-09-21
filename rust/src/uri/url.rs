@@ -754,20 +754,18 @@ impl<'de> Deserialize<'de> for Url {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/uri/url.rs` pins and a caller cannot reach.
+    //!
+    //! The canonical rendering a located reader shares across its rows is
+    //! crate-internal, so whether a mutation clears it is pinned here.
 
-    #[test]
-    fn shared_text_follows_mutations() -> Result<()> {
-        let mut url = Url::from_str("https://example.com/trades.csv?day=1")?;
-        assert_eq!(url.shared_text().as_str(), url.to_string());
+    use super::{Str, Url};
 
-        url.set_query(Some("day=2"))?;
-        assert_eq!(url.shared_text().as_str(), url.to_string());
-
-        assert!(url.remove_extension());
-        assert_eq!(url.shared_text().as_str(), url.to_string());
-        Ok(())
+    /// The URL's canonical rendering as the lazily cached shared string.
+    pub fn shared_text(url: &Url) -> &Str {
+        url.shared_text()
     }
 }

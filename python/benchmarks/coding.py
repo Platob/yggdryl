@@ -17,7 +17,7 @@ import sys
 import timeit
 import zlib as std_zlib
 
-from yggdryl.coding import gzip, zlib, zstd
+from yggdryl import gzip, zlib, zstd
 
 PAYLOAD = b'{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n' * 20_000
 

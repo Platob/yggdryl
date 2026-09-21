@@ -139,14 +139,6 @@ impl InstrumentCodes {
         self.by_isin.get_mut(isin)
     }
 
-    #[cfg(test)]
-    fn with_budget(byte_budget: usize) -> Self {
-        Self {
-            byte_budget,
-            ..Self::default()
-        }
-    }
-
     /// Learn stated associations before filling missing facts, so conflicting
     /// observations disable an ambiguous default instead of choosing a winner.
     pub(crate) fn enrich<E: MarketElement>(&mut self, event: &mut E) {
@@ -230,149 +222,61 @@ pub(super) fn embedded_cusip(isin: &IsinCode) -> Option<CusipCode> {
     CusipCode::new(text.get(2..11)?).ok()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::graph::{MarketElementData, MarketEventData};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/graph/instrument.rs` pins and a caller cannot reach.
+    //!
+    //! The registry is a lifecycle's own: nothing above it names one, and what
+    //! it learned is only ever read off the events it filled. What it costs -
+    //! one reservation per first valid ISIN, none for a known one, and a full
+    //! registry that still learns about the instruments it already holds - is
+    //! read here through a wrapper, so the registry, its budget and its
+    //! reservation stay exactly as private as they were.
+    use std::collections::HashMap;
 
-    fn apple() -> MarketEventData {
-        let mut event = MarketEventData::at(1);
-        event.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
-        event
-    }
+    use crate::graph::MarketElement;
 
-    fn numbered(number: usize) -> MarketEventData {
-        let body = format!("FR{number:09}");
-        let digit = IsinCode::closing_digit(&body).unwrap();
-        let mut event = MarketEventData::at(number as i64);
-        event.set_isincode(Some(IsinCode::new(format!("{body}{digit}")).unwrap()));
-        event
-    }
+    /// The instrument associations one ordered lifecycle learns.
+    #[derive(Default)]
+    pub struct InstrumentCodes(super::InstrumentCodes);
 
-    #[test]
-    fn learned_codes_are_local_validated_and_ambiguous_defaults_are_silent() {
-        let mut codes = InstrumentCodes::default();
-        let mut first = apple();
-        first.set_cficode(Some(CfiCode::new("ESXXXX").unwrap()));
-        first.set_bloombergcode(Some(BloombergCode::new("AAPL US Equity").unwrap()));
-        codes.enrich(&mut first);
-        let mut next = apple();
-        codes.enrich(&mut next);
-        assert!(
-            next.get_cficode().is_none(),
-            "coarse classifications are not learned"
-        );
-        assert_eq!(next.get_bloombergcode(), first.get_bloombergcode());
-
-        let mut precise = apple();
-        precise.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
-        precise.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
-        codes.enrich(&mut precise);
-        let mut later = apple();
-        codes.enrich(&mut later);
-        assert_eq!(later.get_cficode(), precise.get_cficode());
-        assert_eq!(later.get_sedolcode(), precise.get_sedolcode());
-        assert_eq!(
-            first.get_cficode().unwrap().as_str(),
-            "ESXXXX",
-            "earlier snapshots stay unchanged"
-        );
-        let mut coarse = apple();
-        coarse.set_cficode(Some(CfiCode::new("ESXXXX").unwrap()));
-        codes.enrich(&mut coarse);
-        assert_eq!(coarse.get_cficode(), precise.get_cficode());
-
-        let mut conflict = apple();
-        conflict.set_bloombergcode(Some(BloombergCode::new("AAPL LN Equity").unwrap()));
-        codes.enrich(&mut conflict);
-        assert_eq!(
-            conflict.get_bloombergcode().unwrap().as_str(),
-            "AAPL LN Equity"
-        );
-        let mut after_conflict = apple();
-        codes.enrich(&mut after_conflict);
-        assert!(after_conflict.get_bloombergcode().is_none());
-
-        let mut independent = apple();
-        InstrumentCodes::default().enrich(&mut independent);
-        assert!(independent.get_cficode().is_none());
-        assert!(independent.get_bloombergcode().is_none());
-    }
-
-    #[test]
-    fn invalid_default_codes_cannot_seed_associations() {
-        let mut codes = InstrumentCodes::default();
-        let mut empty = MarketElementData::default();
-        empty.set_isincode(Some(IsinCode::default()));
-        codes.enrich(&mut empty);
-        assert!(codes.by_isin.is_empty());
-        assert_eq!(codes.reserved_bytes, 0);
-        let mut observed = apple();
-        observed.set_cficode(Some(CfiCode::new("XXXXXX").unwrap()));
-        observed.set_cusipcode(Some(CusipCode::default()));
-        observed.set_sedolcode(Some(SedolCode::default()));
-        observed.set_bloombergcode(Some(BloombergCode::default()));
-        codes.enrich(&mut observed);
-        let mut later = apple();
-        codes.enrich(&mut later);
-        assert!(later.get_cficode().is_none());
-        assert!(later.get_sedolcode().is_none());
-        assert!(later.get_bloombergcode().is_none());
-    }
-
-    #[test]
-    fn the_byte_budget_bounds_new_instruments_and_keeps_learning_known_ones() {
-        let mut codes = InstrumentCodes::with_budget(2 * ENTRY_CHARGE);
-        let mut first = apple();
-        first.set_bloombergcode(Some(BloombergCode::new("AAPL US Equity").unwrap()));
-        codes.enrich(&mut first);
-        assert_eq!(
-            (codes.by_isin.len(), codes.reserved_bytes),
-            (1, ENTRY_CHARGE)
-        );
-
-        let mut same = apple();
-        same.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
-        codes.enrich(&mut same);
-        assert_eq!(
-            (codes.by_isin.len(), codes.reserved_bytes),
-            (1, ENTRY_CHARGE),
-            "a known ISIN consumes no second reservation"
-        );
-
-        codes.enrich(&mut numbered(1));
-        assert_eq!(
-            (codes.by_isin.len(), codes.reserved_bytes),
-            (2, 2 * ENTRY_CHARGE)
-        );
-        for number in 2..128 {
-            codes.enrich(&mut numbered(number));
+    impl InstrumentCodes {
+        /// A registry that may reserve at most `byte_budget` bytes.
+        pub fn with_budget(byte_budget: usize) -> Self {
+            Self(super::InstrumentCodes {
+                by_isin: HashMap::new(),
+                reserved_bytes: 0,
+                byte_budget,
+            })
         }
-        assert_eq!(
-            (codes.by_isin.len(), codes.reserved_bytes),
-            (2, 2 * ENTRY_CHARGE),
-            "repeated unseen instruments cannot grow a full registry"
-        );
 
-        let mut learned_at_cap = apple();
-        learned_at_cap.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
-        codes.enrich(&mut learned_at_cap);
-        let mut later = apple();
-        codes.enrich(&mut later);
-        assert_eq!(later.get_cficode(), learned_at_cap.get_cficode());
-        assert_eq!(later.get_sedolcode(), same.get_sedolcode());
-        assert_eq!(later.get_bloombergcode(), first.get_bloombergcode());
-        assert_eq!(codes.reserved_bytes, 2 * ENTRY_CHARGE);
+        /// A registry whose reservation arithmetic already stands at the top
+        /// of `usize`, so the next charge can only overflow.
+        pub fn saturated() -> Self {
+            Self(super::InstrumentCodes {
+                by_isin: HashMap::new(),
+                reserved_bytes: usize::MAX,
+                byte_budget: usize::MAX,
+            })
+        }
 
-        let mut overflow = InstrumentCodes {
-            by_isin: HashMap::new(),
-            reserved_bytes: usize::MAX,
-            byte_budget: usize::MAX,
-        };
-        overflow.enrich(&mut apple());
-        assert!(
-            overflow.by_isin.is_empty(),
-            "reservation arithmetic is checked"
-        );
+        /// Learn what `event` states, then fill what it left unstated.
+        pub fn enrich<E: MarketElement>(&mut self, event: &mut E) {
+            self.0.enrich(event);
+        }
+
+        /// How many instruments the registry holds.
+        pub fn instruments(&self) -> usize {
+            self.0.by_isin.len()
+        }
+
+        /// The bytes it has reserved for them.
+        pub fn reserved_bytes(&self) -> usize {
+            self.0.reserved_bytes
+        }
     }
+
+    /// What one instrument's first sighting reserves.
+    pub const ENTRY_CHARGE: usize = super::ENTRY_CHARGE;
 }

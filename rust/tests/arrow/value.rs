@@ -1,4 +1,5 @@
-//! What a value carries into an Arrow column, and what comes back out.
+//! `rust/src/arrow/value.rs`: what a value carries into an Arrow column,
+//! and what comes back out.
 
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{DataType, Field, Scalar, TimeUnit};

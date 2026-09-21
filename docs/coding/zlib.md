@@ -51,7 +51,7 @@ RFC 1950 zlib framing and raw RFC 1951 DEFLATE, as whole buffers, as streams, or
 
     import pytest
 
-    from yggdryl.coding import zlib
+    from yggdryl import zlib
 
     plain = b"symbol,price\n" + b"AAPL,1\n" * 64
 
@@ -201,7 +201,8 @@ assert_eq!(zlib::load_raw(&raw)?, plain);
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.coding import Zlib, zlib
+    from yggdryl import zlib
+    from yggdryl.coding import Zlib
     from yggdryl.holder import Buffer, Path
 
     root = pathlib.Path(tempfile.mkdtemp())
@@ -267,7 +268,8 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
 
     ```python
     from yggdryl import IOBase
-    from yggdryl.coding import Zlib, zlib
+    from yggdryl import zlib
+    from yggdryl.coding import Zlib
 
     plain = b"symbol,price\nAAPL,1\n"
 
@@ -298,14 +300,14 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test coding -- zlib::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- zlib
     cargo bench -p yggdryl --bench coding -- zlib
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_codings.py -k "zlib or RawDeflate"
+    python/.venv/bin/python -m pytest python/tests/coding/test_init.py -k "zlib or RawDeflate"
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```
 

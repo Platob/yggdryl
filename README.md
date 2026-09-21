@@ -65,14 +65,16 @@ rust/                    The core crate
                          txhash/ are one root folder each
   src/{uri,arrow,expression,graph,fix}/
                          The remaining core layers
-  tests/                 Edge tests, grouped by theme
+  tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension
   src/                   PyO3 views over the matching core domains
   yggdryl/               The Python package, including field classes and annotations
+  tests/                 The mirror of both, file for file
 node/                    The JavaScript extension
   src/                   Node-API views over the matching core domains
   *.js                   The loader and its convenience protocols
+  tests/                 The mirror of both, file for file
 docs/                    The MkDocs site sources
 scripts/                 Documentation and interoperability checkers
 ```
@@ -231,7 +233,7 @@ and metadata-mapping protocols, inferred string and PyArrow conversion, and
 cached native fields for ordinary dataclasses through `@scalar` and the static
 `Class.into_field()` accessor; `field(value, name=None)` remains a pure builder.
 It also provides precise `Annotated` Arrow and Field overrides and byte-first
-`yggdryl.text.json`, `yggdryl.text.toml`, and `yggdryl.text.yaml` modules. JavaScript provides
+`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` modules. JavaScript provides
 the equivalent value protocols plus Buffer-first codecs and safe, explicit
 class registries. The URI family wrappers expose the same canonical components
 and resource-path views in both languages.

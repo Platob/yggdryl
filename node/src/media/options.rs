@@ -19,9 +19,9 @@ use crate::exact_u8;
 use crate::expression::{
     JsFilter, JsPlan, JsSelector, filter_from_input, plan_from_input, selector_from_input,
 };
+use crate::field::{JsField, MetadataEntry};
 use crate::napi_error;
-use crate::types::field::{JsField, MetadataEntry};
-use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
+use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// The settings one record read or write takes.
 #[napi(js_name = "RecordOptions")]
@@ -351,7 +351,7 @@ impl JsRecordOptions {
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
             String,
         >,
     ) -> Result<()> {
@@ -631,7 +631,7 @@ impl JsRecordOptions {
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
             String,
         >,
     ) -> Result<Self> {

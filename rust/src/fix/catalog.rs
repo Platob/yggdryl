@@ -1562,3 +1562,64 @@ impl FixRegistry {
         self.validate_catalog()
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/group_plan.rs` pins and a caller cannot reach.
+    //!
+    //! [`FixRegistry`] is published and its definition doors with it; the
+    //! compiled group plan a definition carries is not, because a plan is the
+    //! layout a row is laid out by rather than anything a caller states.
+    use super::super::group_plan::GroupPlan;
+    use crate::{Field, FixCategory, FixRegistry, Result};
+
+    /// The group definition a counter tag names.
+    #[must_use]
+    pub fn get_group_by_tag(registry: &FixRegistry, tag: i32) -> Option<&Field> {
+        registry.get_group_by_tag(tag)
+    }
+
+    /// The compiled plan a counter tag's group definition carries, where its
+    /// layout is one a wire states a tag at a time.
+    #[must_use]
+    pub fn get_group_plan_by_tag(registry: &FixRegistry, tag: i32) -> Option<&GroupPlan> {
+        registry.get_group_plan_by_tag(tag)
+    }
+
+    /// The unique group a counter tag opens, reporting absence or ambiguity.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed absence where no group, or more than one, answers the
+    /// tag.
+    pub fn group_by_tag(registry: &FixRegistry, tag: i32) -> Result<&Field> {
+        registry.group_by_tag(tag)
+    }
+
+    /// Fold one definition into the catalog, answering whether it was new.
+    ///
+    /// The published door replaces or inserts whole; this is the fold a merge
+    /// of two dictionaries performs, which a caller never reaches on its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever folding, resolving and validating the merged catalog
+    /// raises; a refusal leaves the registry untouched.
+    pub fn add_definition(
+        registry: &mut FixRegistry,
+        category: FixCategory,
+        field: Field,
+    ) -> Result<bool> {
+        registry.add_definition(category, field)
+    }
+
+    /// The tag a named definition derives, out of the block reserved for them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where every slot in the block is taken.
+    pub fn derived_definition_tag(registry: &FixRegistry, name: &str) -> Result<i32> {
+        registry.derived_definition_tag(name)
+    }
+}

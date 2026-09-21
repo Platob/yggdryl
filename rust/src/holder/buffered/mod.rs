@@ -620,5 +620,26 @@ impl<H: IOBase> IOBase for Buffered<H> {
     }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/holder/buffered/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! The public read stamps `Instant::now()`. Taking the instant as an
+    //! argument is what lets eviction and expiry be observed by advancing a
+    //! clock rather than by sleeping, and a caller has no reason to set one,
+    //! so it is reached here rather than made API.
+    use std::time::Instant;
+
+    use crate::{IOBase, Result};
+
+    /// [`IOBase::pread`] against `handle` at an explicit clock.
+    pub fn read_at<H: IOBase>(
+        handle: &super::Buffered<H>,
+        offset: u64,
+        buffer: &mut [u8],
+        now: Instant,
+    ) -> Result<usize> {
+        handle.read_at(offset, buffer, now)
+    }
+}

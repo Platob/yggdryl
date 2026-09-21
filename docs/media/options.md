@@ -326,7 +326,7 @@ assert!(message.contains("with_field"), "{message}");
 - `select` naming a column the stored root lacks -> the encoding reads everything and the cast supplies it as nulls.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
 - Every read and write path -> routes through `apply_arrow_batch` / `apply_arrow_reader`, so declaration, derivation, selection, and stored shape agree.
-- Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet/index.md).
+- Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet/compression.md).
 - Content coding -> ignored, the derivation [`IOMedia::record_options`](index.md) also performs.
 - `max_row_group_size` on `trades.arrows` -> `None` in Python, `null` in JavaScript.
 
@@ -335,7 +335,7 @@ assert!(message.contains("with_field"), "{message}");
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::options::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test media -- options
     cargo test --features "parquet iceberg" -p yggdryl --test media -- inference::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/.*/record_options'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
@@ -346,13 +346,13 @@ assert!(message.contains("with_field"), "{message}");
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_io_records.py python/tests/media/test_commit_row_size.py
+    python/.venv/bin/python -m pytest python/tests/test_iomedia.py python/tests/media/test_handles.py
     python/.venv/bin/python python/benchmarks/media.py --filter "record options"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/record_options npm run --prefix node bench:media
     ```

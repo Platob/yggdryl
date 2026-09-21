@@ -1,6 +1,6 @@
 # Apache Parquet
 
-Read and write Apache Parquet over any handle; the footer's contents and the stateful `Parquet<H>` wrapper live on [Parquet footer](footer.md).
+A footer-first columnar file over any handle: Parquet compresses its own pages, addresses each column chunk on its own, and answers a dimension from its tail.
 
 ## Contract
 
@@ -8,22 +8,28 @@ Read and write Apache Parquet over any handle; the footer's contents and the sta
 | --- | --- |
 | Owns | `yggdryl::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
 | Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](../options.md) reports `application/vnd.apache.parquet` as not implemented |
-| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by` supplies row-identity keys only |
-| Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
-| Pushdown | the read `field` is a `ProjectionMask` over root columns; excluded chunks are never located, decompressed, or decoded |
-| Options | `compression` (default Zstandard, default level), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](../options.md) fields; `level` does nothing |
+| Reads | [Read](read.md): native rows, `read_arrow_reader` for an [`arrow::BatchReader`](../../arrow/readers.md), `read_arrow_field` for the canonical non-null struct root [`Field`](../../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
+| Writes | [Write](write.md): `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` and their record siblings under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by` supplies row-identity keys only |
+| Pushdown | [Pushdown](pushdown.md): the read `field` is a `ProjectionMask` over root columns; excluded chunks are never located, decompressed, or decoded |
+| Lazy | reads are bounded `BatchReader` streams, never a collected table; an absent resource yields zero batches rather than a missing-footer error |
+| Validated | a batch naming the same columns as the written root is cast strictly; one naming different columns is refused with the batch index in the message |
+| Options | `compression` (default Zstandard, default level) and `level` on [Compression](compression.md), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](../options.md) fields |
 | Dimensions | `row_size` and `column_size` range-read only the eight-byte tail and footer; whole-file counts that ignore selection, filters, and limits |
 | Cached | `open` retains the inferred wrapper and footer until `close`; writes invalidate it; closed calls read a fresh footer |
-| Coded handles | any coding other than identity is refused on reads and writes before anything is encoded |
+| Coded handles | any coding other than identity is refused on reads and writes before anything is encoded: [Compression](compression.md) |
 | Bindings | Python exchanges `pyarrow.RecordBatchReader` over the Arrow C Stream; JavaScript exchanges Arrow JS values over copied IPC, one batch per stream; neither builds a table unasked |
 
-## Surfaces
+## Pages
+
+Both surfaces a medium answers - rows as native scalars and rows as Arrow batches - sit on the direction pages, so one page holds every spelling of a read and one holds every spelling of a write.
 
 | Page | Owns |
 | --- | --- |
-| [Scalars](scalar.md) | native rows in and out: `overwrite_records`, `append_records`, `merge_records`, `read_records` |
-| [Arrow](arrow.md) | batch readers, the three write intents, the projection mask |
-| [Footer](footer.md) | footer metadata, statistics, field ids, the caching `Parquet<H>` wrapper |
+| [Read](read.md) | rows out: native scalars, then Arrow batches, and the schema reads that touch only the footer |
+| [Write](write.md) | rows in: the three intents over native scalars and Arrow batches, row groups, commit cadence |
+| [Pushdown](pushdown.md) | the projection mask over root columns |
+| [Compression](compression.md) | page codecs, the `level` that does nothing, the refusal of an outer coding |
+| [Footer](footer.md) | footer metadata, statistics, field ids, geospatial and variant columns, the caching `Parquet<H>` wrapper |
 
 ## Use
 
@@ -250,195 +256,35 @@ Parquet's own settings and the shared ones are flat fields of one value.
 
 | setting | effect |
 | --- | --- |
-| `compression` | codec applied to pages inside the file |
 | `max_row_group_size` | row bound that decides how many row groups the file gets |
 | `key_value_metadata` | footer entries next to the ones the writer adds itself |
-| `level` | nothing; Parquet has no outer coding to apply it to |
+| `compression`, `level` | the page codec, and the shared level Parquet ignores: [Compression](compression.md) |
 | shared | `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size` |
 | `Parquet::with_options` | replaces the whole set |
 | `with_field`, `with_name` | reach through to the declared root; `name` roots a declared field and one recovered from the footer alike |
 
-## Compression
+## Feature gate
 
-The bindings name page compression as the text the `parquet` crate parses: `zstd(3)`, `snappy`, `uncompressed`. Compression is a write setting only; the footer records the codec, so every runtime reads every file. A coding around the whole file would move the footer out of reach, so a coded name is refused before anything is encoded, and the handle is left untouched.
+`parquet` is not a default feature: the codec is version-locked to the pinned Arrow release and pulls a thrift and compression stack a schema-only consumer never needs. The Python wheel and the npm package build with `iceberg`, which turns `parquet` on, so both bindings always have it; a Rust consumer asks.
 
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use parquet::basic::Compression;
-    use yggdryl::arrow;
-    use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, MimeType, StructType, Url};
-
-    let field = DataType::from(StructType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("symbol"),
-    ])?)
-    .required_field("row");
-
-    let ids: Vec<i64> = (0..1_024).collect();
-    let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
-    let arrow_schema = field.into_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(ids)),
-            Arc::new(StringArray::from(symbols)),
-        ],
-    )?;
-
-    let mut sizes = Vec::new();
-    for compression in [
-        Compression::UNCOMPRESSED,
-        Compression::SNAPPY,
-        Compression::ZSTD(Default::default()),
-    ] {
-        // One batch per read, so the comparison is not split by the default bound.
-        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
-            .with_options(
-                ParquetOptions::new()
-                    .with_compression(compression)
-                    .with_batch_row_size(batch.num_rows()),
-            );
-        let options = media.record_options()?;
-        media.overwrite_arrow_reader(
-            arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]),
-            &options,
-        )?;
-
-        // Nothing on the read side names the compression: the footer records it.
-        let read = media
-            .read_arrow_reader(&options)?
-            .collect::<Result<Vec<_>, _>>()?;
-        assert_eq!(read, [batch.clone()], "{compression:?}");
-        sizes.push(media.handle().size());
-    }
-
-    assert!(sizes[0] > sizes[1] && sizes[0] > sizes[2], "{sizes:?}");
-
-    // A coding around the whole file is refused, and nothing is published.
-    let coded = Url::from_str("file:///trades.parquet.gz")?;
-    let mut media = Parquet::new(Buffer::new().with_media_type(coded.media_type()));
-    let options = media.record_options()?;
-    let message = media
-        .overwrite_arrow_reader(
-            arrow::batch_reader(Arc::clone(&arrow_schema), [batch]),
-            &options,
-        )
-        .unwrap_err()
-        .to_string();
-
-    assert!(message.contains("parquet compresses"), "{message}");
-    assert!(message.contains("ParquetOptions::compression"), "{message}");
-    assert!(media.handle().is_empty());
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-    import pytest
-
-    from yggdryl import IOBase
-
-    root = pathlib.Path(tempfile.mkdtemp())
-    rows = 1_024
-    schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string()),
-    ])
-    table = pa.table(
-        {"id": list(range(rows)), "symbol": ["AAPL"] * rows}, schema=schema
-    )
-
-    sizes = []
-    for compression in ("uncompressed", "snappy", "zstd(1)"):
-        handle = IOBase(root / f"trades-{compression}.parquet")
-        # One batch per read, so the comparison is not split by the default bound.
-        options = handle.record_options()
-        options.compression = compression
-        options.batch_row_size = rows
-        handle.overwrite_arrow_table(table, options=options)
-
-        # Nothing on the read side names the compression: the footer records it.
-        read = handle.read_arrow_reader(options=options).read_all()
-        assert read.num_rows == rows, compression
-        sizes.append(handle.size)
-
-    assert sizes[0] > sizes[1] and sizes[0] > sizes[2], sizes
-
-    # A coding around the whole file is refused, and nothing is published.
-    coded = IOBase(root / "trades.parquet.gz")
-    with pytest.raises(ValueError, match="parquet compresses"):
-        coded.overwrite_arrow_table(table)
-    assert coded.size == 0
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const ids = Array.from({ length: 1_024 }, (_, index) => BigInt(index))
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray(ids, new arrow.Int64()),
-      symbol: arrow.vectorFromArray(ids.map(() => 'AAPL'), new arrow.Utf8()),
-    })
-
-    const sizes = []
-    for (const compression of ['uncompressed', 'snappy', 'zstd(1)']) {
-      const handle = new IOBase(path.join(root, `trades-${compression}.parquet`))
-      // One batch per read, so the comparison is not split by the default bound.
-      const options = handle
-        .recordOptions()
-        .withCompression(compression)
-        .withBatchRowSize(table.numRows)
-      handle.overwriteArrowTable(table, options)
-
-      // Nothing on the read side names the compression: the footer records it.
-      const read = handle.readArrowReader(options).intoTable()
-      assert.equal(read.numRows, 1_024, compression)
-      sizes.push(handle.size)
-    }
-
-    assert.ok(sizes[0] > sizes[1] && sizes[0] > sizes[2], sizes.join())
-
-    // A coding around the whole file is refused, and nothing is published.
-    const coded = new IOBase(path.join(root, 'trades.parquet.gz'))
-    assert.throws(() => coded.overwriteArrowTable(table), /parquet compresses/)
-    assert.equal(coded.size, 0)
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
+```bash
+cargo add yggdryl --features parquet
+```
 
 ## Edges
 
-- `trades.parquet.gz`, or any non-identity coding -> refused on reads and writes with `parquet compresses`, naming `ParquetOptions::compression`.
-- other encodings, such as [Arrow IPC](../ipc/index.md), take a coded name through the handle's [coding](../../coding/index.md); Parquet alone refuses one.
-- `level` -> ignored; `compression` decides how the file compresses.
-- declared `dtype` -> `read_arrow_field` returns it without reading the file, so an empty handle answers without a footer.
+- feature off -> the module is absent and [`RecordOptions::for_mime_type`](../options.md) reports `application/vnd.apache.parquet` as not implemented.
+- `row_size` / `column_size` -> whole-file footer counts; a projection, a filter, or a row limit does not move them.
+- an opened handle -> answers dimensions from the cached footer; any write invalidates it, and `close` drops it.
+- a coded name such as `trades.parquet.gz` -> refused on reads and writes; [Compression](compression.md) carries the message and the reason.
+- absent resource -> no rows, not an error.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/parquet/read_rows
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/(row_size|column_size|read_arrow_field)'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/parquet
@@ -448,14 +294,14 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "parquet read whole" --filter "parquet read subset" --filter "parquet read records" --filter "parquet row size" --filter "parquet column size" --filter "PyArrow parquet"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_parquet_into_ipc npm run --prefix node bench:media
     YGGDRYL_BENCH_FILTER=records/read_parquet_pushdown npm run --prefix node bench:media
     ```

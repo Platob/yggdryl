@@ -1332,6 +1332,30 @@ impl RecordOptions {
     }
 }
 
-#[cfg(test)]
-#[path = "options/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/media/options.rs` pins and a caller cannot reach.
+    //!
+    //! `commit_arrow_readers` is the crate-private slicer every bounded write
+    //! pulls through: it cuts a stream at the declared row cadence without
+    //! reading ahead, which is a claim only a counted reader handed straight
+    //! to it can make. The readers it yields come back as an opaque iterator,
+    //! so the type carrying them stays as private as it was.
+
+    use super::RecordOptions;
+    use crate::Result;
+    use crate::arrow::BatchReader;
+
+    /// Split one already-shaped stream into bounded publication readers.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the declared cadence is zero.
+    pub fn commit_arrow_readers(
+        options: &RecordOptions,
+        batches: BatchReader,
+    ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
+        options.commit_arrow_readers(batches)
+    }
+}

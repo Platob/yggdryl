@@ -101,7 +101,7 @@ Both answer a `Digest` rather than the bytes, and every backend and every wrappe
 
     ```python
     from yggdryl import IOBase
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     handle = IOBase.from_bytes()
     handle.write_bytes(b"symbol,price\nAAPL,1\n")
@@ -115,10 +115,9 @@ Both answer a `Digest` rather than the bytes, and every backend and every wrappe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, hashing } = require('yggdryl')
+    const { IOBase, xxhash } = require('yggdryl')
 
-    const { xxhash } = hashing
-    const handle = IOBase.fromBytes()
+        const handle = IOBase.fromBytes()
     const payload = Buffer.from('symbol,price\nAAPL,1\n')
     handle.writeBytes(payload)
 
@@ -221,20 +220,20 @@ assert_eq!(text, "AAPL,1\n");
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::conformance
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iomedia::positional
     cargo bench --bench media --features parquet -- io_scalar
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k StructuredValues
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k StructuredValues
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern "structured values" "node/tests/holder/io.test.js"
+    node --test --test-name-pattern "structured values" "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```
 

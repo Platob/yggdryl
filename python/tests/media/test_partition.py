@@ -9,9 +9,9 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import Field, RecordOptions, Selector, TextOptions
+from yggdryl.avro import MAX_SCHEMA_DEPTH as AVRO_MAX_SCHEMA_DEPTH
 from yggdryl.enums import LEADING_FRAGMENTS
 from yggdryl.media import (
-    AVRO_MAX_SCHEMA_DEPTH,
     DEFAULT_RECORD_BATCH_ROW_SIZE,
     NULL_PARTITION,
     partition_text,

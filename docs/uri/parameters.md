@@ -137,13 +137,13 @@ A decoding view answers with the text the escapes stand for, and encodes what it
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib uri::tests::parameters
-    cargo test --features "parquet iceberg" -p yggdryl --lib uri::tests::decoding
+    cargo test --features "parquet iceberg" -p yggdryl --test uri -- parameters::encoding parameters::value::parameters
+    cargo test --features "parquet iceberg" -p yggdryl --test uri -- mod_::components::decoding
     cargo bench -p yggdryl --bench uri -- "resource_value/(parameter_pairs_raw|parameter_pairs_decoded|parameter_write_back|component_decoding)"
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/uri/test_uri.py -k "parameters or decoded"
+    python/.venv/bin/python -m pytest python/tests/test_uri.py -k "parameters or decoded"
     ```

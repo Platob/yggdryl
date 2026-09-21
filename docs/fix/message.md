@@ -124,7 +124,9 @@
 
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
     from yggdryl.fix import FixMsg, FixRegistry
 
     msgtype = Field("MsgType", "utf8")
@@ -141,7 +143,7 @@
     count = Field("NoPartyIDs", "int32", nullable=False)
     count.fix.tag = 453
     party = Field("Party", DataType.from_fields([party_id]), nullable=False)
-    parties = types.list("Parties", party)
+    parties = yggdryl.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
     registry = FixRegistry.from_fields([msgtype, side, symbol, qty, count, party_id])
@@ -801,9 +803,9 @@ A value written into a target is re-typed for the target's field through the cod
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --lib fix::tests::a_message
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal::a_message
     cargo test -p yggdryl --test fix codec::a_message_re_emits_from_its_entries_and_reads_back_equal
-    cargo test -p yggdryl --test fix message::
+    cargo test -p yggdryl --test fix -- msg
     cargo test -p yggdryl --test fix latest::
     cargo test -p yggdryl --test fix latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
     ```
@@ -811,15 +813,15 @@ A value written into a target is re-typed for the target's field through the cod
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/fix -k "message or scalar_value_and_field"
-    python/.venv/bin/python -m pytest python/tests/fix -k latest
+    python/.venv/bin/python -m pytest python/tests/test_fix.py
+    python/.venv/bin/python -m pytest python/tests/test_fix.py -k "message or scalar_value_and_field"
+    python/.venv/bin/python -m pytest python/tests/test_fix.py -k latest
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/fix/fix.test.js
-    node --test --test-name-pattern="message" node/tests/fix/fix.test.js
-    node --test --test-name-pattern="latest" node/tests/fix/fix.test.js
+    node --test node/tests/fix.test.js
+    node --test --test-name-pattern="message" node/tests/fix.test.js
+    node --test --test-name-pattern="latest" node/tests/fix.test.js
     ```

@@ -8,9 +8,9 @@ Every check runs from the repository root, which owns the Cargo workspace.
 
     ```bash
     cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets --features "parquet iceberg" -- -D warnings
-    cargo test --workspace --all-targets --features "parquet iceberg"
-    cargo test --workspace --doc --features "parquet iceberg"
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo test --workspace --all-targets --all-features
+    cargo test --workspace --doc --all-features
     ```
 
 === "Python"
@@ -19,7 +19,7 @@ Every check runs from the repository root, which owns the Cargo workspace.
     cd python
     .venv/bin/python -m maturin develop
     .venv/bin/python -m pytest
-    .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
+    .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
     ```
 
 === "JavaScript"
@@ -33,68 +33,71 @@ Every check runs from the repository root, which owns the Cargo workspace.
 | Pass | Toolchain |
 | --- | --- |
 | Default features, schema-only core | Rust 1.85 |
-| `--features "parquet iceberg"`, both bindings | Rust 1.94 or newer |
+| `--all-features`, both bindings | Rust 1.94 or newer |
 
-## By theme
+## By entry
 
-Integration targets are one file per theme under `rust/tests/`; unit tests sit beside the module they cover.
+`rust/tests/` mirrors `rust/src/` file for file, and one target declares each
+top-level entry: a source folder is declared by `rust/tests/<folder>.rs`, and
+the files the crate root holds by `rust/tests/root.rs`. Five targets stand
+outside the mirror because what they pin is a cost or an exchange rather than a
+file. `--all-features` is what turns `internals` on, and with it a target runs
+everything it declares.
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test types
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow
-    cargo test --features "parquet iceberg" -p yggdryl --test holder
-    cargo test --features "parquet iceberg" -p yggdryl --test text
-    cargo test --features "parquet iceberg" -p yggdryl --test uri
-    cargo test --features "parquet iceberg" -p yggdryl --test fix
-    cargo test --features "parquet iceberg" -p yggdryl --test interop
-    cargo test --features "parquet iceberg" -p yggdryl --test allocations
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::
-    cargo test --features "parquet iceberg" -p yggdryl --test coding
-    cargo test --features "parquet iceberg" -p yggdryl --lib charset::
-    cargo test --features "parquet iceberg" -p yggdryl --test charset
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::
-    cargo test --features "parquet iceberg" -p yggdryl --lib avro::
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::
-    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib expression::
-    cargo test --features "parquet iceberg" -p yggdryl --lib xxhash::
-    cargo test --features "parquet iceberg" -p yggdryl --lib txhash::
+    cargo test -p yggdryl --all-features --test root
+    cargo test -p yggdryl --all-features --test arrow
+    cargo test -p yggdryl --all-features --test avro
+    cargo test -p yggdryl --all-features --test charset
+    cargo test -p yggdryl --all-features --test coding
+    cargo test -p yggdryl --all-features --test expression
+    cargo test -p yggdryl --all-features --test fix
+    cargo test -p yggdryl --all-features --test fs
+    cargo test -p yggdryl --all-features --test graph
+    cargo test -p yggdryl --all-features --test hashing
+    cargo test -p yggdryl --all-features --test holder
+    cargo test -p yggdryl --all-features --test iceberg
+    cargo test -p yggdryl --all-features --test iobase
+    cargo test -p yggdryl --all-features --test ipc
+    cargo test -p yggdryl --all-features --test json
+    cargo test -p yggdryl --all-features --test local
+    cargo test -p yggdryl --all-features --test media
+    cargo test -p yggdryl --all-features --test media_type
+    cargo test -p yggdryl --all-features --test metadata
+    cargo test -p yggdryl --all-features --test mime_type
+    cargo test -p yggdryl --all-features --test object
+    cargo test -p yggdryl --all-features --test parquet
+    cargo test -p yggdryl --all-features --test text
+    cargo test -p yggdryl --all-features --test toml
+    cargo test -p yggdryl --all-features --test txhash
+    cargo test -p yggdryl --all-features --test uri
+    cargo test -p yggdryl --all-features --test value
+    cargo test -p yggdryl --all-features --test xxhash
+    cargo test -p yggdryl --all-features --test yaml
+    cargo test -p yggdryl --all-features --test zip
+    cargo test -p yggdryl --all-features --test allocations     # the counting allocator
+    cargo test -p yggdryl --all-features --test iobase_calls    # the pinned `IOBase` call counts
+    cargo test -p yggdryl --all-features --test benchmark_mode  # every benchmark at its smoke corpus
+    cargo test -p yggdryl --all-features --test docs_index      # the landing-page example
+    cargo test -p yggdryl --all-features --test interop         # the exchanges with an outside implementation
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types
-    python/.venv/bin/python -m pytest python/tests/holder
-    python/.venv/bin/python -m pytest python/tests/coding
-    python/.venv/bin/python -m pytest python/tests/charset
-    python/.venv/bin/python -m pytest python/tests/media
-    python/.venv/bin/python -m pytest python/tests/text
-    python/.venv/bin/python -m pytest python/tests/uri
-    python/.venv/bin/python -m pytest python/tests/arrow
-    python/.venv/bin/python -m pytest python/tests/expression
-    python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/hashing
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py   # one source file
+    python/.venv/bin/python -m pytest python/tests/text               # one source folder
+    python/.venv/bin/python -m pytest python/tests                    # the whole binding
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/types/*.test.js"
-    node --test "node/tests/holder/*.test.js"
-    node --test "node/tests/charset/*.test.js"
-    node --test "node/tests/media/*.test.js"
-    node --test "node/tests/text/*.test.js"
-    node --test "node/tests/uri/*.test.js"
-    node --test "node/tests/expression/*.test.js"
-    node --test "node/tests/hashing/*/*.test.js"
-    node --test "node/tests/fix/*.test.js"
+    node --test node/tests/datatype.test.js      # one source file
+    node --test "node/tests/text/*.test.js"      # one source folder
+    npm test --prefix node                       # the whole binding, and `tsc --noEmit`
     ```
 
 ## The documentation is tested too
@@ -118,7 +121,7 @@ python scripts/check_gcs_interop.py
 python scripts/check_iceberg_interop.py
 python scripts/setup_spark_interop.py
 python -m pytest python/tests -m spark_interop
-AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib avro::tests::fuzz_lite
+AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --features internals --test avro -- mod_::fuzz_lite
 ```
 
 | Script | Exchanges |
@@ -144,9 +147,10 @@ A skipped half fails its driver, so a skipped exchange never reads as a pass.
 
 | Where | What |
 | --- | --- |
-| `rust/src/**/tests.rs` | Unit tests beside the module they cover |
-| `rust/tests/<layer>.rs` + `rust/tests/<layer>/` | Integration tests, one target per layer |
-| `rust/tests/allocations.rs` | The counting-allocator target |
-| `python/tests/<layer>/` | Python binding and field-decorator tests |
-| `node/tests/<layer>/` | JavaScript binding tests, plus `tsc --noEmit` |
-| `*/benchmarks/<layer>*` | [Benchmarks](benchmarks.md) |
+| `rust/tests/<entry>.rs` + `rust/tests/<entry>/` | One target per top-level source entry, declaring the mirror of each of its files |
+| `rust/tests/root/<name>.rs` | The file `rust/src/<name>.rs` holds, pinned; a folder's own `mod.rs` is pinned by `mod_.rs` |
+| `rust/tests/support/` | Fixtures several targets declare - a counting allocator, an in-process S3 |
+| `rust/tests/allocations.rs`, `iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` | What is pinned as a cost or an exchange rather than as a file |
+| `python/tests/**/test_<name>.py` | The mirror of `python/yggdryl/` and `python/src/`, which share one shape |
+| `node/tests/**/<name>.test.js` | The mirror of `node/src/` and the JavaScript beside it, plus `tsc --noEmit` over the `.types.ts` files |
+| `*/benchmarks/<theme>*` | [Benchmarks](benchmarks.md), which stay grouped by a caller's vocabulary |

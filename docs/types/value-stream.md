@@ -24,8 +24,6 @@ This is the crate's own encoding, and what it keeps is the leaf: width, unit, zo
 === "Rust"
 
     ```rust
-    use std::str::FromStr as _;
-
     use yggdryl::{COMPRESS_FROM, DataType, DataTypeId, DataTypeKind, Scalar, VALUE_STREAM_VERSION};
 
     // A number is the version, the identifier and its bytes.
@@ -61,7 +59,6 @@ This is the crate's own encoding, and what it keeps is the leaf: width, unit, zo
     assert_eq!(DataTypeId::from_u8(0x10), None, "a family's own number is a placeholder");
     let refused = Scalar::decode_value_bytes(&[VALUE_STREAM_VERSION, 0x10]).unwrap_err();
     assert!(refused.to_string().contains("placeholder"));
-    let _ = DataType::from_str("int32")?;
     ```
 
 === "Python"
@@ -149,13 +146,13 @@ A `DataTypeId` is one byte, and the bytes are laid out by family: every `DataTyp
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test types valuestream
+    cargo test -p yggdryl --test root -- valuestream::stream
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k value_bytes
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k value_bytes
     ```
 
 === "JavaScript"

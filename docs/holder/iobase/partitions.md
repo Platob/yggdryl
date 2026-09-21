@@ -292,7 +292,7 @@ Addressing the folder restores the columns its directories spell and routes each
     leaf = lake / "year=2024" / "month=01" / "part-0.arrows"
     assert len(leaf.read_arrow_field().dtype) == 1
 
-    # Reading the folder restores them with their declared types.
+    # Reading the folder restores them with their declared yggdryl.
     restored = lake.read_arrow_reader(options=options).read_all()
     assert restored.column_names == ["price", "year", "month"]
     assert restored.schema.field("year").type == pa.int32()
@@ -492,8 +492,8 @@ column that is absent, or present holding nothing but nulls, is filled.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::records
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::partition
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iomedia::pushdown
+    cargo test --features "iceberg internals parquet" -p yggdryl --test media -- partition::lazy_folder
     cargo test -p yggdryl --doc media::partition
     cargo bench --bench types -- '^value/partition_'
     cargo bench --bench holder --features parquet -- io_listing
@@ -503,13 +503,13 @@ column that is absent, or present holding nothing but nulls, is filled.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k "Partitions"
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k partition
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k "Partitions"
+    python/.venv/bin/python -m pytest python/tests/test_field.py -k partition
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 2000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/holder/io.test.js"
+    node --test "node/tests/iobase.test.js"
     ```

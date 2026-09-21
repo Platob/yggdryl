@@ -1,4 +1,5 @@
-//! Edge cases for glob detection, decomposition, matching, and Hive parsing.
+//! `rust/src/uri/pattern.rs`: edge cases for glob detection, decomposition,
+//! matching, and Hive parsing.
 
 use yggdryl::Url;
 
@@ -261,5 +262,25 @@ mod hive {
 
         assert_eq!(partitioned.to_string(), "file:///lake/trades/year=2024");
         assert_eq!(partitioned.hive_partition("year").as_deref(), Some("2024"));
+    }
+}
+
+/// The per-segment matcher no identifier can reach.
+///
+/// A URL cannot carry a bracket, so an unterminated class is an edge the
+/// matcher has and no `Url` above can spell; it is matched here directly,
+/// through `yggdryl::internals`.
+#[cfg(feature = "internals")]
+mod segments {
+    use yggdryl::internals::uri_pattern::matches_segment;
+
+    #[test]
+    fn an_unterminated_class_is_matched_literally() {
+        // A URL cannot carry a bracket, so the matcher is exercised directly.
+
+        assert!(matches_segment("part-[0.arrows", "part-[0.arrows"));
+        assert!(!matches_segment("part-0.arrows", "part-[0.arrows"));
+        assert!(matches_segment("[a-b", "[a-b"));
+        assert!(matches_segment("[!x", "[!x"));
     }
 }

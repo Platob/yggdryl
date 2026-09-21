@@ -162,23 +162,23 @@ pub(crate) fn block_id(index: u32) -> String {
     base64::engine::general_purpose::STANDARD.encode(raw)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/azure/dialect.rs` pins and a caller cannot
+    //! reach.
+    //!
+    //! A block id has to sort the way the blocks are ordered and be the same
+    //! length for every block of one blob, which is a property of the naming
+    //! rather than of any request. Both items forward.
 
-    #[test]
-    fn every_block_id_of_a_blob_is_the_same_length() {
-        let first = block_id(1);
-        let last = block_id(9_999_999);
-        assert_eq!(first.len(), last.len());
-        assert_ne!(first, last);
-        // Ids sort the way the blocks are ordered, which is what makes a
-        // committed list readable.
-        assert!(block_id(2) > block_id(1));
+    /// The base64 id of block `index`, fixed width so ids sort in order.
+    pub fn block_id(index: u32) -> String {
+        super::block_id(index)
     }
 
-    #[test]
-    fn a_batch_boundary_is_the_prefix_azure_demands() {
-        assert!(batch_boundary(b"lake").starts_with("batch_"));
+    /// The multipart boundary a batch request is framed with.
+    pub fn batch_boundary(seed: &[u8]) -> String {
+        super::batch_boundary(seed)
     }
 }

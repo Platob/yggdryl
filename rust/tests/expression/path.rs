@@ -1,4 +1,4 @@
-//! Focused edge cases for the one path grammar.
+//! `rust/src/expression/path.rs`: focused edge cases for the one path grammar.
 
 use yggdryl::SequenceType;
 use yggdryl::expression::Term;
@@ -703,4 +703,693 @@ fn a_predicate_segment_reads_the_elements_a_row_holds() {
         .apply_scalar(&root, &full)
         .expect_err("a row is no list of structs");
     assert!(refused.to_string().contains("list of structs"), "{refused}");
+}
+
+mod grammar {
+
+    use yggdryl::DateTimeType;
+    use yggdryl::expression::{Attribute, Term};
+    use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+
+    // ---------------------------------------------------------------------------
+    // The shared fixture
+    // ---------------------------------------------------------------------------
+
+    /// A schema that covers one column of every family a comparison can meet.
+    fn rows_schema() -> Field {
+        Field::new(
+            "rows",
+            StructType::from_fields([
+                Field::new("i", DataType::Int64, true),
+                Field::new("f", DataType::Float64, true),
+                Field::new("d", DataType::decimal128(9, 2).unwrap(), true),
+                Field::new("s", DataType::utf8(), true),
+                Field::new("b", DataType::Boolean, true),
+                Field::new(
+                    "t",
+                    DataType::DateTime(DateTimeType::DateTime64 {
+                        unit: TimeUnit::Microsecond,
+                        timezone: Timezone::UTC,
+                    }),
+                    true,
+                ),
+                Field::new("n", DataType::Int32, true).with_partition(true),
+                Field::new(
+                    "nested",
+                    DataType::from(
+                        StructType::from_fields([Field::new("leg", DataType::utf8(), true)])
+                            .unwrap(),
+                    ),
+                    true,
+                ),
+                // Temporal text, so a cast into and out of a temporal is one of
+                // the pairs the two tiers are compared on.
+                Field::new("clock", DataType::utf8(), true),
+                // A list, so a position and a run are compared on both tiers.
+                Field::new(
+                    "xs",
+                    DataType::list(DataType::Int64.nullable_field("item")),
+                    true,
+                ),
+                // A list of structs holding a list of structs, so a predicate
+                // segment and one nested in another are compared on both tiers.
+                Field::new("legs", DataType::list(leg_field()), true),
+            ])
+            .map(DataType::from)
+            .unwrap(),
+            false,
+        )
+    }
+
+    /// One leg: a currency, a size, and notes that are themselves a list of
+    /// structs.
+    fn leg_field() -> Field {
+        StructType::from_fields([
+            DataType::utf8().nullable_field("ccy"),
+            DataType::Int64.nullable_field("size"),
+            DataType::list(
+                StructType::from_fields([
+                    DataType::utf8().nullable_field("k"),
+                    DataType::Int64.nullable_field("v"),
+                ])
+                .map(DataType::from)
+                .unwrap()
+                .nullable_field("item"),
+            )
+            .nullable_field("notes"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("item")
+    }
+
+    fn leg(ccy: Option<&str>, size: Option<i64>, notes: Option<&[(&str, i64)]>) -> Scalar {
+        Scalar::from_sequence([
+            ccy.map_or(Scalar::Null, Scalar::from),
+            size.map_or(Scalar::Null, Scalar::from),
+            notes.map_or(Scalar::Null, |notes| {
+                Scalar::from_sequence(
+                    notes
+                        .iter()
+                        .map(|(k, v)| Scalar::from_sequence([Scalar::from(*k), Scalar::from(*v)])),
+                )
+            }),
+        ])
+    }
+
+    /// Rows chosen so every operator meets a null, a `nan`, and a boundary.
+    fn rows() -> Vec<Scalar> {
+        let stamp =
+            |micros: i64| Scalar::datetime64(micros, TimeUnit::Microsecond, Timezone::UTC).unwrap();
+        let nested =
+            |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
+        let list =
+            |items: &[i64]| Scalar::from_sequence(items.iter().map(|item| Scalar::from(*item)));
+        vec![
+            Scalar::from_sequence([
+                Scalar::from(1),
+                Scalar::from(1.5_f64),
+                Scalar::d128(150, 2),
+                Scalar::from("alpha"),
+                Scalar::from(true),
+                stamp(1_700_000_000_000_000),
+                Scalar::from(2024),
+                nested(Some("EUR")),
+                Scalar::from("10:23:45"),
+                list(&[1, 2, 3]),
+                Scalar::from_sequence([
+                    leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
+                    leg(Some("USD"), Some(2), Some(&[])),
+                    leg(Some("EUR"), Some(3), None),
+                ]),
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(-3),
+                Scalar::from(f64::NAN),
+                Scalar::d128(-25, 2),
+                Scalar::from("beta"),
+                Scalar::from(false),
+                stamp(0),
+                Scalar::from(2024),
+                nested(None),
+                Scalar::from("25:30:00"),
+                list(&[]),
+                // An empty list keeps nothing and is not null.
+                Scalar::from_sequence([]),
+            ]),
+            Scalar::from_sequence([
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::from(2024),
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                // A null list stays null through every predicate.
+                Scalar::Null,
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(100),
+                Scalar::from(f64::INFINITY),
+                Scalar::d128(10_000, 2),
+                Scalar::from("Alpha"),
+                Scalar::Null,
+                stamp(-1_000_000),
+                Scalar::from(2023),
+                nested(Some("USD")),
+                Scalar::from("99:59:59"),
+                list(&[7]),
+                // A null element is dropped; a null size makes a size test unknown.
+                Scalar::from_sequence([Scalar::Null, leg(Some("EUR"), None, Some(&[("a", 5)]))]),
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(0),
+                Scalar::from(0.0_f64),
+                Scalar::d128(0, 2),
+                Scalar::from(""),
+                Scalar::from(true),
+                stamp(1_700_000_000_000_001),
+                Scalar::from(2025),
+                nested(Some("eur")),
+                Scalar::from("00:00:00.500"),
+                list(&[0, -1]),
+                Scalar::from_sequence([
+                    leg(Some("eur"), Some(10), Some(&[("c", 3)])),
+                    leg(Some("GBP"), Some(0), Some(&[("z", 0)])),
+                ]),
+            ]),
+        ]
+    }
+
+    fn batch_of(schema: &Field, rows: &[Scalar]) -> arrow_array::RecordBatch {
+        let arrow_schema = schema.clone().into_arrow_schema().unwrap();
+        let columns = schema
+            .fields()
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let values: Vec<Scalar> = rows
+                    .iter()
+                    .map(|row| row.as_sequence().unwrap()[index].clone())
+                    .collect();
+                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                    .unwrap()
+            })
+            .collect();
+        arrow_array::RecordBatch::try_new(arrow_schema, columns).unwrap()
+    }
+
+    // ---------------------------------------------------------------------------
+    // The predicate segment
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn a_predicate_segment_keeps_the_elements_the_grammar_says() {
+        let schema = rows_schema();
+        let rows = rows();
+        let eur = "legs[ccy = 'EUR']".parse::<Term>().unwrap();
+        assert_eq!(
+            eur.columns(),
+            vec!["legs".to_owned()],
+            "the row column, not the element's"
+        );
+        let bound = eur.bind(&schema).unwrap();
+        assert_eq!(bound.field().dtype(), schema.fields()[10].dtype());
+        assert!(bound.field().is_nullable());
+        assert_eq!(bound.column_names(), vec!["legs".to_owned()]);
+        assert_eq!(
+            bound.eval(&rows[0]).unwrap(),
+            Scalar::from_sequence([
+                leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
+                leg(Some("EUR"), Some(3), None),
+            ])
+        );
+        assert_eq!(bound.eval(&rows[1]).unwrap(), Scalar::from_sequence([]));
+        assert_eq!(
+            bound.eval(&rows[2]).unwrap(),
+            Scalar::Null,
+            "a null list stays null"
+        );
+        assert_eq!(
+            bound.eval(&rows[3]).unwrap(),
+            Scalar::from_sequence([leg(Some("EUR"), None, Some(&[("a", 5)]))]),
+            "a null element is dropped"
+        );
+        assert_eq!(
+            bound.eval(&rows[4]).unwrap(),
+            Scalar::from_sequence([]),
+            "text compares exactly"
+        );
+
+        let first = "legs[ccy = 'EUR'][0].size"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        assert_eq!(first.field().dtype(), &DataType::Int64);
+        assert_eq!(first.eval(&rows[0]).unwrap(), Scalar::from(1_i64));
+        assert_eq!(first.eval(&rows[1]).unwrap(), Scalar::Null);
+        assert_eq!(first.eval(&rows[3]).unwrap(), Scalar::Null);
+
+        // A predicate over the element's own list of structs, chained.
+        let nested = "legs[notes[v > 1][0].k = 'b'][0].ccy"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        assert_eq!(nested.eval(&rows[0]).unwrap(), Scalar::from("EUR"));
+        assert_eq!(nested.eval(&rows[3]).unwrap(), Scalar::Null);
+    }
+
+    #[test]
+    fn a_predicate_segment_over_a_sliced_large_list_matches_the_row_tier() {
+        let schema = Field::new(
+            "rows",
+            StructType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+                .map(DataType::from)
+                .unwrap(),
+            false,
+        );
+        let rows: Vec<Scalar> = rows()
+            .iter()
+            .map(|row| Scalar::from_sequence([row.as_sequence().unwrap()[10].clone()]))
+            .collect();
+        let batch = batch_of(&schema, &rows).slice(1, 3);
+        let bound = "legs[ccy = 'EUR'][size is null or size > 1]"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        let column = bound.evaluate(&batch).unwrap();
+        assert_eq!(column.len(), 3);
+        for (position, row) in rows[1..4].iter().enumerate() {
+            let held = yggdryl::arrow::scalar_value(
+                &bound.field().clone().with_nullable(true),
+                column.slice(position, 1).as_ref(),
+            )
+            .unwrap();
+            assert_eq!(bound.eval(row).unwrap(), held, "row {position}");
+        }
+    }
+
+    #[test]
+    fn a_predicate_segment_is_refused_where_it_cannot_keep_elements() {
+        let schema = rows_schema();
+        for (text, expected) in [
+            ("i[x = 1]", "list of structs"),
+            ("xs[item > 1]", "list of structs"),
+            ("legs[size]", "boolean predicate"),
+            ("legs[nope = 1]", "ccy, size, notes"),
+            ("legs[i = 1]", "ccy, size, notes"),
+        ] {
+            let error = text.parse::<Term>().unwrap().bind(&schema).expect_err(text);
+            assert!(error.to_string().contains(expected), "{text}: {error}");
+            assert!(
+                text.parse::<Term>().unwrap().field(&schema).is_err(),
+                "{text} types the same way"
+            );
+        }
+        // A computed value has no column to keep elements of, and the parser
+        // says so at the bracket.
+        for text in [
+            "lower(s)[x = 1]",
+            "[1, 2][x = 1]",
+            "slice(legs, 0, 1)[ccy = 'EUR']",
+        ] {
+            let error = text.parse::<Term>().expect_err(text);
+            assert!(
+                error.to_string().contains("computed value"),
+                "{text}: {error}"
+            );
+        }
+        let refused = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+            .filter_elements("x = 1".parse().unwrap())
+            .expect_err("a computed value");
+        assert!(refused.to_string().contains("computed value"), "{refused}");
+        assert_eq!(
+            Term::column("legs")
+                .filter_elements("ccy = 'EUR'".parse().unwrap())
+                .unwrap()
+                .to_string(),
+            "legs[ccy = 'EUR']"
+        );
+    }
+
+    #[test]
+    fn a_predicate_step_on_a_computed_value_has_no_term_to_build() {
+        let refused = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+            .path([yggdryl::FieldSegment::filter("x = 1".parse().unwrap())])
+            .expect_err("a computed value");
+        assert!(refused.to_string().contains("computed value"), "{refused}");
+        // Every other step reads a computed value through the call that reads it.
+        let read = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+            .path([
+                yggdryl::FieldSegment::field("k"),
+                yggdryl::FieldSegment::index(0),
+            ])
+            .unwrap();
+        assert_eq!(read.to_string(), "get(get(lower(s), 'k'), 0)");
+    }
+
+    #[test]
+    fn a_predicate_segment_is_walked_like_any_other_node() {
+        let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][&holder.size > :floor]"
+            .parse()
+            .unwrap();
+        assert_eq!(term.columns(), vec!["legs".to_owned()]);
+        assert_eq!(term.parameters(), vec!["floor".to_owned()]);
+        assert_eq!(term.attributes(), vec![Attribute::Size]);
+        assert!(term.has_attributes());
+        // A path, two predicates, and what they hold: the budget counts inside.
+        assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().node_count(), 4);
+        assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().depth(), 3);
+        assert_eq!(
+            "legs[notes[v > 1][0].k = 'b']"
+                .parse::<Term>()
+                .unwrap()
+                .depth(),
+            5
+        );
+        assert_eq!(
+            term.simplify().to_string(),
+            "legs[ccy in ('EUR', 'USD')][&holder.size > :floor]",
+            "simplification reaches into a predicate"
+        );
+        // Nesting predicates past the limit is refused, never a crash.
+        let deep = format!("{}x{}", "a[".repeat(40), "]".repeat(40));
+        let error = deep.parse::<Term>().expect_err("past the limit");
+        assert!(error.to_string().contains("hard limit"), "{error}");
+        let document = term.clone().into_json().unwrap();
+        assert!(document.contains("\"where\""), "{document}");
+        assert_eq!(Term::from_json(&document).unwrap(), term);
+    }
+}
+
+mod nested {
+    use yggdryl::{DataType, Error, Field, FieldPath, StructType};
+
+    #[test]
+    fn a_path_uses_the_shared_grammar_for_routes_and_literal_names() {
+        let row = StructType::from_fields([
+            StructType::from_fields([DataType::Float64.required_field("price")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("line"),
+            DataType::Int64.required_field("a.b"),
+            DataType::Boolean.required_field("literal.name"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+
+        // A route through the graph.
+        assert_eq!(row.field_by_path("line.price").unwrap().name(), "price");
+
+        // A dot is a route boundary. A literal dot in one name is quoted through
+        // the shared grammar, as is the equivalent text-key spelling.
+        assert!(row.get_field_by_path("a.b").is_none());
+        assert_eq!(
+            row.field_by_path(r#""a.b""#).unwrap().dtype(),
+            &DataType::Int64
+        );
+        assert_eq!(
+            row.field_by_path("['literal.name']").unwrap().dtype(),
+            &DataType::Boolean
+        );
+        assert_eq!(row[r#""a.b""#].dtype(), &DataType::Int64);
+
+        // The route names no root `a`, and the literal child carries no `c`.
+        assert!(row.get_field_by_path("a.b.c").is_none());
+
+        // Quoting keeps the literal name one segment before the route continues.
+        let deep = StructType::from_fields([StructType::from_fields([
+            DataType::utf8().required_field("c")
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("a.b")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("deep");
+        assert_eq!(deep.field_by_path(r#""a.b".c"#).unwrap().name(), "c");
+
+        // The same grammar addresses literal names for mutation. The stored name
+        // is the segment's value, never its quotes or the replacement's old name.
+        let mut changed = row.clone();
+        changed
+            .set_field_by_path(r#""a.b""#, DataType::utf8().required_field("replacement"))
+            .unwrap();
+        assert_eq!(changed[r#""a.b""#].dtype(), &DataType::utf8());
+        let removed = changed.remove_field_by_path(r#""a.b""#).unwrap();
+        assert_eq!(removed.name(), "a.b");
+        assert!(changed.get_field_by_path(r#""a.b""#).is_none());
+
+        // A path naming nothing reports the children that do exist.
+        let message = row.field_by_path("missing").unwrap_err().to_string();
+        assert!(message.contains("line"), "{message}");
+    }
+
+    #[test]
+    fn a_list_is_transparent_to_a_dotted_path_when_reading() {
+        let item = StructType::from_fields([
+            DataType::Float64.required_field("price"),
+            StructType::from_fields([DataType::utf8().required_field("id")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("party"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("item");
+        let orders =
+            StructType::from_fields([DataType::list(item.clone()).nullable_field("orders")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("row");
+
+        // The item is a step the path need not spell, and both spellings agree.
+        assert_eq!(
+            orders.field_by_path("orders.price").unwrap().name(),
+            "price"
+        );
+        assert_eq!(
+            orders.field_by_path("orders.item.price").unwrap().name(),
+            "price"
+        );
+        assert_eq!(
+            orders.field_by_path("orders.party.id").unwrap().name(),
+            "id"
+        );
+        assert_eq!(orders["orders"]["price"].name(), "price");
+        assert_eq!(
+            orders.get_field("orders.price"),
+            orders.get_field("orders.item.price")
+        );
+
+        // The item's own name still wins outright.
+        assert_eq!(orders.field_by_path("orders.item").unwrap().name(), "item");
+        assert_eq!(
+            orders.field_by_path("orders[0].price").unwrap().name(),
+            "price"
+        );
+        assert_eq!(
+            orders.field_by_path("orders[-1].price").unwrap().name(),
+            "price"
+        );
+
+        // A path that resolves through no child reports the path that failed.
+        let message = orders
+            .field_by_path("orders.quantity")
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("orders.quantity"), "{message}");
+        assert!(orders.get_field_by_path("orders.quantity").is_none());
+
+        // Every list layout reads the same way; a map keeps its entries by name.
+        let leaf = StructType::from_fields([DataType::Int64.required_field("value")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("item");
+        for layout in [
+            DataType::list(leaf.clone()),
+            DataType::large_list(leaf.clone()),
+            DataType::list_view(leaf.clone()),
+            DataType::large_list_view(leaf.clone()),
+            DataType::fixed_size_list(leaf.clone(), 2).unwrap(),
+        ] {
+            assert_eq!(
+                layout.get_field_by_path("value").map(Field::name),
+                Some("value"),
+                "{layout}"
+            );
+            assert_eq!(
+                layout.get_field_by_path("item.value").map(Field::name),
+                Some("value"),
+                "{layout}"
+            );
+        }
+        let map = DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap();
+        assert!(map.get_field_by_path("value").is_none());
+        assert_eq!(
+            map.get_field_by_path("entries.value").map(Field::name),
+            Some("value")
+        );
+
+        // A write is not transparent: it addresses the item by its own name, and
+        // a list never grows a second child.
+        let mut written = orders.clone();
+        written
+            .set_field_by_path(
+                "orders.item.price",
+                DataType::Float32.required_field("price"),
+            )
+            .unwrap();
+        assert_eq!(written["orders"]["price"].dtype(), &DataType::Float32);
+        assert_eq!(
+            written
+                .remove_field_by_path("orders.item.party")
+                .unwrap()
+                .name(),
+            "party"
+        );
+        assert_eq!(written["orders"].dtype().field_len(), 1);
+        assert_eq!(written["orders"]["item"].field_len(), 1);
+    }
+
+    #[test]
+    fn schema_path_refusals_are_located_and_mutations_are_atomic() {
+        let item = StructType::from_fields([DataType::Float64.required_field("price")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("item");
+        let row = StructType::from_fields([
+            StructType::from_fields([DataType::Float64.required_field("price")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("line"),
+            DataType::Int64.required_field("id"),
+            DataType::list(item).nullable_field("orders"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+
+        let malformed = row.field_by_path("line.").unwrap_err();
+        assert!(
+            matches!(
+                &malformed,
+                Error::Parse {
+                    target: "field path",
+                    position: 5,
+                    ..
+                }
+            ),
+            "{malformed}"
+        );
+
+        // Boolean and null segments parse as predicates; a decimal is refused at
+        // the parser boundary because only a whole number can select a list item.
+        for path in ["orders[true].price", "orders[null].price"] {
+            assert!(FieldPath::from_str(path).is_ok(), "{path}");
+        }
+        assert!(matches!(
+            FieldPath::from_str("orders[1.5].price"),
+            Err(Error::Parse {
+                target: "field path",
+                ..
+            })
+        ));
+
+        // These parse as selectors or refuse at the same boundary, but none name
+        // one borrowed schema child.
+        for path in [
+            "line.price as px",
+            "orders[0:1].price",
+            "orders[price > 0].price",
+            "orders[true].price",
+            "orders[null].price",
+            "orders[1.5].price",
+        ] {
+            assert!(row.get_field_by_path(path).is_none(), "{path}");
+            assert!(row.field_by_path(path).is_err(), "{path}");
+        }
+
+        // A missing intermediate, a scalar intermediate, malformed syntax and a
+        // computed selection never become a new dotted child. Both mutations
+        // finish their validation before committing any rebuilt parent.
+        for path in [
+            "missing.price",
+            "line.missing.price",
+            "id.price",
+            "line.",
+            "line.price as px",
+            "orders[0:1].price",
+            "orders[price > 0].price",
+            "orders[true].price",
+            "orders[null].price",
+            "orders[1.5].price",
+        ] {
+            let mut set = row.clone();
+            assert!(
+                set.set_field_by_path(path, DataType::utf8().required_field("replacement"))
+                    .is_err(),
+                "set {path}"
+            );
+            assert_eq!(set, row, "set {path} changed the schema");
+
+            let mut removed = row.clone();
+            assert!(removed.remove_field_by_path(path).is_err(), "remove {path}");
+            assert_eq!(removed, row, "remove {path} changed the schema");
+        }
+    }
+
+    #[test]
+    fn one_key_reaches_a_child_by_position_or_by_path() {
+        let row = StructType::from_fields([StructType::from_fields([
+            DataType::Float64.required_field("price")
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("line")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+
+        // The same call, whichever spelling the caller holds.
+        assert_eq!(row.field(0).unwrap().name(), "line");
+        assert_eq!(row.field("line").unwrap().name(), "line");
+        assert_eq!(row.get_field("line.price").unwrap().name(), "price");
+        assert!(row.get_field(9).is_none());
+        assert!(row.get_field("absent").is_none());
+
+        // `DataType` answers identically, so descending never changes the calls.
+        let dtype = row.dtype();
+        assert_eq!(dtype.field(0).unwrap().name(), "line");
+        assert_eq!(dtype.field_by_path("line.price").unwrap().name(), "price");
+    }
+
+    #[test]
+    fn setting_by_path_reaches_a_nested_child() {
+        let mut row = StructType::from_fields([StructType::from_fields([
+            DataType::Int32.required_field("price")
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("line")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+
+        row.set_field_by_path("line.price", DataType::Float64.required_field("price"))
+            .unwrap();
+        assert_eq!(row["line"]["price"].dtype(), &DataType::Float64);
+
+        // Removing reaches the same child, and the parent keeps its own identity.
+        assert_eq!(row.remove_field("line.price").unwrap().name(), "price");
+        assert_eq!(row["line"].field_len(), 0);
+        assert_eq!(row.field_len(), 1);
+    }
 }

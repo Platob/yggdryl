@@ -54,11 +54,11 @@
 //! # }
 //! ```
 
-mod archive;
-mod entry;
-mod format;
+pub(crate) mod archive;
+pub(crate) mod entry;
+pub(crate) mod format;
 mod leaf;
-mod name;
+pub(crate) mod name;
 mod node;
 mod path;
 
@@ -176,6 +176,3 @@ fn member_partitions(archive: &Archive, member: &str) -> Vec<(String, String)> {
     pairs.extend(crate::uri::hive_partitions_of(member.split('/')));
     pairs
 }
-
-#[cfg(test)]
-mod tests;

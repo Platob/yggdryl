@@ -100,13 +100,15 @@ A table's columns are the children of a struct field with `nullable` false, the 
     ```python
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
 
     schema = Field(
         "trade",
         DataType.from_fields([
-            types.int64("id", nullable=False),
-            types.utf8("symbol"),
+            yggdryl.int64("id", nullable=False),
+            yggdryl.utf8("symbol"),
         ]),
         nullable=False,
     )
@@ -592,11 +594,12 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    id_field = types.int64("id", nullable=False)
-    symbol = types.utf8("symbol", metadata={"source": "feed"})
-    at = types.datetime64("at", "us", nullable=False)
+    id_field = yggdryl.int64("id", nullable=False)
+    symbol = yggdryl.utf8("symbol", metadata={"source": "feed"})
+    at = yggdryl.datetime64("at", "us", nullable=False)
 
     assert isinstance(id_field, Field)
     assert str(id_field.dtype) == "int64"
@@ -629,7 +632,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version`, `types.figi` / `fields.figi` |
 
-[Geospatial](geospatial.md), [Strings & bytes](text.md), [Codes](codes.md), [UUID](uuid.md), and [Version](text.md#versions) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::FIGICode`; `DataType::FIGICode.shared_field()` answers that shared field.
+[Geospatial](geospatial/index.md), [Strings & bytes](text/index.md), [Codes](codes/index.md), [UUID](uuid.md), and [Version](version.md) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::FIGICode`; `DataType::FIGICode.shared_field()` answers that shared field.
 
 ## Converting to one native field
 
@@ -831,7 +834,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     !!! note "Rust and Python only"
         JavaScript has no YAML or TOML writer; it reads and writes the same model as JSON
         through `toJSON`, `toJSONBytes`, `Field.fromJSON`, and `Field.fromJSONBytes`
-        ([Strings & bytes](text.md#serialized-shape) round-trips one).
+        ([String](text/string.md#serialized-shape) round-trips one).
 
 ## A readable rendering
 
@@ -999,9 +1002,11 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::generic field::nested field::serde field::comparison field::typed field::arrow field::integer field::floating field::decimal field::temporal field::binary field::scalar
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean bytes::fields decimal::fields diff::comparison field::arrow field::generic field::nested floating integer mapping::nested merge::nested metadata::generic parser::generic protocol::generic protocol::nested serde::generic serde::schemas temporal::fields typed
     cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc -- Field::apply_arrow
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- field:: typed:: diff:: merge::
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- diff::internal merge::internal
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_field_clone|field_stable_hash|metadata_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'
@@ -1012,7 +1017,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py python/tests/types/test_factories.py python/tests/types/test_field_classes.py python/tests/types/test_field_classes_arrow.py python/tests/types/test_field_classes_edges.py python/tests/types/test_field_classes_py314.py python/tests/types/test_protocol_hashability.py
+    python/.venv/bin/python -m pytest python/tests/test_field.py python/tests/test_datatype.py python/tests/test__classes.py python/tests/test_protocol.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     ```
@@ -1020,7 +1025,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/field.test.js node/tests/types/fields.test.js
+    node --test node/tests/field.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```
 

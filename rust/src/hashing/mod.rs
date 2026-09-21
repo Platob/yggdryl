@@ -21,6 +21,6 @@
 //! Scalar and streaming operations need no Arrow runtime. Each child module
 //! gates only its Arrow implementation behind the `arrow` feature.
 
-mod stable;
+pub(crate) mod stable;
 
 pub(crate) use stable::{stable_hash_display, stable_hash_of};

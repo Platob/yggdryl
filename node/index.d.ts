@@ -52,7 +52,7 @@ export declare class BatchReader {
   /** Read the batches an Arrow IPC stream holds. */
   static fromIpc(bytes: Uint8Array, rootName?: string | undefined | null): BatchReader
   /** The canonical non-null struct root `Field` these batches describe. */
-  get field(): JsField
+  get field(): Field
   /** Return whether the stream has been read or handed to a write. */
   get consumed(): boolean
   /**
@@ -215,7 +215,7 @@ export declare class Catalog {
    * caller who only has rows and a name needs nothing else. Returns the
    * table so the caller can keep going.
    */
-  append(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
+  append(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * Replace the named table's rows with `data`, creating it on first write.
    *
@@ -223,7 +223,7 @@ export declare class Catalog {
    * current pointer moves. `options` configures this one write. Returns the
    * table so the caller can keep going.
    */
-  overwrite(name: string, data: BatchReader, options?: IcebergOptions | undefined | null): Table
+  overwrite(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * One namespace as a view: `catalog.namespace('analytics')`.
    *
@@ -1483,7 +1483,7 @@ export declare class FixCodec {
    * projection already and is cast batch by batch instead of read back as
    * messages. The source is consumed.
    */
-  formatArrowReader(source: JsBatchReader, field: JsField): JsBatchReader
+  formatArrowReader(source: JsBatchReader, field: Field): JsBatchReader
   /**
    * Writes a stream of batches of FIX rows back to the wire, answering the
    * count of lines.
@@ -1594,7 +1594,7 @@ export declare class FixMsg {
    * creation the stated one, else the instant. What `OrigSendingTime(122)`
    * says is the lifecycle's to read. The identity is then settled.
    */
-  constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
+  constructor(field: Field, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
    * The message a fixed row holds: the inverse of `intoRow`.
    *
@@ -1614,14 +1614,14 @@ export declare class FixMsg {
    * no clock is read. The
    * process default is the registry when none is named.
    */
-  static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
+  static fromRow(schema: Field, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
   get registry(): FixRegistry
   /**
    * The root Struct field: the content row's schema, holding every child
    * the message states beyond its typed facts.
    */
-  get field(): JsField
+  get field(): Field
   /** The ordered content row. */
   get value(): JsScalar
   /**
@@ -1898,7 +1898,7 @@ export declare class FixMsg {
    * cannot be null keeps the refusal, and throws it located. No clock is
    * read.
    */
-  intoRow(schema: JsField): JsScalar
+  intoRow(schema: Field): JsScalar
   /**
    * Re-emit this message on the wire, separated by `separator`: the
    * standard header - `SendingTime` only when the message stated it - the
@@ -1947,12 +1947,12 @@ export declare class FixRegistry {
    * definition of its own, reached here or by its name. Two groups on one
    * counter name nothing.
    */
-  getFieldByCounter(tag: number): JsField | null
+  getFieldByCounter(tag: number): Field | null
   /**
    * The repeating group a counter tag opens, failing when absent or
    * ambiguous.
    */
-  fieldByCounter(tag: number): JsField
+  fieldByCounter(tag: number): Field
   /**
    * The message definition a wire code, a canonical name or tag 35's
    * alias names, or `null`: a copy of the registry's own, so a later
@@ -1978,7 +1978,7 @@ export declare class FixRegistry {
    *
    * The first refusal fails the whole build.
    */
-  static fromFields(fields: Array<JsField>): FixRegistry
+  static fromFields(fields: Array<Field>): FixRegistry
   /**
    * Load the fields, components, and groups categories.
    *
@@ -2048,28 +2048,28 @@ export declare class FixRegistry {
    * name - and the lookup is exact: no tiering, no fold, and a number that
    * is not a signed 32-bit integer is refused, never a miss.
    */
-  getFieldById(id: number): JsField | null
+  getFieldById(id: number): Field | null
   /** The field one identifier names exactly. */
-  fieldById(id: number): JsField
+  fieldById(id: number): Field
   /**
    * The field a canonical or alternate tag names, or `null`.
    *
    * The canonical holder of the tag answers first, then the field holding
    * it as an alternate.
    */
-  getFieldByTag(tag: number): JsField | null
+  getFieldByTag(tag: number): Field | null
   /** The field a canonical or alternate tag names. */
-  fieldByTag(tag: number): JsField
+  fieldByTag(tag: number): Field
   /**
    * The field a canonical name or alias names, ASCII case folded, or `null`.
    *
    * One namespace: the canonical fold answers first, then an alias fold.
    */
-  getFieldByName(name: string): JsField | null
+  getFieldByName(name: string): Field | null
   /** The field a canonical name or alias names, ASCII case folded. */
-  fieldByName(name: string): JsField
+  fieldByName(name: string): Field
   /** The field a dotted path reaches through a component or a group, or `null`. */
-  getFieldByPath(path: string | FieldPath): JsField | null
+  getFieldByPath(path: string | FieldPath): Field | null
   /**
    * The field a path reaches through a component or a group.
    *
@@ -2078,16 +2078,16 @@ export declare class FixRegistry {
    * of a group holds, so that spelling reaches the member here as well as
    * in a message.
    */
-  fieldByPath(path: string | FieldPath): JsField
+  fieldByPath(path: string | FieldPath): Field
   /** The field a tag or name reaches by deterministic best match, or `null`. */
-  getField(key: number | string): JsField | null
+  getField(key: number | string): Field | null
   /** The field a tag or name reaches by deterministic best match. */
-  field(key: number | string): JsField
+  field(key: number | string): Field
   /**
    * The field a tag or name reaches by deterministic best match, or `null`:
    * the Map-like spelling of `getField`.
    */
-  get(key: number | string): JsField | null
+  get(key: number | string): Field | null
   /** Whether a tag or name reaches a field by deterministic best match. */
   has(key: number | string): boolean
   /**
@@ -2108,7 +2108,7 @@ export declare class FixRegistry {
    * One mutation: a refusal - no `FIX:tag`, a datatype disagreeing with
    * the stored field - leaves the dictionary exactly as it was.
    */
-  addField(field: JsField): boolean
+  addField(field: Field): boolean
   /**
    * Add a field, answering the one it replaced.
    *
@@ -2116,13 +2116,13 @@ export declare class FixRegistry {
    * component - a message when it carries `FIX:msgtype` - a List of
    * Structs or a Map as a group, and anything else as a scalar field.
    */
-  insert(field: JsField): JsField | null
+  insert(field: Field): Field | null
   /**
    * Merge a definition into the stored field with the same identity: the
    * same tag under the same folded name, or the component or group of
    * the same folded name.
    */
-  update(field: JsField): void
+  update(field: Field): void
   /**
    * Remove the field a tag or a name reaches, answering it.
    *
@@ -2130,7 +2130,7 @@ export declare class FixRegistry {
    * definition leaves through the same door; one another definition still
    * references stays, and `null` says so.
    */
-  remove(key: number | string): JsField | null
+  remove(key: number | string): Field | null
   /**
    * Remove the field one identifier names exactly, answering it.
    *
@@ -2138,7 +2138,7 @@ export declare class FixRegistry {
    * that reaches one of two fields sharing a tag by its own identity;
    * `id` is read exactly as every other identifier argument is.
    */
-  removeById(id: number): JsField | null
+  removeById(id: number): Field | null
   /**
    * The code set held under `name`, or `null`.
    *
@@ -2157,7 +2157,7 @@ export declare class FixRegistry {
    * `null`; a held field never names one this dictionary lacks, because
    * every door a field arrives through refuses that.
    */
-  codesetOf(field: JsField): FixCodeSetView | null
+  codesetOf(field: Field): FixCodeSetView | null
   /**
    * The names of every code set held, in name order.
    *
@@ -2799,7 +2799,7 @@ export declare class IOBase {
    */
   recordOptions(): JsRecordOptions
   /** Read the canonical non-null struct root `Field` of this resource. */
-  readArrowField(options?: JsRecordOptions | undefined | null): JsField
+  readArrowField(options?: JsRecordOptions | undefined | null): Field
   /**
    * Read this resource's rows as one `BatchReader`.
    *
@@ -3142,7 +3142,7 @@ export declare class MsgType {
   /** The complete wire message code. */
   asStr(): string
   /** Project an independent copy of the native message Struct field. */
-  asField(): JsField
+  asField(): Field
   /**
    * The compiled selection of non-null direct identifiers, in member order.
    *
@@ -3151,7 +3151,7 @@ export declare class MsgType {
    */
   identifierValues(message: FixMsg): Array<[Field, Scalar]>
   /** Look up the unique repeating group for a native counter tag. */
-  getGroupByTag(tag: number): JsField | null
+  getGroupByTag(tag: number): Field | null
   /** Compare the complete native values. */
   equals(other: MsgType): boolean
   /** Compare native message definitions using their total ordering. */
@@ -3292,7 +3292,7 @@ export declare class PartitionSpec {
    * the spec a write can use; a `bucket`, `truncate`, or calendar spec reads
    * here but is refused by name when it would have to place a row.
    */
-  static identity(schema: JsField, columns: Array<string>, specId?: number | undefined | null): PartitionSpec
+  static identity(schema: Field, columns: Array<string>, specId?: number | undefined | null): PartitionSpec
   /** The identifier this spec is recorded under. */
   get specId(): number
   /** The partition fields, in the order the directories nest. */
@@ -3705,12 +3705,12 @@ export declare class RecordOptions {
    * The declared root Field - the `create` section of the plan - or
    * `null` when the shape is inferred from the rows.
    */
-  get field(): JsField | null
+  get field(): Field | null
   /**
    * Declare the root Field, or clear it with `null`; the stored root is
    * always required, whatever nullability the value carried.
    */
-  set field(field: JsField | undefined | null)
+  set field(field: Field | undefined | null)
   /** The root Field name, declared or given to an inferred schema. */
   get name(): string
   /** Set the root Field name. */
@@ -3801,7 +3801,7 @@ export declare class RecordOptions {
    * Split a `Plan`, its text, a clause, or a `Field` back into the
    * sections, replacing every one of them.
    */
-  set plan(plan: Plan | Selector | Filter | JsField | string)
+  set plan(plan: Plan | Selector | Filter | Field | string)
   /**
    * The partition equalities the filter pins, `[column, value]` pairs
    * spelled as partition paths spell them; what prunes a listing before
@@ -3847,7 +3847,7 @@ export declare class RecordOptions {
   /** Return these options with a fixed Avro marker, or `null` to clear it. */
   withSyncMarker(marker?: Buffer | undefined | null): RecordOptions
   /** Return these options with a declared canonical root Field. */
-  withField(field: JsField): RecordOptions
+  withField(field: Field): RecordOptions
   /** Return these options with a different root Field name. */
   withName(name: string): RecordOptions
   /** Return these options with a different cast strictness. */
@@ -3869,7 +3869,7 @@ export declare class RecordOptions {
   /** Return these options pruned and filtered by a `where` section. */
   withFilter(filter: Filter | Term | string): RecordOptions
   /** Return these options with every section a plan spells. */
-  withPlan(plan: Plan | Selector | Filter | JsField | string): RecordOptions
+  withPlan(plan: Plan | Selector | Filter | Field | string): RecordOptions
   /** Return whether the encoding variant and every current setting are equal. */
   equals(other: RecordOptions): boolean
   /** Compare the complete options through the core's total order. */
@@ -3978,13 +3978,13 @@ export declare class Scalar {
   /** The scale of an exact decimal, or `null`. */
   get scale(): number | null
   /** Infer the exact native datatype this value names. */
-  get dtype(): JsDataType
+  get dtype(): DataType
   /** Infer the exact native Field for this scalar value. */
-  intoField(): JsField
+  intoField(): Field
   /** Infer the exact item Field for this non-empty outer Sequence. */
-  intoArrayField(): JsField
+  intoArrayField(): Field
   /** Infer a non-null Struct root from named Record rows. */
-  intoStructField(): JsField
+  intoStructField(): Field
   /** Return deterministic hash bits shared with Rust and Python. */
   stableHash(): bigint
   /**
@@ -4339,7 +4339,7 @@ export declare class Table {
    * columns are numbered automatically, so a plain schema works as it is; a
    * schema that already carries field identifiers keeps every one of them.
    */
-  static create(root: LocationInput, schema: JsField, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /** Open the table a container handle addresses. */
   static open(root: LocationInput): Table
   /**
@@ -4349,7 +4349,7 @@ export declare class Table {
    * automatically; an existing table is opened as it is and `schema`
    * describes only the table this call would create.
    */
-  static openOrCreate(root: LocationInput, schema: JsField, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
   /**
    * The folder the table lives in.
    *
@@ -4358,7 +4358,7 @@ export declare class Table {
    * a table on a foreign Arrow file system must hand back a folder on that
    * file system, not the local path its URL happens to spell.
    */
-  get root(): IOBase
+  get root(): JsIOBase
   /** The table's base location, as a URI. */
   get location(): string
   /** A stable identifier for the table itself, not for any one version. */
@@ -4374,7 +4374,7 @@ export declare class Table {
   /** The location of the current metadata document, as a URI. */
   get metadataLocation(): string
   /** The schema new data is written against. */
-  get schema(): JsField
+  get schema(): Field
   /** The partition spec new data is written against. */
   get spec(): PartitionSpec
   /**
@@ -4385,7 +4385,7 @@ export declare class Table {
    */
   get currentSnapshot(): Snapshot | null
   /** Every schema the table has had, oldest first. */
-  get schemas(): Array<JsField>
+  get schemas(): Array<Field>
   /** Every retained snapshot, oldest first. */
   get snapshots(): Array<Snapshot>
   /** Every manifest the current snapshot points at. */
@@ -4408,7 +4408,7 @@ export declare class Table {
    * schema evolved readable as one shape. `options` configures this one
    * call and is put back afterwards, so the handle's own override survives.
    */
-  scan(field?: JsField | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
   /**
    * Read the rows matching one predicate as a `BatchReader`.
    *
@@ -4419,7 +4419,7 @@ export declare class Table {
    * metadata chain, and only the conjuncts it could not settle are tested
    * against the rows.
    */
-  scanMatching(filter: Filter | Term | string, field?: JsField | undefined | null): BatchReader
+  scanMatching(filter: Filter | Term | string, field?: Field | undefined | null): JsBatchReader
   /** Report what one predicate lets the scan leave alone. */
   planMatching(filter: Filter | Term | string): ScanPlanCounts
   /**
@@ -4432,7 +4432,7 @@ export declare class Table {
    * way the result is the same rows; what differs is how many files were
    * opened to find them.
    */
-  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
   /**
    * Read the rows a branch or tag names, as of the snapshot it points at.
    *
@@ -4441,7 +4441,7 @@ export declare class Table {
    * `field` meanings. A name the table does not have is refused naming the
    * refs it does.
    */
-  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
   /**
    * Decide which data files `filters` would have a read open, and no more.
    *
@@ -4468,7 +4468,7 @@ export declare class Table {
    * `commitRetries`, `dataMimeType`, and the rest - and the handle's own
    * configuration is untouched.
    */
-  append(batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  append(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Replace every row with `batches` as a new snapshot.
    *
@@ -4476,7 +4476,7 @@ export declare class Table {
    * `options` configures this one write, exactly as on
    * [`append`](Self::append).
    */
-  overwrite(batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  overwrite(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Replace only the rows `filters` selects, keeping every other file.
    *
@@ -4492,7 +4492,7 @@ export declare class Table {
    * `options` configures this one write, exactly as on
    * [`append`](Self::append).
    */
-  overwriteWhere(filters: ScanFilters | undefined | null, batches: BatchReader, options?: IcebergOptions | undefined | null): void
+  overwriteWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the stored rows, matching on `mergeBy`: a
    * `Selector`, the text of one, or the key column names.
@@ -4508,7 +4508,7 @@ export declare class Table {
    * default nulls it, and `false` throws instead. `options` configures this
    * one write, exactly as on [`append`](Self::append).
    */
-  merge(batches: BatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  merge(batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /**
    * Merge `batches` into the rows `filters` selects, on `mergeBy`.
    *
@@ -4517,9 +4517,9 @@ export declare class Table {
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
-  evolveSchema(schema: JsField): number
+  evolveSchema(schema: Field): number
   /**
    * Read one retained snapshot's rows: time travel as an ordinary scan.
    *
@@ -4529,7 +4529,7 @@ export declare class Table {
    * names, exactly as on [`scan`](Self::scan). The rows are read as the
    * schema the snapshot was written under.
    */
-  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): BatchReader
+  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
   /**
    * Return the retained snapshot a branch or tag names.
    *
@@ -4619,21 +4619,21 @@ export declare class Table {
    * The columns are `made_current_at`, `snapshot_id`, `parent_id`, and
    * `is_current_ancestor`, the names `PyIceberg`'s `history` table uses.
    */
-  inspectHistory(): BatchReader
+  inspectHistory(): JsBatchReader
   /**
    * Render every retained snapshot with its operation and summary.
    *
    * The columns are `committed_at`, `snapshot_id`, `parent_id`,
    * `operation`, `manifest_list`, and the free-form `summary` map.
    */
-  inspectSnapshots(): BatchReader
+  inspectSnapshots(): JsBatchReader
   /**
    * Render the live data files of the current snapshot.
    *
    * The columns are `file_path`, `file_format`, `spec_id`, the rendered
    * `partition` chain, `record_count`, and `file_size_in_bytes`.
    */
-  inspectFiles(): BatchReader
+  inspectFiles(): JsBatchReader
   /**
    * Set and remove table properties as one metadata-only commit.
    *
@@ -4711,7 +4711,7 @@ export declare class Tables {
    * `options` configures this one write. Returns the table so the caller can
    * keep going.
    */
-  append(name: string, batches: BatchReader, options?: IcebergOptions | undefined | null): Table
+  append(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): Table
   /**
    * Replace the named table's rows with `batches`, creating it on first
    * write.
@@ -4720,7 +4720,7 @@ export declare class Tables {
    * makes the overwrite reversible. `options` configures this one write.
    * Returns the table so the caller can keep going.
    */
-  overwrite(name: string, batches: BatchReader, options?: IcebergOptions | undefined | null): Table
+  overwrite(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): Table
 }
 export type JsTables = Tables
 
@@ -5031,9 +5031,9 @@ export declare class TextOptions {
   /** Return the fixed `text/plain` media type. */
   get mimeType(): MimeType
   /** Return the declared root field, if any. */
-  get field(): JsField | null
+  get field(): Field | null
   /** Replace the declared root field, or clear it with `null`. */
-  set field(field: JsField | undefined | null)
+  set field(field: Field | undefined | null)
   /** Return the inferred or declared root name. */
   get name(): string
   /** Replace the root name. */
@@ -5092,7 +5092,7 @@ export declare class TextOptions {
    * Split a `Plan`, its text, a clause, or a `Field` back into the
    * sections, replacing every one of them.
    */
-  set plan(plan: Plan | Selector | Filter | JsField | string)
+  set plan(plan: Plan | Selector | Filter | Field | string)
   /** The partition equalities the filter pins, `[column, value]` pairs. */
   partitionPairs(): Array<[string, string]>
   /** The first emitted row number, or `null` when the column is omitted. */
@@ -5174,7 +5174,7 @@ export declare class TextOptions {
   /** Set or clear the autotyping timezone. */
   set timezone(value: TimezoneInput | undefined | null)
   /** Return a copy with a declared root field. */
-  withField(field: JsField): TextOptions
+  withField(field: Field): TextOptions
   /** Return a copy with a different root name. */
   withName(name: string): TextOptions
   /** Return a copy with different cast strictness. */
@@ -5196,7 +5196,7 @@ export declare class TextOptions {
   /** Return a copy pruned and filtered by a `where` section. */
   withFilter(filter: Filter | Term | string): TextOptions
   /** Return a copy with every section a plan spells. */
-  withPlan(plan: Plan | Selector | Filter | JsField | string): TextOptions
+  withPlan(plan: Plan | Selector | Filter | Field | string): TextOptions
   /** Return whether every setting is equal. */
   equals(other: TextOptions): boolean
   /** Compare every setting through the core total order. */
@@ -5299,7 +5299,7 @@ export declare class TxHash {
   /** The digest half, carrying its algorithm. */
   get digest(): JsDigest
   /** The datatype a column of values like this one is stored under. */
-  get dtype(): JsDataType
+  get dtype(): DataType
   /** Restate the instant at another clock resolution, keeping the digest. */
   withUnit(unit: string): TxHash
   /** The canonical bytes: the instant big-endian, then the digest. */
@@ -5366,7 +5366,7 @@ export declare class TxHasher {
   /** The width of every answer's canonical bytes. */
   get width(): number
   /** The datatype a column of answers is stored under. */
-  get dtype(): JsDataType
+  get dtype(): DataType
   /** Make a cheap native clone. */
   clone(): TxHasher
 }
@@ -6163,7 +6163,7 @@ export interface FixCodeSetView {
  * registry already holds them, so this is the listing a schema or a
  * document walks rather than something a caller registers.
  */
-export declare function fixCrateFields(): Array<JsField>
+export declare function fixCrateFields(): Array<Field>
 
 /** One rule reading a code of tag 385's set off the prose in front of a payload. */
 export interface FixDirection {
@@ -6376,7 +6376,7 @@ export interface FixHeaderView {
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */
-export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
+export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): Field
 
 /**
  * The fixed root behind a capture's own columns.
@@ -6396,7 +6396,7 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * pass that has no source row in hand writes null there rather than
  * refusing per row. The one-pass readers state every one of them.
  */
-export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
+export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
 
 /**
  * One row's columns, in order, as tags: the crate's own, the header, the

@@ -99,7 +99,9 @@ pub(crate) fn canonical_group_name(name: &str) -> SmolStr {
     }
 }
 
-#[cfg(test)]
+// Only `rust/tests/fix/mod_.rs` names these two, through the `internals`
+// door below; `group_names` is what the crate itself reads.
+#[cfg(feature = "internals")]
 pub(crate) fn group_name(counter: &crate::Field) -> SmolStr {
     group_names(counter, None).0
 }
@@ -114,7 +116,7 @@ pub(crate) fn entry_display(group: &str) -> SmolStr {
     SmolStr::new(format!("{}{digits}", singularize(stem)))
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) fn entry_name(group: &str) -> SmolStr {
     SmolStr::new(entry_display(group).to_ascii_lowercase())
 }
@@ -167,4 +169,47 @@ pub(crate) fn occurrence_name(group: &crate::Field) -> SmolStr {
         return SmolStr::new(item.name());
     }
     group_names(group, None).2
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A published collection is named once, and its occurrence's singular
+    //! with it; both spellings reach a caller only as the names on a row.
+
+    /// The group name a counter field's own name implies.
+    #[must_use]
+    pub fn group_name(counter: &crate::Field) -> String {
+        super::group_name(counter).to_string()
+    }
+
+    /// The singular an occurrence of `group` is named by.
+    #[must_use]
+    pub fn entry_name(group: &str) -> String {
+        super::entry_name(group).to_string()
+    }
+
+    /// The one canonical name a repeating-group spelling resolves to.
+    #[must_use]
+    pub fn canonical_group_name(name: &str) -> String {
+        super::canonical_group_name(name).to_string()
+    }
+
+    /// The collection's name and display beside its occurrence's, in that
+    /// order, for a counter field and the spelling its schema declared.
+    #[must_use]
+    pub fn group_names(
+        counter: &crate::Field,
+        declared: Option<&str>,
+    ) -> (String, String, String, String) {
+        let (group, display, entry, entry_display) = super::group_names(counter, declared);
+        (
+            group.to_string(),
+            display.to_string(),
+            entry.to_string(),
+            entry_display.to_string(),
+        )
+    }
 }

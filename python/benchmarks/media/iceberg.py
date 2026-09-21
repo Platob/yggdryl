@@ -28,7 +28,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl.media.iceberg import Catalog
+from yggdryl.iceberg import Catalog
 
 ROW_COUNT = 65_536
 BATCH_SIZE = 8_192

@@ -459,72 +459,42 @@ fn poisoned() -> Error {
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::{Duration, SystemTime};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/aws/credentials.rs` pins and a caller cannot
+    //! reach.
+    //!
+    //! The chain itself walks the environment, the shared files and two
+    //! metadata services, none of which a test may touch; what it turns into a
+    //! credential set - one metadata document, one instant, one staleness rule
+    //! - is pinned here instead. Each item forwards.
+    use std::time::SystemTime;
 
-    use super::{Credentials, days_from_civil, parse_iso8601_utc, parse_metadata_credentials};
+    use crate::Result;
+    use crate::object::Credentials;
 
-    #[test]
-    fn the_secret_never_reaches_debug_output() {
-        let keys = Credentials::new("AKIA", "s3cr3t").with_session_token("t0k3n");
-        let rendered = format!("{keys:?}");
-        assert!(rendered.contains("AKIA"), "{rendered}");
-        assert!(!rendered.contains("s3cr3t"), "{rendered}");
-        assert!(!rendered.contains("t0k3n"), "{rendered}");
+    /// The days between `1970-01-01` and the civil date given.
+    pub fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+        super::days_from_civil(year, month, day)
     }
 
-    #[test]
-    fn an_empty_session_token_is_no_token() {
-        assert_eq!(
-            Credentials::new("a", "b")
-                .with_session_token("")
-                .session_token(),
-            None
-        );
+    /// One `YYYY-MM-DDThh:mm:ssZ` instant, or `None` for anything else.
+    pub fn parse_iso8601_utc(text: &str) -> Option<SystemTime> {
+        super::parse_iso8601_utc(text)
     }
 
-    #[test]
-    fn a_set_is_stale_inside_the_refresh_margin_only() {
-        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let fresh = Credentials::new("a", "b").with_expiry(now + Duration::from_secs(3600));
-        assert!(!fresh.is_stale(now));
-        let expiring = Credentials::new("a", "b").with_expiry(now + Duration::from_secs(60));
-        assert!(expiring.is_stale(now));
-        assert!(!Credentials::new("a", "b").is_stale(now));
+    /// The credential set one metadata document states.
+    ///
+    /// # Errors
+    ///
+    /// A document without an access key id, a secret, or a token.
+    pub fn parse_metadata_credentials(body: &[u8], source: &str) -> Result<Credentials> {
+        super::parse_metadata_credentials(body, source)
     }
 
-    #[test]
-    fn metadata_documents_carry_token_and_expiry() {
-        let body = br#"{"Code":"Success","AccessKeyId":"ASIA","SecretAccessKey":"secret","Token":"tok","Expiration":"2026-09-05T12:34:56Z"}"#;
-        let keys = parse_metadata_credentials(body, "test").unwrap();
-        assert_eq!(keys.access_key_id(), "ASIA");
-        assert_eq!(keys.session_token(), Some("tok"));
-        assert_eq!(keys.expires_at(), parse_iso8601_utc("2026-09-05T12:34:56Z"));
-
-        let message = parse_metadata_credentials(b"{}", "test")
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("AccessKeyId"), "{message}");
-    }
-
-    #[test]
-    fn iso8601_utc_instants_parse_and_the_rest_does_not() {
-        let epoch = parse_iso8601_utc("1970-01-01T00:00:00Z").unwrap();
-        assert_eq!(epoch, SystemTime::UNIX_EPOCH);
-        let later = parse_iso8601_utc("2013-05-24T00:00:00Z").unwrap();
-        assert_eq!(
-            later.duration_since(SystemTime::UNIX_EPOCH).unwrap(),
-            Duration::from_secs(1_369_353_600)
-        );
-        assert_eq!(
-            parse_iso8601_utc("2013-05-24T00:00:00.123Z"),
-            parse_iso8601_utc("2013-05-24T00:00:00Z")
-        );
-        assert_eq!(parse_iso8601_utc("2013-05-24T00:00:00+02:00"), None);
-        assert_eq!(parse_iso8601_utc("2013-05-24"), None);
-        assert_eq!(parse_iso8601_utc("2013-13-24T00:00:00Z"), None);
-        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
-        assert_eq!(days_from_civil(1969, 12, 31), -1);
+    /// Whether `credentials` should be replaced before signing at `now`.
+    pub fn is_stale(credentials: &Credentials, now: SystemTime) -> bool {
+        credentials.is_stale(now)
     }
 }

@@ -1,0 +1,92 @@
+//! `rust/src/union.rs`.
+
+mod variants {
+    use yggdryl::{DataType, Field, UnionMode};
+
+    #[test]
+    fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
+        let members = [
+            Field::new("number", DataType::Int64, false),
+            Field::from_parts("text", DataType::utf8(), true, [("source", "variant")]).unwrap(),
+        ];
+        let variant = DataType::dense_union(members.clone()).unwrap();
+        let union = DataType::union(
+            [(0, members[0].clone()), (1, members[1].clone())],
+            UnionMode::Dense,
+        )
+        .unwrap();
+
+        assert_eq!(variant, union);
+        assert_eq!(variant.name(), "union");
+        assert_eq!(
+            variant.to_string(),
+            r#"union(dense,0=field("number",int64,nullable=false,metadata={}),1=field("text",utf8,nullable=true,metadata={"source":"variant"}))"#
+        );
+        assert_eq!(
+            variant.clone().into_json().unwrap(),
+            union.into_json().unwrap()
+        );
+        assert_eq!(
+            DataType::from_arrow_datatype(&variant.clone().into_arrow_datatype().unwrap()).unwrap(),
+            variant
+        );
+    }
+
+    #[test]
+    fn variant_builder_enforces_the_arrow_type_id_capacity() {
+        let accepted = DataType::dense_union(
+            (0..128).map(|index| Field::new(format!("member_{index}"), DataType::Int64, true)),
+        )
+        .unwrap();
+        assert_eq!(accepted.field_len(), 128);
+        assert_eq!(accepted.get_field(127).map(Field::name), Some("member_127"));
+
+        let error = DataType::dense_union(
+            (0..129).map(|index| Field::new(format!("member_{index}"), DataType::Int64, true)),
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("variant cannot contain more than 128 members"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn variant_builder_reuses_union_child_validation() {
+        let duplicate = DataType::dense_union([
+            Field::new("same", DataType::Int64, false),
+            Field::new("same", DataType::utf8(), true),
+        ])
+        .unwrap_err();
+        assert!(
+            duplicate
+                .to_string()
+                .contains("duplicate field name \"same\"")
+        );
+
+        let empty = DataType::dense_union([]).unwrap();
+        assert_eq!(empty, DataType::union([], UnionMode::Dense).unwrap());
+    }
+
+    #[test]
+    fn deeply_nested_variants_round_trip_without_a_second_logical_type() {
+        let mut value = DataType::Int64;
+        for depth in 0..24 {
+            value =
+                DataType::dense_union([Field::new(format!("level_{depth}"), value, true)]).unwrap();
+        }
+
+        value.validate().unwrap();
+        assert_eq!(DataType::from_str(&value.to_string()).unwrap(), value);
+        assert_eq!(
+            DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
+            value
+        );
+        assert_eq!(
+            DataType::from_arrow_datatype(&value.clone().into_arrow_datatype().unwrap()).unwrap(),
+            value
+        );
+    }
+}

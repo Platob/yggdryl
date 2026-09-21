@@ -1301,86 +1301,6 @@ pub(crate) fn canonicalize_python_kind(value: &str) -> Result<String> {
     PythonKind::from_str(value).map(|kind| kind.as_str().to_owned())
 }
 
-/// The three metadata keys an integration test cannot reach.
-///
-/// `PYTHON_MODULE_KEY`, `PYTHON_QUALNAME_KEY` and `PYTHON_KIND_KEY` are
-/// crate-private: they are the keys a declaration is stored under, and a
-/// caller reads them back only through the borrowed view. What a caller can
-/// observe lives in `tests/types/metadata.rs`.
-#[cfg(test)]
-mod python_tests {
-    use super::*;
-    use crate::DataType;
-
-    #[test]
-    fn a_declaration_round_trips_through_the_field() {
-        let declared =
-            PythonMetadata::new("trading.book", "Book.Quote", PythonKind::Field).unwrap();
-        let mut field = DataType::Int64.required_field("price");
-
-        field.as_python_mut().set_class(&declared).unwrap();
-
-        assert_eq!(field.get_metadata(PYTHON_KIND_KEY), Some("field"));
-        assert_eq!(field.get_metadata(PYTHON_MODULE_KEY), Some("trading.book"));
-        assert_eq!(field.get_metadata(PYTHON_QUALNAME_KEY), Some("Book.Quote"));
-        assert_eq!(field.as_python().class().unwrap(), Some(declared.clone()));
-        assert_eq!(field.as_python().class_name(), Some("Quote"));
-        assert_eq!(
-            field.as_python().import_path().as_deref(),
-            Some("trading.book.Book.Quote")
-        );
-        assert_eq!(field.as_python_mut().remove_class(), Some(declared));
-        assert!(field.as_python().is_empty());
-    }
-
-    #[test]
-    fn a_partial_declaration_names_no_class() {
-        let mut field = DataType::Int64.required_field("price");
-        field.as_python_mut().set_module("trading.book").unwrap();
-
-        assert_eq!(field.as_python().module(), Some("trading.book"));
-        assert_eq!(field.as_python().class().unwrap(), None);
-        assert_eq!(field.as_python().import_path(), None);
-    }
-
-    #[test]
-    fn a_class_declared_in_a_function_is_not_importable() {
-        let declared =
-            PythonMetadata::new("app", "build.<locals>.Row", PythonKind::Dataclass).unwrap();
-
-        assert_eq!(declared.class_name(), "Row");
-        assert!(!declared.is_importable());
-        assert!(
-            PythonMetadata::new("app", "Row", PythonKind::Dataclass)
-                .unwrap()
-                .is_importable()
-        );
-    }
-
-    #[test]
-    fn every_stored_form_round_trips_its_spelling() {
-        for kind in PythonKind::ALL {
-            assert_eq!(PythonKind::from_str(kind.as_str()).unwrap(), kind);
-            // The refusal sentence is written out, so it is the one thing that
-            // can fall behind a form added to the list.
-            assert!(KIND_SHAPE.contains(kind.as_str()), "{kind}");
-        }
-        assert!(PythonKind::from_str("record").is_err());
-    }
-
-    #[test]
-    fn a_name_python_could_not_have_written_is_refused() {
-        for refused in ["", "trading.", ".book", "trading book", "1book", "class"] {
-            assert!(validate_python_module(refused).is_err(), "{refused:?}");
-        }
-        for accepted in ["trading", "trading.book", "_private", "match", "données"] {
-            assert!(validate_python_module(accepted).is_ok(), "{accepted:?}");
-        }
-        assert!(validate_python_qualname("build.<locals>.Row").is_ok());
-        assert!(validate_python_module("build.<locals>.Row").is_err());
-    }
-}
-
 /// A field borrowed as one protocol: its properties by bare name, and the
 /// field itself.
 ///
@@ -2045,46 +1965,91 @@ macro_rules! protocol_field_types {
 
 for_each_well_known_protocol!(protocol_field_types);
 
-/// The protocol list an integration test cannot reach.
-///
-/// `for_each_well_known_protocol!` is a crate-private macro: it is the one
-/// place the well-known protocols are named, and this pin checks each one
-/// reaches the key its own scheme spells. The rest of the suite lives in
-/// `tests/types/metadata.rs`.
-#[cfg(test)]
-mod tests {
-    use crate::metadata::for_each_well_known_protocol;
-    use crate::{DataType, Scheme};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/protocol.rs` pins and a caller cannot reach.
+    //!
+    //! The three keys a Python declaration is stored under are crate-private:
+    //! a caller reads them back only through the borrowed view, so a pin on
+    //! the literal key has to name them. The two validators are the same
+    //! story. `for_each_well_known_protocol!` is a crate-private macro - the
+    //! one place the well-known protocols are named - and a macro cannot be
+    //! re-exported outside the crate at all, so the walk over that list lives
+    //! here and answers what it measured; every assertion stays in the test.
 
-    /// Assert one named pair reaches the key its own scheme spells.
-    macro_rules! assert_protocol_prefix {
-        ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
-            let mut field = DataType::Int64.required_field("probe");
-            let key = format!("{}:x", Scheme::$constant.metadata_prefix());
+    use crate::{DataType, Result, Scheme};
 
-            field.$mutable().insert("x", "1").unwrap();
-            // The literal key is what proves the accessor, the newtype and the
-            // scheme constant of one list entry agree; both `prefix` calls
-            // would still agree if all three drifted together.
-            assert_eq!(field.get_metadata(&key), Some("1"));
-            assert_eq!(field.$name().prefix(), Scheme::$constant.metadata_prefix());
-            assert_eq!(
-                field.$mutable().prefix(),
-                Scheme::$constant.metadata_prefix()
-            );
-            assert_eq!(field.$name().key("x"), key);
+    /// The metadata key a declaration's module is stored under.
+    pub const PYTHON_MODULE_KEY: &str = super::PYTHON_MODULE_KEY;
+    /// The metadata key a declaration's qualified name is stored under.
+    pub const PYTHON_QUALNAME_KEY: &str = super::PYTHON_QUALNAME_KEY;
+    /// The metadata key a declaration's stored form is stored under.
+    pub const PYTHON_KIND_KEY: &str = super::PYTHON_KIND_KEY;
+    /// The refusal sentence that names every stored form.
+    pub const KIND_SHAPE: &str = super::KIND_SHAPE;
 
-            let view = field.$name();
-            let mut looped = Vec::new();
-            for (name, value) in &view {
-                looped.push((name, value));
-            }
-            assert_eq!(looped, [("x", "1")]);
-        };
+    /// Whether `value` is a name Python could have written as a module.
+    pub fn validate_python_module(value: &str) -> Result<()> {
+        super::validate_python_module(value)
     }
 
-    #[test]
-    fn every_named_protocol_view_spells_its_own_scheme_prefix() {
-        for_each_well_known_protocol!(assert_protocol_prefix);
+    /// Whether `value` is a name Python could have written as a qualname.
+    pub fn validate_python_qualname(value: &str) -> Result<()> {
+        super::validate_python_qualname(value)
+    }
+
+    /// What one well-known protocol's pair of views answered on a probe
+    /// field, after the mutable view stored `x` as `1`.
+    pub struct ProtocolProbe {
+        /// The prefix this entry's own [`Scheme`] constant spells.
+        pub scheme_prefix: String,
+        /// What the field holds under `<scheme_prefix>:x`.
+        pub stored: Option<String>,
+        /// The prefix the borrowed view answers.
+        pub view_prefix: String,
+        /// The prefix the mutable view answers.
+        pub view_mut_prefix: String,
+        /// The key the borrowed view spells for `x`.
+        pub key: String,
+        /// What iterating the borrowed view yielded.
+        pub entries: Vec<(String, String)>,
+    }
+
+    /// Probe every well-known protocol through its own pair of accessors.
+    ///
+    /// One entry per protocol, in the order the crate-private list names
+    /// them, so a protocol added to that list arrives here on its own.
+    #[must_use]
+    pub fn well_known_protocol_probes() -> Vec<ProtocolProbe> {
+        let mut probes = Vec::new();
+        macro_rules! probe_protocol {
+            ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
+                let mut field = DataType::Int64.required_field("probe");
+                let scheme_prefix = Scheme::$constant.metadata_prefix().into_owned();
+                field
+                    .$mutable()
+                    .insert("x", "1")
+                    .expect("a well-known protocol accepts its own property");
+                let key = format!("{scheme_prefix}:x");
+                let stored = field.get_metadata(&key).map(str::to_owned);
+                let view_mut_prefix = field.$mutable().prefix().into_owned();
+                let view = field.$name();
+                probes.push(ProtocolProbe {
+                    view_prefix: view.prefix().into_owned(),
+                    key: view.key("x").to_string(),
+                    entries: (&view)
+                        .into_iter()
+                        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                        .collect(),
+                    scheme_prefix,
+                    stored,
+                    view_mut_prefix,
+                });
+            };
+        }
+
+        crate::metadata::for_each_well_known_protocol!(probe_protocol);
+        probes
     }
 }

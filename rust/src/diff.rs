@@ -1225,103 +1225,50 @@ impl DataType {
     }
 }
 
-#[cfg(test)]
-/// The field-pair walk an integration test cannot reach.
-///
-/// `Differences::from_fields` is crate-private: it is the borrowed walk
-/// [`OwnedDifferences::from_fields`] owns its answers from, so the wide
-/// cases have to be measured from inside. What a caller can observe lives
-/// in `tests/types/field/comparison.rs`.
-mod tests {
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/diff.rs` pins and a caller cannot reach.
+    //!
+    //! [`Differences`] is the borrowed walk [`OwnedDifferences`] owns its
+    //! answers from: it is built crate-privately, and how much work it holds
+    //! at each step is the whole bounded-traversal contract. Both are behind
+    //! forwarders, so nothing here is more public than it was.
 
     use super::{Differences, OwnedDifferences};
-    use crate::{DataType, Field, StructType};
+    use crate::Field;
 
-    fn wide_struct(prefix: &str) -> DataType {
-        StructType::from_fields(
-            (0..1_024)
-                .map(|index| Field::new(format!("{prefix}_{index:04}"), DataType::Int64, false)),
-        )
-        .map(DataType::from)
-        .unwrap()
+    /// Start the borrowed walk over one field pair.
+    #[must_use]
+    pub fn differences_from_fields<'schema>(
+        left: &'schema Field,
+        right: &'schema Field,
+        with_metadata: bool,
+        return_equal: bool,
+    ) -> Differences<'schema> {
+        Differences::from_fields(left, right, with_metadata, return_equal)
     }
 
-    #[test]
-    fn wide_slice_work_stays_bounded_before_the_first_difference() {
-        let left = Field::new("root", wide_struct("left"), false);
-        let right = Field::new("root", wide_struct("right"), false);
-        let mut differences = Differences::from_fields(&left, &right, true, false);
-        assert_eq!(differences.engine.work.len(), 1);
-        assert!(differences.engine.pending.is_empty());
-
-        assert_eq!(
-            differences.next().as_deref(),
-            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
-        );
-        assert!(differences.engine.work.len() <= 2);
-        assert!(differences.engine.pending.is_empty());
-
-        let left = Field::new(
-            "root",
-            DataType::from(StructType::from_fields(std::iter::empty()).unwrap()),
-            false,
-        );
-        let right = Field::new("root", wide_struct("added"), false);
-        let mut differences = Differences::from_fields(&left, &right, true, false);
-        assert_eq!(
-            differences.next().as_deref(),
-            Some("≠ $.dtype.field_count: 0 → 1024")
-        );
-        assert_eq!(differences.engine.work.len(), 1);
-        assert!(differences.engine.pending.is_empty());
+    /// Start the owned walk over one field pair.
+    #[must_use]
+    pub fn owned_differences_from_fields(
+        left: &Field,
+        right: &Field,
+        with_metadata: bool,
+        return_equal: bool,
+    ) -> OwnedDifferences {
+        OwnedDifferences::from_fields(left, right, with_metadata, return_equal)
     }
 
-    #[test]
-    fn physical_first_difference_does_not_scan_equal_wide_metadata() {
-        let entries = (0..1_024)
-            .map(|index| (format!("key_{index:04}"), format!("value_{index:04}")))
-            .collect::<Vec<_>>();
-        let left = Field::from_parts("root", DataType::Int32, false, entries.clone()).unwrap();
-        let right = Field::from_parts("root", DataType::Int64, false, entries).unwrap();
-        assert!(!left.as_metadata().shares_storage_with(right.as_metadata()));
-
-        let mut differences = Differences::from_fields(&left, &right, true, false);
-        assert_eq!(differences.engine.work.len(), 1);
-        assert_eq!(
-            differences.next().as_deref(),
-            Some("≠ $.dtype.kind: int32 → int64")
-        );
-        assert_eq!(differences.engine.work.len(), 1);
-        assert!(differences.engine.pending.is_empty());
+    /// How many steps the walk still holds on its stack.
+    #[must_use]
+    pub fn work_len(differences: &Differences<'_>) -> usize {
+        differences.engine.work.len()
     }
 
-    #[test]
-    fn shared_deep_snapshots_complete_without_traversal() {
-        let mut dtype = DataType::Int64;
-        for depth in 0..64 {
-            dtype = DataType::list(Field::new(format!("item_{depth}"), dtype, false));
-        }
-        let left = Field::new("root", dtype, false);
-        let right = left.clone();
-        let mut differences = Differences::from_fields(&left, &right, true, false);
-        assert!(differences.engine.work.is_empty());
-        assert_eq!(differences.next(), None);
-    }
-
-    #[test]
-    fn owned_cursor_outlives_source_snapshots() {
-        let mut differences = {
-            let left = Field::new("left", wide_struct("left"), false);
-            let right = Field::new("right", wide_struct("right"), false);
-            OwnedDifferences::from_fields(&left, &right, true, false)
-        };
-        assert_eq!(
-            differences.next().as_deref(),
-            Some("≠ $.name: \"left\" → \"right\"")
-        );
-        assert_eq!(
-            differences.next().as_deref(),
-            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
-        );
+    /// Whether the walk holds a line it has not yielded yet.
+    #[must_use]
+    pub fn pending_is_empty(differences: &Differences<'_>) -> bool {
+        differences.engine.pending.is_empty()
     }
 }

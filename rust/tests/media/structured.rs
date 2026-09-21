@@ -1,4 +1,5 @@
-//! What a structured text document carries into Arrow rows, and back out.
+//! `rust/src/media/structured.rs`: what a structured text document carries
+//! into Arrow rows, and back out.
 
 use yggdryl::DecimalType;
 use yggdryl::holder::Buffer;

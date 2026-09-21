@@ -4,7 +4,7 @@
 //! one [`Arc`] over the core [`FixRegistry`], and every accessor coerces its
 //! key once at the boundary and redirects to the most specific native method.
 //! The typed `FIX:` vocabulary is not here either - it lives on the protocol
-//! view class [`crate::types::field::PyProtocolField`], which is what `field.fix`
+//! view class [`crate::field::PyProtocolField`], which is what `field.fix`
 //! already answers.
 //!
 //! An identifier crosses as the `int` the core derives from a tag and a name,
@@ -31,13 +31,13 @@ use yggdryl::{
     MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
 };
 
+use crate::field::{PyField, core_field_from_value};
+use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::media::iceberg::folder_holder_from_value;
+use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{PythonWriter, with_python_bytes};
-use crate::text_line::{PyTextLine, core_path_from_value};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::scalar::{PyScalar, from_py};
+use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 

@@ -13,8 +13,9 @@ from collections.abc import Callable
 from decimal import Decimal
 
 from yggdryl import IOBase, Scalar, scalar
-from yggdryl.media import avro
-from yggdryl.text import codec, json, toml, yaml
+from yggdryl import avro
+from yggdryl import json, toml, yaml
+from yggdryl.text import codec
 
 
 @scalar(frozen=True, slots=True)
