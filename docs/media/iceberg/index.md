@@ -216,7 +216,7 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/test_iceberg.py
-    python/.venv/bin/python -m pytest python/tests/test_iceberg.py -m spark_interop
+    python/.venv/bin/python -m pytest python/tests/test_spark_interop.py -m spark_interop
     ```
 
 === "JavaScript"

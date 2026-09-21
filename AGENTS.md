@@ -1525,7 +1525,7 @@ $V -m mypy --strict --config-file python/pyproject.toml \
   and only pin a second interpreter when a failure names the version.
 - Iceberg-with-Spark has its own CI job and is opt-in locally - `python
   scripts/setup_spark_interop.py`, then `python -m pytest
-  python/tests/test_iceberg.py -m spark_interop` - so run it only when
+  python/tests/test_spark_interop.py -m spark_interop` - so run it only when
   changing that boundary.
 
 # 4. Node

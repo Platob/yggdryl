@@ -386,7 +386,7 @@ jobs:
       # tree - the other modules' imports (pandas, typing_extensions) are the
       # default job's business, not this one's.
       - name: Exchange tables with Spark
-        run: python -m pytest python/tests/test_iceberg.py -m spark_interop
+        run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
 
   docs-examples:
     # Every fenced example under `docs/` compiled and run, in each of the three
