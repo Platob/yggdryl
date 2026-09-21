@@ -94,7 +94,11 @@ impl VariantSerie {
 
     /// Whether row `index` is past the end or absent.
     fn is_absent(&self, index: usize) -> bool {
-        index >= self.metadata.len() || self.nulls.as_ref().is_some_and(|nulls| nulls.is_null(index))
+        index >= self.metadata.len()
+            || self
+                .nulls
+                .as_ref()
+                .is_some_and(|nulls| nulls.is_null(index))
     }
 
     /// Rewrite row `replace`, or append one more, keeping every other row.

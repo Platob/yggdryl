@@ -654,9 +654,7 @@ pub trait DataTypeValue:
         I: IntoIterator,
         I::Item: AsRef<[u8]>,
     {
-        self.clone()
-            .into_dtype()
-            .decode_value_stream_bytes(chunks)
+        self.clone().into_dtype().decode_value_stream_bytes(chunks)
     }
 
     /// Cast an Arrow array to this datatype's exact physical array.
