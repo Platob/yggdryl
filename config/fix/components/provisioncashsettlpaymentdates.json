@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "provisioncashsettlpaymentdatebusinesscentergrp",
+        "name": "provisioncashsettlpaymentdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "provisioncashsettlpaymentdatebusinesscentergrp"
+          "FIX:group": "provisioncashsettlpaymentdatebusinesscenters"
         }
       },
       {

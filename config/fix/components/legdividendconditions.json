@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "legdividendperiodgrp",
+        "name": "legdividendperiods",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legdividendperiodgrp"
+          "FIX:group": "legdividendperiods"
         }
       },
       {

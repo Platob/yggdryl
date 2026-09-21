@@ -15,13 +15,13 @@
         }
       },
       {
-        "name": "legphysicalsettldeliverableobligationgrp",
+        "name": "legphysicalsettldeliverableobligations",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legphysicalsettldeliverableobligationgrp"
+          "FIX:group": "legphysicalsettldeliverableobligations"
         }
       },
       {

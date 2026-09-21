@@ -58,13 +58,13 @@
         }
       },
       {
-        "name": "instrmtstrkpxgrp",
+        "name": "strikes",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:group": "instrmtstrkpxgrp"
+          "FIX:group": "strikes"
         }
       },
       {

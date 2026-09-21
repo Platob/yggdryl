@@ -1,0 +1,24 @@
+{
+  "name": "underlyingreturnrateinformationsources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnrateinformationsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingreturnrateinformationsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingreturnrateinformationsourcecomponent",
+    "FIX:counter": "43060",
+    "FIX:tag": "358517",
+    "description": "Required if NoUnderlyingReturnRateInformationSources(43060) > 0.",
+    "display": "UnderlyingReturnRateInformationSources"
+  }
+}

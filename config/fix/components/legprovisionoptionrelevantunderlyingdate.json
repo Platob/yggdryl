@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "legprovisionoptionrelevantunderlyingdatebusinesscentergrp",
+        "name": "legprovisionoptionrelevantunderlyingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprovisionoptionrelevantunderlyingdatebusinesscentergrp"
+          "FIX:group": "legprovisionoptionrelevantunderlyingdatebusinesscenters"
         }
       },
       {

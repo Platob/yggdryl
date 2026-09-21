@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprotectiontermeventnewssources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectiontermeventnewssourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprotectiontermeventnewssourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprotectiontermeventnewssourcecomponent",
+    "FIX:counter": "42090",
+    "FIX:tag": "616298",
+    "description": "Required if NoUnderlyingProtectionTermEventNewsSources(42090) > 0.",
+    "display": "UnderlyingProtectionTermEventNewsSources"
+  }
+}

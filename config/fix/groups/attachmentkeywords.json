@@ -1,0 +1,24 @@
+{
+  "name": "attachmentkeywords",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "attachmentkeywordcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "attachmentkeywordcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "attachmentkeywordcomponent",
+    "FIX:counter": "2113",
+    "FIX:tag": "322073",
+    "description": "Required if NoAttachmentKeywords(2113) > 0.",
+    "display": "AttachmentKeywords"
+  }
+}

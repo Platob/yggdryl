@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "requestingpartysubgrp",
+        "name": "requestingpartysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "requestingpartysubgrp"
+          "FIX:group": "requestingpartysubids"
         }
       }
     ]

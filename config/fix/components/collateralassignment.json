@@ -210,13 +210,13 @@
         }
       },
       {
-        "name": "trdcollgrp",
+        "name": "trades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdcollgrp"
+          "FIX:group": "trades"
         }
       },
       {
@@ -413,13 +413,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {

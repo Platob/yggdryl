@@ -146,13 +146,13 @@
         }
       },
       {
-        "name": "affectedordgrp",
+        "name": "affectedorders",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "affectedordgrp"
+          "FIX:group": "affectedorders"
         }
       },
       {
@@ -167,13 +167,13 @@
         }
       },
       {
-        "name": "notaffectedordgrp",
+        "name": "notaffectedorders",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "notaffectedordgrp"
+          "FIX:group": "notaffectedorders"
         }
       },
       {
@@ -188,13 +188,13 @@
         }
       },
       {
-        "name": "affectedmarketsegmentgrp",
+        "name": "affectedmarketsegments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "affectedmarketsegmentgrp"
+          "FIX:group": "affectedmarketsegments"
         }
       },
       {
@@ -209,13 +209,13 @@
         }
       },
       {
-        "name": "notaffectedmarketsegmentgrp",
+        "name": "notaffectedmarketsegments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "notaffectedmarketsegmentgrp"
+          "FIX:group": "notaffectedmarketsegments"
         }
       },
       {
@@ -252,13 +252,13 @@
         }
       },
       {
-        "name": "targetmarketsegmentgrp",
+        "name": "targetmarketsegments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "targetmarketsegmentgrp"
+          "FIX:group": "targetmarketsegments"
         }
       },
       {

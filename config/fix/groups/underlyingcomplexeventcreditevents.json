@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventcreditevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventcreditevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcomplexeventcreditevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcomplexeventcreditevent",
+    "FIX:counter": "41716",
+    "FIX:tag": "500616",
+    "description": "Required if NoUnderlyingComplexEventCreditEvents(41716) > 0.",
+    "display": "UnderlyingComplexEventCreditEvents"
+  }
+}

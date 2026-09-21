@@ -1,0 +1,24 @@
+{
+  "name": "underlyingreturnratedates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnratedate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingreturnratedate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingreturnratedate",
+    "FIX:counter": "43008",
+    "FIX:tag": "832725",
+    "description": "Required if NoUnderlyingReturnRateDates(43008) > 0.",
+    "display": "UnderlyingReturnRateDates"
+  }
+}

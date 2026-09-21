@@ -1,0 +1,24 @@
+{
+  "name": "provisionoptionexercisefixeddates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionoptionexercisefixeddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "provisionoptionexercisefixeddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "provisionoptionexercisefixeddatecomponent",
+    "FIX:counter": "40142",
+    "FIX:tag": "774732",
+    "description": "Required if NoProvisionOptionExerciseFixedDates (40142) > 0.",
+    "display": "ProvisionOptionExerciseFixedDates"
+  }
+}

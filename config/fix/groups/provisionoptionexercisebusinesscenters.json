@@ -1,0 +1,24 @@
+{
+  "name": "provisionoptionexercisebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionoptionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "provisionoptionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "provisionoptionexercisebusinesscentercomponent",
+    "FIX:counter": "40954",
+    "FIX:tag": "754730",
+    "description": "Required if NoProvisionOptionExerciseBusinessCenters(40954) > 0.",
+    "display": "ProvisionOptionExerciseBusinessCenters"
+  }
+}

@@ -400,7 +400,7 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     );
     assert_eq!(
         latest
-            .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
+            .by_path(&path("parties[0].partysubids[0].partysubid"))
             .unwrap(),
         Scalar::from("ACCT")
     );
@@ -418,7 +418,7 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     );
     assert_eq!(
         alone
-            .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
+            .by_path(&path("parties[0].partysubids[0].partysubid"))
             .unwrap(),
         Scalar::from("ACCT")
     );
@@ -467,11 +467,11 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
     );
     assert_eq!(integer(&hop, 627), Some(1));
     assert_eq!(
-        hop.by_path(&path("hopgrp[0].hopcompid")).unwrap(),
+        hop.by_path(&path("hops[0].hopcompid")).unwrap(),
         Scalar::from("ONBEHALF")
     );
     assert_eq!(
-        hop.by_path(&path("hopgrp[0].hopsendingtime")).unwrap(),
+        hop.by_path(&path("hops[0].hopsendingtime")).unwrap(),
         hop.by_tag(370).unwrap()
     );
     assert!(!hop.by_tag(370).unwrap().is_null());

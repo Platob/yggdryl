@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovision",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprovision"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprovision",
+    "FIX:counter": "42149",
+    "FIX:tag": "401742",
+    "description": "Required if NoUnderlyingProvisions(42149) > 0.",
+    "display": "UnderlyingProvisions"
+  }
+}

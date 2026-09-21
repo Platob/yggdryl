@@ -444,9 +444,9 @@ fn build() -> Result<Vec<Field>> {
         EventColumn::Identifiers,
         "Identifiers",
         "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; a capture stating both a session \
-         instance and a message context adds `msgsectxid` as `session:context`; \
-         repeating-group members are not flattened.",
+         field that stated it, in sorted order; complete message type, session, \
+         context and sequence provenance adds `msgsesseventid` with each text \
+         part byte-length-prefixed; repeating-group members are not flattened.",
     )?;
     identifiers
         .as_fix_mut()

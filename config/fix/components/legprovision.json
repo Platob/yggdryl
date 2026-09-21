@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "legprovisiondatebusinesscentergrp",
+        "name": "legprovisiondatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprovisiondatebusinesscentergrp"
+          "FIX:group": "legprovisiondatebusinesscenters"
         }
       },
       {

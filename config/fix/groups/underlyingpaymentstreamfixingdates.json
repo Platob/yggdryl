@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreamfixingdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamfixingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentstreamfixingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentstreamfixingdatecomponent",
+    "FIX:counter": "42955",
+    "FIX:tag": "534924",
+    "description": "Required if NoUnderlyingPaymentStreamFixingDates(42955) > 0.",
+    "display": "UnderlyingPaymentStreamFixingDates"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legallocs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprealloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprealloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprealloc",
+    "FIX:counter": "670",
+    "FIX:tag": "995654",
+    "description": "Only used for specific lot trades.",
+    "display": "LegAllocs"
+  }
+}

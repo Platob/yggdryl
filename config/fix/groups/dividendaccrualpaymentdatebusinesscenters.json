@@ -1,0 +1,24 @@
+{
+  "name": "dividendaccrualpaymentdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dividendaccrualpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "dividendaccrualpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "dividendaccrualpaymentdatebusinesscentercomponent",
+    "FIX:counter": "42236",
+    "FIX:tag": "978287",
+    "description": "Required if NoDividendAccrualPaymentDateBusinessCenters(42236) > 0.",
+    "display": "DividendAccrualPaymentDateBusinessCenters"
+  }
+}

@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "undlyinstrumentptyssubgrp",
+        "name": "undlyinstrumentpartysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "undlyinstrumentptyssubgrp"
+          "FIX:group": "undlyinstrumentpartysubids"
         }
       }
     ]

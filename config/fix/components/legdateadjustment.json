@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "legbusinesscentergrp",
+        "name": "legbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legbusinesscentergrp"
+          "FIX:group": "legbusinesscenters"
         }
       },
       {

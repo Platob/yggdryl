@@ -1,0 +1,24 @@
+{
+  "name": "legprovisionoptionexercisebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionoptionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprovisionoptionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprovisionoptionexercisebusinesscentercomponent",
+    "FIX:counter": "40936",
+    "FIX:tag": "755203",
+    "description": "Required if NoLegProvisionOptionExerciseBusinessCenters(40936) > 0.",
+    "display": "LegProvisionOptionExerciseBusinessCenters"
+  }
+}

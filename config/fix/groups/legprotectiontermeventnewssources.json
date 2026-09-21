@@ -1,0 +1,24 @@
+{
+  "name": "legprotectiontermeventnewssources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprotectiontermeventnewssourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprotectiontermeventnewssourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprotectiontermeventnewssourcecomponent",
+    "FIX:counter": "41614",
+    "FIX:tag": "417555",
+    "description": "Required if NoLegProtectionTermEventNewsSources(41614) > 0.",
+    "display": "LegProtectionTermEventNewsSources"
+  }
+}

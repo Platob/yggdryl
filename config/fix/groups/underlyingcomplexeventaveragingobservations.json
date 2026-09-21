@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventaveragingobservations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcomplexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcomplexeventaveragingobservation",
+    "FIX:counter": "41713",
+    "FIX:tag": "566468",
+    "description": "Required if NoUnderlyingComplexEventAveragingObservations(41713) > 0.",
+    "display": "UnderlyingComplexEventAveragingObservations"
+  }
+}

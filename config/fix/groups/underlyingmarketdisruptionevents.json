@@ -1,0 +1,24 @@
+{
+  "name": "underlyingmarketdisruptionevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingmarketdisruptioneventcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingmarketdisruptioneventcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingmarketdisruptioneventcomponent",
+    "FIX:counter": "41864",
+    "FIX:tag": "310129",
+    "description": "Required if NoUnderlyingMarketDisruptionEvents(41864) > 0.",
+    "display": "UnderlyingMarketDisruptionEvents"
+  }
+}

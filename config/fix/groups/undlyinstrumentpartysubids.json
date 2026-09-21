@@ -1,0 +1,23 @@
+{
+  "name": "undlyinstrumentpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undlyinstrumentptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "undlyinstrumentptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "undlyinstrumentptyssub",
+    "FIX:counter": "1062",
+    "FIX:tag": "220614",
+    "display": "UndlyInstrumentPartySubIDs"
+  }
+}

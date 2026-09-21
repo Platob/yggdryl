@@ -1,0 +1,24 @@
+{
+  "name": "legbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legbusinesscentercomponent",
+    "FIX:counter": "40923",
+    "FIX:tag": "698386",
+    "description": "Required if NoLegBusinessCenters(40923) > 0.",
+    "display": "LegBusinessCenters"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "complexeventdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "complexeventdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "complexeventdatebusinesscentercomponent",
+    "FIX:counter": "41018",
+    "FIX:tag": "524203",
+    "description": "Required if NoComplexEventDateBuisinessCenters(41018) > 0.",
+    "display": "ComplexEventDateBusinessCenters"
+  }
+}

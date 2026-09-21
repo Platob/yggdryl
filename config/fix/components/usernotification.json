@@ -25,13 +25,13 @@
         }
       },
       {
-        "name": "usernamegrp",
+        "name": "usernames",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "usernamegrp"
+          "FIX:group": "usernames"
         }
       },
       {
@@ -57,13 +57,13 @@
         }
       },
       {
-        "name": "throttleparamsgrp",
+        "name": "throttleparams",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "throttleparamsgrp"
+          "FIX:group": "throttleparams"
         }
       },
       {

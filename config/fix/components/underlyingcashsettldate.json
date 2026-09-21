@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingcashsettldatebusinesscentergrp",
+        "name": "underlyingcashsettldatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcashsettldatebusinesscentergrp"
+          "FIX:group": "underlyingcashsettldatebusinesscenters"
         }
       },
       {

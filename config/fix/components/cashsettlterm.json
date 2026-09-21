@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "cashsettldealergrp",
+        "name": "cashsettldealers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "cashsettldealergrp"
+          "FIX:group": "cashsettldealers"
         }
       },
       {

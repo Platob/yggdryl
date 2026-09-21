@@ -1,0 +1,24 @@
+{
+  "name": "underlyingoptionexerciseexpirationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingoptionexerciseexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingoptionexerciseexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingoptionexerciseexpirationdatebusinesscentercomponent",
+    "FIX:counter": "41844",
+    "FIX:tag": "684417",
+    "description": "Required if NoUnderlyingOptionExerciseExpirationDateBusinessCenters(41844) > 0.",
+    "display": "UnderlyingOptionExerciseExpirationDateBusinessCenters"
+  }
+}

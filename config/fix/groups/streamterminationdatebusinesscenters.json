@@ -1,0 +1,24 @@
+{
+  "name": "streamterminationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamterminationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamterminationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamterminationdatebusinesscentercomponent",
+    "FIX:counter": "40961",
+    "FIX:tag": "452884",
+    "description": "Required if NoStreamTerminationDateBusinessCenters(40961) > 0.",
+    "display": "StreamTerminationDateBusinessCenters"
+  }
+}

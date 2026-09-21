@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "provisionptyssubgrp",
+        "name": "provisionpartysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "provisionptyssubgrp"
+          "FIX:group": "provisionpartysubids"
         }
       }
     ]

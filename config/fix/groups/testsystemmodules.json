@@ -1,0 +1,24 @@
+{
+  "name": "testsystemmodules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testsystemmodule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "testsystemmodule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "testsystemmodule",
+    "FIX:counter": "3049",
+    "FIX:tag": "676976",
+    "description": "Required if NoTestSystemModules(3049) > 0.",
+    "display": "TestSystemModules"
+  }
+}

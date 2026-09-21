@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisiondatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprovisiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprovisiondatebusinesscentercomponent",
+    "FIX:counter": "42190",
+    "FIX:tag": "847260",
+    "description": "Required if NoUnderlyingProvisionDateBusinessCenters(42190) > 0.",
+    "display": "UnderlyingProvisionDateBusinessCenters"
+  }
+}

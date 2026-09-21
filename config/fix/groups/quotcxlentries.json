@@ -1,0 +1,24 @@
+{
+  "name": "quotcxlentries",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotcxlentry",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "quotcxlentry"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "quotcxlentry",
+    "FIX:counter": "295",
+    "FIX:tag": "263981",
+    "description": "The number of securities (instruments) whose quotes are to be canceled",
+    "display": "QuotCxlEntries"
+  }
+}

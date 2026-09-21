@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp",
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesbizcenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreamnondeliverablefixingdatesbizcenters"
         }
       },
       {
@@ -112,13 +112,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamnondeliverablefixingdategrp",
+        "name": "underlyingnondeliverablefixingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamnondeliverablefixingdategrp"
+          "FIX:group": "underlyingnondeliverablefixingdates"
         }
       },
       {
@@ -133,13 +133,13 @@
         }
       },
       {
-        "name": "underlyingsettlratedisruptionfallbackgrp",
+        "name": "underlyingsettlratefallbacks",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingsettlratedisruptionfallbackgrp"
+          "FIX:group": "underlyingsettlratefallbacks"
         }
       }
     ]

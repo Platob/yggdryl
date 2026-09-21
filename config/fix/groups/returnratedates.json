@@ -1,0 +1,24 @@
+{
+  "name": "returnratedates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratedate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "returnratedate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "returnratedate",
+    "FIX:counter": "42709",
+    "FIX:tag": "393408",
+    "description": "Required if NoReturnRateDates(42709) > 0.",
+    "display": "ReturnRateDates"
+  }
+}

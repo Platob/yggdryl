@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "trdregpublicationgrp",
+        "name": "trdregpublications",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdregpublicationgrp"
+          "FIX:group": "trdregpublications"
         }
       },
       {
@@ -157,13 +157,13 @@
         }
       },
       {
-        "name": "tradepriceconditiongrp",
+        "name": "tradepriceconditions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradepriceconditiongrp"
+          "FIX:group": "tradepriceconditions"
         }
       }
     ]

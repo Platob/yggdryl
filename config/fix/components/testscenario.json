@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "testscenarioparametergrp",
+        "name": "testscenarioparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testscenarioparametergrp"
+          "FIX:group": "testscenarioparameters"
         }
       },
       {
@@ -101,13 +101,13 @@
         }
       },
       {
-        "name": "instrumentscopegrp",
+        "name": "instrumentscopes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopes"
         }
       },
       {
@@ -166,13 +166,13 @@
         }
       },
       {
-        "name": "teststepgrp",
+        "name": "teststeps",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "teststepgrp"
+          "FIX:group": "teststeps"
         }
       },
       {
@@ -187,13 +187,13 @@
         }
       },
       {
-        "name": "testsystemmodulegrp",
+        "name": "testsystemmodules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testsystemmodulegrp"
+          "FIX:group": "testsystemmodules"
         }
       },
       {
@@ -208,13 +208,13 @@
         }
       },
       {
-        "name": "testmeasuregrp",
+        "name": "testmeasures",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testmeasuregrp"
+          "FIX:group": "testmeasures"
         }
       },
       {
@@ -229,13 +229,13 @@
         }
       },
       {
-        "name": "testordergrp",
+        "name": "testorders",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testordergrp"
+          "FIX:group": "testorders"
         }
       }
     ]

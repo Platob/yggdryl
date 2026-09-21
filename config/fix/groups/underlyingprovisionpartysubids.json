@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisionpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprovisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprovisionptyssub",
+    "FIX:counter": "42177",
+    "FIX:tag": "729315",
+    "description": "Required if NoUnderlyingProvisionPartySubIDs(42177) > 0.",
+    "display": "UnderlyingProvisionPartySubIDs"
+  }
+}

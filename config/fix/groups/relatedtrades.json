@@ -1,0 +1,24 @@
+{
+  "name": "relatedtrades",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedtrade",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedtrade"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedtrade",
+    "FIX:counter": "1855",
+    "FIX:tag": "706989",
+    "description": "Required if NoRelatedTrades(1855) > 0.",
+    "display": "RelatedTrades"
+  }
+}

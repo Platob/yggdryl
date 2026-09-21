@@ -957,7 +957,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
         .index_of("regulatorytradeids")
         .expect("the regulatory trade identifiers column");
     let field = &schema.fields()[at_group];
-    assert_eq!(field.display(), Some("RegulatoryTradeIDGrp"));
+    assert_eq!(field.display(), Some("RegulatoryTradeIDs"));
     assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
     assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());

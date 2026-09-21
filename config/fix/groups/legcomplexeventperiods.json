@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventperiods",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcomplexeventperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcomplexeventperiod",
+    "FIX:counter": "41379",
+    "FIX:tag": "901878",
+    "description": "Required if NoLegComplexEventPeriods(41379) > 0.",
+    "display": "LegComplexEventPeriods"
+  }
+}

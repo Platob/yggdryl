@@ -1,7 +1,7 @@
 //! A FIX message: its typed facts, its row, and the registry that types it.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
@@ -216,8 +216,30 @@ pub struct FixMsg {
     carried: Vec<(SmolStr, Scalar)>,
 }
 
-/// The one derived identifier formed from a bridge capture's two brackets.
-const MSGSECTXID_IDENTIFIER: &str = "msgsectxid";
+/// The complete bridge/FIX delivery identity retained outside message content.
+const MSGSESSEVENTID_IDENTIFIER: &str = "msgsesseventid";
+
+/// Whether an unsigned decimal is in its one canonical spelling.
+fn is_canonical_unsigned(encoded: &str) -> bool {
+    !encoded.is_empty()
+        && (encoded.len() == 1 || !encoded.starts_with('0'))
+        && encoded.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// Removes one byte-length-prefixed identity component and its separator.
+/// A malformed externally supplied identifier simply does not match and is
+/// replaced when the message next settles.
+fn strip_session_event_part<'a>(encoded: &'a str, expected: &str) -> Option<&'a str> {
+    let (length, encoded) = encoded.split_once(':')?;
+    if !is_canonical_unsigned(length) || length.parse::<usize>().ok()? != expected.len() {
+        return None;
+    }
+    let actual = encoded.get(..expected.len())?;
+    if actual != expected {
+        return None;
+    }
+    encoded.get(expected.len()..)?.strip_prefix('|')
+}
 
 /// One child a write lands: replaced at `at`, appended when there is none,
 /// its field and value already resolved and typed.
@@ -573,7 +595,7 @@ impl FixMsg {
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
             false,
         )?;
-        message.sync_capture_identifier();
+        message.sync_session_event_identifier();
         if retains_identity {
             message.derive_market();
             message.fill_market();
@@ -958,12 +980,13 @@ impl FixMsg {
     /// cross-seeded code derive.
     ///
     /// The cross code names the chain and defaults to the first nonempty FIX
-    /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. Capture
-    /// session and context name where a bridge observed the message instead:
-    /// when both are present, `sync_capture_identifier` retains their
-    /// `session:context` spelling under `msgsectxid` without making it content.
+    /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. The
+    /// message type, capture session/context and message sequence name where
+    /// a bridge observed the message instead: when all four are present,
+    /// `sync_session_event_identifier` retains their joined spelling under
+    /// `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
-        self.sync_capture_identifier();
+        self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
                 self.get_by_tag(*tag)
@@ -983,37 +1006,109 @@ impl FixMsg {
         self.event.finalized(currhashcode);
     }
 
-    /// Synchronizes the capture's complete session/context pair into the
-    /// event identifier map. Existing component identifiers stay in place;
-    /// an incomplete pair removes only this derived capture name.
-    fn sync_capture_identifier(&mut self) {
-        let pair = match (self.capture.msgsessionid(), self.capture.msgctxid()) {
-            (Some(session), Some(context)) if !session.is_empty() && !context.is_empty() => {
-                Some((session, context))
+    /// Synchronizes the complete FIX session event into the identifier map.
+    /// Text parts carry byte lengths, making the authoritative merge key
+    /// unambiguous even when a capture value contains its separators. Existing
+    /// component identifiers stay in place; any missing part removes only this
+    /// derived capture name.
+    fn sync_session_event_identifier(&mut self) {
+        let identity = match (
+            self.header.msgtype(),
+            self.capture.msgsessionid(),
+            self.capture.msgctxid(),
+            self.header.msgseqnum(),
+        ) {
+            (msgtype, Some(session), Some(context), Some(sequence))
+                if !msgtype.is_empty() && !session.is_empty() && !context.is_empty() =>
+            {
+                Some((msgtype, session, context, sequence))
             }
             _ => None,
         };
         let identifiers = self.event.identifiers_mut();
-        let Some((session, context)) = pair else {
-            identifiers.remove(MSGSECTXID_IDENTIFIER);
+        let Some((msgtype, session, context, sequence)) = identity else {
+            identifiers.remove(MSGSESSEVENTID_IDENTIFIER);
             return;
         };
-        if identifiers.get(MSGSECTXID_IDENTIFIER).is_some_and(|held| {
-            held.strip_prefix(session)
-                .and_then(|held| held.strip_prefix(':'))
-                == Some(context)
-        }) {
+        if identifiers
+            .get(MSGSESSEVENTID_IDENTIFIER)
+            .is_some_and(|held| {
+                strip_session_event_part(held, msgtype)
+                    .and_then(|held| strip_session_event_part(held, session))
+                    .and_then(|held| strip_session_event_part(held, context))
+                    .filter(|held| is_canonical_unsigned(held))
+                    .and_then(|held| held.parse::<u64>().ok())
+                    == Some(sequence)
+            })
+        {
             return;
         }
-        let mut joined = String::with_capacity(session.len() + 1 + context.len());
-        joined.push_str(session);
-        joined.push(':');
-        joined.push_str(context);
-        if let Some(held) = identifiers.get_mut(MSGSECTXID_IDENTIFIER) {
+        let mut joined =
+            String::with_capacity(msgtype.len() + session.len() + context.len() + 3 * 21 + 3 + 20);
+        write!(
+            joined,
+            "{}:{msgtype}|{}:{session}|{}:{context}|{sequence}",
+            msgtype.len(),
+            session.len(),
+            context.len(),
+        )
+        .expect("writing into a String cannot fail");
+        if let Some(held) = identifiers.get_mut(MSGSESSEVENTID_IDENTIFIER) {
             *held = joined;
         } else {
-            identifiers.insert(MSGSECTXID_IDENTIFIER.to_owned(), joined);
+            identifiers.insert(MSGSESSEVENTID_IDENTIFIER.to_owned(), joined);
         }
+    }
+
+    /// The complete prebuilt session-event delivery identity, where present.
+    pub(super) fn session_event_identifier(&self) -> Option<&str> {
+        self.event
+            .get_identifiers()
+            .get(MSGSESSEVENTID_IDENTIFIER)
+            .map(String::as_str)
+    }
+
+    /// Whether two observations state one complete session event.
+    pub(super) fn is_same_session_event(&self, other: &Self) -> bool {
+        self.session_event_identifier()
+            .is_some_and(|identity| other.session_event_identifier() == Some(identity))
+    }
+
+    /// Whether this is the graph's derived expiry rather than another raw FIX
+    /// observation. It deliberately keeps the source session-event identity,
+    /// but remains a later lifecycle event and must follow instead of merge.
+    fn is_synthetic_expiry(&self) -> bool {
+        self.get_state().as_str() == "95EXPIRED"
+            && self.get_recdunix().is_none()
+            && self.get_refrecdunix().is_none()
+            && self.get_exprtime() == Some(self.get_currunix())
+    }
+
+    /// Whether `with_previous` must treat the two values as observations of
+    /// one FIX event rather than successive lifecycle events.
+    pub(super) fn should_merge_session_event(&self, other: &Self) -> bool {
+        self.is_same_session_event(other) && !self.is_synthetic_expiry()
+    }
+
+    /// Fully merge another observation of this session event, retaining the
+    /// latest recording as the reference row and the earliest precise facts.
+    pub(super) fn merge_session_event(mut self, other: &Self) -> Result<Self> {
+        debug_assert!(self.is_same_session_event(other));
+        let other_leads = crate::graph::element::right_is_reference(
+            crate::graph::element::reference_recdunix(&self),
+            self.get_currunix(),
+            crate::graph::element::reference_recdunix(other),
+            other.get_currunix(),
+        );
+        if other_leads {
+            let mut reference = other.clone();
+            super::latest::merge_content(&mut reference, &self)?;
+            crate::graph::element::merge_market_event_into_reference(&mut reference, &self);
+            return Ok(reference);
+        }
+        super::latest::merge_content(&mut self, other)?;
+        crate::graph::element::merge_market_event_into_reference(&mut self, other);
+        Ok(self)
     }
 
     /// Whether an explicitly stated `ExecType(150)` reports an execution.
@@ -1326,9 +1421,9 @@ impl FixMsg {
     /// use the wire digest's same envelope predicate, so storing an
     /// unlifted `OrigSendingTime(122)`, `PossResend(97)`, or `BodyLength(9)`
     /// cannot change this canonical code. The cross code names a chain and
-    /// stays outside the content digest too. The derived `msgsectxid`
-    /// identifier records capture provenance and is excluded for the same
-    /// reason as the capture fields it combines.
+    /// stays outside the content digest too. The derived `msgsesseventid`
+    /// identifier records the complete delivery provenance and is excluded
+    /// for the same reason as the frame and capture fields it combines.
     ///
     /// The market is not here either: every market fact the event answers
     /// is derived from a FIX field the content already digests, so feeding
@@ -1337,7 +1432,7 @@ impl FixMsg {
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
         crate::graph::element::feed_event_facts(&mut state, &*self.event, |identifier| {
-            identifier != MSGSECTXID_IDENTIFIER
+            identifier != MSGSESSEVENTID_IDENTIFIER
         });
         let mut cells: Vec<(SmolStr, Scalar)> =
             Vec::with_capacity(self.field.fields().len() + identity::LIFTED_TAGS.len() + 2);
@@ -2861,9 +2956,15 @@ impl Element for FixMsg {
         self.settle();
     }
 
-    /// The timed market reading: a message descends from the whole lineage
-    /// of the one it follows, the predecessor last.
+    /// Another raw observation carrying this complete session-event identity
+    /// is the same event and fully merges before predecessor logic. Otherwise
+    /// the timed market reading descends from the whole lineage of the one it
+    /// follows, the predecessor last. A graph-derived expiry deliberately
+    /// follows even though it retains the source delivery identity.
     fn with_previous(self, previous: &Self) -> Option<Self> {
+        if self.should_merge_session_event(previous) {
+            return self.merge_session_event(previous).ok();
+        }
         self.following_market(previous)
     }
 

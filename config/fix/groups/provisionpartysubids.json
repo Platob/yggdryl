@@ -1,0 +1,24 @@
+{
+  "name": "provisionpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "provisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "provisionptyssub",
+    "FIX:counter": "40178",
+    "FIX:tag": "1051002",
+    "description": "Required if NoProvisionPartySubIDs(40178) > 0.",
+    "display": "ProvisionPartySubIDs"
+  }
+}

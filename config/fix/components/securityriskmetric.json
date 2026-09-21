@@ -168,13 +168,13 @@
         }
       },
       {
-        "name": "relativevaluegrp",
+        "name": "relativevalues",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relativevaluegrp"
+          "FIX:group": "relativevalues"
         }
       }
     ]

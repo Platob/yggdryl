@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreaminitialfixingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreaminitialfixingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstreaminitialfixingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstreaminitialfixingdatebusinesscentercomponent",
+    "FIX:counter": "40949",
+    "FIX:tag": "534106",
+    "description": "Required if NoPaymentStreamInitialFixindDateBusinessCenters(40949) > 0.",
+    "display": "PaymentStreamInitialFixingDateBusinessCenters"
+  }
+}

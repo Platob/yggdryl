@@ -1,0 +1,24 @@
+{
+  "name": "pricerangerules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricerangerule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "pricerangerule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "pricerangerule",
+    "FIX:counter": "2550",
+    "FIX:tag": "480411",
+    "description": "Required if NoPriceRangeRules(2550) > 0.",
+    "display": "PriceRangeRules"
+  }
+}

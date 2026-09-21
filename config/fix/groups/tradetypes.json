@@ -1,0 +1,24 @@
+{
+  "name": "tradetypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradetypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "tradetypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "tradetypecomponent",
+    "FIX:counter": "3005",
+    "FIX:tag": "1050392",
+    "description": "Required if NoTradeTypes(3005) > 0.",
+    "display": "TradeTypes"
+  }
+}

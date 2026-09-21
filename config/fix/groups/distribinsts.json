@@ -1,0 +1,24 @@
+{
+  "name": "distribinsts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "rgstdistinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "rgstdistinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "rgstdistinst",
+    "FIX:counter": "510",
+    "FIX:tag": "657340",
+    "description": "Number of Distribution instructions in this message (number of repeating groups to follow)",
+    "display": "DistribInsts"
+  }
+}

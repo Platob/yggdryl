@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "financingcontractualdefinitiongrp",
+        "name": "contractualdefinitions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "financingcontractualdefinitiongrp"
+          "FIX:group": "contractualdefinitions"
         }
       },
       {
@@ -157,13 +157,13 @@
         }
       },
       {
-        "name": "financingtermsupplementgrp",
+        "name": "financingtermsupplements",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "financingtermsupplementgrp"
+          "FIX:group": "financingtermsupplements"
         }
       },
       {
@@ -178,13 +178,13 @@
         }
       },
       {
-        "name": "financingcontractualmatrixgrp",
+        "name": "contractualmatrices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "financingcontractualmatrixgrp"
+          "FIX:group": "contractualmatrices"
         }
       },
       {

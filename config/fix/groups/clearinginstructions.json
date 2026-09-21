@@ -1,0 +1,24 @@
+{
+  "name": "clearinginstructions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "clrinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "clrinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "clrinst",
+    "FIX:counter": "576",
+    "FIX:tag": "926697",
+    "description": "Required if NoClearingInstructions > 0",
+    "display": "ClearingInstructions"
+  }
+}

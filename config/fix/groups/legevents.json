@@ -1,0 +1,24 @@
+{
+  "name": "legevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legevnt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legevnt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legevnt",
+    "FIX:counter": "2059",
+    "FIX:tag": "783072",
+    "description": "Required if NoLegEvents(2059) > 0.",
+    "display": "LegEvents"
+  }
+}

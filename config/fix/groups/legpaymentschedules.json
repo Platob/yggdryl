@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentschedule",
+    "FIX:counter": "40374",
+    "FIX:tag": "993666",
+    "description": "Required if NoLegPaymentSchedules(40374) > 0.",
+    "display": "LegPaymentSchedules"
+  }
+}

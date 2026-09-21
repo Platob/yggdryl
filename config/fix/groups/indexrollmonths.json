@@ -1,0 +1,24 @@
+{
+  "name": "indexrollmonths",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "indexrollmonthcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "indexrollmonthcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "indexrollmonthcomponent",
+    "FIX:counter": "2734",
+    "FIX:tag": "651436",
+    "description": "Required if NoIndexRollMonths(2734) > 0.",
+    "display": "IndexRollMonths"
+  }
+}

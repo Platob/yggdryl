@@ -1,0 +1,24 @@
+{
+  "name": "legdividendperiods",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdividendperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdividendperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdividendperiod",
+    "FIX:counter": "42366",
+    "FIX:tag": "496607",
+    "description": "Required if NoLegDividendPeriods(42366) > 0.",
+    "display": "LegDividendPeriods"
+  }
+}

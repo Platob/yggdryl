@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventdatebusinesscentergrp",
+        "name": "underlyingcomplexeventdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventdatebusinesscentergrp"
+          "FIX:group": "underlyingcomplexeventdatebusinesscenters"
         }
       },
       {

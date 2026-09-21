@@ -146,13 +146,13 @@
         }
       },
       {
-        "name": "biddescreqgrp",
+        "name": "biddescriptors",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "biddescreqgrp"
+          "FIX:group": "biddescriptors"
         }
       },
       {

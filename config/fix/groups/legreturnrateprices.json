@@ -1,0 +1,24 @@
+{
+  "name": "legreturnrateprices",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnratepricecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legreturnratepricecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legreturnratepricecomponent",
+    "FIX:counter": "42564",
+    "FIX:tag": "195247",
+    "description": "Required if NoLegReturnRatePrices(42564) > 0.",
+    "display": "LegReturnRatePrices"
+  }
+}

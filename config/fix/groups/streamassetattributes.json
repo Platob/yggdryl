@@ -1,0 +1,24 @@
+{
+  "name": "streamassetattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamassetattribute",
+    "FIX:counter": "41237",
+    "FIX:tag": "233763",
+    "description": "Required if NoStreamAssetAttributes(41237) > 0.",
+    "display": "StreamAssetAttributes"
+  }
+}

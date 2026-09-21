@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "legpaymentstreamresetdatebusinesscentergrp",
+        "name": "legpaymentstreamresetdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreamresetdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreamresetdatebusinesscenters"
         }
       },
       {
@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "legpaymentstreaminitialfixingdatebusinesscentergrp",
+        "name": "legpaymentstreaminitialfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreaminitialfixingdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreaminitialfixingdatebusinesscenters"
         }
       },
       {
@@ -200,13 +200,13 @@
         }
       },
       {
-        "name": "legpaymentstreamfixingdatebusinesscentergrp",
+        "name": "legpaymentstreamfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreamfixingdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreamfixingdatebusinesscenters"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "legpaymentstreamfixingdategrp",
+        "name": "legpaymentstreamfixingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreamfixingdategrp"
+          "FIX:group": "legpaymentstreamfixingdates"
         }
       }
     ]

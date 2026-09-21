@@ -1,0 +1,24 @@
+{
+  "name": "protectiontermobligations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectiontermobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "protectiontermobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "protectiontermobligation",
+    "FIX:counter": "40201",
+    "FIX:tag": "336541",
+    "description": "Required if NoProtectionTermObligations(40201) > 0.",
+    "display": "ProtectionTermObligations"
+  }
+}

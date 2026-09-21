@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingbusinesscentergrp",
+        "name": "underlyingbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingbusinesscentergrp"
+          "FIX:group": "underlyingbusinesscenters"
         }
       },
       {

@@ -1,0 +1,24 @@
+{
+  "name": "legdeliverystreamcommoditysources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliverystreamcommoditysourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdeliverystreamcommoditysourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdeliverystreamcommoditysourcecomponent",
+    "FIX:counter": "41460",
+    "FIX:tag": "1041785",
+    "description": "Required if NoLegDeliveryStreamCommoditySources(41460) > 0.",
+    "display": "LegDeliveryStreamCommoditySources"
+  }
+}

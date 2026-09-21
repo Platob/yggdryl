@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreamfixingdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamfixingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstreamfixingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstreamfixingdatecomponent",
+    "FIX:counter": "42660",
+    "FIX:tag": "181130",
+    "description": "Required if NoPaymentStreamFixingDates(42660) > 0.",
+    "display": "PaymentStreamFixingDates"
+  }
+}

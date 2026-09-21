@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "legadditionaltermbondrefgrp",
+        "name": "legadditionaltermbondrefs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legadditionaltermbondrefgrp"
+          "FIX:group": "legadditionaltermbondrefs"
         }
       }
     ]

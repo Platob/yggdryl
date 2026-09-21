@@ -1,0 +1,24 @@
+{
+  "name": "underlyingphysicalsettlterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingphysicalsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingphysicalsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingphysicalsettlterm",
+    "FIX:counter": "42060",
+    "FIX:tag": "330277",
+    "description": "Required if NoUnderlyingPhysicalSettlTerms(42060) > 0.",
+    "display": "UnderlyingPhysicalSettlTerms"
+  }
+}

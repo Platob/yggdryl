@@ -818,7 +818,7 @@ pub struct FixHeader  (the standard header and trailer facts a message holds typ
   pub fn signature(&self) -> Option<&[u8]>  (`Signature(89)`)
   pub fn checksum(&self) -> Option<&str>  (`CheckSum(10)` exactly as the line spelled it, three digits and all: a re-emission states what was read rather than a sum of bytes nobody sent)
   impl Clone, Debug, PartialEq, Eq for FixHeader
-pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, message context and session instance: capture facts outside the entries and wire. Where both session and context are stated, `identifiers["msgsectxid"]` records `session:context`; that derived capture pair is excluded from the FIX content identity. What a reader said about the line is carried rather than stated; no public constructor)
+pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, message context and session instance: capture facts outside the entries and wire. Where message type, session, context and sequence are stated, `identifiers["msgsesseventid"]` records their collision-safe length-prefixed event key; that derived capture key is excluded from the FIX content identity. What a reader said about the line is carried rather than stated; no public constructor)
   pub fn msgpluginid(&self) -> Option<&str>
   pub fn msgctxid(&self) -> Option<&str>
   pub fn msgsessionid(&self) -> Option<&str>

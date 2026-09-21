@@ -1,0 +1,24 @@
+{
+  "name": "sidecollateralamounts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecollateralamount",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "sidecollateralamount"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "sidecollateralamount",
+    "FIX:counter": "2691",
+    "FIX:tag": "554280",
+    "description": "Required if NoSideCollateralAmounts(2691) > 0.",
+    "display": "SideCollateralAmounts"
+  }
+}

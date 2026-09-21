@@ -1,0 +1,24 @@
+{
+  "name": "strategyparameters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strategyparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "strategyparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "strategyparameter",
+    "FIX:counter": "957",
+    "FIX:tag": "475396",
+    "description": "Indicates number of strategy parameters",
+    "display": "StrategyParameters"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legassetattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legassetattribute",
+    "FIX:counter": "2308",
+    "FIX:tag": "742258",
+    "description": "Required if NoLegAssetAttributes(2308) > 0.",
+    "display": "LegAssetAttributes"
+  }
+}

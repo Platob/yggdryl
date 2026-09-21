@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreamformulas",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamformulamath",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentstreamformulamath"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentstreamformulamath",
+    "FIX:counter": "42981",
+    "FIX:tag": "133935",
+    "description": "Required if NoUnderlyingPaymentStreamFormulas(42981) > 0",
+    "display": "UnderlyingPaymentStreamFormulas"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "payments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "payment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "payment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "payment",
+    "FIX:counter": "40212",
+    "FIX:tag": "884919",
+    "description": "Required if NoPayments(40212) > 0.",
+    "display": "Payments"
+  }
+}

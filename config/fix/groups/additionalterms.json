@@ -1,0 +1,24 @@
+{
+  "name": "additionalterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "additionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "additionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "additionalterm",
+    "FIX:counter": "40019",
+    "FIX:tag": "238321",
+    "description": "Required if NoAdditionalTerms(40019) > 0.",
+    "display": "AdditionalTerms"
+  }
+}

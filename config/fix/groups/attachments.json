@@ -1,0 +1,24 @@
+{
+  "name": "attachments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "attachment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "attachment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "attachment",
+    "FIX:counter": "2104",
+    "FIX:tag": "903599",
+    "description": "Required if NoAttachments(2104) > 0.",
+    "display": "Attachments"
+  }
+}

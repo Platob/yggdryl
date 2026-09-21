@@ -1,0 +1,24 @@
+{
+  "name": "legadditionaltermbondrefs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legadditionaltermbondref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legadditionaltermbondref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legadditionaltermbondref",
+    "FIX:counter": "41316",
+    "FIX:tag": "1082906",
+    "description": "Required if NoLegAdditionalTermBondRefs(41316) > 0.",
+    "display": "LegAdditionalTermBondRefs"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legprovisiondatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprovisiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprovisiondatebusinesscentercomponent",
+    "FIX:counter": "40939",
+    "FIX:tag": "1079179",
+    "description": "Required if NoLegProvisionDateBusinessCenters(40939) > 0.",
+    "display": "LegProvisionDateBusinessCenters"
+  }
+}

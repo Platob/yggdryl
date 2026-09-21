@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcomplexeventdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcomplexeventdatebusinesscentercomponent",
+    "FIX:counter": "41387",
+    "FIX:tag": "1037120",
+    "description": "Required if NoLegComplexEventDateBusinessCenters(41387) > 0.",
+    "display": "LegComplexEventDateBusinessCenters"
+  }
+}

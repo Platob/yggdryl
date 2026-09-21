@@ -1,0 +1,24 @@
+{
+  "name": "underlyingextraordinaryevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingextraordinaryevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingextraordinaryevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingextraordinaryevent",
+    "FIX:counter": "42884",
+    "FIX:tag": "472869",
+    "description": "Required if NoUnderlyingExtraordinaryEvents(42884) > 0.",
+    "display": "UnderlyingExtraordinaryEvents"
+  }
+}

@@ -102,13 +102,13 @@
         }
       },
       {
-        "name": "msgtypegrp",
+        "name": "msgtypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "msgtypegrp"
+          "FIX:group": "msgtypes"
         }
       },
       {

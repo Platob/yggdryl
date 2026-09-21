@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "partydetailgrp",
+        "name": "partydetails",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "partydetailgrp"
+          "FIX:group": "partydetails"
         }
       },
       {
@@ -69,13 +69,13 @@
         }
       },
       {
-        "name": "risklimitsgrp",
+        "name": "risklimits",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "risklimitsgrp"
+          "FIX:group": "risklimits"
         }
       },
       {

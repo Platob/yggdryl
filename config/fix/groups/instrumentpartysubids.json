@@ -1,0 +1,23 @@
+{
+  "name": "instrumentpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrumentptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "instrumentptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "instrumentptyssub",
+    "FIX:counter": "1052",
+    "FIX:tag": "1024959",
+    "display": "InstrumentPartySubIDs"
+  }
+}

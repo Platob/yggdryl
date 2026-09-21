@@ -263,13 +263,13 @@
         }
       },
       {
-        "name": "paymentschedulegrp",
+        "name": "paymentschedules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentschedulegrp"
+          "FIX:group": "paymentschedules"
         }
       },
       {
@@ -284,13 +284,13 @@
         }
       },
       {
-        "name": "paymentstubgrp",
+        "name": "paymentstubs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstubgrp"
+          "FIX:group": "paymentstubs"
         }
       },
       {
@@ -315,13 +315,13 @@
         }
       },
       {
-        "name": "deliveryschedulegrp",
+        "name": "deliveryschedules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "deliveryschedulegrp"
+          "FIX:group": "deliveryschedules"
         }
       },
       {

@@ -1,0 +1,24 @@
+{
+  "name": "legphysicalsettldeliverableobligations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legphysicalsettldeliverableobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legphysicalsettldeliverableobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legphysicalsettldeliverableobligation",
+    "FIX:counter": "41604",
+    "FIX:tag": "170265",
+    "description": "Required if NoLegPhysicalSettlDeliverableObligations(41604) > 0.",
+    "display": "LegPhysicalSettlDeliverableObligations"
+  }
+}

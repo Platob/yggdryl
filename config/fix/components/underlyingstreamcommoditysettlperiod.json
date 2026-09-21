@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "underlyingstreamcommoditysettldaygrp",
+        "name": "underlyingstreamcommoditysettldays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcommoditysettldaygrp"
+          "FIX:group": "underlyingstreamcommoditysettldays"
         }
       },
       {

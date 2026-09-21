@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreamfixingdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamfixingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentstreamfixingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentstreamfixingdatecomponent",
+    "FIX:counter": "42459",
+    "FIX:tag": "876970",
+    "description": "Required if NoLegPaymentStreamFixingDates(42459) > 0.",
+    "display": "LegPaymentStreamFixingDates"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentschedulefixingdays",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentschedulefixingday",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentschedulefixingday"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentschedulefixingday",
+    "FIX:counter": "41878",
+    "FIX:tag": "278953",
+    "description": "Required if NoUnderlyingPaymentScheduleFixingDays(41878) > 0.",
+    "display": "UnderlyingPaymentScheduleFixingDays"
+  }
+}

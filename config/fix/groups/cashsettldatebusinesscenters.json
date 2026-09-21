@@ -1,0 +1,24 @@
+{
+  "name": "cashsettldatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "cashsettldatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "cashsettldatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "cashsettldatebusinesscentercomponent",
+    "FIX:counter": "42214",
+    "FIX:tag": "721317",
+    "description": "Required if NoCashSettlDateBusinessCenters(42214) > 0.",
+    "display": "CashSettlDateBusinessCenters"
+  }
+}

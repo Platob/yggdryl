@@ -1,0 +1,24 @@
+{
+  "name": "miscfeesubtypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "miscfeessub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "miscfeessub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "miscfeessub",
+    "FIX:counter": "2633",
+    "FIX:tag": "846107",
+    "description": "Required if NoMiscFeeSubTypes(2633) > 0.",
+    "display": "MiscFeeSubTypes"
+  }
+}

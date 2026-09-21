@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "legstreamcommodityaltidgrp",
+        "name": "legstreamcommodityaltids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamcommodityaltidgrp"
+          "FIX:group": "legstreamcommodityaltids"
         }
       },
       {
@@ -124,13 +124,13 @@
         }
       },
       {
-        "name": "legstreamassetattributegrp",
+        "name": "legstreamassetattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamassetattributegrp"
+          "FIX:group": "legstreamassetattributes"
         }
       },
       {
@@ -222,13 +222,13 @@
         }
       },
       {
-        "name": "legstreamcommoditydatasourcegrp",
+        "name": "legstreamcommoditydatasources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamcommoditydatasourcegrp"
+          "FIX:group": "legstreamcommoditydatasources"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "legstreamcommoditysettlbusinesscentergrp",
+        "name": "legstreamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamcommoditysettlbusinesscentergrp"
+          "FIX:group": "legstreamcommoditysettlbusinesscenters"
         }
       },
       {
@@ -374,13 +374,13 @@
         }
       },
       {
-        "name": "legstreamcommoditysettlperiodgrp",
+        "name": "legstreamcommoditysettlperiods",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamcommoditysettlperiodgrp"
+          "FIX:group": "legstreamcommoditysettlperiods"
         }
       },
       {

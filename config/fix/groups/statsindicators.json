@@ -1,0 +1,24 @@
+{
+  "name": "statsindicators",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "statsind",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "statsind"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "statsind",
+    "FIX:counter": "1175",
+    "FIX:tag": "817198",
+    "description": "Number of statistics indicators",
+    "display": "StatsIndicators"
+  }
+}

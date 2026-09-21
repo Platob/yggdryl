@@ -1,0 +1,24 @@
+{
+  "name": "pricemovementvalues",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricemovementvaluecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "pricemovementvaluecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "pricemovementvaluecomponent",
+    "FIX:counter": "1920",
+    "FIX:tag": "269914",
+    "description": "Required if NoPriceMovementValues(1919) > 0.",
+    "display": "PriceMovementValues"
+  }
+}

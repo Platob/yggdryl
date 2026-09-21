@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "legdividendperiodbusinesscentergrp",
+        "name": "legdividendperiodbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legdividendperiodbusinesscentergrp"
+          "FIX:group": "legdividendperiodbusinesscenters"
         }
       },
       {

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingoptionexerciseexpirationdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingoptionexerciseexpirationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingoptionexerciseexpirationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingoptionexerciseexpirationdatecomponent",
+    "FIX:counter": "41856",
+    "FIX:tag": "230010",
+    "description": "Required if NoUnderlyingOptionExpirationDates(41856) > 0.",
+    "display": "UnderlyingOptionExerciseExpirationDates"
+  }
+}

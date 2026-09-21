@@ -834,7 +834,7 @@ REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
     (109, [rule(party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
     (439, [rule(party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
     (440, [
-        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
+        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "partysubids", "members": [fill(523)]}]}],
             doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
         ),
     ]),
@@ -854,7 +854,7 @@ REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
     (205, [rule([fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
     (314, [rule([fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
     (370, [
-        rule([{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
+        rule([{"group": "hops", "members": [fill(629), fill(628, source=115)]}],
             doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
         ),
     ]),
@@ -1419,6 +1419,100 @@ def entry_name(group_name: str) -> str:
     return _singularize(matched[1]) + matched[2]
 
 
+def _collection_plural(name: str) -> bool:
+    """Whether a published spelling visibly names several occurrences."""
+    matched = re.fullmatch(r"(.*?)(\d*)", name)
+    assert matched is not None
+    stem = matched[1]
+    if _singularize(stem) != stem:
+        return True
+    # FIX's LinesOfText is a plural collection whose plural marker precedes
+    # the qualifier rather than ending the spelling.
+    return re.search(r"sOf[A-Z]", stem) is not None
+
+
+def resolved_group_displays(
+    latest: dict[str, Any], fields: list[dict[str, Any]]
+) -> dict[tuple[str, int], str]:
+    """Resolve standard groups to a semantic plural or an explicit ``Grp``.
+
+    A published plural is the strongest statement. Otherwise the group's
+    ``No...`` counter may name the collection, but only when one group claims
+    that free spelling. Shared and occupied spellings retain the published
+    group identity; ``claim`` adds ``Grp`` where a scalar owns its bare name.
+    """
+    scalar_names = {field["name"] for field in fields}
+    scalar_names.update(
+        folded(name)
+        for field in fields
+        for name in field.get("metadata", {}).get("FIX:names", [])
+    )
+    definitions: dict[tuple[str, int], dict[str, Any]] = {}
+    source_names: dict[tuple[str, int], str] = {}
+    for category in ("components", "groups", "messages"):
+        for source_name, definition in latest[category].items():
+            key = (category, definition["id"])
+            definitions[key] = definition
+            source_names[key] = definition.get("name", source_name)
+    reserved = {folded(name) for name in source_names.values()} | scalar_names
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in fields}
+    targets = {
+        key
+        for key, display in source_names.items()
+        if key[0] == "groups"
+        and (display.endswith("Grp") or folded(display) in scalar_names)
+    }
+
+    first: dict[tuple[str, int], str] = {}
+    for key in targets:
+        display = source_names[key]
+        if display == "SecAltIDGrp":
+            first[key] = "SecAltIDs"
+            continue
+        if display.endswith("Grp"):
+            stem = display.removesuffix("Grp")
+            if _collection_plural(stem):
+                first[key] = stem
+    first_counts: dict[str, int] = {}
+    for display in first.values():
+        spelling = folded(display)
+        first_counts[spelling] = first_counts.get(spelling, 0) + 1
+    resolved = {
+        key: display
+        for key, display in first.items()
+        if first_counts[folded(display)] == 1 and folded(display) not in reserved
+    }
+
+    second: dict[tuple[str, int], str] = {}
+    for key in targets - resolved.keys():
+        counter = definitions[key]["tag"]
+        field = by_tag.get(counter)
+        if field is None:
+            continue
+        display = field.get("metadata", {}).get("display", field["name"])
+        if not display.startswith("No"):
+            continue
+        stem = display.removeprefix("No")
+        if _collection_plural(stem):
+            second[key] = stem
+    second_counts: dict[str, int] = {}
+    for display in second.values():
+        spelling = folded(display)
+        second_counts[spelling] = second_counts.get(spelling, 0) + 1
+    claimed = {folded(display) for display in resolved.values()}
+    for key, display in second.items():
+        spelling = folded(display)
+        if second_counts[spelling] == 1 and spelling not in reserved and spelling not in claimed:
+            resolved[key] = display
+            claimed.add(spelling)
+
+    return {
+        key: resolved.get(key, display)
+        for key, display in source_names.items()
+        if key[0] == "groups"
+    }
+
+
 def build(
     parsed: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
@@ -1627,8 +1721,10 @@ def build_catalog(
 ) -> dict[str, list[dict[str, Any]]]:
     """Keep wire identity separate from the source's reusable named graph.
 
-    The published collection names are authoritative. Entry names are local
-    schema names: Parties becomes Party, NestedParties2 becomes NestedParty2.
+    A unique published or counter plural names a collection; otherwise the
+    published group spelling keeps an explicit ``Grp``. Entry names stay
+    local to the published spelling: Parties becomes Party, NestedParties2
+    becomes NestedParty2.
     A category suffix resolves collisions with existing protocol vocabulary;
     the source ID disambiguates a remaining generated-name collision.
 
@@ -1658,14 +1754,7 @@ def build_catalog(
 
     reserved = {folded(name) for name in source_names.values()} | used
     names: dict[tuple[str, int], str] = {}
-
-    # The protocol's display says how the group is framed, not what the
-    # collection is called. These collections have semantic plurals just as
-    # `Parties` does; their published names remain their displays.
-    canonical_names = {
-        ("groups", "SecAltIDGrp"): "secaltids",
-        ("groups", "RegulatoryTradeIDGrp"): "regulatorytradeids",
-    }
+    group_displays = resolved_group_displays(latest, fields)
 
     def claim(display: str, suffix: str, identifier: int, original: bool) -> str:
         canonical = folded(display)
@@ -1682,8 +1771,10 @@ def build_catalog(
 
     suffixes = {"components": "Component", "groups": "Grp", "messages": "Message"}
     for key, display in sorted(source_names.items()):
-        canonical = canonical_names.get((key[0], display), display)
-        names[key] = claim(canonical, suffixes[key[0]], key[1], original=True)
+        resolved = group_displays.get(key, display)
+        names[key] = claim(resolved, suffixes[key[0]], key[1], original=True)
+        if key[0] == "groups" and names[key].endswith("grp") and not resolved.endswith("Grp"):
+            group_displays[key] = resolved + "Grp"
 
     entries: dict[int, str] = {}
     entry_displays: dict[int, str] = {}
@@ -1754,7 +1845,7 @@ def build_catalog(
     for key, definition in sorted(definitions.items()):
         validate_graph(key)
         category, identifier = key
-        metadata = {"display": source_names[key]}
+        metadata = {"display": group_displays.get(key, source_names[key])}
         if definition.get("doc"):
             metadata["description"] = definition["doc"]
         children = members(key)
@@ -2131,6 +2222,43 @@ def render_constants(
     ).encode()
     derivation_sha256 = hashlib.sha256(derivation_signature).hexdigest()
 
+    group_names = []
+    groups_by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    components = {field["name"]: field for field in catalog["components"]}
+    for field in catalog["groups"]:
+        identity = (
+            field["metadata"]["FIX:counter"],
+            field["metadata"]["display"],
+        )
+        groups_by_identity.setdefault(identity, []).append(field)
+    displays = resolved_group_displays(latest, catalog["fields"])
+    sources = set()
+    for source_name, definition in latest["groups"].items():
+        source = definition.get("name", source_name)
+        source_folded = folded(source)
+        if source_folded in sources:
+            raise ValueError(f"duplicate folded FIX group display {source!r}")
+        sources.add(source_folded)
+        display = displays[("groups", definition["id"])]
+        matches = groups_by_identity.get((str(definition["tag"]), display), [])
+        if len(matches) != 1:
+            raise ValueError(
+                f"{source}: expected one resolved group for counter {definition['tag']} "
+                f"and display {display!r}, got {len(matches)}"
+            )
+        group = matches[0]
+        component_name = group["metadata"]["FIX:component"]
+        component = components[component_name]
+        group_names.append(
+            (
+                source_folded,
+                group["name"],
+                group["metadata"]["display"],
+                component_name,
+                component["metadata"]["display"],
+            )
+        )
+
     header: list[int] = []
     trailer: list[int] = []
     for name, held in latest["components"].items():
@@ -2214,6 +2342,30 @@ def render_constants(
     lines.extend(
         [
             "];",
+            "",
+            "/// Resolve one published standard group spelling to the group's",
+            "/// canonical/display names and its occurrence component's names.",
+            "/// Custom grammars fall back to counter-based inference.",
+            "#[rustfmt::skip]",
+            "pub(super) fn shipped_group_names(",
+            "    name: &str,",
+            ") -> Option<(&'static str, &'static str, &'static str, &'static str)> {",
+            "    match name {",
+        ]
+    )
+    lines.extend(
+        "        "
+        + json.dumps(source, ensure_ascii=False)
+        + " => Some(("
+        + ", ".join(json.dumps(value, ensure_ascii=False) for value in values)
+        + ")),"
+        for source, *values in sorted(group_names)
+    )
+    lines.extend(
+        [
+            "        _ => None,",
+            "    }",
+            "}",
             "",
             "/// The generated category of one standard FIX message type.",
             "pub(super) fn msgcat_of(msgtype: &str) -> Option<&'static str> {",

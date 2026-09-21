@@ -1,0 +1,24 @@
+{
+  "name": "referencedatadates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "referencedatadatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "referencedatadatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "referencedatadatecomponent",
+    "FIX:counter": "2746",
+    "FIX:tag": "876081",
+    "description": "Required if NoReferenceDataDates(2746) > 0.",
+    "display": "ReferenceDataDates"
+  }
+}

@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "underlyingstreamcommodityaltidgrp",
+        "name": "underlyingstreamcommodityaltids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcommodityaltidgrp"
+          "FIX:group": "underlyingstreamcommodityaltids"
         }
       },
       {
@@ -124,13 +124,13 @@
         }
       },
       {
-        "name": "underlyingstreamassetattributegrp",
+        "name": "underlyingstreamassetattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamassetattributegrp"
+          "FIX:group": "underlyingstreamassetattributes"
         }
       },
       {
@@ -222,13 +222,13 @@
         }
       },
       {
-        "name": "underlyingstreamcommoditydatasourcegrp",
+        "name": "underlyingstreamcommoditydatasources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcommoditydatasourcegrp"
+          "FIX:group": "underlyingstreamcommoditydatasources"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "underlyingstreamcommoditysettlbusinesscentergrp",
+        "name": "underlyingstreamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcommoditysettlbusinesscentergrp"
+          "FIX:group": "underlyingstreamcommoditysettlbusinesscenters"
         }
       },
       {
@@ -374,13 +374,13 @@
         }
       },
       {
-        "name": "underlyingstreamcommoditysettlperiodgrp",
+        "name": "underlyingstreamcommoditysettlperiods",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcommoditysettlperiodgrp"
+          "FIX:group": "underlyingstreamcommoditysettlperiods"
         }
       },
       {

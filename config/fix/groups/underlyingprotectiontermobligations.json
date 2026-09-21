@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprotectiontermobligations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectiontermobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprotectiontermobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprotectiontermobligation",
+    "FIX:counter": "42087",
+    "FIX:tag": "259143",
+    "description": "Required if NoUnderlyingProtectionTermObligations(42087) > 0.",
+    "display": "UnderlyingProtectionTermObligations"
+  }
+}

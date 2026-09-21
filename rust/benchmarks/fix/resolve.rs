@@ -151,7 +151,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let paths: Vec<FieldPath> = [
         "NoPartyIDs",
         "Parties.PartyID",
-        "Parties.PtysSubGrp.PartySubID",
+        "Parties.PartySubIDs.PartySubID",
     ]
     .into_iter()
     .map(|spelling| FieldPath::from_str(spelling).expect("a path"))

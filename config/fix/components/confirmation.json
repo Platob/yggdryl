@@ -553,13 +553,13 @@
         }
       },
       {
-        "name": "cpctyconfgrp",
+        "name": "capacities",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:group": "cpctyconfgrp"
+          "FIX:group": "capacities"
         }
       },
       {
@@ -640,13 +640,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -988,13 +988,13 @@
         }
       },
       {
-        "name": "commissiondatagrp",
+        "name": "commissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "commissiondatagrp"
+          "FIX:group": "commissions"
         }
       },
       {
@@ -1030,13 +1030,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {
@@ -1051,13 +1051,13 @@
         }
       },
       {
-        "name": "matchexceptiongrp",
+        "name": "matchexceptions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "matchexceptiongrp"
+          "FIX:group": "matchexceptions"
         }
       },
       {
@@ -1072,13 +1072,13 @@
         }
       },
       {
-        "name": "matchingdatapointgrp",
+        "name": "matchingdatapoints",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "matchingdatapointgrp"
+          "FIX:group": "matchingdatapoints"
         }
       },
       {

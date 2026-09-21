@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcomplexeventratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcomplexeventratesourcecomponent",
+    "FIX:counter": "41732",
+    "FIX:tag": "523818",
+    "description": "Required if NoUnderlyingComplexEventRateSources(41732) > 0.",
+    "display": "UnderlyingComplexEventRateSources"
+  }
+}

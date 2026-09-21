@@ -1,0 +1,24 @@
+{
+  "name": "quotesizerules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotesizerule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "quotesizerule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "quotesizerule",
+    "FIX:counter": "2558",
+    "FIX:tag": "1016188",
+    "description": "Number of quote size rules.",
+    "display": "QuoteSizeRules"
+  }
+}

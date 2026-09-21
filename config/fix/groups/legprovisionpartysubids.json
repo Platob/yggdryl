@@ -1,0 +1,24 @@
+{
+  "name": "legprovisionpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprovisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprovisionptyssub",
+    "FIX:counter": "40537",
+    "FIX:tag": "650091",
+    "description": "Required if NoLegProvisionPartySubIDs(40537) > 0.",
+    "display": "LegProvisionPartySubIDs"
+  }
+}

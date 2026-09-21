@@ -1,0 +1,24 @@
+{
+  "name": "collateralamounts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "collateralamount",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "collateralamount"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "collateralamount",
+    "FIX:counter": "1703",
+    "FIX:tag": "1076360",
+    "description": "Required if NoCollateralAmounts(1703) > 0.",
+    "display": "CollateralAmounts"
+  }
+}

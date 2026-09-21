@@ -185,13 +185,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -206,13 +206,13 @@
         }
       },
       {
-        "name": "securityclassificationgrp",
+        "name": "securityclassifications",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "securityclassificationgrp"
+          "FIX:group": "securityclassifications"
         }
       },
       {

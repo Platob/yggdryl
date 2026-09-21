@@ -263,13 +263,13 @@
         }
       },
       {
-        "name": "legpaymentschedulegrp",
+        "name": "legpaymentschedules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentschedulegrp"
+          "FIX:group": "legpaymentschedules"
         }
       },
       {
@@ -284,13 +284,13 @@
         }
       },
       {
-        "name": "legpaymentstubgrp",
+        "name": "legpaymentstubs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstubgrp"
+          "FIX:group": "legpaymentstubs"
         }
       },
       {
@@ -315,13 +315,13 @@
         }
       },
       {
-        "name": "legdeliveryschedulegrp",
+        "name": "legdeliveryschedules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legdeliveryschedulegrp"
+          "FIX:group": "legdeliveryschedules"
         }
       },
       {

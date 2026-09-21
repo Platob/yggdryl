@@ -1,0 +1,24 @@
+{
+  "name": "secondaryassetclasses",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "secondaryasset",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "secondaryasset"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "secondaryasset",
+    "FIX:counter": "1976",
+    "FIX:tag": "561760",
+    "description": "Required if NoSecondaryAssetClasses(1976) > 0.",
+    "display": "SecondaryAssetClasses"
+  }
+}

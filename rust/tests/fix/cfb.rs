@@ -515,12 +515,14 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
         &DataType::Int32
     );
     let group = fields.iter().find(|held| held.name() == "legs").unwrap();
+    assert_eq!(group.display(), Some("Legs"));
     assert_eq!(group.as_fix().tag().unwrap(), None);
     assert_eq!(group.as_fix().counter().unwrap(), Some(555));
     let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
     assert_eq!(item.name(), "leg");
+    assert_eq!(item.display(), Some("Leg"));
     assert!(!item.is_nullable());
     let members = item.dtype().as_fields().expect("an item struct");
     assert_eq!(
@@ -535,6 +537,8 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     };
     assert_eq!(members[2].as_fix().tag().unwrap(), None);
     assert_eq!(members[2].as_fix().counter().unwrap(), Some(604));
+    assert_eq!(members[2].display(), Some("LegSecurityAltIDGrp"));
+    assert_eq!(inner.display(), Some("LegSecurityAltIDComponent"));
     assert_eq!(
         inner
             .fields()
@@ -691,7 +695,10 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
     ] {
         // Every definition the file produced is a member of the dialect.
         let group = registry.field_by_name(name).unwrap();
-        let component = registry.field_by_name(component).unwrap();
+        let component_name = component;
+        let component = registry.field_by_name(component_name).unwrap();
+        assert_eq!(group.display(), Some(name));
+        assert_eq!(component.display(), Some(component_name));
         assert_eq!(branches(group), ["venue"]);
         assert_eq!(branches(component), ["venue"]);
         // The counter is its tag and its name, and the group tables key on
@@ -724,6 +731,58 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
         registry
     );
+}
+
+#[test]
+fn a_published_group_spelling_uses_the_shipped_collection_and_occurrence_names() {
+    let body = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="802" alt="NoPartySubIDs" type="integer" />
+        <vocabulary-tag name="523" alt="PartySubID" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="PtysSubGrp">
+          <tag-constraint name="802" />
+          <tag-constraint name="523" required="true" />
+        </grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let (_, roots) = FixRegistry::from_cfb_file(&handle(body), None).unwrap();
+    let group = roots[0]
+        .get_field("partysubids")
+        .expect("the semantic collection name");
+    assert_eq!(group.display(), Some("PartySubIDs"));
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+        panic!("a list group");
+    };
+    assert_eq!(item.name(), "ptyssub");
+    assert_eq!(item.display(), Some("PtysSub"));
+}
+
+#[test]
+fn a_custom_singular_ending_in_s_keeps_grp_and_its_whole_occurrence_name() {
+    let body = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="5000" alt="NoStatus" type="integer" />
+        <vocabulary-tag name="5001" alt="StatusCode" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="StatusGrp">
+          <tag-constraint name="5000" />
+          <tag-constraint name="5001" required="true" />
+        </grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let (_, roots) = FixRegistry::from_cfb_file(&handle(body), None).unwrap();
+    let group = roots[0]
+        .get_field("statusgrp")
+        .expect("no plural was published");
+    assert_eq!(group.display(), Some("StatusGrp"));
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+        panic!("a list group");
+    };
+    assert_eq!(item.name(), "status");
+    assert_eq!(item.display(), Some("Status"));
 }
 
 #[test]

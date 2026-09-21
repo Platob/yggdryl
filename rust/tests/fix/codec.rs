@@ -246,14 +246,14 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     );
     assert_eq!(
         message
-            .by_path(&path("Parties[0].PtysSubGrp[1].PartySubID"))
+            .by_path(&path("Parties[0].PartySubIDs[1].PartySubID"))
             .unwrap()
             .as_str(),
         Some("CLIENT")
     );
     assert_eq!(
         message
-            .by_path(&path("Parties[1].PtysSubGrp[0].PartySubID"))
+            .by_path(&path("Parties[1].PartySubIDs[0].PartySubID"))
             .unwrap()
             .as_str(),
         Some("OTHER")
@@ -814,7 +814,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     // and the one carrying the nested group after it.
     assert_eq!(
         message
-            .by_path(&path("Parties[1].PtysSubGrp[0].PartySubID"))
+            .by_path(&path("Parties[1].PartySubIDs[0].PartySubID"))
             .unwrap(),
         Scalar::from("a")
     );
@@ -837,9 +837,9 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
             .collect()
     };
     assert!(
-        members("parties.ptyssubgrp").contains(&"venueseq".to_owned()),
+        members("parties.partysubids").contains(&"venueseq".to_owned()),
         "{:?}",
-        members("parties.ptyssubgrp")
+        members("parties.partysubids")
     );
     assert!(
         !members("parties").contains(&"venueseq".to_owned()),
@@ -865,7 +865,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
             "partyid",
             "partyrole",
             "party",
-            "ptyssubgrp",
+            "partysubids",
             "ptyssub",
             "partysubid",
             "partysubidtype",
@@ -876,7 +876,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
         ]
     );
     let venue = message
-        .by_path(&path("Parties[1].PtysSubGrp[0].VenueSeq"))
+        .by_path(&path("Parties[1].PartySubIDs[0].VenueSeq"))
         .expect("the venue's own key, inside the sub-identifier");
     assert_eq!(venue.as_str(), Some("7"));
 
@@ -889,13 +889,13 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let message = reader.sole_line(open).unwrap();
     assert_eq!(
         message
-            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
+            .by_path(&path("Parties[0].PartySubIDs[0].PartySubID"))
             .unwrap(),
         Scalar::from("a")
     );
     assert_eq!(
         message
-            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
+            .by_path(&path("Parties[0].PartySubIDs[0].PartySubIDType"))
             .unwrap()
             .as_i64(),
         Some(1)
@@ -929,7 +929,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     );
     assert_eq!(
         message
-            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
+            .by_path(&path("Parties[0].PartySubIDs[0].PartySubIDType"))
             .unwrap()
             .as_i64(),
         Some(1)
@@ -949,20 +949,20 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     // repeated to the bound.
     let mut arrived = Vec::new();
     keys(message.entries(), &mut arrived);
-    assert_eq!(&arrived[..3], ["parties", "party", "ptyssubgrp"]);
+    assert_eq!(&arrived[..3], ["parties", "party", "partysubids"]);
     assert_eq!(
-        arrived.iter().rev().find(|name| *name == "ptyssubgrp"),
-        Some(&"ptyssubgrp".to_owned()),
+        arrived.iter().rev().find(|name| *name == "partysubids"),
+        Some(&"partysubids".to_owned()),
         "the sub-group is the deepest thing the row nests"
     );
     assert_eq!(
-        arrived.iter().filter(|name| *name == "ptyssubgrp").count(),
+        arrived.iter().filter(|name| *name == "partysubids").count(),
         65,
         "one level per opener the schema may nest"
     );
     let mut depth = 0;
     let mut level = message
-        .get_by_path(&path("Parties[0].PtysSubGrp"))
+        .get_by_path(&path("Parties[0].PartySubIDs"))
         .and_then(|held| held.as_sequence().map(<[Scalar]>::to_vec));
     while let Some(held) = level {
         depth += 1;
@@ -994,7 +994,7 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     assert_eq!(
         message
             .by_path(&path(
-                "TrdCapRptSideGrp[0].Parties[1].PtysSubGrp[0].PartySubID"
+                "TrdCapRptSideGrp[0].Parties[1].PartySubIDs[0].PartySubID"
             ))
             .unwrap(),
         Scalar::from("a")
@@ -1615,7 +1615,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
     sub_count.as_fix_mut().set_tag(802).unwrap();
-    let mut subs = DataType::list(sub_item).nullable_field("ptyssubgrp");
+    let mut subs = DataType::list(sub_item).nullable_field("partysubids");
     subs.as_fix_mut().set_counter(802).unwrap();
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();

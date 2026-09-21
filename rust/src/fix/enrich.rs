@@ -700,52 +700,27 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
     }
 }
 
-/// The capture identity that proves two rows are observations of one FIX
-/// delivery. All four facts must be present: absent provenance or message
-/// type is never an identity shared by otherwise unrelated messages.
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct CaptureDelivery {
-    msgtype: SmolStr,
-    session: SmolStr,
-    context: SmolStr,
-    sequence: u64,
-}
-
-fn capture_delivery(message: &FixMsg) -> Option<CaptureDelivery> {
+/// The prebuilt identity that proves two rows are observations of one FIX
+/// session event. Lifecycle outputs keep their source key but are not raw
+/// observations to coalesce on replay.
+fn session_event_key(message: &FixMsg) -> Option<SmolStr> {
     // A lifecycle output is already placed. Expiries keep their source
     // message's capture key, and snapshots keep it while adding a view
     // clock; neither is another raw observation to coalesce on replay.
     if message.get_prevuuid().is_some() || message.get_snapunix().is_some() {
         return None;
     }
-    let msgtype = message.header().msgtype();
-    if msgtype.is_empty() {
-        return None;
-    }
-    let session = message
-        .capture()
-        .msgsessionid()
-        .filter(|value| !value.is_empty())?;
-    let context = message
-        .capture()
-        .msgctxid()
-        .filter(|value| !value.is_empty())?;
-    Some(CaptureDelivery {
-        msgtype: SmolStr::new(msgtype),
-        session: SmolStr::new(session),
-        context: SmolStr::new(context),
-        sequence: message.header().msgseqnum()?,
-    })
+    message.session_event_identifier().map(SmolStr::new)
 }
 
-/// One capture-identified delivery while all of its raw observations are
-/// collected. They are ranked only after collection, so a lower-priority
-/// observation can never fill a fact before a higher-priority one is read.
-struct CapturedDelivery {
+/// One session event while all of its raw observations are collected.
+struct SessionEventObservations {
     message: FixMsg,
     others: Vec<FixMsg>,
 }
 
+/// Latest recording first; the event instant breaks absent/equal recording
+/// ties exactly as the graph's reference selection does.
 fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
     let right_leads = crate::graph::element::right_is_reference(
         crate::graph::element::reference_recdunix(left),
@@ -769,17 +744,17 @@ fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
     }
 }
 
-/// Fully merges observations carrying one complete capture identity before
+/// Fully merges observations carrying one complete session-event identity before
 /// the lifecycle walk can mistake them for successive events. The most
 /// recently recorded message is the retained FIX row; the graph fold unions
 /// the other observations into it and keeps the earliest per-event clocks.
-fn merge_capture_deliveries(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -> Vec<FixMsg> {
+fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -> Vec<FixMsg> {
     let mut positions = HashMap::with_capacity(messages.len().min(4_096));
-    let mut merged: Vec<CapturedDelivery> = Vec::with_capacity(messages.len());
+    let mut merged: Vec<SessionEventObservations> = Vec::with_capacity(messages.len());
 
     for message in messages {
-        let Some(key) = capture_delivery(&message) else {
-            merged.push(CapturedDelivery {
+        let Some(key) = session_event_key(&message) else {
+            merged.push(SessionEventObservations {
                 message,
                 others: Vec::new(),
             });
@@ -788,7 +763,7 @@ fn merge_capture_deliveries(messages: Vec<FixMsg>, failures: &mut VecDeque<Error
         match positions.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(merged.len());
-                merged.push(CapturedDelivery {
+                merged.push(SessionEventObservations {
                     message,
                     others: Vec::new(),
                 });
@@ -806,12 +781,14 @@ fn merge_capture_deliveries(messages: Vec<FixMsg>, failures: &mut VecDeque<Error
             held.others.push(held.message);
             held.others.sort_by(reference_order);
             let mut observations = held.others.into_iter();
-            let mut reference = observations.next().expect("one captured observation");
+            let mut reference = observations.next().expect("one session-event observation");
             for other in observations {
-                if let Err(error) = super::latest::merge_content(&mut reference, &other) {
-                    failures.push_back(error);
+                match reference.clone().merge_session_event(&other) {
+                    Ok(merged) => reference = merged,
+                    Err(error) => {
+                        failures.push_back(error);
+                    }
                 }
-                crate::graph::element::merge_market_event_into_reference(&mut reference, &other);
             }
             reference
         })
@@ -913,6 +890,17 @@ impl Element for LifecycleMessage {
     fn with_previous(self, previous: &Self) -> Option<Self> {
         let mut message = self.message;
         let mut failure = self.failure;
+        if message.should_merge_session_event(&previous.message) {
+            return match message.clone().merge_session_event(&previous.message) {
+                Ok(message) => Some(Self { message, failure }),
+                Err(error) => {
+                    if failure.is_none() {
+                        failure = Some(format_smolstr!("{error}"));
+                    }
+                    Some(Self { message, failure })
+                }
+            };
+        }
         let inherited = if failure.is_none() {
             match super::latest::inherit_order_links(&mut message, &previous.message) {
                 Ok(changed) => changed,
@@ -1106,7 +1094,7 @@ impl Walked {
                 Err(error) => failures.push_back(error),
             }
         }
-        let mut messages = merge_capture_deliveries(messages, &mut failures);
+        let mut messages = merge_session_events(messages, &mut failures);
         messages.sort_by(order);
         Self {
             walk: EventIterator::new(Prepared::new(messages), true).with_snapshot_ns(snapshot_ns),

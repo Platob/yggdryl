@@ -1,0 +1,24 @@
+{
+  "name": "risklimits",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "risklimit",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "risklimit"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "risklimit",
+    "FIX:counter": "1669",
+    "FIX:tag": "692887",
+    "description": "Required if NoRiskLimits(1669) > 0.",
+    "display": "RiskLimits"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "testgatewaydetails",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testgatewaydetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "testgatewaydetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "testgatewaydetail",
+    "FIX:counter": "3092",
+    "FIX:tag": "792496",
+    "description": "Required if NoTestGatewayDetails(3092)>0.",
+    "display": "TestGatewayDetails"
+  }
+}

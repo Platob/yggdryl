@@ -1,0 +1,24 @@
+{
+  "name": "legextraordinaryevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legextraordinaryevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legextraordinaryevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legextraordinaryevent",
+    "FIX:counter": "42388",
+    "FIX:tag": "854205",
+    "description": "Required if NoLegExtraordinaryEvents(42388) > 0.",
+    "display": "LegExtraordinaryEvents"
+  }
+}

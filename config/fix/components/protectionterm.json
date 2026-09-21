@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "protectiontermeventnewssourcegrp",
+        "name": "protectiontermeventnewssources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "protectiontermeventnewssourcegrp"
+          "FIX:group": "protectiontermeventnewssources"
         }
       },
       {
@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "protectiontermeventgrp",
+        "name": "protectiontermevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "protectiontermeventgrp"
+          "FIX:group": "protectiontermevents"
         }
       },
       {
@@ -134,13 +134,13 @@
         }
       },
       {
-        "name": "protectiontermobligationgrp",
+        "name": "protectiontermobligations",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "protectiontermobligationgrp"
+          "FIX:group": "protectiontermobligations"
         }
       },
       {

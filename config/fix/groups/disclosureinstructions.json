@@ -1,0 +1,24 @@
+{
+  "name": "disclosureinstructions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "disclosureinstructioncomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "disclosureinstructioncomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "disclosureinstructioncomponent",
+    "FIX:counter": "1812",
+    "FIX:tag": "993915",
+    "description": "Required when NoDisclosureInstructions(1812) > 0.",
+    "display": "DisclosureInstructions"
+  }
+}

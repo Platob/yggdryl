@@ -19,6 +19,6 @@
     "FIX:counter": "1907",
     "FIX:tag": "497401",
     "description": "Required if NoRegulatoryTradeIDs(1907) > 0.",
-    "display": "RegulatoryTradeIDGrp"
+    "display": "RegulatoryTradeIDs"
   }
 }

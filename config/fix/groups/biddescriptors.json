@@ -1,0 +1,24 @@
+{
+  "name": "biddescriptors",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "biddescreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "biddescreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "biddescreq",
+    "FIX:counter": "398",
+    "FIX:tag": "812275",
+    "description": "Used if BidType=\"Non Disclosed\"",
+    "display": "BidDescriptors"
+  }
+}

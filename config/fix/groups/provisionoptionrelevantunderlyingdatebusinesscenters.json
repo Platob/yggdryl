@@ -1,0 +1,24 @@
+{
+  "name": "provisionoptionrelevantunderlyingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionoptionrelevantunderlyingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "provisionoptionrelevantunderlyingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "provisionoptionrelevantunderlyingdatebusinesscentercomponent",
+    "FIX:counter": "40956",
+    "FIX:tag": "434122",
+    "description": "Required if NoProvisionOptionRelevantUnderlyingDateBusinessCenters(40956) > 0.",
+    "display": "ProvisionOptionRelevantUnderlyingDateBusinessCenters"
+  }
+}

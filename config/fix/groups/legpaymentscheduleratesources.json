@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentscheduleratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentscheduleratesourcecomponent",
+    "FIX:counter": "40414",
+    "FIX:tag": "418872",
+    "description": "Required if NoLegPaymentScheduleRateSources(40414) > 0.",
+    "display": "LegPaymentScheduleRateSources"
+  }
+}

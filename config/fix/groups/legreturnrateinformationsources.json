@@ -1,0 +1,24 @@
+{
+  "name": "legreturnrateinformationsources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnrateinformationsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legreturnrateinformationsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legreturnrateinformationsourcecomponent",
+    "FIX:counter": "42560",
+    "FIX:tag": "285155",
+    "description": "Required if NoLegReturnRateInformationSources(42560) > 0.",
+    "display": "LegReturnRateInformationSources"
+  }
+}

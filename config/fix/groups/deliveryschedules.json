@@ -1,0 +1,24 @@
+{
+  "name": "deliveryschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "deliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "deliveryschedule",
+    "FIX:counter": "41037",
+    "FIX:tag": "761408",
+    "description": "Required if NoDeliverySchedules(41037) > 0.",
+    "display": "DeliverySchedules"
+  }
+}

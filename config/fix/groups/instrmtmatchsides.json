@@ -1,0 +1,24 @@
+{
+  "name": "instrmtmatchsides",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtmatchside",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "instrmtmatchside"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "instrmtmatchside",
+    "FIX:counter": "1889",
+    "FIX:tag": "249734",
+    "description": "Required if NoInstrmtMatchSides(1889) > 0.",
+    "display": "InstrmtMatchSides"
+  }
+}

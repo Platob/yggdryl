@@ -1,0 +1,24 @@
+{
+  "name": "returnrateprices",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratepricecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "returnratepricecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "returnratepricecomponent",
+    "FIX:counter": "42765",
+    "FIX:tag": "1003888",
+    "description": "Required if NoReturnRatePrices(42765) > 0.",
+    "display": "ReturnRatePrices"
+  }
+}

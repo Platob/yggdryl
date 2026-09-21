@@ -1320,13 +1320,13 @@
         }
       },
       {
-        "name": "underlyingevntgrp",
+        "name": "underlyingevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingevntgrp"
+          "FIX:group": "underlyingevents"
         }
       },
       {
@@ -1594,13 +1594,13 @@
         }
       },
       {
-        "name": "underlyingsecondaryassetgrp",
+        "name": "underlyingsecondaryassetclasses",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingsecondaryassetgrp"
+          "FIX:group": "underlyingsecondaryassetclasses"
         }
       },
       {
@@ -1615,13 +1615,13 @@
         }
       },
       {
-        "name": "underlyingassetattributegrp",
+        "name": "underlyingassetattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingassetattributegrp"
+          "FIX:group": "underlyingassetattributes"
         }
       },
       {
@@ -2203,13 +2203,13 @@
         }
       },
       {
-        "name": "underlyingstreamgrp",
+        "name": "underlyingstreams",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamgrp"
+          "FIX:group": "underlyingstreams"
         }
       },
       {
@@ -2224,13 +2224,13 @@
         }
       },
       {
-        "name": "underlyingprovisiongrp",
+        "name": "underlyingprovisions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingprovisiongrp"
+          "FIX:group": "underlyingprovisions"
         }
       },
       {
@@ -2245,13 +2245,13 @@
         }
       },
       {
-        "name": "underlyingadditionaltermgrp",
+        "name": "underlyingadditionalterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingadditionaltermgrp"
+          "FIX:group": "underlyingadditionalterms"
         }
       },
       {
@@ -2266,13 +2266,13 @@
         }
       },
       {
-        "name": "underlyingprotectiontermgrp",
+        "name": "underlyingprotectionterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingprotectiontermgrp"
+          "FIX:group": "underlyingprotectionterms"
         }
       },
       {
@@ -2287,13 +2287,13 @@
         }
       },
       {
-        "name": "underlyingcashsettltermgrp",
+        "name": "underlyingcashsettlterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcashsettltermgrp"
+          "FIX:group": "underlyingcashsettlterms"
         }
       },
       {
@@ -2308,13 +2308,13 @@
         }
       },
       {
-        "name": "underlyingphysicalsettltermgrp",
+        "name": "underlyingphysicalsettlterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingphysicalsettltermgrp"
+          "FIX:group": "underlyingphysicalsettlterms"
         }
       },
       {
@@ -2349,13 +2349,13 @@
         }
       },
       {
-        "name": "underlyingextraordinaryeventgrp",
+        "name": "underlyingextraordinaryevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingextraordinaryeventgrp"
+          "FIX:group": "underlyingextraordinaryevents"
         }
       },
       {

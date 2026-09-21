@@ -1,0 +1,24 @@
+{
+  "name": "riskwarninglevels",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "riskwarninglevel",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "riskwarninglevel"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "riskwarninglevel",
+    "FIX:counter": "1559",
+    "FIX:tag": "973983",
+    "description": "Required if NoRiskWarningLevels(1559) > 0.",
+    "display": "RiskWarningLevels"
+  }
+}

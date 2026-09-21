@@ -1,0 +1,24 @@
+{
+  "name": "legreturnratevaluationdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnratevaluationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legreturnratevaluationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legreturnratevaluationdatecomponent",
+    "FIX:counter": "42571",
+    "FIX:tag": "531752",
+    "description": "Required if NoLegReturnRateValuationDates(42571) > 0.",
+    "display": "LegReturnRateValuationDates"
+  }
+}

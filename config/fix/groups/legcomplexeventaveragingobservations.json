@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventaveragingobservations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcomplexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcomplexeventaveragingobservation",
+    "FIX:counter": "41363",
+    "FIX:tag": "954409",
+    "description": "Required if NoLegComplexEventAveragingObservations(41363) > 0.",
+    "display": "LegComplexEventAveragingObservations"
+  }
+}

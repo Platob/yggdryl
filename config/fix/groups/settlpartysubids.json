@@ -1,0 +1,23 @@
+{
+  "name": "settlpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "settlptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "settlptyssub",
+    "FIX:counter": "801",
+    "FIX:tag": "915669",
+    "display": "SettlPartySubIDs"
+  }
+}

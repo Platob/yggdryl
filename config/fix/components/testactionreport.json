@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "strategyparametersgrp",
+        "name": "strategyparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "strategyparametersgrp"
+          "FIX:group": "strategyparameters"
         }
       },
       {
@@ -68,13 +68,13 @@
         }
       },
       {
-        "name": "algosystemmodulegrp",
+        "name": "algosystemmodules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "algosystemmodulegrp"
+          "FIX:group": "algosystemmodules"
         }
       },
       {
@@ -89,13 +89,13 @@
         }
       },
       {
-        "name": "testscenariogrp",
+        "name": "testscenarios",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testscenariogrp"
+          "FIX:group": "testscenarios"
         }
       },
       {

@@ -1,0 +1,24 @@
+{
+  "name": "marketdisruptionfallbackreferenceprices",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketdisruptionfallbackreferenceprice",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "marketdisruptionfallbackreferenceprice"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "marketdisruptionfallbackreferenceprice",
+    "FIX:counter": "41096",
+    "FIX:tag": "431517",
+    "description": "Required if NoMarketDisruptionFallbackReferencePrices(41096) > 0.",
+    "display": "MarketDisruptionFallbackReferencePrices"
+  }
+}

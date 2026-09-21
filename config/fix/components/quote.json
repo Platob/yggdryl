@@ -168,13 +168,13 @@
         }
       },
       {
-        "name": "quotqualgrp",
+        "name": "quotequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotqualgrp"
+          "FIX:group": "quotequalifiers"
         }
       },
       {
@@ -222,13 +222,13 @@
         }
       },
       {
-        "name": "quoteattributegrp",
+        "name": "quoteattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quoteattributegrp"
+          "FIX:group": "quoteattributes"
         }
       },
       {
@@ -243,13 +243,13 @@
         }
       },
       {
-        "name": "valuechecksgrp",
+        "name": "valuechecks",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "valuechecksgrp"
+          "FIX:group": "valuechecks"
         }
       },
       {
@@ -468,13 +468,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {
@@ -1057,13 +1057,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -1110,13 +1110,13 @@
         }
       },
       {
-        "name": "relativevaluegrp",
+        "name": "relativevalues",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relativevaluegrp"
+          "FIX:group": "relativevalues"
         }
       },
       {
@@ -1141,13 +1141,13 @@
         }
       },
       {
-        "name": "routinggrp",
+        "name": "routingids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "routinggrp"
+          "FIX:group": "routingids"
         }
       },
       {

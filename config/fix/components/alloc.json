@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "individualallocsubqtyattributegrp",
+        "name": "individualallocsubqtyattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "individualallocsubqtyattributegrp"
+          "FIX:group": "individualallocsubqtyattributes"
         }
       },
       {
@@ -190,13 +190,13 @@
         }
       },
       {
-        "name": "allocregulatorytradeidgrp",
+        "name": "allocregulatorytradeids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "allocregulatorytradeidgrp"
+          "FIX:group": "allocregulatorytradeids"
         }
       },
       {
@@ -428,13 +428,13 @@
         }
       },
       {
-        "name": "alloccommissiondatagrp",
+        "name": "alloccommissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "alloccommissiondatagrp"
+          "FIX:group": "alloccommissions"
         }
       },
       {
@@ -581,13 +581,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {
@@ -602,13 +602,13 @@
         }
       },
       {
-        "name": "clrinstgrp",
+        "name": "clearinginstructions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "clrinstgrp"
+          "FIX:group": "clearinginstructions"
         }
       },
       {
@@ -721,13 +721,13 @@
         }
       },
       {
-        "name": "tradeallocamtgrp",
+        "name": "tradeallocamts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradeallocamtgrp"
+          "FIX:group": "tradeallocamts"
         }
       }
     ]

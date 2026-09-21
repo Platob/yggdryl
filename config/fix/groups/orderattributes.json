@@ -1,0 +1,24 @@
+{
+  "name": "orderattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "orderattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "orderattribute",
+    "FIX:counter": "2593",
+    "FIX:tag": "242215",
+    "description": "Required if NoOrderAttributes(2593) > 0.",
+    "display": "OrderAttributes"
+  }
+}

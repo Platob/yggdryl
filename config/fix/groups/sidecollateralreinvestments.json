@@ -1,0 +1,24 @@
+{
+  "name": "sidecollateralreinvestments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecollateralreinvestment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "sidecollateralreinvestment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "sidecollateralreinvestment",
+    "FIX:counter": "2864",
+    "FIX:tag": "670900",
+    "description": "Required if NoSideCollateralReinvestments(2864) > 0.",
+    "display": "SideCollateralReinvestments"
+  }
+}

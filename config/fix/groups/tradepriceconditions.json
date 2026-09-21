@@ -1,0 +1,24 @@
+{
+  "name": "tradepriceconditions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradepriceconditioncomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "tradepriceconditioncomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "tradepriceconditioncomponent",
+    "FIX:counter": "1838",
+    "FIX:tag": "460698",
+    "description": "Required if NoTradePriceConditions(1838) > 0.",
+    "display": "TradePriceConditions"
+  }
+}

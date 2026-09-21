@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamassetattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamassetattribute",
+    "FIX:counter": "41800",
+    "FIX:tag": "566533",
+    "description": "Required if NoUnderlyingStreamAssetAttributes(41800) > 0.",
+    "display": "UnderlyingStreamAssetAttributes"
+  }
+}

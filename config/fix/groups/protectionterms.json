@@ -1,0 +1,24 @@
+{
+  "name": "protectionterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectionterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "protectionterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "protectionterm",
+    "FIX:counter": "40181",
+    "FIX:tag": "516410",
+    "description": "Required if NoProtectionTerms(40181) > 0.",
+    "display": "ProtectionTerms"
+  }
+}

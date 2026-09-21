@@ -1,0 +1,24 @@
+{
+  "name": "streamcommoditysettldays",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommoditysettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamcommoditysettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamcommoditysettldaycomponent",
+    "FIX:counter": "41283",
+    "FIX:tag": "1077370",
+    "description": "Required if NoStreamCommoditySettlDays(41283) > 0.",
+    "display": "StreamCommoditySettlDays"
+  }
+}

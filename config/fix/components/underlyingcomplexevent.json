@@ -344,13 +344,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventratesourcegrp",
+        "name": "underlyingcomplexeventratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventratesourcegrp"
+          "FIX:group": "underlyingcomplexeventratesources"
         }
       },
       {
@@ -375,13 +375,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventperiodgrp",
+        "name": "underlyingcomplexeventperiods",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventperiodgrp"
+          "FIX:group": "underlyingcomplexeventperiods"
         }
       },
       {
@@ -451,13 +451,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventcrediteventsourcegrp",
+        "name": "underlyingcomplexeventcrediteventsources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventcrediteventsourcegrp"
+          "FIX:group": "underlyingcomplexeventcrediteventsources"
         }
       },
       {
@@ -472,13 +472,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventcrediteventgrp",
+        "name": "underlyingcomplexeventcreditevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventcrediteventgrp"
+          "FIX:group": "underlyingcomplexeventcreditevents"
         }
       },
       {

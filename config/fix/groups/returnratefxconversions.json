@@ -1,0 +1,24 @@
+{
+  "name": "returnratefxconversions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratefxconversion",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "returnratefxconversion"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "returnratefxconversion",
+    "FIX:counter": "42731",
+    "FIX:tag": "835780",
+    "description": "Required if NoReturnRateFXConversions(42731) > 0.",
+    "display": "ReturnRateFXConversions"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legexecs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdinstrmtlegexec",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdinstrmtlegexec"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdinstrmtlegexec",
+    "FIX:counter": "1892",
+    "FIX:tag": "863318",
+    "description": "Required if NoLegExecs(1892) > 0.",
+    "display": "LegExecs"
+  }
+}

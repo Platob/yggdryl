@@ -1,0 +1,24 @@
+{
+  "name": "riskinstrumentscopes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "riskinstrumentscope",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "riskinstrumentscope"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "riskinstrumentscope",
+    "FIX:counter": "1534",
+    "FIX:tag": "377621",
+    "description": "Required when NoRiskInstrumentScopes > 0.",
+    "display": "RiskInstrumentScopes"
+  }
+}

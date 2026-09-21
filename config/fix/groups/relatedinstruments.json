@@ -1,0 +1,24 @@
+{
+  "name": "relatedinstruments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedinstrument",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedinstrument"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedinstrument",
+    "FIX:counter": "1647",
+    "FIX:tag": "524729",
+    "description": "Conditionally required when NoRelatedInstruments > 0",
+    "display": "RelatedInstruments"
+  }
+}

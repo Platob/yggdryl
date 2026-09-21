@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentscheduleratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentscheduleratesourcecomponent",
+    "FIX:counter": "40704",
+    "FIX:tag": "769066",
+    "description": "Required if NoUnderlyingPaymentScheduleRates(40704) > 0.",
+    "display": "UnderlyingPaymentScheduleRateSources"
+  }
+}

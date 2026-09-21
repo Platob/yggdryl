@@ -1,0 +1,24 @@
+{
+  "name": "relatedmarketsegments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedmarketsegment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedmarketsegment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedmarketsegment",
+    "FIX:counter": "2545",
+    "FIX:tag": "711679",
+    "description": "Number of market segments.",
+    "display": "RelatedMarketSegments"
+  }
+}

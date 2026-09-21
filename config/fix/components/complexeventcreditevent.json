@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "complexeventcrediteventqualifiergrp",
+        "name": "complexeventcrediteventqualifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "complexeventcrediteventqualifiergrp"
+          "FIX:group": "complexeventcrediteventqualifiers"
         }
       }
     ]

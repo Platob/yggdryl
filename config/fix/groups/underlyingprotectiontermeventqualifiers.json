@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprotectiontermeventqualifiers",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectiontermeventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprotectiontermeventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprotectiontermeventqualifiercomponent",
+    "FIX:counter": "42085",
+    "FIX:tag": "106064",
+    "description": "Required if NoUnderlyingProtectionTermEventQualifiers(42085) > 0.",
+    "display": "UnderlyingProtectionTermEventQualifiers"
+  }
+}

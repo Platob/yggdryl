@@ -1,0 +1,24 @@
+{
+  "name": "assetattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "assetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "assetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "assetattribute",
+    "FIX:counter": "2304",
+    "FIX:tag": "465567",
+    "description": "Required if NoAssetAttributes(2304) > 0.",
+    "display": "AssetAttributes"
+  }
+}

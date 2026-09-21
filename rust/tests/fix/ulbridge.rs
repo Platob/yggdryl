@@ -462,7 +462,7 @@ mod dataset {
         assert_eq!(message.by_tag(552).unwrap().as_i64(), Some(1), "NoSides");
         assert_eq!(
             message
-                .by_path(&path("TrdInstrmtLegGrp[0].LegPreAllocGrp[0].LegAllocQty"))
+                .by_path(&path("TrdInstrmtLegGrp[0].LegAllocs[0].LegAllocQty"))
                 .unwrap(),
             super::decimal("600")
         );
@@ -480,7 +480,7 @@ mod dataset {
             .map(|index| {
                 message
                     .get_by_path(&path(&format!(
-                        "TrdCapRptSideGrp[0].Parties[{index}].PtysSubGrp"
+                        "TrdCapRptSideGrp[0].Parties[{index}].PartySubIDs"
                     )))
                     .and_then(|held| held.as_sequence().map(<[Scalar]>::len))
                     .unwrap_or_default()

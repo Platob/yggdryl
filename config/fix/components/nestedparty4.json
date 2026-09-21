@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "nstdptys4subgrp",
+        "name": "nested4partysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "nstdptys4subgrp"
+          "FIX:group": "nested4partysubids"
         }
       }
     ]

@@ -176,7 +176,7 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
             .map(|(name, value)| (name.as_str(), value.as_str()))
             .collect::<Vec<_>>(),
         [
-            ("msgsectxid", "e7254b17:9f02625007"),
+            ("msgsesseventid", "1:S|8:e7254b17|10:9f02625007|86416"),
             ("quoteid", "quote-20260814-1"),
             ("quotereqid", "request-20260814-1"),
         ]

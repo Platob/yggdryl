@@ -1,0 +1,24 @@
+{
+  "name": "underlyingsecondaryassetclasses",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingsecondaryasset",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingsecondaryasset"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingsecondaryasset",
+    "FIX:counter": "2080",
+    "FIX:tag": "870607",
+    "description": "Required if NoUnderlyingSecondaryAssetClasses(2080) > 0.",
+    "display": "UnderlyingSecondaryAssetClasses"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legoptionexerciseexpirationdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legoptionexerciseexpirationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legoptionexerciseexpirationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legoptionexerciseexpirationdatecomponent",
+    "FIX:counter": "41527",
+    "FIX:tag": "125148",
+    "description": "Required if NoLegOptionExerciseExpirationDates(41527) > 0.",
+    "display": "LegOptionExerciseExpirationDates"
+  }
+}

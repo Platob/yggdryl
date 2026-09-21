@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "legfinancingcontractualdefinitionsgrp",
+        "name": "legfinancingcontractualdefinitions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legfinancingcontractualdefinitionsgrp"
+          "FIX:group": "legfinancingcontractualdefinitions"
         }
       },
       {
@@ -157,13 +157,13 @@
         }
       },
       {
-        "name": "legfinancingtermsupplementgrp",
+        "name": "legfinancingtermsupplements",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legfinancingtermsupplementgrp"
+          "FIX:group": "legfinancingtermsupplements"
         }
       },
       {
@@ -178,13 +178,13 @@
         }
       },
       {
-        "name": "legfinancingcontractualmatrixgrp",
+        "name": "legcontractualmatrices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legfinancingcontractualmatrixgrp"
+          "FIX:group": "legcontractualmatrices"
         }
       },
       {

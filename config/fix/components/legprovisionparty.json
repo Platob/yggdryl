@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "legprovisionptyssubgrp",
+        "name": "legprovisionpartysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprovisionptyssubgrp"
+          "FIX:group": "legprovisionpartysubids"
         }
       }
     ]

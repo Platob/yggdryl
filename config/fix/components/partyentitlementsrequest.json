@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "requestingpartygrp",
+        "name": "requestingpartyids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "requestingpartygrp"
+          "FIX:group": "requestingpartyids"
         }
       },
       {
@@ -89,13 +89,13 @@
         }
       },
       {
-        "name": "requestedpartyrolegrp",
+        "name": "requestedpartyroles",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "requestedpartyrolegrp"
+          "FIX:group": "requestedpartyroles"
         }
       },
       {
@@ -121,13 +121,13 @@
         }
       },
       {
-        "name": "entitlementtypegrp",
+        "name": "entitlementtypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "entitlementtypegrp"
+          "FIX:group": "entitlementtypes"
         }
       },
       {
@@ -153,13 +153,13 @@
         }
       },
       {
-        "name": "instrumentscopegrp",
+        "name": "instrumentscopes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopes"
         }
       },
       {

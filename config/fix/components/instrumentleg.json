@@ -388,13 +388,13 @@
         }
       },
       {
-        "name": "legsecondaryassetgrp",
+        "name": "legsecondaryassetclasses",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legsecondaryassetgrp"
+          "FIX:group": "legsecondaryassetclasses"
         }
       },
       {
@@ -409,13 +409,13 @@
         }
       },
       {
-        "name": "legassetattributegrp",
+        "name": "legassetattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legassetattributegrp"
+          "FIX:group": "legassetattributes"
         }
       },
       {
@@ -1683,13 +1683,13 @@
         }
       },
       {
-        "name": "legevntgrp",
+        "name": "legevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legevntgrp"
+          "FIX:group": "legevents"
         }
       },
       {
@@ -1863,13 +1863,13 @@
         }
       },
       {
-        "name": "legstreamgrp",
+        "name": "legstreams",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamgrp"
+          "FIX:group": "legstreams"
         }
       },
       {
@@ -1884,13 +1884,13 @@
         }
       },
       {
-        "name": "legprovisiongrp",
+        "name": "legprovisions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprovisiongrp"
+          "FIX:group": "legprovisions"
         }
       },
       {
@@ -1905,13 +1905,13 @@
         }
       },
       {
-        "name": "legadditionaltermgrp",
+        "name": "legadditionalterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legadditionaltermgrp"
+          "FIX:group": "legadditionalterms"
         }
       },
       {
@@ -1926,13 +1926,13 @@
         }
       },
       {
-        "name": "legprotectiontermgrp",
+        "name": "legprotectionterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprotectiontermgrp"
+          "FIX:group": "legprotectionterms"
         }
       },
       {
@@ -1947,13 +1947,13 @@
         }
       },
       {
-        "name": "legcashsettltermgrp",
+        "name": "legcashsettlterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legcashsettltermgrp"
+          "FIX:group": "legcashsettlterms"
         }
       },
       {
@@ -1968,13 +1968,13 @@
         }
       },
       {
-        "name": "legphysicalsettltermgrp",
+        "name": "legphysicalsettlterms",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legphysicalsettltermgrp"
+          "FIX:group": "legphysicalsettlterms"
         }
       },
       {
@@ -1989,13 +1989,13 @@
         }
       },
       {
-        "name": "legextraordinaryeventgrp",
+        "name": "legextraordinaryevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legextraordinaryeventgrp"
+          "FIX:group": "legextraordinaryevents"
         }
       },
       {

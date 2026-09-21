@@ -1,0 +1,24 @@
+{
+  "name": "relativevalues",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relativevaluecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relativevaluecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relativevaluecomponent",
+    "FIX:counter": "2529",
+    "FIX:tag": "352329",
+    "description": "Required if NoRelativeValues(2529) > 0.",
+    "display": "RelativeValues"
+  }
+}

@@ -371,13 +371,13 @@
         }
       },
       {
-        "name": "trdcapdtgrp",
+        "name": "dates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdcapdtgrp"
+          "FIX:group": "dates"
         }
       },
       {

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdividendperiodbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdividendperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingdividendperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingdividendperiodbusinesscentercomponent",
+    "FIX:counter": "42882",
+    "FIX:tag": "1032173",
+    "description": "Required if NoUnderlyingDividendPeriodBusinessCenters(42882) > 0.",
+    "display": "UnderlyingDividendPeriodBusinessCenters"
+  }
+}

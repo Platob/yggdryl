@@ -1,0 +1,24 @@
+{
+  "name": "physicalsettldeliverableobligations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "physicalsettldeliverableobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "physicalsettldeliverableobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "physicalsettldeliverableobligation",
+    "FIX:counter": "40209",
+    "FIX:tag": "269760",
+    "description": "Required if NoPhysicalSettlDeliverableObligations (40209) > 0.",
+    "display": "PhysicalSettlDeliverableObligations"
+  }
+}

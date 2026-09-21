@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprotectionterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectionterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprotectionterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprotectionterm",
+    "FIX:counter": "42068",
+    "FIX:tag": "537071",
+    "description": "Required if NoUnderlyingProtectionTerms(42068) > 0.",
+    "display": "UnderlyingProtectionTerms"
+  }
+}

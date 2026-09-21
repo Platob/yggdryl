@@ -529,7 +529,7 @@
     "metadata": {
       "FIX:replacements": [
         {
-          "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties",
+          "plan": "select [{partyrole: '4', partysubids: [{partysubid: clearingaccount}]}] as parties",
           "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)"
         }
       ],

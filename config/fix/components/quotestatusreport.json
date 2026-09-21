@@ -413,13 +413,13 @@
         }
       },
       {
-        "name": "quotqualgrp",
+        "name": "quotequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotqualgrp"
+          "FIX:group": "quotequalifiers"
         }
       },
       {
@@ -434,13 +434,13 @@
         }
       },
       {
-        "name": "quoteattributegrp",
+        "name": "quoteattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quoteattributegrp"
+          "FIX:group": "quoteattributes"
         }
       },
       {
@@ -510,13 +510,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {

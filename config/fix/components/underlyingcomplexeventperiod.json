@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventschedulegrp",
+        "name": "underlyingcomplexeventschedules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventschedulegrp"
+          "FIX:group": "underlyingcomplexeventschedules"
         }
       },
       {
@@ -58,13 +58,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventperioddategrp",
+        "name": "underlyingcomplexeventperioddatetimes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventperioddategrp"
+          "FIX:group": "underlyingcomplexeventperioddatetimes"
         }
       },
       {
@@ -79,13 +79,13 @@
         }
       },
       {
-        "name": "underlyingcomplexeventaveragingobservationgrp",
+        "name": "underlyingcomplexeventaveragingobservations",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcomplexeventaveragingobservationgrp"
+          "FIX:group": "underlyingcomplexeventaveragingobservations"
         }
       }
     ]

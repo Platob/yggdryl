@@ -1,0 +1,24 @@
+{
+  "name": "targetpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "targetptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "targetptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "targetptyssub",
+    "FIX:counter": "2433",
+    "FIX:tag": "1012090",
+    "description": "Required when NoTargetPartySubIDs(2433) > 0.",
+    "display": "TargetPartySubIDs"
+  }
+}

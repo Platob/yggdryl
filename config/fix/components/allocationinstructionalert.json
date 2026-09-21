@@ -381,13 +381,13 @@
         }
       },
       {
-        "name": "allocgroupsubqtygrp",
+        "name": "allocgroupsubqtys",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "allocgroupsubqtygrp"
+          "FIX:group": "allocgroupsubqtys"
         }
       },
       {
@@ -479,13 +479,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {

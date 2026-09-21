@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "testgatewaydetailgrp",
+        "name": "testgatewaydetails",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "testgatewaydetailgrp"
+          "FIX:group": "testgatewaydetails"
         }
       },
       {

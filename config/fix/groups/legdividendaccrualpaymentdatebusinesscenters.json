@@ -1,0 +1,24 @@
+{
+  "name": "legdividendaccrualpaymentdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdividendaccrualpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdividendaccrualpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdividendaccrualpaymentdatebusinesscentercomponent",
+    "FIX:counter": "42310",
+    "FIX:tag": "207494",
+    "description": "Required if NoLegDividendAccrualPaymentDateBusinessCenters(42310) > 0.",
+    "display": "LegDividendAccrualPaymentDateBusinessCenters"
+  }
+}

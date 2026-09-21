@@ -1,0 +1,24 @@
+{
+  "name": "tradecaplegunderlyings",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradecaplegunderlying",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "tradecaplegunderlying"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "tradecaplegunderlying",
+    "FIX:counter": "1342",
+    "FIX:tag": "1013334",
+    "description": "Number of legs for the underlying instrument",
+    "display": "TradeCapLegUnderlyings"
+  }
+}

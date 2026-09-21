@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "paymentstreamresetdatebusinesscentergrp",
+        "name": "paymentstreamresetdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstreamresetdatebusinesscentergrp"
+          "FIX:group": "paymentstreamresetdatebusinesscenters"
         }
       },
       {
@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "paymentstreaminitialfixingdatebusinesscentergrp",
+        "name": "paymentstreaminitialfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstreaminitialfixingdatebusinesscentergrp"
+          "FIX:group": "paymentstreaminitialfixingdatebusinesscenters"
         }
       },
       {
@@ -200,13 +200,13 @@
         }
       },
       {
-        "name": "paymentstreamfixingdatebusinesscentergrp",
+        "name": "paymentstreamfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstreamfixingdatebusinesscentergrp"
+          "FIX:group": "paymentstreamfixingdatebusinesscenters"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "paymentstreamfixingdategrp",
+        "name": "paymentstreamfixingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstreamfixingdategrp"
+          "FIX:group": "paymentstreamfixingdates"
         }
       }
     ]

@@ -1,0 +1,24 @@
+{
+  "name": "crosslegs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecrossleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "sidecrossleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "sidecrossleg",
+    "FIX:counter": "1829",
+    "FIX:tag": "539812",
+    "description": "Required if NoCrossLegs(1829) > 0.",
+    "display": "CrossLegs"
+  }
+}

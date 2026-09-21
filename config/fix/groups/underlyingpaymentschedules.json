@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentschedule",
+    "FIX:counter": "40664",
+    "FIX:tag": "245275",
+    "description": "Required if NoUnderlyingPaymentScheules(40664) > 0.",
+    "display": "UnderlyingPaymentSchedules"
+  }
+}

@@ -334,13 +334,13 @@
         }
       },
       {
-        "name": "hopgrp",
+        "name": "hops",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "hopgrp"
+          "FIX:group": "hops"
         }
       }
     ]

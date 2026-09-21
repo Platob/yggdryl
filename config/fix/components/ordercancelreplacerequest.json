@@ -418,13 +418,13 @@
         }
       },
       {
-        "name": "valuechecksgrp",
+        "name": "valuechecks",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "valuechecksgrp"
+          "FIX:group": "valuechecks"
         }
       },
       {
@@ -492,13 +492,13 @@
         }
       },
       {
-        "name": "disclosureinstructiongrp",
+        "name": "disclosureinstructions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "disclosureinstructiongrp"
+          "FIX:group": "disclosureinstructions"
         }
       },
       {
@@ -568,13 +568,13 @@
         }
       },
       {
-        "name": "trdgsesgrp",
+        "name": "trdgses",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdgsesgrp"
+          "FIX:group": "trdgses"
         }
       },
       {
@@ -864,13 +864,13 @@
         }
       },
       {
-        "name": "strategyparametersgrp",
+        "name": "strategyparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "strategyparametersgrp"
+          "FIX:group": "strategyparameters"
         }
       },
       {
@@ -1071,13 +1071,13 @@
         }
       },
       {
-        "name": "commissiondatagrp",
+        "name": "commissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "commissiondatagrp"
+          "FIX:group": "commissions"
         }
       },
       {
@@ -1158,13 +1158,13 @@
         }
       },
       {
-        "name": "orderattributegrp",
+        "name": "orderattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "orderattributegrp"
+          "FIX:group": "orderattributes"
         }
       },
       {
@@ -1212,13 +1212,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {

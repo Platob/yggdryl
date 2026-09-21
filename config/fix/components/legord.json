@@ -90,13 +90,13 @@
         }
       },
       {
-        "name": "legpreallocgrp",
+        "name": "legallocs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpreallocgrp"
+          "FIX:group": "legallocs"
         }
       },
       {
@@ -286,13 +286,13 @@
         }
       },
       {
-        "name": "legratesourcegrp",
+        "name": "legratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legratesourcegrp"
+          "FIX:group": "legratesources"
         }
       }
     ]

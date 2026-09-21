@@ -1,0 +1,24 @@
+{
+  "name": "testmeasures",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testmeasure",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "testmeasure"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "testmeasure",
+    "FIX:counter": "3052",
+    "FIX:tag": "437339",
+    "description": "Required if NoTestMeasures(3052) > 0.",
+    "display": "TestMeasures"
+  }
+}

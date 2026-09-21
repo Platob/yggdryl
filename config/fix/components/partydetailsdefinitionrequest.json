@@ -36,13 +36,13 @@
         }
       },
       {
-        "name": "requestingpartygrp",
+        "name": "requestingpartyids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "requestingpartygrp"
+          "FIX:group": "requestingpartyids"
         }
       },
       {

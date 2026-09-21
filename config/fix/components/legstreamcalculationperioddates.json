@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "legstreamcalculationperiodbusinesscentergrp",
+        "name": "legstreamcalculationperiodbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamcalculationperiodbusinesscentergrp"
+          "FIX:group": "legstreamcalculationperiodbusinesscenters"
         }
       },
       {
@@ -112,13 +112,13 @@
         }
       },
       {
-        "name": "legstreamfirstperiodstartdatebusinesscentergrp",
+        "name": "legstreamfirstperiodstartdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreamfirstperiodstartdatebusinesscentergrp"
+          "FIX:group": "legstreamfirstperiodstartdatebusinesscenters"
         }
       },
       {

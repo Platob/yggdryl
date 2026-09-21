@@ -67,13 +67,13 @@
         }
       },
       {
-        "name": "pricerangerulegrp",
+        "name": "pricerangerules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricerangerulegrp"
+          "FIX:group": "pricerangerules"
         }
       },
       {
@@ -88,13 +88,13 @@
         }
       },
       {
-        "name": "quotesizerulegrp",
+        "name": "quotesizerules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotesizerulegrp"
+          "FIX:group": "quotesizerules"
         }
       },
       {

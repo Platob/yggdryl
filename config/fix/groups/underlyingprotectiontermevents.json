@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprotectiontermevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectiontermevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprotectiontermevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprotectiontermevent",
+    "FIX:counter": "42077",
+    "FIX:tag": "434685",
+    "description": "Required if NoUnderlyingProtectionTermEvents (42078) > 0.",
+    "display": "UnderlyingProtectionTermEvents"
+  }
+}

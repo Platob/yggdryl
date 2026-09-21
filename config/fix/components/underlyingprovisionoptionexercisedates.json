@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingprovisionoptionexercisebusinesscentergrp",
+        "name": "underlyingprovisionoptionexercisebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingprovisionoptionexercisebusinesscentergrp"
+          "FIX:group": "underlyingprovisionoptionexercisebusinesscenters"
         }
       },
       {
@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "underlyingprovisionoptionexercisefixeddategrp",
+        "name": "underlyingprovisionoptionexercisefixeddates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingprovisionoptionexercisefixeddategrp"
+          "FIX:group": "underlyingprovisionoptionexercisefixeddates"
         }
       },
       {

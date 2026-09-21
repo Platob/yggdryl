@@ -1,0 +1,24 @@
+{
+  "name": "dates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdcapdt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdcapdt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdcapdt",
+    "FIX:counter": "580",
+    "FIX:tag": "1066751",
+    "description": "Number of date ranges provided (must be 1 or 2 if specified)",
+    "display": "Dates"
+  }
+}

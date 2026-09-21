@@ -1,0 +1,24 @@
+{
+  "name": "routingids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "routing",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "routing"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "routing",
+    "FIX:counter": "215",
+    "FIX:tag": "403954",
+    "description": "Indicates type of RoutingID. Required if NoRoutingIDs is > 0.",
+    "display": "RoutingIDs"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "optionexercisebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "optionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "optionexercisebusinesscentercomponent",
+    "FIX:counter": "41116",
+    "FIX:tag": "990664",
+    "description": "Required if NoOptionExerciseBusinessCenters(41116) > 0.",
+    "display": "OptionExerciseBusinessCenters"
+  }
+}

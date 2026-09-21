@@ -1,0 +1,23 @@
+{
+  "name": "partysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "ptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "ptyssub",
+    "FIX:counter": "802",
+    "FIX:tag": "486736",
+    "display": "PartySubIDs"
+  }
+}

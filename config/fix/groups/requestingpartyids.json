@@ -1,0 +1,24 @@
+{
+  "name": "requestingpartyids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestingparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "requestingparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "requestingparty",
+    "FIX:counter": "1657",
+    "FIX:tag": "450650",
+    "description": "Required when NoRequestingPartyIDs > 0.",
+    "display": "RequestingPartyIDs"
+  }
+}

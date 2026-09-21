@@ -1,0 +1,24 @@
+{
+  "name": "paymentschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentschedule",
+    "FIX:counter": "40828",
+    "FIX:tag": "427995",
+    "description": "Required if NoPaymentSchedules(40828) > 0.",
+    "display": "PaymentSchedules"
+  }
+}

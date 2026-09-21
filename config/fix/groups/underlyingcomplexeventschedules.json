@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcomplexeventschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcomplexeventschedule",
+    "FIX:counter": "41750",
+    "FIX:tag": "916556",
+    "description": "Required if NoUnderlyingComplexEventSchedules(41750) > 0.",
+    "display": "UnderlyingComplexEventSchedules"
+  }
+}

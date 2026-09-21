@@ -1,0 +1,24 @@
+{
+  "name": "requestedpartyroles",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestedpartyrolecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "requestedpartyrolecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "requestedpartyrolecomponent",
+    "FIX:counter": "1508",
+    "FIX:tag": "1019312",
+    "description": "Identifies the type of party role requested. Required if NoRequestedPartyRoles > 0.",
+    "display": "RequestedPartyRoles"
+  }
+}

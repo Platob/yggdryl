@@ -1,0 +1,24 @@
+{
+  "name": "legphysicalsettlterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legphysicalsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legphysicalsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legphysicalsettlterm",
+    "FIX:counter": "41599",
+    "FIX:tag": "290094",
+    "description": "Required if NoLegPhysicalSettlTerms(41599) > 0.",
+    "display": "LegPhysicalSettlTerms"
+  }
+}

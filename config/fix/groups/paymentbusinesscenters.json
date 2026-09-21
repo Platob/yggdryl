@@ -1,0 +1,24 @@
+{
+  "name": "paymentbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentbusinesscentercomponent",
+    "FIX:counter": "40944",
+    "FIX:tag": "247540",
+    "description": "Required if NoPaymentBusinessCenters(40944) > 0.",
+    "display": "PaymentBusinessCenters"
+  }
+}
