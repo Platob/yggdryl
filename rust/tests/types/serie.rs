@@ -1,0 +1,1473 @@
+//! The column side of the value model: what a [`Serie`] owes the field that
+//! types it, what its leaves lend off the buffers they hold, how those
+//! buffers are written in place, and how a column reads as the sequence it
+//! is.
+
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
+use yggdryl::{
+    DataType, Field, Int32Serie, Int64Serie, Scalar, Serie, SerieValue, StructType,
+    Utf8StringSerie, Value,
+};
+
+/// One non-null 64-bit column of two prices, laid out from values.
+fn prices() -> Serie {
+    Serie::from_scalars(
+        Field::new("price", DataType::Int64, false),
+        [Scalar::from(125_i64), Scalar::from(126_i64)],
+    )
+    .expect("two int64 rows")
+}
+
+/// The same two prices, taken straight off Arrow buffers.
+fn price_buffers() -> Serie {
+    let array: ArrayRef = Arc::new(Int64Array::from(vec![125, 126]));
+    Serie::from_arrow_array(Field::new("price", DataType::Int64, false), array)
+        .expect("an int64 run")
+}
+
+/// One non-null record root over an identifier and a symbol.
+fn quotes_root() -> Field {
+    let fields = StructType::from_fields([
+        Field::new("id", DataType::Int64, false),
+        Field::new("symbol", DataType::utf8(), false),
+    ])
+    .expect("two named children");
+    Field::new("row", DataType::Struct(fields), false)
+}
+
+/// Two rows under [`quotes_root`], named rather than positional.
+fn quotes_rows() -> Vec<Scalar> {
+    vec![
+        Scalar::from_struct([
+            ("id", Scalar::from(1_i64)),
+            ("symbol", Scalar::from("AAPL")),
+        ])
+        .expect("one record"),
+        Scalar::from_struct([
+            ("id", Scalar::from(2_i64)),
+            ("symbol", Scalar::from("MSFT")),
+        ])
+        .expect("one record"),
+    ]
+}
+
+#[test]
+fn a_serie_rewrites_every_row_into_what_its_field_declares() {
+    // The field declares int64 and the rows arrive as int8: the field's own
+    // value contract rewrites each one, so the column holds the width it
+    // declared and not the width it was handed.
+    let column = Serie::from_scalars(
+        Field::new("price", DataType::Int64, false),
+        [Scalar::from(1_i8), Scalar::from(2_i8)],
+    )
+    .expect("two rows the field accepts");
+
+    assert_eq!(column.scalar(0).unwrap(), Scalar::from(1_i64));
+    assert_eq!(column.scalar(1).unwrap(), Scalar::from(2_i64));
+    assert_eq!(
+        column.field().expect("a column carries its field").dtype(),
+        &DataType::Int64
+    );
+
+    // And the buffers are the declared width, not a second reading of it.
+    assert_eq!(
+        column.as_int64().expect("an int64 column").values(),
+        &[1, 2]
+    );
+}
+
+#[test]
+fn a_row_the_field_refuses_refuses_the_whole_column() {
+    let refusal = Serie::from_scalars(
+        Field::new("price", DataType::Int64, false),
+        [Scalar::from(1_i64), Scalar::Null],
+    )
+    .expect_err("a required column admits no absent row");
+    assert!(
+        refusal.to_string().contains("price"),
+        "the refusal names the field: {refusal}"
+    );
+
+    // Nothing partial survives: the same rows under a nullable field are a
+    // column, so it is the declaration that refused and not the value.
+    let nullable = Serie::from_scalars(
+        Field::new("price", DataType::Int64, true),
+        [Scalar::from(1_i64), Scalar::Null],
+    )
+    .expect("a nullable column");
+    assert_eq!(nullable.null_count(), 1);
+    assert!(nullable.is_null(1));
+}
+
+#[test]
+fn a_column_reads_its_rows_off_the_buffers_it_holds() {
+    let column = price_buffers();
+
+    // The leaf lends the values buffer itself - no row was built to answer
+    // any of this.
+    let leaf: &Int64Serie = column.as_int64().expect("an int64 column");
+    assert_eq!(leaf.values(), &[125, 126]);
+    assert_eq!(leaf.value(0), Some(125));
+    assert_eq!(leaf.value(9), None);
+    assert!(leaf.nulls().is_none());
+
+    // And a value is built only where one is asked for.
+    assert_eq!(column.scalar(1).unwrap(), Scalar::from(126_i64));
+    assert_eq!(column.scalar(7).unwrap(), Scalar::Null);
+    assert_eq!(column.len(), 2);
+    assert!(!column.is_empty());
+}
+
+#[test]
+fn a_text_column_lends_its_offsets_and_its_characters_where_they_lie() {
+    let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT", "NVDA"]));
+    let column = Serie::from_arrow_array(Field::new("symbol", DataType::utf8(), false), array)
+        .expect("a utf8 run");
+
+    let leaf: &Utf8StringSerie = column.as_utf8().expect("a utf8 column");
+    assert_eq!(leaf.offsets().as_ref(), &[0, 4, 8, 12]);
+    assert_eq!(leaf.payload().as_slice(), b"AAPLMSFTNVDA");
+    assert_eq!(leaf.value(1), Some("MSFT"));
+
+    // The value side still answers, and it answers the same characters.
+    assert_eq!(column.scalar(2).unwrap(), Scalar::from("NVDA"));
+}
+
+#[test]
+fn the_typed_readers_span_the_widths_their_family_spans() {
+    let narrow: ArrayRef = Arc::new(arrow_array::Int32Array::from(vec![1, 2, 3]));
+    let column = Serie::from_arrow_array(Field::new("count", DataType::Int32, false), narrow)
+        .expect("an int32 run");
+
+    // One leaf per width, and a leaf answers only for the width it is.
+    let leaf: &Int32Serie = column.as_int32().expect("an int32 column");
+    assert_eq!(leaf.values(), &[1, 2, 3]);
+    assert!(column.as_int64().is_none());
+    assert!(column.as_utf8().is_none());
+
+    // The family is one step above the leaf, and it is the same column.
+    let family = column.as_integer().expect("the integer family");
+    assert_eq!(SerieValue::len(family), 3);
+    assert_eq!(family.scalar(2).unwrap(), Scalar::from(3_i32));
+}
+
+#[test]
+fn a_column_grows_into_the_buffer_it_already_holds() {
+    let mut column = price_buffers();
+    let before = column.len();
+
+    // A typed append writes the values buffer; nothing is rebuilt from rows.
+    column
+        .as_int64_mut()
+        .expect("an int64 column")
+        .push_value(Some(127));
+    assert_eq!(column.len(), before + 1);
+    assert_eq!(
+        column.as_int64().expect("an int64 column").values(),
+        &[125, 126, 127]
+    );
+
+    // And the value door writes the same buffer, through the field.
+    column
+        .push(Scalar::from(128_i16))
+        .expect("the field narrows");
+    assert_eq!(
+        column.as_int64().expect("an int64 column").values(),
+        &[125, 126, 127, 128]
+    );
+
+    // A value the field refuses leaves the column as it was.
+    assert!(column.push(Scalar::from("AAPL")).is_err());
+    assert_eq!(column.len(), 4);
+}
+
+#[test]
+fn a_slot_is_rewritten_in_the_buffer_that_holds_it() {
+    let mut column = price_buffers();
+
+    column.set(0, Scalar::from(999_i64)).expect("a set row");
+    assert_eq!(
+        column.as_int64().expect("an int64 column").values(),
+        &[999, 126]
+    );
+
+    // Past the end is refused by name rather than silently appended.
+    let refusal = column
+        .set(9, Scalar::from(1_i64))
+        .expect_err("row 9 is past the end");
+    assert!(
+        refusal.to_string().contains("price"),
+        "the refusal names the column: {refusal}"
+    );
+
+    // A required column refuses an absent value, and keeps what it had.
+    assert!(column.set(0, Scalar::Null).is_err());
+    assert_eq!(column.scalar(0).unwrap(), Scalar::from(999_i64));
+}
+
+#[test]
+fn a_null_slot_is_written_and_read_back_as_absent() {
+    let mut column = Serie::from_scalars(
+        Field::new("price", DataType::Int64, true),
+        [Scalar::from(1_i64), Scalar::from(2_i64)],
+    )
+    .expect("a nullable column");
+
+    column.set(1, Scalar::Null).expect("an absent row");
+    assert!(column.is_null(1));
+    assert_eq!(column.null_count(), 1);
+    assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+
+    // And back again: the validity bitmap is rebuilt, the values stay.
+    column.set(1, Scalar::from(3_i64)).expect("a present row");
+    assert_eq!(column.null_count(), 0);
+    assert_eq!(
+        column.as_int64().expect("an int64 column").values(),
+        &[1, 3]
+    );
+}
+
+#[test]
+fn a_run_whose_layout_is_not_the_fields_is_refused() {
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["AAPL"]));
+    let refusal = Serie::from_arrow_array(Field::new("price", DataType::Int64, false), text)
+        .expect_err("utf8 is not int64");
+    assert!(
+        refusal.to_string().to_lowercase().contains("int64"),
+        "the refusal names the layout it wanted: {refusal}"
+    );
+}
+
+#[test]
+fn a_record_column_lends_its_children_and_takes_them_away() {
+    let column = Serie::from_scalars(quotes_root(), quotes_rows()).expect("two records");
+    let records = column.as_struct().expect("a record column");
+
+    // Each child is a column of its own, with its own buffers.
+    assert_eq!(records.children().len(), 2);
+    assert_eq!(
+        records
+            .child("id")
+            .expect("a named child")
+            .as_int64()
+            .expect("an int64 child")
+            .values(),
+        &[1, 2]
+    );
+    assert_eq!(
+        records
+            .child_at(1)
+            .expect("a positional child")
+            .field()
+            .expect("a child column carries its field")
+            .name(),
+        "symbol"
+    );
+    assert!(records.child("volume").is_none());
+
+    // Dropping one child drops it from the field too, and leaves the others'
+    // buffers exactly where they were.
+    let without = records.without_child("symbol").expect("a dropped child");
+    assert_eq!(without.children().len(), 1);
+    assert!(without.field().dtype().as_fields().unwrap().len() == 1);
+    assert_eq!(
+        without
+            .child("id")
+            .expect("the kept child")
+            .as_int64()
+            .expect("an int64 child")
+            .values(),
+        &[1, 2]
+    );
+
+    // And adding one back is the same move in reverse.
+    let volumes: ArrayRef = Arc::new(Int64Array::from(vec![10, 20]));
+    let child = Serie::from_arrow_array(Field::new("volume", DataType::Int64, false), volumes)
+        .expect("an int64 child");
+    let widened = without.with_child(&child).expect("a added child");
+    assert_eq!(widened.children().len(), 2);
+    assert_eq!(
+        widened.scalar(0).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(10_i64)])
+    );
+
+    // A child whose rows do not line up with the record's is refused.
+    let short: ArrayRef = Arc::new(Int64Array::from(vec![1]));
+    let mismatched =
+        Serie::from_arrow_array(Field::new("bid", DataType::Int64, false), short).expect("one row");
+    assert!(without.with_child(&mismatched).is_err());
+}
+
+#[test]
+fn a_serie_reads_as_the_sequence_it_is() {
+    let column = prices();
+    let value = Scalar::from(column.clone());
+
+    // A column is a sequence value, so a sequence's counted and walked
+    // answers hold. What it cannot do is lend a slice it does not have:
+    // `as_sequence` borrows, and a column has no value to borrow.
+    assert_eq!(value.len(), 2);
+    assert_eq!(value.iter().count(), 2);
+    assert_eq!(
+        value.iter().map(|row| row.into_owned()).collect::<Vec<_>>(),
+        vec![Scalar::from(125_i64), Scalar::from(126_i64)]
+    );
+    assert_eq!(value.as_sequence(), None);
+    assert_eq!(value.kind(), "serie");
+
+    // The same rows out of the run leaf do lend, which is the one difference
+    // between the two.
+    let run = Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]);
+    assert_eq!(
+        run.as_sequence().expect("a run lends its values"),
+        &[Scalar::from(125_i64), Scalar::from(126_i64)]
+    );
+
+    // The leaf is reachable both ways round.
+    let sequence = match &value {
+        Scalar::Sequence(sequence) => sequence,
+        other => panic!("a column is a sequence value, got {other:?}"),
+    };
+    assert!(sequence.as_run().is_none());
+    assert!(sequence.is_column());
+    assert_eq!(sequence.len(), 2);
+}
+
+#[test]
+fn a_column_read_as_a_value_stores_no_row_and_is_unchanged_by_being_read() {
+    let value = Scalar::from(price_buffers());
+    let sequence = match &value {
+        Scalar::Sequence(sequence) => sequence,
+        other => panic!("a column is a sequence value, got {other:?}"),
+    };
+
+    // A column holds buffers and no value, so it has none to lend - before a
+    // read, after a read, ever.
+    assert!(sequence.as_slice().is_none());
+    assert_eq!(sequence.len(), 2);
+    assert_eq!(sequence.rows().unwrap().len(), 2);
+    assert!(sequence.as_slice().is_none(), "reading kept nothing");
+
+    // A run is the other leaf, and it does lend.
+    let run = Serie::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
+    assert!(run.as_slice().is_some());
+    assert!(matches!(run.rows().unwrap(), std::borrow::Cow::Borrowed(_)));
+    assert!(matches!(
+        sequence.rows().unwrap(),
+        std::borrow::Cow::Owned(_)
+    ));
+
+    // And the column itself still holds buffers, not rows.
+    assert_eq!(
+        sequence.as_int64().expect("an int64 column").values(),
+        &[125, 126]
+    );
+
+    // A walk still answers every row, building each as it is reached.
+    assert_eq!(
+        value.iter().map(|row| row.into_owned()).collect::<Vec<_>>(),
+        vec![Scalar::from(125_i64), Scalar::from(126_i64)]
+    );
+}
+
+#[test]
+fn a_serie_names_its_datatype_where_an_empty_sequence_cannot() {
+    let empty = Serie::empty(Field::new("price", DataType::Int64, false)).expect("an empty column");
+    assert!(empty.is_empty());
+    assert_eq!(
+        empty.dtype().unwrap(),
+        DataType::list(Field::new("price", DataType::Int64, false))
+    );
+
+    // A schema-free run of nothing cannot say the same.
+    let run = Scalar::from_sequence([]);
+    assert_ne!(run.dtype().unwrap(), empty.dtype().unwrap());
+}
+
+#[test]
+fn a_column_and_the_run_it_holds_order_by_their_rows_and_are_not_one_value() {
+    let column = prices();
+    let run = Serie::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
+
+    // A run lends its rows where it holds them; a column has none to lend.
+    assert!(run.as_slice().is_some());
+    assert!(column.as_slice().is_none());
+    assert_eq!(column.rows().unwrap().len(), 2);
+
+    // The rows are the same, so neither sorts away from the other; the leaf
+    // only breaks the tie, and they are not equal.
+    assert_ne!(column, run);
+    assert!(run < column);
+    assert_eq!(run.rows().unwrap(), column.rows().unwrap());
+}
+
+#[test]
+fn the_family_narrows_and_widens_through_the_serie_root() {
+    let column = price_buffers();
+
+    // Widen a leaf to the root and narrow it back: one column throughout.
+    let leaf = column.as_int64().expect("an int64 column").clone();
+    let widened = leaf.clone().into_serie();
+    assert_eq!(widened, column);
+    assert_eq!(Int64Serie::from_serie(&widened), Some(&leaf));
+    assert_eq!(Int32Serie::from_serie(&widened), None);
+}
+
+#[test]
+fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
+    let column = prices();
+    let value = Scalar::from(column.clone());
+
+    // A column carried as a value is the same column on the way back.
+    assert_eq!(<Serie as Value>::from_scalar(&value), Some(&column));
+
+    // Dropping to the schema-free run is the one direction that loses the
+    // field, and it is spelled rather than implied.
+    let run = column.clone().into_sequence().expect("readable rows");
+    assert_eq!(
+        run,
+        Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)])
+    );
+    assert!(matches!(run, Scalar::Sequence(Serie::List(_))));
+
+    // The value contract reads a column the way it reads a run, because it
+    // is the one contract every caller value crosses. Nothing to rewrite
+    // leaves the column exactly as it was.
+    let item = Field::new("price", DataType::Int64, false);
+    let exact = Field::new("prices", DataType::list(item), false);
+    let kept = exact
+        .scalar(value.clone())
+        .expect("a column is a list value");
+    assert_eq!(kept.kind(), "serie");
+    assert_eq!(<Serie as Value>::from_scalar(&kept), Some(&column));
+
+    // A narrower item rewrites the rows, and from there the declaring field
+    // is the authority, so what comes back is the run it rewrote.
+    let narrower = Field::new(
+        "prices",
+        DataType::list(Field::new("price", DataType::Int32, false)),
+        false,
+    );
+    let rewritten = narrower.scalar(value).expect("the rows narrow");
+    assert_eq!(rewritten.kind(), "sequence");
+    assert_eq!(
+        rewritten.as_sequence().expect("a run"),
+        &[Scalar::from(125_i32), Scalar::from(126_i32)]
+    );
+
+    // A row no reading can honour refuses the whole value. Text is not that
+    // row - the contract renders a number as the text it spells - so this
+    // asks for an identity over a registry, which 125 is not.
+    let refusing = Field::new(
+        "codes",
+        DataType::list(Field::new("code", DataType::Currency, false)),
+        false,
+    );
+    assert!(refusing.scalar(Scalar::from(prices())).is_err());
+
+    // And the rendering one is not a refusal, which is the contract working
+    // rather than a gap in it.
+    let rendered = Field::new(
+        "labels",
+        DataType::list(Field::new("label", DataType::utf8(), false)),
+        false,
+    );
+    assert_eq!(
+        rendered
+            .scalar(Scalar::from(prices()))
+            .expect("a number spells its own text")
+            .as_sequence()
+            .expect("a run"),
+        &[Scalar::from("125"), Scalar::from("126")]
+    );
+}
+
+#[test]
+fn a_column_crosses_into_one_arrow_array_and_back() {
+    let column = price_buffers();
+    let array = column.into_arrow_array().expect("a column has buffers");
+    assert_eq!(array.len(), 2);
+
+    let back = Serie::from_arrow_array(
+        column.field().expect("a column carries its field").clone(),
+        array,
+    )
+    .expect("the same buffers");
+    assert_eq!(back, column);
+}
+
+#[test]
+fn a_record_root_column_crosses_into_one_batch_and_back() {
+    let column = Serie::from_scalars(quotes_root(), quotes_rows()).expect("two records");
+    let batch = column.into_arrow_batch().expect("a record root");
+
+    assert_eq!(batch.num_rows(), 2);
+    assert_eq!(batch.num_columns(), 2);
+
+    let back = Serie::from_arrow_batch(&batch).expect("two columns of one length");
+    assert_eq!(back.scalars().unwrap(), column.scalars().unwrap());
+}
+
+#[test]
+fn the_column_wire_carries_the_field_beside_the_rows() {
+    let column = prices();
+    let document = serde_json::to_string(&column).expect("a column document");
+    assert!(
+        document.contains("price"),
+        "the field travels with the rows: {document}"
+    );
+
+    let back: Serie = serde_json::from_str(&document).expect("the same column");
+    assert_eq!(back, column);
+}
+
+#[test]
+fn the_sequence_family_reads_back_whichever_leaf_a_document_holds() {
+    let column = Scalar::from(prices());
+    let run = Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]);
+
+    for value in [column, run] {
+        let document = serde_json::to_string(&value).expect("a sequence document");
+        let back: Scalar = serde_json::from_str(&document).expect("the same sequence");
+        assert_eq!(back, value, "through {document}");
+    }
+}
+
+#[test]
+fn a_column_clone_shares_its_buffers_rather_than_copying_them() {
+    let column = price_buffers();
+    let copy = column.clone();
+
+    let one = column.into_arrow_array().expect("a column has buffers");
+    let other = copy.into_arrow_array().expect("a column has buffers");
+    assert!(
+        std::ptr::eq(
+            one.to_data().buffers()[0].as_ptr(),
+            other.to_data().buffers()[0].as_ptr(),
+        ),
+        "a clone shares the values buffer"
+    );
+}
+
+#[test]
+fn a_record_column_writes_its_own_validity_and_leaves_its_children_alone() {
+    let nullable = Field::new("row", quotes_root().dtype().clone(), true);
+    let mut records =
+        Serie::from_scalars(nullable, quotes_rows()).expect("two records under a nullable root");
+
+    // A null record row is the record's own validity bit; Arrow leaves the
+    // children's slots unspecified under it, so nothing below is rewritten.
+    records.set(0, Scalar::Null).expect("an absent record");
+    assert!(records.is_null(0));
+    assert_eq!(records.scalar(0).unwrap(), Scalar::Null);
+    assert_eq!(
+        records
+            .as_struct()
+            .expect("a record column")
+            .child("id")
+            .expect("a named child")
+            .as_int64()
+            .expect("an int64 child")
+            .values(),
+        &[1, 2],
+        "the child buffers are untouched by the record's own absence"
+    );
+
+    // And a null row appends as one slot in every child.
+    records.push(Scalar::Null).expect("an absent record");
+    assert_eq!(records.len(), 3);
+    assert!(records.is_null(2));
+    assert_eq!(
+        records
+            .as_struct()
+            .expect("a record column")
+            .child("id")
+            .expect("a named child")
+            .len(),
+        3,
+        "every child is as long as the record is"
+    );
+
+    // The buffers still cross as one batch, absent rows and all.
+    let array = records.into_arrow_array().expect("a column has buffers");
+    assert_eq!(array.len(), 3);
+    assert_eq!(array.null_count(), 2);
+
+    // A required root refuses the same row rather than writing a bit.
+    let mut required = Serie::from_scalars(quotes_root(), quotes_rows()).expect("two records");
+    assert!(required.set(0, Scalar::Null).is_err());
+    assert!(required.push(Scalar::Null).is_err());
+}
+
+#[test]
+fn a_record_row_that_does_not_fit_the_children_is_refused_by_name() {
+    let mut records = Serie::from_scalars(quotes_root(), quotes_rows()).expect("two records");
+
+    // A row of the wrong width never reaches a child: the record refuses it
+    // whole, naming itself.
+    let refusal = records
+        .push(Scalar::from_sequence([Scalar::from(3_i64)]))
+        .expect_err("one cell does not fit two children");
+    assert!(
+        refusal.to_string().contains("row"),
+        "the refusal names the record: {refusal}"
+    );
+    assert_eq!(records.len(), 2);
+}
+
+#[test]
+fn a_list_column_cuts_one_item_column_and_writes_its_own_validity() {
+    let item = Field::new("item", DataType::Int64, false);
+    let mut lists = Serie::from_scalars(
+        Field::new("prices", DataType::list(item), true),
+        [
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+            Scalar::from_sequence([Scalar::from(3_i64)]),
+        ],
+    )
+    .expect("two list rows");
+
+    // Every item of every row is one column, and the offsets say where each
+    // row starts - so reading them all reads one buffer.
+    let column = lists.as_sequence().expect("a list column");
+    assert_eq!(
+        column
+            .items()
+            .as_int64()
+            .expect("an int64 item column")
+            .values(),
+        &[1, 2, 3]
+    );
+    assert_eq!(column.range(0), Some((0, 2)));
+    assert_eq!(column.range(1), Some((2, 3)));
+
+    // An absent row is the validity bit; an empty present row is the same
+    // cut, which is what makes the bitmap the only thing telling them apart.
+    lists.push(Scalar::Null).expect("an absent row");
+    lists
+        .push(Scalar::from_sequence([]))
+        .expect("an empty present row");
+    assert_eq!(lists.len(), 4);
+    assert!(lists.is_null(2));
+    assert!(!lists.is_null(3));
+    assert_eq!(lists.scalar(2).unwrap(), Scalar::Null);
+    assert_eq!(lists.scalar(3).unwrap(), Scalar::from_sequence([]));
+
+    // And the buffers still cross, absent rows and all.
+    let array = lists.into_arrow_array().expect("a column has buffers");
+    assert_eq!(array.len(), 4);
+    assert_eq!(array.null_count(), 1);
+}
+
+#[test]
+fn a_list_row_that_does_not_fit_its_cut_is_refused_rather_than_moving_every_later_row() {
+    let item = Field::new("item", DataType::Int64, false);
+    let mut lists = Serie::from_scalars(
+        Field::new("prices", DataType::list(item), false),
+        [Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from(2_i64),
+        ])],
+    )
+    .expect("one list row");
+
+    // Rewriting in place is what a cut allows; a longer row would move every
+    // later row, so it is refused by name instead.
+    lists
+        .set(
+            0,
+            Scalar::from_sequence([Scalar::from(9_i64), Scalar::from(8_i64)]),
+        )
+        .expect("the same length");
+    assert_eq!(
+        lists
+            .as_sequence()
+            .expect("a list column")
+            .items()
+            .as_int64()
+            .expect("an int64 item column")
+            .values(),
+        &[9, 8]
+    );
+
+    let refusal = lists
+        .set(0, Scalar::from_sequence([Scalar::from(1_i64)]))
+        .expect_err("a shorter row does not fit the cut");
+    assert!(
+        refusal.to_string().contains("prices"),
+        "the refusal names the column: {refusal}"
+    );
+}
+
+#[test]
+fn a_mapping_column_holds_its_entries_as_a_record_column() {
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let entries = DataType::map(pair, false).expect("a mapping datatype");
+    let column = Serie::from_scalars(
+        Field::new("weights", entries, false),
+        [Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("one mapping row");
+
+    let maps = column.as_mapping().expect("a mapping column");
+    assert_eq!(maps.range(0), Some((0, 1)));
+
+    // A mapping column is the sequence leaf read as entries, so its items
+    // are the key-value records, and they are a column of their own.
+    let pairs = maps.items().as_struct().expect("a record entry column");
+    assert_eq!(
+        pairs
+            .child("key")
+            .expect("the key column")
+            .as_utf8()
+            .expect("a utf8 key column")
+            .value(0),
+        Some("AAPL")
+    );
+    assert_eq!(
+        pairs
+            .child("value")
+            .expect("the value column")
+            .as_int64()
+            .expect("an int64 value column")
+            .values(),
+        &[1]
+    );
+
+    // And a row reads back as the mapping it is.
+    assert_eq!(
+        column.scalar(0).unwrap(),
+        Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(1_i64))]).unwrap()
+    );
+}
+
+#[test]
+fn a_variant_column_lends_the_pair_it_stored_and_reads_only_on_demand() {
+    let mut column = Serie::from_scalars(
+        Field::new("payload", DataType::Variant, true),
+        [Scalar::from(1_i64), Scalar::from("AAPL")],
+    )
+    .expect("two variant rows");
+
+    // The storage is the Parquet Variant pair, and both runs are lent where
+    // they lie.
+    let leaf = column.as_variant().expect("a variant column");
+    let metadata = leaf.metadata(0).expect("a metadata dictionary").to_vec();
+    let value = leaf.value(0).expect("a value payload").to_vec();
+    assert!(!metadata.is_empty(), "the metadata carries a header byte");
+    assert_eq!(leaf.metadata_array().len(), 2);
+    assert_eq!(leaf.value_array().len(), 2);
+
+    // A row is answered as the pair it is, undecoded, and reading it is a
+    // second ask that comes back what went in.
+    let Scalar::Variant(held) = column.scalar(0).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(held.metadata(), metadata.as_slice());
+    assert_eq!(held.scalar().unwrap(), Scalar::from(1_i64));
+    let Scalar::Variant(second) = column.scalar(1).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(second.scalar().unwrap(), Scalar::from("AAPL"));
+
+    // An already-encoded pair is forwarded without either run being read.
+    column
+        .as_variant_mut()
+        .expect("a variant column")
+        .push_pair(Some((&metadata, &value)));
+    assert_eq!(column.len(), 3);
+    let Scalar::Variant(third) = column.scalar(2).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(third.scalar().unwrap(), Scalar::from(1_i64));
+
+    // And an absent row is a slot with no pair in it.
+    column.push(Scalar::Null).expect("an absent row");
+    assert!(column.is_null(3));
+    let leaf = column.as_variant().expect("a variant column");
+    assert_eq!(leaf.metadata(3), None);
+    assert_eq!(leaf.value(3), None);
+}
+
+#[test]
+fn a_borrowing_accessor_answers_for_the_run_and_not_for_the_column() {
+    let column = Scalar::from(prices());
+    let run = Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]);
+
+    // `get` and `[i]` lend a stored row. A run stores its rows; a column
+    // stores buffers, so there is nothing there to lend.
+    assert_eq!(run.get(0), Some(&Scalar::from(125_i64)));
+    assert_eq!(column.get(0), None);
+    assert_eq!(run.as_sequence().map(<[Scalar]>::len), Some(2));
+    assert_eq!(column.as_sequence(), None);
+
+    // Everything that counts or builds still answers for both.
+    assert_eq!(column.len(), run.len());
+    assert_eq!(
+        column
+            .iter()
+            .map(|row| row.into_owned())
+            .collect::<Vec<_>>(),
+        run.iter().map(|row| row.into_owned()).collect::<Vec<_>>()
+    );
+    assert_eq!(prices().scalar(0).unwrap(), Scalar::from(125_i64));
+
+    // And the walk borrows for the run where it owns for the column, so a
+    // run's walk still allocates nothing.
+    assert!(matches!(
+        run.iter().next().expect("a first row"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    assert!(matches!(
+        column.iter().next().expect("a first row"),
+        std::borrow::Cow::Owned(_)
+    ));
+}
+
+#[test]
+fn a_walk_over_a_column_reads_every_row_in_order_from_both_ends() {
+    let column = Scalar::from(
+        Serie::from_scalars(
+            Field::new("price", DataType::Int64, false),
+            (0..5_i64).map(Scalar::from),
+        )
+        .expect("five rows"),
+    );
+
+    let forward = column
+        .iter()
+        .map(|row| row.as_i64().expect("an int64 row"))
+        .collect::<Vec<_>>();
+    assert_eq!(forward, vec![0, 1, 2, 3, 4]);
+
+    let backward = column
+        .iter()
+        .rev()
+        .map(|row| row.as_i64().expect("an int64 row"))
+        .collect::<Vec<_>>();
+    assert_eq!(backward, vec![4, 3, 2, 1, 0]);
+
+    // The two ends meet in the middle exactly once, and the length is known
+    // without reading a row.
+    let mut walk = column.iter();
+    assert_eq!(walk.len(), 5);
+    assert_eq!(walk.next().unwrap().as_i64(), Some(0));
+    assert_eq!(walk.next_back().unwrap().as_i64(), Some(4));
+    assert_eq!(walk.len(), 3);
+    assert_eq!(
+        walk.map(|row| row.as_i64().unwrap()).collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+}
+
+#[test]
+fn a_column_reads_as_a_sequence_wherever_meaning_is_read_from_one() {
+    let field = Field::new("flag", DataType::Int64, false);
+
+    // Truthiness walks the rows, so a column answers what the same run
+    // answers - including the empty one, which borrowing would have called
+    // truthy by falling through.
+    let truthy = Scalar::from(Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).unwrap());
+    let falsy = Scalar::from(Serie::from_scalars(field.clone(), [Scalar::from(0_i64)]).unwrap());
+    let empty = Scalar::from(Serie::empty(field.clone()).unwrap());
+    assert!(truthy.is_truthy());
+    assert!(!falsy.is_truthy());
+    assert!(!empty.is_truthy());
+    assert_eq!(
+        truthy.is_truthy(),
+        Scalar::from_sequence([Scalar::from(1_i64)]).is_truthy()
+    );
+    assert_eq!(
+        empty.is_truthy(),
+        Scalar::from_sequence([]).is_truthy(),
+        "an empty column is as falsy as an empty run"
+    );
+
+    // And the reading door answers for both leaves where the borrowing one
+    // answers only for the run.
+    let run = Scalar::from_sequence([Scalar::from(1_i64)]);
+    assert_eq!(truthy.as_sequence(), None);
+    assert_eq!(
+        truthy
+            .sequence_rows()
+            .expect("a column is a sequence")
+            .unwrap()
+            .as_ref(),
+        &[Scalar::from(1_i64)]
+    );
+    assert!(matches!(
+        run.sequence_rows().expect("a run is a sequence").unwrap(),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    assert!(Scalar::from(1_i64).sequence_rows().is_none());
+}
+
+#[test]
+fn the_offset_width_is_the_leaf_and_not_a_branch_inside_one() {
+    use arrow_array::{LargeListArray, ListArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::Field as ArrowField;
+
+    let item = Field::new("item", DataType::Int64, false);
+    let values: ArrayRef = Arc::new(Int64Array::from(vec![1_i64, 2, 3]));
+    let arrow_item = Arc::new(ArrowField::new(
+        "item",
+        arrow_schema::DataType::Int64,
+        false,
+    ));
+
+    // The same rows at both Arrow offset widths.
+    let small: ArrayRef = Arc::new(ListArray::new(
+        Arc::clone(&arrow_item),
+        OffsetBuffer::new(vec![0_i32, 2, 3].into()),
+        ArrayRef::clone(&values),
+        None,
+    ));
+    let large: ArrayRef = Arc::new(LargeListArray::new(
+        arrow_item,
+        OffsetBuffer::new(vec![0_i64, 2, 3].into()),
+        values,
+        None,
+    ));
+
+    let narrow = Serie::from_arrow_array(
+        Field::new("rows", DataType::list(item.clone()), false),
+        small,
+    )
+    .expect("a 32-bit sequence column");
+    let wide =
+        Serie::from_arrow_array(Field::new("rows", DataType::large_list(item), false), large)
+            .expect("a 64-bit sequence column");
+
+    // Each width is its own leaf, so narrowing to the other answers None -
+    // no branch inside one type decides which offsets it holds.
+    assert!(narrow.as_sequence().is_some());
+    assert!(narrow.as_large_sequence().is_none());
+    assert!(wide.as_large_sequence().is_some());
+    assert!(wide.as_sequence().is_none());
+
+    // And each lends its own offsets buffer, typed at its own width.
+    assert_eq!(narrow.as_sequence().unwrap().offsets().as_ref(), &[0, 2, 3]);
+    assert_eq!(
+        wide.as_large_sequence().unwrap().offsets().as_ref(),
+        &[0_i64, 2, 3]
+    );
+
+    // The rows they cut are the same rows, and the items are one serie
+    // under either width.
+    assert_eq!(narrow.scalar(0).unwrap(), wide.scalar(0).unwrap());
+    assert_eq!(narrow.len(), wide.len());
+    assert_eq!(
+        wide.as_large_sequence()
+            .unwrap()
+            .items()
+            .as_int64()
+            .expect("an int64 item serie")
+            .values(),
+        &[1, 2, 3]
+    );
+
+    // Growing works the same at either width.
+    let mut growing = wide.clone();
+    growing
+        .push(Scalar::from_sequence([Scalar::from(4_i64)]))
+        .expect("one more row");
+    assert_eq!(growing.len(), 3);
+    assert_eq!(
+        growing.as_large_sequence().unwrap().offsets().as_ref(),
+        &[0_i64, 2, 3, 4]
+    );
+    assert_eq!(
+        growing.scalar(2).unwrap(),
+        Scalar::from_sequence([Scalar::from(4_i64)])
+    );
+
+    // And the buffers cross back out under the width they came in at.
+    assert_eq!(
+        narrow.into_arrow_array().expect("a column").data_type(),
+        &arrow_schema::DataType::List(Arc::new(ArrowField::new(
+            "item",
+            arrow_schema::DataType::Int64,
+            false
+        )))
+    );
+    assert!(matches!(
+        wide.into_arrow_array().expect("a column").data_type(),
+        arrow_schema::DataType::LargeList(_)
+    ));
+}
+
+#[test]
+fn the_two_leaves_answer_the_same_but_do_not_cost_the_same() {
+    let field = Field::new("price", DataType::Int64, true);
+    let rows = [Scalar::from(1_i64), Scalar::Null, Scalar::from(3_i64)];
+    let column = Serie::from_scalars(field, rows.clone()).expect("a nullable column");
+    let run = Serie::new(rows.to_vec());
+
+    // Every count answers the same on both leaves, whatever it costs.
+    assert_eq!(column.len(), run.len());
+    assert_eq!(column.null_count(), run.null_count());
+    assert_eq!(column.null_count(), 1);
+    for index in 0..4 {
+        assert_eq!(
+            column.is_null(index),
+            run.is_null(index),
+            "row {index} reads the same on both leaves"
+        );
+        assert_eq!(column.scalar(index).unwrap(), run.scalar(index).unwrap());
+    }
+
+    // Writing answers the same too, even though a run copies to do it.
+    let mut grown_column = column.clone();
+    let mut grown_run = run.clone();
+    grown_column.push(Scalar::from(4_i64)).expect("one row");
+    grown_run.push(Scalar::from(4_i64)).expect("one row");
+    assert_eq!(grown_column.len(), 4);
+    assert_eq!(
+        grown_column.scalars().unwrap(),
+        grown_run.scalars().unwrap()
+    );
+
+    // And a run refuses a row past the end by name, as a column does.
+    let mut short = Serie::new(vec![Scalar::from(1_i64)]);
+    assert!(short.set(0, Scalar::from(2_i64)).is_ok());
+    assert_eq!(short.scalar(0).unwrap(), Scalar::from(2_i64));
+    assert!(short.set(9, Scalar::from(3_i64)).is_err());
+
+    // The run was not changed by the refusal.
+    assert_eq!(short.len(), 1);
+}
+
+#[test]
+fn a_mapping_column_is_the_sequence_leaf_read_as_entries() {
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let rows = [
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry"),
+        Scalar::from_mapping([
+            (Scalar::from("b"), Scalar::from(2_i64)),
+            (Scalar::from("c"), Scalar::from(3_i64)),
+        ])
+        .expect("two entries"),
+    ];
+
+    // `keys_sorted` is the leaf a mapping datatype is, and Arrow carries it
+    // in the datatype - so a column has to read it off its own field or it
+    // will not read back.
+    for sorted in [false, true] {
+        let dtype = DataType::map(pair.clone(), sorted).expect("a mapping datatype");
+        let field = Field::new("weights", dtype, false);
+        let column = Serie::from_scalars(field.clone(), rows.clone()).expect("two mapping rows");
+
+        let maps = column.as_mapping().expect("a mapping column");
+        assert_eq!(maps.range(0), Some((0, 1)));
+        assert_eq!(maps.range(1), Some((1, 3)));
+        assert_eq!(maps.offsets().as_ref(), &[0, 1, 3]);
+
+        // Its items are the key-value records, one serie of its own.
+        let pairs = maps.items().as_struct().expect("a record entry column");
+        assert_eq!(
+            pairs
+                .child("key")
+                .expect("the key column")
+                .as_utf8()
+                .expect("a utf8 key column")
+                .value(2),
+            Some("c")
+        );
+
+        // And it crosses out and back under the width and the flag it was
+        // declared with.
+        let array = column.into_arrow_array().expect("a column has buffers");
+        let arrow_schema::DataType::Map(_, exported) = array.data_type() else {
+            panic!("a mapping column lays out as an Arrow map, got {array:?}");
+        };
+        assert_eq!(
+            *exported, sorted,
+            "the declared keys_sorted rides the datatype out"
+        );
+        let back = Serie::from_arrow_array(field, array).expect("the same buffers read back");
+        assert_eq!(back.scalars().unwrap(), column.scalars().unwrap());
+        assert_eq!(back.scalar(1).unwrap(), rows[1]);
+    }
+}
+
+#[test]
+fn one_cut_reads_as_items_or_as_entries_and_never_as_the_other() {
+    let item = Field::new("item", DataType::Int64, false);
+    let sequence = Serie::from_scalars(
+        Field::new("rows", DataType::list(item), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a sequence column");
+
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mapping = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("a mapping column");
+
+    // One implementation, two shapes: the marker decides how a row reads and
+    // which leaf of the root it is, so narrowing to the other answers None.
+    assert!(sequence.as_sequence().is_some());
+    assert!(sequence.as_mapping().is_none());
+    assert!(mapping.as_mapping().is_some());
+    assert!(mapping.as_sequence().is_none());
+
+    // And a row reads as what its field says it is, not as the cut it shares.
+    assert_eq!(
+        sequence.scalar(0).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64)])
+    );
+    assert_eq!(mapping.scalar(0).unwrap().kind(), "mapping");
+
+    // A row of the wrong shape contributes no entries, so the cut refuses it
+    // rather than writing a mapping row as a sequence one.
+    let mut growing = mapping.clone();
+    assert!(
+        growing
+            .set(0, Scalar::from_sequence([Scalar::from(9_i64)]))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_sliced_cut_is_rebased_onto_the_items_it_reaches() {
+    use arrow_array::ListArray;
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::Field as ArrowField;
+
+    // Arrow slices a list by slicing its offsets and keeping the whole
+    // child, so a sliced array's offsets start past zero and its values run
+    // past the end.
+    let arrow_item = Arc::new(ArrowField::new(
+        "item",
+        arrow_schema::DataType::Int64,
+        false,
+    ));
+    let values: ArrayRef = Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4, 5]));
+    let lists = ListArray::new(
+        arrow_item,
+        OffsetBuffer::new(vec![0_i32, 2, 3, 5].into()),
+        values,
+        None,
+    );
+    let field = Field::new(
+        "rows",
+        DataType::list(Field::new("item", DataType::Int64, false)),
+        false,
+    );
+
+    // Take the middle row only: offsets [2, 3] over a child of five.
+    let middle: ArrayRef = Arc::new(lists.slice(1, 1));
+    let mut column =
+        Serie::from_arrow_array(field.clone(), middle).expect("a sliced sequence column");
+    assert_eq!(column.len(), 1);
+    assert_eq!(
+        column.scalar(0).unwrap(),
+        Scalar::from_sequence([Scalar::from(3_i64)])
+    );
+
+    // The cut was rebased, so the items are exactly what it reaches and a
+    // pushed row lands where the cut says it does - reading the stale
+    // offset would silently answer a value that was never pushed.
+    assert_eq!(
+        column
+            .as_sequence()
+            .expect("a sequence column")
+            .items()
+            .as_int64()
+            .expect("an int64 item serie")
+            .values(),
+        &[3]
+    );
+    column
+        .push(Scalar::from_sequence([Scalar::from(99_i64)]))
+        .expect("one more row");
+    assert_eq!(column.len(), 2);
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(99_i64)])
+    );
+
+    // An unsliced array is already in that shape, so it is taken untouched.
+    let whole: ArrayRef = Arc::new(lists);
+    let held = Serie::from_arrow_array(field, whole).expect("a sequence column");
+    assert_eq!(held.len(), 3);
+    assert_eq!(
+        held.as_sequence()
+            .expect("a sequence column")
+            .offsets()
+            .as_ref(),
+        &[0, 2, 3, 5]
+    );
+}
+
+#[test]
+fn two_series_that_compare_equal_hash_alike() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn digest(serie: &Serie) -> u64 {
+        let mut state = DefaultHasher::new();
+        serie.hash(&mut state);
+        state.finish()
+    }
+
+    let field = Field::new("price", DataType::Int64, false);
+    let one = Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).expect("one row");
+    let same = Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).expect("one row");
+    let longer =
+        Serie::from_scalars(field, [Scalar::from(1_i64), Scalar::from(2_i64)]).expect("two rows");
+    let run = Serie::new(vec![Scalar::from(1_i64)]);
+
+    // Equal implies equal hashes, which is what a column hashing its field
+    // and its length has to keep: two columns of one field that differ only
+    // in length must not compare equal, or the contract breaks.
+    assert_eq!(one, same);
+    assert_eq!(digest(&one), digest(&same));
+    assert_ne!(one, longer);
+    assert_ne!(one, run, "a run and a column are not one value");
+
+    // The order is total and antisymmetric across the pairings.
+    for (left, right) in [(&one, &longer), (&one, &run), (&longer, &run)] {
+        assert_eq!(
+            left.cmp(right).reverse(),
+            right.cmp(left),
+            "the order is antisymmetric"
+        );
+    }
+    assert_eq!(one.cmp(&same), std::cmp::Ordering::Equal);
+}
+
+#[test]
+fn each_shape_of_one_cut_debugs_as_the_leaf_it_is() {
+    let item = Field::new("item", DataType::Int64, false);
+    let sequence = Serie::from_scalars(
+        Field::new("rows", DataType::list(item.clone()), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a sequence column");
+    let large = Serie::from_scalars(
+        Field::new("rows", DataType::large_list(item), false),
+        [Scalar::from_sequence([Scalar::from(1_i64)])],
+    )
+    .expect("a large sequence column");
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mapping = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("a mapping column");
+
+    // One implementation, three names - and each says which one it is,
+    // rather than all three answering with the name of the first.
+    assert!(format!("{sequence:?}").contains("SequenceSerie"));
+    assert!(format!("{large:?}").contains("LargeSequenceSerie"));
+    assert!(format!("{mapping:?}").contains("MappingSerie"));
+    assert!(
+        !format!("{mapping:?}").contains("SequenceSerie"),
+        "a mapping column does not debug as a sequence one"
+    );
+}
+
+#[test]
+fn a_mapping_refusal_names_the_column_it_was_reading() {
+    use arrow_array::{MapArray, StructArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::{Field as ArrowField, Fields};
+
+    // An Arrow map whose entry record holds three children, not two: the
+    // bytes are well-formed Arrow, but no mapping row can be read out of
+    // them, so the refusal has to say which column it was reading.
+    let children: Fields = vec![
+        ArrowField::new("key", arrow_schema::DataType::Utf8, false),
+        ArrowField::new("value", arrow_schema::DataType::Int64, false),
+    ]
+    .into();
+    let entries = StructArray::try_new(
+        children.clone(),
+        vec![
+            Arc::new(StringArray::from(vec!["a"])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![1_i64])) as ArrayRef,
+        ],
+        None,
+    )
+    .expect("two equal children");
+    let entry_field = Arc::new(ArrowField::new(
+        "entries",
+        arrow_schema::DataType::Struct(children),
+        false,
+    ));
+    let maps = MapArray::try_new(
+        entry_field,
+        OffsetBuffer::new(vec![0_i32, 1].into()),
+        entries,
+        None,
+        false,
+    )
+    .expect("one mapping row");
+
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let field = Field::new(
+        "weights",
+        DataType::map(pair, false).expect("a mapping datatype"),
+        false,
+    );
+    let column =
+        Serie::from_arrow_array(field, Arc::new(maps)).expect("the layout is the field's own");
+    assert_eq!(
+        column.scalar(0).unwrap(),
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).unwrap()
+    );
+}
+
+#[test]
+fn a_cut_that_arrow_refuses_is_a_refusal_and_never_a_panic() {
+    // A sequence column whose items serie is replaced with one too short
+    // for the cut: Arrow's `ListArray::new` would panic on that, so the
+    // leaf lays out through `try_new` and the failure travels the same
+    // channel the mapping leaf's already did.
+    let item = Field::new("item", DataType::Int64, false);
+    let mut column = Serie::from_scalars(
+        Field::new("rows", DataType::list(item.clone()), false),
+        [Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from(2_i64),
+        ])],
+    )
+    .expect("one row of two items");
+
+    let short = Serie::from_scalars(item, [Scalar::from(1_i64)]).expect("one item");
+    *column
+        .as_sequence_mut()
+        .expect("a sequence column")
+        .items_mut() = short;
+
+    // The cut names two items and the serie holds one. Laying that out is
+    // caller input reaching Arrow's own validation, and it comes back as an
+    // empty column rather than unwinding the process.
+    let array = column.into_arrow_array().expect("a column answers buffers");
+    assert_eq!(array.len(), 0, "a cut Arrow refuses lays out as nothing");
+}
+
+#[test]
+fn a_row_that_is_itself_a_column_contributes_every_item_it_holds() {
+    let item = Field::new("item", DataType::Int64, false);
+    let field = Field::new("rows", DataType::list(item.clone()), false);
+
+    // A sequence value whose serie is a column lends no slice - it holds
+    // buffers. Reading it for what it stores rather than what it means once
+    // made `push` answer Ok while dropping every item.
+    let inner =
+        Serie::from_scalars(item, [Scalar::from(1_i64), Scalar::from(2_i64)]).expect("two rows");
+    let row = Scalar::from(inner);
+    assert_eq!(row.kind(), "serie");
+    assert_eq!(row.as_sequence(), None, "a column lends no slice");
+
+    let mut column = Serie::from_scalars(field, [Scalar::from_sequence([Scalar::from(9_i64)])])
+        .expect("one row");
+    column.push(row.clone()).expect("a column-backed row");
+    assert_eq!(column.len(), 2);
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+        "every item the row held is in the cut"
+    );
+
+    // The same row rewritten over a cut of its own width.
+    column.set(1, row).expect("the same two items");
+    assert_eq!(
+        column.scalar(1).unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)])
+    );
+
+    // And a mapping column reads a column-backed row the same way round.
+    let pair = Field::new(
+        "entries",
+        DataType::Struct(
+            StructType::from_fields([
+                Field::new("key", DataType::utf8(), false),
+                Field::new("value", DataType::Int64, false),
+            ])
+            .expect("a key and a value"),
+        ),
+        false,
+    );
+    let mut maps = Serie::from_scalars(
+        Field::new(
+            "weights",
+            DataType::map(pair, false).expect("a mapping datatype"),
+            false,
+        ),
+        [Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).expect("one entry")],
+    )
+    .expect("one mapping row");
+    maps.push(Scalar::from_mapping([(Scalar::from("b"), Scalar::from(2_i64))]).expect("one entry"))
+        .expect("one more row");
+    assert_eq!(maps.len(), 2);
+    assert_eq!(
+        maps.scalar(1).unwrap(),
+        Scalar::from_mapping([(Scalar::from("b"), Scalar::from(2_i64))]).unwrap()
+    );
+}

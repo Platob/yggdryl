@@ -451,8 +451,8 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             value.unit(),
         ),
         Scalar::Sequence(values) => {
-            let values = values
-                .as_slice()
+            let rows = values.rows().map_err(value_error)?;
+            let values = rows
                 .iter()
                 .map(|value| scalar_pickle_state(py, value))
                 .collect::<PyResult<Vec<_>>>()?;
@@ -1305,7 +1305,7 @@ impl PyScalar {
 
     /// Iterate over sequence children, mapping keys, or record values.
     fn __iter__(&self) -> PyScalarIterator {
-        PyScalarIterator::new(self.inner.iter().cloned())
+        PyScalarIterator::new(self.inner.iter().map(std::borrow::Cow::into_owned))
     }
 
     /// Return a sequence child, accepting Python's negative indexes.
@@ -1631,8 +1631,8 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Duration32(_) | Scalar::Duration64(_) => duration_as_py(py, value),
         Scalar::Interval(interval) => interval_as_py(py, interval),
         Scalar::Sequence(items) => {
-            let items = items
-                .as_slice()
+            let rows = items.rows().map_err(value_error)?;
+            let items = rows
                 .iter()
                 .map(|item| as_py(py, item))
                 .collect::<PyResult<Vec<_>>>()?;
@@ -1664,8 +1664,9 @@ pub(crate) fn as_py_with_field(
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
-                Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
-                    for (child, value) in fields.iter().zip(values.as_slice()) {
+                Scalar::Sequence(values) if values.len() == fields.len() => {
+                    let rows = values.rows().map_err(value_error)?;
+                    for (child, value) in fields.iter().zip(rows.iter()) {
                         output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
                     }
                 }
@@ -1781,8 +1782,8 @@ fn mapping_to_python(py: Python<'_>, entries: &[(Scalar, Scalar)]) -> PyResult<P
 fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
         Scalar::Sequence(items) => {
-            let items = items
-                .as_slice()
+            let rows = items.rows().map_err(value_error)?;
+            let items = rows
                 .iter()
                 .map(|item| as_py_key(py, item))
                 .collect::<PyResult<Vec<_>>>()?;

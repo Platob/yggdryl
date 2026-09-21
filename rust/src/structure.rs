@@ -1780,7 +1780,7 @@ impl NestedValue for Struct {
 }
 
 impl<'a> IntoIterator for &'a Scalar {
-    type Item = &'a Scalar;
+    type Item = std::borrow::Cow<'a, Scalar>;
     type IntoIter = Children<'a>;
 
     fn into_iter(self) -> Self::IntoIter {

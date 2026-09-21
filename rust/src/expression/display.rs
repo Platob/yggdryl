@@ -564,7 +564,7 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) ->
     match value {
         Scalar::Sequence(items) => {
             formatter.write_char('[')?;
-            for (index, item) in items.as_slice().iter().enumerate() {
+            for (index, item) in items.rows().unwrap_or_default().iter().enumerate() {
                 if index != 0 {
                     formatter.write_str(", ")?;
                 }

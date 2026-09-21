@@ -26,6 +26,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Families | [Codes](codes.md) | The ten registered codes over `utf8` storage, `ascii_packed`, `StringEnum` and the ISO listings, the three securities identifiers and their check digits, the `state` lifecycle |
 | Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
+| Families | [Serie](serie.md) | One column: the Arrow buffers that hold the rows of one field, and the array, batch and batch reader they cross as |
 | Families | [Geospatial](geospatial.md) | Geometry, geography, and the WKB reader |
 | Families | [Variant](variant.md) | the Apache Parquet Variant encoding: one metadata dictionary and one value payload, the pair Parquet, Avro, Arrow and Iceberg all state for a `variant` column |
 | Encoding | [Value stream](value-stream.md) | any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries |

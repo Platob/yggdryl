@@ -734,7 +734,7 @@ fn root_of(field: &Field) -> Result<Field> {
 }
 
 /// Refuse an array whose physical layout is not the one the Field declares.
-fn require_layout(field: &Field, array: &dyn Array) -> Result<()> {
+pub(crate) fn require_layout(field: &Field, array: &dyn Array) -> Result<()> {
     // A caller-built DataType can be arbitrarily deep, so bound the shape
     // before Arrow's recursive projection walks it.
     field.dtype().validate_bounded()?;

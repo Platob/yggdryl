@@ -31,6 +31,7 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -55,7 +56,6 @@ use crate::integer::{
 };
 use crate::interval::Interval;
 use crate::mapping::{Map, Mapping};
-use crate::sequence::Sequence;
 use crate::string::Str;
 use crate::structure::Struct;
 use crate::temporal::scalars::temporal_key;
@@ -221,7 +221,7 @@ pub enum Scalar {
     /// Geographic coordinates as validated Well-Known Binary.
     Geography(Geography),
     /// A schema-free ordered sequence of values.
-    Sequence(Sequence),
+    Sequence(crate::Serie),
     /// A schema-free insertion-ordered mapping of arbitrary keys.
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
@@ -460,7 +460,14 @@ impl Serialize for Scalar {
                 }
             }
             Self::Interval(value) => tagged(serializer, "interval", value),
-            Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
+            // A column carries the field that types it, which the values
+            // alone cannot say, so it writes under its own tag.
+            Self::Sequence(serie) if serie.is_column() => tagged(serializer, "serie", serie),
+            Self::Sequence(values) => tagged(
+                serializer,
+                "sequence",
+                &values.rows().map_err(serde::ser::Error::custom)?,
+            ),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
             // The two buffers as they are: a variant is its bytes, and
@@ -601,6 +608,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Duration64(Temporal64),
             Interval(crate::interval::Interval),
             Sequence(Vec<Scalar>),
+            Serie(crate::serie::Serie),
             Mapping(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
             Variant(Arc<[u8]>, Arc<[u8]>),
@@ -786,6 +794,7 @@ impl<'de> Deserialize<'de> for Scalar {
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
             StructuralWire::Sequence(values) => Ok(Self::from_sequence(values)),
+            StructuralWire::Serie(serie) => Ok(Self::from(serie)),
             StructuralWire::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
@@ -1302,6 +1311,7 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
+            Self::Sequence(serie) if serie.is_column() => "serie",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
             Self::Struct(_) => "struct",
@@ -1312,7 +1322,7 @@ impl Scalar {
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Sequence(Sequence::new(Arc::clone(
+        Self::Sequence(crate::Serie::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
         )))
     }
@@ -1332,7 +1342,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::Sequence(Sequence::new(values))
+            Self::Sequence(crate::Serie::new(values))
         })
     }
 
@@ -1354,7 +1364,7 @@ impl Scalar {
         for (index, value) in unique.iter_mut().enumerate() {
             *value = at(index)?;
         }
-        Ok(Self::Sequence(Sequence::new(values)))
+        Ok(Self::Sequence(crate::Serie::new(values)))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
@@ -1455,6 +1465,17 @@ impl Scalar {
     /// assert!(Scalar::from("anything else").is_truthy());
     /// assert!(!Scalar::from_sequence([Scalar::Null, Scalar::from(0)]).is_truthy());
     /// assert!(Scalar::from_sequence([Scalar::from(1)]).is_truthy());
+    ///
+    /// // A column answers the same, because the walk reads either leaf -
+    /// // an empty column included, which borrowing would have called truthy.
+    /// # use yggdryl::{DataType, Field, Serie};
+    /// let field = Field::new("flag", DataType::Int64, false);
+    /// let column = |rows: [Scalar; 1]| {
+    ///     Scalar::from(Serie::from_scalars(field.clone(), rows).expect("one row"))
+    /// };
+    /// assert!(column([Scalar::from(1_i64)]).is_truthy());
+    /// assert!(!column([Scalar::from(0_i64)]).is_truthy());
+    /// assert!(!Scalar::from(Serie::empty(field).expect("an empty column")).is_truthy());
     /// ```
     #[must_use]
     pub fn is_truthy(&self) -> bool {
@@ -1484,8 +1505,11 @@ impl Scalar {
         if let Some(bytes) = self.as_bytes() {
             return !bytes.is_empty();
         }
-        if let Some(values) = self.as_sequence() {
-            return values.iter().any(Self::is_truthy);
+        if let Self::Sequence(_) = self {
+            // A run lends its values and a column builds its rows; the walk
+            // is total over both, so an empty column is as falsy as an empty
+            // run and a column of falsy rows is falsy too.
+            return self.iter().any(|value| value.is_truthy());
         }
         if let Some(entries) = self.as_mapping() {
             return entries.iter().any(|(_, value)| value.is_truthy());
@@ -1564,10 +1588,34 @@ impl Scalar {
         self.as_bytes()
     }
 
-    /// Return sequence children without allocating.
+    /// Return sequence children as values.
+    ///
+    /// A schema-free run lends its values and allocates nothing. A column
+    /// holds Arrow buffers and no value at all, so it has none to lend and
+    /// answers `None`; [`Serie::rows`](crate::Serie::rows) reads one,
+    /// and [`Self::iter`] walks either.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::Sequence(values) => Some(values.as_slice()),
+            Self::Sequence(values) => values.as_slice(),
+            _ => None,
+        }
+    }
+
+    /// Read the ordered values of a sequence, borrowing where they are stored.
+    ///
+    /// [`Self::as_sequence`] borrows, so it answers only for the schema-free
+    /// run. This reads either leaf - lending the run's values, building a
+    /// column's rows - and it is what every place that reads a sequence for
+    /// what it *means* goes through. `None` says the value is not a sequence
+    /// at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns the column's field's own refusal where its buffers hold a
+    /// value that field does not accept. A schema-free run never refuses.
+    pub fn sequence_rows(&self) -> Option<Result<Cow<'_, [Self]>>> {
+        match self {
+            Self::Sequence(values) => Some(values.rows()),
             _ => None,
         }
     }
@@ -1589,9 +1637,12 @@ impl Scalar {
     }
 
     /// Return the number of direct children or mapping entries.
+    ///
+    /// Constant for every shape: a column answers from its chunk offsets
+    /// rather than by decoding a row.
     pub fn len(&self) -> usize {
         match self {
-            Self::Sequence(values) => values.as_slice().len(),
+            Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
@@ -1672,7 +1723,7 @@ impl Scalar {
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::Sequence(values) => Children::Sequence(values.as_slice().iter()),
+            Self::Sequence(values) => crate::NestedValue::children(values),
             Self::Mapping(entries) => Children::Mapping(entries.as_slice().iter()),
             Self::Struct(entries) => Children::Struct(entries.as_map().values()),
             _ => Children::Sequence([].iter()),
@@ -2283,7 +2334,7 @@ mod tests {
     fn a_width_variant_borrows_the_leaf_display_it_holds() {
         use std::sync::Arc;
 
-        use crate::{decimal, integer, sequence};
+        use crate::{decimal, integer};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
         assert_eq!(decimal.leaf_display().unwrap().to_string(), "12.50");
@@ -2294,7 +2345,7 @@ mod tests {
                 .to_string(),
             "7"
         );
-        let held = sequence::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+        let held = crate::Serie::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
             Scalar::Sequence(held.clone())
                 .leaf_display()

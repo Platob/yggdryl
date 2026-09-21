@@ -216,8 +216,16 @@ impl Scalar {
             Self::Duration32(value) => DataType::duration32(value.unit()),
             Self::Duration64(value) => DataType::duration64(value.unit()),
             Self::Interval(value) => DataType::interval(value.unit()),
+            // A column already carries the field its rows are typed by, so
+            // its datatype is read off that field rather than agreed back
+            // out of the rows: an empty column names its datatype where an
+            // empty sequence cannot.
+            Self::Sequence(column) if column.is_column() => Ok(DataType::list(
+                column.field().expect("a column carries its field").clone(),
+            )),
             Self::Sequence(values) => {
-                let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
+                let rows = values.rows()?;
+                let (dtype, nullable) = agreed(rows.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // An Arrow payload already carries its exact field: one pinned

@@ -257,8 +257,11 @@ fn wide_mapping_constructor_rejects_duplicates() {
 fn collection_iteration_matches_python_sequence_and_mapping_semantics() {
     let sequence = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
     assert_eq!(
-        (&sequence).into_iter().collect::<Vec<_>>(),
-        vec![&sequence[0], &sequence[1]]
+        (&sequence)
+            .into_iter()
+            .map(|value| value.into_owned())
+            .collect::<Vec<_>>(),
+        vec![sequence[0].clone(), sequence[1].clone()]
     );
 
     let mapping = Scalar::from_mapping([
@@ -270,7 +273,7 @@ fn collection_iteration_matches_python_sequence_and_mapping_semantics() {
     assert_eq!(
         mapping
             .iter()
-            .filter_map(Scalar::as_str)
+            .filter_map(|key| key.as_str().map(str::to_owned))
             .collect::<Vec<_>>(),
         vec!["a", "b"]
     );
@@ -293,7 +296,12 @@ fn empty_collections_share_process_wide_backing() {
     let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
         unreachable!();
     };
-    assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
+    assert!(std::ptr::eq(
+        left.as_slice().expect("a schema-free run lends its values"),
+        right
+            .as_slice()
+            .expect("a schema-free run lends its values"),
+    ));
 
     let left = Scalar::from_mapping([]).unwrap();
     let right = Scalar::from_mapping([]).unwrap();

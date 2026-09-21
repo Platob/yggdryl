@@ -17,7 +17,7 @@ use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
-mod scalars;
+pub(crate) mod scalars;
 pub(crate) mod value;
 
 pub use scalars::{ArrowScalar, ArrowShape};
@@ -819,13 +819,32 @@ pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
 /// Returns an error when `values` is not a sequence or an element violates
 /// `field`.
 pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
-    let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of array values"),
-        actual: SmolStr::new(values.kind()),
-    })?;
+    // A column already holds the buffers this would build. Where its field
+    // is the one asked for, the buffers cross as they are: no row is decoded
+    // and none is laid out a second time.
+    // Nested rather than one `if let ... && let ...`: let chains are not
+    // stable at this crate's 1.85 MSRV.
+    if let Scalar::Sequence(column) = values {
+        let same = column
+            .field()
+            .is_some_and(|held| held.dtype() == field.dtype());
+        if let Some(array) = same.then(|| column.into_arrow_array()).flatten() {
+            return Ok(array);
+        }
+    }
+    // A column under some other field still holds rows this can lay out, so
+    // the fallback reads the sequence rather than borrowing it: a run lends
+    // its values, a column builds them.
+    let Scalar::Sequence(sequence) = values else {
+        return Err(Error::InvalidValue {
+            path: SmolStr::new_static("$"),
+            expected: SmolStr::new_static("a sequence of array values"),
+            actual: SmolStr::new(values.kind()),
+        });
+    };
+    let values = sequence.rows()?;
     let mut canonical = Vec::with_capacity(values.len());
-    for value in values {
+    for value in values.as_ref() {
         // The field's own value contract, one value at a time: a synthetic row
         // around each element would allocate a sequence per value and answer
         // the same thing.
@@ -846,14 +865,29 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Returns an error when `root` is not a record root, `rows` is not a
 /// sequence, or a row violates the schema.
 pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
-    let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of record values"),
-        actual: SmolStr::new(rows.kind()),
-    })?;
+    // The same short circuit a column's array crossing takes: a column of
+    // records is already the table this would build.
+    if let Scalar::Sequence(column) = rows {
+        let same = column
+            .field()
+            .is_some_and(|held| held.dtype() == root.dtype());
+        if same {
+            return column.into_arrow_batch();
+        }
+    }
+    // The same reading the array crossing takes: a column of records under
+    // some other root still holds the rows this lays out.
+    let Scalar::Sequence(sequence) = rows else {
+        return Err(Error::InvalidValue {
+            path: SmolStr::new_static("$"),
+            expected: SmolStr::new_static("a sequence of record values"),
+            actual: SmolStr::new(rows.kind()),
+        });
+    };
+    let rows = sequence.rows()?;
     let schema = arrow_schema_from_field(root)?;
     let mut canonical = Vec::with_capacity(rows.len());
-    for row in rows {
+    for row in rows.as_ref() {
         canonical.push(root.canonicalize_value(row.clone())?);
     }
     self::rows::batch_from_values(root, schema, &canonical)
@@ -952,7 +986,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`crate::sequence::Sequence`] with one value per column, in schema
+/// Each row becomes a [`crate::Serie`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///

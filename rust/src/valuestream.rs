@@ -144,6 +144,7 @@ impl ValueStream {
         self.pending
             .extend(children.into_iter().rev().map(|child| match child {
                 Child::Value(value) => Frame::Value(value.clone()),
+                Child::Owned(value) => Frame::Value(value),
                 Child::Name(name) => Frame::Name(name.clone()),
             }));
     }
@@ -152,6 +153,9 @@ impl ValueStream {
 /// One child of a nested value, as the value holds it.
 enum Child<'value> {
     Value(&'value Scalar),
+    // A column has no row to lend - it builds each one - so the walk owns
+    // what it could not borrow. Every other child still borrows.
+    Owned(Scalar),
     Name(&'value SmolStr),
 }
 
@@ -174,6 +178,9 @@ fn encode_whole(root: &Scalar, out: &mut Vec<u8>) {
                 Ok(native) => encode_whole(&native, out),
                 Err(_) => out.push(DataTypeId::Null.as_u8()),
             },
+            // A column's row was built rather than borrowed, so it is
+            // encoded whole here instead of lent to the pending walk.
+            Child::Owned(value) => encode_whole(&value, out),
             Child::Value(value) => {
                 children.clear();
                 encode(value, out, &mut children);
@@ -369,9 +376,16 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             write_variable(chunk, held.as_bytes());
         }
         Scalar::Sequence(held) => {
-            chunk.push(DataTypeId::List.as_u8());
-            write_size(chunk, held.as_slice().len());
-            children.extend(held.as_slice().iter().map(Child::Value));
+            // A column encodes as the list it is, so one reading of one value
+            // model serves whichever leaf held the rows.
+            match held.rows() {
+                Ok(rows) => {
+                    chunk.push(DataTypeId::List.as_u8());
+                    write_size(chunk, rows.len());
+                    children.extend(rows.iter().cloned().map(Child::Owned));
+                }
+                Err(_) => chunk.push(DataTypeId::Null.as_u8()),
+            }
         }
         Scalar::Mapping(held) => {
             chunk.push(DataTypeId::Map.as_u8());

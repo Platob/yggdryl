@@ -290,13 +290,13 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
             .map_err(|failure| validation_error(root.name(), failure))?;
         return Ok(());
     }
-    let values = value.as_sequence().ok_or_else(|| Error::InvalidRecord {
+    let values = read_sequence(value).ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(root.name()),
         reason: format_smolstr!(
             "expected a record or {expected} ordered values, got {}",
             value.kind()
         ),
-    })?;
+    })??;
     if values.len() != expected {
         return Err(Error::InvalidRecord {
             path: SmolStr::new(root.name()),
@@ -306,7 +306,7 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
             ),
         });
     }
-    for (field, value) in root.fields().iter().zip(values) {
+    for (field, value) in root.fields().iter().zip(values.as_ref()) {
         if let Err(failure) = validate_field_value(field, value) {
             return Err(validation_error(root.name(), failure));
         }
@@ -397,7 +397,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
         })
         .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]));
     }
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = read_sequence(&value) else {
         return Err(Error::InvalidRecord {
             path: SmolStr::from(root_path(root.name())),
             reason: format_smolstr!(
@@ -406,8 +406,9 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
             ),
         });
     };
+    let values = values?;
     let fields = root.fields();
-    let canonical = canonicalize_slice(values, |index, value| {
+    let canonical = canonicalize_slice(&values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })
     .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]))?;
@@ -1143,13 +1144,14 @@ fn canonical_sequence(
     value: &Scalar,
     mut canonicalize: impl FnMut(&Scalar) -> Result<(Scalar, bool)>,
 ) -> Result<(Scalar, bool)> {
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = read_sequence(value) else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated sequence could not be canonicalized"),
         });
     };
-    if let Some(canonical) = canonicalize_slice(values, |index, value| {
+    let values = values?;
+    if let Some(canonical) = canonicalize_slice(&values, |index, value| {
         canonicalize(value).map_err(|error| {
             prepend_canonical_error(
                 error,
@@ -1172,10 +1174,11 @@ fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool
             Scalar::try_sequence(fields.len(), |index| cells.canonical(&fields[index], index))?;
         return Ok((sequence, true));
     }
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = read_sequence(value) else {
         return canonicalization_failure(&DataType::Struct(fields.clone()));
     };
-    if let Some(canonical) = canonicalize_slice(values, |index, value| {
+    let values = values?;
+    if let Some(canonical) = canonicalize_slice(&values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })? {
         Ok((canonical, true))
@@ -1738,9 +1741,9 @@ fn validate_sequence(
     expected_name: &str,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
-    let values = value
-        .as_sequence()
-        .ok_or_else(|| expected(expected_name, value))?;
+    let values = read_sequence(value)
+        .ok_or_else(|| expected(expected_name, value))?
+        .map_err(|because| expected_because(expected_name, value, &because))?;
     if let Some(expected_len) = expected_len {
         if values.len() != expected_len {
             return Err(ValidationFailure::new(format_smolstr!(
@@ -1849,6 +1852,18 @@ fn ascii_failure(error: Error) -> ValidationFailure {
 }
 
 /// Report a value whose kind does not match what the schema declared.
+/// The rows of a sequence value, whichever leaf holds them.
+///
+/// `Scalar::as_sequence` borrows and so answers nothing for a column, which
+/// stores Arrow buffers and no `Scalar`. Every caller that must see a row
+/// reads through here instead.
+fn read_sequence(value: &Scalar) -> Option<Result<Cow<'_, [Scalar]>>> {
+    match value {
+        Scalar::Sequence(sequence) => Some(sequence.rows()),
+        _ => None,
+    }
+}
+
 pub(crate) fn expected(expected_name: &str, value: &Scalar) -> ValidationFailure {
     ValidationFailure::new(crate::text::expected_got(expected_name, value.kind()))
 }

@@ -234,7 +234,7 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
-| containers | `Sequence`, `Mapping`, `Record`, `Variant` |
+| containers | `Sequence`, `Mapping`, `Record`, `Variant`; a `Sequence` is a schema-free run or a [column](serie.md), and `kind()` says which |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
 

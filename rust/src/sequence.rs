@@ -16,10 +16,23 @@
 //! one item field, the same for all of them. That is why [`Self::item`] is
 //! the whole of what most readers need.
 //!
+//! On the value side the family is [`crate::Serie`], which lives in
+//! `serie.rs`: it is what `Scalar::Sequence` holds, and it has two kinds of
+//! leaf that differ in what they know rather than in what they hold.
+//!
+//! | leaf | rows | field |
+//! | --- | --- | --- |
+//! | [`List`], below | ordered values | inferred from the rows |
+//! | a column | Arrow buffers | carried, and the rows read through it |
+//!
+//! This file keeps the datatype half - [`SequenceType`], the five layouts -
+//! and [`List`], the schema-free run that is one of those leaves.
+//!
 //! [`DataType::Sequence`]: crate::DataType::Sequence
 //! [`Self::item`]: SequenceType::item
 
 use std::fmt;
+use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::Scalar;
@@ -215,13 +228,13 @@ impl DataType {
     }
 }
 
-/// One ordered sequence of scalar children.
+/// One schema-free ordered run of scalar children.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Sequence(Arc<[Scalar]>);
+pub struct List(Arc<[Scalar]>);
 
-impl Sequence {
+impl List {
     /// Construct an ordered sequence.
     pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
         Self(values.into())
@@ -238,13 +251,13 @@ impl Sequence {
     }
 }
 
-impl fmt::Display for Sequence {
+impl fmt::Display for List {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{:?}", self.as_slice())
     }
 }
 
-impl NestedValue for Sequence {
+impl NestedValue for List {
     fn len(&self) -> usize {
         self.as_slice().len()
     }
@@ -254,18 +267,18 @@ impl NestedValue for Sequence {
     }
 }
 
-impl Value for Sequence {
+impl Value for List {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::Sequence(self.clone()).dtype()
+        Scalar::Sequence(crate::Serie::List(self.clone())).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Sequence(self)
+        Scalar::Sequence(crate::Serie::List(self))
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Sequence(value) => Some(value),
+            Scalar::Sequence(crate::Serie::List(value)) => Some(value),
             _ => None,
         }
     }

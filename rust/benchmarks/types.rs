@@ -30,6 +30,7 @@ criterion_group!(
     datatype::version::version_benchmarks,
     datatype::parser::parser_benchmarks,
     datatype::nested::value_benchmarks,
+    datatype::serie::serie_benchmarks,
     datatype::default::default_and_compatibility_benchmarks,
     datatype::arrow::arrow_benchmarks,
     datatype::geospatial::geospatial_benchmarks,
