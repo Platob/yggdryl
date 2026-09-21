@@ -1,10 +1,11 @@
-//! The transcriber an integration test cannot reach.
+//! `rust/src/utf8.rs`: the transcriber no caller can name.
 //!
-//! `transcribe_into` is the crate-private reading every legacy-charset door
-//! goes through, and what it counts is the whole contract. Everything a
-//! caller can observe lives in `tests/charset/codecs.rs`.
+//! `transcribe_into` is the reading every legacy-charset door goes through,
+//! and what it counts is the whole contract, so it is reached through
+//! `yggdryl::internals`. Everything a caller can observe is in
+//! `rust/tests/charset/codecs.rs`.
 
-use super::transcribe_into;
+use yggdryl::internals::utf8::transcribe_into;
 
 #[test]
 fn a_transcription_counts_the_bytes_it_read_as_windows_1252() {

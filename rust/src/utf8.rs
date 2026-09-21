@@ -230,6 +230,17 @@ impl DataType {
     }
 }
 
-#[cfg(test)]
-#[path = "utf8/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/utf8.rs` pins and a caller cannot reach.
+    //!
+    //! `transcribe_into` is the reading every legacy-charset door goes
+    //! through, and what it counts is the whole contract; everything a caller
+    //! can observe is pinned through `yggdryl::` like any other test.
+    /// Read every byte `input` can give, counting the ones that were not
+    /// UTF-8 and were taken as ISO 8859-1 instead.
+    pub fn transcribe_into(input: &[u8], target: &mut String) -> usize {
+        super::transcribe_into(input, target)
+    }
+}

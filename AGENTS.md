@@ -359,27 +359,46 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 
 ### Where a test lives
 
-`rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
-theme - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
-`expression`, `graph`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]`
-modules under `tests/<theme>/`. A theme is the caller's vocabulary and the docs
-tab, not a source folder: `types` covers every root type file, `media` the
-root media folders, `hashing` the root `xxhash/` and `txhash/`. A test there
-reaches the crate through `yggdryl::` and
-nothing else, so what it proves is what a caller can rely on, and a fixture
-builds its own inputs rather than borrowing the code under test.
+`rust/tests/` mirrors `rust/src/`, file for file: `rust/src/avro/schema.rs` is
+pinned by `rust/tests/avro/schema.rs`, and a file the crate root holds -
+`datatype.rs`, `field.rs`, `scalar.rs` - by `rust/tests/root/<name>.rs`. One
+harness target per top-level source entry declares those files as `#[path]`
+modules: `rust/tests/<folder>.rs` per source folder, and `rust/tests/root.rs`
+for the root files. The mirror is the rule, so a new source file gets its test
+file at the matching path and nothing has to be decided.
 
-A `#[cfg(test)]` module stays in `src/` only where the thing tested is not
-reachable from outside, and its module doc says which private item that is and
-where the rest of the suite lives. That is the whole rule: `Iceberg`'s nine
-private modules and `TableMetadata`'s fields, the object client's signing and
-XML, the ZIP format readers, `canonicalize_dtype_value`, the ISO readers, the
-bundled zone registry, and roughly twenty single-item pins - `value_rank`,
-`low_64`, `read_at`, `convert`, `open_builder`, `home_from` and their kind.
-A shared measuring instrument crosses that line by being written twice -
-`Counting` in `tests/support/` and a smaller one beside the pins that need it -
-because an integration test cannot see a `#[cfg(test)]` item and publishing one
-would put a test fixture in the crate's API.
+A test reaches the crate through `yggdryl::` and nothing else, so what it
+proves is what a caller can rely on, and a fixture builds its own inputs rather
+than borrowing the code under test.
+
+`src/` holds no test code at all. What a caller cannot reach - a signing step,
+a format reader, a canonical rewrite, the bundled zone registry, the
+single-item pins - is reached through `yggdryl::internals::<module path>`,
+which exists only under the non-default `internals` feature. A module opts in
+by declaring its own, beside what it owns:
+
+```rust
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/utf8.rs` pins and a caller cannot reach.
+    pub fn transcribe_into(input: &[u8], target: &mut String) -> usize {
+        super::transcribe_into(input, target)
+    }
+}
+```
+
+A forwarding `pub fn` is the shape to reach for: it changes no visibility, so
+the item stays exactly as private as it was and a default build's API is
+untouched. `pub use super::Item` is for a module the crate root declares
+privately, where raising the item to `pub` reaches nobody. Never make an item
+`pub` inside a module the crate root publishes - that is an API change wearing
+a feature's name.
+
+`scripts/generate_internals.py` writes the crate-level re-export from those
+declarations, so no two changes edit one file to add theirs; `--check` fails a
+stale one. `--all-features` turns the feature on, which is how CI's second lane
+runs these tests; a default build compiles `yggdryl::internals` out entirely.
 
 ## Ownership
 
