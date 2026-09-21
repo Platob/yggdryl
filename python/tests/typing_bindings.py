@@ -1522,6 +1522,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     direction="R",
     batch_byte_size=1 << 20,
     snapshot_ns=1_000_000_000,
+    official_time_delay_ms=250,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
 fix_reader_separator: int | None = fix_reader_pinned.separator
@@ -1530,6 +1531,7 @@ fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_snapshot_ns: int | None = fix_reader_pinned.snapshot_ns
+fix_reader_official_time_delay_ms: int = fix_reader_pinned.official_time_delay_ms
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,

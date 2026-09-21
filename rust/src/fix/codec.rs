@@ -489,6 +489,10 @@ pub struct FixCodec {
     threads: usize,
     /// The lifecycle snapshot grid in nanoseconds; nonpositive disables it.
     snapshot_ns: i64,
+    /// How far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, in milliseconds; nonpositive
+    /// leaves only a clock equal to it.
+    official_time_delay_ms: i64,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -566,6 +570,28 @@ impl FixCodec {
     /// being read. A batch closes on whichever bound it reaches first.
     pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;
 
+    /// How far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, when the caller states none.
+    ///
+    /// The venue's clock and the session's are two clocks, and what stands
+    /// between them is the hop: a transaction stamped when it happened
+    /// reaches the wire microseconds later out of a matching engine and
+    /// tens of milliseconds later through a bridge, so a clock that close
+    /// is the same event said twice and the more exact saying of it is the
+    /// venue's. A `TransactTime(60)` a whole second off the sending clock
+    /// is a different event of the session's day - a resend of an older
+    /// order, a report batched behind the trades it covers, a clock nobody
+    /// disciplined - and dating the message by it would move it out of the
+    /// order it was sent in. One second is wide enough to hold every hop a
+    /// capture actually shows and narrow enough that nothing else crosses.
+    pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 1_000;
+
+    /// [`Self::DEFAULT_OFFICIAL_TIME_DELAY_MS`] as the nanosecond distance a
+    /// dating compares, for the doors that build a message without a codec
+    /// to state one.
+    pub(super) const DEFAULT_OFFICIAL_TIME_DELAY_NS: i64 =
+        Self::DEFAULT_OFFICIAL_TIME_DELAY_MS * 1_000_000;
+
     /// Borrows the message type declared by a captured line without parsing a message.
     #[must_use]
     pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]> {
@@ -606,6 +632,7 @@ impl FixCodec {
             batch_row_size: Self::DEFAULT_BATCH_ROW_SIZE,
             threads: std::thread::available_parallelism().map_or(1, usize::from),
             snapshot_ns: 0,
+            official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
             beginstring,
         }
     }
@@ -874,6 +901,44 @@ impl FixCodec {
         } else {
             None
         }
+    }
+
+    /// Sets how far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, in milliseconds.
+    ///
+    /// The sending clock is the reference every parse dates against, and the
+    /// message is dated by the best official clock standing within this
+    /// distance of it, on either side. The `TransactTime(60)` the message
+    /// states outranks everything; below it stand the `TrdRegTimestamp(769)`
+    /// occurrences of a `TrdRegTimestamps(768)` group, ranked by what their
+    /// `TrdRegTimestampType(770)` says each one is - the event itself before
+    /// a hop the message crossed, and a stamp about the trade's afterlife
+    /// never a clock at all. Two of one rank are decided by the nearer, and
+    /// the sending clock dates the message where none stands that near.
+    /// The default is [`Self::DEFAULT_OFFICIAL_TIME_DELAY_MS`]; a nonpositive
+    /// delay admits only a clock equal to the sending clock, which is the
+    /// reading that dates nothing the sending clock did not already date.
+    #[must_use]
+    pub const fn with_official_time_delay_ms(mut self, official_time_delay_ms: i64) -> Self {
+        self.official_time_delay_ms = official_time_delay_ms;
+        self
+    }
+
+    /// How far from `SendingTime(52)` an official transaction clock may stand
+    /// and still date the message, in milliseconds.
+    #[must_use]
+    pub const fn official_time_delay_ms(&self) -> i64 {
+        self.official_time_delay_ms
+    }
+
+    /// The delay as the nanosecond distance a dating compares against: never
+    /// negative, and saturating rather than wrapping on a delay stated in
+    /// milliseconds no span of nanoseconds can hold.
+    pub(super) const fn official_time_delay_ns(&self) -> i64 {
+        if self.official_time_delay_ms <= 0 {
+            return 0;
+        }
+        self.official_time_delay_ms.saturating_mul(1_000_000)
     }
 
     /// The lines one chunk holds where the doors read on several threads:
@@ -2256,6 +2321,7 @@ impl FixCodec {
                 .filter(|value| !value.is_null())
                 .or(self.default_sending_time.as_ref()),
             extras.source,
+            self.official_time_delay_ns(),
         )?;
         super::enrich::enrich(&self.registry, message)
     }
@@ -3190,7 +3256,7 @@ mod clock_intake_tests {
     }
 
     #[test]
-    fn seeded_clocks_type_once_and_sending_dates_the_event() {
+    fn seeded_clocks_type_once_and_the_transaction_dates_the_event() {
         let codec = codec();
         for tag in [52, 60] {
             assert_eq!(
@@ -3203,16 +3269,11 @@ mod clock_intake_tests {
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
-        // `SendingTime` dates the event and `TransactTime` stays the typed
-        // field the lifecycle reads; neither fills `snapunix`, which says
-        // this row is a reading a walk took.
-        assert_eq!(
-            Some(message.get_currunix()),
-            message
-                .by_tag(52)
-                .unwrap()
-                .temporal_count_at(TimeUnit::Nanosecond)
-        );
+        // The transaction stands one second from the sending clock, which is
+        // exactly the default delay, so the two are the one event said twice
+        // and the more exact saying of it dates the message. `TransactTime`
+        // stays the typed field it was, and neither clock fills `snapunix`,
+        // which says this row is a reading a walk took.
         assert_eq!(
             message
                 .by_tag(60)
@@ -3220,10 +3281,55 @@ mod clock_intake_tests {
                 .temporal_count_at(TimeUnit::Nanosecond),
             Some(1_767_348_931_000_000_000)
         );
+        assert_eq!(message.get_currunix(), 1_767_348_931_000_000_000);
+        assert_eq!(message.get_creaunix(), Some(message.get_currunix()));
         assert_eq!(message.get_snapunix(), None);
+        // One nanosecond further and they are two events: the sending clock
+        // is the one every message carries, so it keeps the message.
+        let apart = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31.000000001|")
+            .unwrap();
+        assert_eq!(apart.get_currunix(), 1_767_348_930_000_000_000);
+        assert_eq!(
+            Some(apart.get_currunix()),
+            apart
+                .by_tag(52)
+                .unwrap()
+                .temporal_count_at(TimeUnit::Nanosecond)
+        );
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
         assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(absent.get_by_tag(60).is_none());
+        assert_eq!(absent.get_currunix(), 17);
+    }
+
+    /// The delay crosses into the dating as nanoseconds, through a
+    /// `pub(super)` reading no integration test can reach.
+    #[test]
+    fn the_delay_converts_to_nanoseconds_and_saturates() {
+        assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+        assert_eq!(
+            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS * 1_000_000
+        );
+        let codec = codec();
+        assert_eq!(
+            codec.official_time_delay_ns(),
+            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS
+        );
+        // A nonpositive delay is no distance at all, and a delay no span of
+        // nanoseconds could hold saturates rather than wrapping into a
+        // negative distance that would admit nothing.
+        for (delay, expected) in [(500, 500_000_000), (0, 0), (-1, 0), (i64::MAX, i64::MAX)] {
+            assert_eq!(
+                codec
+                    .clone()
+                    .with_official_time_delay_ms(delay)
+                    .official_time_delay_ns(),
+                expected,
+                "a {delay} ms delay"
+            );
+        }
     }
 
     #[test]

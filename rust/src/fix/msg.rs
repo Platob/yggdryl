@@ -365,6 +365,100 @@ fn tag_positions(columns: &[super::schema::Column]) -> Vec<(i32, usize)> {
     held
 }
 
+/// Two instants standing no further apart than `delay`, in either
+/// direction: what makes an official clock and a sending clock the one
+/// event said twice. A nonpositive delay admits only equality.
+fn within(unix: i64, reference: i64, delay: i64) -> bool {
+    unix.abs_diff(reference) <= delay.unsigned_abs()
+}
+
+/// The rank `TransactTime(60)` takes among the official clocks: what the
+/// message itself says about when its transaction happened, which no stamp
+/// of another party outranks.
+const TRANSACT_RANK: u8 = 0;
+
+/// The `TrdRegTimestampType(770)` codes that stamp the event this message
+/// reports - when it executed, when it entered the book, when it took its
+/// priority, when it was submitted, cancelled or modified. These are the
+/// venue's own answer to the question `currunix` asks.
+const EVENT_TRDREG_TYPES: [i64; 9] = [
+    1,  // ExecutionTime
+    5,  // BrokerExecution
+    8,  // TimePriority
+    9,  // OrderbookEntryTime
+    10, // OrderSubmissionTime
+    29, // OrderCancellationTime
+    30, // OrderModificationTime
+    32, // TradeCancellationTime
+    33, // TradeModificationTime
+];
+
+/// The `TrdRegTimestampType(770)` codes that stamp a hop the message
+/// crossed on its way here rather than the event itself. Nearer the event
+/// than the sending clock and further from it than the stamps above, which
+/// is exactly the rank they take.
+const HOP_TRDREG_TYPES: [i64; 5] = [
+    2,  // TimeIn
+    3,  // TimeOut
+    4,  // BrokerReceipt
+    6,  // DeskReceipt
+    31, // OrderRoutingTime
+];
+
+/// How well one `TrdRegTimestampType(770)` answers when the event this
+/// message reports happened; `None` where it answers something else.
+///
+/// The code set names thirty-six stamps and twenty-two of them answer
+/// something else. Nineteen are the trade's afterlife rather than the trade:
+/// submission to clearing, public and non-public reporting and their updates,
+/// confirmation, clearing, allocation, submission to a repository,
+/// continuation events, valuation, an identifier's assignment, affirmation
+/// and a bare update time all happen after the event and say nothing about
+/// when it happened. Three are about something other than this message: a
+/// previous time priority and a previous identifier describe the state it
+/// replaced, and a reference time for the BBO describes the market it was
+/// measured against. A code no set names is one of these until someone says
+/// otherwise - an unranked stamp is silence, never a clock - so only the two
+/// lists above date a message.
+fn trdregtimestamp_rank(kind: i64) -> Option<u8> {
+    if EVENT_TRDREG_TYPES.contains(&kind) {
+        return Some(TRANSACT_RANK + 1);
+    }
+    if HOP_TRDREG_TYPES.contains(&kind) {
+        return Some(TRANSACT_RANK + 2);
+    }
+    None
+}
+
+/// One typed clock as the nanoseconds since the epoch it counts; nothing
+/// where the value is not an instant, which is what a clock the dictionary
+/// does not type as one, or one that would not read, leaves in the row.
+fn instant_of(value: &Scalar) -> Option<i64> {
+    let held @ Scalar::DateTime64(_) = value else {
+        return None;
+    };
+    held.temporal_count_at(crate::TimeUnit::Nanosecond)
+}
+
+/// One code of a set as the number it is, however the dictionary typed the
+/// tag: the integer a code set answers with, else the digits a dictionary
+/// that left the tag as text carries.
+fn code_of(value: &Scalar) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str()?.trim().parse().ok())
+}
+
+/// The position of the child carrying one tag among `fields`, by the
+/// dictionary's own reading of each child. A group occurrence is positional,
+/// the names living on the field and never in the value, so this is found once
+/// on the occurrence's field and every occurrence is read by it.
+fn position_of_tag(registry: &FixRegistry, fields: &[Field], tag: i32) -> Option<usize> {
+    fields
+        .iter()
+        .position(|child| super::schema::tag_and_counter(registry, child).0 == Some(tag))
+}
+
 fn group_positions(field: &Field, registry: &FixRegistry) -> Vec<(i32, usize)> {
     let mut held: Vec<_> = field
         .fields()
@@ -411,7 +505,15 @@ impl FixMsg {
     /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        Self::assemble(registry, field, value, None, None, true)
+        Self::assemble(
+            registry,
+            field,
+            value,
+            None,
+            None,
+            super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            true,
+        )
     }
 
     /// Builds the message the one builder finished, checking nothing twice.
@@ -419,19 +521,30 @@ impl FixMsg {
     /// Every value in the row went through the contract of the field it
     /// lands under, so the row is canonical by construction. The sending
     /// clock is what the message stated, else `fallback_sending_time`, else
-    /// now: initial intake settles clocks, and replay never reads now. The
-    /// identity is not settled here: the [enriching pass](super::enrich)
-    /// that takes every built message restates and fills it first, and
-    /// settles it once at its end, so nothing is digested that a later
-    /// write of the same pass rewrites.
+    /// now: initial intake settles clocks, and replay never reads now.
+    /// `official_time_delay_ns` is how far from that clock an official
+    /// transaction may stand and still date the message, which the codec
+    /// states for the whole run. The identity is not settled here: the
+    /// [enriching pass](super::enrich) that takes every built message
+    /// restates and fills it first, and settles it once at its end, so
+    /// nothing is digested that a later write of the same pass rewrites.
     pub(super) fn from_built(
         registry: Arc<FixRegistry>,
         built: super::build::Built,
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
+        official_time_delay_ns: i64,
     ) -> Result<Self> {
         let super::build::Built { field, value, .. } = built;
-        Self::assemble(registry, field, value, fallback_sending_time, source, false)
+        Self::assemble(
+            registry,
+            field,
+            value,
+            fallback_sending_time,
+            source,
+            official_time_delay_ns,
+            false,
+        )
     }
 
     /// Builds a message from the content reconstructed out of a semantic row.
@@ -445,7 +558,15 @@ impl FixMsg {
         retains_identity: bool,
     ) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        let mut message = Self::assemble(registry, field, value, None, None, false)?;
+        let mut message = Self::assemble(
+            registry,
+            field,
+            value,
+            None,
+            None,
+            super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            false,
+        )?;
         message.sync_capture_identifier();
         if retains_identity {
             message.derive_market();
@@ -462,12 +583,15 @@ impl FixMsg {
     /// derived. `source` is the identity of the line the row was parsed out
     /// of, stated as the message's one source before it is settled; a row
     /// stating a `srcuuids` column of its own states those instead.
+    /// `official_time_delay_ns` is how far from the sending clock an
+    /// official transaction may stand and still date the message.
     fn assemble(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
+        official_time_delay_ns: i64,
         settle: bool,
     ) -> Result<Self> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
@@ -553,17 +677,6 @@ impl FixMsg {
                 header.set_sendingtime(unix);
             }
         }
-        // The instant the message happened: what it states, else when it
-        // was sent - the one clock every message carries. A parse structures
-        // what a line said and dates it by that clock; what a transaction's
-        // own `TransactTime(60)` or a resend's `OrigSendingTime(122)` says
-        // is the lifecycle's to read off the structured message.
-        if !stated_unix {
-            event.set_currunix(header.sendingtime());
-        }
-        if !stated_creation {
-            event.set_creaunix(Some(event.get_currunix()));
-        }
         if lifted.msgcat().is_none() {
             let category = registry
                 .get_msgtype(header.msgtype())
@@ -603,10 +716,119 @@ impl FixMsg {
             entries: OnceLock::new(),
             carried: Vec::new(),
         };
+        // The instant the message happened: what it states, else when the
+        // transaction it reports happened, else when it was sent - the one
+        // clock every message carries. A parse structures what a line said
+        // and dates it against the sending clock, taking the official
+        // transaction over it only where the two stand within
+        // `official_time_delay_ns` of each other and are therefore the one
+        // event said twice; what a resend's `OrigSendingTime(122)` says, and
+        // what a `TransactTime(60)` further off than that says, is the
+        // lifecycle's to read off the structured message.
+        if !stated_unix {
+            message
+                .event
+                .set_currunix(message.official_unix(official_time_delay_ns));
+        }
+        if !stated_creation {
+            message.event.set_creaunix(Some(message.get_currunix()));
+        }
         if settle {
             message.settle();
         }
         Ok(message)
+    }
+
+    /// The instant this message happened: the best official clock standing
+    /// within `delay` of the sending clock, else the sending clock itself.
+    ///
+    /// The sending clock is the reference because every message carries one
+    /// and no message carries two. An official clock is the more exact
+    /// saying of when the event happened, and the distance between the two
+    /// is the only evidence a parse has that they are saying the same thing:
+    /// inside the delay they are one event and the official clock wins,
+    /// outside it they are two and the parse keeps the clock it can trust.
+    /// Rank decides between several that qualify - what the message says its
+    /// transaction was before what a regulatory stamp says a hop was - and
+    /// the nearer of two equal ranks decides after that, the earlier
+    /// instant closing the last tie so that one row reads one way.
+    fn official_unix(&self, delay: i64) -> i64 {
+        let sending = self.header.sendingtime();
+        self.official_clocks()
+            .filter(|(_, unix)| within(*unix, sending, delay))
+            .min_by_key(|(rank, unix)| (*rank, unix.abs_diff(sending), *unix))
+            .map_or(sending, |(_, unix)| unix)
+    }
+
+    /// Every clock this message states about when its own event happened,
+    /// each under the rank that says how well it answers that question.
+    ///
+    /// `TransactTime(60)` is the message's own statement and outranks
+    /// everything; the `TrdRegTimestamps(768)` group is the venue's, and
+    /// [`trdregtimestamp_rank`] reads each occurrence's
+    /// `TrdRegTimestampType(770)` to say which of its stamps are about this
+    /// event at all. Nothing here is ordered or bounded: the caller bounds
+    /// them by the delay and picks one.
+    fn official_clocks(&self) -> impl Iterator<Item = (u8, i64)> + use<'_> {
+        self.transact_unix()
+            .map(|unix| (TRANSACT_RANK, unix))
+            .into_iter()
+            .chain(self.trdregtimestamps())
+    }
+
+    /// The `TransactTime(60)` this message states, as an instant.
+    ///
+    /// By the index alone: a lookup that falls through to the name table is a
+    /// read a dating has no use for. A transaction stating a day and no clock
+    /// dates nothing - `60=20260814`, which the parse restates as that day's
+    /// midnight - because what it says is the day, and midnight to the
+    /// nanosecond is that statement and no other a venue makes.
+    fn transact_unix(&self) -> Option<i64> {
+        instant_of(&self.indexed_by_tag(60)?).filter(|unix| unix.rem_euclid(NANOS_PER_DAY) != 0)
+    }
+
+    /// Every `TrdRegTimestamp(769)` this message states that is about the
+    /// event the message reports, under its rank.
+    ///
+    /// The group is read as a group and only as a group: `TrdRegTimestamp`
+    /// says nothing on its own - the same tag carries the execution's
+    /// instant, a desk's receipt and the moment a report reached a
+    /// repository - and what tells them apart is the
+    /// `TrdRegTimestampType(770)` standing beside it in the same
+    /// occurrence. A dictionary that declares the group pairs them; one that
+    /// does not leaves two flat children whose pairing is a guess, and a
+    /// guess about which regulatory clock this is would date the message by
+    /// a stamp that belongs to a different question.
+    ///
+    /// A group occurrence is positional - the names live on the field and
+    /// never in the value - so the two members are found once on the
+    /// occurrence's field and every occurrence is read by those positions.
+    fn trdregtimestamps(&self) -> impl Iterator<Item = (u8, i64)> + use<'_> {
+        self.trdregtimestamp_members()
+            .into_iter()
+            .flat_map(|(occurrences, stamp, kind)| {
+                occurrences.iter().filter_map(move |occurrence| {
+                    let held = occurrence.as_sequence()?;
+                    let rank = trdregtimestamp_rank(code_of(held.get(kind)?)?)?;
+                    Some((rank, instant_of(held.get(stamp)?)?))
+                })
+            })
+    }
+
+    /// The `TrdRegTimestamps(768)` occurrences beside the positions its
+    /// `TrdRegTimestamp(769)` and `TrdRegTimestampType(770)` members hold in
+    /// each of them; nothing where the dictionary declares no such group, or
+    /// where the group it declares does not carry both members.
+    fn trdregtimestamp_members(&self) -> Option<(&[Scalar], usize, usize)> {
+        let at = self.index_of_group(768)?;
+        let DataType::Sequence(sequence) = self.field.fields().get(at)?.dtype() else {
+            return None;
+        };
+        let members = sequence.item().fields();
+        let stamp = position_of_tag(&self.registry, members, 769)?;
+        let kind = position_of_tag(&self.registry, members, 770)?;
+        let occurrences = self.value.as_sequence()?.get(at)?.as_sequence()?;
+        Some((occurrences, stamp, kind))
     }
 
     /// Replaces the row with another statement of the same content, as a
@@ -1070,7 +1292,10 @@ impl FixMsg {
     /// the rules its date selects, filled and settled - exactly as a parse
     /// dated there would have built it. A stated sending clock stands: the
     /// parse dated the message by what it said, and the walk does not
-    /// second-guess it. What the
+    /// second-guess it. No delay bounds this one: a clock nobody stated is
+    /// no reference to measure a distance from, which is why the parse's own
+    /// [`FixCodec::official_time_delay_ms`](super::FixCodec::official_time_delay_ms)
+    /// reading of the transaction ends where this one begins. What the
     /// [lifecycle](super::FixCodec::lifecycle) reads off the structured
     /// message before it walks, so a capture whose frames state no sending
     /// clock still orders, expires and folds by when its transactions
@@ -1084,23 +1309,9 @@ impl FixMsg {
         if self.header.stated_sendingtime() {
             return Ok(self);
         }
-        // By the index alone: a lookup that falls through to the name table
-        // is a read the walk has no use for.
-        let Some(Scalar::DateTime64(transaction)) = self.indexed_by_tag(60) else {
+        let Some(unix) = self.transact_unix() else {
             return Ok(self);
         };
-        let Some(unix) =
-            Scalar::DateTime64(transaction).temporal_count_at(crate::TimeUnit::Nanosecond)
-        else {
-            return Ok(self);
-        };
-        // A transaction stating a day and no clock - `60=20260814`, which
-        // the parse restates as that day's midnight - dates nothing: what it
-        // says is the day, and the sending clock stands. Midnight to the
-        // nanosecond is that statement and no other a venue makes.
-        if unix.rem_euclid(NANOS_PER_DAY) == 0 {
-            return Ok(self);
-        }
         let current = self.get_currunix();
         let created = self.get_creaunix();
         self.event.set_currunix(unix);
