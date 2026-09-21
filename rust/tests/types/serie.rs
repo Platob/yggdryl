@@ -754,39 +754,51 @@ fn a_mapping_column_holds_its_entries_as_a_record_column() {
 }
 
 #[test]
-fn a_variant_column_lends_the_run_it_encoded_and_decodes_only_on_demand() {
+fn a_variant_column_lends_the_pair_it_stored_and_reads_only_on_demand() {
     let mut column = Serie::from_scalars(
         Field::new("payload", DataType::Variant, true),
         [Scalar::from(1_i64), Scalar::from("AAPL")],
     )
     .expect("two variant rows");
 
+    // The storage is the Parquet Variant pair, and both runs are lent where
+    // they lie.
     let leaf = column.as_variant().expect("a variant column");
-    let first = leaf.bytes(0).expect("an encoded run").to_vec();
-    assert!(!first.is_empty());
-    assert!(!leaf.payload().is_empty());
-    assert_eq!(leaf.offsets().len(), 3, "one offset per row, plus the end");
+    let metadata = leaf.metadata(0).expect("a metadata dictionary").to_vec();
+    let value = leaf.value(0).expect("a value payload").to_vec();
+    assert!(!metadata.is_empty(), "the metadata carries a header byte");
+    assert_eq!(leaf.metadata_array().len(), 2);
+    assert_eq!(leaf.value_array().len(), 2);
 
-    // A row is a value only when one is asked for, and it comes back what it
-    // went in as.
-    assert_eq!(column.scalar(0).unwrap(), Scalar::from(1_i64));
-    assert_eq!(column.scalar(1).unwrap(), Scalar::from("AAPL"));
+    // A row is answered as the pair it is, undecoded, and reading it is a
+    // second ask that comes back what went in.
+    let Scalar::Variant(held) = column.scalar(0).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(held.metadata(), metadata.as_slice());
+    assert_eq!(held.scalar().unwrap(), Scalar::from(1_i64));
+    let Scalar::Variant(second) = column.scalar(1).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(second.scalar().unwrap(), Scalar::from("AAPL"));
 
-    // An already-encoded run is forwarded without being decoded.
+    // An already-encoded pair is forwarded without either run being read.
     column
         .as_variant_mut()
         .expect("a variant column")
-        .push_bytes(Some(&first));
+        .push_pair(Some((&metadata, &value)));
     assert_eq!(column.len(), 3);
-    assert_eq!(column.scalar(2).unwrap(), Scalar::from(1_i64));
+    let Scalar::Variant(third) = column.scalar(2).unwrap() else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(third.scalar().unwrap(), Scalar::from(1_i64));
 
-    // And an absent row is a slot with no run in it.
+    // And an absent row is a slot with no pair in it.
     column.push(Scalar::Null).expect("an absent row");
     assert!(column.is_null(3));
-    assert_eq!(
-        column.as_variant().expect("a variant column").bytes(3),
-        None
-    );
+    let leaf = column.as_variant().expect("a variant column");
+    assert_eq!(leaf.metadata(3), None);
+    assert_eq!(leaf.value(3), None);
 }
 
 #[test]

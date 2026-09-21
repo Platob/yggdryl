@@ -3450,10 +3450,10 @@ pub enum DataType
   pub struct GenericSequenceSerie<O: OffsetSizeTrait, K: SequenceKind<O>>  (one Arc<Field>, one OffsetBuffer<O>, one item Serie, the validity bitmap)
   pub type SequenceSerie = GenericSequenceSerie<i32, Items> / pub type LargeSequenceSerie = GenericSequenceSerie<i64, Items> / pub type MappingSerie = GenericSequenceSerie<i32, Entries>
   pub fn items(&self) -> &Serie / items_mut / offsets(&self) -> &OffsetBuffer<O> / range(&self, index) -> Option<(usize, usize)> / nulls  (a mapping's items are its key-value records; one spelling, not two)
-  pub struct VariantSerie  (one encoded run per row, over Arrow Binary. One width only: DataType::Variant projects to Binary and nothing else, so there is no Large twin - the encoding names the storage)
-  pub fn bytes(&self, index: usize) -> Option<&[u8]>  (the encoded run where it lies, undecoded)
-  pub fn payload(&self) -> &Buffer / pub fn offsets(&self) -> &OffsetBuffer<i32> / pub const fn array(&self) -> &BinaryArray / pub fn nulls
-  pub fn push_bytes(&mut self, value: Option<&[u8]>)  (one already-encoded run, without decoding it)
+  pub struct VariantSerie  (the Apache Parquet Variant pair per row - a metadata dictionary and a value payload - over Arrow Struct("metadata": Binary, "value": Binary). One width only: DataType::Variant projects to that struct and nothing else, so there is no Large twin - the standard names the storage)
+  pub fn metadata(&self, index: usize) -> Option<&[u8]> / pub fn value(&self, index: usize) -> Option<&[u8]>  (one row's two runs where they lie, neither read)
+  pub const fn metadata_array(&self) -> &BinaryArray / pub const fn value_array(&self) -> &BinaryArray / pub const fn nulls(&self) -> Option<&NullBuffer>
+  pub fn push_pair(&mut self, pair: Option<(&[u8], &[u8])>)  (one already-encoded pair, without reading either run)
 
   pub enum IntegerSerie / FloatingSerie / DecimalSerie / TemporalSerie / StringSerie / BytesSerie  (one variant per leaf of the family; each implements SerieValue and dispatches to the leaf)
   impl SerieValue for every column leaf and every family enum - NOT for Serie, whose run leaf has no field to answer with. impl Value and NestedValue for Serie. Serialize writes a run's values and a column's field beside its rows; Deserialize is untagged over the two shapes, the column's shadow the private SerieWire

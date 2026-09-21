@@ -133,10 +133,30 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
     }
 
     if matches!(dtype, DataType::Variant) {
-        // `DataType::Variant` projects to Arrow `Binary` and nothing else,
-        // so there is one storage to take and `require_layout` has already
-        // refused anything but it.
-        return Ok(VariantSerie::new(field, held::<BinaryArray>(&field_ref, array)?).into_serie());
+        // `DataType::Variant` projects to the Parquet Variant pair and
+        // nothing else - a struct of a metadata dictionary and a value
+        // payload - so there is one storage to take and `require_layout`
+        // has already refused anything but it.
+        let pair = held::<StructArray>(&field_ref, array)?;
+        let (Some(metadata), Some(value)) = (
+            pair.column(0).as_any().downcast_ref::<BinaryArray>(),
+            pair.column(1).as_any().downcast_ref::<BinaryArray>(),
+        ) else {
+            return Err(Error::Unsupported {
+                kind: "serie",
+                reason: format!(
+                    "a variant column holds a metadata and a value run, got {}",
+                    pair.data_type()
+                ),
+            });
+        };
+        return Ok(VariantSerie::new(
+            field,
+            metadata.clone(),
+            value.clone(),
+            pair.nulls().cloned(),
+        )
+        .into_serie());
     }
 
     match array.data_type() {

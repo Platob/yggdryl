@@ -1,95 +1,136 @@
 //! The column a self-describing value is stored in.
 //!
-//! A variant row is one run of bytes - the crate's own encoding, version,
-//! identifier, payload, children inside - so a variant column is a byte
-//! column and nothing more: the offsets cut one encoded value per row, and
-//! [`VariantSerie::bytes`] lends that run where it lies.
+//! A variant row is the Apache Parquet Variant pair - a metadata dictionary
+//! and a value payload - so a variant column holds two byte runs per row and
+//! lays out as Arrow's `Struct("metadata": Binary, "value": Binary)`, the
+//! shape Parquet, Avro, Arrow and Iceberg all state for the type.
 //!
-//! The encoding itself is [`crate::variant`]'s, reached through
-//! [`Scalar::into_value_bytes`] and [`Scalar::decode_value_bytes`] -
-//! the same two the crate's own variant column is built and read by - so a
-//! column grows no second encoder and a row written here reads back byte
-//! for byte wherever else the encoding is read.
+//! The pair is lent where it lies: [`VariantSerie::metadata`] and
+//! [`VariantSerie::value`] borrow one row's two runs without reading either,
+//! and [`SerieValue::scalar`] answers `Scalar::Variant` - the pair, still
+//! undecoded - so a caller forwarding a row moves bytes and a caller reading
+//! one calls [`crate::Variant::scalar`] itself.
 
 use std::fmt;
 use std::sync::Arc;
 
 use arrow_array::builder::BinaryBuilder;
-use arrow_array::{Array, ArrayRef, BinaryArray};
-use arrow_buffer::{Buffer, NullBuffer, OffsetBuffer};
+use arrow_array::{Array, ArrayRef, BinaryArray, StructArray};
+use arrow_buffer::NullBuffer;
+use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 
 use super::Serie;
 use crate::value::SerieValue;
-use crate::{Field, Result, Scalar};
+use crate::{Field, Result, Scalar, Variant};
 
 /// One column of self-describing values, each row one encoded run of bytes.
 ///
 /// There is one width and no `Large` twin, because `DataType::Variant`
-/// projects to Arrow `Binary` and nothing else - the encoding names the
-/// storage, so a second offset width would be a layout no field can declare.
-/// [`GenericSequenceSerie`](crate::GenericSequenceSerie) has both widths
-/// because `list` and `large_list` are both datatypes.
+/// projects to that struct of two `Binary` children and nothing else - the
+/// standard names the storage, so a second offset width would be a layout no
+/// field can declare. [`GenericSequenceSerie`](crate::GenericSequenceSerie)
+/// has both widths because `list` and `large_list` are both datatypes.
 #[derive(Clone)]
 pub struct VariantSerie {
     field: Arc<Field>,
-    runs: BinaryArray,
+    metadata: BinaryArray,
+    value: BinaryArray,
+    nulls: Option<NullBuffer>,
 }
 
 impl VariantSerie {
-    /// Pair a variant field with the runs that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, runs: BinaryArray) -> Self {
-        Self { field, runs }
+    /// Pair a variant field with the two runs that hold its rows.
+    pub(crate) const fn new(
+        field: Arc<Field>,
+        metadata: BinaryArray,
+        value: BinaryArray,
+        nulls: Option<NullBuffer>,
+    ) -> Self {
+        Self {
+            field,
+            metadata,
+            value,
+            nulls,
+        }
     }
 
-    /// Borrow row `index`'s encoded run where it lies.
-    ///
-    /// The bytes are the crate's variant encoding, so a caller that wants to
-    /// forward a row rather than read it moves them without decoding.
-    pub fn bytes(&self, index: usize) -> Option<&[u8]> {
-        (index < self.runs.len() && !self.runs.is_null(index)).then(|| self.runs.value(index))
+    /// The two Arrow children a variant column lays out as.
+    pub(crate) fn arrow_fields() -> Fields {
+        Fields::from(vec![
+            ArrowField::new("metadata", ArrowDataType::Binary, false),
+            ArrowField::new("value", ArrowDataType::Binary, false),
+        ])
     }
 
-    /// Borrow the payload buffer every run lies in, without copying it.
-    pub fn payload(&self) -> &Buffer {
-        self.runs.values()
+    /// Borrow row `index`'s metadata dictionary where it lies.
+    pub fn metadata(&self, index: usize) -> Option<&[u8]> {
+        (!self.is_absent(index)).then(|| self.metadata.value(index))
     }
 
-    /// Borrow the offsets buffer that cuts the runs, without copying it.
-    pub fn offsets(&self) -> &OffsetBuffer<i32> {
-        self.runs.offsets()
+    /// Borrow row `index`'s value payload where it lies.
+    pub fn value(&self, index: usize) -> Option<&[u8]> {
+        (!self.is_absent(index)).then(|| self.value.value(index))
     }
 
-    /// Borrow the Arrow array these runs are.
-    pub const fn array(&self) -> &BinaryArray {
-        &self.runs
+    /// Borrow the Arrow array the metadata dictionaries are.
+    pub const fn metadata_array(&self) -> &BinaryArray {
+        &self.metadata
+    }
+
+    /// Borrow the Arrow array the value payloads are.
+    pub const fn value_array(&self) -> &BinaryArray {
+        &self.value
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
-    pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.runs.nulls()
+    pub const fn nulls(&self) -> Option<&NullBuffer> {
+        self.nulls.as_ref()
     }
 
-    /// Append one already-encoded run, without decoding it.
-    pub fn push_bytes(&mut self, value: Option<&[u8]>) {
-        self.runs = self.rebuilt(None, value);
+    /// Append one already-encoded pair, without reading either run.
+    pub fn push_pair(&mut self, pair: Option<(&[u8], &[u8])>) {
+        self.write(None, pair);
     }
 
-    /// The same runs, with row `replace` rewritten or one more on the end.
-    fn rebuilt(&self, replace: Option<usize>, value: Option<&[u8]>) -> BinaryArray {
-        let mut builder = BinaryBuilder::new();
-        for row in 0..self.runs.len() {
+    /// Whether row `index` is past the end or absent.
+    fn is_absent(&self, index: usize) -> bool {
+        index >= self.metadata.len() || self.nulls.as_ref().is_some_and(|nulls| nulls.is_null(index))
+    }
+
+    /// Rewrite row `replace`, or append one more, keeping every other row.
+    ///
+    /// Arrow's children are as long as the record, so an absent row still
+    /// occupies one slot in each: it holds empty bytes, and the validity
+    /// bitmap beside them is what says the row is not there.
+    fn write(&mut self, replace: Option<usize>, pair: Option<(&[u8], &[u8])>) {
+        let rows = self.metadata.len();
+        let mut metadata = BinaryBuilder::new();
+        let mut value = BinaryBuilder::new();
+        let mut present = Vec::with_capacity(rows + 1);
+        for row in 0..rows {
             if replace == Some(row) {
-                builder.append_option(value);
-            } else if self.runs.is_null(row) {
-                builder.append_null();
+                let (left, right) = pair.unwrap_or((&[], &[]));
+                metadata.append_value(left);
+                value.append_value(right);
+                present.push(pair.is_some());
             } else {
-                builder.append_value(self.runs.value(row));
+                metadata.append_value(self.metadata.value(row));
+                value.append_value(self.value.value(row));
+                present.push(!self.is_absent(row));
             }
         }
         if replace.is_none() {
-            builder.append_option(value);
+            let (left, right) = pair.unwrap_or((&[], &[]));
+            metadata.append_value(left);
+            value.append_value(right);
+            present.push(pair.is_some());
         }
-        builder.finish()
+        self.metadata = metadata.finish();
+        self.value = value.finish();
+        self.nulls = present
+            .iter()
+            .any(|held| !held)
+            .then(|| NullBuffer::from(present));
     }
 }
 
@@ -99,47 +140,58 @@ impl SerieValue for VariantSerie {
     }
 
     fn len(&self) -> usize {
-        self.runs.len()
+        self.metadata.len()
     }
 
     fn null_count(&self) -> usize {
-        self.runs.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> bool {
-        index >= self.runs.len() || self.runs.is_null(index)
+        self.is_absent(index)
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
-        let Some(bytes) = self.bytes(index) else {
+        let (Some(metadata), Some(value)) = (self.metadata(index), self.value(index)) else {
             return Ok(Scalar::Null);
         };
-        Scalar::decode_value_bytes(bytes)
+        // The pair is answered undecoded: reading it is the caller's ask, and
+        // `Variant::scalar` is the one door that reads it.
+        Ok(Scalar::Variant(Variant::new(metadata, value)?))
     }
 
     fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
-        super::require_row(self.field.name(), index, self.runs.len())?;
+        super::require_row(self.field.name(), index, self.metadata.len())?;
         let value = self.field.scalar(value)?;
         if value.is_null() {
-            self.runs = self.rebuilt(Some(index), None);
+            self.write(Some(index), None);
             return Ok(());
         }
-        self.runs = self.rebuilt(Some(index), Some(&value.into_value_bytes()));
+        let held = value.into_variant()?;
+        self.write(Some(index), Some((held.metadata(), held.value())));
         Ok(())
     }
 
     fn push(&mut self, value: Scalar) -> Result<()> {
         let value = self.field.scalar(value)?;
         if value.is_null() {
-            self.push_bytes(None);
+            self.push_pair(None);
             return Ok(());
         }
-        self.push_bytes(Some(&value.into_value_bytes()));
+        let held = value.into_variant()?;
+        self.push_pair(Some((held.metadata(), held.value())));
         Ok(())
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.runs.clone())
+        let children: Vec<ArrayRef> = vec![
+            Arc::new(self.metadata.clone()),
+            Arc::new(self.value.clone()),
+        ];
+        StructArray::try_new(Self::arrow_fields(), children, self.nulls.clone()).map_or_else(
+            |_| arrow_array::new_empty_array(&ArrowDataType::Null),
+            |array| Arc::new(array) as ArrayRef,
+        )
     }
 
     fn into_serie(self) -> Serie {

@@ -40,7 +40,7 @@ A leaf is one Arrow layout under one field, and its accessors are that layout's 
 | `StructSerie` | - | `children()` (each a `Serie`), `child(name)`, `child_at`, `nulls()` |
 | `SequenceSerie`, `LargeSequenceSerie` | - | `items()` (a `Serie`), `offsets()` typed at the leaf's own width, `range(row)`, `nulls()` |
 | `MappingSerie` | - | the same leaf read as entries: `items()` are the key-value records, plus `offsets()`, `range(row)`, `nulls()` |
-| `VariantSerie` | - | `bytes(row)`, `payload()`, `offsets()`. One width only: `DataType::Variant` projects to Arrow `Binary` and nothing else |
+| `VariantSerie` | - | `metadata(row)`, `value(row)` - the Parquet Variant pair, neither run read - plus `metadata_array()`, `value_array()`, `nulls()`. One width only: `DataType::Variant` projects to `Struct(metadata: Binary, value: Binary)` and nothing else |
 
 Arrow spells a sequence at two offset widths, and lays a mapping out as a list of non-null key-value entry records — so `SequenceSerie`, `LargeSequenceSerie` and `MappingSerie` are three names for one implementation, `GenericSequenceSerie<O, K>`, generic over the offset width and over a `SequenceKind` marker. All three hold the same four things: a field, offsets, one `Serie` of what the offsets cut, and a validity bitmap. The marker decides three things and nothing else — how a row reads (`from_sequence` or paired into `from_mapping`), which Arrow array it lays out (`ListArray`, `LargeListArray`, `MapArray`), and which leaf of the root it is.
 
@@ -412,9 +412,9 @@ Every crossing shares buffers. A column of a leaf field is an array; a column of
     assert!(serie.into_arrow_batch().is_err());
     ```
 
-## Variant: one encoded run per row
+## Variant: the stored pair, read on demand
 
-A variant row is one run of the crate's own [variant encoding](variant.md), so a variant column is a byte column: the offsets cut one encoded value per row, and `bytes` lends that run where it lies. Reading a row decodes it, writing one encodes it, and a caller forwarding a row rather than reading it moves the bytes untouched.
+A variant row is the Apache Parquet [Variant](variant.md) pair - a metadata dictionary and a value payload - so a variant column lays out as `Struct(metadata: Binary, value: Binary)`, the shape Parquet, Avro, Arrow and Iceberg all state for the type. `metadata` and `value` lend one row's two runs where they lie, and `scalar` answers the pair still undecoded: reading it is a second ask, and `Variant::scalar` is the one door that reads it.
 
 === "Rust"
 
@@ -427,14 +427,16 @@ A variant row is one run of the crate's own [variant encoding](variant.md), so a
     )?;
     let leaf = column.as_variant().expect("a variant column");
 
-    // The runs are bytes, and they are lent rather than decoded.
-    assert!(leaf.bytes(0).is_some());
-    assert!(!leaf.payload().is_empty());
+    // Both runs are lent where they lie, neither read.
+    assert!(leaf.metadata(0).is_some());
+    assert!(leaf.value(0).is_some());
 
-    // A row becomes a value only when one is asked for, and it comes back
-    // as what it went in as.
-    assert_eq!(column.scalar(0)?, Scalar::from(1_i64));
-    assert_eq!(column.scalar(1)?, Scalar::from("AAPL"));
+    // A row is answered as the pair it is; reading it is the next ask, and
+    // what comes back is what went in.
+    let Scalar::Variant(held) = column.scalar(0)? else {
+        panic!("a variant row is a variant value");
+    };
+    assert_eq!(held.scalar()?, Scalar::from(1_i64));
     ```
 
 ## Edges
