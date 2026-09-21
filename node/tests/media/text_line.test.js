@@ -73,10 +73,11 @@ test('a line is an event under the options it reads itself by', () => {
   assert.deepEqual(line.captures, ['INFO'])
   assert.equal(line.mtime, null)
   assert.equal(line.currunix, 0n)
-  // Its identity derives from its bytes and its instant: the same line is
-  // the same event whatever its index.
+  // Its identity derives from its instant, physical sequence and bytes.
   assert.match(line.curruuid, /^[0-9a-f-]{36}$/)
-  assert.equal(line.curruuid, new TextLine(7, '[INFO] 8=FIX|55=AAPL|35=D', null, options).curruuid)
+  const later = new TextLine(7, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
+  assert.equal(later.index, 7)
+  assert.notEqual(line.curruuid, later.curruuid)
   assert.equal(line.currhashcode, new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode)
   assert.equal(line.crosscode, '')
   assert.equal(line.crosshashcode, 0n)

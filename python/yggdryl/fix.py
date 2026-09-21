@@ -121,7 +121,7 @@ no pin decides a version: a row states one in its ``beginstring`` capture, else
 the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - the
 crate's own columns first, its clocks then its identities, then the standard
-header, the fields a consumer reads, the three groups worth persisting whole,
+header, the fields a consumer reads, the four groups worth persisting whole,
 the trailer and ``MsgDirection`` (385) - each spelled by the dictionary's
 folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;

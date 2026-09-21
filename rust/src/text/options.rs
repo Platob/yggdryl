@@ -19,11 +19,12 @@ pub(crate) const BASE_COLUMNS: [&str; 4] = ["sourceurl", "rownum", "body", "drop
 /// capture's value is the fact's, read at the fact's own datatype, and the
 /// column that states the fact is the event's rather than a capture column
 /// beside it. `mtime` feeds the instant the same way, under its own rule.
-pub(crate) const EVENT_CAPTURES: [&str; 8] = [
-    "seqnum",
+pub(crate) const EVENT_CAPTURES: [&str; 9] = [
     "state",
-    "crosscode",
     "creaunix",
+    "execunix",
+    "recdunix",
+    "refrecdunix",
     "exprtime",
     "prevunix",
     "snapunix",
@@ -33,15 +34,17 @@ pub(crate) const EVENT_CAPTURES: [&str; 8] = [
 /// The event columns no capture can feed, because the line derives them -
 /// its identity, the chain's, the codes, the names it goes by - or a walk
 /// states them: a capture spelled as one is refused.
-pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 8] = [
+pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 10] = [
     "currunix",
     "curruuid",
+    "crosscode",
     "crossuuid",
     "currhashcode",
     "crosshashcode",
     "parentuuids",
     "srcuuids",
     "identifiers",
+    "seqnum",
 ];
 
 /// The column stating when a record was written, and the row-header capture
@@ -166,7 +169,9 @@ pub struct TextOptions {
     pub commit_row_size: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
-    /// First emitted row number; `None` omits the `rownum` column.
+    /// First emitted row number; `None` omits the `rownum` column and uses the
+    /// zero-based physical index as the default event sequence. When set, each
+    /// nonnegative row number supplies `seqnum`; a negative one is refused.
     pub start_rownum: Option<i64>,
     /// Whether to emit an `mtime` column stating when each record was written.
     ///
@@ -351,7 +356,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers - got {:?}",
+                        "expected named captures distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers, seqnum - got {:?}",
                         capture.name()
                     ),
                 });
@@ -679,10 +684,11 @@ impl TextOptions {
     /// One owner per fact: with `parse_mtime` on, a capture spelled `mtime`
     /// fills that column and is not repeated beside it; with it off, there is
     /// no such column and the capture is an ordinary one. A capture spelled
-    /// as an event fact - `seqnum`, `state`, `crosscode`, `prevuuid`, one of
-    /// the four lifecycle instants, by that exact name, as the reading that
-    /// takes it looks it up - feeds that fact, and the event column states
-    /// it at the fact's own datatype; `SeqNum` is an ordinary capture.
+    /// as an event fact - `state`, `prevuuid` or one of the lifecycle
+    /// instants, by that exact name, as the reading that takes it looks it up,
+    /// feeds that fact, and the event column states it at the fact's own
+    /// datatype. `seqnum` and `crosscode` are derived from row number and
+    /// source URL and therefore cannot be captures.
     pub(crate) fn consumes_capture(&self, index: usize) -> bool {
         let Some(capture) = self.captures.get(index) else {
             return false;

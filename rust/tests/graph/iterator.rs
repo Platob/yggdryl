@@ -11,7 +11,7 @@ use yggdryl::{State, Uuid};
 use super::element::filled;
 
 /// One nanosecond count per millisecond: the instants below are spaced so
-/// two of them never share the microsecond a derived identity opens with.
+/// two of them never share the millisecond a derived identity opens with.
 const MS: i64 = 1_000_000;
 
 /// An instant a derived identity holds: `ms` milliseconds after one
@@ -203,6 +203,79 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
         (0, None),
         "the emitted expiry retired the identity"
     );
+}
+
+#[test]
+fn the_walk_carries_and_replaces_the_latest_execution_clock() {
+    let mut execution = incarnation("E-1", 10);
+    execution.set_state(State::read("PartiallyFilled").unwrap());
+    execution.finalize();
+
+    let mut explicit = incarnation("E-1", 20);
+    explicit.set_state(State::read("PartiallyFilled").unwrap());
+    explicit.set_execunix(Some(at(15)));
+    explicit.set_recdunix(Some(at(16)));
+    explicit.finalize();
+
+    let mut later_execution = incarnation("E-1", 30);
+    later_execution.set_state(State::read("PartiallyFilled").unwrap());
+    later_execution.finalize();
+
+    let successor = incarnation("E-1", 40);
+
+    let walked: Vec<_> =
+        EventIterator::new([execution, explicit, later_execution, successor], true).collect();
+    assert_eq!(
+        walked[0].get_execunix(),
+        Some(at(10)),
+        "the first event is filled"
+    );
+    assert_eq!(
+        walked[0].get_recdunix(),
+        None,
+        "recording is never inferred"
+    );
+    assert_eq!(walked[0].get_refrecdunix(), None);
+    assert_eq!(
+        walked[1].get_execunix(),
+        Some(at(15)),
+        "an explicit instant is kept"
+    );
+    assert_eq!(walked[1].get_recdunix(), Some(at(16)));
+    assert_eq!(walked[1].get_refrecdunix(), Some(at(16)));
+    assert_eq!(
+        walked[2].get_execunix(),
+        Some(at(30)),
+        "a later execution replaces the carried clock"
+    );
+    assert_eq!(
+        walked[2].get_refrecdunix(),
+        None,
+        "following does not inherit the predecessor's merge reference clock"
+    );
+    assert_eq!(
+        walked[3].get_execunix(),
+        Some(at(30)),
+        "a later non-execution carries the latest execution clock"
+    );
+}
+
+#[test]
+fn replay_keeps_the_carried_execution_clock_without_redating_inherited_state() {
+    let mut execution = incarnation("E-1", 10);
+    execution.set_state(State::read("PartiallyFilled").unwrap());
+    execution.finalize();
+    let successor = incarnation("E-1", 20);
+
+    let first: Vec<_> = EventIterator::new([execution, successor], true).collect();
+    assert_eq!(first[0].get_execunix(), Some(at(10)));
+    assert!(first[1].get_state().is_execution());
+    assert_eq!(first[1].get_execunix(), Some(at(10)));
+
+    let replayed: Vec<_> = EventIterator::new(first, true).collect();
+    assert_eq!(replayed[1].get_execunix(), Some(at(10)));
+    assert_eq!(replayed[1].get_seqnum(), 1);
+    assert_eq!(replayed[1].get_prevuuid(), Some(replayed[0].get_curruuid()));
 }
 
 #[test]
@@ -474,6 +547,8 @@ fn the_walk_yields_the_callers_own_copy_and_reads_any_event() {
 #[test]
 fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     let mut order = incarnation("O-100", 10);
+    order.set_execunix(Some(at(8)));
+    order.set_recdunix(Some(at(9)));
     order.set_exprtime(Some(at(20)));
     let original = order.clone();
     let walked: Vec<_> = EventIterator::new(
@@ -496,6 +571,13 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
         &State::from_spelling("expired").unwrap()
     );
     assert_eq!(expired.get_exprtime(), Some(at(20)));
+    assert_eq!(
+        expired.get_execunix(),
+        Some(at(8)),
+        "expiry carries the lifecycle's latest execution"
+    );
+    assert_eq!(expired.get_recdunix(), None, "expiry is a new event");
+    assert_eq!(expired.get_refrecdunix(), None, "expiry is a new event");
     assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
     assert_eq!(expired.get_parentuuids(), [walked[0].get_curruuid()]);
     assert_eq!(expired.get_seqnum(), 1);

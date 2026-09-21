@@ -196,17 +196,18 @@ test('a bridge capture parses whole and walks its chains', () => {
   assert.equal(parties.value, '8')
   assert.equal(parties.entries.length, 8)
 
-  // The finite capture drops exact deliveries before it walks the chains.
-  // Canonical content removes two field-order duplicates and retains four
-  // reports that add ullink.bypassrisk metadata. That leaves 23 repeated
-  // reports, six rows without a FIX type, and two cancel rejects removed.
-  // One additional output expires a live order at its stated deadline.
+  // The finite capture fully merges observations carrying one forced
+  // delivery key: message type, session, context and delivery sequence. The
+  // latest recording is the reference and earlier observations fill it.
+  // That coalesces 54 reports and one order; six rows without a FIX type and
+  // two cancel rejects are refused. One additional output expires a live
+  // order at its stated deadline.
   const walked = [...codec.lifecycle(messages)]
   const expired = walked.filter((message) => message.state === '95EXPIRED')
   const retained = walked.filter((message) => message.state !== '95EXPIRED')
-  assert.equal(retained.length, 63)
+  assert.equal(retained.length, 31)
   assert.equal(expired.length, 1)
-  assert.equal(walked.length, 64)
+  assert.equal(walked.length, 32)
 
   const counts = (held) => {
     const found = new Map()
@@ -221,21 +222,25 @@ test('a bridge capture parses whole and walks its chains', () => {
   const removed = Object.fromEntries(
     [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
   )
-  assert.deepEqual(removed, { 8: 23, '': 6, cancelreject: 2 })
+  assert.deepEqual(removed, { 8: 54, '': 6, D: 1, cancelreject: 2 })
 
-  // The default cross-code chains one additional retained bridge message.
+  // The default cross-code chains six retained bridge messages.
   // Every non-root message states both its predecessor and a positive sequence.
-  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 23)
-  assert.equal(walked.filter((message) => message.seqnum > 0).length, 23)
-  // A walked message descends from the whole chain before it, and every
-  // retained source message keeps its own input line. The synthetic expiry
-  // keeps its predecessor's provenance and lands at the stated deadline.
+  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 6)
+  assert.equal(walked.filter((message) => message.seqnum > 0).length, 6)
+  // A walked message descends from the whole chain before it. A fully merged
+  // delivery keeps every observation's source, with each source belonging to
+  // one output; only the six untyped rows and two refused cancel rejects lose
+  // their provenance. The synthetic expiry keeps its predecessor's
+  // provenance and lands at the stated deadline.
   assert.ok(walked.every((message) => message.parentuuids.length === message.seqnum))
   assert.ok(messages.every((message) => message.srcuuids.length === 1))
   const inputSources = new Set(messages.flatMap((message) => message.srcuuids))
   assert.ok(retained.every((message) =>
-    message.srcuuids.length === 1 && inputSources.has(message.srcuuids[0])))
-  assert.equal(new Set(retained.flatMap((message) => message.srcuuids)).size, retained.length)
+    message.srcuuids.length > 0 && message.srcuuids.every((source) => inputSources.has(source))))
+  const retainedSources = retained.flatMap((message) => message.srcuuids)
+  assert.equal(new Set(retainedSources).size, retainedSources.length)
+  assert.equal(retainedSources.length, inputSources.size - 8)
 
   const [expiry] = expired
   const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
@@ -249,7 +254,7 @@ test('a bridge capture parses whole and walks its chains', () => {
   const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
   const chained = [...codec.messages(rows)]
   assert.equal(chained.length, walked.length)
-  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 23)
+  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 6)
 
   // Row intake preserves recorded identity; the lifecycle event clock,
   // facts and chain topology agree on both doors.

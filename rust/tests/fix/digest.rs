@@ -272,9 +272,10 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Twenty-nine definitions: the event and capture facts, MsgCat, and six
-    // normalized identifiers whose standard FIX representation is contextual.
-    // CFI already has its own standard tag, so it adds no crate definition.
+    // Thirty-two definitions: the event and capture facts, the execution,
+    // recording and merge-reference clocks, MsgCat, and six normalized identifiers whose standard
+    // FIX representation is contextual. CFI already has its own standard tag,
+    // so it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -307,6 +308,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "bloombergcode",
             "miccode",
             "figicode",
+            "execunix",
+            "recdunix",
+            "refrecdunix",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -342,6 +346,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("BloombergCode"),
             Some("MicCode"),
             Some("FIGICode"),
+            Some("ExecUnix"),
+            Some("RecdUnix"),
+            Some("RefRecdUnix"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -363,6 +370,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     for name in ["curruuid", "crossuuid", "prevuuid"] {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
+    }
+    for name in ["execunix", "recdunix", "refrecdunix"] {
+        assert_eq!(typed(name), &clock, "{name}");
+        assert!(field(name).is_nullable(), "{name}");
     }
     // The two lists of identities - what a message descends from, and what
     // it was read from - are lists of the same UUID, each item stated.
@@ -448,6 +459,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
+    assert_eq!(yggdryl::REFRECDUNIX_TAG_NAME, (65_064, "refrecdunix"));
     assert_eq!(
         [
             yggdryl::CURRHASHCODE_TAG_NAME,

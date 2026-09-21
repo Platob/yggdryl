@@ -1,10 +1,57 @@
 //! Hierarchical resource URLs.
 
+use std::hash::{Hash, Hasher};
+use std::sync::OnceLock;
+
+use crate::Str;
+use smol_str::format_smolstr;
+
 use super::*;
 
 /// A validated URL backed directly by a canonical [`Uri`].
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Url(Uri);
+pub struct Url(Uri, OnceLock<Str>);
+
+impl Clone for Url {
+    fn clone(&self) -> Self {
+        let rendered = OnceLock::new();
+        if let Some(value) = self.1.get() {
+            let _ = rendered.set(value.clone());
+        }
+        Self(self.0.clone(), rendered)
+    }
+}
+
+impl fmt::Debug for Url {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("Url").field(&self.0).finish()
+    }
+}
+
+impl PartialEq for Url {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Url {}
+
+impl Hash for Url {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl PartialOrd for Url {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Url {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
 
 impl Url {
     /// Parse and validate a URL.
@@ -43,7 +90,7 @@ impl Url {
                 "URL requires hierarchical authority syntax and non-file URLs require a host",
             ));
         }
-        Ok(Self(value))
+        Ok(Self(value, OnceLock::new()))
     }
 
     /// Read one location a caller named: a URL, or a path to root.
@@ -90,6 +137,15 @@ impl Url {
     /// Consume this URL and serialize it as structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
+    }
+
+    /// Return the canonical rendering as one lazily cached shared string.
+    ///
+    /// A located text reader shares one `Arc<Url>` across its rows, so this
+    /// lets every row project the same cross code without another reader
+    /// allocation or one rendered string per row.
+    pub(crate) fn shared_text(&self) -> &Str {
+        self.1.get_or_init(|| Str::from(format_smolstr!("{self}")))
     }
 
     /// Consume this URL and return its URI without allocating.
@@ -318,7 +374,9 @@ impl Url {
     ///
     /// As [`Uri::set_parameters`].
     pub fn set_parameters(&mut self, parameters: &Parameters<'_>) -> Result<()> {
-        self.0.set_parameters(parameters)
+        self.0.set_parameters(parameters)?;
+        self.clear_shared_text();
+        Ok(())
     }
 
     /// Replace the URL query text, or clear it with `None`.
@@ -327,7 +385,9 @@ impl Url {
     ///
     /// As [`Uri::set_query`].
     pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
-        self.0.set_query(query)
+        self.0.set_query(query)?;
+        self.clear_shared_text();
+        Ok(())
     }
 
     /// Replace or remove the URL fragment, from text that is not URI syntax.
@@ -468,12 +528,24 @@ impl Url {
 
     /// Remove the final URL filename extension and report whether one existed.
     pub fn remove_extension(&mut self) -> bool {
-        self.0.remove_extension()
+        let removed = self.0.remove_extension();
+        if removed {
+            self.clear_shared_text();
+        }
+        removed
     }
 
     /// Remove every URL filename extension and report whether any existed.
     pub fn clear_extensions(&mut self) -> bool {
-        self.0.clear_extensions()
+        let removed = self.0.clear_extensions();
+        if removed {
+            self.clear_shared_text();
+        }
+        removed
+    }
+
+    fn clear_shared_text(&mut self) {
+        self.1 = OnceLock::new();
     }
 
     fn replace_uri(&mut self, candidate: Uri) -> Result<()> {
@@ -679,5 +751,23 @@ impl<'de> Deserialize<'de> for Url {
         D: Deserializer<'de>,
     {
         Self::from_uri(Uri::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_text_follows_mutations() -> Result<()> {
+        let mut url = Url::from_str("https://example.com/trades.csv?day=1")?;
+        assert_eq!(url.shared_text().as_str(), url.to_string());
+
+        url.set_query(Some("day=2"))?;
+        assert_eq!(url.shared_text().as_str(), url.to_string());
+
+        assert!(url.remove_extension());
+        assert_eq!(url.shared_text().as_str(), url.to_string());
+        Ok(())
     }
 }

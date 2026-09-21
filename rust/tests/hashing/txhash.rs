@@ -16,6 +16,20 @@ fn every_algorithm() -> impl Iterator<Item = (DigestAlgorithm, TxHash)> {
         .map(|algorithm| (algorithm, digest(b"AAPL", INSTANT, algorithm)))
 }
 
+fn expected_uuid(millis: i64, seqnum: u64, digest: u64, seed: u64) -> yggdryl::Uuid {
+    let mut identity = [0_u8; 16];
+    identity[..8].copy_from_slice(&seqnum.to_be_bytes());
+    identity[8..].copy_from_slice(&digest.to_be_bytes());
+    let fingerprint = u128::from(xxhash::xxh3_with_seed(&identity, seed) & ((1_u64 << 62) - 1));
+    yggdryl::Uuid::new(
+        (u128::from(millis.unsigned_abs()) << 80)
+            | (7_u128 << 76)
+            | (u128::from(seqnum & 0x0fff) << 64)
+            | (2_u128 << 62)
+            | fingerprint,
+    )
+}
+
 #[test]
 fn one_shots_couple_the_instant_with_the_plain_digest() {
     for (algorithm, value) in every_algorithm() {
@@ -70,22 +84,18 @@ fn canonical_bytes_are_the_instant_then_the_digest() {
 }
 
 #[test]
-fn uuid_projection_packs_the_microsecond_instant_as_a_uuidv7() {
+fn uuid_projection_packs_milliseconds_sequence_and_content_as_uuidv7() {
     let digest = Digest::new(DigestAlgorithm::Xxh64, 0x0123_4567_89ab_cdef);
-    for (nanoseconds, expected) in [
-        (0, "00000000-0000-7000-8123-456789abcdef"),
-        // The sub-microsecond nanoseconds are floored away.
-        (999, "00000000-0000-7000-8123-456789abcdef"),
-        (1_000, "00000000-0000-7004-8123-456789abcdef"),
-        (999_999, "00000000-0000-7ffb-8123-456789abcdef"),
-        (1_000_000, "00000000-0001-7000-8123-456789abcdef"),
-        (1_000_000_000, "00000000-03e8-7000-8123-456789abcdef"),
-        (i64::MAX, "08637bd0-5af6-7c66-8123-456789abcdef"),
-    ] {
+    let content = 0x0123_4567_89ab_cdef_u64;
+    for nanoseconds in [0, 999, 1_000, 999_999, 1_000_000, 1_000_000_000, i64::MAX] {
         let value = TxHash::new_in(nanoseconds, TimeUnit::Nanosecond, digest).unwrap();
         let raw = value.into_bytes();
-        let projected = value.into_uuid().unwrap();
-        assert_eq!(projected.to_string(), expected, "{nanoseconds}");
+        let projected = value.into_uuid(0, 0).unwrap();
+        assert_eq!(
+            projected,
+            expected_uuid(nanoseconds.div_euclid(1_000_000), 0, content, 0),
+            "{nanoseconds}"
+        );
         let bytes = projected.into_bytes();
         assert_eq!(bytes[6] >> 4, 7);
         assert_eq!(bytes[8] >> 6, 2);
@@ -97,18 +107,53 @@ fn uuid_projection_packs_the_microsecond_instant_as_a_uuidv7() {
         assert_eq!(&raw[..UNIX_WIDTH], &nanoseconds.to_be_bytes());
         assert_eq!(&raw[UNIX_WIDTH..], &*digest.into_bytes());
     }
+    let value = TxHash::new_in(0, TimeUnit::Nanosecond, digest).unwrap();
+    assert_eq!(
+        value.into_uuid(7, 0).unwrap(),
+        expected_uuid(0, 7, content, 0)
+    );
+    assert_ne!(
+        value.into_uuid(0, 0).unwrap(),
+        value.into_uuid(4_096, 0).unwrap()
+    );
+    assert_ne!(
+        value.into_uuid(4_096, 0).unwrap(),
+        value.into_uuid(u64::MAX, 0).unwrap()
+    );
 }
 
 #[test]
-fn uuid_projection_orders_microsecond_instants_before_every_digest_bit() {
+fn uuid_projection_hashes_the_content_code_under_the_supplied_seed() {
+    let code = 0x0123_4567_89ab_cdef_u64;
+    let value = TxHash::new_in(
+        1_645_557_742_000,
+        TimeUnit::Millisecond,
+        Digest::new(DigestAlgorithm::Xxh3, u128::from(code)),
+    )
+    .unwrap();
+    for seed in [0, 1, 0xfeed_face_cafe_beef, u64::MAX] {
+        assert_eq!(
+            value.into_uuid(29, seed).unwrap(),
+            expected_uuid(1_645_557_742_000, 29, code, seed),
+            "seed {seed}"
+        );
+    }
+    assert_ne!(
+        value.into_uuid(29, 0).unwrap(),
+        value.into_uuid(29, 1).unwrap()
+    );
+}
+
+#[test]
+fn uuid_projection_orders_milliseconds_before_sequence_and_digest() {
     let instants = [
         0,
-        1_000,
-        15_000,
-        16_000,
-        65_535_000,
-        65_536_000,
-        1_000_000_000,
+        1_000_000,
+        15_000_000,
+        16_000_000,
+        65_535_000_000,
+        65_536_000_000,
+        1_000_000_000_000,
         i64::MAX,
     ];
     for pair in instants.windows(2) {
@@ -129,11 +174,12 @@ fn uuid_projection_orders_microsecond_instants_before_every_digest_bit() {
             "native ordering still compares the signed count"
         );
         assert!(
-            earlier.into_uuid().unwrap() < later.into_uuid().unwrap(),
+            earlier.into_uuid(0, 0).unwrap() < later.into_uuid(0, 0).unwrap(),
             "{pair:?}"
         );
     }
-    // Within one microsecond the instant ties, and the digest orders.
+    // Within one millisecond the sequence orders before the digest while its
+    // low twelve bits do not wrap.
     let low = TxHash::new_in(
         1_000,
         TimeUnit::Nanosecond,
@@ -146,7 +192,8 @@ fn uuid_projection_orders_microsecond_instants_before_every_digest_bit() {
         Digest::new(DigestAlgorithm::Xxh64, 2),
     )
     .unwrap();
-    assert!(low.into_uuid().unwrap() < high.into_uuid().unwrap());
+    assert!(high.into_uuid(0, 0).unwrap() < low.into_uuid(1, 0).unwrap());
+    assert_ne!(low.into_uuid(7, 0).unwrap(), high.into_uuid(7, 0).unwrap());
     // Before the epoch there is no UUIDv7: the projection is refused at `$`,
     // while the raw bytes still hold the two's-complement count.
     let before = TxHash::new_in(
@@ -157,7 +204,7 @@ fn uuid_projection_orders_microsecond_instants_before_every_digest_bit() {
     .unwrap();
     let epoch = TxHash::new_in(0, TimeUnit::Nanosecond, before.digest()).unwrap();
     assert!(matches!(
-        before.into_uuid().unwrap_err(),
+        before.into_uuid(0, 0).unwrap_err(),
         Error::InvalidRecord { ref path, .. } if path == "$"
     ));
     assert!(
@@ -172,7 +219,7 @@ fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
     for seconds in [0, 2] {
         let expected = TxHash::new_in(seconds, TimeUnit::Second, digest)
             .unwrap()
-            .into_uuid()
+            .into_uuid(0, 0)
             .unwrap();
         for (unit, scale) in [
             (TimeUnit::Second, 1),
@@ -181,64 +228,54 @@ fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
             (TimeUnit::Nanosecond, 1_000_000_000),
         ] {
             let value = TxHash::new_in(seconds * scale, unit, digest).unwrap();
-            assert_eq!(value.into_uuid().unwrap(), expected, "{unit}");
+            assert_eq!(value.into_uuid(0, 0).unwrap(), expected, "{unit}");
         }
     }
-    for (unit, scale) in [
-        (TimeUnit::Second, 1_000_000_000),
-        (TimeUnit::Millisecond, 1_000_000),
-        (TimeUnit::Microsecond, 1_000),
-    ] {
-        assert!(
-            TxHash::new_in(i64::MAX / scale, unit, digest)
-                .unwrap()
-                .into_uuid()
-                .is_ok()
-        );
-        // A count below the epoch restates, and is then refused as a UUIDv7.
+    let largest = 281_474_976_710_655_i64;
+    assert!(
+        TxHash::new_in(largest, TimeUnit::Millisecond, digest)
+            .unwrap()
+            .into_uuid(0, 0)
+            .is_ok()
+    );
+    for count in [-1, largest + 1] {
         assert!(matches!(
-            TxHash::new_in(i64::MIN / scale, unit, digest)
+            TxHash::new_in(count, TimeUnit::Millisecond, digest)
                 .unwrap()
-                .into_uuid()
+                .into_uuid(0, 0)
                 .unwrap_err(),
             Error::InvalidRecord { ref path, .. } if path == "$"
         ));
-        for count in [i64::MIN / scale - 1, i64::MAX / scale + 1] {
-            let expected = restate_unix(count, unit, TimeUnit::Nanosecond).unwrap_err();
-            let error = TxHash::new_in(count, unit, digest)
-                .unwrap()
-                .into_uuid()
-                .unwrap_err();
-            assert_eq!(error.to_string(), expected.to_string());
-            assert!(matches!(
-                error,
-                Error::ArithmeticOverflow {
-                    operation: "unix restatement",
-                    kind: "int64"
-                }
-            ));
-        }
+    }
+    for count in [i64::MIN / 1_000 - 1, i64::MAX / 1_000 + 1] {
+        let expected = restate_unix(count, TimeUnit::Second, TimeUnit::Millisecond).unwrap_err();
+        let error = TxHash::new_in(count, TimeUnit::Second, digest)
+            .unwrap()
+            .into_uuid(0, 0)
+            .unwrap_err();
+        assert_eq!(error.to_string(), expected.to_string());
+        assert!(matches!(
+            error,
+            Error::ArithmeticOverflow {
+                operation: "unix restatement",
+                kind: "int64"
+            }
+        ));
     }
 }
 
 #[test]
-fn uuid_projection_discards_only_the_high_two_digest_bits_and_algorithm() {
+fn uuid_projection_hashes_every_digest_bit_and_not_the_algorithm_name() {
     let project = |algorithm, payload| {
         TxHash::new_in(1, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
             .unwrap()
-            .into_uuid()
+            .into_uuid(0, 0)
             .unwrap()
     };
     let payload = 0x0123_4567_89ab_cdef;
     let expected = project(DigestAlgorithm::Xxh64, payload);
     assert_eq!(project(DigestAlgorithm::Xxh3, payload), expected);
-    for bit in 62..64 {
-        assert_eq!(
-            project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
-            expected
-        );
-    }
-    for bit in 0..62 {
+    for bit in 0..64 {
         assert_ne!(
             project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
             expected
@@ -252,7 +289,7 @@ fn uuid_projection_refuses_non_64_bit_digests_without_narrowing() {
         for payload in [0, 7, u128::MAX] {
             let value =
                 TxHash::new_in(0, TimeUnit::Nanosecond, Digest::new(algorithm, payload)).unwrap();
-            let Error::InvalidRecord { path, reason } = value.into_uuid().unwrap_err() else {
+            let Error::InvalidRecord { path, reason } = value.into_uuid(0, 0).unwrap_err() else {
                 panic!("a wrong-width digest must raise a located value refusal");
             };
             assert_eq!(path, "$.digest");
@@ -993,7 +1030,7 @@ fn ordered_bytes_lead_with_the_instant_and_keep_every_digest_bit() {
     assert_eq!(&held[8..], &[0xff; 8]);
     assert_ne!(
         held,
-        value.into_uuid().unwrap().into_bytes(),
+        value.into_uuid(0, 0).unwrap().into_bytes(),
         "the uuid spends six of those bits on its version and variant"
     );
 

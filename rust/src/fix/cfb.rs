@@ -1749,7 +1749,7 @@ impl<'doc> Parse<'doc> {
         }
         let mut name = declared.filter(|name| !name.is_empty()).map_or_else(
             || super::component::group_name(&counter).to_string(),
-            |name| name.to_ascii_lowercase(),
+            |name| super::component::canonical_group_name(name).to_string(),
         );
         if self
             .vocabulary

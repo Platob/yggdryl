@@ -25,6 +25,30 @@ PAYLOAD = b'{"symbol": "AAPL", "price": 187.23}\n' * 64
 UTC = dt.timezone.utc
 I64_MIN = -(2**63)
 I64_MAX = 2**63 - 1
+V7_PAYLOAD_MASK = (1 << 62) - 1
+
+
+def projected_fingerprint(digest: xxhash.Digest, seqnum: int, seed: int) -> int:
+    """XXH3-64 over the complete big-endian sequence/content tuple."""
+    content = seqnum.to_bytes(8, "big") + bytes(digest)
+    return xxhash.xxh3(content, seed=seed) & V7_PAYLOAD_MASK
+
+
+def projected_uuid(
+    unix_millis: int,
+    digest: xxhash.Digest,
+    seqnum: int,
+    seed: int,
+) -> uuid.UUID:
+    """The public projection formula, independently assembled from its parts."""
+    packed = (
+        (unix_millis << 80)
+        | (7 << 76)
+        | ((seqnum & 0xFFF) << 64)
+        | (0b10 << 62)
+        | projected_fingerprint(digest, seqnum, seed)
+    )
+    return uuid.UUID(int=packed)
 
 
 class TestValues:
@@ -133,87 +157,134 @@ class TestValues:
         with pytest.raises(ValueError):
             value.with_unit("day_time")
 
-    def test_into_uuid_packs_the_microsecond_instant_as_a_uuidv7(self) -> None:
+    def test_into_uuid_packs_milliseconds_sequence_and_content_as_uuidv7(self) -> None:
         # Pinned by rust/tests/hashing/txhash.rs and the `TxHash::into_uuid` doctest.
         one = txhash.TxHash.from_parts(0, xxhash.Digest.from_int("xxh64", 1), unit="ns")
-        assert one.into_uuid().as_py() == "00000000-0000-7000-8000-000000000001"
+        assert one.into_uuid(0, 0).as_py() == str(projected_uuid(0, one.digest, 0, 0))
         digest = xxhash.Digest.from_int("xxh64", 0x0123_4567_89AB_CDEF)
-        for nanoseconds, expected in [
-            (0, "00000000-0000-7000-8123-456789abcdef"),
-            # The sub-microsecond nanoseconds are floored away.
-            (999, "00000000-0000-7000-8123-456789abcdef"),
-            (1_000, "00000000-0000-7004-8123-456789abcdef"),
-            (999_999, "00000000-0000-7ffb-8123-456789abcdef"),
-            (1_000_000, "00000000-0001-7000-8123-456789abcdef"),
-            (1_000_000_000, "00000000-03e8-7000-8123-456789abcdef"),
-            (I64_MAX, "08637bd0-5af6-7c66-8123-456789abcdef"),
+        for nanoseconds, unix_millis in [
+            (0, 0),
+            # Every sub-millisecond instant is floored away.
+            (999, 0),
+            (1_000, 0),
+            (999_999, 0),
+            (1_000_000, 1),
+            (1_000_000_000, 1_000),
+            (I64_MAX, I64_MAX // 1_000_000),
         ]:
             value = txhash.TxHash.from_parts(nanoseconds, digest, unit="ns")
             raw = bytes(value)
-            projected = value.into_uuid()
-            assert projected.as_py() == expected, nanoseconds
+            projected = value.into_uuid(0, 0)
+            assert projected.as_py() == str(
+                projected_uuid(unix_millis, digest, 0, 0)
+            ), nanoseconds
             assert projected.dtype == DataType("uuid")
             outside = uuid.UUID(projected.as_py())
             assert outside.version == 7 and outside.variant == uuid.RFC_4122
             assert bytes(value) == raw, "projection does not mutate the value"
             assert raw[:8] == nanoseconds.to_bytes(8, "big", signed=True)
             assert raw[8:] == bytes(digest)
+        value = txhash.TxHash.from_parts(0, digest, unit="ns")
+        assert value.into_uuid(7, 0).as_py() == str(projected_uuid(0, digest, 7, 0))
+        assert value.into_uuid(0, 0) != value.into_uuid(4_096, 0)
+        assert value.into_uuid(4_096, 0) != value.into_uuid(2**64 - 1, 0)
+        for seed in [0, 1, 0xFEED_FACE_CAFE_BEEF, 2**64 - 1]:
+            assert value.into_uuid(29, seed).as_py() == str(
+                projected_uuid(0, digest, 29, seed)
+            )
+        assert value.into_uuid(29, 0) != value.into_uuid(29, 1)
 
-    def test_into_uuid_orders_microsecond_instants_before_every_digest_bit(self) -> None:
-        instants = [0, 1_000, 15_000, 16_000, 65_535_000, 65_536_000, 1_000_000_000, I64_MAX]
+    def test_into_uuid_orders_milliseconds_before_sequence_and_digest(self) -> None:
+        instants = [
+            0,
+            1_000_000,
+            15_000_000,
+            16_000_000,
+            65_535_000_000,
+            65_536_000_000,
+            1_000_000_000_000,
+            I64_MAX,
+        ]
         high = xxhash.Digest.from_int("xxh64", 2**128 - 1)
         low = xxhash.Digest.from_int("xxh64", 0)
         for before, after in zip(instants, instants[1:]):
             earlier = txhash.TxHash.from_parts(before, high, unit="ns")
             later = txhash.TxHash.from_parts(after, low, unit="ns")
             assert earlier < later, "native ordering still compares the signed count"
-            assert earlier.into_uuid() < later.into_uuid(), (before, after)
-        # Within one microsecond the instant ties, and the digest orders.
-        low_digest = txhash.TxHash.from_parts(1_000, xxhash.Digest.from_int("xxh64", 1), unit="ns")
-        high_digest = txhash.TxHash.from_parts(1_999, xxhash.Digest.from_int("xxh64", 2), unit="ns")
-        assert low_digest.into_uuid() < high_digest.into_uuid()
+            assert earlier.into_uuid(0, 0) < later.into_uuid(0, 0), (before, after)
+        # Within one millisecond the sequence orders before the digest while
+        # its low twelve bits do not wrap.
+        low_digest = txhash.TxHash.from_parts(
+            1_000, xxhash.Digest.from_int("xxh64", 1), unit="ns"
+        )
+        high_digest = txhash.TxHash.from_parts(
+            1_999, xxhash.Digest.from_int("xxh64", 2), unit="ns"
+        )
+        assert high_digest.into_uuid(0, 0) < low_digest.into_uuid(1, 0)
+        low_fingerprint = projected_fingerprint(low_digest.digest, 7, 0)
+        high_fingerprint = projected_fingerprint(high_digest.digest, 7, 0)
+        assert (low_digest.into_uuid(7, 0) < high_digest.into_uuid(7, 0)) == (
+            low_fingerprint < high_fingerprint
+        )
+        # The UUID is not a full-sequence sort key: rand_a wraps every 4,096.
+        assert low_digest.into_uuid(4_096, 0) < low_digest.into_uuid(4_095, 0)
         # Before the epoch there is no UUIDv7 to project, while the raw bytes
         # still hold the two's-complement count.
         negative = txhash.TxHash.from_parts(-1, low, unit="ns")
         epoch = txhash.TxHash.from_parts(0, low, unit="ns")
         with pytest.raises(ValueError, match="UUIDv7"):
-            negative.into_uuid()
+            negative.into_uuid(0, 0)
         assert bytes(negative) > bytes(epoch), "raw bytes retain two's-complement ordering"
 
     def test_into_uuid_normalizes_units_and_preserves_restatement_overflow(self) -> None:
         digest = xxhash.Digest.from_int("xxh3-64", 7)
         for seconds in [0, 2]:
-            expected = txhash.TxHash.from_parts(seconds, digest, unit="s").into_uuid()
-            for unit, scale in [("s", 1), ("ms", 1_000), ("us", 1_000_000), ("ns", 1_000_000_000)]:
+            expected = txhash.TxHash.from_parts(seconds, digest, unit="s").into_uuid(7, 0)
+            for unit, scale in [
+                ("s", 1),
+                ("ms", 1_000),
+                ("us", 1_000_000),
+                ("ns", 1_000_000_000),
+            ]:
                 value = txhash.TxHash.from_parts(seconds * scale, digest, unit=unit)
-                assert value.into_uuid() == expected, unit
-        for unit, scale in [("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000)]:
-            # Rust's `i64::MIN / scale` truncates toward zero.
-            lowest, highest = -(2**63 // scale), I64_MAX // scale
-            txhash.TxHash.from_parts(highest, digest, unit=unit).into_uuid()
-            # A count below the epoch restates, and is then refused as a UUIDv7.
+                assert value.into_uuid(7, 0) == expected, unit
+        largest = 281_474_976_710_655
+        txhash.TxHash.from_parts(largest, digest, unit="ms").into_uuid(0, 0)
+        for count in [-1, largest + 1]:
             with pytest.raises(ValueError, match="UUIDv7"):
-                txhash.TxHash.from_parts(lowest, digest, unit=unit).into_uuid()
-            for count in [lowest - 1, highest + 1]:
-                with pytest.raises(ValueError) as restated:
-                    txhash.restate_unix(count, unit, "ns")
-                with pytest.raises(ValueError) as projected:
-                    txhash.TxHash.from_parts(count, digest, unit=unit).into_uuid()
-                assert str(projected.value) == str(restated.value)
-                assert "unix restatement" in str(projected.value)
+                txhash.TxHash.from_parts(count, digest, unit="ms").into_uuid(0, 0)
+        # Rust's `i64::MIN / 1_000` truncates toward zero.
+        for count in [-(2**63 // 1_000) - 1, I64_MAX // 1_000 + 1]:
+            with pytest.raises(ValueError) as restated:
+                txhash.restate_unix(count, "s", "ms")
+            with pytest.raises(ValueError) as projected:
+                txhash.TxHash.from_parts(count, digest, unit="s").into_uuid(0, 0)
+            assert str(projected.value) == str(restated.value)
+            assert "unix restatement" in str(projected.value)
 
-    def test_into_uuid_discards_only_the_high_two_digest_bits_and_algorithm(self) -> None:
-        def project(algorithm: str, payload: int) -> Scalar:
+    def test_into_uuid_fingerprints_full_sequence_and_digest_and_discards_algorithm(
+        self,
+    ) -> None:
+        def project(
+            algorithm: str,
+            payload: int,
+            seqnum: int = 0,
+            seed: int = 0,
+        ) -> Scalar:
             digest = xxhash.Digest.from_int(algorithm, payload)
-            return txhash.TxHash.from_parts(1, digest, unit="ns").into_uuid()
+            projected = txhash.TxHash.from_parts(1, digest, unit="ms").into_uuid(
+                seqnum, seed
+            )
+            assert projected.as_py() == str(projected_uuid(1, digest, seqnum, seed))
+            return projected
 
         payload = 0x0123_4567_89AB_CDEF
         expected = project("xxh64", payload)
         assert project("xxh3-64", payload) == expected
-        for bit in range(62, 64):
-            assert project("xxh64", payload ^ (1 << bit)) == expected, bit
-        for bit in range(62):
+        for bit in range(64):
             assert project("xxh64", payload ^ (1 << bit)) != expected, bit
+            assert project("xxh64", payload, 1 << bit) != expected, bit
+        assert project("xxh64", payload, seed=7) != expected
 
     def test_into_uuid_refuses_non_64_bit_digests_without_narrowing(self) -> None:
         for algorithm, bits in [("xxh32", 32), ("xxh3-128", 128)]:
@@ -221,7 +292,7 @@ class TestValues:
                 digest = xxhash.Digest.from_int(algorithm, payload)
                 value = txhash.TxHash.from_parts(0, digest, unit="ns")
                 with pytest.raises(ValueError) as refused:
-                    value.into_uuid()
+                    value.into_uuid(0, 0)
                 message = str(refused.value)
                 assert "$.digest" in message
                 assert message.endswith(

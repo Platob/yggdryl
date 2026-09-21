@@ -112,6 +112,57 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual("NestedParty2", GENERATOR.entry_name("NestedParties2"))
         self.assertEqual("SecAltID", GENERATOR.entry_name("SecAltIDGrp"))
 
+    def test_security_alternate_ids_have_the_semantic_collection_name(self) -> None:
+        self.fields.extend([
+            wire_field("nosecurityaltid", 454, "int32"),
+            wire_field("securityaltid", 455),
+            wire_field("securityaltidsource", 456),
+        ])
+        self.latest["groups"]["SecAltIDGrp"] = {
+            "id": 2090,
+            "tag": 454,
+            "members": [member("field", 455), member("field", 456)],
+        }
+        self.latest["messages"]["D"]["members"].append(member("group", 2090))
+
+        catalog = GENERATOR.build_catalog(self.latest, self.fields)
+        group = next(
+            field for field in catalog["groups"]
+            if field["metadata"]["display"] == "SecAltIDGrp"
+        )
+        self.assertEqual("secaltids", group["name"])
+        message = catalog["messages"][0]
+        self.assertIn(
+            {"name": "secaltids", "dtype": {"type": "null"}, "nullable": True,
+             "metadata": {"FIX:group": "secaltids"}},
+            message["dtype"]["fields"],
+        )
+
+    def test_regulatory_trade_ids_have_the_semantic_collection_name(self) -> None:
+        self.fields.extend([
+            wire_field("noregulatorytradeids", 1907, "int32"),
+            wire_field("regulatorytradeid", 1903),
+        ])
+        self.latest["groups"]["RegulatoryTradeIDGrp"] = {
+            "id": 2091,
+            "tag": 1907,
+            "members": [member("field", 1903)],
+        }
+        self.latest["messages"]["D"]["members"].append(member("group", 2091))
+
+        catalog = GENERATOR.build_catalog(self.latest, self.fields)
+        group = next(
+            field for field in catalog["groups"]
+            if field["metadata"]["display"] == "RegulatoryTradeIDGrp"
+        )
+        self.assertEqual("regulatorytradeids", group["name"])
+        message = catalog["messages"][0]
+        self.assertIn(
+            {"name": "regulatorytradeids", "dtype": {"type": "null"}, "nullable": True,
+             "metadata": {"FIX:group": "regulatorytradeids"}},
+            message["dtype"]["fields"],
+        )
+
     def test_catalog_names_do_not_shadow_scalar_names(self) -> None:
         self.fields[0]["metadata"]["FIX:names"] = ["parties", "party"]
         catalog = GENERATOR.build_catalog(self.latest, self.fields)

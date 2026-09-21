@@ -561,17 +561,21 @@ fn reading() -> RecordOptions {
 /// same read the batch path is built from, handed over rather than made
 /// again.
 fn capture_lines() -> Vec<TextLine> {
-    let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(
-        Url::from_str("file:///ulbridge.log")
-            .expect("a URL")
-            .media_type(),
-    );
+    let url = Arc::new(Url::from_str("file:///ulbridge.log").expect("a URL"));
+    let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(url.media_type());
     let RecordOptions::Text(options) = reading() else {
         panic!("a text read")
     };
     read_text_lines(&source, &options)
         .expect("a line reader")
-        .map(|line| line.expect("a line"))
+        .map(|line| {
+            let mut line = line.expect("a line");
+            // The bytes are the committed file above, not the temporary
+            // in-memory allocation used to exercise the reader. Text-line
+            // identity includes its source URL, so state that stable source.
+            line.set_sourceurl(Some(Arc::clone(&url)));
+            line
+        })
         .collect()
 }
 

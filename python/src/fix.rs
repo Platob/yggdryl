@@ -1887,8 +1887,8 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The message's identity: the `uuid` its instant and its hash code
-    /// derive.
+    /// The message's `UUIDv7` identity: its millisecond instant and full
+    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())
@@ -2837,7 +2837,7 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 ///
 /// The crate's own columns lead - its clocks, then its identities, then the
 /// rest - because a table is read by time and joined by identity; then the
-/// standard header, the fields a consumer reads, the three groups worth
+/// standard header, the fields a consumer reads, the four groups worth
 /// persisting whole, the trailer, `MsgDirection` (385), and the one
 /// `fixentries` list that closes every row with residual content under the
 /// `nofixentries` that counts it. Projected content stays in its columns.
@@ -3229,8 +3229,8 @@ pub(crate) struct PyMarketEventData {
 
 #[pymethods]
 impl PyMarketEventData {
-    /// The event's identity: the `uuid` its instant and its hash code
-    /// derive.
+    /// The event's `UUIDv7` identity: its millisecond instant and full
+    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())

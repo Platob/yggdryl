@@ -4,9 +4,10 @@ A :class:`TxHash` is a unix count followed by a digest: the instant first,
 big-endian, so ``bytes(value)`` sorts by time and then by content; the digest
 after it, at its algorithm's exact width. The instant is always UTC and
 counted in microseconds unless a resolution is named, and the digest is what
-:mod:`yggdryl.hashing.xxhash` answers for the same bytes - this module defines
-no second hash, only the coupling. :meth:`TxHash.into_uuid` projects a value
-with a 64-bit digest to a lossy RFC 9562 UUIDv7 ``uuid`` scalar.
+:mod:`yggdryl.hashing.xxhash` answers for the same bytes - the coupled value
+defines no second content digest. :meth:`TxHash.into_uuid` projects a value
+with a 64-bit digest to a lossy RFC 9562 UUIDv7 ``uuid`` scalar by hashing its
+complete sequence/digest tuple under the caller's seed.
 
 Every ``unix`` argument reads the same way: an ``int`` is the count already,
 and a ``datetime``, a ``date``, timestamp text, or a native ``Scalar`` is read

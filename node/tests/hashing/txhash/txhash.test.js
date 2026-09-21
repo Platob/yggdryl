@@ -10,6 +10,29 @@ const { txhash, xxhash } = hashing
 
 const INSTANT = 1_700_000_000_000_000n
 const PAYLOAD = Buffer.from('{"symbol": "AAPL", "price": 187.23}\n'.repeat(64))
+const V7_PAYLOAD_MASK = (1n << 62n) - 1n
+
+const uuidText = (packed) => {
+  const hex = packed.toString(16).padStart(32, '0')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+const projectedFingerprint = (digest, seqnum, seed) => {
+  const content = Buffer.allocUnsafe(16)
+  content.writeBigUInt64BE(seqnum, 0)
+  Buffer.from(digest.bytes()).copy(content, 8)
+  return xxhash.xxh3(content, { seed }) & V7_PAYLOAD_MASK
+}
+
+const projectedUuid = (unixMillis, digest, seqnum, seed) => {
+  const packed =
+    (unixMillis << 80n) |
+    (7n << 76n) |
+    ((seqnum & 0xfffn) << 64n) |
+    (0b10n << 62n) |
+    projectedFingerprint(digest, seqnum, seed)
+  return uuidText(packed)
+}
 
 test('one-shots couple the instant with the plain digest', () => {
   const cases = [
@@ -74,102 +97,118 @@ const I64_MIN = -(2n ** 63n)
 const I64_MAX = 2n ** 63n - 1n
 const hex = (payload, digits) => payload.toString(16).padStart(digits, '0')
 
-test('intoUuid packs the microsecond instant as a UUIDv7', () => {
+test('intoUuid packs milliseconds, sequence, and content as a UUIDv7', () => {
   const digest = Digest.from('xxh64:0123456789abcdef')
-  for (const [nanoseconds, expected] of [
-    [0n, '00000000-0000-7000-8123-456789abcdef'],
-    // The sub-microsecond nanoseconds are floored away.
-    [999n, '00000000-0000-7000-8123-456789abcdef'],
-    [1_000n, '00000000-0000-7004-8123-456789abcdef'],
-    [999_999n, '00000000-0000-7ffb-8123-456789abcdef'],
-    [1_000_000n, '00000000-0001-7000-8123-456789abcdef'],
-    [1_000_000_000n, '00000000-03e8-7000-8123-456789abcdef'],
-    [I64_MAX, '08637bd0-5af6-7c66-8123-456789abcdef'],
+  for (const [nanoseconds, unixMillis] of [
+    [0n, 0n],
+    // Every sub-millisecond instant is floored away.
+    [999n, 0n],
+    [1_000n, 0n],
+    [999_999n, 0n],
+    [1_000_000n, 1n],
+    [1_000_000_000n, 1_000n],
+    [I64_MAX, I64_MAX / 1_000_000n],
   ]) {
     const value = TxHash.fromParts(nanoseconds, digest, 'ns')
     const raw = Buffer.from(value.bytes())
-    const projected = value.intoUuid()
+    const projected = value.intoUuid(0n, 0n)
     assert.ok(projected instanceof Scalar, String(nanoseconds))
     assert.equal(projected.dtype.id, 'uuid', String(nanoseconds))
-    assert.equal(projected.asJs(), expected, String(nanoseconds))
+    assert.equal(projected.asJs(), projectedUuid(unixMillis, digest, 0n, 0n), String(nanoseconds))
     assert.deepEqual(Buffer.from(value.bytes()), raw, 'projection does not mutate the value')
     assert.equal(raw.readBigInt64BE(0), nanoseconds)
   }
+  const value = TxHash.fromParts(0n, digest, 'ns')
+  assert.equal(value.intoUuid(7n, 0n).asJs(), projectedUuid(0n, digest, 7n, 0n))
+  assert.ok(!value.intoUuid(0n, 0n).equals(value.intoUuid(4_096n, 0n)))
+  assert.ok(!value.intoUuid(4_096n, 0n).equals(value.intoUuid(2n ** 64n - 1n, 0n)))
+  for (const seed of [0n, 1n, 0xfeed_face_cafe_beefn, 2n ** 64n - 1n]) {
+    assert.equal(value.intoUuid(29n, seed).asJs(), projectedUuid(0n, digest, 29n, seed))
+  }
+  assert.ok(!value.intoUuid(29n, 0n).equals(value.intoUuid(29n, 1n)))
 
-  // The doc example: a UUIDv7 ordered by instant to the microsecond, and
+  // The doc example: a UUIDv7 ordered first by Unix millisecond, and
   // none to project before the epoch, where the raw bytes still hold the
   // two's-complement count.
   const one = Digest.from('xxh64:0000000000000001')
   const epoch = TxHash.fromParts(0n, one, 'ns')
-  const micro = TxHash.fromParts(1n, one, 'us')
+  const millisecond = TxHash.fromParts(1n, one, 'ms')
   const before = TxHash.fromParts(-1n, one, 'ns')
-  assert.equal(epoch.intoUuid().asJs(), '00000000-0000-7000-8000-000000000001')
-  assert.ok(epoch.intoUuid().asJs() < micro.intoUuid().asJs())
-  assert.throws(() => before.intoUuid(), /UUIDv7/)
+  assert.equal(epoch.intoUuid(0n, 0n).asJs(), projectedUuid(0n, one, 0n, 0n))
+  assert.ok(epoch.intoUuid(2n ** 64n - 1n, 0n).asJs() < millisecond.intoUuid(0n, 0n).asJs())
+  assert.throws(() => before.intoUuid(0n, 0n), /UUIDv7/)
   assert.ok(Buffer.compare(Buffer.from(before.bytes()), Buffer.from(epoch.bytes())) > 0)
 })
 
-test('intoUuid orders microsecond instants before every digest bit', () => {
-  const instants = [0n, 1_000n, 15_000n, 16_000n, 65_535_000n, 65_536_000n, 1_000_000_000n, I64_MAX]
+test('intoUuid orders milliseconds before sequence and digest', () => {
+  const instants = [0n, 1_000_000n, 15_000_000n, 16_000_000n, 65_535_000_000n, 65_536_000_000n, 1_000_000_000_000n, I64_MAX]
   const highest = Digest.from('xxh64:ffffffffffffffff')
   const lowest = Digest.from('xxh64:0000000000000000')
   for (let index = 1; index < instants.length; index += 1) {
     const earlier = TxHash.fromParts(instants[index - 1], highest, 'ns')
     const later = TxHash.fromParts(instants[index], lowest, 'ns')
     assert.equal(earlier.compare(later), -1, 'native ordering still compares the signed count')
-    assert.ok(earlier.intoUuid().asJs() < later.intoUuid().asJs(), `${instants[index - 1]} < ${instants[index]}`)
+    assert.ok(earlier.intoUuid(0n, 0n).asJs() < later.intoUuid(0n, 0n).asJs(), `${instants[index - 1]} < ${instants[index]}`)
   }
-  // Within one microsecond the instant ties, and the digest orders.
+  // Within one millisecond the sequence orders before the digest while its
+  // low twelve bits do not wrap.
   const low = TxHash.fromParts(1_000n, Digest.from('xxh64:0000000000000001'), 'ns')
   const high = TxHash.fromParts(1_999n, Digest.from('xxh64:0000000000000002'), 'ns')
-  assert.ok(low.intoUuid().asJs() < high.intoUuid().asJs())
+  assert.ok(high.intoUuid(0n, 0n).asJs() < low.intoUuid(1n, 0n).asJs())
+  const lowFingerprint = projectedFingerprint(low.digest, 7n, 0n)
+  const highFingerprint = projectedFingerprint(high.digest, 7n, 0n)
+  assert.equal(low.intoUuid(7n, 0n).asJs() < high.intoUuid(7n, 0n).asJs(), lowFingerprint < highFingerprint)
+  // The UUID is not a full-sequence sort key: rand_a wraps every 4,096.
+  assert.ok(low.intoUuid(4_096n, 0n).asJs() < low.intoUuid(4_095n, 0n).asJs())
 })
 
 test('intoUuid normalizes units and keeps the restatement overflow', () => {
   const digest = Digest.from('xxh3-64:0000000000000007')
   for (const seconds of [0n, 2n]) {
-    const expected = TxHash.fromParts(seconds, digest, 's').intoUuid()
+    const expected = TxHash.fromParts(seconds, digest, 's').intoUuid(7n, 0n)
     for (const [unit, scale] of [['s', 1n], ['ms', 1_000n], ['us', 1_000_000n], ['ns', 1_000_000_000n]]) {
-      const projected = TxHash.fromParts(seconds * scale, digest, unit).intoUuid()
+      const projected = TxHash.fromParts(seconds * scale, digest, unit).intoUuid(7n, 0n)
       assert.ok(projected.equals(expected), unit)
     }
   }
-  for (const [unit, scale] of [['s', 1_000_000_000n], ['ms', 1_000_000n], ['us', 1_000n]]) {
-    // BigInt division truncates toward zero, as Rust's does.
-    assert.equal(TxHash.fromParts(I64_MAX / scale, digest, unit).intoUuid().dtype.id, 'uuid')
-    // A count below the epoch restates, and is then refused as a UUIDv7.
-    assert.throws(() => TxHash.fromParts(I64_MIN / scale, digest, unit).intoUuid(), /UUIDv7/)
-    for (const count of [I64_MIN / scale - 1n, I64_MAX / scale + 1n]) {
-      let expected
-      assert.throws(() => txhash.restateUnix(count, unit, 'ns'), (error) => {
-        expected = error.message
-        return true
-      })
-      assert.equal(expected, 'unix restatement overflows int64')
-      assert.throws(() => TxHash.fromParts(count, digest, unit).intoUuid(), { message: expected })
-    }
+  const largest = 281_474_976_710_655n
+  assert.equal(TxHash.fromParts(largest, digest, 'ms').intoUuid(0n, 0n).dtype.id, 'uuid')
+  for (const count of [-1n, largest + 1n]) {
+    assert.throws(() => TxHash.fromParts(count, digest, 'ms').intoUuid(0n, 0n), /UUIDv7/)
+  }
+  for (const count of [I64_MIN / 1_000n - 1n, I64_MAX / 1_000n + 1n]) {
+    let expected
+    assert.throws(() => txhash.restateUnix(count, 's', 'ms'), (error) => {
+      expected = error.message
+      return true
+    })
+    assert.equal(expected, 'unix restatement overflows int64')
+    assert.throws(() => TxHash.fromParts(count, digest, 's').intoUuid(0n, 0n), { message: expected })
   }
 })
 
-test('intoUuid discards only the high two digest bits and the algorithm', () => {
-  const project = (algorithm, payload) =>
-    TxHash.fromParts(1n, Digest.from(`${algorithm}:${hex(payload, 16)}`), 'ns').intoUuid()
+test('intoUuid fingerprints the full sequence and digest and discards the algorithm', () => {
+  const project = (algorithm, payload, seqnum = 0n, seed = 0n) => {
+    const digest = Digest.from(`${algorithm}:${hex(payload, 16)}`)
+    const projected = TxHash.fromParts(1n, digest, 'ms').intoUuid(seqnum, seed)
+    assert.equal(projected.asJs(), projectedUuid(1n, digest, seqnum, seed))
+    return projected
+  }
   const payload = 0x0123_4567_89ab_cdefn
   const expected = project('xxh64', payload)
   assert.ok(project('xxh3-64', payload).equals(expected))
-  for (let bit = 62n; bit < 64n; bit += 1n) {
-    assert.ok(project('xxh64', payload ^ (1n << bit)).equals(expected), String(bit))
-  }
-  for (let bit = 0n; bit < 62n; bit += 1n) {
+  for (let bit = 0n; bit < 64n; bit += 1n) {
     assert.ok(!project('xxh64', payload ^ (1n << bit)).equals(expected), String(bit))
+    assert.ok(!project('xxh64', payload, 1n << bit).equals(expected), String(bit))
   }
+  assert.ok(!project('xxh64', payload, 0n, 7n).equals(expected))
 })
 
 test('intoUuid refuses non-64-bit digests without narrowing', () => {
   for (const [algorithm, digits, bits] of [['xxh32', 8, 32], ['xxh3-128', 32, 128]]) {
     for (const payload of [0n, 7n, (1n << BigInt(bits)) - 1n]) {
       const value = TxHash.fromParts(0n, Digest.from(`${algorithm}:${hex(payload, digits)}`), 'ns')
-      assert.throws(() => value.intoUuid(), {
+      assert.throws(() => value.intoUuid(0n, 0n), {
         message: `invalid record value at $.digest: expected a 64-bit digest for UUIDv7, got ${algorithm} (${bits} bits)`,
       })
     }

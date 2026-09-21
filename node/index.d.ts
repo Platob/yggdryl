@@ -1573,10 +1573,10 @@ export type JsFixMessages = FixMessages
  * bridge's `msgsessionid:msgctxid` where the row header stated both, else
  * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
  * over it, the `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid`
- * over its instant and that hash, and the `crossuuid` over the cross hash -
- * or the `curruuid` itself when no cross code names a chain. Every write
- * settles it again.
+ * standard header and trailer, the `curruuid` from its millisecond instant
+ * and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+ * seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
+ * when no cross code names a chain. Every write settles it again.
  */
 export declare class FixMsg {
   /**
@@ -1655,7 +1655,11 @@ export declare class FixMsg {
   get metadata(): Record<string, string>
   /** The fixed four-byte business category lifted from this message type. */
   get msgcat(): string | null
-  /** This message's own identity, as its hyphenated text. */
+  /**
+   * This message's own `UUIDv7` identity, from its millisecond instant and
+   * full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+   * seed, as hyphenated text.
+   */
   get curruuid(): string
   /**
    * The identity of the chain this message belongs to, as its hyphenated
@@ -4955,9 +4959,10 @@ export declare class TextLine {
   /** How many bytes of this record went over the retained limit. */
   get droppedByteSize(): number | null
   /**
-   * The line's identity, as its hyphenated text: the uuid its instant and
-   * its hash code derive. A line is an event of the graph, and a message
-   * parsed out of it states this among its `srcuuids`.
+   * The line's identity, as its hyphenated text: `UUIDv7` over its
+   * millisecond instant, row-derived sequence and body hash, with the
+   * source URL's cross hash as seed. A line is an event of the graph, and
+   * a message parsed out of it states this among its `srcuuids`.
    */
   get curruuid(): string
   /**
@@ -4966,8 +4971,8 @@ export declare class TextLine {
    */
   get crossuuid(): string
   /**
-   * The code the chain is named by: a `crosscode` capture where the row
-   * header has one, and empty where it names none.
+   * The code the chain is named by: the canonical source URL, and empty
+   * where the line was read from no located source.
    */
   get crosscode(): string
   /** The XXH3-64 of the line's bytes. */
@@ -5304,15 +5309,20 @@ export declare class TxHash {
   /** The canonical bytes as a fixed-width byte `Scalar`. */
   intoScalar(): JsScalar
   /**
-   * The RFC 9562 `UUIDv7` projection, as a `uuid` `Scalar`.
+   * Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
+   * `uuid` `Scalar`.
    *
-   * The instant restates exactly to signed nanoseconds and floors to the
-   * microsecond, then the digest's low 62 bits follow, so the UUIDs order
-   * by instant to the microsecond.
-   * Lossy: neither the unit nor the algorithm is kept. Throws for a digest
-   * that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
+   * The instant is floored directly to Unix milliseconds, and `rand_a`
+   * carries the low 12 sequence bits. XXH3-64 hashes the complete 16-byte
+   * big-endian `(seqnum, digest-u64)` tuple under `seed`; its low 62 bits
+   * fill `rand_b`. This is a lossy, collision-resistant, non-cryptographic
+   * 74-bit identity fingerprint, not a uniqueness guarantee: neither the
+   * unit nor the algorithm survives, and sequence ordering wraps with its
+   * low 12 bits.
+   * Throws for a digest that is not 64 bits wide, or an instant outside the
+   * `UUIDv7` range.
    */
-  intoUuid(): JsScalar
+  intoUuid(seqnum: bigint, seed: bigint): JsScalar
   /** Exact equality: another unit or algorithm is another value. */
   equals(other: TxHash): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */

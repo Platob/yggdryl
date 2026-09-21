@@ -399,7 +399,9 @@ pub struct Uuid(u128);
 
 const _: () = assert!(std::mem::size_of::<Uuid>() == 16);
 
-const MAX_V7_MICROS: i64 = ((1_i64 << 48) - 1) * 1_000 + 999;
+const MAX_V7_MILLIS: i64 = (1_i64 << 48) - 1;
+const V7_SEQUENCE_MASK: u64 = (1_u64 << 12) - 1;
+const V7_PAYLOAD_MASK: u64 = (1_u64 << 62) - 1;
 const VARIANT_MASK: u128 = 3 << 62;
 const RFC_VARIANT: u128 = 2 << 62;
 
@@ -412,49 +414,65 @@ impl Uuid {
         Self(value)
     }
 
-    /// Pack a Unix microsecond instant and the payload's low 62 bits as UUIDv7.
+    /// Pack a Unix millisecond, sequence number and 64-bit payload as UUIDv7.
     ///
-    /// The first 48 bits hold milliseconds; the 12-bit sub-millisecond
-    /// fraction is `floor((unix_micros % 1000) * 4096 / 1000)`, following
-    /// [RFC 9562's fractional-clock method](https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2).
-    /// Increasing microseconds sort in time order regardless of payload.
-    /// This allocates nothing on success, reads no clock, and supplies no
-    /// randomness or uniqueness guarantee of its own.
+    /// The first 48 bits hold `unix_millis`. The UUIDv7 `rand_a` field holds
+    /// the low 12 sequence bits, and `rand_b` holds the low 62 bits of an
+    /// XXH3-64 fingerprint over the complete big-endian `(seqnum, payload)`
+    /// pair. Every bit of both inputs therefore contributes instead of being
+    /// truncated or combined algebraically. Milliseconds sort first;
+    /// sequences sort within one 4,096-value low-bit window, not across its
+    /// wrap. The remaining 74 identity bits are a non-cryptographic
+    /// fingerprint, not an injective encoding of 128 input bits. This
+    /// allocates nothing on success, reads no clock, and supplies no
+    /// randomness of its own.
     ///
     /// ```
     /// use yggdryl::Uuid;
     /// # fn main() -> yggdryl::Result<()> {
-    /// let value = Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210)?;
-    /// assert_eq!(value.to_string(), "017f22e2-79b0-774b-bedc-ba9876543210");
-    /// assert!(Uuid::from_v7(999, u64::MAX)? < Uuid::from_v7(1_000, 0)?);
+    /// let value = Uuid::from_v7(1_645_557_742_000, 0x74b, 0xfedc_ba98_7654_3210)?;
+    /// assert_eq!(value.to_string(), "017f22e2-79b0-774b-baaf-e6545098617d");
+    /// assert!(Uuid::from_v7(999, u64::MAX, u64::MAX)? < Uuid::from_v7(1_000, 0, 0)?);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] at `$` when `unix_micros` is outside
-    /// `0..=281474976710655999`, the range a 48-bit millisecond count holds.
-    pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self> {
-        if !(0..=MAX_V7_MICROS).contains(&unix_micros) {
+    /// Returns [`Error::InvalidRecord`] at `$` when `unix_millis` is outside
+    /// `0..=281474976710655`, the range the 48-bit timestamp holds.
+    pub fn from_v7(unix_millis: i64, seqnum: u64, payload: u64) -> Result<Self> {
+        let mut identity = [0_u8; 16];
+        identity[..8].copy_from_slice(&seqnum.to_be_bytes());
+        identity[8..].copy_from_slice(&payload.to_be_bytes());
+        Self::from_v7_fingerprint(unix_millis, seqnum, crate::xxhash::xxh3(&identity))
+    }
+
+    /// Pack an already resolved joint fingerprint into UUIDv7's random fields.
+    pub(crate) fn from_v7_fingerprint(
+        unix_millis: i64,
+        seqnum: u64,
+        fingerprint: u64,
+    ) -> Result<Self> {
+        if !(0..=MAX_V7_MILLIS).contains(&unix_millis) {
             return Err(Error::InvalidRecord {
                 path: "$".into(),
                 reason: crate::text::expected_got(
-                    format_args!("a UUIDv7 Unix microsecond instant in 0..={MAX_V7_MICROS}"),
-                    format_args!("{unix_micros}"),
+                    format_args!("a UUIDv7 Unix millisecond instant in 0..={MAX_V7_MILLIS}"),
+                    format_args!("{unix_millis}"),
                 ),
             });
         }
         // The range check proves unsigned arithmetic and the 48-bit layout.
-        let micros = unix_micros.unsigned_abs();
-        let milliseconds = u128::from(micros / 1_000);
-        let fraction = u128::from((micros % 1_000) * 4_096 / 1_000);
+        let milliseconds = u128::from(unix_millis.unsigned_abs());
+        let sequence = u128::from(seqnum & V7_SEQUENCE_MASK);
+        let coupled_payload = u128::from(fingerprint & V7_PAYLOAD_MASK);
         Ok(Self(
             (milliseconds << 80)
                 | (7_u128 << 76)
-                | (fraction << 64)
+                | (sequence << 64)
                 | RFC_VARIANT
-                | (u128::from(payload) & !VARIANT_MASK),
+                | coupled_payload,
         ))
     }
 
@@ -495,7 +513,7 @@ impl Uuid {
     /// use yggdryl::Uuid;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(Uuid::from_v7(1_645_557_742_000_456, 0)?.version(), 7);
+    /// assert_eq!(Uuid::from_v7(1_645_557_742_000, 0x74b, 0)?.version(), 7);
     /// assert_eq!(Uuid::from_v8(0).version(), 8);
     /// # Ok(())
     /// # }

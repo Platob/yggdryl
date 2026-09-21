@@ -17,6 +17,29 @@ from yggdryl.holder import FsPath
 from yggdryl.media import Parquet
 
 
+EVENT_COLUMNS = [
+    "currunix",
+    "creaunix",
+    "execunix",
+    "recdunix",
+    "refrecdunix",
+    "exprtime",
+    "prevunix",
+    "snapunix",
+    "curruuid",
+    "crossuuid",
+    "crosscode",
+    "currhashcode",
+    "crosshashcode",
+    "prevuuid",
+    "seqnum",
+    "parentuuids",
+    "srcuuids",
+    "identifiers",
+    "state",
+]
+
+
 @pytest.fixture
 def local() -> pafs.LocalFileSystem:
     """PyArrow's own local filesystem - a real outside implementation."""
@@ -389,7 +412,7 @@ class TestFramedText:
         options.batch_row_size = 1
 
         reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
-        assert reader.schema.names[16:] == [
+        assert reader.schema.names[len(EVENT_COLUMNS) :] == [
             "sourceurl",
             "rownum",
             "mtime",
@@ -397,24 +420,7 @@ class TestFramedText:
             "dropped_byte_size",
             "kind",
         ]
-        assert reader.schema.names[:16] == [
-            "currunix",
-            "creaunix",
-            "exprtime",
-            "prevunix",
-            "snapunix",
-            "curruuid",
-            "crossuuid",
-            "crosscode",
-            "currhashcode",
-            "crosshashcode",
-            "prevuuid",
-            "seqnum",
-            "parentuuids",
-            "srcuuids",
-            "identifiers",
-            "state",
-        ]
+        assert reader.schema.names[: len(EVENT_COLUMNS)] == EVENT_COLUMNS
         assert reader.schema.field("dropped_byte_size") == pa.field(
             "dropped_byte_size", pa.uint64(), nullable=True
         )
@@ -455,7 +461,13 @@ class TestFramedText:
             options=options
         )
 
-        assert reader.schema.names[16:] == ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.names[len(EVENT_COLUMNS) :] == [
+            "sourceurl",
+            "mtime",
+            "body",
+            "dropped_byte_size",
+            "kind",
+        ]
         assert reader.schema.field("dropped_byte_size").type == pa.uint64()
 
 

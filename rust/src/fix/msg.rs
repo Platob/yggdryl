@@ -26,22 +26,24 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 
 /// The row stated the state the message reached: the derivation leaves it.
-const ROW_STATED_STATE: u8 = 1;
+const ROW_STATED_STATE: u16 = 1;
 
 /// The row stated when the message expires: the derivation leaves it.
-const ROW_STATED_EXPIRY: u8 = 1 << 1;
+const ROW_STATED_EXPIRY: u16 = 1 << 1;
 
 /// The row stated this normalized market code, rather than a raw FIX pair
 /// from which market derivation could replace it.
-const ROW_STATED_ISIN: u8 = 1 << 2;
-const ROW_STATED_CUSIP: u8 = 1 << 3;
-const ROW_STATED_SEDOL: u8 = 1 << 4;
-const ROW_STATED_BLOOMBERG: u8 = 1 << 5;
-const ROW_STATED_MIC: u8 = 1 << 6;
-const ROW_STATED_FIGI: u8 = 1 << 7;
+const ROW_STATED_ISIN: u16 = 1 << 2;
+const ROW_STATED_CUSIP: u16 = 1 << 3;
+const ROW_STATED_SEDOL: u16 = 1 << 4;
+const ROW_STATED_BLOOMBERG: u16 = 1 << 5;
+const ROW_STATED_MIC: u16 = 1 << 6;
+const ROW_STATED_FIGI: u16 = 1 << 7;
+const ROW_STATED_EXECUTION: u16 = 1 << 8;
+const ROW_STATED_RECORDING: u16 = 1 << 9;
 
 /// The row-owned facts whose non-null value must survive market derivation.
-fn row_stated_bit(tag: i32) -> Option<u8> {
+fn row_stated_bit(tag: i32) -> Option<u16> {
     if tag == super::STATE_TAG_NAME.0 {
         Some(ROW_STATED_STATE)
     } else if tag == super::EXPRTIME_TAG_NAME.0 {
@@ -58,6 +60,10 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
         Some(ROW_STATED_MIC)
     } else if tag == super::FIGICODE_TAG_NAME.0 {
         Some(ROW_STATED_FIGI)
+    } else if tag == super::EXECUNIX_TAG_NAME.0 {
+        Some(ROW_STATED_EXECUTION)
+    } else if tag == super::RECDUNIX_TAG_NAME.0 {
+        Some(ROW_STATED_RECORDING)
     } else {
         None
     }
@@ -93,8 +99,8 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
 /// lifted and the named content of the row - everything but the standard
 /// header and trailer, less `MsgType`, and never the chain it is in - the
-/// identity the UUIDv7 the instant and the code derive, and the cross
-/// identity the UUIDv8 the cross code's digest derives - the first chain
+/// identity the UUIDv7 the millisecond instant, sequence and cross-seeded code
+/// derive, and the cross identity the UUIDv8 the cross code's digest derives - the first chain
 /// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
 /// bracketed `session:context` is retained among the message identifiers as
 /// capture provenance and never replaces that chain code. Every write settles it again, so a written code or identity
@@ -174,7 +180,7 @@ pub struct FixMsg {
     /// The lifecycle and normalized market facts the row stated. Derivation
     /// leaves them as the row's word, so reconstruction keeps an explicit
     /// value rather than replacing it from a raw FIX field.
-    row_stated: u8,
+    row_stated: u16,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
     /// What a bridge stated under its own namespaces - `TECH.CLIENTID`,
@@ -570,7 +576,7 @@ impl FixMsg {
         message.sync_capture_identifier();
         if retains_identity {
             message.derive_market();
-            message.event.fill_market();
+            message.fill_market();
         } else {
             message.settle();
         }
@@ -613,7 +619,7 @@ impl FixMsg {
         let mut stated_sending = false;
         let mut stated_unix = false;
         let mut stated_creation = false;
-        let mut row_stated = 0_u8;
+        let mut row_stated = 0_u16;
         // A typed tag is lifted out of the row onto its holder, and a holder
         // keeps one fact per tag - so a row stating one tag twice is left
         // where it stands rather than collapsed into one slot. Two children
@@ -948,8 +954,8 @@ impl FixMsg {
 
     /// Settles the identity from what the message states: the cross code
     /// where it names none yet, the cross codes in step with it, the code
-    /// the content digests to, and the identity the instant and the code
-    /// derive.
+    /// the content digests to, and the identity the instant, sequence and
+    /// cross-seeded code derive.
     ///
     /// The cross code names the chain and defaults to the first nonempty FIX
     /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. Capture
@@ -971,7 +977,7 @@ impl FixMsg {
         // What the message implies about its market, read off the FIX
         // fields it stated, before the code it answers to covers either.
         self.derive_market();
-        self.event.fill_market();
+        self.fill_market();
         self.event.sync_cross();
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
@@ -1010,16 +1016,74 @@ impl FixMsg {
         }
     }
 
+    /// Whether an explicitly stated `ExecType(150)` reports an execution.
+    /// Its raw FIX code is inspected, never the lifecycle state derived from
+    /// `OrdStatus`: trade corrections, cancels and clearing transitions can
+    /// carry a filled order state without being executions themselves.
+    fn explicit_execution_type(&self) -> Option<bool> {
+        self.get_by_tag(150)
+            .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
+    }
+
+    /// One FIX or proprietary timestamp read as the event clock the graph
+    /// keeps. Dictionary timestamps are already typed; an unresolved bridge
+    /// key is read once through the crate execution field's FIX spelling.
+    fn execution_instant(&self, value: Option<Scalar>) -> Option<i64> {
+        let value = value?;
+        value
+            .temporal_count_at(crate::TimeUnit::Nanosecond)
+            .or_else(|| {
+                let text = value.as_str()?;
+                let field = self.registry.get_field_by_tag(super::EXECUNIX_TAG_NAME.0)?;
+                super::build::typed_spelling(&self.registry, field, text)
+                    .temporal_count_at(crate::TimeUnit::Nanosecond)
+            })
+    }
+
+    /// The first regulatory timestamp explicitly classified as execution
+    /// time. A timestamp of any other type says nothing about execution.
+    fn trdreg_execution_instant(&self) -> Option<i64> {
+        let at = self.index_of_group(768)?;
+        let column = self.field.fields().get(at)?;
+        let DataType::Sequence(sequence) = column.dtype() else {
+            return None;
+        };
+        let item = sequence.item();
+        let (timestamp, kind) = (
+            item.index_of("trdregtimestamp")?,
+            item.index_of("trdregtimestamptype")?,
+        );
+        self.value
+            .as_sequence()?
+            .get(at)?
+            .as_sequence()?
+            .iter()
+            .find_map(|occurrence| {
+                let held = occurrence.as_sequence()?;
+                let kind = held.get(kind)?;
+                let execution = kind.as_i64() == Some(1)
+                    || kind.as_str().is_some_and(|kind| {
+                        kind == "1" || crate::folds_equal(kind, "ExecutionTime")
+                    });
+                execution
+                    .then(|| self.execution_instant(held.get(timestamp).cloned()))
+                    .flatten()
+            })
+    }
+
     /// What the message implies about its market, read off the FIX fields
     /// it states and filled onto the event.
     ///
     /// Every market fact is FIX's own, and a message states the ones it
     /// states: `Price(44)`, `OrderQty(38)` or `Quantity(53)`, the fill and
-    /// the progress, the side and the currency, the instrument's
+    /// the progress, the side and the currency, the ISIN, Bloomberg and FIGI
     /// identifiers under their sources, the market, the unit, the state and
-    /// the two quote lanes. This reads each and hands it to the trait,
-    /// which is where the ladder that decides what the message is *about*
-    /// lives - [`MarketElement::fill_market`], called straight after.
+    /// the two quote lanes. CUSIP and SEDOL stay in `SecurityID` or
+    /// `secaltids` unless a semantic row or setter states their normalized
+    /// columns. This reads each lifted fact and hands it to the trait, which
+    /// is where the ladder that decides what the message is *about* lives -
+    /// [`MarketElement::fill_market`], called straight after through the
+    /// FIX-specific guard below.
     ///
     /// What a lifecycle walk forced - the state it reached, what a price
     /// moved from, the instrument the chain is about - survives being
@@ -1070,8 +1134,6 @@ impl FixMsg {
             .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| CfiCode::new(&held).ok()));
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
         let isincode = self.identifier(&["4"], |held| IsinCode::new(held).ok());
-        let cusipcode = self.identifier(&["1"], |held| CusipCode::new(held).ok());
-        let sedolcode = self.identifier(&["2"], |held| SedolCode::new(held).ok());
         let bloombergcode = self.identifier(&["A"], |held| BloombergCode::new(held).ok());
         let figicode = self.identifier(&["S"], |held| FIGICode::new(held).ok());
         // The market it is listed on, routed to, or last traded on.
@@ -1107,6 +1169,20 @@ impl FixMsg {
         let exprtime = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
+        // Execution time is not the message time. It is stated directly by
+        // the crate column, then by FIX's execution-specific timestamp,
+        // regulatory execution member, a bridge's event timestamp, or the
+        // transaction time of an actual trade. Corrections and cancels do
+        // not make their transaction clock an execution clock.
+        let execunix = self
+            .execution_instant(by_tag(2749))
+            .or_else(|| self.trdreg_execution_instant())
+            .or_else(|| self.execution_instant(self.get_by_name("eventtimestamp")))
+            .or_else(|| {
+                (self.explicit_execution_type() == Some(true))
+                    .then(|| self.execution_instant(by_tag(60)))
+                    .flatten()
+            });
         // What a price moved from, and the two lanes a quote states.
         let prevpx = number(140);
         let (bidpx, bidqty) = (number(132), number(134));
@@ -1131,6 +1207,9 @@ impl FixMsg {
         if row_stated & ROW_STATED_EXPIRY == 0 {
             event.set_exprtime(exprtime);
         }
+        if row_stated & ROW_STATED_EXECUTION == 0 {
+            event.set_execunix(execunix);
+        }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
         event.set_currency(currency.unwrap_or_else(Currency::none));
@@ -1140,12 +1219,6 @@ impl FixMsg {
         event.set_cficode(cficode);
         if row_stated & ROW_STATED_ISIN == 0 {
             event.set_isincode(isincode);
-        }
-        if row_stated & ROW_STATED_CUSIP == 0 {
-            event.set_cusipcode(cusipcode);
-        }
-        if row_stated & ROW_STATED_SEDOL == 0 {
-            event.set_sedolcode(sedolcode);
         }
         if row_stated & ROW_STATED_BLOOMBERG == 0 {
             event.set_bloombergcode(bloombergcode);
@@ -1158,6 +1231,22 @@ impl FixMsg {
         }
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
+        }
+    }
+
+    /// Fills the generic market ladders without turning FIX's contextual
+    /// CUSIP or SEDOL identifiers into normalized message facts.
+    ///
+    /// A normalized value stated directly by a semantic row or instrument
+    /// setter survives. Raw `SecurityID` and `secaltids` occurrences remain
+    /// FIX content under their own source codes.
+    fn fill_market(&mut self) {
+        self.event.fill_market();
+        if self.row_stated & ROW_STATED_CUSIP == 0 {
+            self.event.set_cusipcode(None);
+        }
+        if self.row_stated & ROW_STATED_SEDOL == 0 {
+            self.event.set_sedolcode(None);
         }
     }
 
@@ -1186,7 +1275,7 @@ impl FixMsg {
         // A group occurrence is positional - the names live on the field
         // and never in the value - so the two members are found once and
         // every occurrence is read by those positions.
-        let at = self.field.index_of("secaltidgrp")?;
+        let at = self.field.index_of("secaltids")?;
         let column = self.field.fields().get(at)?;
         let DataType::Sequence(sequence) = column.dtype() else {
             return None;
@@ -1208,6 +1297,13 @@ impl FixMsg {
                 word(held.get(identifier).cloned())
             })
             .find_map(|held| read(&held))
+    }
+
+    /// Synchronizes one normalized instrument identifier into FIX's
+    /// alternate-identifier group. A registry without that group still keeps
+    /// the event fact: the trait is infallible and invents no private schema.
+    fn set_secaltid(&mut self, source: &str, value: Option<&str>) {
+        let _ = super::latest::sync_group_occurrence(self, "secaltids", 456, source, 455, value);
     }
 
     /// The code the message digests to: the event's own facts - the names
@@ -2113,8 +2209,8 @@ impl FixMsg {
     /// The value a tag names by the index alone: a typed fact, else the
     /// child declaring the tag, and never the two fallbacks of
     /// [`Self::get_by_tag`], which end in a name table built on the first
-    /// miss. The [enriching pass](super::enrich) gathers its working row
-    /// through this, a column per tag it reads.
+    /// miss. The [enriching pass](super::enrich) reads every native source
+    /// and gathers every generic working-row column through this.
     pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<Scalar> {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
@@ -2802,6 +2898,11 @@ impl Event for FixMsg {
         self.event.set_state(state);
     }
 
+    fn is_execution(&self) -> bool {
+        self.explicit_execution_type()
+            .unwrap_or_else(|| self.event.is_execution())
+    }
+
     fn get_seqnum(&self) -> u64 {
         self.event.get_seqnum()
     }
@@ -2816,6 +2917,40 @@ impl Event for FixMsg {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.event.set_creaunix(unix);
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.event.get_execunix()
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        if unix.is_some() {
+            self.row_stated |= ROW_STATED_EXECUTION;
+        } else {
+            self.row_stated &= !ROW_STATED_EXECUTION;
+        }
+        self.event.set_execunix(unix);
+    }
+
+    fn get_recdunix(&self) -> Option<i64> {
+        self.event.get_recdunix()
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        if unix.is_some() {
+            self.row_stated |= ROW_STATED_RECORDING;
+        } else {
+            self.row_stated &= !ROW_STATED_RECORDING;
+        }
+        self.event.set_recdunix(unix);
+    }
+
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.event.get_refrecdunix()
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.event.set_refrecdunix(unix);
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -2904,6 +3039,7 @@ impl MarketElement for FixMsg {
 
     fn set_isincode(&mut self, isincode: Option<IsinCode>) {
         self.forced = true;
+        self.set_secaltid("4", isincode.as_ref().map(IsinCode::as_str));
         self.event.set_isincode(isincode);
     }
 
@@ -2913,6 +3049,12 @@ impl MarketElement for FixMsg {
 
     fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
         self.forced = true;
+        self.set_secaltid("1", cusipcode.as_ref().map(CusipCode::as_str));
+        if cusipcode.is_some() {
+            self.row_stated |= ROW_STATED_CUSIP;
+        } else {
+            self.row_stated &= !ROW_STATED_CUSIP;
+        }
         self.event.set_cusipcode(cusipcode);
     }
 
@@ -2922,6 +3064,12 @@ impl MarketElement for FixMsg {
 
     fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
         self.forced = true;
+        self.set_secaltid("2", sedolcode.as_ref().map(SedolCode::as_str));
+        if sedolcode.is_some() {
+            self.row_stated |= ROW_STATED_SEDOL;
+        } else {
+            self.row_stated &= !ROW_STATED_SEDOL;
+        }
         self.event.set_sedolcode(sedolcode);
     }
 
@@ -2931,6 +3079,7 @@ impl MarketElement for FixMsg {
 
     fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.forced = true;
+        self.set_secaltid("A", bloombergcode.as_ref().map(BloombergCode::as_str));
         self.event.set_bloombergcode(bloombergcode);
     }
 
@@ -2940,6 +3089,7 @@ impl MarketElement for FixMsg {
 
     fn set_figicode(&mut self, figicode: Option<FIGICode>) {
         self.forced = true;
+        self.set_secaltid("S", figicode.as_ref().map(FIGICode::as_str));
         self.event.set_figicode(figicode);
     }
 

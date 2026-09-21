@@ -31,9 +31,10 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
 | `ascii_packed` | the value's bytes padded to that width and read big-endian into one `i128` - the padding is the packing's, never a column's: a fixed US-ASCII string of at most sixteen bytes or a code; everything else refused |
 | `StringEnum` | a name plus one US-ASCII value per member under `FIELD:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
+| dxFeed exchange code | `MicCode::from_dxfeed_exchange_code(feed, code)` resolves a regional code only under the `DxFeedExchangeFeed` table that gives it meaning. The feed is mandatory: `Q` is `XNAS` under CTA/UTP and Nasdaq Basic but `XNDQ` under US Options. Aggregate Cboe codes and CME source codes are refused because they name no single MIC; custom OPOL values are a separate namespace, not inferred as MICs. The mapping follows [dxFeed's published tables](https://kb.dxfeed.com/en/data-model/reference-data/exchange-codes.html), with CTA/UTP `H` corrected to ISO's current `EPRL` for MIAX Pearl Equities rather than the page's nonexistent `MRPL`, and NYSE BQT `A` corrected to `XASE` for NYSE American rather than `XNYS` ([ISO 10383 registry](https://www.iso20022.org/market-identifier-codes)) |
 | Lanes | `Side::is_bid` and `Side::is_ask` say which lane of a quote a side takes - `BUY` and `BUYMINUS` the bid, `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` the ask, and a cross, `UNDISC`, `ASDEF`, `OPPOSITE` or `UNKNOWN` neither - which is what the FIX lift and a market element fill a lane by |
 | Merge | `CodeValue::merge_with(self, &Self) -> Self` is the better statement of two codes of one kind: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. What a [graph element](../graph.md) folds two statements of one fact with |
-| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `IsinCode`/`CusipCode`/`SedolCode`/`FIGICode::{is_valid, is_canonical, closing_digit}` |
+| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `MicCode::from_dxfeed_exchange_code` with `DxFeedExchangeFeed`, `IsinCode`/`CusipCode`/`SedolCode`/`FIGICode::{is_valid, is_canonical, closing_digit}` |
 
 ISIN, CUSIP, SEDOL and FIGI construction and validation scan their bounded ASCII bytes directly: a valid value, its canonical-spelling probe and its closing digit stay on the stack, with the accepted code held inline. A FIGI is twelve ASCII characters: a permitted two-consonant prefix, `G`, eight consonants or digits, then its decimal check digit. Rust keeps the accepted twelve-byte FIGI inline; its constructor, clone and shared field are allocation-free. CFI classification and `merged` use the same six-byte stack path. A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../graph.md); this context is not a codec parser, a global mapper, or a replacement for a stated fact.
 
@@ -45,7 +46,7 @@ ISIN, CUSIP, SEDOL and FIGI construction and validation scan their bounded ASCII
 
     ```rust
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{DataType, DataTypeKind, Field, FIGICode, Scalar};
+    use yggdryl::{DataType, DataTypeKind, DxFeedExchangeFeed, Field, FIGICode, MicCode, Scalar};
 
     // A registered code is a datatype, not a name over a width.
     let currency = DataType::currency();
@@ -115,6 +116,18 @@ ISIN, CUSIP, SEDOL and FIGI construction and validation scan their bounded ASCII
     assert_eq!(figi.as_str(), "BBG000BLNQ16");
     assert_eq!(DataType::figi().scalar("BBG000BLNQ16")?.as_str(), Some("BBG000BLNQ16"));
     assert!(FIGICode::new("BBG000BLNQ17").is_err());
+
+    // A dxFeed regional exchange code has meaning only inside its feed.
+    assert_eq!(
+        MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
+        "XNAS",
+    );
+    assert_eq!(
+        MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
+        "XNDQ",
+    );
+    // C is an aggregate under Cboe, not a market that could be stored as a MIC.
+    assert!(MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err());
 
     // A code rides its own Arrow extension, so the identity survives the trip.
     let venue = Field::new("venue", DataType::MicCode, false);
@@ -531,7 +544,9 @@ work" are different questions, and one terminal rank would answer neither
 without reading the name. Each ending owns a band - `80`-`89` done, `90`-`94`
 cancelled, `95`-`99` failed - and `State::is_live` (below `80`), `is_done`,
 `is_cancelled` and `is_failed` read the band, so a placeholder inside one
-answers as its ending does.
+answers as its ending does. `State::is_execution` is deliberately exact rather
+than ranked: only `40PARTFILL`, `40TRADE` and `80FILLED` report an execution;
+a trade correction, cancellation, hold or release refers to an earlier one.
 
 Rust only.
 
@@ -556,6 +571,7 @@ assert_eq!(held, ["20NEW", "40PARTFILL", "80FILLED", "95REJECTED"]);
 // without reading a name.
 assert_eq!(State::from_spelling("Filled").unwrap().rank(), Some(80));
 assert!(State::from_spelling("New").unwrap().is_live());
+assert!(State::from_spelling("PartiallyFilled").unwrap().is_execution());
 assert!(State::from_spelling("Filled").unwrap().is_done());
 assert!(State::from_spelling("Rejected").unwrap().is_failed());
 ```

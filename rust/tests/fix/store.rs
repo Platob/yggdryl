@@ -2251,6 +2251,9 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
             .as_fix()
             .has_branch("venue")
     );
+    // Windows will not replace a file while this local backend still owns
+    // its mapped view. The registry has consumed the document by this point.
+    drop(file);
 
     // One mutation: a document that does not parse leaves it as it was.
     let before = registry.stable_hash();

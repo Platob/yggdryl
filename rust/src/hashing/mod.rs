@@ -9,8 +9,9 @@
 //! schema. For example, [`crate::FixMsg::digest`] identifies the arrival body
 //! independently of its delivery envelope. A message's `currhashcode` is the
 //! XXH3-64 of what its event states and the canonical named content behind
-//! it, coupled with its instant into the UUIDv7 that is its identity; its
-//! `crosshashcode` is the XXH3-64 of the chain identifier it shares. These
+//! it; its `crosshashcode` is the XXH3-64 of the chain identifier it shares.
+//! Its instant, sequence and `currhashcode` rehashed under `crosshashcode` as
+//! seed form the UUIDv7 that is its identity. These
 //! FIX recipes reuse the shared algorithms; they do not define another hash
 //! engine. A raw
 //! [`crate::txhash::TxHash`] is a time/digest pair, not an RFC UUID.

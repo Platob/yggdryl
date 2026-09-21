@@ -273,19 +273,20 @@ impl TxHash {
         Ok(bytes)
     }
 
-    /// Project this value to RFC 9562 UUIDv7 without allocating on success.
+    /// Project this value, `seqnum` and `seed` to RFC 9562 UUIDv7 without
+    /// allocating.
     ///
-    /// The instant is restated exactly to signed 64-bit nanoseconds, then
-    /// floored to the microsecond [`Uuid::from_v7`] packs: the Unix
-    /// millisecond in the leading 48 bits, the version, the twelve-bit
-    /// sub-millisecond fraction, the variant, and the digest's low 62 bits
-    /// behind. Any UUIDv7 reader therefore reads the instant, and the UUIDs
-    /// order by instant to the microsecond and by digest within one.
-    /// Neither the original unit nor the algorithm is encoded; the
-    /// sub-microsecond nanoseconds and the discarded two digest bits cannot
-    /// be recovered. This is a lossy fingerprint, not a uniqueness guarantee
-    /// or an inverse of [`Self::into_bytes`]. The raw bytes and ordering of
-    /// `TxHash` itself are unchanged.
+    /// The instant is restated and floored directly to Unix milliseconds.
+    /// The complete big-endian `(seqnum, digest)` pair is hashed once with
+    /// XXH3-64 under `seed`; an event supplies its cross hash code, so sequence,
+    /// content and cross chain all contribute to the fingerprint. The
+    /// millisecond count is packed first, the low 12 sequence bits occupy
+    /// UUIDv7's `rand_a`, and the fingerprint's low 62 bits occupy `rand_b`.
+    /// Neither the original unit nor algorithm is encoded; sub-millisecond
+    /// time and two fingerprint bits cannot be recovered. This is a lossy,
+    /// non-cryptographic 74-bit identity fingerprint, not an inverse of
+    /// [`Self::into_bytes`]. The raw bytes and ordering of `TxHash` itself are
+    /// unchanged.
     ///
     /// ```
     /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, txhash::TxHash};
@@ -293,12 +294,13 @@ impl TxHash {
     /// let value = TxHash::new_in(
     ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
     /// )?;
-    /// assert_eq!(value.into_uuid()?.to_string(), "00000000-0000-7000-8000-000000000001");
-    /// let later = TxHash::new_in(1, TimeUnit::Microsecond, value.digest())?;
-    /// assert!(value.into_uuid()? < later.into_uuid()?);
+    /// assert_ne!(value.into_uuid(0, 0)?, value.into_uuid(1, 0)?);
+    /// assert_ne!(value.into_uuid(0, 0)?, value.into_uuid(0, 7)?);
+    /// let later = TxHash::new_in(1, TimeUnit::Millisecond, value.digest())?;
+    /// assert!(value.into_uuid(u64::MAX, 0)? < later.into_uuid(0, 0)?);
     /// // Before the epoch there is no UUIDv7, so the projection is refused.
     /// let earlier = TxHash::new_in(-1, TimeUnit::Nanosecond, value.digest())?;
-    /// assert!(earlier.into_uuid().is_err());
+    /// assert!(earlier.into_uuid(0, 0).is_err());
     /// assert!(earlier.into_bytes() > value.into_bytes());
     /// # Ok(())
     /// # }
@@ -308,10 +310,10 @@ impl TxHash {
     ///
     /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
     /// 64 bits wide, the existing [`Error::ArithmeticOverflow`] from
-    /// [`restate_unix`] when the instant does not fit signed 64-bit
-    /// nanoseconds, and [`Uuid::from_v7`]'s refusal at `$` for an instant
-    /// before the epoch or past the 48-bit millisecond count.
-    pub fn into_uuid(self) -> Result<Uuid> {
+    /// [`restate_unix`] when a coarser instant does not fit signed 64-bit
+    /// milliseconds, and [`Uuid::from_v7`]'s refusal at `$` for an instant
+    /// before the epoch or past the 48-bit timestamp count.
+    pub fn into_uuid(self, seqnum: u64, seed: u64) -> Result<Uuid> {
         let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
             path: "$.digest".into(),
             reason: crate::text::expected_got(
@@ -323,8 +325,12 @@ impl TxHash {
                 ),
             ),
         })?;
-        let nanoseconds = restate_unix(self.unix, self.unit, TimeUnit::Nanosecond)?;
-        Uuid::from_v7(nanoseconds.div_euclid(1_000), digest)
+        let milliseconds = restate_unix(self.unix, self.unit, TimeUnit::Millisecond)?;
+        let mut identity = [0_u8; 16];
+        identity[..8].copy_from_slice(&seqnum.to_be_bytes());
+        identity[8..].copy_from_slice(&digest.to_be_bytes());
+        let fingerprint = crate::xxhash::xxh3_with_seed(&identity, seed);
+        Uuid::from_v7_fingerprint(milliseconds, seqnum, fingerprint)
     }
 
     /// Rebuild a value from its canonical bytes.

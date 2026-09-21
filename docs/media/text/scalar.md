@@ -8,7 +8,7 @@ One line per row, in and out: the record surface a `text/plain` handle answers w
 | --- | --- |
 | Reads | Python `read_records`, JavaScript `readRecords` - one row per physical line, or per framed record; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Writes | `overwrite_records`, `append_records`; each row's non-null `utf8` `body` becomes one line plus the terminator |
-| Row | the [row schema](index.md#row-schema): the sixteen [event columns](../../graph.md#columns), then `sourceurl`, `rownum`, `body`, `mtime`, plus every row-header capture and lifted entry |
+| Row | the [row schema](index.md#row-schema): the nineteen [event columns](../../graph.md#columns), then the enabled line columns (`sourceurl`, optional `rownum`, `mtime`, optional `mimetype`, `body`, optional dropped size), every row-header capture, and every lifted entry |
 | Terminator | `linesep` when pinned, otherwise LF on write; a read accepts LF, CRLF, or CR |
 | Charset | the body crosses in the charset the handle's media type [declares](index.md#declaring-a-charset) |
 | Merge | refused: a line has no row identity |
@@ -94,7 +94,21 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
 
 ## Row numbers and captures
 
-`start_rownum` numbers the first physical line of each record and adds the `rownum` column; unset, the column is absent. A [row header](index.md#lines) adds one column per capture, typed from the regex when `autotype` is on, and a [lifted entry](index.md#lifting-an-entry-into-a-column) adds one more. Every added column reaches a record row under the name it is emitted as.
+`start_rownum` numbers the first physical line of each record and adds the
+`rownum` column; unset, the column is absent. The event `seqnum` is the same
+row number, or the zero-based physical index when `start_rownum` is unset, and
+preserves gaps for blank lines the reader skipped. Likewise, `sourceurl` owns
+the event `crosscode`: a located line uses the URL's canonical text and an
+unlocated line has neither. The code's `crosshashcode` seeds the line's current
+identity, so changing the source refreshes both the current and cross UUIDs. A
+row header therefore cannot declare a `seqnum` or `crosscode` capture, in any
+case. An explicit non-null Event column read back from Arrow remains an
+override of the corresponding base fact.
+
+A [row header](index.md#lines) adds one column per other capture, typed from
+the regex when `autotype` is on, and a [lifted entry](index.md#lifting-an-entry-into-a-column)
+adds one more. Every added column reaches a record row under the name it is
+emitted as.
 
 ## Edges
 

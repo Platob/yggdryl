@@ -510,7 +510,8 @@ impl MarketElement for MarketElementData {
 ///
 /// A new event is what its instant says and nothing more: the facts of a
 /// default [`MarketElementData`], a state of `00UNKNOWN`, no place in a
-/// chain, no creation, expiration, predecessor or snapshot. It is what any
+/// chain, no creation, execution, recording, expiration, predecessor or
+/// snapshot. It is what any
 /// [`MarketEvent`] converts into, and what a [`MarketElementData`] becomes
 /// at the epoch, for a caller to date.
 ///
@@ -555,6 +556,9 @@ pub struct MarketEventData {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
+    execunix: Option<i64>,
+    recdunix: Option<i64>,
+    refrecdunix: Option<i64>,
     exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -573,6 +577,9 @@ impl MarketEventData {
             state: State::unknown(),
             seqnum: 0,
             creaunix: None,
+            execunix: None,
+            recdunix: None,
+            refrecdunix: None,
             exprtime: None,
             prevunix: None,
             prevuuid: None,
@@ -584,6 +591,17 @@ impl MarketEventData {
     /// name before it finalizes the event.
     pub(crate) fn identifiers_mut(&mut self) -> &mut BTreeMap<String, String> {
         &mut self.element.identifiers
+    }
+
+    /// Reprojects the generic event identities after one of their inputs
+    /// changes. A UUIDv7 refusal retains the current identity, as
+    /// [`Event::finalized`] does; the cross identity always follows the
+    /// resulting current identity and cross hash.
+    fn refresh_uuids(&mut self) {
+        if let Ok(uuid) = self.time_uuid() {
+            self.element.curruuid = uuid;
+        }
+        self.element.crossuuid = self.cross_uuid();
     }
 }
 
@@ -617,6 +635,12 @@ impl Element for MarketEventData {
 
     fn set_crosscode(&mut self, crosscode: String) {
         self.element.crosscode = crosscode;
+        self.element.crosshashcode = if self.element.crosscode.is_empty() {
+            0
+        } else {
+            super::element::crosshash(&self.element.crosscode)
+        };
+        self.refresh_uuids();
     }
 
     fn get_currhashcode(&self) -> u64 {
@@ -625,6 +649,7 @@ impl Element for MarketEventData {
 
     fn set_currhashcode(&mut self, hashcode: u64) {
         self.element.currhashcode = hashcode;
+        self.refresh_uuids();
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -633,6 +658,7 @@ impl Element for MarketEventData {
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
         self.element.crosshashcode = crosshashcode;
+        self.refresh_uuids();
     }
 
     fn get_identifiers(&self) -> &BTreeMap<String, String> {
@@ -688,12 +714,25 @@ impl Event for MarketEventData {
         super::element::restating_market(self, live)
     }
 
+    /// Records a finalized content code and projects both identities once.
+    ///
+    /// The public identity-input setters refresh eagerly. Finalization already
+    /// owns the complete new input set, so writing the code directly avoids
+    /// the setter's projection followed by the provided finalizer's identical
+    /// projection. A [`crate::FixMsg`] finalizes through this holder and takes
+    /// the same single projection.
+    fn finalized(&mut self, hashcode: u64) {
+        self.element.currhashcode = hashcode;
+        self.refresh_uuids();
+    }
+
     fn get_currunix(&self) -> i64 {
         self.currunix
     }
 
     fn set_currunix(&mut self, unix: i64) {
         self.currunix = unix;
+        self.refresh_uuids();
     }
 
     fn get_state(&self) -> &State {
@@ -710,6 +749,7 @@ impl Event for MarketEventData {
 
     fn set_seqnum(&mut self, seqnum: u64) {
         self.seqnum = seqnum;
+        self.refresh_uuids();
     }
 
     fn get_creaunix(&self) -> Option<i64> {
@@ -718,6 +758,34 @@ impl Event for MarketEventData {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.creaunix = unix;
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.execunix
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.execunix = unix;
+    }
+
+    fn get_recdunix(&self) -> Option<i64> {
+        self.recdunix
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        let tracks_recording = self.refrecdunix.is_none() || self.refrecdunix == self.recdunix;
+        self.recdunix = unix;
+        if tracks_recording {
+            self.refrecdunix = unix;
+        }
+    }
+
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.refrecdunix
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.refrecdunix = unix;
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -1014,6 +1082,9 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_state(other.get_state().clone());
     this.set_seqnum(other.get_seqnum());
     this.set_creaunix(other.get_creaunix());
+    this.set_execunix(other.get_execunix());
+    this.set_recdunix(other.get_recdunix());
+    this.set_refrecdunix(other.get_refrecdunix());
     this.set_exprtime(other.get_exprtime());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());
@@ -1064,6 +1135,11 @@ impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
         copy_element(&mut this, other);
         copy_event(&mut this, other);
         copy_market(&mut this, other);
+        // The setters above keep a derived event coherent while it is
+        // mutated. Conversion copies the exact identities the source states,
+        // including an assigned identity, after every dependency is in place.
+        this.element.curruuid = other.get_curruuid();
+        this.element.crossuuid = other.get_crossuuid();
         this
     }
 }

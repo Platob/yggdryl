@@ -4032,7 +4032,7 @@ fn committed() -> Arc<FixRegistry> {
 
 #[test]
 fn group_entry_names_singularize_published_collections() {
-    use super::component::{entry_name, group_name};
+    use super::component::{canonical_group_name, entry_name, group_name};
     for (collection, entry) in [
         ("Parties", "party"),
         ("NestedParties2", "nestedparty2"),
@@ -4053,6 +4053,17 @@ fn group_entry_names_singularize_published_collections() {
     let mut count = counter("nopartyids", 453);
     count.set_display("NoPartyIDs").unwrap();
     assert_eq!(group_name(&count).as_str(), "parties");
+    let mut count = counter("nosecurityaltid", 454);
+    count.set_display("NoSecurityAltID").unwrap();
+    assert_eq!(group_name(&count).as_str(), "secaltids");
+    assert_eq!(canonical_group_name("SecAltIDGrp").as_str(), "secaltids");
+    let mut count = counter("noregulatorytradeids", 1907);
+    count.set_display("NoRegulatoryTradeIDs").unwrap();
+    assert_eq!(group_name(&count).as_str(), "regulatorytradeids");
+    assert_eq!(
+        canonical_group_name("RegulatoryTradeIDGrp").as_str(),
+        "regulatorytradeids"
+    );
 }
 
 #[test]
@@ -4572,59 +4583,22 @@ fn a_composed_key_fills_the_field_its_last_segment_names() {
 }
 
 #[test]
-fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_change() {
+fn shipped_derivations_stay_native_and_custom_rules_bind_once() {
     let registry = committed();
     let compiled = registry.derivations().unwrap();
+    assert!(
+        compiled.is_native(),
+        "the untouched shipped registry takes the native evaluator"
+    );
     // One compile per registry, shared by every ask.
     assert!(
         Arc::ptr_eq(&compiled, &registry.derivations().unwrap()),
         "a second ask answers the same compiled list"
     );
-    // The working schema is the ordered union of every column any
-    // derivation reads or fills, typed by the registry's field - a group by
-    // its own definition - and every term is bound against it: no shape is
-    // recognized per message, and nothing is bound past this.
-    let schema = compiled.schema().expect("a bound term");
-    let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 48, "{names:?}");
-    for read in [
-        "cumqty",
-        "cxlqty",
-        "securityid",
-        "secaltidgrp",
-        "countryofissue",
-        "possdupflag",
-        "tradingunitperiodmultiplier",
-    ] {
-        assert!(names.contains(&read), "{read} is a working column");
-    }
-    let group = schema.get_field("secaltidgrp").expect("the group");
     assert!(
-        matches!(group.dtype(), DataType::Sequence(SequenceType::List(_))),
-        "a group is typed as the registry declares it: {}",
-        group.dtype()
+        compiled.schema().is_none() && compiled.derived().count() == 0,
+        "the native plan retains no generic schema or bound term"
     );
-    let derived: Vec<(i32, bool)> = compiled.derived().collect();
-    assert_eq!(
-        derived.len(),
-        29,
-        "every derivation is a shipped field's own; no crate column derives"
-    );
-    assert!(
-        derived.iter().all(|(_, bound)| *bound),
-        "every shipped term binds: {derived:?}"
-    );
-    assert!(
-        derived.windows(2).all(|pair| pair[0].0 < pair[1].0),
-        "swept in tag order"
-    );
-    for (tag, _) in derived {
-        let name = registry.field_by_tag(tag).unwrap().name();
-        assert!(
-            names.iter().any(|held| held.eq_ignore_ascii_case(name)),
-            "{name} is a column the working row can hold"
-        );
-    }
 
     // A mutation forgets the compiled list, and the next ask compiles the
     // registry as it stands then.
@@ -4648,17 +4622,42 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     edited.update(gross).unwrap();
     let after = edited.derivations().unwrap();
     assert!(!Arc::ptr_eq(&before, &after), "an update recompiles");
-    let names: Vec<String> = after
-        .schema()
-        .expect("a bound term")
+    assert!(
+        !after.is_native(),
+        "one edited rule selects the generic evaluator for the whole registry"
+    );
+    // The custom fallback's working schema is the ordered union of every
+    // column any term reads or fills, typed by the registry's own field.
+    let schema = after.schema().expect("a bound term");
+    let names: Vec<String> = schema
         .fields()
         .iter()
         .map(|field| field.name().to_owned())
         .collect();
+    for read in [
+        "cumqty",
+        "cxlqty",
+        "securityid",
+        "secaltids",
+        "countryofissue",
+        "possdupflag",
+        "tradingunitperiodmultiplier",
+    ] {
+        assert!(names.iter().any(|name| name == read), "{read}");
+    }
+    let group = schema.get_field("secaltids").expect("the group");
+    assert!(matches!(
+        group.dtype(),
+        DataType::Sequence(SequenceType::List(_))
+    ));
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
     // The edit reads a column another rule already read, so the working
     // schema is no wider.
     assert_eq!(names.len(), 48, "the edit reads a column another rule read");
+    let derived: Vec<(i32, bool)> = after.derived().collect();
+    assert_eq!(derived.len(), 29);
+    assert!(derived.iter().all(|(_, bound)| *bound), "{derived:?}");
+    assert!(derived.windows(2).all(|pair| pair[0].0 < pair[1].0));
 }
 
 #[test]
@@ -4668,6 +4667,7 @@ fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
     // terms over columns no message states.
     let registry = FixRegistry::new();
     let compiled = registry.derivations().unwrap();
+    assert!(!compiled.is_native());
     assert_eq!(compiled.derived().count(), 0);
     // And a message still answers its market, because the traits read the
     // FIX fields rather than a column: nothing here was filled, and the

@@ -158,7 +158,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     };
     assert!(map.keys_sorted());
     assert!(registry.get_field_by_tag(65_020).is_none());
-    assert_eq!(yggdryl::fix::GROUP_TAGS, [453, 454, 768]);
+    assert_eq!(yggdryl::fix::GROUP_TAGS, [453, 454, 768, 1907]);
 }
 
 #[test]

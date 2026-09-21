@@ -47,6 +47,7 @@ criterion_group!(
     enums::mime_parsing,
     enums::media_inference,
     enums::write_modes_and_io_identity,
+    enums::mic_exchange_code,
 );
 #[cfg(not(windows))]
 criterion_main!(types);

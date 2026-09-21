@@ -456,7 +456,8 @@ impl PyTextLine {
         self.inner.dropped_byte_size()
     }
 
-    /// The line's identity: the uuid its instant and its hash code derive.
+    /// The line's identity: `UUIDv7` over its millisecond instant, row-derived
+    /// sequence and body hash, with the source URL's cross hash as seed.
     ///
     /// A line is an event of the graph, and a message parsed out of it
     /// states this among its `srcuuids`.
@@ -472,8 +473,8 @@ impl PyTextLine {
         uuid_scalar(self.inner.get_crossuuid())
     }
 
-    /// The code the chain is named by: a `crosscode` capture where the row
-    /// header has one, and empty where it names none.
+    /// The code the chain is named by: the canonical source URL, and empty
+    /// where the line was read from no located source.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()

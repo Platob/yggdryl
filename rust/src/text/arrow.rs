@@ -104,9 +104,11 @@ fn text_lines(
     // name - before a byte is read.
     options.line_plan()?;
     let options = Arc::new(options.clone());
+    let raw = RawRows::new(source, url.clone(), Arc::clone(&options));
+    let url = url.map(Arc::new);
     Ok(TextLines {
-        raw: RawRows::new(source, url.clone(), Arc::clone(&options)),
-        url: url.map(Arc::new),
+        raw,
+        url,
         mtime,
         options,
     })

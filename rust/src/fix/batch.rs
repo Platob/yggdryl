@@ -913,6 +913,7 @@ impl RowReader {
             direction: direction.as_deref(),
             direction_pin: codec.direction(),
             source,
+            recdunix: None,
         };
         let messages = codec.parse_row_with(extras, &payload, mtime, options);
         // The capture's own cells, read where the row states them: a null

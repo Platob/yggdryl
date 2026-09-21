@@ -20,7 +20,7 @@ fn corpus() -> Vec<(&'static str, Scalar)> {
     )
     .expect("the generated record names are unique");
     let mut deep = Scalar::from("leaf");
-    for _ in 0..32 {
+    for _ in 0..crate::bench_profile::corpus(32, 8) {
         deep = Scalar::from_sequence([deep, Scalar::from(1)]);
     }
     let row = Scalar::from_sequence([

@@ -110,9 +110,10 @@ fn ulbridge_lifecycle_preserves_deliveries_and_identities_through_arrow() {
         .lifecycle(messages)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
-    // Two field-order duplicates collapse, while four bypass-risk metadata
-    // changes survive: 63 distinct source events and one expiry.
-    assert_eq!(direct.len(), 64);
+    // Complete four-part capture keys identify the bridge's repeated
+    // observations before the older content-key dedup runs: 31 deliveries
+    // and one expiry.
+    assert_eq!(direct.len(), 32);
     assert_eq!(
         direct
             .iter()
@@ -704,7 +705,7 @@ fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
             };
             assert!(
                 source == reparsed || same_code,
-                "row {at} changed FIX column {name}: {}",
+                "row {at} changed FIX column {name} from {source:?} to {reparsed:?}: {}",
                 written[at]
             );
         }

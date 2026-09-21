@@ -15,6 +15,39 @@
         }
       },
       {
+        "name": "execunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "execunix",
+          "FIX:tag": "65062"
+        }
+      },
+      {
+        "name": "recdunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "recdunix",
+          "FIX:tag": "65063"
+        }
+      },
+      {
+        "name": "refrecdunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "refrecdunix",
+          "FIX:tag": "65064"
+        }
+      },
+      {
         "name": "creaunix",
         "dtype": {
           "type": "null"
@@ -1080,13 +1113,13 @@
         }
       },
       {
-        "name": "secaltidgrp",
+        "name": "secaltids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "secaltidgrp"
+          "FIX:group": "secaltids"
         }
       },
       {
@@ -1108,6 +1141,27 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "trdregtimestamps"
+        }
+      },
+      {
+        "name": "noregulatorytradeids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "noregulatorytradeids",
+          "FIX:tag": "1907"
+        }
+      },
+      {
+        "name": "regulatorytradeids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:group": "regulatorytradeids"
         }
       },
       {

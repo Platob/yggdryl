@@ -22,7 +22,7 @@
 //!
 //! The standard header and trailer, because every message has them; the
 //! fields a financial consumer actually reads, because they are what a table
-//! is queried by; the three repeating groups worth persisting whole; the five
+//! is queried by; the four repeating groups worth persisting whole; the five
 //! facts this crate derives; and then, last, everything else.
 //!
 //! # Values not represented by columns stay at the end
@@ -101,10 +101,11 @@ pub const BODY_TAGS: [i32; 50] = [
 
 /// The repeating groups persisted whole rather than lifted flat.
 ///
-/// A group is the one shape a scalar column cannot hold, and these three are
+/// A group is the one shape a scalar column cannot hold, and these four are
 /// the ones a consumer actually reads back: who was on the trade, what the
-/// instrument's other identifiers were, and when each regulatory clock ran.
-pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
+/// instrument's other identifiers were, which regulatory identifiers the
+/// trade carries, and when each regulatory clock ran.
+pub const GROUP_TAGS: [i32; 4] = [453, 454, 768, 1907];
 
 /// The group holding the arrival record.
 ///
@@ -161,13 +162,15 @@ pub fn fix_schema_tags() -> Vec<i32> {
         CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
-        CURRUUID_TAG_NAME as CURRUUID, EXPRTIME_TAG_NAME as EXPRTIME,
-        IDENTIFIERS_TAG_NAME as IDENTIFIERS, METADATA_TAG_NAME as METADATA,
-        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
-        MSGPLUGINID_TAG_NAME as MSGPLUGINID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
-        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PREVUNIX_TAG_NAME as PREVUNIX,
-        PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
-        SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
+        CURRUUID_TAG_NAME as CURRUUID, EXECUNIX_TAG_NAME as EXECUNIX,
+        EXPRTIME_TAG_NAME as EXPRTIME, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
+        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
+        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
+        RECDUNIX_TAG_NAME as RECDUNIX, REFRECDUNIX_TAG_NAME as REFRECDUNIX,
+        SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SRCUUIDS_TAG_NAME as SRCUUIDS,
+        STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -181,13 +184,28 @@ pub fn fix_schema_tags() -> Vec<i32> {
             }
         }
     };
-    // When it happened: the instant itself, then the instants that instant
-    // is read against - created, followed, snapped, expiring - then the
-    // clocks the protocol states.
+    // When it happened: the settled instant, the execution and recording where
+    // stated, the recording clock of the merge reference, then the instants
+    // that instant is read against - created, followed, snapped, expiring -
+    // and the clocks the protocol states.
     band(
         &mut tags,
         &[
-            UNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, EXPRTIME.0, 52, 122, 60, 64, 75, 126, 62,
+            UNIX.0,
+            EXECUNIX.0,
+            RECDUNIX.0,
+            REFRECDUNIX.0,
+            CREAUNIX.0,
+            PREVUNIX.0,
+            SNAPUNIX.0,
+            EXPRTIME.0,
+            52,
+            122,
+            60,
+            64,
+            75,
+            126,
+            62,
             432,
         ],
     );
@@ -2079,6 +2097,25 @@ impl super::FixMsg {
         for index in 0..columns.len() {
             values.push(fitted_cell(index)?);
         }
+        // A group occurrence none of the fixed List's members can represent
+        // belongs wholly to the residual record. Its scalar counter must stay
+        // there with it: projecting the count beside a null List would claim
+        // that the fixed group represented occurrences it cannot describe.
+        // A bare scalar counter with no group still stands as stated.
+        for (group_index, group) in plan.iter().enumerate() {
+            let Some(counter) = group.counter else {
+                continue;
+            };
+            if !values[group_index].is_null() || self.index_of_group(counter).is_none() {
+                continue;
+            }
+            if let Some(counter_index) = plan
+                .iter()
+                .position(|held| held.tag == Some(counter) && held.counter.is_none())
+            {
+                values[counter_index] = crate::Scalar::Null;
+            }
+        }
         let entries = self.entries();
         let prunes = plan.iter().any(|column| column.entries);
         let mut represented = Vec::with_capacity(if prunes {
@@ -2238,6 +2275,13 @@ impl super::FixMsg {
                 (at, group_at)
             })
             .collect();
+        if !occurrences.is_empty()
+            && !placed
+                .iter()
+                .any(|(at, group_at)| at.is_some() || group_at.is_some())
+        {
+            return crate::Scalar::Null;
+        }
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
                 return occurrence.clone();

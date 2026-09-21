@@ -15,7 +15,9 @@ use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
     StructType,
 };
-use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField};
+use yggdryl::{
+    CfiCodeField, CountryField, CurrencyField, DxFeedExchangeFeed, MicCode, MicCodeField,
+};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
@@ -43,6 +45,51 @@ const CODED: [(&str, DataType, usize, &str); 11] = [
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),
 ];
+
+#[test]
+fn dxfeed_exchange_codes_resolve_under_the_feed_that_gives_them_meaning() {
+    use DxFeedExchangeFeed::{Cboe, Cme, CtaUtp, NasdaqBasic, NyseBqt, Otc, UsOptions};
+
+    let mappings = [
+        (
+            CtaUtp,
+            "A:XASE B:XBOS C:XCIS D:FINR F:TXSE G:24EQ H:EPRL I:XISE J:EDGA K:EDGX L:LTSE M:XCHI N:XNYS P:ARCX Q:XNAS U:MEMX V:IEXG W:CBSX X:XPSX Y:BATY Z:BATS",
+        ),
+        (Cboe, "A:EDGA X:EDGX Y:BATY Z:BATS"),
+        (NasdaqBasic, "B:XBOS F:FINC L:FINN Q:XNAS X:XPSX"),
+        (NyseBqt, "A:XASE C:XCIS D:FINY M:XCHI N:XNYS O:GOTC P:ARCX"),
+        (Otc, "U:OOTC V:OTCM"),
+        (
+            UsOptions,
+            "A:XASE B:XBOX C:XCBO D:EMLD E:EDGO H:GMNI I:XISX J:MCRY M:XMIO N:ARCO P:MPRL Q:XNDQ S:SPHR T:XBXO U:MXOP W:C2OX X:XPHO Z:BATO",
+        ),
+    ];
+    for (feed, mappings) in mappings {
+        for mapping in mappings.split_ascii_whitespace() {
+            let (exchange, mic) = mapping.split_once(':').unwrap();
+            assert_eq!(
+                MicCode::from_dxfeed_exchange_code(feed, exchange)
+                    .unwrap()
+                    .as_str(),
+                mic,
+                "{feed:?} {exchange}"
+            );
+        }
+    }
+
+    for (feed, exchange) in [(Cboe, "C"), (Cboe, "U"), (Cme, "G"), (Cme, "B")] {
+        let error = MicCode::from_dxfeed_exchange_code(feed, exchange)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(exchange), "{error}");
+        assert!(error.contains("no single MIC"), "{error}");
+    }
+    let error = MicCode::from_dxfeed_exchange_code(CtaUtp, "R")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("CTA/UTP"), "{error}");
+    assert!(error.contains("R"), "{error}");
+}
 
 #[test]
 fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
@@ -666,6 +713,19 @@ fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
     assert!(State::new("80FILLED").unwrap().is_done());
     assert!(State::new("90CANCELED").unwrap().is_cancelled());
     assert!(State::new("95REJECTED").unwrap().is_failed());
+    for held in ["40PARTFILL", "40TRADE", "80FILLED"] {
+        assert!(State::new(held).unwrap().is_execution(), "{held}");
+    }
+    for held in [
+        "40INPROGR",
+        "80COMPLETE",
+        "40TRDCORR",
+        "40TRDCXL",
+        "40TRDHOLD",
+        "80TRDRELS",
+    ] {
+        assert!(!State::new(held).unwrap().is_execution(), "{held}");
+    }
     for held in ["80FILLED", "90CANCELED", "95REJECTED"] {
         assert!(!State::new(held).unwrap().is_live(), "{held}");
     }

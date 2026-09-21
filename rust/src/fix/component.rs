@@ -51,6 +51,16 @@ fn singularize(stem: &str) -> SmolStr {
     SmolStr::new(&stem[..stem.len() - 1])
 }
 
+/// The one canonical name a repeating-group spelling resolves to.
+pub(crate) fn canonical_group_name(name: &str) -> SmolStr {
+    let folded = name.to_ascii_lowercase();
+    match folded.as_str() {
+        "secaltidgrp" | "securityaltid" => SmolStr::new_static("secaltids"),
+        "regulatorytradeidgrp" => SmolStr::new_static("regulatorytradeids"),
+        _ => SmolStr::new(folded),
+    }
+}
+
 pub(crate) fn group_name(counter: &crate::Field) -> SmolStr {
     let spelling = counter.display().unwrap_or_else(|| counter.name());
     let stem = spelling.strip_prefix("No").unwrap_or(spelling);
@@ -69,7 +79,7 @@ pub(crate) fn group_name(counter: &crate::Field) -> SmolStr {
     } else {
         stem.to_owned()
     };
-    SmolStr::new(name.to_ascii_lowercase())
+    canonical_group_name(&name)
 }
 
 pub(crate) fn entry_name(group: &str) -> SmolStr {

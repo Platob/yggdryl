@@ -63,6 +63,62 @@ const CAPTURE: &[&str] = &[
 const SILENT: [usize; 5] = [7, 8, 11, 12, 13];
 
 #[test]
+fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
+    const DIRECT: i64 = 1_704_190_530_100_000_000;
+    const REFERENCE: i64 = 1_704_190_530_200_000_000;
+    const CARRIER: i64 = 1_704_190_530_900_000_000;
+
+    let reader = reader();
+    let raw = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|122=20240102-10:15:30.200|629=20240102-10:15:30.300|10=0|",
+        )
+        .expect("a raw message");
+    assert_eq!(
+        raw.get_recdunix(),
+        None,
+        "FIX sending clocks are not carrier recording time"
+    );
+    assert_eq!(raw.get_refrecdunix(), None);
+
+    let options = Arc::new(yggdryl::text::TextOptions::new());
+    let carried = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=8|10=0|").unwrap(),
+        Arc::clone(&options),
+    )
+    .unwrap()
+    .with_handle_mtime(CARRIER);
+    let message = reader
+        .parse_text_line(&carried)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(message.get_recdunix(), Some(CARRIER));
+    assert_eq!(message.get_refrecdunix(), Some(CARRIER));
+
+    let direct = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(
+            b"8=FIX.4.4|35=8|65063=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
+        )
+        .unwrap(),
+        options,
+    )
+    .unwrap()
+    .with_handle_mtime(CARRIER);
+    let message = reader
+        .parse_text_line(&direct)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(message.get_recdunix(), Some(DIRECT));
+    assert_eq!(message.get_refrecdunix(), Some(REFERENCE));
+}
+
+#[test]
 fn every_capture_row_states_its_messages_and_none_is_skipped() {
     let reader = reader();
     for (at, row) in CAPTURE.iter().enumerate() {
@@ -1531,7 +1587,7 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
     // counter stated.
     let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
-    let alternates = super::sequence(message.by_name("secaltidgrp").unwrap());
+    let alternates = super::sequence(message.by_name("secaltids").unwrap());
     let ids: Vec<&str> = alternates
         .iter()
         .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())

@@ -6,17 +6,101 @@ use std::sync::Arc;
 
 use yggdryl::fix::FIXENTRIES_COLUMN;
 
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType, fix_schema,
-    fix_schema_carrying,
+    BloombergCode, CusipCode, DataType, FIGICode, Field, FixCodec, FixEntry, FixMsg, FixRegistry,
+    IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
     let reader = super::fixed_codec(Arc::clone(&registry));
     (registry, reader)
+}
+
+#[test]
+fn instrument_identifier_setters_fill_secaltids() {
+    let (_, reader) = reader();
+    let mut message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
+        .expect("an order with one unrelated alternate identifier");
+
+    message.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
+    message.set_cusipcode(Some(CusipCode::new("037833100").unwrap()));
+    message.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
+    message.set_bloombergcode(Some(BloombergCode::new("AAPL US EQUITY").unwrap()));
+    message.set_figicode(Some(FIGICode::new("BBG000BLNQ16").unwrap()));
+
+    let alternates = |message: &FixMsg| {
+        super::sequence(
+            message
+                .by_name("secaltids")
+                .expect("the alternate identifiers"),
+        )
+        .into_iter()
+        .map(|occurrence| {
+            let values = occurrence.as_sequence().expect("an occurrence");
+            (
+                values[0].as_str().expect("an identifier").to_owned(),
+                values[1].as_str().expect("a source").to_owned(),
+            )
+        })
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        alternates(&message),
+        [
+            ("AAPL.O".to_owned(), "5".to_owned()),
+            ("US0378331005".to_owned(), "4".to_owned()),
+            ("037833100".to_owned(), "1".to_owned()),
+            ("2046251".to_owned(), "2".to_owned()),
+            ("AAPL US EQUITY".to_owned(), "A".to_owned()),
+            ("BBG000BLNQ16".to_owned(), "S".to_owned()),
+        ]
+    );
+    assert!(message.get_by_name("secaltidgrp").is_none());
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 454)
+            .and_then(FixEntry::value),
+        Some("6")
+    );
+
+    // A second value for one source replaces its occurrence rather than
+    // adding a duplicate. Clearing another source removes only that one;
+    // the unrelated RIC occurrence remains where the input stated it.
+    message.set_isincode(Some(IsinCode::new("US5949181045").unwrap()));
+    message.set_bloombergcode(None);
+    assert_eq!(
+        alternates(&message),
+        [
+            ("AAPL.O".to_owned(), "5".to_owned()),
+            ("US5949181045".to_owned(), "4".to_owned()),
+            ("037833100".to_owned(), "1".to_owned()),
+            ("2046251".to_owned(), "2".to_owned()),
+            ("BBG000BLNQ16".to_owned(), "S".to_owned()),
+        ]
+    );
+
+    message.set_isincode(None);
+    message.set_cusipcode(None);
+    message.set_sedolcode(None);
+    message.set_figicode(None);
+    assert_eq!(
+        alternates(&message),
+        [("AAPL.O".to_owned(), "5".to_owned())]
+    );
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 454)
+            .and_then(FixEntry::value),
+        Some("1")
+    );
 }
 
 #[test]
@@ -145,7 +229,18 @@ fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names
         Some("SESSION-2:CONTEXT-2")
     );
 
+    let implicit_uuid = message.get_curruuid();
     message.set_crosscode("EXPLICIT".to_owned());
+    assert_eq!(
+        message.get_crosshashcode(),
+        yggdryl::xxhash::xxh3(b"EXPLICIT")
+    );
+    assert_ne!(message.get_curruuid(), implicit_uuid);
+    assert_eq!(message.get_curruuid(), message.time_uuid().unwrap());
+    assert_eq!(
+        message.get_crossuuid(),
+        yggdryl::Uuid::from_v8(u128::from(message.get_crosshashcode()))
+    );
     message
         .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("SESSION-3"))
         .unwrap();
@@ -422,7 +517,9 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
 fn a_row_reads_back_into_the_message_that_made_it() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let parsed = reader.sole_line(ORDER).unwrap();
+    let mut parsed = reader.sole_line(ORDER).unwrap();
+    parsed.set_recdunix(Some(100));
+    parsed.set_refrecdunix(Some(200));
     let row = parsed.into_row(&schema).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -454,6 +551,8 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.get_crossuuid(), parsed.get_crossuuid());
     assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
     assert_eq!(held.get_crosshashcode(), parsed.get_crosshashcode());
+    assert_eq!(held.get_recdunix(), Some(100));
+    assert_eq!(held.get_refrecdunix(), Some(200));
 }
 
 #[test]

@@ -459,7 +459,7 @@ impl<'field> FixField<'field> {
     ///
     /// One term in the crate's expression grammar over the message's fields,
     /// spelled by their canonical folded names - `orderqty`, `cumqty`,
-    /// `secaltidgrp` - and evaluated by every
+    /// `secaltids` - and evaluated by every
     /// [parse](crate::FixCodec::parse_line): a field carrying one is a
     /// column the parse fills where the message left it unsaid. `None` is a
     /// field nothing derives.

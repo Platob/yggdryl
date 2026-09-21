@@ -447,13 +447,13 @@
         }
       },
       {
-        "name": "regulatorytradeidgrp",
+        "name": "regulatorytradeids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "regulatorytradeidgrp"
+          "FIX:group": "regulatorytradeids"
         }
       },
       {

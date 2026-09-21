@@ -45,16 +45,16 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 29 definitions in tag
-# order from 65003, 27 scalar graph/category/identifier facts and two Map
+# What the crate itself adds beside the specification: 32 definitions in tag
+# order from 65003, 30 scalar graph/category/identifier facts and two Map
 # groups. The six normalized identifiers are crate columns; CFI remains FIX's
 # standard tag 461, as do prices, quantities and lanes.
-CRATED = 29
-# What ``FixRegistry()`` holds: those 27 scalar crate fields, SendingTime (52)
+CRATED = 32
+# What ``FixRegistry()`` holds: those 30 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the two Map groups. ``len`` counts groups;
-# iteration walks the 29 scalars alone.
-SEEDED = 31
-SEEDED_SCALARS = 29
+# iteration walks the 32 scalars alone.
+SEEDED = 34
+SEEDED_SCALARS = 32
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -442,7 +442,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 27 scalar event, category and
+    # In tag order, one block from 65003: 30 scalar event, category and
     # normalized-identifier facts plus the two Maps. ISIN, CUSIP, SEDOL,
     # Bloomberg, FIGI and MIC are crate columns; CFI keeps FIX's standard tag 461.
     # Price, quantity and lanes remain their standard FIX fields.
@@ -476,10 +476,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "bloombergcode",
         "miccode",
         "figicode",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65061
+    assert tags[0] == UNIX_TAG and tags[-1] == 65064
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -497,7 +500,16 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creaunix", "snapunix", "exprtime"):
+    for name in (
+        "currunix",
+        "prevunix",
+        "creaunix",
+        "snapunix",
+        "exprtime",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
+    ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
     assert fields["msgcat"].dtype == DataType.fixed_ascii(4)

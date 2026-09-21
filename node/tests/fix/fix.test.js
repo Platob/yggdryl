@@ -1998,12 +1998,12 @@ test('the lifecycle redirects categories snapshots dedup and normalized rows', (
 test('the fixed schema places category beside message type and normalized codes once', () => {
   const registry = seed()
   const schema = fix.schema(registry)
-  assert.equal(CRATE.length, 29)
-  assert.equal(CRATE_SCALARS.length, 27)
-  assert.equal(new fix.FixRegistry().size, 31)
-  assert.equal(scalars(new fix.FixRegistry()).length, 29)
-  assert.equal(schema.fieldLen, 123)
-  assert.equal(fix.schemaTags().length, 119)
+  assert.equal(CRATE.length, 32)
+  assert.equal(CRATE_SCALARS.length, 30)
+  assert.equal(new fix.FixRegistry().size, 34)
+  assert.equal(scalars(new fix.FixRegistry()).length, 32)
+  assert.equal(schema.fieldLen, 128)
+  assert.equal(fix.schemaTags().length, 123)
   const at = schema.indexOf('msgtype')
   assert.deepEqual(
     [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],

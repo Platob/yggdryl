@@ -20,11 +20,14 @@ ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
-# The sixteen event columns every line batch opens with: the line as the
-# event it is, the same sixteen a FIX row parsed out of it opens with.
+# The nineteen event columns every line batch opens with: the line as the
+# event it is, the same nineteen a FIX row parsed out of it opens with.
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
+    "execunix",
+    "recdunix",
+    "refrecdunix",
     "exprtime",
     "prevunix",
     "snapunix",
@@ -198,7 +201,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     assert located.startswith("file:///") and located.endswith("app.log")
     assert table.column("sourceurl").to_pylist() == [located] * 3
 
-    # The sixteen event columns every row opens with: the line as the event
+    # The nineteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
     # placed by its row number, named by the captures it matched - and a
     # null wherever it states nothing.
@@ -208,14 +211,17 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
         return {
             "currunix": MTIME,
             "creaunix": None,
+            "execunix": None,
+            "recdunix": None,
+            "refrecdunix": None,
             "exprtime": None,
             "prevunix": None,
             "snapunix": None,
             "curruuid": identity,
-            "crossuuid": identity,
-            "crosscode": None,
+            "crossuuid": str(table.column("crossuuid")[row].as_py()),
+            "crosscode": table.column("crosscode")[row].as_py(),
             "currhashcode": table.column("currhashcode")[row].as_py(),
-            "crosshashcode": 0,
+            "crosshashcode": table.column("crosshashcode")[row].as_py(),
             "prevuuid": None,
             "seqnum": seqnum,
             "parentuuids": None,

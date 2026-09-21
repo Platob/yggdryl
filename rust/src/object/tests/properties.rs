@@ -251,7 +251,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     assert!(
         found
             .iter()
-            .any(|(name, value)| name == "H" && !value.is_empty()),
+            .any(|(name, value)| name.eq_ignore_ascii_case("H") && !value.is_empty()),
         "expected the sweep to reach PATH: {found:?}"
     );
 
@@ -260,7 +260,10 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     let found = ObjectOptions::default()
         .with_environment_prefixes(["PA", "PAT"])
         .environment_properties();
-    assert!(found.iter().any(|(name, _)| name == "H"), "{found:?}");
+    assert!(
+        found.iter().any(|(name, _)| name.eq_ignore_ascii_case("H")),
+        "{found:?}"
+    );
 
     // And nothing at all when the environment is shut off, whatever the
     // prefixes say.

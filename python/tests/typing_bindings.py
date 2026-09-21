@@ -260,7 +260,7 @@ coupled_unit: str = coupled_value.unit
 coupled_digest_half: xxhash.Digest = coupled_value.digest
 coupled_bytes: bytes = bytes(coupled_value)
 coupled_instant: Scalar = coupled_value.into_datetime()
-coupled_uuid: Scalar = coupled_value.into_uuid()
+coupled_uuid: Scalar = coupled_value.into_uuid(0, 0)
 coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)

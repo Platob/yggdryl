@@ -363,12 +363,12 @@ pub struct FixRegistry {
     /// and every row read against it, and forgotten by every change to the
     /// fields.
     memo: super::memo::Memo,
-    /// The `FIX:derivation` of every field, compiled once on the first
-    /// enrichment or row fill and shared by every codec and message reading
-    /// this registry - or the refusal that compile answered, kept the same
-    /// way so a registry whose rules do not compile refuses every ask and
-    /// compiles once; emptied by every change to the fields or the catalog,
-    /// so an edited derivation is the one the next reader evaluates.
+    /// The `FIX:derivation` plan, selected once on the first enrichment or
+    /// row fill and shared by every codec and message reading this registry.
+    /// The exact shipped set retains only its native evaluator marker; any
+    /// customization compiles and retains generic bound terms for the whole
+    /// registry. A compile refusal is kept the same way, and every field or
+    /// catalog change empties the cache so the next reader sees the edit.
     derivations:
         OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
     /// The names a message digests its lifted facts under, read off the
@@ -1935,16 +1935,18 @@ impl FixRegistry {
         super::MsgDirection::from_registry(self)
     }
 
-    /// The `FIX:derivation` of every field, compiled once and shared.
+    /// The `FIX:derivation` plan, selected once and shared.
     ///
     /// Built from what the registry holds on the first ask and kept until a
     /// field or a definition changes, so a stream of a million messages
-    /// compiles its dictionary's derivations once and a registry edit is
-    /// what the next reader evaluates. Cached here rather than on the codec
-    /// because a row fill - [`FixMsg::into_row`](super::FixMsg::into_row),
-    /// which has no codec in hand - evaluates the crate columns' derivations
-    /// through the same compiled list, and a mutation pays a pointer reset
-    /// and nothing else. A refusal is kept exactly as a compiled list is: a
+    /// proves its dictionary's derivations once, selects the direct shipped
+    /// plan only for the complete canonical set without parsing, binding or
+    /// retaining generic terms, and sends any custom set to the compiled
+    /// generic evaluator as a whole. A registry edit is what the next reader
+    /// evaluates. Cached here rather than on the codec because a row fill -
+    /// [`FixMsg::into_row`](super::FixMsg::into_row), which has no codec in
+    /// hand - uses the same selected plan, and a mutation pays a pointer
+    /// reset and nothing else. A refusal is kept exactly as a compiled list is: a
     /// derivation naming a field the dictionary lacks refuses every ask,
     /// on every door, until a field changes, and is compiled once rather
     /// than once per ask.
