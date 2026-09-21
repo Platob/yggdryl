@@ -9,7 +9,7 @@ Every US-ASCII string width, every registered code, every refusal, and a declare
 | Source | `scripts/build_docs_playground.js` runs the real Node package over a fixed corpus |
 | Manifest | `docs/assets/playground.json`, committed and checked for drift by the addon build job |
 | Browser | Renders the manifest only; nothing is computed client-side (the addon is native, so no WebAssembly target exists) |
-| Contract proven | [Strings & bytes](text.md) for `ascii` and `fixed_ascii(n)`; [Codes](codes.md) for the registered codes, packed integers and declared vocabularies |
+| Contract proven | [String](text/string.md) for `ascii` and `fixed_ascii(n)`; [Codes](codes/index.md) for the registered codes, packed integers and declared vocabularies |
 | Manifest keys | `widths[]`: `dtype`, `fixedByteWidth` (null on the variable `ascii` and on every code, whose width bounds text rather than laying it out), `codeWidth` (null on every string), `kind` (`text` for a string, `code` for a code), `arrow`, `extensionName`, `extensionDocument`; `encode[]` / `decode[]` cases per `dtype`; `vocabulary`: a `StringEnum` declared on a `currency` field; `versions[]` |
 
 

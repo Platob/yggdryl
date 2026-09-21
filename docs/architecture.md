@@ -53,7 +53,8 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation a
 | Traits say what, enums say which | `Codec`, `MediaType`, `IOKind`, `IOMode` dispatch; `Holder` and `Media` carry one native implementation across bindings. |
 | Arrow speaks batches | IPC, Parquet, text records, and Iceberg expose bounded `BatchReader` streams, never collected batches. |
 | Text speaks values | JSON, YAML, and TOML parse and render one [`Scalar`](media/structured.md); the exact field directs nullability, order, and dictionaries. |
-| A scheme owns three pages | Every [Media](media/index.md) scheme answers the same two surfaces, so it documents them the same way: what it is, rows as native scalars, rows as Arrow batches. |
+| A scheme owns a direction, not a surface | Every [Media](media/index.md) scheme answers the same two surfaces, so it documents them the same way: an overview, a read page, a write page, and one page per feature it alone has. Reading and writing each show native scalars first, then Arrow batches, in all three languages. |
+| A family owns a subsection | Every [Types](types/index.md) family is a folder: `index.md` for what its leaves share, and one page per type, each presenting its datatype, its field, its scalar, its Arrow storage, then its features. |
 | One expression, three tiers | [`Expression`](expression/index.md) parses once, binds once, then evaluates a row, a batch, or container statistics; statistics answer `false` only when no row can match. |
 | One shape per hierarchy level | Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, `is_empty`; dotted names descend. |
 | Bindings are views | Python and JavaScript coerce once at the boundary and call the core; parsing, validation, hashing, and conversion stay native. |

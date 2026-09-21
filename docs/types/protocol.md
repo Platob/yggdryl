@@ -7,7 +7,7 @@ Field metadata the library reads: reserved keys, `SCHEME:name` properties behind
 | Key | Datatype and rule |
 | --- | --- |
 | `PARQUET:field_id` | i32, canonicalized on write |
-| `FIELD:enum` | the `StringEnum` document ([Codes](codes.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
+| `FIELD:enum` | the `StringEnum` document ([Codes](codes/index.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
 | `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors |
 | `FIELD:partition` | boolean; `true` on partition columns, absent elsewhere |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |

@@ -790,7 +790,7 @@ The committed dictionary folds the FIX 4.0 to 5.0 SP2 listings into each set,
 so a value an older version declared and the newest dropped is a code of the
 set like any other: `ExecType(150)` `1` and `2`, the partial fill and the fill
 FIX 4.3 folded into `Trade`, are `PartiallyFilled` and `Filled`, the names an
-element's [state](../types/codes.md) reads. The set states one reading of each and dates
+element's [state](../types/codes/state.md) reads. The set states one reading of each and dates
 none of them.
 
 A legacy name that folds onto a current one takes the suffix `Legacy`, and so

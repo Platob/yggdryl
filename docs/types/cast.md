@@ -108,7 +108,7 @@ shared rather than rebuilt. `u64::MAX` reads as `-1`, and back.
 
 It is a preference, not a mode. A pair that is *not* the same bytes - two different widths, or
 text and a number - takes the ordinary conversion, and a datatype whose values follow a rule
-(a [fixed string](text.md), a [registered code](codes.md), a [UUID](uuid.md), a [version](text.md#versions))
+(a [fixed string](text/string.md), a [registered code](codes/index.md), a [UUID](uuid.md), a [version](version.md))
 keeps that rule: four arbitrary bytes are not a currency merely because a currency is four bytes.
 
 Nullability is unaffected: the reading says what the bytes mean, and `nullability` still says
@@ -727,7 +727,7 @@ no behavior of its own.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
-- A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([Strings & bytes](text.md#casts)). Under `safe` a refused cell is null, under strict the row and column are named.
+- A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null, under strict the row and column are named.
 - A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
 - A code or a UUID source entering a string -> read as the text the code holds and as the canonical spelling of the identifier, under the target's own layout, charset and bound: one `StringIngest`, not a second renderer per source.
 - A fixed-width byte target -> `BytesIngest` too: a cell that does not fill the width exactly is refused naming the field, the row and both lengths, rather than left to Arrow's builder to complain about a slice. A source whose own width is declared and disagrees is refused at plan time instead.
@@ -741,23 +741,6 @@ no behavior of its own.
 - A required `bits` target over source nulls -> the canonical default under `default`, refused by path under `strict`; the buffer is rebuilt only when a null is actually filled.
 - A batch of another schema handed to a compiled plan -> error naming both schemas; a plan is compiled for one source.
 - A reader whose source schema is already the target, under `default` -> the reader itself, unwrapped; under `strict` it is wrapped, because a non-null Arrow field can still carry a logical null in a nested child.
-
-## Performance
-
-Row canonicalization over a three-column row - `utf8`, `binary`, `currency` - at two payload
-sizes. Containerized x86_64 Linux, Intel Xeon, rustc 1.94.1 release, Criterion point estimates.
-`unchanged` hands the root a row already in its declared representation; `relayout` hands the
-same row to a `large_utf8`/`large_binary` root. Both are flat in the payload because neither
-reads it: the cost is the walk over the three columns, not the bytes behind them.
-
-| row | 64 B payload | 64 KiB payload |
-| --- | ---: | ---: |
-| unchanged | 235 ns | 238 ns |
-| relayout | 280 ns | 275 ns |
-
-```bash
-cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/canonicalize_row'
-```
 
 ## Commands
 
@@ -784,6 +767,8 @@ cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/canonicaliz
 
 ## Performance
 
+### Compiling a plan once
+
 Compiling the cast once against compiling it per batch, over batches of 64 rows through a
 three-column root that widens one column, drops one, and defaults one. One containerized x86_64
 Linux run: Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO. Criterion
@@ -805,4 +790,21 @@ tests keep the row assertions without warm-up, samples or timing thresholds.
 
 ```bash
 cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan
+```
+
+### Row canonicalization
+
+Row canonicalization over a three-column row - `utf8`, `binary`, `currency` - at two payload
+sizes. Containerized x86_64 Linux, Intel Xeon, rustc 1.94.1 release, Criterion point estimates.
+`unchanged` hands the root a row already in its declared representation; `relayout` hands the
+same row to a `large_utf8`/`large_binary` root. Both are flat in the payload because neither
+reads it: the cost is the walk over the three columns, not the bytes behind them.
+
+| row | 64 B payload | 64 KiB payload |
+| --- | ---: | ---: |
+| unchanged | 235 ns | 238 ns |
+| relayout | 280 ns | 275 ns |
+
+```bash
+cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/canonicalize_row'
 ```

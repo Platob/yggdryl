@@ -19,28 +19,37 @@ A handle's declared media type names one scheme, and every scheme answers the sa
 
 ## Schemes
 
-Each scheme owns three pages: what it is, how rows cross as native scalars, and how they cross as Arrow.
+Each scheme owns an overview, a read page, a write page, and a page per feature it alone has; reading and writing each show native scalars first, then Arrow, in Rust, Python and JavaScript.
 
-| Scheme | Declared by | Overview | Scalars | Arrow |
+| Scheme | Declared by | Overview | Read | Write |
 | --- | --- | --- | --- | --- |
-| Arrow IPC | `application/vnd.apache.arrow.stream`, `.arrows` | [Arrow IPC](ipc/index.md) | [rows](ipc/scalar.md) | [batches](ipc/arrow.md) |
-| Apache Parquet | `application/vnd.apache.parquet`, `.parquet` | [Parquet](parquet/index.md) | [rows](parquet/scalar.md) | [batches](parquet/arrow.md) |
-| Apache Avro | `application/avro`, `.avro` | [Avro](avro/index.md) | [containers](avro/scalar.md) | [batches](avro/arrow.md) |
-| Plain text | `text/plain`, `.txt`, `.log` | [Plain-text records](text/index.md) | [lines](text/scalar.md) | [batches](text/arrow.md) |
-| JSON | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | [JSON](json/index.md) | [documents](json/scalar.md) | [rows](json/arrow.md) |
-| YAML | `application/yaml`, `.yaml` | [YAML](yaml/index.md) | [documents](yaml/scalar.md) | [rows](yaml/arrow.md) |
-| TOML | `application/toml`, `.toml` | [TOML](toml/index.md) | [documents](toml/scalar.md) | [rows](toml/arrow.md) |
-| Apache Iceberg | a table folder, not a leaf | [Iceberg](iceberg/index.md) | - | [reads](iceberg/read.md), [writes](iceberg/write.md) |
+| Arrow IPC | `application/vnd.apache.arrow.stream`, `.arrows` | [Arrow IPC](ipc/index.md) | [read](ipc/read.md) | [write](ipc/write.md) |
+| Apache Parquet | `application/vnd.apache.parquet`, `.parquet` | [Parquet](parquet/index.md) | [read](parquet/read.md) | [write](parquet/write.md) |
+| Apache Avro | `application/avro`, `.avro` | [Avro](avro/index.md) | [read](avro/read.md) | [write](avro/write.md) |
+| Plain text | `text/plain`, `.txt`, `.log` | [Plain-text records](text/index.md) | [read](text/read.md) | [write](text/write.md) |
+| JSON | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | [JSON](json/index.md) | [read](json/read.md) | [write](json/write.md) |
+| YAML | `application/yaml`, `.yaml` | [YAML](yaml/index.md) | [read](yaml/read.md) | [write](yaml/write.md) |
+| TOML | `application/toml`, `.toml` | [TOML](toml/index.md) | [read](toml/read.md) | [write](toml/write.md) |
+| Apache Iceberg | a table folder, not a leaf | [Iceberg](iceberg/index.md) | [read](iceberg/read.md) | [write](iceberg/write.md) |
 
-Iceberg is a table over a folder rather than one leaf, so both surfaces live on its own read and write pages.
+Iceberg is a table over a folder rather than one leaf, so its scheme is the folder it is handed rather than a media type on a name; the two directions still read and write the same way.
+
+| Scheme | Feature pages | Owns |
+| --- | --- | --- |
+| Arrow IPC | [Options](ipc/options.md), [Pushdown](ipc/pushdown.md) | `Ipc<H>` and `IpcOptions`; column projection at decode |
+| Apache Parquet | [Pushdown](parquet/pushdown.md), [Compression](parquet/compression.md), [Footer](parquet/footer.md) | the projection mask; page codecs and levels; footer metadata, statistics, and the caching `Parquet<H>` wrapper |
+| Apache Avro | [Schemas](avro/schemas.md), [Blocks](avro/blocks.md) | canonical form, fingerprints, resolution; the block codec and its limits |
+| Plain text | [Lines](text/lines.md), [Options](text/options.md) | `TextLine` and its entry tree; every `TextOptions` setting |
+| JSON | [Values](json/values.md) | what a bare parse proves, and what a declared `Field` changes |
+| YAML | [Values](yaml/values.md) | the same for YAML's own spellings and tags |
+| TOML | [Values](toml/values.md) | the same for TOML, including its four date/time forms |
+| Apache Iceberg | [Metadata](iceberg/metadata.md), [Partitions](iceberg/partitions.md), [Schema](iceberg/schema.md), [Catalog](iceberg/catalog.md) | table metadata, snapshots and commits; `PartitionSpec` and its transforms; evolution and field ids; the warehouse over one folder |
 
 | Shared page | Owns |
 | --- | --- |
 | [RecordOptions](options.md) | the declared root, `batch_row_size`, identity, shared by every record encoding |
 | [Structured documents](structured.md) | the `Format` vocabulary, limits, formatting, and the facade over JSON, YAML, and TOML |
 | [Placeholders](placeholders.md) | the Jinja-style `{{ }}` contract YAML and TOML share |
-| [Parquet footer](parquet/footer.md) | footer metadata, statistics, and the caching `Parquet<H>` wrapper |
-| [Iceberg schema](iceberg/schema.md), [catalog](iceberg/catalog.md) | evolution and field ids, the warehouse over one folder |
 
 ## The two surfaces
 
@@ -49,7 +58,7 @@ Iceberg is a table over a folder rather than one leaf, so both surfaces live on 
 | Scalars | `overwrite_records`, `append_records`, `merge_records`, `read_records`; `read_scalar` and `write_scalar` for a document | native rows: a tuple, a mapping, a dataclass, a plain object, a [`Scalar`](../types/scalar.md) |
 | Arrow | `read_arrow_reader`, `read_arrow_field`, the three `*_arrow_reader` intents; `read_arrow` and `write_arrow` | an [`arrow::BatchReader`](../arrow/readers.md), one batch at a time |
 
-Choosing the scheme is the only thing that changes; the calls stay the same.
+Choosing the scheme is the only thing that changes; the calls stay the same, and every scheme shows both surfaces on its read page and its write page, scalars first.
 
 ## Use
 

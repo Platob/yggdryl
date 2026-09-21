@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the twelve [codes](codes.md) |
+| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
 | Identity | `id()`, `kind()`: 84 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -15,7 +15,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
 | Rust only | the enum itself |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
-| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([Strings & bytes](text.md#serialized-shape)) |
+| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
 
 ## Use
 
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |

@@ -1,11 +1,12 @@
 # Iceberg reads
 
-Scans, plans, time travel, the inspection readers, the filtered writes that share the planner, and parallel decoding.
+Rows out of a table - as native scalars, as Arrow batches - planned from the metadata before a data file opens.
 
 ## Contract
 
 | Item | Behavior |
 | --- | --- |
+| Native rows | the folder *is* the table, so Python `read_records` and JavaScript `readRecords` reach it; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Projection | `scan(Some(&field))` gives each file its own projection mask; `None` reads every column |
 | Filter | `(column, value)` pairs, text parsed through the column's datatype, are sugar over `*_matching`, which takes a whole [expression](../../expression/index.md); a `where` on the record options is pushed into the plan whole, and the read decodes only the columns the `select` and `where` name |
 | `ScanPlan` | `record_count`, `files_planned`, `files_skipped`, `manifests_read`, `manifests_skipped`, decided before any data file opens |
@@ -18,6 +19,115 @@ Scans, plans, time travel, the inspection readers, the filtered writes that shar
 | Parallel read | needs `read.parallelism` >= 2 and `read.parallel.min-files` (default 16) files of `read.parallel.min-file-size-bytes` (default 4 MiB); default parallelism is the host's, clamped to 1..=8; plan order |
 
 ## Use
+
+Native rows first: the folder *is* the table, so the ordinary record surface reaches it and hands back one mapping per row. Rust reads Arrow and crosses into the value model in the same call.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType};
+
+    struct Quote(i64, &'static str);
+
+    impl From<Quote> for Scalar {
+        fn from(row: Quote) -> Self {
+            Scalar::from_sequence([Scalar::from(row.0), Scalar::from(row.1)])
+        }
+    }
+
+    let schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+    ])?)
+    .required_field("row");
+
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-native-read");
+    let _ = std::fs::remove_dir_all(&path);
+    Table::create(Folder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
+
+    // The folder *is* the table, so the ordinary record surface reaches it, and
+    // its options come from the metadata before a single data file exists.
+    let mut folder = Folder::new(&path)?;
+    let base = folder.record_options()?;
+    // The table's stored schema declares the rows: a native row is an ordered
+    // sequence under it.
+    let options = base.clone().with_field(folder.read_arrow_field(&base)?);
+    folder.overwrite_records([Quote(1, "XNAS"), Quote(2, "XNYS")], &options)?;
+
+    // Rust reads Arrow, then crosses into the value model in one call: a scan
+    // answers a sequence of ordered row sequences.
+    let rows = folder.read_arrow(Some(&options))?.into_scalar()?;
+    let venues = rows
+        .as_sequence()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|row| row.as_sequence().and_then(|row| row[1].as_str()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(venues, ["XNAS", "XNYS"]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string(), nullable=False),
+    ])
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns)
+
+    # A table takes plain rows, with no Arrow holder and no schema of their own.
+    table.append([{"id": 1, "venue": "XNAS"}, {"id": 2, "venue": "XNYS"}])
+
+    # The folder *is* the table, so the ordinary record surface reads it back.
+    folder = IOBase(path)
+    rows = list(folder.read_records(options=folder.record_options()))
+    assert len(rows) == 2
+    assert [row["venue"] for row in rows] == ["XNAS", "XNYS"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, IOBase, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+
+    const table = iceberg.Table.create(root, schema)
+    // A table takes plain objects, with no Arrow holder and no schema of their own.
+    table.append([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: 'XNYS' }])
+
+    // The folder *is* the table, so the ordinary record surface reads it back.
+    const folder = IOBase.from(root)
+    const rows = [...folder.readRecords(folder.recordOptions())]
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map((row) => row.venue), ['XNAS', 'XNYS'])
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+## Rows as Arrow batches
 
 The target names the columns to keep; the cast to the scan's root reads an evolved table as one shape.
 
@@ -282,7 +392,7 @@ Every level prunes:
 | Manifest entry | the file's partition tuple | one data file, unopened |
 | Data file | per-column bounds and null counts | one data file, unopened |
 
-Each level answers the [expression](../../expression/index.md) from its own statistics; a file's path answers every free [`&holder.*`](../../expression/holder.md) attribute before a byte is read. `scan_where` and `plan` build the expression from pairs; `scan_matching` and `plan_matching` take the whole language.
+Each level answers the [expression](../../expression/index.md) from its own statistics; a file's path answers every free [`&holder.*`](../../expression/holder.md) attribute before a byte is read. `scan_where` and `plan` build the expression from pairs; `scan_matching` and `plan_matching` take the whole language. What each level stores is on [Metadata](metadata.md), and the partition tuple it prunes by on [Partitions](partitions.md).
 
 === "Rust"
 

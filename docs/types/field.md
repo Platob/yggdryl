@@ -629,7 +629,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version`, `types.figi` / `fields.figi` |
 
-[Geospatial](geospatial.md), [Strings & bytes](text.md), [Codes](codes.md), [UUID](uuid.md), and [Version](text.md#versions) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::FIGICode`; `DataType::FIGICode.shared_field()` answers that shared field.
+[Geospatial](geospatial/index.md), [Strings & bytes](text/index.md), [Codes](codes/index.md), [UUID](uuid.md), and [Version](version.md) aliases follow this pattern; a registered code builds its own datatype, not a fixed string. Rust keeps one cached parameter-free field for `DataType::FIGICode`; `DataType::FIGICode.shared_field()` answers that shared field.
 
 ## Converting to one native field
 
@@ -831,7 +831,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     !!! note "Rust and Python only"
         JavaScript has no YAML or TOML writer; it reads and writes the same model as JSON
         through `toJSON`, `toJSONBytes`, `Field.fromJSON`, and `Field.fromJSONBytes`
-        ([Strings & bytes](text.md#serialized-shape) round-trips one).
+        ([String](text/string.md#serialized-shape) round-trips one).
 
 ## A readable rendering
 

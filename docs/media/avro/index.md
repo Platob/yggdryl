@@ -10,301 +10,114 @@
 | Bindings | Python `yggdryl.media.avro`: `Schema`, `loads`/`dumps`, `loads_single`/`dumps_single`, `blocks`; JavaScript `avro`: `Schema`, `loads`/`dumps`, `loadsSingle`/`dumpsSingle`, `blocks` |
 | Rust only | `Resolution`; a binding `reader_schema` option compiles and reuses it internally |
 | Selects | A name whose media type says `avro`, on any handle, with no format argument |
+| Reads | [Read](read.md): a container whole, block by block, or resolved onto a reader schema, as native scalars or as Arrow batches |
+| Writes | [Write](write.md): containers and single framed datums as native scalars, the three intents as Arrow batches |
 | Decodes | Columnar, one builder per leaf, no `Scalar` tree; an unselected top-level column is skipped, not decoded, but its row bytes are still read |
-| Block codec | `null`, `deflate` (default), `zstandard`; `snappy` in builds with the `parquet` feature |
-| Sync marker | Absent (a fresh marker per write) or exactly 16 bytes |
+| Schemas | [Schemas](schemas.md): the retained JSON document, the Parsing Canonical Form, the CRC-64-AVRO fingerprint, and the logical types |
+| Block codec | `null`, `deflate` (default), `zstandard`; `snappy` in builds with the `parquet` feature: [Blocks](blocks.md) |
+| Sync marker | Absent (a fresh marker per write) or exactly 16 bytes: [Blocks](blocks.md) |
 | Record surface refuses | A union wider than `null` plus one branch, a recursive schema, a datatype Avro cannot spell; the `Scalar` functions have no such limits |
 | Cached | `open` keeps the inferred wrapper, schema, and dimensions until `close`; writes invalidate |
-| Limits | Every Rust reader has a `_with_limits` form over [`Limits`](../structured.md); Python snake-case keywords, JavaScript camel-case options |
+| Limits | Every Rust reader has a `_with_limits` form over [`Limits`](../structured.md); Python snake-case keywords, JavaScript camel-case options: [Blocks](blocks.md#codecs-and-limits) |
 
-## Surfaces
+## Pages
+
+Avro answers the two surfaces every medium answers - rows as native scalars and rows as Arrow batches - and both sit on the direction pages, so one page holds every spelling of a read and one holds every spelling of a write. It also carries a raw container codec of its own, implemented here with no Avro crate underneath: `read_container`, `read_blocks`, and `write_container` over any handle, which is what an [Iceberg](../iceberg/index.md) manifest is read with.
 
 | Page | Owns |
 | --- | --- |
-| [Scalars](scalar.md) | `read_container`, `write_container`, lazy blocks, schema resolution, single-object framing |
-| [Arrow](arrow.md) | the record surface: batch readers, the three write intents, the datatype mapping |
+| [Read](read.md) | rows out: a container as native scalars, writer/reader resolution, lazy blocks, then Arrow batches |
+| [Write](write.md) | rows in: containers and single-object datums as native scalars, then the three Arrow intents and the datatype mapping a write has to spell |
+| [Schemas](schemas.md) | the schema value: canonical form, fingerprint, identity, logical types |
+| [Blocks](blocks.md) | the block codec, the synchronization marker, and the limits every decode carries |
 
 ## Use
 
 `row_size` walks block counts and encoded lengths, jumps each payload positionally, and validates its sync marker without allocating, decompressing, or decoding rows. `column_size` reads only the header schema; both describe the whole container, ignoring selections, filters, and limits.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::arrow;
+    use yggdryl::avro::Avro;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
+    use yggdryl::{DataType, MimeType, StructType};
+
+    let field = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    let schema = field.into_arrow_schema()?;
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1, 2]))],
+    )?;
+
+    let mut media = Avro::new(Buffer::new().with_media_type(MimeType::AVRO.into()));
+    let options = media.record_options()?;
+    media.overwrite_arrow_reader(arrow::batch_reader(schema, [batch]), &options)?;
+
+    // Dimensions describe every block, and an opened handle answers from cache.
+    media.open()?;
+    assert_eq!((media.row_size()?, media.column_size()?), (2, 1));
+    assert_eq!(media.read_arrow_field(&options)?.name(), "row");
+    media.close()?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.avro")
+    handle.overwrite_arrow_table(pa.table({"id": [1, 2]}))
+    with handle:
+        assert (handle.row_size, handle.column_size) == (2, 1)
+        assert handle.read_arrow_field().name == "row"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.avro'))
+    handle.overwriteArrowTable(new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    }))
+    handle.open()
+    assert.deepEqual([handle.rowSize, handle.columnSize], [2, 1])
+    assert.equal(handle.readArrowField().name, 'row')
+    handle.close()
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 | form | role |
 | --- | --- |
 | `avro::Avro` | Handle, options, and the metadata cache that [`IOBase::open`](../../holder/iobase/bytes.md) fills and `close` releases |
 | `avro::AvroOptions` | The shared record options plus the block codec name and an optional fixed sync marker for byte-reproducible writes |
 
-## Block encoding options
-
-The generic [`RecordOptions`](../options.md) exposes both Avro settings without downcasting, and the writer validates the codec name before pulling a row source.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::media::RecordOptions;
-    use yggdryl::MimeType;
-
-    let mut options = RecordOptions::for_mime_type(&MimeType::AVRO)?;
-    assert_eq!(options.avro_block_codec(), Some("deflate"));
-    assert_eq!(options.avro_sync_marker(), None);
-
-    options.set_avro_block_codec("zstandard")?;
-    options.set_avro_sync_marker(Some(b"0123456789abcdef"))?;
-    assert_eq!(options.avro_sync_marker(), Some(b"0123456789abcdef"));
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import RecordOptions
-
-    options = RecordOptions("trades.avro")
-    assert options.block_codec == "deflate"
-    assert options.sync_marker is None
-
-    options.block_codec = "zstandard"
-    options.sync_marker = b"0123456789abcdef"
-    assert options.sync_marker == b"0123456789abcdef"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { RecordOptions } = require('yggdryl')
-
-    const options = RecordOptions.from('trades.avro')
-      .withBlockCodec('zstandard')
-      .withSyncMarker(Buffer.from('0123456789abcdef'))
-
-    assert.equal(options.blockCodec, 'zstandard')
-    assert.deepEqual(options.syncMarker, Buffer.from('0123456789abcdef'))
-    ```
-
-## Schemas, canonical form, and fingerprints
-
-A `Schema` resolves namespaces, aliases, defaults, and recursive references at parse time; a named-type reference stays a reference, which keeps a recursive schema finite.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::avro::Schema;
-
-    let schema = Schema::from_str(
-        r#"{"type": "record", "name": "trade", "doc": "one fill", "fields": [
-            {"name": "symbol", "type": "string"},
-            {"name": "qty", "type": "long", "field-id": 2}
-        ]}"#,
-    )?;
-
-    assert!(!schema.clone().into_canonical_form().contains("doc"));
-    assert_eq!(schema.fingerprint().to_le_bytes()[0], 0xF5);
-    let text = String::from_utf8(yggdryl::json::into_bytes(&schema.into_json())?)?;
-    assert!(text.contains("field-id"));
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.media import avro
-
-    document = {
-        "type": "record",
-        "name": "trade",
-        "doc": "one fill",
-        "fields": [
-            {"name": "symbol", "type": "string"},
-            {"name": "qty", "type": "long", "field-id": 2},
-        ],
-    }
-    schema = avro.Schema(document)
-
-    assert "doc" not in schema.into_canonical_form()
-    assert schema.fingerprint().to_bytes(8, "little")[0] == 0xF5
-    assert schema.into_json()["fields"][1]["field-id"] == 2
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { avro } = require('yggdryl')
-
-    const schema = new avro.Schema({
-      type: 'record',
-      name: 'trade',
-      doc: 'one fill',
-      fields: [
-        { name: 'symbol', type: 'string' },
-        { name: 'qty', type: 'long', 'field-id': 2 },
-      ],
-    })
-
-    assert.ok(!schema.canonicalForm.includes('doc'))
-    assert.equal(Number(schema.fingerprint & 0xffn), 0xf5)
-    assert.equal(schema.intoJSON().fields[1]['field-id'], 2)
-    ```
-
-`fingerprint` hashes the Parsing Canonical Form with CRC-64-AVRO, which strips whitespace, attribute order, docs, unknown attributes, logical annotations, aliases, and defaults. Equality, total ordering, and `stable_hash` use the complete retained JSON document instead.
-
-## Logical types
-
-`date`, `time-millis`/`micros`, `timestamp-millis`/`micros`/`nanos`, `local-timestamp-*`, `uuid` over string and fixed(16), `decimal` over bytes and fixed, and `duration` decode as typed values.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::TimeUnit;
-    use yggdryl::holder::Buffer;
-    use yggdryl::{Timezone, Scalar};
-    use yggdryl::json;
-    use yggdryl::avro;
-
-    let schema = json::from_utf8(
-        r#"{"type": "record", "name": "row", "fields": [
-            {"name": "day", "type": {"type": "int", "logicalType": "date"}},
-            {"name": "at", "type": {"type": "long", "logicalType": "timestamp-micros"}},
-            {"name": "price", "type": {"type": "bytes", "logicalType": "decimal",
-                                        "precision": 10, "scale": 2}}
-        ]}"#,
-    )?;
-    let row = Scalar::from_struct([
-        (
-            "day",
-            Scalar::date32_in(19_782, TimeUnit::Day, Timezone::NAIVE)?,
-        ),
-        ("at", Scalar::datetime64(
-            1_700_000_000_000_000,
-            TimeUnit::Microsecond,
-            Timezone::UTC,
-        )?),
-        ("price", Scalar::d128(18_750, 2)),
-    ])?;
-
-    let mut handle = Buffer::new();
-    avro::write_container(&mut handle, &schema, &[], &[row.clone()])?;
-    assert_eq!(avro::read_container(&handle)?.rows[0], row);
-    ```
-
-=== "Python"
-
-    ```python
-    from datetime import date, datetime, timezone
-    from decimal import Decimal
-
-    from yggdryl.media import avro
-
-    schema = {
-        "type": "record",
-        "name": "row",
-        "fields": [
-            {"name": "day", "type": {"type": "int", "logicalType": "date"}},
-            {"name": "at", "type": {"type": "long", "logicalType": "timestamp-micros"}},
-            {"name": "price", "type": {"type": "bytes", "logicalType": "decimal",
-                                        "precision": 10, "scale": 2}},
-        ],
-    }
-    row = {
-        "day": date(2024, 2, 29),
-        "at": datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc),
-        "price": Decimal("187.50"),
-    }
-
-    decoded = avro.loads(avro.dumps([row], schema)).rows[0]
-    assert decoded == row
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Scalar, avro } = require('yggdryl')
-
-    const decimal = {
-      type: 'bytes',
-      logicalType: 'decimal',
-      precision: 10,
-      scale: 2,
-    }
-    const value = Scalar.decimal(18750n, 2)
-    const decoded = avro.loadsSingle(avro.dumpsSingle(value, decimal), decimal)
-
-    assert.ok(decoded instanceof Scalar)
-    assert.equal(decoded.kind, 'd64')
-    assert.equal(decoded.unscaled, 18750n)
-    assert.equal(decoded.scale, 2)
-    ```
-
-A date is `Date32`, a timestamp is `DateTime64` with `UTC`, and a decimal keeps its exact coefficient and scale.
-
-## Codecs and limits
-
-Input bytes bound the container and each decompressed block, depth bounds schema and datum nesting, and the node budget bounds rows and per-datum allocation.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::holder::Buffer;
-    use yggdryl::{Limits, Scalar};
-    use yggdryl::json;
-    use yggdryl::avro;
-
-    let schema = json::from_utf8(r#""long""#)?;
-    let mut bytes = Buffer::new();
-    avro::write_container(&mut bytes, &schema, &[], &[Scalar::from(7_i64)])?;
-
-    let limits = Limits::new(8, 1_024, 8, 1);
-    assert_eq!(
-        avro::read_container_with_limits(&bytes, limits)?.rows,
-        [Scalar::from(7_i64)]
-    );
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.media import avro
-
-    encoded = avro.dumps([7], '"long"')
-    decoded = avro.loads(
-        encoded,
-        max_depth=8,
-        max_input_bytes=1_024,
-        max_nodes=8,
-    )
-
-    assert decoded.rows == [7]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { avro } = require('yggdryl')
-
-    const encoded = avro.dumps([7], '"long"')
-    const decoded = avro.loads(encoded, {
-      maxDepth: 8,
-      maxInputBytes: 1024,
-      maxNodes: 8,
-    })
-
-    assert.deepEqual(decoded.rows, [7])
-    ```
-
-| header codec | implementation |
-| --- | --- |
-| `null`, `deflate`, `zstandard` | The crate's own [`Codec`](../../coding/index.md) implementations |
-| `snappy` | Raw Snappy followed by a big-endian CRC-32 of the uncompressed block; builds carrying the `parquet` feature |
-| `bzip2`, `xz`, any other name | Refused, naming it and listing what this build implements |
-
 ## Edges
 
 - `trades.avro.gz` -> refused rather than double-compressed: Avro compresses inside its blocks, like [Parquet](../parquet/index.md) and unlike [IPC](../ipc/index.md).
-- `set_avro_block_codec` or `set_avro_sync_marker` on options for another encoding -> typed record error.
-- A sync marker of any length but 16 bytes -> refused; an absent marker generates a fresh one per write.
-- An unknown logical annotation, or attributes invalid for its underlying type -> degrades to the underlying type, never an error.
-- A decimal wider than 38 digits -> keeps its raw bytes; `duration` keeps its twelve bytes, being a month/day/millisecond triple.
-- Same fingerprint, different retained JSON -> distinct schema values; the bindings' `equals`, comparison, and hash follow the JSON identity.
+- `row_size` and `column_size` -> whole-container counts; a selection, a filter, or a row limit does not move them.
+- an opened handle -> answers from the wrapper, schema, and dimensions `open` cached; any write invalidates them, and `close` drops them.
+- an unselected top-level column -> skipped rather than decoded, but its row bytes are still read: Avro interleaves its columns per record.
+- the block codec and the sync marker -> [Blocks](blocks.md); the logical types and the fingerprint -> [Schemas](schemas.md).
 
 ## Commands
 
@@ -312,6 +125,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib avro::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test media avro::
     cargo test --features "parquet iceberg" -p yggdryl --test interop avro::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/avro
