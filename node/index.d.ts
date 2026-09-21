@@ -1339,7 +1339,10 @@ export declare class FixCodec {
    * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
    * in nanoseconds, and `null` or absence reads UTC now per new message.
    * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
-   * nanoseconds; `null`, zero and a negative width disable snapshots.
+   * nanoseconds; `null`, zero and a negative width disable snapshots;
+   * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
+   * transaction clock may stand and still date the message, the core's
+   * one second when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1371,6 +1374,14 @@ export declare class FixCodec {
    * where snapshots are disabled.
    */
   get snapshotNs(): bigint | null
+  /**
+   * How far from `SendingTime(52)` an official transaction clock may
+   * stand and still date the message, in milliseconds.
+   *
+   * A millisecond count is a JavaScript number, exact to 2^53, as every
+   * count at this boundary is.
+   */
+  get officialTimeDelayMs(): number
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -1562,10 +1573,10 @@ export type JsFixMessages = FixMessages
  * bridge's `msgsessionid:msgctxid` where the row header stated both, else
  * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
  * over it, the `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid`
- * over its instant and that hash, and the `crossuuid` over the cross hash -
- * or the `curruuid` itself when no cross code names a chain. Every write
- * settles it again.
+ * standard header and trailer, the `curruuid` from its millisecond instant
+ * and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+ * seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
+ * when no cross code names a chain. Every write settles it again.
  */
 export declare class FixMsg {
   /**
@@ -1577,9 +1588,11 @@ export declare class FixMsg {
    * tag, a crate column, one of the FIX fields a message lifts,
    * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
    * when the value states none; the event's instant is the stated one,
-   * else that sending time, and the creation the stated one, else the
-   * instant - what `TransactTime(60)` or `OrigSendingTime(122)` says is
-   * the lifecycle's to read. The identity is then settled.
+   * else the official transaction clock standing within the core's default
+   * one-second delay of that sending time - a `TransactTime(60)`, else a
+   * ranked `TrdRegTimestamp(769)` - else the sending time itself, and the
+   * creation the stated one, else the instant. What `OrigSendingTime(122)`
+   * says is the lifecycle's to read. The identity is then settled.
    */
   constructor(field: Field, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1642,7 +1655,11 @@ export declare class FixMsg {
   get metadata(): Record<string, string>
   /** The fixed four-byte business category lifted from this message type. */
   get msgcat(): string | null
-  /** This message's own identity, as its hyphenated text. */
+  /**
+   * This message's own `UUIDv7` identity, from its millisecond instant and
+   * full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+   * seed, as hyphenated text.
+   */
   get curruuid(): string
   /**
    * The identity of the chain this message belongs to, as its hyphenated
@@ -4942,9 +4959,10 @@ export declare class TextLine {
   /** How many bytes of this record went over the retained limit. */
   get droppedByteSize(): number | null
   /**
-   * The line's identity, as its hyphenated text: the uuid its instant and
-   * its hash code derive. A line is an event of the graph, and a message
-   * parsed out of it states this among its `srcuuids`.
+   * The line's identity, as its hyphenated text: `UUIDv7` over its
+   * millisecond instant, row-derived sequence and body hash, with the
+   * source URL's cross hash as seed. A line is an event of the graph, and
+   * a message parsed out of it states this among its `srcuuids`.
    */
   get curruuid(): string
   /**
@@ -4953,8 +4971,8 @@ export declare class TextLine {
    */
   get crossuuid(): string
   /**
-   * The code the chain is named by: a `crosscode` capture where the row
-   * header has one, and empty where it names none.
+   * The code the chain is named by: the canonical source URL, and empty
+   * where the line was read from no located source.
    */
   get crosscode(): string
   /** The XXH3-64 of the line's bytes. */
@@ -5291,15 +5309,20 @@ export declare class TxHash {
   /** The canonical bytes as a fixed-width byte `Scalar`. */
   intoScalar(): JsScalar
   /**
-   * The RFC 9562 `UUIDv7` projection, as a `uuid` `Scalar`.
+   * Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
+   * `uuid` `Scalar`.
    *
-   * The instant restates exactly to signed nanoseconds and floors to the
-   * microsecond, then the digest's low 62 bits follow, so the UUIDs order
-   * by instant to the microsecond.
-   * Lossy: neither the unit nor the algorithm is kept. Throws for a digest
-   * that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
+   * The instant is floored directly to Unix milliseconds, and `rand_a`
+   * carries the low 12 sequence bits. XXH3-64 hashes the complete 16-byte
+   * big-endian `(seqnum, digest-u64)` tuple under `seed`; its low 62 bits
+   * fill `rand_b`. This is a lossy, collision-resistant, non-cryptographic
+   * 74-bit identity fingerprint, not a uniqueness guarantee: neither the
+   * unit nor the algorithm survives, and sequence ordering wraps with its
+   * low 12 bits.
+   * Throws for a digest that is not 64 bits wide, or an instant outside the
+   * `UUIDv7` range.
    */
-  intoUuid(): JsScalar
+  intoUuid(seqnum: bigint, seed: bigint): JsScalar
   /** Exact equality: another unit or algorithm is another value. */
   equals(other: TxHash): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
@@ -6074,6 +6097,13 @@ export interface FixCodecOptions {
    * `null`, zero and a negative width disable snapshots.
    */
   snapshotNs?: bigint | null
+  /**
+   * How far from `SendingTime(52)` an official transaction clock may
+   * stand and still date the message, in milliseconds; the core's one
+   * second when unstated, and a nonpositive delay admits only a
+   * transaction clock equal to the sending clock.
+   */
+  officialTimeDelayMs?: number
   /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty

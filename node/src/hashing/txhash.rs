@@ -19,7 +19,7 @@ use yggdryl::{Scalar, TimeUnit};
 
 use super::xxhash::{
     JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
-    content_bytes, seed_from_bigint,
+    content_bytes, seed_from_bigint, u64_from_bigint,
 };
 use crate::datatype::JsDataType;
 use crate::field::JsField;
@@ -223,18 +223,25 @@ impl JsTxHash {
         JsScalar::from_core(self.inner.into_scalar())
     }
 
-    /// The RFC 9562 `UUIDv7` projection, as a `uuid` `Scalar`.
+    /// Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
+    /// `uuid` `Scalar`.
     ///
-    /// The instant restates exactly to signed nanoseconds and floors to the
-    /// microsecond, then the digest's low 62 bits follow, so the UUIDs order
-    /// by instant to the microsecond.
-    /// Lossy: neither the unit nor the algorithm is kept. Throws for a digest
-    /// that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
+    /// The instant is floored directly to Unix milliseconds, and `rand_a`
+    /// carries the low 12 sequence bits. XXH3-64 hashes the complete 16-byte
+    /// big-endian `(seqnum, digest-u64)` tuple under `seed`; its low 62 bits
+    /// fill `rand_b`. This is a lossy, collision-resistant, non-cryptographic
+    /// 74-bit identity fingerprint, not a uniqueness guarantee: neither the
+    /// unit nor the algorithm survives, and sequence ordering wraps with its
+    /// low 12 bits.
+    /// Throws for a digest that is not 64 bits wide, or an instant outside the
+    /// `UUIDv7` range.
     #[napi]
     #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
-    pub fn into_uuid(&self) -> Result<JsScalar> {
+    pub fn into_uuid(&self, seqnum: BigInt, seed: BigInt) -> Result<JsScalar> {
+        let seqnum = u64_from_bigint(&seqnum, "seqnum")?;
+        let seed = u64_from_bigint(&seed, "seed")?;
         self.inner
-            .into_uuid()
+            .into_uuid(seqnum, seed)
             .map(|uuid| JsScalar::from_core(Scalar::Uuid(uuid)))
             .map_err(napi_error)
     }

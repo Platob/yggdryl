@@ -1026,7 +1026,7 @@ def attach_replacements(
 #: the enriching pass evaluates the terms to a fixpoint, so a
 # chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
 # the fields fall. A term reads fields by their canonical folded names, a
-# group by its name (`secaltidgrp[securityaltidsource = '4'][0].securityaltid`
+# group by its name (`secaltids[securityaltidsource = '4'][0].securityaltid`
 # is the alternate identifier whose source says ISIN). An absent input is a
 # null the term answers null over, so a rule states only what makes its
 # answer certain. Every name a rule reads is FIX's own: the crate owns no
@@ -1199,7 +1199,7 @@ def crate_countries() -> tuple[str, ...]:
 # message that names an ISIN without stating it as its primary identifier
 # states it. The cast is the validation: ISO 6166 closes a number with a
 # check digit, so a value the `isin` datatype refuses never answers.
-ALTERNATE_ISIN = "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)"
+ALTERNATE_ISIN = "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)"
 
 # The ISIN a message states, wherever it states it: the primary identifier
 # under source `4`, else that alternate.
@@ -1274,7 +1274,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (48, ALTERNATE_ISIN),
     # A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
     # and so is the `SecurityAltID` an exchange gave.
-    (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)"),
+    (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)"),
     # `TimeInForce` defines its own absence: an order, a replace or a report
     # stating none is a day order.
     (59, f"case when msgtype in {quoted_list(TIMED)} then '0' end"),
@@ -1659,6 +1659,14 @@ def build_catalog(
     reserved = {folded(name) for name in source_names.values()} | used
     names: dict[tuple[str, int], str] = {}
 
+    # The protocol's display says how the group is framed, not what the
+    # collection is called. These collections have semantic plurals just as
+    # `Parties` does; their published names remain their displays.
+    canonical_names = {
+        ("groups", "SecAltIDGrp"): "secaltids",
+        ("groups", "RegulatoryTradeIDGrp"): "regulatorytradeids",
+    }
+
     def claim(display: str, suffix: str, identifier: int, original: bool) -> str:
         canonical = folded(display)
         if canonical in used or (not original and canonical in reserved):
@@ -1674,7 +1682,8 @@ def build_catalog(
 
     suffixes = {"components": "Component", "groups": "Grp", "messages": "Message"}
     for key, display in sorted(source_names.items()):
-        names[key] = claim(display, suffixes[key[0]], key[1], original=True)
+        canonical = canonical_names.get((key[0], display), display)
+        names[key] = claim(canonical, suffixes[key[0]], key[1], original=True)
 
     entries: dict[int, str] = {}
     entry_displays: dict[int, str] = {}
@@ -2086,8 +2095,12 @@ def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
     return written
 
 
-def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -> None:
-    """Write the header and trailer tag lists as a generated Rust module.
+def render_constants(
+    latest: dict[str, Any],
+    parsed: dict[str, dict[str, Any]],
+    catalog: dict[str, list[dict[str, Any]]],
+) -> str:
+    """Render the protocol tag lists and shipped derivations as Rust constants.
 
     `FixMsg` lays a message flat, so both components are tag lists rather than
     nested Structs, and the lists are the union across every scraped version:
@@ -2100,6 +2113,24 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
     They are not registry entries: a component has no tag, and a synthetic one
     would put a fiction in the identity space.
     """
+    derivations = sorted(
+        (
+            int(field["metadata"]["FIX:tag"]),
+            field["metadata"]["FIX:derivation"],
+        )
+        for field in catalog["fields"]
+        if "FIX:derivation" in field["metadata"]
+    )
+    if len(derivations) != 29 or len({tag for tag, _ in derivations}) != 29:
+        raise ValueError(
+            "the shipped dictionary must declare 29 distinct derivations, "
+            f"got {len(derivations)}"
+        )
+    derivation_signature = "\n".join(
+        f"{tag}\0{term}" for tag, term in derivations
+    ).encode()
+    derivation_sha256 = hashlib.sha256(derivation_signature).hexdigest()
+
     header: list[int] = []
     trailer: list[int] = []
     for name, held in latest["components"].items():
@@ -2125,7 +2156,7 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
                 header.append(tag)
 
     lines = [
-        "//! The standard header and trailer, as tag lists.",
+        "//! Generated FIX protocol constants.",
         "//!",
         "//! Generated by `scripts/generate_fix_dictionary.py`; do not edit.",
         "//!",
@@ -2165,6 +2196,25 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
             "#[rustfmt::skip]",
             f"pub const MSGCATEGORIES: [&str; {len(categories)}] = [{rendered}];",
             "",
+            "/// The exact derivations generated into the shipped FIX dictionary,",
+            "/// sorted by target tag. A registry matching every pair can use the",
+            "/// native evaluator; any changed, added, or removed rule stays on the",
+            "/// generic expression path.",
+            "#[rustfmt::skip]",
+            f'pub(super) const SHIPPED_DERIVATIONS_SHA256: &str = "{derivation_sha256}";',
+            "",
+            "#[rustfmt::skip]",
+            f"pub(super) const SHIPPED_DERIVATIONS: [(i32, &str); {len(derivations)}] = [",
+        ]
+    )
+    lines.extend(
+        f"    ({tag}, {json.dumps(term, ensure_ascii=False)}),"
+        for tag, term in derivations
+    )
+    lines.extend(
+        [
+            "];",
+            "",
             "/// The generated category of one standard FIX message type.",
             "pub(super) fn msgcat_of(msgtype: &str) -> Option<&'static str> {",
             "    match msgtype {",
@@ -2175,8 +2225,17 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
         for msgtype, category in sorted(MSGCAT_BY_TYPE.items())
     )
     lines.extend(["        _ => None,", "    }", "}", ""])
+    return "\n".join(lines)
+
+
+def write_constants(
+    latest: dict[str, Any],
+    parsed: dict[str, dict[str, Any]],
+    catalog: dict[str, list[dict[str, Any]]],
+) -> None:
+    """Write the generated Rust constants after every dictionary write."""
     (ROOT / "rust" / "src" / "fix" / "constants.rs").write_text(
-        "\n".join(lines), encoding="utf-8", newline="\n"
+        render_constants(latest, parsed, catalog), encoding="utf-8", newline="\n"
     )
 
 
@@ -2257,6 +2316,13 @@ def main() -> int:
             actual_manifest = None
         if actual_manifest != manifest:
             failures.append("changed provenance.json")
+        constants = ROOT / "rust" / "src" / "fix" / "constants.rs"
+        try:
+            actual_constants = constants.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            actual_constants = None
+        if actual_constants != render_constants(latest, parsed, catalog):
+            failures.append("changed rust/src/fix/constants.rs")
         if failures:
             print("\n".join(failures), file=sys.stderr)
             return 1
@@ -2274,7 +2340,7 @@ def main() -> int:
         encoding="utf-8",
         newline="\n",
     )
-    write_constants(latest, parsed)
+    write_constants(latest, parsed, catalog)
     print(
         f"wrote {len(written)} documents ({summary(catalog, code_sets)})"
         f" at FIX {latest['version']} EP{latest['ep']}"

@@ -87,14 +87,22 @@ fn bigint_from_u128(value: u128) -> BigInt {
     }
 }
 
-/// Read a `BigInt` seed, refusing a value wider than the seed it names.
-pub(crate) fn seed_from_bigint(value: Option<BigInt>) -> Result<u64> {
-    let Some(value) = value else { return Ok(0) };
+/// Read an unsigned 64-bit `BigInt`, refusing any wider or negative value.
+pub(crate) fn u64_from_bigint(value: &BigInt, name: &str) -> Result<u64> {
     let (signed, value, lossless) = value.get_u64();
     if signed || !lossless {
-        return Err(napi_error("seed must be an unsigned 64-bit integer"));
+        return Err(napi_error(format!(
+            "{name} must be an unsigned 64-bit integer"
+        )));
     }
     Ok(value)
+}
+
+/// Read a `BigInt` seed, refusing a value wider than the seed it names.
+pub(crate) fn seed_from_bigint(value: Option<BigInt>) -> Result<u64> {
+    value
+        .as_ref()
+        .map_or(Ok(0), |value| u64_from_bigint(value, "seed"))
 }
 
 /// Digest a complete value with XXH32.

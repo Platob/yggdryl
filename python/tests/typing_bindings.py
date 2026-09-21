@@ -270,7 +270,7 @@ coupled_unit: str = coupled_value.unit
 coupled_digest_half: xxhash.Digest = coupled_value.digest
 coupled_bytes: bytes = bytes(coupled_value)
 coupled_instant: Scalar = coupled_value.into_datetime()
-coupled_uuid: Scalar = coupled_value.into_uuid()
+coupled_uuid: Scalar = coupled_value.into_uuid(0, 0)
 coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
@@ -1532,6 +1532,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     direction="R",
     batch_byte_size=1 << 20,
     snapshot_ns=1_000_000_000,
+    official_time_delay_ms=250,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
 fix_reader_separator: int | None = fix_reader_pinned.separator
@@ -1540,6 +1541,7 @@ fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_snapshot_ns: int | None = fix_reader_pinned.snapshot_ns
+fix_reader_official_time_delay_ms: int = fix_reader_pinned.official_time_delay_ms
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,

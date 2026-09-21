@@ -20,7 +20,7 @@
 //! | code set | `FIX:codeset` | name | the registry-owned vocabulary this field reads by |
 //! | replacements | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the specification's retirements of the tag |
 //! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
-//! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
+//! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived where the message states none: the complete shipped set takes the native fixpoint plan, while any custom set is compiled as expressions and keeps the same semantics |
 //! | counter | `FIX:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `FIX:component` | name | the component defining a group occurrence |
 //!
@@ -141,7 +141,7 @@ mod batch;
 mod build;
 pub(crate) mod catalog;
 mod cfb;
-mod codec;
+pub(crate) mod codec;
 pub(crate) mod codes;
 pub(crate) mod component;
 mod constants;
@@ -161,6 +161,7 @@ pub(crate) mod memo;
 mod messages;
 mod msg;
 pub(crate) mod msgtype;
+mod native_derivations;
 pub(crate) mod registry;
 pub(crate) mod replacements;
 pub(crate) mod retired;
@@ -176,12 +177,13 @@ pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
     CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
-    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIXMSG_TAG_NAME,
-    IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME,
-    SRCUUIDS_TAG_NAME, STATE_TAG_NAME, fix_crate_fields, is_crate_tag,
+    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME,
+    FIXMSG_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
+    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME,
+    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, REFRECDUNIX_TAG_NAME,
+    SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME,
+    STATE_TAG_NAME, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};

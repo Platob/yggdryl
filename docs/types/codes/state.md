@@ -208,7 +208,7 @@ Ranks run `00`-`99`. Every shipped state sits on a round rank, and the digits be
 | `90` | ended, because someone stopped it | `90CANCELED` |
 | `95` | ended, because it could not be done | `95EXPIRED`, `95FAILED`, `95REJECTED`, `95TIMEOUT` |
 
-The three endings are ranked apart deliberately: "did it finish" and "did it work" are different questions, and one terminal rank would answer neither without reading the name. Each ending owns a band - `80`-`89` done, `90`-`94` cancelled, `95`-`99` failed - and `State::is_live` (below `80`), `is_done`, `is_cancelled` and `is_failed` read the band, so a placeholder inside one answers as its ending does. `State::rank` answers the two digits as the number they spell. Rust only.
+The three endings are ranked apart deliberately: "did it finish" and "did it work" are different questions, and one terminal rank would answer neither without reading the name. Each ending owns a band - `80`-`89` done, `90`-`94` cancelled, `95`-`99` failed - and `State::is_live` (below `80`), `is_done`, `is_cancelled` and `is_failed` read the band, so a placeholder inside one answers as its ending does. `State::is_execution` is deliberately exact rather than ranked: only `40PARTFILL`, `40TRADE` and `80FILLED` report an execution; a trade correction, cancellation, hold or release refers to an earlier one. `State::rank` answers the two digits as the number they spell. Rust only.
 
 ```rust
 use yggdryl::State;
@@ -231,6 +231,7 @@ assert_eq!(held, ["20NEW", "40PARTFILL", "80FILLED", "95REJECTED"]);
 // without reading a name.
 assert_eq!(State::from_spelling("Filled").unwrap().rank(), Some(80));
 assert!(State::from_spelling("New").unwrap().is_live());
+assert!(State::from_spelling("PartiallyFilled").unwrap().is_execution());
 assert!(State::from_spelling("Filled").unwrap().is_done());
 assert!(State::from_spelling("Canceled").unwrap().is_cancelled());
 assert!(State::from_spelling("Rejected").unwrap().is_failed());

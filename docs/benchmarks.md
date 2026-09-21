@@ -11,9 +11,9 @@ Results live beside the method they measure. Each page's Performance section nam
 | Coding | [zlib](coding/zlib.md) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
 | Coding | [zstd](coding/zstd.md) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
-| FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point es... |
+| FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec, including `fix/ulbridge/step/set_bloombergcode` for synchronizing a normalized Bloomberg identifier into `secaltids` |
 | FIX | [Arrow](fix/arrow.md) | Historical `fix/pipeline` release estimates and a current debug counting-allocator ULBridge profile for row and Arrow-batch requests; the latter makes no CPU or throughput claim |
-| FIX | [Message](fix/message.md) | Binding rows only; the Criterion target carries no `FixMsg` case |
+| FIX | [Message](fix/message.md) | `fix/ulbridge/step/set_bloombergcode` measures one `FixMsg` identifier setter including `secaltids` synchronization |
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |

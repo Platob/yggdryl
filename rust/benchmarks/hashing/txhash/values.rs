@@ -64,15 +64,17 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("into_bytes", |bencher| {
         bencher.iter(|| black_box(value).into_bytes());
     });
-    let projected = value.into_uuid().expect("the instant fits nanoseconds");
-    // `into_uuid` projects a TxHash as a UUIDv7: the instant in front, the
-    // digest behind it, and the RFC 4122 variant.
+    let projected = value
+        .into_uuid(7, 0)
+        .expect("the instant fits milliseconds");
+    // `into_uuid` projects a TxHash as a UUIDv7: milliseconds in front, then
+    // the sequence coupled with the digest, and the RFC variant.
     assert_eq!(projected.into_bytes()[6] >> 4, 7);
     assert_eq!(projected.into_bytes()[8] >> 6, 2);
     group.bench_function("into_uuid", |bencher| {
         bencher.iter(|| {
             black_box(value)
-                .into_uuid()
+                .into_uuid(black_box(7), black_box(11))
                 .expect("a 64-bit digest and in-range instant")
         });
     });

@@ -36,12 +36,15 @@ mod columns {
         options(rowheader).with_framing(true)
     }
 
-    /// The sixteen event columns every line batch opens with, in front of the
+    /// The nineteen event columns every line batch opens with, in front of the
     /// line's own: the line is an event of the graph, and a message parsed out
-    /// of it opens with the same sixteen.
-    const EVENT_COLUMNS: [&str; 16] = [
+    /// of it contains the same nineteen under the same names and datatypes.
+    const EVENT_COLUMNS: [&str; 19] = [
         "currunix",
         "creaunix",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
         "exprtime",
         "prevunix",
         "snapunix",
@@ -127,17 +130,17 @@ mod columns {
             .unwrap();
         assert_eq!(batches.len(), 1);
         let batch = &batches[0];
-        assert_eq!(batch.schema().field(16).name(), "sourceurl");
-        assert_eq!(batch.schema().field(17).name(), "rownum");
-        assert_eq!(batch.schema().field(18).name(), "mtime");
-        assert_eq!(batch.schema().field(19).name(), "body");
+        assert_eq!(batch.schema().field(19).name(), "sourceurl");
+        assert_eq!(batch.schema().field(20).name(), "rownum");
+        assert_eq!(batch.schema().field(21).name(), "mtime");
+        assert_eq!(batch.schema().field(22).name(), "body");
         assert_eq!(
-            batch.schema().field(21).data_type(),
+            batch.schema().field(24).data_type(),
             &arrow_schema::DataType::Int64
         );
         assert_eq!(
             batch
-                .column(17)
+                .column(20)
                 .as_any()
                 .downcast_ref::<Int64Array>()
                 .unwrap()
@@ -148,7 +151,7 @@ mod columns {
         // stripped - and the captures are read off it beside it.
         assert_eq!(
             batch
-                .column(19)
+                .column(22)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -162,7 +165,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(20)
+                .column(23)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -194,7 +197,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Int64
         );
 
@@ -206,7 +209,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Utf8
         );
         assert_eq!(
@@ -232,7 +235,7 @@ mod columns {
         let first = reader.next().unwrap().unwrap();
         assert_eq!(
             first
-                .column(17)
+                .column(20)
                 .as_any()
                 .downcast_ref::<Int64Array>()
                 .unwrap()
@@ -262,7 +265,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(16)
+                .column(19)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -285,12 +288,12 @@ mod columns {
             .unwrap();
 
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
         );
         assert_eq!(
             batch
-                .column(19)
+                .column(22)
                 .as_any()
                 .downcast_ref::<arrow_array::Time32SecondArray>()
                 .unwrap()
@@ -324,7 +327,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Microsecond,
                 Some("UTC".into())
@@ -332,7 +335,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(18)
+                .column(21)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -343,7 +346,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(20)
+                .column(23)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -352,7 +355,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(21)
+                .column(24)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -383,7 +386,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Millisecond,
                 Some("UTC".into())
@@ -391,7 +394,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(19)
+                .column(22)
                 .as_any()
                 .downcast_ref::<arrow_array::TimestampMillisecondArray>()
                 .unwrap()
@@ -418,7 +421,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(19).data_type(),
+            batch.schema().field(22).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Microsecond,
                 Some("UTC".into())
@@ -426,7 +429,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(19)
+                .column(22)
                 .as_any()
                 .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
                 .unwrap()
@@ -572,7 +575,7 @@ mod columns {
         // beside it under the same name.
         assert_eq!(names, with_event(&["sourceurl", "mtime", "body", "id"]));
         assert_eq!(
-            batch.schema().field(17).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Nanosecond,
                 Some("UTC".into())
@@ -580,7 +583,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(17)
+                .column(20)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -602,7 +605,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(17)
+                .column(20)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -618,7 +621,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(17)
+                .column(20)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -685,7 +688,7 @@ mod columns {
             .pop()
             .unwrap();
         assert_eq!(
-            batch.schema().field(18).data_type(),
+            batch.schema().field(21).data_type(),
             &arrow_schema::DataType::Int64
         );
     }

@@ -152,17 +152,18 @@ pub use fix::{
     BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
     CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
     CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN,
-    DEFAULT_REFUSED_MSGTYPES, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS,
-    FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec, FixCodes, FixDedup,
-    FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId,
-    FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
-    IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME,
-    SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME,
-    ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
+    DEFAULT_REFUSED_MSGTYPES, EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME,
+    FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
+    FixCodes, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter,
+    FixHeader, FixId, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry,
+    FixSpellings, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
+    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, REFRECDUNIX_TAG_NAME, SEDOLCODE_TAG_NAME,
+    SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME,
+    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, ULBRIDGE_ROWHEADER, Words,
+    fix_column_of, fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying,
+    fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -307,6 +308,7 @@ pub mod internals {
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::fix::catalog::internals as fix_catalog;
+    pub use crate::fix::codec::internals as fix_codec;
     pub use crate::fix::codes::internals as fix_codes;
     pub use crate::fix::component::internals as fix_component;
     pub use crate::fix::document::internals as fix_document;
@@ -394,6 +396,7 @@ pub mod internals {
     pub use crate::txhash::arrow::internals as txhash_arrow;
     pub use crate::txhash::internals as txhash;
     pub use crate::uri::pattern::internals as uri_pattern;
+    pub use crate::uri::url::internals as uri_url;
     pub use crate::utf8::internals as utf8;
     pub use crate::valuestream::internals as valuestream;
     pub use crate::variant::internals as variant;

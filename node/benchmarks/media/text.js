@@ -46,7 +46,7 @@ function corpus(from, to) {
   return lines.join('')
 }
 
-// Every read carries the fixed columns the core declares: the sixteen event
+// Every read carries the fixed columns the core declares: the nineteen event
 // columns, sourceurl, rownum, the `mtime` the handle answers, and body, with
 // the header captures behind them.
 function textOptions() {

@@ -254,6 +254,26 @@ assert_eq!(MicCode::new("XPAR")?.merge_with(&MicCode::new("XLON")?).as_str(), "X
     assert.equal(new DataType('mic').scalar('ZZZZ').asJs(), 'ZZZZ')
     ```
 
+## A dxFeed exchange code names a market only inside its feed
+
+`MicCode::from_dxfeed_exchange_code(feed, code)` resolves a regional code only under the `DxFeedExchangeFeed` table that gives it meaning. The feed is mandatory: `Q` is `XNAS` under CTA/UTP and Nasdaq Basic but `XNDQ` under US Options. Aggregate Cboe codes and CME source codes are refused because they name no single MIC; custom OPOL values are a separate namespace, not inferred as MICs. The mapping follows [dxFeed's published tables](https://kb.dxfeed.com/en/data-model/reference-data/exchange-codes.html), with CTA/UTP `H` corrected to ISO's current `EPRL` for MIAX Pearl Equities rather than the page's nonexistent `MRPL`, and NYSE BQT `A` corrected to `XASE` for NYSE American rather than `XNYS` ([ISO 10383 registry](https://www.iso20022.org/market-identifier-codes)). Rust only.
+
+```rust
+use yggdryl::{DxFeedExchangeFeed, MicCode};
+
+// A dxFeed regional exchange code has meaning only inside its feed.
+assert_eq!(
+    MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
+    "XNAS",
+);
+assert_eq!(
+    MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
+    "XNDQ",
+);
+// C is an aggregate under Cboe, not a market that could be stored as a MIC.
+assert!(MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err());
+```
+
 ## Edges
 
 - `at most 4 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`. The refusal names the code's own width, not the next ASCII one up.

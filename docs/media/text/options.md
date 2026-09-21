@@ -12,7 +12,7 @@
 | `max_record_byte_size` / `maxRecordByteSize` | retained body byte limit per record, counted in bytes as read - below the transport, so the wire where nothing is declared and the decoded text under a coding or a [declared charset](lines.md#declaring-a-charset); unset is unlimited |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
-| `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
+| `start_rownum` / `startRownum` | optional signed 64-bit first row number; adds `rownum`, which also supplies the event's unsigned `seqnum`; unset omits `rownum` and `seqnum` uses the zero-based physical index |
 | `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
 | `parse_mimetype` | classify each record and add the `mimetype` column, off by default; Rust only |
 | `dedup_adjacent` | drop a record whose body repeats the previous row's, holding one previous digest and never a set; off by default because it gives up row-in / row-out alignment; Rust only |
@@ -109,8 +109,8 @@ closes the active record and starts the next one.
 | later nonmatching lines | appended to the same `body`, separated by one `\n` |
 | LF, CRLF, or CR terminator | normalized to that separator, adding no trailing byte |
 | EOF without a final terminator | the active record is still emitted |
-| end of a handle or folder leaf | framing state ends, so records never join across source objects |
-| `rownum` | the record's first physical line number, a kept leading fragment included |
+| end of a handle or folder leaf | framing state ends, so records never join across source objects; each leaf supplies its own `sourceurl` / `crosscode`, and numbering restarts |
+| `rownum` / default `seqnum` | the record's first physical line number, a kept leading fragment included |
 | unbounded `body` | the exact source bytes after first-line header removal and normalization, [as text](lines.md#a-line-is-text) |
 | `lstrip`, `rstrip` | cut from each physical line before it is joined |
 
@@ -139,9 +139,10 @@ without retaining it.
 `body` is the line, so a record that states no byte of its own is not a row:
 a blank line, and one the `lstrip`/`rstrip` patterns take whole, is a
 separator between records rather than a record, and the reader goes past it.
-The numbering does not close over the gap - `rownum` is the physical line's
-own - and a count answers exactly what a read answers, because what makes a
-line a record is what it cut and never what `max_record_byte_size` kept.
+The numbering does not close over the gap - `rownum`, and therefore the
+default event `seqnum`, is the physical line's own - and a count answers
+exactly what a read answers, because what makes a line a record is what it cut
+and never what `max_record_byte_size` kept.
 
 The same rule holds at every other door. [`TextLine`](lines.md#lines) refuses an empty
 body wherever one is set, a batch read back into lines is refused at `body`

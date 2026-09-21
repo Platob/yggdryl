@@ -15,10 +15,11 @@
 //! [`MarketEventData`] hold the facts as plain fields for the holder that
 //! wants nothing more. The one walk, [`EventIterator`], reads events in
 //! their order and states each as the one after the live element it
-//! follows. [`EventColumn`] is the sixteen columns every generated schema
-//! of an event opens with - one per fact the traits answer, under one name
-//! and one datatype each - so a text line's batch, a FIX row and a chained
-//! message join on them without a mapping.
+//! follows. [`EventColumn`] is the nineteen columns every generated schema
+//! of an event states - one per fact the traits answer, under one name and
+//! one datatype each - so a text line's batch, a FIX row and a chained
+//! message join on them without a mapping. Event-native schemas use
+//! [`EventColumn::ALL`] order; a FIX row keeps its protocol-oriented bands.
 
 pub mod column;
 pub mod element;

@@ -142,7 +142,21 @@ The same records without the crossing: a read returns a reader, and stepping it 
 
 ## Row numbers and captures
 
-`start_rownum` numbers the first physical line of each record and adds the `rownum` column; unset, the column is absent. A [row header](lines.md#lines) adds one column per capture, typed from the regex when `autotype` is on, and a [lifted entry](lines.md#lifting-an-entry-into-a-column) adds one more. Every added column reaches a record row under the name it is emitted as.
+`start_rownum` numbers the first physical line of each record and adds the
+`rownum` column; unset, the column is absent. The event `seqnum` is the same
+row number, or the zero-based physical index when `start_rownum` is unset, and
+preserves gaps for blank lines the reader skipped. Likewise, `sourceurl` owns
+the event `crosscode`: a located line uses the URL's canonical text and an
+unlocated line has neither. The code's `crosshashcode` seeds the line's current
+identity, so changing the source refreshes both the current and cross UUIDs. A
+row header therefore cannot declare a `seqnum` or `crosscode` capture, in any
+case. An explicit non-null Event column read back from Arrow remains an
+override of the corresponding base fact.
+
+A [row header](lines.md#lines) adds one column per other capture, typed from
+the regex when `autotype` is on, and a [lifted entry](lines.md#lifting-an-entry-into-a-column)
+adds one more. Every added column reaches a record row under the name it is
+emitted as.
 
 ## Reading Arrow back into lines
 
@@ -166,9 +180,14 @@ called.
 | `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |
 | `body` | `payload`, `message`, `line`, `text`, `content`, `raw` |
 | `dropped_byte_size` | `dropped`, `dropped_bytes`, `truncated_bytes` |
-| the sixteen [event columns](../../graph.md#columns) | their own names only, exactly or ignoring case |
+| the nineteen [event columns](../../graph.md#columns) | their own names only, exactly or ignoring case |
 
-A batch carrying the event columns restates them on each line read back - the identity a message named as its source survives the round trip - and a batch without them is read as before, each line deriving its own from its body and instant.
+A batch carrying the event columns restates their non-null values on each line
+read back - the identity a message named as its source survives the round trip -
+and a batch without them leaves each line to derive its own facts. In particular,
+an explicit event `seqnum` or `crosscode` wins over the same row's base
+`rownum` or `sourceurl`; without that explicit value, `rownum` and `sourceurl`
+remain the single sources of those event facts.
 
 - The column plan is resolved once, at intake: a matched column whose Arrow
   datatype is not the one the options plan for it is refused there, at
@@ -180,12 +199,21 @@ A batch carrying the event columns restates them on each line read back - the id
   iterator. `from_arrow_batch` reads its one bounded batch into a `Vec`.
 - A persisted `rownum` is `start_rownum` plus the line's index; reading
   subtracts the same configured start and refuses a row number before it.
-  Without a `rownum` column the index is the row's stream ordinal, continuous
-  across batches, so physical gaps the read dropped are not recovered.
+  That restored index supplies the default event `seqnum`; a non-null event
+  `seqnum` column remains an explicit override. Without a `rownum` column the
+  index is the row's stream ordinal, continuous across batches, so physical
+  gaps the read dropped are not recovered.
+- A persisted `sourceurl` restores the line's shared URL, whose canonical text
+  supplies the default event `crosscode`; a non-null event `crosscode` column
+  remains an explicit override. Its `crosshashcode` seed participates in the
+  derived `curruuid`, so either value is applied before an unstated identity is
+  resolved. With neither source column nor override, the URL and code stay
+  absent.
 - A null cell stays absent. A malformed present value - a `rownum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
   that does not parse, a null in the required `body` - is refused rather than
-  read as zero or dropped.
+  read as zero or dropped. A null event `seqnum` or `crosscode` therefore does
+  not mask the value the base fact derives.
 - Every row refusal is located by the stream ordinal and the column,
   `$[3].mimetype`, never by a row number an earlier column of the same row
   restored.

@@ -5,24 +5,28 @@
 //! the event states that *no dictionary publishes*: its identity and the one
 //! it has across its lifecycle and the code that names it there, the names
 //! it goes by, its parents, the lines it was read from, the code its content
-//! digests to, when it happened, was created and was read as a snapshot, the
-//! element it follows and its place in the chain. Beside them stand the facts a capture states
+//! digests to, when it happened, was created, executed, recorded and was read
+//! as a snapshot, the element it follows and its place in the chain. Beside
+//! them stand the facts a capture states
 //! about the line - where it was read from and how many pairs it carried -
 //! and the ones a bridge's own log states about the line it wrote: the
 //! session instance, the message context and the plugin that logged it.
 //! Each belongs in a column: a scalar registers as a field, and the
 //! identifiers Map as a group of entries.
 //!
-//! The standard owns prices, quantities and classification. Five normalized
+//! The standard owns prices, quantities and classification. Six normalized
 //! instrument identifiers have crate columns because their FIX sources depend
-//! on an identifier source or exchange context. Those columns read the existing
-//! market event holder; they add no second value. `CFICode(461)` already names
-//! its classification, so it keeps its standard tag. `MsgCat` reads the message
-//! component's `FIX:msgcat` metadata. State and expiry are event facts derived
-//! from the standard's status and expiry fields, then carried by lifecycle;
-//! a newer explicit expiry replaces the previous deadline.
+//! on an identifier source or exchange context. Parsing derives ISIN,
+//! Bloomberg, FIGI and MIC; CUSIP and SEDOL are direct semantic-row or setter
+//! facts, while FIX source `1` and `2` values stay in `SecurityID` or
+//! `secaltids`. The columns read the existing market event holder; they add no
+//! second value. `CFICode(461)` already names its classification, so it keeps
+//! its standard tag. `MsgCat` reads the message component's `FIX:msgcat`
+//! metadata. State and expiry are event facts derived from the standard's
+//! status and expiry fields, then carried by lifecycle; a newer explicit expiry
+//! replaces the previous deadline.
 //!
-//! The sixteen event facts are the sixteen columns every graph event is
+//! The event facts are the columns every graph event is
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, so a text line's batch, a FIX row and a chained message carry
 //! one column under one name and join on it.
@@ -63,12 +67,12 @@
 //!
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
 //! else, so a dictionary loaded from a store, built from fields or left empty
-//! answers `currunix` and `msgpluginid` alike - and a store never writes
-//! them, because they are the crate's rather than the store's. A stored copy is
-//! read past for the same reason: the crate's own definition is the one that
-//! types a row. Folding another dictionary in never counts them either.
+//! answers `currunix` and `msgpluginid` alike. A store writes their definitions
+//! so another consumer sees the whole row, but a read passes those stored
+//! copies over: the crate's own definition is the one that types a row.
+//! Folding another dictionary in never counts them either.
 //!
-//! Twenty-seven scalar fields and two Map groups, each registered by its shape.
+//! Twenty-nine scalar fields and two Map groups, each registered by its shape.
 
 use std::sync::{Arc, LazyLock};
 
@@ -158,8 +162,8 @@ pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 /// counterparty are two instances.
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");
 
-/// The tag and name carrying the message's identity: the UUIDv7 its instant
-/// and its code derive.
+/// The tag and name carrying the message's identity: the UUIDv7 its millisecond
+/// instant, sequence and cross-seeded code derive.
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
@@ -259,7 +263,19 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");
 /// The tag and name carrying the normalized FIGI the message identifies.
 pub const FIGICODE_TAG_NAME: (i32, &str) = (65_061, "figicode");
 
-/// The graph event column one crate tag is, for the sixteen that are one.
+/// The tag and name carrying when the message's execution happened, where
+/// one of its FIX facts states it.
+pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_062, "execunix");
+
+/// The tag and name carrying when the message was recorded by its carrier,
+/// where a carrier states one.
+pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
+
+/// The tag and name carrying the recording clock of the observation selected
+/// as the message's merge reference.
+pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
+
+/// The graph event column one crate tag is, for the nineteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -276,6 +292,9 @@ pub fn event_column_of(tag: i32) -> Option<EventColumn> {
 pub const fn crate_tag_of(column: EventColumn) -> (i32, &'static str) {
     match column {
         EventColumn::CurrUnix => CURRUNIX_TAG_NAME,
+        EventColumn::ExecUnix => EXECUNIX_TAG_NAME,
+        EventColumn::RecdUnix => RECDUNIX_TAG_NAME,
+        EventColumn::RefRecdUnix => REFRECDUNIX_TAG_NAME,
         EventColumn::CreaUnix => CREAUNIX_TAG_NAME,
         EventColumn::ExprTime => EXPRTIME_TAG_NAME,
         EventColumn::PrevUnix => PREVUNIX_TAG_NAME,
@@ -328,8 +347,11 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 17] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 20] = [
     CURRUNIX_TAG_NAME.0,
+    EXECUNIX_TAG_NAME.0,
+    RECDUNIX_TAG_NAME.0,
+    REFRECDUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
@@ -385,7 +407,7 @@ fn crated(
     Ok(field)
 }
 
-/// One of the sixteen event columns as a field of the crate's own: the
+/// One of the nineteen event columns as a field of the crate's own: the
 /// column's datatype under the crate's tag, display and wording.
 fn event(column: EventColumn, display: &str, description: &str) -> Result<Field> {
     crated(
@@ -429,6 +451,14 @@ fn build() -> Result<Vec<Field>> {
     identifiers
         .as_fix_mut()
         .set_counter(IDENTIFIERS_TAG_NAME.0)?;
+    let mut creation = event(
+        EventColumn::CreaUnix,
+        "CreaUnix",
+        "When the message was created: what it states, else when the \
+         original was sent, else when it happened; the earliest its \
+         chain knows once followed.",
+    )?;
+    creation.as_fix_mut().set_names(["CreationTime"])?;
     Ok(vec![
         // When the message happened: the settled instant every clock a
         // message states resolves to, and what its identity opens with.
@@ -487,13 +517,7 @@ fn build() -> Result<Vec<Field>> {
             "PrevUuid",
             "The identity of the message this one follows, where it follows one.",
         )?,
-        event(
-            EventColumn::CreaUnix,
-            "CreaUnix",
-            "When the message was created: what it states, else when the \
-             original was sent, else when it happened; the earliest its \
-             chain knows once followed.",
-        )?,
+        creation,
         event(
             EventColumn::SnapUnix,
             "SnapUnix",
@@ -539,7 +563,7 @@ fn build() -> Result<Vec<Field>> {
         event(
             EventColumn::CurrUuid,
             "CurrUuid",
-            "The message's identity: the UUIDv7 its instant and its code derive.",
+            "The message's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive.",
         )?,
         event(
             EventColumn::CrossUuid,
@@ -641,6 +665,25 @@ fn build() -> Result<Vec<Field>> {
             DataType::figi(),
             "The normalized FIGI the message identifies.",
         )?,
+        event(
+            EventColumn::ExecUnix,
+            "ExecUnix",
+            "When the message's execution happened: ExecutionTimestamp, an \
+             execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
+             trade's TransactTime, the first one stated.",
+        )?,
+        event(
+            EventColumn::RecdUnix,
+            "RecdUnix",
+            "When the message was recorded by its carrier, where the carrier \
+             states one.",
+        )?,
+        event(
+            EventColumn::RefRecdUnix,
+            "RefRecdUnix",
+            "The recording clock of the observation selected as the message's \
+             merge reference; the latest its statements know.",
+        )?,
     ])
 }
 
@@ -653,7 +696,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 29);
+/// assert_eq!(held.len(), 32);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -

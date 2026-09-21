@@ -20,6 +20,13 @@ const {
   Url,
 } = require('yggdryl')
 
+const EVENT_COLUMNS = [
+  'currunix', 'creaunix', 'execunix', 'recdunix', 'refrecdunix',
+  'exprtime', 'prevunix', 'snapunix',
+  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
+  'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
+]
+
 // A small Hive-partitioned lake with one private staging area, so listing,
 // globbing, and partition selection all have something real to answer about.
 function lake() {
@@ -712,9 +719,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
     [
-      'currunix', 'creaunix', 'exprtime', 'prevunix', 'snapunix',
-      'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
-      'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
+      ...EVENT_COLUMNS,
       'sourceurl', 'rownum', 'mtime', 'body', 'level', 'id',
     ],
   )
@@ -756,11 +761,16 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     batches.map((batch) => batch.numRows),
     [1, 1, 1],
   )
-  // The sixteen event columns lead the row, the line's own behind them.
-  assert.equal(batches[0].schema.fields[0].name, 'currunix')
-  assert.equal(batches[0].schema.fields[15].name, 'state')
+  // The nineteen event columns lead the row, the line's own behind them.
+  const schemaFields = batches[0].schema.fields
   assert.deepEqual(
-    batches[0].schema.fields.slice(16).map((field) => [field.name, field.nullable]),
+    schemaFields.slice(0, EVENT_COLUMNS.length).map((field) => field.name),
+    EVENT_COLUMNS,
+  )
+  assert.deepEqual(
+    schemaFields
+      .slice(EVENT_COLUMNS.length)
+      .map((field) => [field.name, field.nullable]),
     [
       ['sourceurl', true],
       ['rownum', false],
@@ -772,9 +782,11 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   )
   // The url column is the `url` datatype over Utf8 storage, and every row
   // carries the canonical URL text of the handle it was read from.
-  assert.equal(batches[0].schema.fields[16].type.toString(), 'Utf8')
+  const sourceurl = schemaFields.find((field) => field.name === 'sourceurl')
+  assert.ok(sourceurl)
+  assert.equal(sourceurl.type.toString(), 'Utf8')
   assert.equal(
-    batches[0].schema.fields[16].metadata.get('ARROW:extension:name'),
+    sourceurl.metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   assert.deepEqual(

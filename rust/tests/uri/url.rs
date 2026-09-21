@@ -376,3 +376,28 @@ mod encoding {
         assert_eq!(hidden.to_string(), "file:///lake/.env");
     }
 }
+
+/// The canonical rendering a located reader shares across its rows.
+///
+/// `shared_text` is crate-internal - a text reader projects one `Arc<Url>`
+/// into every row through it - so the rule that a mutation clears the cache
+/// is pinned through `yggdryl::internals`.
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::Result;
+    use yggdryl::Url;
+    use yggdryl::internals::uri_url::shared_text;
+
+    #[test]
+    fn shared_text_follows_mutations() -> Result<()> {
+        let mut url = Url::from_str("https://example.com/trades.csv?day=1")?;
+        assert_eq!(shared_text(&url).as_str(), url.to_string());
+
+        url.set_query(Some("day=2"))?;
+        assert_eq!(shared_text(&url).as_str(), url.to_string());
+
+        assert!(url.remove_extension());
+        assert_eq!(shared_text(&url).as_str(), url.to_string());
+        Ok(())
+    }
+}

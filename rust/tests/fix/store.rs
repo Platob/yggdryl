@@ -2254,6 +2254,9 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
             .as_fix()
             .has_branch("venue")
     );
+    // Windows will not replace a file while this local backend still owns
+    // its mapped view. The registry has consumed the document by this point.
+    drop(file);
 
     // One mutation: a document that does not parse leaves it as it was.
     let before = registry.stable_hash();
@@ -2764,8 +2767,9 @@ mod committed {
         }
         assert_eq!(times, 57, "zone-less times of day");
         assert_eq!(naive, 369, "local values, stating no zone");
-        // Sixty-eight shipped fields, plus the crate's five clocks: `currunix`,
-        // `creaunix`, `prevunix`, `snapunix` and `exprtime`.
+        // Sixty-eight shipped fields, plus the crate's eight clocks: `currunix`,
+        // `creaunix`, `prevunix`, `snapunix`, `execunix`, `recdunix`,
+        // `refrecdunix` and `exprtime`.
         let crated = registry
             .iter()
             .filter(|field| {
@@ -2778,7 +2782,7 @@ mod committed {
                         .is_some_and(yggdryl::is_crate_tag)
             })
             .count();
-        assert_eq!(crated, 5, "the crate's own clocks");
+        assert_eq!(crated, 8, "the crate's own clocks");
         assert_eq!(utc, 68 + crated, "instants stated in UTC");
     }
 
@@ -2972,10 +2976,20 @@ mod committed {
     /// residual count rather than the complete in-memory content.
     /// It last moved when the identifiers group described the synthesized
     /// `msgsectxid` capture pair beside the message's ordinary identifiers.
+    /// It moved when FIX's `SecAltIDGrp` took the canonical group name
+    /// `secaltids` and the crate added the `execunix` and `recdunix` fields; those
+    /// definitions, references, derivations and generated tags are now part of the
+    /// committed registry hash.
+    /// It moved again when the proprietary `CreationTime` spelling became the
+    /// indexed alias of the crate's `creaunix` field.
+    /// It moved when `refrecdunix` persisted the latest recording clock used to
+    /// select a reference across repeated generic merges.
+    /// It moved when `RegulatoryTradeIDGrp` took the canonical collection name
+    /// `regulatorytradeids` and joined the fixed row under counter 1907.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 10_264_503_129_809_217_507);
+        assert_eq!(registry.stable_hash(), 17_827_337_951_025_588_531);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

@@ -1,7 +1,9 @@
 //! `rust/src/fix/enrich.rs`: the specification's tables read as
 //! implications: each carried by the field it fills as a `FIX:derivation`,
 //! answered once from a hand-written line, refused where the answer is not
-//! certain, and settled in one pass.
+//! certain, and settled in one parse. The committed set takes the shipped
+//! native plan; an edited or additional rule takes the same terms through
+//! the dynamic plan.
 
 use super::SoleMessage;
 
@@ -9,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
-use yggdryl::graph::{Event, MarketElement};
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::local::Folder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -78,6 +80,13 @@ fn integer(message: &FixMsg, tag: i32) -> Option<i128> {
     message.get_by_tag(tag).as_ref().and_then(Scalar::as_i128)
 }
 
+/// One typed FIX timestamp at nanosecond resolution.
+fn instant(message: &FixMsg, tag: i32) -> Option<i64> {
+    message
+        .get_by_tag(tag)
+        .and_then(|held| held.temporal_count_at(yggdryl::TimeUnit::Nanosecond))
+}
+
 /// The ranked spelling a `state` column holds for one wire code.
 fn state(code: &str) -> String {
     State::from_spelling(code)
@@ -92,6 +101,186 @@ fn alternate(id: &str, source: &str) -> Vec<u8> {
         "MSGTYPE=D|#CLORDID=A|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID={id}\x04\x03SECURITYALTIDSOURCE={source}"
     )
     .into_bytes()
+}
+
+#[test]
+fn smarttrade_quote_and_mass_quote_ack_map_creation_time_and_quote_identifiers() {
+    let reader = reader();
+    for (msgtype, canonical) in [("quote", "S"), ("massquoteacknowledgement", "b")] {
+        let line = format!(
+            "CREATIONTIME=20260814092957|ENV=PROD|MSGTYPE={msgtype}|ORIG.MSGTYPE=massquoteacknowledgement|QUOTEID=quote-20260814-1|QUOTEREQID=request-20260814-1|QUOTESTATUS=canceledduetolockmarket|SYMBOL=EUR/USD|TEXT=MATCHED"
+        );
+        let message = settled(&reader, line.as_bytes());
+
+        assert_eq!(message.header().msgtype(), canonical);
+        assert_eq!(message.get_creaunix(), Some(1_786_699_797_000_000_000));
+        assert_eq!(integer(&message, 297), Some(14));
+        assert_eq!(text(&message, 55).as_deref(), Some("EUR/USD"));
+        assert_eq!(text(&message, 58).as_deref(), Some("MATCHED"));
+        assert_eq!(
+            message
+                .get_identifiers()
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("quoteid", "quote-20260814-1"),
+                ("quotereqid", "request-20260814-1"),
+            ]
+        );
+    }
+}
+
+#[test]
+fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
+    let rows = concat!(
+        "2026-08-14 11:29:57.511 [636-e7254b17:9f02625007:86416] [SmartTrade_RFQ] (DEBUG) RouteMessage : ",
+        "MSGTYPE=massquoteacknowledgement|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=LUX|\n",
+        "2026-08-14 11:29:57.511 [636-e7254b17:9f02625007:86416] [SmartTrade_RFQ_Add_Fields] (DEBUG) After Enrichment -> ",
+        "CREATIONTIME=20260814092957|ENV=PROD|MSGTYPE=quote|ORIG.MSGTYPE=massquoteacknowledgement|",
+        "QUOTEID=quote-20260814-1|QUOTEREQID=request-20260814-1|",
+        "QUOTESTATUS=canceledduetolockmarket|SYMBOL=EUR/USD|TEXT=MATCHED|\n",
+    );
+    let source = Buffer::from_bytes(rows.as_bytes().to_vec()).with_media_type(
+        Url::from_str("file:///smarttrade.log")
+            .expect("a URL")
+            .media_type(),
+    );
+    let options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge row header compiles")
+        .with_timezone(Timezone::UTC);
+    let reader = reader().with_capture_names(options.capture_names().map(ToOwned::to_owned));
+    let parsed: Vec<FixMsg> = reader
+        .parse_text_lines(read_text_lines(&source, &options).expect("a line reader"))
+        .collect::<yggdryl::Result<_>>()
+        .expect("two readable messages");
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(
+        parsed
+            .iter()
+            .map(|message| message.header().msgtype())
+            .collect::<Vec<_>>(),
+        ["b", "S"]
+    );
+
+    let quote = &parsed[1];
+    assert_eq!(quote.header().msgseqnum(), Some(86_416));
+    assert_eq!(quote.capture().msgsessionid(), Some("e7254b17"));
+    assert_eq!(quote.capture().msgctxid(), Some("9f02625007"));
+    assert_eq!(quote.get_creaunix(), Some(1_786_699_797_000_000_000));
+    assert_eq!(
+        quote
+            .get_identifiers()
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("msgsectxid", "e7254b17:9f02625007"),
+            ("quoteid", "quote-20260814-1"),
+            ("quotereqid", "request-20260814-1"),
+        ]
+    );
+
+    let walked = reader
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("a readable lifecycle");
+    assert_eq!(
+        walked
+            .iter()
+            .map(|message| message.header().msgtype())
+            .collect::<Vec<_>>(),
+        ["b", "S"],
+        "one capture session/context/sequence under two message types is two deliveries"
+    );
+}
+
+#[test]
+fn execution_time_uses_the_first_execution_specific_statement() {
+    const DIRECT: i64 = 1_704_190_530_100_000_000;
+    const EXECUTION: i64 = 1_704_190_530_200_000_000;
+    const REGULATORY: i64 = 1_704_190_530_300_000_000;
+    const EVENT: i64 = 1_704_190_530_400_000_000;
+    const TRANSACTION: i64 = 1_704_190_530_500_000_000;
+
+    let reader = reader();
+    let direct = settled(
+        &reader,
+        b"8=FIX.4.4|35=8|65062=20240102-10:15:30.100|2749=20240102-10:15:30.200|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+    );
+    assert_eq!(direct.get_execunix(), Some(DIRECT));
+
+    let execution = settled(
+        &reader,
+        b"8=FIX.4.4|35=8|2749=20240102-10:15:30.200|768=1|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+    );
+    assert_eq!(execution.get_execunix(), Some(EXECUTION));
+    assert_eq!(instant(&execution, 2749), Some(EXECUTION));
+
+    let regulatory = settled(
+        &reader,
+        b"8=FIX.4.4|35=8|768=2|769=20240102-10:15:30.250|770=2|769=20240102-10:15:30.300|770=1|eventtimestamp=20240102-10:15:30.400|150=F|60=20240102-10:15:30.500|10=0|",
+    );
+    assert_eq!(regulatory.get_execunix(), Some(REGULATORY));
+
+    let event = settled(
+        &reader,
+        b"MSGTYPE=8|eventtimestamp=20240102-10:15:30.400|EXECTYPE=F|TRANSACTTIME=20240102-10:15:30.500",
+    );
+    assert_eq!(event.get_execunix(), Some(EVENT));
+
+    let transaction = settled(
+        &reader,
+        b"8=FIX.4.4|35=8|150=F|60=20240102-10:15:30.500|10=0|",
+    );
+    assert_eq!(transaction.get_execunix(), Some(TRANSACTION));
+    for execution_type in ["F", "1", "2"] {
+        let line = format!("8=FIX.4.4|35=8|150={execution_type}|60=20240102-10:15:30.500|10=0|");
+        let message = settled(&reader, line.as_bytes());
+        assert_eq!(
+            message.get_execunix(),
+            Some(TRANSACTION),
+            "{execution_type}"
+        );
+        assert!(message.is_execution(), "ExecType {execution_type}");
+        let walked = reader
+            .lifecycle([message])
+            .next()
+            .expect("one walked message")
+            .expect("a readable lifecycle");
+        assert_eq!(walked.get_execunix(), Some(TRANSACTION), "{execution_type}");
+    }
+}
+
+#[test]
+fn corrections_cancels_and_clearing_transitions_do_not_invent_execution_time() {
+    let reader = reader();
+    for (execution_type, order_status) in [("G", "1"), ("H", "2"), ("J", "1"), ("K", "2")] {
+        let line = format!(
+            "8=FIX.4.4|35=8|39={order_status}|150={execution_type}|60=20240102-10:15:30.500|10=0|"
+        );
+        let message = settled(&reader, line.as_bytes());
+        assert_eq!(
+            message.get_execunix(),
+            None,
+            "ExecType {execution_type} with OrdStatus {order_status}"
+        );
+        assert!(
+            !message.is_execution(),
+            "ExecType {execution_type} is not an execution"
+        );
+        let walked = reader
+            .lifecycle([message])
+            .next()
+            .expect("one walked message")
+            .expect("a readable lifecycle");
+        assert_eq!(
+            walked.get_execunix(),
+            None,
+            "walking ExecType {execution_type} must not use current time"
+        );
+    }
 }
 
 #[test]
@@ -111,10 +300,12 @@ fn an_identifier_names_the_standard_that_closes_it() {
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
     assert_eq!(text(&cusip, 22).as_deref(), Some("1"));
     assert_eq!(isincode(&cusip), None);
+    assert!(cusip.get_cusipcode().is_none());
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
     assert_eq!(text(&sedol, 22).as_deref(), Some("2"));
+    assert!(sedol.get_sedolcode().is_none());
 
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
@@ -220,6 +411,7 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     // the check digit does not close is nothing at all.
     let cusip = settled(&reader, &alternate("037833100", "1"));
     assert_eq!(isincode(&cusip), None);
+    assert!(cusip.get_cusipcode().is_none());
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
     assert_eq!(isincode(&masked), None);
@@ -480,6 +672,21 @@ fn a_value_that_would_not_type_is_filled_in_place() {
     );
 }
 
+#[test]
+fn the_shipped_native_plan_fills_quotes_pegs_contract_amounts_and_currency_source() {
+    let reader = reader();
+    let held = settled(
+        &reader,
+        b"8=FIX.4.4|35=S|15=CHF|188=1.25|189=0.125|190=1.5|191=-0.25|211=-0.25|231=2|969=0.5|1095=100.5|10=0|",
+    );
+
+    assert_eq!(held.by_tag(132).unwrap(), super::decimal("1.375"));
+    assert_eq!(held.by_tag(133).unwrap(), super::decimal("1.25"));
+    assert_eq!(held.by_tag(839).unwrap(), super::decimal("100.25"));
+    assert_eq!(held.by_tag(1146).unwrap(), super::decimal("1"));
+    assert_eq!(text(&held, 2897).as_deref(), Some("6"));
+}
+
 /// The committed dictionary, owned, for the cases that edit a field.
 fn committed() -> FixRegistry {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -488,6 +695,54 @@ fn committed() -> FixRegistry {
         .join("fix");
     let folder = Folder::new(root).expect("the seed folder is a local path");
     FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
+}
+
+/// The shipped rules through the generic evaluator, selected by one inert
+/// custom rule whose target these fixtures never fill.
+fn dynamic_reader() -> FixCodec {
+    let mut registry = committed();
+    let mut custom = DataType::decimal128(38, 18)
+        .expect("the FIX decimal")
+        .nullable_field("deskquantity");
+    custom.as_fix_mut().set_tag(9_381).expect("a custom tag");
+    custom
+        .as_fix_mut()
+        .set_derivation(&"lastqty".parse::<Term>().expect("a term"))
+        .expect("a custom derivation");
+    registry.insert(custom).expect("the custom field is added");
+    super::fixed_codec(Arc::new(registry))
+}
+
+#[test]
+fn the_native_plan_matches_generic_eager_arithmetic_and_unicode_text() {
+    let native = reader();
+    let dynamic = dynamic_reader();
+    let cases: &[(&[u8], &[i32])] = &[
+        (
+            b"8=FIX.4.4|35=8|14=99999999999999999999.999999999999999998|151=0.000000000000000001|84=0.000000000000000002|10=0|",
+            &[38],
+        ),
+        ("8=FIX.4.4|35=D|167=Cſ|10=0|".as_bytes(), &[460, 461]),
+        ("8=FIX.4.4|35=D|461=OéFXXX|10=0|".as_bytes(), &[167]),
+    ];
+    for (line, tags) in cases {
+        let native = settled(&native, line);
+        let dynamic = settled(&dynamic, line);
+        for tag in *tags {
+            assert_eq!(
+                native.get_by_tag(*tag),
+                dynamic.get_by_tag(*tag),
+                "native and generic tag {tag} differ for {}",
+                String::from_utf8_lossy(line)
+            );
+        }
+    }
+
+    let security = settled(&native, "8=FIX.4.4|35=D|167=Cſ|10=0|".as_bytes());
+    assert_eq!(integer(&security, 460), Some(5));
+    assert_eq!(text(&security, 461).as_deref(), Some("ESXXXX"));
+    let cfi = settled(&native, "8=FIX.4.4|35=D|461=OéFXXX|10=0|".as_bytes());
+    assert_eq!(text(&cfi, 167).as_deref(), Some("OOF"));
 }
 
 #[test]
@@ -514,8 +769,13 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
     registry.update(leaves).expect("the field updates");
 
     let reader = super::fixed_codec(Arc::new(registry));
-    let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
+    let held = settled(&reader, b"8=FIX.4.4|35=8|15=CHF|39=0|38=100|14=20|10=0|");
     assert_eq!(held.by_tag(151).unwrap(), super::decimal("8"));
+    assert_eq!(
+        text(&held, 2897).as_deref(),
+        Some("6"),
+        "the dynamic plan also runs every unchanged shipped rule"
+    );
 
     // Removing it silences the fill. `update` merges, and a stored key the
     // incoming field omits is kept as every `FIX:` key is, so the removal
@@ -557,6 +817,39 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
     let reader = super::fixed_codec(Arc::new(registry));
     let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
     assert_eq!(held.get_by_tag(151), None, "nothing derives it now");
+}
+
+#[test]
+fn an_added_custom_derivation_uses_the_dynamic_plan_beside_the_shipped_rules() {
+    let native = reader();
+    let line = b"8=FIX.4.4|35=S|15=CHF|32=10|188=1.25|189=0.125|190=1.5|191=-0.25|211=-0.25|231=2|969=0.5|1095=100.5|10=0|";
+    let expected = settled(&native, line);
+
+    let mut registry = committed();
+    let mut desk_quantity = DataType::decimal128(38, 18)
+        .expect("the FIX decimal")
+        .nullable_field("deskquantity");
+    desk_quantity
+        .as_fix_mut()
+        .set_tag(9_381)
+        .expect("a custom tag");
+    desk_quantity
+        .as_fix_mut()
+        .set_derivation(&"lastqty".parse::<Term>().expect("a term"))
+        .expect("a custom derivation is stored");
+    registry
+        .insert(desk_quantity)
+        .expect("the custom field is added");
+
+    let dynamic = settled(&super::fixed_codec(Arc::new(registry)), line);
+    for tag in [132, 133, 839, 1146, 2897] {
+        assert_eq!(
+            dynamic.get_by_tag(tag),
+            expected.get_by_tag(tag),
+            "shipped tag {tag} has the same answer on the dynamic plan"
+        );
+    }
+    assert_eq!(dynamic.by_tag(9_381).unwrap(), super::decimal("10"));
 }
 
 #[test]
@@ -680,7 +973,7 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     assert_eq!(isincode(&chain).as_deref(), Some("GB0002634946"));
     assert_eq!(text(&chain, 470).as_deref(), Some("GB"));
     // The other way round, from the alternate a message states instead of
-    // a primary: `secaltidgrp` -> `securityid` -> `securityidsource`, a
+    // a primary: `secaltids` -> `securityid` -> `securityidsource`, a
     // lower tag filled off a group.
     let reversed = settled(&reader, &alternate("GB0002634946", "4"));
     assert_eq!(text(&reversed, 48).as_deref(), Some("GB0002634946"));
@@ -749,7 +1042,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
         );
     }
     let _ = registry
-        .get_field_by_name("secaltidgrp")
+        .get_field_by_name("secaltids")
         .expect("the group a rule reads");
 }
 

@@ -1,5 +1,5 @@
 {
-  "name": "secaltidgrp",
+  "name": "secaltids",
   "dtype": {
     "type": "list",
     "field": {
@@ -17,7 +17,7 @@
   "metadata": {
     "FIX:component": "secaltid",
     "FIX:counter": "454",
-    "FIX:tag": "589472",
+    "FIX:tag": "617267",
     "display": "SecAltIDGrp"
   }
 }

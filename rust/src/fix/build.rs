@@ -452,6 +452,10 @@ pub(super) struct RowExtras<'row> {
     /// the row answers for states as its one source; none for bytes no line
     /// stands behind.
     pub(super) source: Option<crate::Uuid>,
+    /// When the carrier recorded the row, in nanoseconds since the Unix
+    /// epoch. Applied after the row's explicit fills, so a stated crate
+    /// `recdunix` stands.
+    pub(super) recdunix: Option<i64>,
 }
 
 /// What a row stated, owned, for the messages it answers for.
@@ -472,6 +476,8 @@ pub(super) struct RowStamp {
     direction: Option<SmolStr>,
     /// The identity of the line the row was read from.
     source: Option<crate::Uuid>,
+    /// When the carrier recorded the row.
+    recdunix: Option<i64>,
 }
 
 impl RowStamp {
@@ -481,6 +487,7 @@ impl RowStamp {
             && extras.fills.is_empty()
             && extras.direction.is_none()
             && extras.source.is_none()
+            && extras.recdunix.is_none()
         {
             return None;
         }
@@ -493,6 +500,7 @@ impl RowStamp {
                 .collect(),
             direction: extras.direction.map(SmolStr::new),
             source: extras.source,
+            recdunix: extras.recdunix,
         }))
     }
 
@@ -516,6 +524,7 @@ impl RowStamp {
             direction: self.direction.as_deref(),
             direction_pin: None,
             source: self.source,
+            recdunix: self.recdunix,
         }
     }
 
@@ -552,6 +561,7 @@ impl RowExtras<'static> {
         direction: None,
         direction_pin: None,
         source: None,
+        recdunix: None,
     };
 }
 

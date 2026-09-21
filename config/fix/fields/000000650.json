@@ -101,6 +101,9 @@
     },
     "nullable": false,
     "metadata": {
+      "FIX:names": [
+        "CreationTime"
+      ],
       "FIX:tag": "65023",
       "FIX:transient": "false",
       "description": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed.",
@@ -169,7 +172,7 @@
     "metadata": {
       "FIX:tag": "65039",
       "FIX:transient": "false",
-      "description": "The message's identity: the UUIDv7 its instant and its code derive.",
+      "description": "The message's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive.",
       "display": "CurrUuid"
     }
   },
@@ -367,6 +370,51 @@
       "FIX:tag": "65061",
       "description": "The normalized FIGI the message identifies.",
       "display": "FIGICode"
+    }
+  },
+  {
+    "name": "execunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65062",
+      "FIX:transient": "false",
+      "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated.",
+      "display": "ExecUnix"
+    }
+  },
+  {
+    "name": "recdunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65063",
+      "FIX:transient": "false",
+      "description": "When the message was recorded by its carrier, where the carrier states one.",
+      "display": "RecdUnix"
+    }
+  },
+  {
+    "name": "refrecdunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65064",
+      "FIX:transient": "false",
+      "description": "The recording clock of the observation selected as the message's merge reference; the latest its statements know.",
+      "display": "RefRecdUnix"
     }
   }
 ]

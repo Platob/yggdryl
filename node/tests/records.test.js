@@ -61,10 +61,11 @@ function wkbPoint(x, y) {
   return bytes
 }
 
-// The sixteen event columns every line batch opens with: the line as the
-// event it is, the same sixteen a FIX row parsed out of it opens with.
+// The nineteen event columns every line batch opens with: the line as the
+// event it is, the same nineteen a FIX row parsed out of it opens with.
 const EVENT_COLUMNS = [
-  'currunix', 'creaunix', 'exprtime', 'prevunix', 'snapunix',
+  'currunix', 'creaunix', 'execunix', 'recdunix', 'refrecdunix',
+  'exprtime', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
   'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
 ]
@@ -445,11 +446,11 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   assert.equal(options.parseMtime, true)
   const table = handle.readArrowReader(options).intoTable()
   assert.deepEqual(
-    table.schema.fields.slice(0, 16).map((field) => field.name),
+    table.schema.fields.slice(0, EVENT_COLUMNS.length).map((field) => field.name),
     EVENT_COLUMNS,
   )
   assert.deepEqual(
-    table.schema.fields.slice(16).map((field) => [
+    table.schema.fields.slice(EVENT_COLUMNS.length).map((field) => [
       field.name,
       field.type.toString(),
       field.nullable,
@@ -462,8 +463,10 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   )
   // The url column is the `url` datatype: Utf8 storage carrying the extension
   // identity, and nullable because a handle without a location has no URL.
+  const sourceurl = table.schema.fields.find((field) => field.name === 'sourceurl')
+  assert.ok(sourceurl)
   assert.equal(
-    table.schema.fields[16].metadata.get('ARROW:extension:name'),
+    sourceurl.metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   // A located handle fills it with the canonical URL text of its location.
@@ -535,8 +538,10 @@ test('a row header that dates a line fills mtime rather than adding a column', (
     table.schema.fields.map((field) => field.name),
     [...EVENT_COLUMNS, 'sourceurl', 'mtime', 'body', 'id'],
   )
-  assert.equal(table.schema.fields[17].type.unit, arrow.TimeUnit.NANOSECOND)
-  assert.equal(table.schema.fields[17].type.timezone, 'UTC')
+  const mtime = table.schema.fields.find((field) => field.name === 'mtime')
+  assert.ok(mtime)
+  assert.equal(mtime.type.unit, arrow.TimeUnit.NANOSECOND)
+  assert.equal(mtime.type.timezone, 'UTC')
   assert.deepEqual(
     [...table.getChild('mtime').toArray()],
     [1_577_934_245_123_456_789n],
@@ -551,7 +556,9 @@ test('a row header that dates a line fills mtime rather than adding a column', (
     .readArrowReader(undated)
     .intoTable()
   assert.deepEqual(
-    counted.schema.fields.slice(16).map((field) => [field.name, field.type.toString()]),
+    counted.schema.fields
+      .slice(EVENT_COLUMNS.length)
+      .map((field) => [field.name, field.type.toString()]),
     [
       ['sourceurl', 'Utf8'],
       ['body', 'Utf8'],

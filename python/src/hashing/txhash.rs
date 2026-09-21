@@ -218,16 +218,21 @@ impl PyTxHash {
         }
     }
 
-    /// The RFC 9562 `UUIDv7` projection as a `uuid` `Scalar`.
+    /// Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
+    /// `uuid` `Scalar`.
     ///
-    /// Lossy and one-way: the instant restated to signed nanoseconds and
-    /// floored to the microsecond, then the digest's low 62 bits; neither
-    /// the unit nor the algorithm survives.
-    /// Raises `ValueError` for a digest that is not 64 bits wide, or an
-    /// instant that does not fit signed 64-bit nanoseconds.
+    /// The instant is floored directly to Unix milliseconds, and `rand_a`
+    /// carries the low 12 sequence bits. XXH3-64 hashes the complete 16-byte
+    /// big-endian `(seqnum, digest-u64)` tuple under `seed`; its low 62 bits
+    /// fill `rand_b`. This is a lossy, collision-resistant, non-cryptographic
+    /// 74-bit identity fingerprint, not a uniqueness guarantee: neither the
+    /// unit nor the algorithm survives, and sequence ordering wraps with its
+    /// low 12 bits.
+    /// Raises `ValueError` for a digest that is not 64 bits wide, or an instant
+    /// outside the `UUIDv7` millisecond range.
     #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
-    fn into_uuid(&self) -> PyResult<PyScalar> {
-        let uuid = self.inner.into_uuid().map_err(value_error)?;
+    fn into_uuid(&self, seqnum: u64, seed: u64) -> PyResult<PyScalar> {
+        let uuid = self.inner.into_uuid(seqnum, seed).map_err(value_error)?;
         Ok(PyScalar {
             inner: Scalar::Uuid(uuid),
         })

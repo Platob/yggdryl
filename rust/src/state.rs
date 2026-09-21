@@ -74,6 +74,18 @@ impl State {
         matches!(self.rank(), Some(95..=99))
     }
 
+    /// Whether this state itself reports an execution.
+    ///
+    /// Exact states rather than a rank band: rank `40` also holds generic
+    /// in-progress work, and rank `80` other successful endings. A trade
+    /// correction, cancellation or clearing transition refers to an earlier
+    /// execution and must carry that execution's instant rather than invent
+    /// one from the later report.
+    #[must_use]
+    pub fn is_execution(&self) -> bool {
+        matches!(self.as_str(), "40PARTFILL" | "40TRADE" | "80FILLED")
+    }
+
     /// The state one spelling names, refused where none does.
     ///
     /// [`Self::from_spelling`] as the value contract reads it: a column typed

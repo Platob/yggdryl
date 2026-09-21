@@ -112,9 +112,10 @@ mod dataset {
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
-        // Two field-order duplicates collapse, while four bypass-risk metadata
-        // changes survive: 63 distinct source events and one expiry.
-        assert_eq!(direct.len(), 64);
+        // Complete four-part capture keys identify the bridge's repeated
+        // observations before the older content-key dedup runs: 31 deliveries
+        // and one expiry.
+        assert_eq!(direct.len(), 32);
         assert_eq!(
             direct
                 .iter()
@@ -707,7 +708,7 @@ mod dataset {
                 };
                 assert!(
                     source == reparsed || same_code,
-                    "row {at} changed FIX column {name}: {}",
+                    "row {at} changed FIX column {name} from {source:?} to {reparsed:?}: {}",
                     written[at]
                 );
             }
@@ -1286,10 +1287,11 @@ mod pipeline {
         let read = read(&CAPTURE);
         let stage = text_stage(&CAPTURE);
 
-        // A capture instant is ordinary context. `SendingTime` dates the event
-        // independently of when the bridge logged it, and a row stating none -
-        // the routed fill, keyed by name - takes the codec's clock: what its
-        // `TransactTime` says is the lifecycle's to read.
+        // A capture instant is ordinary context. The message's own clocks date
+        // the event independently of when the bridge logged it, and a row
+        // stating no `SendingTime` - the routed fill, keyed by name - takes the
+        // codec's clock, its `TransactTime` standing far outside the delay that
+        // would let it date the message instead.
         let clock = column(&stage, "timestamp");
         let carried = column(&read, "timestamp");
         let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);

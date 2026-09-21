@@ -1,5 +1,5 @@
 {
-  "name": "regulatorytradeidgrp",
+  "name": "regulatorytradeids",
   "dtype": {
     "type": "list",
     "field": {
@@ -17,7 +17,7 @@
   "metadata": {
     "FIX:component": "regulatorytradeidcomponent",
     "FIX:counter": "1907",
-    "FIX:tag": "911928",
+    "FIX:tag": "497401",
     "description": "Required if NoRegulatoryTradeIDs(1907) > 0.",
     "display": "RegulatoryTradeIDGrp"
   }

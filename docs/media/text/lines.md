@@ -8,7 +8,7 @@
 | --- | --- |
 | Owns | `TextLine`, `TextBytes`, `TextEntries`, `TextEntry`, and `read_text_lines`, the one decode entry point every record method routes through |
 | Holds | what the reader cut and nothing it derived: `index`, `sourceurl`, the whole `body` with its row header included, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
-| Lazy | `mtime`, `bodytype`, the `captures`, the `entries` and the sixteen event facts are readings of the body, resolved on the first ask, once, and never before |
+| Lazy | `mtime`, `bodytype`, the `captures`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceurl`, the rest off the body |
 | Text | a body is text where the line is made: valid UTF-8 costs the validation, and every other byte reads as the character Windows-1252 gives it |
 | Validated | an empty body is refused wherever one is set; a capture named for an event fact that does not parse at the fact's datatype is a named refusal |
 | Owned | nothing: every key, value, body and capture is a range of the reader's own window, until a binding copies it across |
@@ -85,30 +85,37 @@ through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
 A line is an [event](../../graph.md) of the graph, and a struct rather than a
-map. It holds what the reader cut and nothing it derived: `index`,
-`sourceurl`, the whole `body` with its row header included,
+map. It holds the reader facts `index` and `sourceurl`, what the reader cut -
+the whole `body` with its row header included - plus
 `dropped_byte_size`, `decoded_byte_size`, and the options it reads itself by.
-Everything else is a reading of the body under those options, resolved on its
-first ask, once, and never before: `mtime`, `bodytype`, the row header's
+Everything else is resolved on its first ask, once, and never before:
+`seqnum` from `index` under `start_rownum`, `crosscode` from the canonical
+`sourceurl`, and `mtime`, `bodytype`, the row header's
 `captures` in the order the expression declares them, the `entries` the payload
-carries, and the identity - `curruuid` from the instant and the XXH3-64 of the
-bytes, `crossuuid` and `crosscode`, `currhashcode`, `crosshashcode`,
+carries, and the identity - `curruuid` from the instant, sequence, XXH3-64 of
+the bytes and its `crosshashcode` seed, `crossuuid`, `currhashcode`, `crosshashcode`,
 `currunix` - so a line handed on as a line resolves only what is asked of it,
-while a batch built from lines asks every row for the sixteen event columns it
+while a batch built from lines asks every row for the nineteen event columns it
 opens with, a projection reading fewer of them afterwards - and a message
 parsed out of a line states the line's `curruuid` among its
 [`srcuuids`](../../fix/capture.md#the-crates-own-columns). A capture named for
-an event fact - `mtime`, `seqnum`, `state`, `prevuuid`, `crosscode`, the four
-lifecycle instants - feeds that reading by its exact name, parsed at the fact's
-own datatype, and one that does not parse is a named refusal on the reading and
-on every column built from it. Every one of the sixteen facts is a column of
+an event fact - `mtime`, `state`, `prevuuid`, or one of the seven optional event
+instants - feeds that reading by its exact name, parsed at the fact's own
+datatype, and one that does not parse is a named refusal on the reading and
+on every column built from it. Every one of the nineteen facts is a column of
 the [row schema](index.md#row-schema), filled from these readings and restated on a
 line read back out of a batch, so a batch of lines, a batch of the messages
 parsed from them and a batch of the lifecycle's messages join on one column
 set: the message's `srcuuids` to the line's `curruuid`, the chained message's
-`prevuuid` and `parentuuids` to the messages' `curruuid`. A `set_` states a fact over the line's own
-reading: stated captures are the line's word over its header, and `set_body`
-drops every reading resolved so far.
+`prevuuid` and `parentuuids` to the messages' `curruuid`. A `set_` states a fact
+over the line's own reading, including an explicit `seqnum` or `crosscode` from
+an event column read back out of Arrow. Stated captures are the line's word over
+its header; `set_body` drops body-derived readings, `set_index` refreshes the
+derived sequence, and `set_sourceurl` refreshes the derived cross code, hash,
+current identity, and cross identity without displacing an explicitly stated
+event value. The source URL and its lazily rendered cross code are one shared
+reader value: every line borrows the same spelling, and an Arrow event column
+clones its shared string handle rather than allocating that spelling per row.
 
 `TextLine::from_bytes(index, body, options)` makes one from the bytes the
 reader cut and the shared `Arc<TextOptions>` it reads itself by, and is where
@@ -501,10 +508,12 @@ their bytes.
 
 Keeping the lines keeps the windows they name. A reader that drops each line
 as it reads it - a fold, the Arrow builder, the FIX codec - lets the reader
-write its window over again and allocates nothing per line at all; one that
-collects them holds one page per 64 KiB of object rather than one page per
-line of it. Where that matters, read the field off the line and drop the line,
-or read into Arrow, which copies each value into its column.
+write its window over again and allocates nothing per line at all - the
+source URL's canonical cross code is rendered once for the reader, when it is
+first asked, and every line borrows that one spelling; one that collects them
+holds one page per 64 KiB of object rather than one page per line of it.
+Where that matters, read the field off the line and drop the line, or read
+into Arrow, which copies each value into its column.
 
 ## Edges
 

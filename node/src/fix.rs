@@ -1261,10 +1261,10 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// bridge's `msgsessionid:msgctxid` where the row header stated both, else
 /// the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
 /// over it, the `currhashcode` over everything the message says but the
-/// standard header and trailer, the `curruuid`
-/// over its instant and that hash, and the `crossuuid` over the cross hash -
-/// or the `curruuid` itself when no cross code names a chain. Every write
-/// settles it again.
+/// standard header and trailer, the `curruuid` from its millisecond instant
+/// and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+/// seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
+/// when no cross code names a chain. Every write settles it again.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
     inner: CoreFixMsg,
@@ -1292,9 +1292,11 @@ impl JsFixMsg {
     /// tag, a crate column, one of the FIX fields a message lifts,
     /// `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
     /// when the value states none; the event's instant is the stated one,
-    /// else that sending time, and the creation the stated one, else the
-    /// instant - what `TransactTime(60)` or `OrigSendingTime(122)` says is
-    /// the lifecycle's to read. The identity is then settled.
+    /// else the official transaction clock standing within the core's default
+    /// one-second delay of that sending time - a `TransactTime(60)`, else a
+    /// ranked `TrdRegTimestamp(769)` - else the sending time itself, and the
+    /// creation the stated one, else the instant. What `OrigSendingTime(122)`
+    /// says is the lifecycle's to read. The identity is then settled.
     #[napi(constructor)]
     pub fn new(
         field: &JsField,
@@ -1411,7 +1413,9 @@ impl JsFixMsg {
         self.inner.lifted().msgcat().map(ToOwned::to_owned)
     }
 
-    /// This message's own identity, as its hyphenated text.
+    /// This message's own `UUIDv7` identity, from its millisecond instant and
+    /// full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
+    /// seed, as hyphenated text.
     #[napi(getter)]
     pub fn curruuid(&self) -> String {
         self.inner.get_curruuid().to_string()
@@ -2210,7 +2214,10 @@ impl JsFixCodec {
     /// `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
     /// in nanoseconds, and `null` or absence reads UTC now per new message.
     /// `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
-    /// nanoseconds; `null`, zero and a negative width disable snapshots.
+    /// nanoseconds; `null`, zero and a negative width disable snapshots;
+    /// `officialTimeDelayMs` is how far from `SendingTime(52)` an official
+    /// transaction clock may stand and still date the message, the core's
+    /// one second when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2257,6 +2264,10 @@ impl JsFixCodec {
             let snapshot_ns = i64::try_from(snapshot_ns)
                 .map_err(|_| napi_error("snapshotNs must be a signed 64-bit integer"))?;
             inner = inner.with_snapshot_ns(snapshot_ns);
+        }
+        if let Some(held) = options.official_time_delay_ms {
+            let delay = exact_i64(held, "officialTimeDelayMs")?;
+            inner = inner.with_official_time_delay_ms(delay);
         }
         if let Some(held) = options.include_msgtypes {
             inner = inner.with_include_msgtypes(held);
@@ -2338,6 +2349,17 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn snapshot_ns(&self) -> Option<BigInt> {
         self.inner.snapshot_ns().map(BigInt::from)
+    }
+
+    /// How far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, in milliseconds.
+    ///
+    /// A millisecond count is a JavaScript number, exact to 2^53, as every
+    /// count at this boundary is.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn official_time_delay_ms(&self) -> f64 {
+        self.inner.official_time_delay_ms() as f64
     }
 
     /// The message types a parse keeps, empty where it keeps every type the
@@ -2738,6 +2760,11 @@ pub struct FixCodecOptions<'env> {
     /// `null`, zero and a negative width disable snapshots.
     #[napi(ts_type = "bigint | null")]
     pub snapshot_ns: Option<Either<BigInt, Null>>,
+    /// How far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, in milliseconds; the core's one
+    /// second when unstated, and a nonpositive delay admits only a
+    /// transaction clock equal to the sending clock.
+    pub official_time_delay_ms: Option<f64>,
     /// The message types a parse keeps, spelled as codes or as names -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
     /// or unstated keeps every type the refusals leave.

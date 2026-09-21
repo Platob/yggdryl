@@ -949,11 +949,14 @@ test('handler-backed framed text resets at every leaf', () => {
   const table = IOBase.fromFs(handler, 'bucket/logs')
     .readArrowReader(options)
     .intoTable()
-  // The sixteen event columns lead the row, the line's own behind them.
-  assert.equal(table.schema.fields[0].name, 'currunix')
-  assert.equal(table.schema.fields[15].name, 'state')
+  // The event columns lead the row, the line's own behind them.
+  const schemaFields = table.schema.fields
+  const sourceurlIndex = schemaFields.findIndex((field) => field.name === 'sourceurl')
+  assert.notEqual(sourceurlIndex, -1)
+  assert.equal(schemaFields[0].name, 'currunix')
+  assert.equal(schemaFields[sourceurlIndex - 1].name, 'state')
   assert.deepEqual(
-    table.schema.fields.slice(16).map((field) => [field.name, field.nullable]),
+    schemaFields.slice(sourceurlIndex).map((field) => [field.name, field.nullable]),
     [
       ['sourceurl', true],
       ['mtime', true],
@@ -963,9 +966,10 @@ test('handler-backed framed text resets at every leaf', () => {
   )
   // The url column is the `url` datatype: Utf8 storage under the extension
   // identity, and it names the leaf each row was actually read from.
-  assert.equal(table.schema.fields[16].type.toString(), 'Utf8')
+  const sourceurl = schemaFields[sourceurlIndex]
+  assert.equal(sourceurl.type.toString(), 'Utf8')
   assert.equal(
-    table.schema.fields[16].metadata.get('ARROW:extension:name'),
+    sourceurl.metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   assert.deepEqual(

@@ -9,7 +9,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::{Element, Event};
-use crate::{DataType, FieldPath, MimeType, Result, Scalar, State, Url, Uuid};
+use crate::{DataType, FieldPath, MimeType, Result, Scalar, State, Str, Url, Uuid};
 
 use super::arrow::{parse_capture, physical_rownum, row_error};
 use super::options::{MTIME_COLUMN, TextOptions, mtime_dtype};
@@ -21,9 +21,9 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// the object, the object, the handle's own modification time, the body -
 /// the whole line as cut, the row header included, made text where it is
 /// made - and one `Arc<TextOptions>` every line of a read shares. Every
-/// other fact is a reading of the body under those options, resolved on the
-/// first ask, once, into a slot of its own, so a caller that reads the body
-/// and the row number resolves nothing else:
+/// other fact is a reading of those held inputs under the options, resolved
+/// on the first ask, once, into a slot of its own, so a caller that reads the
+/// body and the row number resolves nothing else:
 ///
 /// | reading | resolves as |
 /// | --- | --- |
@@ -34,25 +34,27 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | [`mtime`](Self::mtime) | the header's `mtime` capture as an instant, else the handle's modification time |
 /// | `get_identifiers` | the named captures the line matched, each under the capture's name |
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
-/// | `get_seqnum` | a `seqnum` capture, else the row number under `start_rownum`, else the index |
+/// | `get_seqnum` | the row number under `start_rownum`, else the physical index |
 /// | `get_state` | a `state` capture, else `00UNKNOWN` |
-/// | `get_creaunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_refrecdunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
-/// | `get_crosscode` | a `crosscode` capture, else none |
+/// | `get_crosscode` | the source URL, else none |
 /// | `get_currhashcode` | the XXH3-64 of the body's bytes |
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
-/// | `get_curruuid` | [`Event::time_uuid`] over the instant and the code |
+/// | `get_curruuid` | [`Event::time_uuid`] over the instant, row number and body code seeded by the cross hash |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
 /// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
 ///
-/// A capture named for an [`Event`] fact feeds that reading by its exact
-/// name, parsed at the fact's own datatype - an instant at the `mtime`
-/// column's clock, a `uuid`, a `state`, a count - and a capture that does
-/// not parse as it is a named refusal on the inherent reading that owns it
-/// and on every column built from it; the trait door, which cannot refuse,
-/// answers the fact's default over a refused reading. A `set_*` states a
-/// fact and wins over the resolved reading; [`set_body`](Self::set_body)
-/// drops every resolved slot, because every one of them read the body.
+/// A capture named for an [`Event`] fact that the line does not derive feeds
+/// that reading by its exact name, parsed at the fact's own datatype - an
+/// instant at the `mtime` column's clock, a `uuid`, a `state` - and a capture
+/// that does not parse as it is a named refusal on the inherent reading that
+/// owns it and on every column built from it; the trait door, which cannot
+/// refuse, answers the fact's default over a refused reading. `seqnum` and
+/// `crosscode` are reserved because row number and source URL own them. A
+/// `set_*` states a fact and wins over the resolved reading;
+/// [`set_body`](Self::set_body) drops every resolved slot, because every one
+/// of them read the body.
 /// Equality, order and hash read the stated facts alone and never a
 /// resolved slot.
 ///
@@ -112,7 +114,7 @@ struct Stated {
     entries: Option<Option<TextEntries>>,
     curruuid: Option<Uuid>,
     crossuuid: Option<Uuid>,
-    crosscode: Option<String>,
+    crosscode: Option<Str>,
     currhashcode: Option<u64>,
     crosshashcode: Option<u64>,
     identifiers: Option<BTreeMap<String, String>>,
@@ -122,6 +124,9 @@ struct Stated {
     state: Option<State>,
     seqnum: Option<u64>,
     creaunix: Option<Option<i64>>,
+    execunix: Option<Option<i64>>,
+    recdunix: Option<Option<i64>>,
+    refrecdunix: Option<Option<i64>>,
     exprtime: Option<Option<i64>>,
     prevunix: Option<Option<i64>>,
     prevuuid: Option<Option<Uuid>>,
@@ -174,11 +179,13 @@ struct Resolved {
     seqnum: OnceLock<Reading<u64>>,
     state: OnceLock<Reading<State>>,
     creaunix: OnceLock<Reading<Option<i64>>>,
+    execunix: OnceLock<Reading<Option<i64>>>,
+    recdunix: OnceLock<Reading<Option<i64>>>,
+    refrecdunix: OnceLock<Reading<Option<i64>>>,
     exprtime: OnceLock<Reading<Option<i64>>>,
     prevunix: OnceLock<Reading<Option<i64>>>,
     snapunix: OnceLock<Reading<Option<i64>>>,
     prevuuid: OnceLock<Reading<Option<Uuid>>>,
-    crosscode: OnceLock<String>,
     currhashcode: OnceLock<u64>,
     crosshashcode: OnceLock<u64>,
     curruuid: OnceLock<Uuid>,
@@ -186,8 +193,8 @@ struct Resolved {
 }
 
 impl Resolved {
-    /// Drops the four readings the identity derives from, so they resolve
-    /// afresh from the body, the instant and the cross code as they now are.
+    /// Drops the four derived identity readings, so they resolve afresh from
+    /// the body, instant, sequence and cross code as they now are.
     fn reset_identity(&mut self) {
         self.currhashcode = OnceLock::new();
         self.crosshashcode = OnceLock::new();
@@ -249,11 +256,13 @@ impl TextLine {
         self.index
     }
 
-    /// Set the physical line number; the place in the chain it answers
-    /// resolves afresh.
+    /// Set the physical line number; the place in the chain and the current
+    /// identity it answers resolve afresh.
     pub fn set_index(&mut self, index: u64) {
         self.index = index;
         self.resolved.seqnum = OnceLock::new();
+        self.resolved.curruuid = OnceLock::new();
+        self.resolved.crossuuid = OnceLock::new();
     }
 
     /// The options this line is read under: the row header, the strips, the
@@ -286,14 +295,20 @@ impl TextLine {
     }
 
     /// Set or clear the object this line was read from.
+    ///
+    /// Refreshes the derived cross code, cross hash, current identity and
+    /// cross identity. An explicitly stated event value continues to win.
     pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
         self.url = url;
+        self.resolved.crosshashcode = OnceLock::new();
+        self.resolved.curruuid = OnceLock::new();
+        self.resolved.crossuuid = OnceLock::new();
     }
 
     /// Return this line addressed to one object.
     #[must_use]
     pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self {
-        self.url = Some(url);
+        self.set_sourceurl(Some(url));
         self
     }
 
@@ -521,11 +536,13 @@ impl TextLine {
         self.resolved.seqnum = OnceLock::new();
         self.resolved.state = OnceLock::new();
         self.resolved.creaunix = OnceLock::new();
+        self.resolved.execunix = OnceLock::new();
+        self.resolved.recdunix = OnceLock::new();
+        self.resolved.refrecdunix = OnceLock::new();
         self.resolved.exprtime = OnceLock::new();
         self.resolved.prevunix = OnceLock::new();
         self.resolved.snapunix = OnceLock::new();
         self.resolved.prevuuid = OnceLock::new();
-        self.resolved.crosscode = OnceLock::new();
         self.resolved.reset_identity();
     }
 
@@ -703,32 +720,18 @@ impl TextLine {
         self.answer(reading).copied()
     }
 
-    /// Where the line stands in its chain: a `seqnum` capture, else the row
-    /// number under `start_rownum`, else the physical line number.
+    /// Where the line stands in its source: the row number under
+    /// `start_rownum`, else the zero-based physical line number.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
-    /// `seqnum` for a capture that is not a count, and naming `rownum` for a
-    /// row number no count can hold.
+    /// `rownum` for a row number no count can hold.
     pub fn seqnum(&self) -> Result<u64> {
         if let Some(stated) = self.stated.seqnum {
             return Ok(stated);
         }
         let reading = self.resolved.seqnum.get_or_init(|| {
-            if let Some(text) = self.capture_named("seqnum") {
-                return match text.parse::<u64>() {
-                    Ok(count) => Reading::read(count),
-                    Err(_) => Reading::refused(
-                        self.index,
-                        "seqnum",
-                        format_smolstr!(
-                            "expected a count for seqnum, got {:?}",
-                            super::elide_to(text, super::ERROR_TEXT_LIMIT)
-                        ),
-                    ),
-                };
-            }
             match physical_rownum(self.options.start_rownum, self.index) {
                 Ok(Some(rownum)) => match u64::try_from(rownum) {
                     Ok(count) => Reading::read(count),
@@ -796,6 +799,58 @@ impl TextLine {
             .resolved
             .creaunix
             .get_or_init(|| self.instant_capture("creaunix"));
+        self.answer(reading).copied()
+    }
+
+    /// When the line's event was executed: an `execunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn execunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.execunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .execunix
+            .get_or_init(|| self.instant_capture("execunix"));
+        self.answer(reading).copied()
+    }
+
+    /// When the line's event was recorded: a `recdunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn recdunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.recdunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .recdunix
+            .get_or_init(|| self.instant_capture("recdunix"));
+        self.answer(reading).copied()
+    }
+
+    /// The recording clock of the observation selected as this line's merge
+    /// reference: a `refrecdunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn refrecdunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.refrecdunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .refrecdunix
+            .get_or_init(|| self.instant_capture("refrecdunix"));
         self.answer(reading).copied()
     }
 
@@ -882,13 +937,22 @@ impl TextLine {
 
     /// Drops what the identity derives - the code, the cross hash code, the
     /// identity and the cross element - stated or resolved, so each resolves
-    /// afresh from the body, the instant and the cross code as they now are.
+    /// afresh from the body, instant, sequence and cross code as they now are.
     fn derive_identity(&mut self) {
         self.stated.currhashcode = None;
         self.stated.crosshashcode = None;
         self.stated.curruuid = None;
         self.stated.crossuuid = None;
         self.resolved.reset_identity();
+    }
+
+    /// Drops the generic identities, stated or resolved, so a changed input
+    /// projects both of them again on their next ask.
+    fn derive_uuids(&mut self) {
+        self.stated.curruuid = None;
+        self.stated.crossuuid = None;
+        self.resolved.curruuid = OnceLock::new();
+        self.resolved.crossuuid = OnceLock::new();
     }
 }
 
@@ -950,11 +1014,19 @@ fn decoded_captures(mut captures: Vec<Option<TextBytes>>) -> Result<Vec<Option<T
 }
 
 impl TextLine {
-    /// What the line states under one of the sixteen event columns, as the
+    /// The stated cross code, else the source URL's shared canonical text.
+    fn crosscode_value(&self) -> Option<&Str> {
+        if let Some(stated) = &self.stated.crosscode {
+            return Some(stated);
+        }
+        self.url.as_ref().map(|url| url.shared_text())
+    }
+
+    /// What the line states under one of the event columns, as the
     /// column's cell, or nothing where it states no fact.
     ///
     /// The facts a capture feeds - the instant, the state, the place, the
-    /// four lifecycle instants, the element it follows - are read through
+    /// optional event instants, the element it follows - are read through
     /// the line's own readings, so a capture the fact's type cannot read
     /// is refused by the fact's name rather than answered as the default
     /// the trait doors fall back to.
@@ -966,6 +1038,15 @@ impl TextLine {
     pub fn event_fact(&self, column: crate::graph::EventColumn) -> Result<Option<Scalar>> {
         use crate::graph::EventColumn;
         match column {
+            // The generic event projection starts from `&str`, which would
+            // allocate a new long string value for every row. This line owns
+            // the shared value already, so its Arrow cell is a cheap clone.
+            EventColumn::CrossCode => {
+                return Ok(self
+                    .crosscode_value()
+                    .filter(|code| !code.is_empty())
+                    .map(|code| Scalar::String(code.clone())));
+            }
             // The instant is the `mtime` capture where one reads as an
             // instant, else the handle's, whatever the column flag says; the
             // reading is asked to refuse a capture that does not read only
@@ -983,6 +1064,15 @@ impl TextLine {
             }
             EventColumn::CreaUnix => {
                 self.creaunix()?;
+            }
+            EventColumn::ExecUnix => {
+                self.execunix()?;
+            }
+            EventColumn::RecdUnix => {
+                self.recdunix()?;
+            }
+            EventColumn::RefRecdUnix => {
+                self.refrecdunix()?;
             }
             EventColumn::ExprTime => {
                 self.exprtime()?;
@@ -1007,7 +1097,7 @@ impl Element for TextLine {
         if let Some(stated) = self.stated.curruuid {
             return stated;
         }
-        // The UUIDv7 the instant and the code derive; an instant a UUIDv7
+        // The UUIDv7 the instant, row number and cross-seeded code derive; an instant a UUIDv7
         // cannot hold - before the epoch, past its 48-bit millisecond count -
         // is the nil identity, never a truncated one.
         *self
@@ -1033,20 +1123,17 @@ impl Element for TextLine {
     }
 
     fn get_crosscode(&self) -> &str {
-        if let Some(stated) = &self.stated.crosscode {
-            return stated;
-        }
-        self.resolved.crosscode.get_or_init(|| {
-            self.capture_named("crosscode")
-                .map(str::to_owned)
-                .unwrap_or_default()
-        })
+        self.crosscode_value().map(Str::as_str).unwrap_or_default()
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.stated.crosscode = Some(crosscode);
+        self.stated.crosscode = Some(Str::from(crosscode));
+        // The cross hash and both identities derive from this code. A line
+        // restored from Arrow states those columns explicitly, so dropping
+        // only their resolved slots would leave the restored values stale.
+        self.stated.crosshashcode = None;
         self.resolved.crosshashcode = OnceLock::new();
-        self.resolved.crossuuid = OnceLock::new();
+        self.derive_uuids();
     }
 
     fn get_currhashcode(&self) -> u64 {
@@ -1061,8 +1148,7 @@ impl Element for TextLine {
 
     fn set_currhashcode(&mut self, hashcode: u64) {
         self.stated.currhashcode = Some(hashcode);
-        self.resolved.curruuid = OnceLock::new();
-        self.resolved.crossuuid = OnceLock::new();
+        self.derive_uuids();
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -1081,7 +1167,7 @@ impl Element for TextLine {
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
         self.stated.crosshashcode = Some(crosshashcode);
-        self.resolved.crossuuid = OnceLock::new();
+        self.derive_uuids();
     }
 
     fn get_identifiers(&self) -> &BTreeMap<String, String> {
@@ -1124,9 +1210,9 @@ impl Element for TextLine {
         (self.get_currunix(), self.index) > (other.get_currunix(), other.index)
     }
 
-    /// The identity is what the body and the instant derive: the code, the
-    /// cross hash code, the identity and the cross element resolve afresh
-    /// on their next ask.
+    /// The identity is what the instant, sequence and cross-seeded body code
+    /// derive: the code, cross hash code, identity and cross element resolve
+    /// afresh on their next ask.
     fn finalize(&mut self) {
         self.derive_identity();
     }
@@ -1159,7 +1245,7 @@ impl Event for TextLine {
 
     fn set_currunix(&mut self, unix: i64) {
         self.stated.currunix = Some(unix);
-        self.resolved.reset_identity();
+        self.derive_uuids();
     }
 
     /// [`TextLine::state`]; `00UNKNOWN` over a refused capture.
@@ -1180,13 +1266,15 @@ impl Event for TextLine {
         self.stated.state = Some(state);
     }
 
-    /// [`TextLine::seqnum`]; the physical line number over a refused capture.
+    /// [`TextLine::seqnum`]; the physical line number over a refused row
+    /// number.
     fn get_seqnum(&self) -> u64 {
         self.seqnum().unwrap_or(self.index)
     }
 
     fn set_seqnum(&mut self, seqnum: u64) {
         self.stated.seqnum = Some(seqnum);
+        self.derive_uuids();
     }
 
     /// [`TextLine::creaunix`]; none over a refused capture.
@@ -1196,6 +1284,33 @@ impl Event for TextLine {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.stated.creaunix = Some(unix);
+    }
+
+    /// [`TextLine::execunix`]; none over a refused capture.
+    fn get_execunix(&self) -> Option<i64> {
+        self.execunix().ok().flatten()
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.stated.execunix = Some(unix);
+    }
+
+    /// [`TextLine::recdunix`]; none over a refused capture.
+    fn get_recdunix(&self) -> Option<i64> {
+        self.recdunix().ok().flatten()
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        self.stated.recdunix = Some(unix);
+    }
+
+    /// [`TextLine::refrecdunix`]; none over a refused capture.
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.refrecdunix().ok().flatten()
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.stated.refrecdunix = Some(unix);
     }
 
     /// [`TextLine::exprtime`]; none over a refused capture.

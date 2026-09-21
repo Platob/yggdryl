@@ -411,9 +411,10 @@ impl JsTextLine {
             .and_then(|held| i64::try_from(held).ok())
     }
 
-    /// The line's identity, as its hyphenated text: the uuid its instant and
-    /// its hash code derive. A line is an event of the graph, and a message
-    /// parsed out of it states this among its `srcuuids`.
+    /// The line's identity, as its hyphenated text: `UUIDv7` over its
+    /// millisecond instant, row-derived sequence and body hash, with the
+    /// source URL's cross hash as seed. A line is an event of the graph, and
+    /// a message parsed out of it states this among its `srcuuids`.
     #[napi(getter)]
     pub fn curruuid(&self) -> String {
         self.inner.get_curruuid().to_string()
@@ -426,8 +427,8 @@ impl JsTextLine {
         self.inner.get_crossuuid().to_string()
     }
 
-    /// The code the chain is named by: a `crosscode` capture where the row
-    /// header has one, and empty where it names none.
+    /// The code the chain is named by: the canonical source URL, and empty
+    /// where the line was read from no located source.
     #[napi(getter)]
     pub fn crosscode(&self) -> String {
         self.inner.get_crosscode().to_owned()

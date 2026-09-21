@@ -20,40 +20,32 @@
 //! `TimeInForce` defines its own absence as a day order; and ISO 6166 opens a
 //! number with the two letters ISO 3166 gives its issuing country.
 //!
-//! # The rules are the registry's, not this module's
+//! # The registry remains the contract; the shipped plan is native
 //!
-//! Each of those tables is one field's `FIX:derivation`: one
-//! term in the crate's expression grammar over the message's fields, spelled
-//! by their canonical folded names, carried by the field it fills and read
-//! with [`FixField::derivation`](crate::FixField::derivation). Nothing here
-//! knows what `LeavesQty` is; the field says `case when ... then orderqty -
-//! cumqty end`, and this module evaluates what a field says. Adding a rule is
-//! editing a field, exactly as adding a [replacement](super::latest) is, and
-//! a dictionary a desk loads carries the desk's rules.
+//! Each table is stored on its target field as one `FIX:derivation` term in
+//! the crate's expression grammar, spelled by canonical folded field names
+//! and read with [`FixField::derivation`](crate::FixField::derivation). The
+//! generator also emits the exact complete signature of the twenty-nine
+//! shipped terms. A registry carrying that signature over the canonical
+//! source, target and group shapes takes the direct native evaluator; any
+//! edited, removed or added term takes the generic evaluator for the whole
+//! registry. Thus adding a desk rule remains a field edit, exactly as adding
+//! a [replacement](super::latest) is, without mixing two evaluators inside
+//! one dependency graph.
 //!
-//! # One compile per registry, one working row per message
+//! # One selection per registry, one native overlay or generic row per message
 //!
-//! A registry compiles its derivations once - every term parsed, every name
-//! it reads proven to be a field or a group, every term bound - and keeps
-//! [`Derivations`] until a field changes. What the terms bind against is the
-//! working schema: the ordered union of every column any derivation reads or
-//! fills, each typed by the registry's field for it, a group by its group
-//! definition. A term binds against that schema at compile and never against
-//! a message, so there is no shape to recognize and nothing to cache per
-//! shape. Per message the pass gathers exactly those columns off the message
-//! by tag - a stated field as its value, a stated group laid out as the
-//! registry declares its occurrence, an absent column as null - into a
-//! working row over the schema, and sweeps the derivations in tag order: a
-//! target the row holds non-null is skipped, else the term is evaluated and
-//! a non-null answer the target's field accepts is written into the working
-//! row where the next derivation reads it. Sweeps repeat until one writes
-//! nothing, bounded by the number of derivations, which is what settles a
-//! chain in either direction - `securityid` from `isincode` and `isincode`
-//! from `securityid`, `product` after `securitytype` after `cficode` -
-//! without a hand-laid order. Everything that landed then reaches the message
-//! through one [`FixMsg::set_each`], one rebuild for the whole pass. Nothing
-//! is kept between messages: a stream of a million messages of a thousand
-//! shapes costs each message one working row and the sweeps over it.
+//! A registry carrying the shipped signature validates the exact metadata and
+//! field shapes, then keeps only the native-plan marker: none of its terms are
+//! parsed, bound or retained. A custom registry compiles every derivation once,
+//! with every term parsed, every name proven to be a field or group, and every
+//! expression bound, and keeps [`Derivations`] until a field changes. Its plan
+//! gathers the ordered union of every column any term reads or fills into a
+//! typed working row, then evaluates the bound terms in tag order. Both paths
+//! expose each accepted answer to later rules, repeat until one sweep writes
+//! nothing, and finish through one [`FixMsg::set_each`], so chains settle in
+//! either direction without rebuilding the message between rules. Nothing is
+//! kept per message shape or between messages.
 //!
 //! # Enrichment never touches the entries
 //!
@@ -66,9 +58,9 @@
 //!
 //! # A derivation answers only when the answer is certain
 //!
-//! An absent input is a null column of the working row, so a term over it
-//! answers null under the grammar's three-valued rules and the target stays
-//! unfilled; a condition that does not hold answers null the same way. A
+//! An absent input is null on either plan, so a term over it answers null
+//! under the grammar's three-valued rules and the target stays unfilled; a
+//! condition that does not hold answers null the same way. A
 //! value the target's field refuses - an identifier whose check digit does
 //! not close, a spelling a code set does not read - is silence, as one
 //! refused [`FixMsg::set`] is. The cost of silence is a null column; the
@@ -79,7 +71,9 @@
 //! it beside what it would have kept of a compiled list, and every door -
 //! the enrichment and the row fill alike - answers it until a field changes.
 
-use std::collections::{HashSet, VecDeque};
+use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::iter::FusedIterator;
 use std::vec;
@@ -90,7 +84,7 @@ use crate::expression::{Bound, Term};
 use crate::graph::instrument::InstrumentCodes;
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator};
-use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructType};
+use crate::{DataType, Error, Field, FixCategory, Result, Scalar, State, StructType, Uuid};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -216,13 +210,17 @@ impl Input {
     }
 }
 
-/// Every `FIX:derivation` a registry carries, compiled once.
+/// The `FIX:derivation` plan a registry carries, selected once.
 ///
 /// Built by [`FixRegistry::derivations`] and kept on the registry until a
 /// field changes; every codec and every message reading that registry
 /// evaluates through the same instance, the line door, the batch door and
 /// the row fill alike.
 pub struct Derivations {
+    /// Whether this registry carries the complete shipped rule set over the
+    /// canonical field and group shapes the native evaluator implements.
+    /// Any customization selects the generic list for the whole registry.
+    native: bool,
     /// In tag order, which is the order one sweep evaluates them in.
     list: Vec<Derivation>,
     /// The working schema's columns in first-seen order - every column a
@@ -236,10 +234,13 @@ pub struct Derivations {
 }
 
 impl Derivations {
-    /// Reads every field's `FIX:derivation` and proves it against the
-    /// registry.
+    /// Selects the exact shipped native plan, or compiles every custom
+    /// `FIX:derivation` and proves it against the registry.
     ///
-    /// Every column a term reads must be a field or a group the registry
+    /// The shipped signature is checked directly against canonical metadata
+    /// and its expected field shapes, so that path parses, binds and retains
+    /// no generic terms or working schema. On the custom path, every column a
+    /// term reads must be a field or a group the registry
     /// names, and the term must bind against the working schema those
     /// fields make - so a name the dictionary lacks, or `orderqty - symbol`,
     /// is refused here naming the field, not once per message. The crate's
@@ -256,6 +257,14 @@ impl Derivations {
     /// not parse, reads a column no field or group of this registry answers
     /// to, or does not bind against the fields it reads.
     pub(super) fn compile(registry: &FixRegistry) -> std::result::Result<Self, Refused> {
+        if native_registry(registry) {
+            return Ok(Self {
+                native: true,
+                list: Vec::new(),
+                inputs: Vec::new(),
+                crate_reads: Vec::new(),
+            });
+        }
         let mut carried: Vec<(i32, Field, Term)> = Vec::new();
         let mut inputs: Vec<Input> = Vec::new();
         for field in registry.iter() {
@@ -307,6 +316,7 @@ impl Derivations {
             }
             carried.push((tag, field.clone(), term));
         }
+        carried.sort_by_key(|(tag, _, _)| *tag);
         let schema = StructType::from_fields(inputs.iter().map(|input| input.field.clone()))
             .map(DataType::from)
             .map_err(|error| Refused::new("FIX:derivation", &error))?
@@ -355,6 +365,7 @@ impl Derivations {
         crate_reads.sort_unstable();
         crate_reads.dedup();
         Ok(Self {
+            native: false,
             list,
             inputs,
             crate_reads,
@@ -380,6 +391,12 @@ impl Derivations {
             .map(|derivation| (derivation.tag, derivation.bound.is_some()))
     }
 
+    /// Whether the complete shipped rule set takes the direct evaluator.
+    #[cfg(feature = "internals")]
+    pub const fn is_native(&self) -> bool {
+        self.native
+    }
+
     /// Fills `msg` with everything its derivations imply, to a fixpoint.
     ///
     /// Every answer lands through one [`FixMsg::set_each`]: a row already
@@ -397,6 +414,9 @@ impl Derivations {
     /// Returns the schema grammar's refusal when the written children do not
     /// make a root.
     pub(super) fn fill_all(&self, msg: &mut FixMsg) -> Result<()> {
+        if self.native {
+            return super::native_derivations::fill_all(msg);
+        }
         if self.list.is_empty() {
             return Ok(());
         }
@@ -494,6 +514,28 @@ impl Derivations {
     }
 }
 
+/// Whether the registry is exactly the generated shipped plan. This reads raw
+/// canonical metadata only: parsing and binding it would rebuild the generic
+/// plan whose startup and retained state the native path exists to remove.
+fn native_registry(registry: &FixRegistry) -> bool {
+    let mut expected = super::constants::SHIPPED_DERIVATIONS.iter();
+    for field in registry.iter() {
+        let Some(term) = field.get_metadata("FIX:derivation") else {
+            continue;
+        };
+        let Some(&(expected_tag, expected_term)) = expected.next() else {
+            return false;
+        };
+        let Some((tag, _)) = registry.identity_of(field) else {
+            return false;
+        };
+        if tag != expected_tag || term != expected_term {
+            return false;
+        }
+    }
+    expected.next().is_none() && super::native_derivations::supports(registry)
+}
+
 /// Where a column stands among the inputs, under the fold the binder
 /// resolves a name by.
 fn position_of(inputs: &[Input], name: &str) -> Option<usize> {
@@ -580,6 +622,7 @@ enum DeliveryKey {
         sender_location: Option<SmolStr>,
         target_location: Option<SmolStr>,
         capture_session: Option<SmolStr>,
+        capture_context: Option<SmolStr>,
         sequence: u64,
         original_time: i64,
         content: u64,
@@ -649,9 +692,351 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
         sender_location: text(message, 142),
         target_location: text(message, 143),
         capture_session,
+        capture_context: message.capture().msgctxid().map(SmolStr::new),
         sequence,
         original_time,
         content,
+    }
+}
+
+/// The capture identity that proves two rows are observations of one FIX
+/// delivery. All four facts must be present: absent provenance or message
+/// type is never an identity shared by otherwise unrelated messages.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct CaptureDelivery {
+    msgtype: SmolStr,
+    session: SmolStr,
+    context: SmolStr,
+    sequence: u64,
+}
+
+fn capture_delivery(message: &FixMsg) -> Option<CaptureDelivery> {
+    // A lifecycle output is already placed. Expiries keep their source
+    // message's capture key, and snapshots keep it while adding a view
+    // clock; neither is another raw observation to coalesce on replay.
+    if message.get_prevuuid().is_some() || message.get_snapunix().is_some() {
+        return None;
+    }
+    let msgtype = message.header().msgtype();
+    if msgtype.is_empty() {
+        return None;
+    }
+    let session = message
+        .capture()
+        .msgsessionid()
+        .filter(|value| !value.is_empty())?;
+    let context = message
+        .capture()
+        .msgctxid()
+        .filter(|value| !value.is_empty())?;
+    Some(CaptureDelivery {
+        msgtype: SmolStr::new(msgtype),
+        session: SmolStr::new(session),
+        context: SmolStr::new(context),
+        sequence: message.header().msgseqnum()?,
+    })
+}
+
+/// One capture-identified delivery while all of its raw observations are
+/// collected. They are ranked only after collection, so a lower-priority
+/// observation can never fill a fact before a higher-priority one is read.
+struct CapturedDelivery {
+    message: FixMsg,
+    others: Vec<FixMsg>,
+}
+
+fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
+    let right_leads = crate::graph::element::right_is_reference(
+        crate::graph::element::reference_recdunix(left),
+        left.get_currunix(),
+        crate::graph::element::reference_recdunix(right),
+        right.get_currunix(),
+    );
+    if right_leads {
+        return Ordering::Greater;
+    }
+    let left_leads = crate::graph::element::right_is_reference(
+        crate::graph::element::reference_recdunix(right),
+        right.get_currunix(),
+        crate::graph::element::reference_recdunix(left),
+        left.get_currunix(),
+    );
+    if left_leads {
+        Ordering::Less
+    } else {
+        Ordering::Equal
+    }
+}
+
+/// Fully merges observations carrying one complete capture identity before
+/// the lifecycle walk can mistake them for successive events. The most
+/// recently recorded message is the retained FIX row; the graph fold unions
+/// the other observations into it and keeps the earliest per-event clocks.
+fn merge_capture_deliveries(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -> Vec<FixMsg> {
+    let mut positions = HashMap::with_capacity(messages.len().min(4_096));
+    let mut merged: Vec<CapturedDelivery> = Vec::with_capacity(messages.len());
+
+    for message in messages {
+        let Some(key) = capture_delivery(&message) else {
+            merged.push(CapturedDelivery {
+                message,
+                others: Vec::new(),
+            });
+            continue;
+        };
+        match positions.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(merged.len());
+                merged.push(CapturedDelivery {
+                    message,
+                    others: Vec::new(),
+                });
+            }
+            Entry::Occupied(entry) => merged[*entry.get()].others.push(message),
+        }
+    }
+
+    merged
+        .into_iter()
+        .map(|mut held| {
+            if held.others.is_empty() {
+                return held.message;
+            }
+            held.others.push(held.message);
+            held.others.sort_by(reference_order);
+            let mut observations = held.others.into_iter();
+            let mut reference = observations.next().expect("one captured observation");
+            for other in observations {
+                if let Err(error) = super::latest::merge_content(&mut reference, &other) {
+                    failures.push_back(error);
+                }
+                crate::graph::element::merge_market_event_into_reference(&mut reference, &other);
+            }
+            reference
+        })
+        .collect()
+}
+
+/// One FIX message while the generic event walk selects its exact
+/// predecessor. The wrapper adds the protocol's predecessor-derived order
+/// spellings inside `with_previous`, so the copy retained by the walk and the
+/// copy it yields are the same enriched message.
+#[derive(Clone)]
+struct LifecycleMessage {
+    message: FixMsg,
+    failure: Option<SmolStr>,
+}
+
+impl From<FixMsg> for LifecycleMessage {
+    fn from(message: FixMsg) -> Self {
+        Self {
+            message,
+            failure: None,
+        }
+    }
+}
+
+impl Element for LifecycleMessage {
+    fn get_curruuid(&self) -> Uuid {
+        self.message.get_curruuid()
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.message.set_curruuid(curruuid);
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.message.get_crossuuid()
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.message.set_crossuuid(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        self.message.get_crosscode()
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.message.set_crosscode(crosscode);
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        self.message.get_currhashcode()
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.message.set_currhashcode(hashcode);
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.message.get_crosshashcode()
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.message.set_crosshashcode(crosshashcode);
+    }
+
+    fn get_identifiers(&self) -> &BTreeMap<String, String> {
+        self.message.get_identifiers()
+    }
+
+    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
+        self.message.set_identifiers(identifiers);
+    }
+
+    fn get_parentuuids(&self) -> &[Uuid] {
+        self.message.get_parentuuids()
+    }
+
+    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
+        self.message.set_parentuuids(parents);
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.message.get_srcuuids()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.message.set_srcuuids(sources);
+    }
+
+    fn is_after(&self, other: &Self) -> bool {
+        self.message.is_after(&other.message)
+    }
+
+    fn finalize(&mut self) {
+        self.message.finalize();
+    }
+
+    fn with_previous(self, previous: &Self) -> Option<Self> {
+        let mut message = self.message;
+        let mut failure = self.failure;
+        let inherited = if failure.is_none() {
+            match super::latest::inherit_order_links(&mut message, &previous.message) {
+                Ok(changed) => changed,
+                Err(error) => {
+                    failure = Some(format_smolstr!("{error}"));
+                    false
+                }
+            }
+        } else {
+            false
+        };
+        let fallback = inherited.then(|| message.clone());
+        let message = match message.with_previous(&previous.message) {
+            Some(message) => message,
+            None => fallback?,
+        };
+        Some(Self { message, failure })
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        Some(Self {
+            message: self.message.merge_with(&other.message)?,
+            failure: self.failure.or_else(|| other.failure.clone()),
+        })
+    }
+}
+
+impl Event for LifecycleMessage {
+    fn restating(self, live: &Self) -> Self {
+        Self {
+            message: self.message.restating(&live.message),
+            failure: self.failure.or_else(|| live.failure.clone()),
+        }
+    }
+
+    fn get_currunix(&self) -> i64 {
+        self.message.get_currunix()
+    }
+
+    fn set_currunix(&mut self, unix: i64) {
+        self.message.set_currunix(unix);
+    }
+
+    fn get_state(&self) -> &State {
+        self.message.get_state()
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.message.set_state(state);
+    }
+
+    fn is_execution(&self) -> bool {
+        self.message.is_execution()
+    }
+
+    fn get_seqnum(&self) -> u64 {
+        self.message.get_seqnum()
+    }
+
+    fn set_seqnum(&mut self, seqnum: u64) {
+        self.message.set_seqnum(seqnum);
+    }
+
+    fn get_creaunix(&self) -> Option<i64> {
+        self.message.get_creaunix()
+    }
+
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.message.set_creaunix(unix);
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.message.get_execunix()
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.message.set_execunix(unix);
+    }
+
+    fn get_recdunix(&self) -> Option<i64> {
+        self.message.get_recdunix()
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        self.message.set_recdunix(unix);
+    }
+
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.message.get_refrecdunix()
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.message.set_refrecdunix(unix);
+    }
+
+    fn get_exprtime(&self) -> Option<i64> {
+        self.message.get_exprtime()
+    }
+
+    fn set_exprtime(&mut self, unix: Option<i64>) {
+        self.message.set_exprtime(unix);
+    }
+
+    fn get_prevunix(&self) -> Option<i64> {
+        self.message.get_prevunix()
+    }
+
+    fn set_prevunix(&mut self, unix: Option<i64>) {
+        self.message.set_prevunix(unix);
+    }
+
+    fn get_prevuuid(&self) -> Option<Uuid> {
+        self.message.get_prevuuid()
+    }
+
+    fn set_prevuuid(&mut self, uuid: Option<Uuid>) {
+        self.message.set_prevuuid(uuid);
+    }
+
+    fn get_snapunix(&self) -> Option<i64> {
+        self.message.get_snapunix()
+    }
+
+    fn set_snapunix(&mut self, unix: Option<i64>) {
+        self.message.set_snapunix(unix);
     }
 }
 
@@ -680,16 +1065,16 @@ impl Prepared {
 }
 
 impl Iterator for Prepared {
-    type Item = FixMsg;
+    type Item = LifecycleMessage;
 
-    fn next(&mut self) -> Option<FixMsg> {
+    fn next(&mut self) -> Option<LifecycleMessage> {
         loop {
             let mut message = self.source.next()?;
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
             self.codes.enrich(&mut message);
-            return Some(message);
+            return Some(message.into());
         }
     }
 
@@ -703,7 +1088,7 @@ impl FusedIterator for Prepared {}
 /// A finite capture walked in event-time order. Intake failures are reported
 /// before messages because sorting necessarily consumes the capture first.
 pub(super) struct Walked {
-    walk: EventIterator<FixMsg, Prepared>,
+    walk: EventIterator<LifecycleMessage, Prepared>,
     failures: VecDeque<Error>,
 }
 
@@ -720,6 +1105,7 @@ impl Walked {
                 Err(error) => failures.push_back(error),
             }
         }
+        let mut messages = merge_capture_deliveries(messages, &mut failures);
         messages.sort_by(order);
         Self {
             walk: EventIterator::new(Prepared::new(messages), true).with_snapshot_ns(snapshot_ns),
@@ -735,7 +1121,13 @@ impl Iterator for Walked {
         if let Some(error) = self.failures.pop_front() {
             return Some(Err(error));
         }
-        self.walk.next().map(Ok)
+        self.walk.next().map(|held| match held.failure {
+            Some(reason) => Err(Error::InvalidRecord {
+                path: "fix.lifecycle".into(),
+                reason,
+            }),
+            None => Ok(held.message),
+        })
     }
 }
 

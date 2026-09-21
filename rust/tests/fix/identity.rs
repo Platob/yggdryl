@@ -5,11 +5,12 @@
 use super::SoleMessage;
 use super::committed_registry;
 use super::fixed_codec;
+use super::sequence;
 
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::MarketElement;
-    use yggdryl::{CfiCode, FixMsg, IsinCode, Scalar};
+    use yggdryl::{CfiCode, CusipCode, FixMsg, IsinCode, Scalar, SedolCode};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -36,9 +37,10 @@ mod categories {
         let registry = super::committed_registry();
         let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
         let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
-        // Five crate tags follow MsgCat(65054); CFI keeps standard tag 461.
-        // Each is derived once by MarketEvent, then the row and tag lookup
-        // borrow that same typed fact.
+        // CFI keeps standard tag 461. The normalized identifiers this message
+        // lifts are derived once by MarketEvent, then the row and tag lookup
+        // borrow that same typed fact. CUSIP and SEDOL deliberately stay in
+        // FIX's contextual identifier fields and `secaltids`.
         let cases = [
             (
                 b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|".as_slice(),
@@ -49,16 +51,6 @@ mod categories {
                 b"8=FIX.4.4|35=D|11=C|461=ESXXXX|10=0|".as_slice(),
                 461,
                 "ESXXXX",
-            ),
-            (
-                b"8=FIX.4.4|35=D|11=U|22=1|48=037833100|10=0|".as_slice(),
-                65_057,
-                "037833100",
-            ),
-            (
-                b"8=FIX.4.4|35=D|11=S|22=2|48=B0YBKJ7|10=0|".as_slice(),
-                65_058,
-                "B0YBKJ7",
             ),
             (
                 b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|".as_slice(),
@@ -121,6 +113,57 @@ mod categories {
     }
 
     #[test]
+    fn cusip_and_sedol_stay_in_fix_identifiers_without_normalized_lifting() {
+        let registry = super::committed_registry();
+        let codec = super::fixed_codec(Arc::clone(&registry));
+        let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+
+        let primary = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|11=C|22=1|48=037833100|10=0|")
+            .expect("a CUSIP security identifier");
+        let primary_id = primary.get_by_tag(48);
+        assert_eq!(
+            primary_id.as_ref().and_then(Scalar::as_str),
+            Some("037833100")
+        );
+        assert!(primary.get_cusipcode().is_none());
+
+        let alternates = codec
+            .parse_fix_line(
+                b"8=FIX.4.4|35=D|11=A|454=2|455=037833100|456=1|455=B0YBKJ7|456=2|10=0|",
+            )
+            .expect("CUSIP and SEDOL alternate identifiers");
+        assert!(alternates.get_cusipcode().is_none());
+        assert!(alternates.get_sedolcode().is_none());
+        let values = super::sequence(
+            alternates
+                .by_name("secaltids")
+                .expect("the alternate identifiers remain FIX content"),
+        );
+        assert_eq!(values.len(), 2);
+        assert_eq!(
+            values[0].as_sequence().expect("a CUSIP occurrence")[0].as_str(),
+            Some("037833100")
+        );
+        assert_eq!(
+            values[1].as_sequence().expect("a SEDOL occurrence")[0].as_str(),
+            Some("B0YBKJ7")
+        );
+
+        let row = alternates.into_row(&schema).expect("a fixed row");
+        let row = row.as_sequence().expect("a row");
+        for tag in [yggdryl::CUSIPCODE_TAG_NAME.0, yggdryl::SEDOLCODE_TAG_NAME.0] {
+            let at = yggdryl::fix_column_of(&schema, tag).expect("a normalized code column");
+            assert!(row[at].is_null(), "tag {tag} is not lifted");
+        }
+
+        let isin = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|")
+            .expect("an ISIN carrying an embedded CUSIP");
+        assert!(isin.get_cusipcode().is_none());
+    }
+
+    #[test]
     fn normalized_codes_stated_by_a_row_survive_market_derivation() {
         let registry = super::committed_registry();
         let codec = super::fixed_codec(Arc::clone(&registry));
@@ -137,12 +180,32 @@ mod categories {
                 Scalar::IsinCode(IsinCode::new("US0378331005").expect("an ISIN")),
             )
             .expect("a normalized ISIN fact");
+        explicit
+            .set(
+                yggdryl::CUSIPCODE_TAG_NAME.0,
+                Scalar::CusipCode(CusipCode::new("037833100").expect("a CUSIP")),
+            )
+            .expect("a normalized CUSIP fact");
+        explicit
+            .set(
+                yggdryl::SEDOLCODE_TAG_NAME.0,
+                Scalar::SedolCode(SedolCode::new("B0YBKJ7").expect("a SEDOL")),
+            )
+            .expect("a normalized SEDOL fact");
         let row = explicit.into_row(&schema).expect("a fixed row");
         let rebuilt =
             FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("a rebuilt row");
         assert_eq!(
             rebuilt.get_isincode().map(|value| value.as_str()),
             Some("US0378331005")
+        );
+        assert_eq!(
+            rebuilt.get_cusipcode().map(|value| value.as_str()),
+            Some("037833100")
+        );
+        assert_eq!(
+            rebuilt.get_sedolcode().map(|value| value.as_str()),
+            Some("B0YBKJ7")
         );
 
         // The first row learns Bloomberg from the ordinary FIX pair. Removing

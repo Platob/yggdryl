@@ -1089,16 +1089,16 @@ def test_the_crate_map_groups_are_groups_a_message_may_reference(tmp_path: Any) 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 29 definitions in tag
-# order from 65003, 27 scalar graph/category/identifier facts and two Map
+# What the crate itself adds beside the specification: 32 definitions in tag
+# order from 65003, 30 scalar graph/category/identifier facts and two Map
 # groups. The six normalized identifiers are crate columns; CFI remains FIX's
 # standard tag 461, as do prices, quantities and lanes.
-CRATED = 29
-# What ``FixRegistry()`` holds: those 27 scalar crate fields, SendingTime (52)
+CRATED = 32
+# What ``FixRegistry()`` holds: those 30 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the two Map groups. ``len`` counts groups;
-# iteration walks the 29 scalars alone.
-SEEDED = 31
-SEEDED_SCALARS = 29
+# iteration walks the 32 scalars alone.
+SEEDED = 34
+SEEDED_SCALARS = 32
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1486,7 +1486,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 27 scalar event, category and
+    # In tag order, one block from 65003: 30 scalar event, category and
     # normalized-identifier facts plus the two Maps. ISIN, CUSIP, SEDOL,
     # Bloomberg, FIGI and MIC are crate columns; CFI keeps FIX's standard tag 461.
     # Price, quantity and lanes remain their standard FIX fields.
@@ -1520,10 +1520,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "bloombergcode",
         "miccode",
         "figicode",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65061
+    assert tags[0] == UNIX_TAG and tags[-1] == 65064
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -1541,7 +1544,16 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creaunix", "snapunix", "exprtime"):
+    for name in (
+        "currunix",
+        "prevunix",
+        "creaunix",
+        "snapunix",
+        "exprtime",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
+    ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
     assert fields["msgcat"].dtype == DataType.fixed_ascii(4)
@@ -2078,8 +2090,10 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
 
     event = message.event()
     assert isinstance(event, MarketEventData)
-    # The instant is the sending clock, the one clock every message carries.
-    assert event.currunix == CLOCK_NS
+    # The transaction stands one second from the sending clock, which is
+    # exactly the codec's default delay, so the two are the one event said
+    # twice and the more exact saying of it dates the message.
+    assert event.currunix == CLOCK_NS + 1_000_000_000
     assert event.creaunix == event.currunix
     assert event.px.as_py() == 10.5
     assert event.qty.as_py() == 100
@@ -2134,9 +2148,10 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(58).as_py() == "note"
     assert message.by_tag(HASHCODE_TAG).as_py() == message.currhashcode
     assert message.by_tag(CURRUUID_TAG) == message.curruuid
-    # The instant is the sending clock, the one clock every message carries.
+    # The instant is the transaction, one second from the sending clock and
+    # so inside the codec's default delay.
     assert message.by_tag(UNIX_TAG).as_py() == dt.datetime.fromtimestamp(
-        CLOCK_NS / 1e9, dt.timezone.utc
+        (CLOCK_NS + 1_000_000_000) / 1e9, dt.timezone.utc
     )
     assert message.by_tag(CROSSCODE_TAG).as_py() == "A1"
     assert message.by_name("crosscode").as_py() == "A1"
@@ -2539,8 +2554,9 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert first.into_bytes(ord("|")) == wire
 
     # A message's own clocks precede the pin: SendingTime is the stated one,
-    # and it dates the event and the creation. TransactTime is a typed field
-    # the parse leaves for the lifecycle to read.
+    # and it is the reference the event is dated against. This transaction
+    # stands nearly two seconds in front of it, outside the codec's default
+    # one-second delay, so the sending clock dates the event and the creation.
     stated = next(
         codec.parse_line(
             b"8=FIX.4.4|35=0|52=19700101-00:00:02.123456789|60=19700101-00:00:03.987654321|10=0|"
@@ -2552,9 +2568,9 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert stated.currunix == 2_123_456_789
     assert stated.event().creaunix == 2_123_456_789
     assert stated.by_tag(60) == DataType('datetime64(ns,"UTC")').scalar(3_987_654_321)
-    # `OrigSendingTime(122)` and a `TransactTime` are typed off the
-    # dictionary's own fields and date nothing at the parse: the sending
-    # clock stands, for a resent message and a day-only transaction alike.
+    # `OrigSendingTime(122)` dates nothing at the parse, and a `TransactTime`
+    # stating only a day dates nothing at all: the sending clock stands for
+    # a resent message and a day-only transaction alike.
     dictionary = _fixed(seed, exclude_msgtypes=[])
     resent = next(dictionary.parse_line(b"8=FIX.4.4|35=0|122=19700101-00:00:01|10=0|"))
     assert resent.event().creaunix == CLOCK_NS
@@ -2753,6 +2769,54 @@ def test_figi_redirects_through_datatype_sources_and_the_fixed_row(seed: FixRegi
     direct = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=X|10=0|")
     direct.set(65061, "BBG000BLNQ16")
     assert direct.figicode is not None and direct.figicode.as_py() == "BBG000BLNQ16"
+
+
+def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegistry) -> None:
+    """Python forwards the parse's official-clock reading and its one pin."""
+    assert FixCodec(seed).official_time_delay_ms == 1_000
+    assert FixCodec(seed, official_time_delay_ms=None).official_time_delay_ms == 1_000
+    assert FixCodec(seed, official_time_delay_ms=0).official_time_delay_ms == 0
+    assert FixCodec(seed, official_time_delay_ms=-1).official_time_delay_ms == -1
+
+    codec = FixCodec(seed, exclude_msgtypes=[])
+    sending = 1_787_308_200_415_000_000
+    # A transaction half a second in front of the sending clock is the same
+    # event said twice, so the more exact saying of it dates the message.
+    near = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
+    )
+    assert near.currunix == 1_787_308_199_900_000_000
+    assert near.event().creaunix == near.currunix
+    # Five seconds out is a different event of the session's day.
+    apart = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
+    )
+    assert apart.currunix == sending
+
+    # A message stating no transaction is dated by the regulatory stamp its
+    # `TrdRegTimestampType(770)` says is about the event; the nearer stamp is
+    # when the report reached a repository, which is not that.
+    stamped = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|"
+        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|"
+    )
+    assert stamped.currunix == 1_787_308_199_900_000_000
+    # With only the unranked stamp, the one clock every message carries keeps it.
+    unranked = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
+        b"769=20260821-10:30:00.400|770=23|10=0|"
+    )
+    assert unranked.currunix == sending
+
+    # The pin is the caller's to widen and to close.
+    wide = FixCodec(seed, exclude_msgtypes=[], official_time_delay_ms=10_000)
+    assert wide.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
+    ).currunix == 1_787_308_195_000_000_000
+    shut = FixCodec(seed, exclude_msgtypes=[], official_time_delay_ms=0)
+    assert shut.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
+    ).currunix == sending
 
 
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:

@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::path::Path;
 
 use criterion::Criterion;
-use yggdryl::{IOMode, MediaType, MimeType};
+use yggdryl::{DxFeedExchangeFeed, IOMode, MediaType, MicCode, MimeType};
 
 const KNOWN_MIME: &str = "application/vnd.apache.parquet";
 const UPPERCASE_MIME: &str = "APPLICATION/VND.APACHE.PARQUET";
@@ -84,6 +84,29 @@ pub(crate) fn write_modes_and_io_identity(criterion: &mut Criterion) {
     });
     group.bench_function("write_mode_name", |bencher| {
         bencher.iter(|| black_box(IOMode::Merge).as_str());
+    });
+    group.finish();
+}
+
+pub(crate) fn mic_exchange_code(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("mic_exchange_code");
+    group.bench_function("cta_utp", |bencher| {
+        bencher.iter(|| {
+            MicCode::from_dxfeed_exchange_code(
+                black_box(DxFeedExchangeFeed::CtaUtp),
+                black_box("Q"),
+            )
+            .expect("the published code resolves")
+        });
+    });
+    group.bench_function("feed_collision", |bencher| {
+        bencher.iter(|| {
+            MicCode::from_dxfeed_exchange_code(
+                black_box(DxFeedExchangeFeed::UsOptions),
+                black_box("Q"),
+            )
+            .expect("the feed disambiguates the code")
+        });
     });
     group.finish();
 }

@@ -27,7 +27,7 @@
 //! [`STANDARD_TRAILER_TAGS`] rather than from a list of this module's own, so
 //! a tag either component gains is excluded here without a second listing
 //! learning about it - and so the rule is nameable in one sentence instead of
-//! being three groups a reader has to check.
+//! being four groups a reader has to check.
 //!
 //! What that covers, by the roles the header and trailer play: `BeginString`,
 //! `BodyLength`, `CheckSum`, `Signature` and `SignatureLength` describe how it

@@ -28,7 +28,7 @@ use std::time::Instant;
 use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
@@ -306,16 +306,17 @@ fn version_parse_compare_and_render_allocate_nothing() {
 
 #[test]
 fn uuid_version_7_and_8_construction_allocate_nothing() {
-    let instants = [0, 1, 999, 281_474_976_710_655_999];
+    let instants = [0, 1, 999, 281_474_976_710_655];
     for count in [1, 32, 1_024] {
         free(&format!("constructing {count} UUIDv7 values"), || {
             for index in 0..count {
                 black_box(
                     Uuid::from_v7(
                         black_box(instants[index % instants.len()]),
+                        black_box(index as u64),
                         black_box(u64::MAX - index as u64),
                     )
-                    .expect("an in-range microsecond instant"),
+                    .expect("an in-range millisecond instant"),
                 );
             }
         });
@@ -360,13 +361,28 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
                 for index in 0..count {
                     black_box(
                         black_box(values[index % values.len()])
-                            .into_uuid()
-                            .expect("an in-range nanosecond instant and a 64-bit digest"),
+                            .into_uuid(black_box(index as u64), black_box(index as u64 + 1))
+                            .expect("an in-range millisecond instant and a 64-bit digest"),
                     );
                 }
             },
         );
     }
+}
+
+#[test]
+fn market_event_identity_refresh_and_finalization_allocate_nothing() {
+    let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+    event.set_currhashcode(1);
+    let mut generation = 1_u64;
+    free("refreshing and finalizing a market event identity", || {
+        generation = generation.wrapping_add(1);
+        event.set_currunix(1_700_000_000_000_000_000 + generation as i64);
+        event.set_seqnum(generation);
+        event.set_crosshashcode(generation);
+        event.finalized(generation.rotate_left(17));
+        black_box((event.get_curruuid(), event.get_crossuuid()));
+    });
 }
 
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.
@@ -2196,6 +2212,76 @@ fn text_lines_cost(source: &Buffer, rows: usize) -> usize {
     allocations
 }
 
+#[test]
+fn located_lines_render_and_project_one_shared_crosscode() {
+    for rows in [1_usize, 64, 1_024] {
+        let source = Buffer::from_bytes(bridge_lines(rows).into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let expected = yggdryl::IOBase::url(&source)
+            .expect("a buffer identity")
+            .to_string();
+        let held = read_text_lines(&source, &TextOptions::new())
+            .expect("a reader")
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("located lines");
+
+        // The first event-column ask renders the URL exactly once for the
+        // reader. More rows clone its shared `Str`; they do not allocate one
+        // URL String or one scalar string each.
+        let (allocations, projected) = counted(|| {
+            let mut projected = 0;
+            for line in &held {
+                match line
+                    .event_fact(EventColumn::CrossCode)
+                    .expect("a crosscode reading")
+                {
+                    Some(Scalar::String(code)) => {
+                        black_box(code);
+                        projected += 1;
+                    }
+                    _ => panic!("a located line has a string crosscode"),
+                }
+            }
+            projected
+        });
+        assert_eq!(projected, rows);
+        assert_eq!(
+            allocations, 2,
+            "crosscode projection did not render exactly one shared value for {rows} rows"
+        );
+
+        assert!(held.iter().all(|line| line.get_crosscode() == expected));
+        let shared = held[0].get_crosscode().as_ptr();
+        assert!(
+            held.iter()
+                .all(|line| line.get_crosscode().as_ptr() == shared),
+            "one read renders one shared crosscode"
+        );
+        free("projecting a warmed located-line crosscode", || {
+            for line in &held {
+                black_box(
+                    line.event_fact(EventColumn::CrossCode)
+                        .expect("a crosscode reading"),
+                );
+            }
+        });
+
+        // A line whose source changes owns a new cache and identity; its
+        // siblings keep the reader's original shared value.
+        let mut changed = held[0].clone();
+        let original_uuid = changed.get_curruuid();
+        let replacement = Arc::new(
+            yggdryl::Url::from_str("file:///replacement/location.log").expect("a replacement URL"),
+        );
+        changed.set_sourceurl(Some(Arc::clone(&replacement)));
+        assert_eq!(changed.get_crosscode(), replacement.to_string());
+        assert_ne!(changed.get_curruuid(), original_uuid);
+        assert_eq!(held[0].get_crosscode(), expected);
+        changed.set_sourceurl(None);
+        assert_eq!(changed.get_crosscode(), "");
+    }
+}
+
 /// What `owned_handle`'s copy of a buffer costs, by how many rows it holds.
 ///
 /// A text read over a buffer with no location re-opens it as a copy, staged
@@ -2222,7 +2308,7 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// Five of the fourteen are the sixteen event columns the plan compiles once
+/// Five of the fourteen are the nineteen event columns the plan compiles once
 /// per read: the two identity lists, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
 const TEXT_LINES_ONCE: usize = 14;
@@ -2237,6 +2323,17 @@ const TEXT_LINES_ONCE: usize = 14;
 /// a million lines of a megabyte holds sixteen pages, not a million.
 const TEXT_LINES_RETAINED_PER_WINDOW: usize = 2;
 
+/// Initializes the shared datatype projection behind the event clocks before
+/// measuring a reader. That cache is process-global rather than a cost of one
+/// read, and the result must not depend on which allocation test ran first.
+fn warm_text_event_schema() {
+    black_box(
+        TextOptions::new()
+            .source_field()
+            .expect("the default text event schema"),
+    );
+}
+
 /// What a declared `windows-1252` read costs over the UTF-8 read of the same
 /// lines: the transport, and nothing a line.
 ///
@@ -2249,6 +2346,7 @@ const DECLARED_COSTS: [(usize, usize); 2] = [(16, 3), (1_024, 4)];
 
 #[test]
 fn reading_text_lines_costs_a_constant_and_nothing_a_line() {
+    warm_text_event_schema();
     for (rows, copy) in OWNED_COPY_COSTS {
         let text = bridge_lines(rows);
         let source = Buffer::from_bytes(text.into_bytes())
@@ -2269,6 +2367,7 @@ fn reading_text_lines_costs_a_constant_and_nothing_a_line() {
 
 #[test]
 fn keeping_every_line_costs_its_windows_and_not_its_lines() {
+    warm_text_event_schema();
     // The other half of the claim above. A reader that drops each line lets
     // the splitter write its window over again, so the count is flat; one
     // that keeps them cannot, and what it pays is a window at a time.

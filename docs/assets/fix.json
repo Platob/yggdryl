@@ -96,16 +96,16 @@
     ]
   },
   "kpi": {
-    "fields": 6268,
+    "fields": 6271,
     "groups": 582,
     "enumFields": 2027,
     "codesets": 736,
     "codes": 7751,
-    "aliases": 42,
+    "aliases": 43,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 123,
+    "columns": 128,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 29,
@@ -144,7 +144,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        73
+        76
       ],
       [
         "time64(ns)",
@@ -1031,7 +1031,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
+          "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
           "FIX:tag": "48",
           "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
           "display": "SecurityID"
@@ -1124,7 +1124,7 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+          "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
           "FIX:tag": "55",
           "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
           "display": "Symbol"
@@ -6653,7 +6653,7 @@
           "type": "country"
         },
         "metadata": {
-          "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
+          "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
           "FIX:tag": "470",
           "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
           "display": "CountryOfIssue"
@@ -79439,6 +79439,9 @@
           "unit": "nanosecond"
         },
         "metadata": {
+          "FIX:names": [
+            "CreationTime"
+          ],
           "FIX:tag": "65023",
           "FIX:transient": "false",
           "description": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed.",
@@ -79507,7 +79510,7 @@
         "metadata": {
           "FIX:tag": "65039",
           "FIX:transient": "false",
-          "description": "The message's identity: the UUIDv7 its instant and its code derive.",
+          "description": "The message's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive.",
           "display": "CurrUuid"
         },
         "name": "curruuid",
@@ -79707,6 +79710,51 @@
           "display": "FIGICode"
         },
         "name": "figicode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65062",
+          "FIX:transient": "false",
+          "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated.",
+          "display": "ExecUnix"
+        },
+        "name": "execunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65063",
+          "FIX:transient": "false",
+          "description": "When the message was recorded by its carrier, where the carrier states one.",
+          "display": "RecdUnix"
+        },
+        "name": "recdunix",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65064",
+          "FIX:transient": "false",
+          "description": "The recording clock of the observation selected as the message's merge reference; the latest its statements know.",
+          "display": "RefRecdUnix"
+        },
+        "name": "refrecdunix",
         "nullable": true
       }
     ],
@@ -83579,9 +83627,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -84225,9 +84273,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -86739,9 +86787,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -87286,9 +87334,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -93686,9 +93734,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -97457,9 +97505,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -98496,9 +98544,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -105670,9 +105718,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -106441,9 +106489,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -111365,9 +111413,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "secaltidgrp"
+                "FIX:group": "secaltids"
               },
-              "name": "secaltidgrp",
+              "name": "secaltids",
               "nullable": true
             },
             {
@@ -142454,9 +142502,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -144096,9 +144144,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -170695,9 +170743,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -172285,9 +172333,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -182223,9 +182271,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -194223,9 +194271,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -194468,9 +194516,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -203410,9 +203458,9 @@
                 "type": "null"
               },
               "metadata": {
-                "FIX:group": "regulatorytradeidgrp"
+                "FIX:group": "regulatorytradeids"
               },
-              "name": "regulatorytradeidgrp",
+              "name": "regulatorytradeids",
               "nullable": true
             },
             {
@@ -241617,11 +241665,11 @@
         "metadata": {
           "FIX:component": "regulatorytradeidcomponent",
           "FIX:counter": "1907",
-          "FIX:tag": "911928",
+          "FIX:tag": "497401",
           "description": "Required if NoRegulatoryTradeIDs(1907) > 0.",
           "display": "RegulatoryTradeIDGrp"
         },
-        "name": "regulatorytradeidgrp",
+        "name": "regulatorytradeids",
         "nullable": false
       },
       {
@@ -242433,10 +242481,10 @@
         "metadata": {
           "FIX:component": "secaltid",
           "FIX:counter": "454",
-          "FIX:tag": "589472",
+          "FIX:tag": "617267",
           "display": "SecAltIDGrp"
         },
-        "name": "secaltidgrp",
+        "name": "secaltids",
         "nullable": false
       },
       {
@@ -291297,6 +291345,27 @@
         "x": "When the message happened: the settled instant, UTC."
       },
       {
+        "c": "execunix",
+        "t": 65062,
+        "n": "ExecUnix",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated."
+      },
+      {
+        "c": "recdunix",
+        "t": 65063,
+        "n": "RecdUnix",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "When the message was recorded by its carrier, where the carrier states one."
+      },
+      {
+        "c": "refrecdunix",
+        "t": 65064,
+        "n": "RefRecdUnix",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The recording clock of the observation selected as the message's merge reference; the latest its statements know."
+      },
+      {
         "c": "creaunix",
         "t": 65023,
         "n": "CreaUnix",
@@ -291385,7 +291454,7 @@
         "t": 65039,
         "n": "CurrUuid",
         "y": "uuid",
-        "x": "The message's identity: the UUIDv7 its instant and its code derive."
+        "x": "The message's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive."
       },
       {
         "c": "crossuuid",
@@ -291976,8 +292045,8 @@
         "x": "Number of SecurityAltID (455) entries."
       },
       {
-        "c": "secaltidgrp",
-        "t": 589472,
+        "c": "secaltids",
+        "t": 617267,
         "n": "SecAltIDGrp",
         "y": "list(field(\"secaltid\",struct(field(\"securityaltid\",utf8,nullable=true,metadata={\"FIX:field\":\"securityaltid\",\"FIX:tag\":\"455\",\"description\":\"Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.\",\"display\":\"SecurityAltID\"}),field(\"securityaltidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"securityidsourcecodeset\",\"FIX:field\":\"securityaltidsource\",\"FIX:tag\":\"456\",\"description\":\"Identifies class or source of the SecurityAltID(455) value.\",\"display\":\"SecurityAltIDSource\"}),field(\"symbolpositionnumber\",int32,nullable=true,metadata={\"FIX:field\":\"symbolpositionnumber\",\"FIX:tag\":\"2957\",\"description\":\"Reference to the first or second currency or digital asset in Symbol(55) for FX-style trading.\",\"display\":\"SymbolPositionNumber\"})),nullable=false,metadata={\"FIX:component\":\"secaltid\",\"display\":\"SecAltID\"}))",
         "x": ""
@@ -291995,6 +292064,20 @@
         "n": "TrdRegTimestamps",
         "y": "list(field(\"trdregtimestampcomponent\",struct(field(\"trdregtimestamp\",datetime64(ns,\"UTC\"),nullable=true,metadata={\"FIX:field\":\"trdregtimestamp\",\"FIX:tag\":\"769\",\"description\":\"Traded / Regulatory timestamp value.\",\"display\":\"TrdRegTimestamp\"}),field(\"trdregtimestamptype\",int32,nullable=true,metadata={\"FIX:codeset\":\"trdregtimestamptypecodeset\",\"FIX:field\":\"trdregtimestamptype\",\"FIX:tag\":\"770\",\"description\":\"Trading / Regulatory timestamp type.\",\"display\":\"TrdRegTimestampType\"}),field(\"trdregtimestamporigin\",utf8,nullable=true,metadata={\"FIX:field\":\"trdregtimestamporigin\",\"FIX:tag\":\"771\",\"description\":\"Text which identifies the \\\"origin\\\" (i.e. system which was used to generate the timestamp) for the Traded / Regulatory timestamp value.\",\"display\":\"TrdRegTimestampOrigin\"}),field(\"trdregtimestampmanualindicator\",boolean,nullable=true,metadata={\"FIX:codeset\":\"trdregtimestampmanualindicatorcodeset\",\"FIX:field\":\"trdregtimestampmanualindicator\",\"FIX:tag\":\"2839\",\"description\":\"Indicates whether a given timestamp was manually captured.\",\"display\":\"TrdRegTimestampManualIndicator\"}),field(\"desktype\",utf8,nullable=true,metadata={\"FIX:codeset\":\"desktypecodeset\",\"FIX:field\":\"desktype\",\"FIX:tag\":\"1033\",\"description\":\"Identifies the type of Trading Desk.\",\"display\":\"DeskType\"}),field(\"desktypesource\",int32,nullable=true,metadata={\"FIX:codeset\":\"desktypesourcecodeset\",\"FIX:field\":\"desktypesource\",\"FIX:tag\":\"1034\",\"description\":\"Identifies the class or source of DeskType(1033) values. Conditionally required when DeskType(1033) is specified.\",\"display\":\"DeskTypeSource\"}),field(\"deskorderhandlinginst\",utf8,nullable=true,metadata={\"FIX:codeset\":\"custorderhandlinginstcodeset\",\"FIX:field\":\"deskorderhandlinginst\",\"FIX:tag\":\"1035\",\"description\":\"Codes that apply special information that the broker-dealer needs to report.\",\"display\":\"DeskOrderHandlingInst\"}),field(\"informationbarrierid\",utf8,nullable=true,metadata={\"FIX:field\":\"informationbarrierid\",\"FIX:tag\":\"1727\",\"description\":\"The identifier of the information barrier in place for a trading unit that will meet the criteria of the \\\"no-knowledge\\\" exception in FINRA Rule 5320.02.\",\"display\":\"InformationBarrierID\"}),field(\"nbboentrytype\",int32,nullable=true,metadata={\"FIX:codeset\":\"nbboentrytypecodeset\",\"FIX:field\":\"nbboentrytype\",\"FIX:tag\":\"2831\",\"description\":\"Type of NBBO information.\",\"display\":\"NBBOEntryType\"}),field(\"nbboprice\",decimal128(38,18),nullable=true,metadata={\"FIX:field\":\"nbboprice\",\"FIX:tag\":\"2832\",\"description\":\"Price related to NBBO. NBBOEntryType(2831) may be used to indicate entry type, e.g. bid or offer.\",\"display\":\"NBBOPrice\"}),field(\"nbboqty\",decimal128(38,18),nullable=true,metadata={\"FIX:field\":\"nbboqty\",\"FIX:tag\":\"2833\",\"description\":\"Quantity related to NBBO. NBBOEntryType(2831) may be used to indicte entry type, e.g. bid or offer.\",\"display\":\"NBBOQty\"}),field(\"nbbosource\",int32,nullable=true,metadata={\"FIX:codeset\":\"nbbosourcecodeset\",\"FIX:field\":\"nbbosource\",\"FIX:tag\":\"2834\",\"description\":\"Source of NBBO information.\",\"display\":\"NBBOSource\"})),nullable=false,metadata={\"FIX:component\":\"trdregtimestampcomponent\",\"display\":\"TrdRegTimestamp\"}))",
         "x": "Required if NoTrdRegTimestamps(768) > 0."
+      },
+      {
+        "c": "noregulatorytradeids",
+        "t": 1907,
+        "n": "NoRegulatoryTradeIDs",
+        "y": "int32",
+        "x": "Number of regulatory IDs in the repeating group."
+      },
+      {
+        "c": "regulatorytradeids",
+        "t": 497401,
+        "n": "RegulatoryTradeIDGrp",
+        "y": "list(field(\"regulatorytradeidcomponent\",struct(field(\"regulatorytradeid\",utf8,nullable=true,metadata={\"FIX:field\":\"regulatorytradeid\",\"FIX:tag\":\"1903\",\"description\":\"Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.\",\"display\":\"RegulatoryTradeID\"}),field(\"regulatorytradeidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"regulatorytradeidsourcecodeset\",\"FIX:field\":\"regulatorytradeidsource\",\"FIX:tag\":\"1905\",\"description\":\"Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.\",\"display\":\"RegulatoryTradeIDSource\"}),field(\"regulatorytradeidevent\",int32,nullable=true,metadata={\"FIX:codeset\":\"regulatorytradeideventcodeset\",\"FIX:field\":\"regulatorytradeidevent\",\"FIX:tag\":\"1904\",\"description\":\"Identifies the event which caused origination of the identifier in RegulatoryTradeID(1903). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).\",\"display\":\"RegulatoryTradeIDEvent\"}),field(\"regulatorytradeidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"regulatorytradeidtypecodeset\",\"FIX:field\":\"regulatorytradeidtype\",\"FIX:tag\":\"1906\",\"description\":\"Specifies the type of trade identifier provided in RegulatoryTradeID(1903).\",\"display\":\"RegulatoryTradeIDType\"}),field(\"regulatorylegrefid\",utf8,nullable=true,metadata={\"FIX:field\":\"regulatorylegrefid\",\"FIX:tag\":\"2411\",\"description\":\"Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).\",\"display\":\"RegulatoryLegRefID\"}),field(\"regulatorytradeidscope\",int32,nullable=true,metadata={\"FIX:codeset\":\"regulatorytradeidscopecodeset\",\"FIX:field\":\"regulatorytradeidscope\",\"FIX:tag\":\"2397\",\"description\":\"Specifies the scope to which the RegulatoryTradeID(1903) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.\",\"display\":\"RegulatoryTradeIDScope\"})),nullable=false,metadata={\"FIX:component\":\"regulatorytradeidcomponent\",\"FIX:identifiers\":\"regulatorytradeid\",\"display\":\"RegulatoryTradeID\"}))",
+        "x": "Required if NoRegulatoryTradeIDs(1907) > 0."
       },
       {
         "c": "bodylength",
@@ -292179,7 +292262,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -292337,7 +292420,7 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-4180-7000-996a-23a80b45a70a",
+        "curruuid": "018d64aa-41fb-7000-8e0d-de87f06406d7",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
         "currhashcode": "6443001421557507850",
@@ -292347,10 +292430,10 @@
         },
         "parentuuids": [],
         "srcuuids": [],
-        "currunix": "1706790896000000000",
+        "currunix": "1706790896123000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
-        "creaunix": "1706790896000000000",
+        "creaunix": "1706790896123000000",
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -292497,7 +292580,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -292657,7 +292740,7 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-48d8-7000-924e-4c23b2e986c4",
+        "curruuid": "018d64aa-48ec-7000-a3bf-6e57a9402289",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
         "currhashcode": "15154133512357512900",
@@ -292668,10 +292751,10 @@
         },
         "parentuuids": [],
         "srcuuids": [],
-        "currunix": "1706790897880000000",
+        "currunix": "1706790897900000000",
         "state": "80FILLED",
         "seqnum": 0,
-        "creaunix": "1706790897880000000",
+        "creaunix": "1706790897900000000",
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -292796,7 +292879,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -293085,7 +293168,7 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9221-85e077322e70",
+        "curruuid": "018cc9ab-d1d0-7000-883e-3fe4df7df63c",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
         "currhashcode": "10529844602887876208",
@@ -293262,7 +293345,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -294551,11 +294634,11 @@
                         "metadata": {
                           "FIX:component": "regulatorytradeidcomponent",
                           "FIX:counter": "1907",
-                          "FIX:group": "regulatorytradeidgrp",
+                          "FIX:group": "regulatorytradeids",
                           "description": "Required if NoRegulatoryTradeIDs(1907) > 0.",
                           "display": "RegulatoryTradeIDGrp"
                         },
-                        "name": "regulatorytradeidgrp",
+                        "name": "regulatorytradeids",
                         "nullable": true
                       },
                       {
@@ -296181,8 +296264,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b676-b13438b0f579",
-        "crossuuid": "018cc9ab-d1d0-7000-b676-b13438b0f579",
+        "curruuid": "018cc9ab-d1d0-7000-bb77-bef7b21e8dcc",
+        "crossuuid": "018cc9ab-d1d0-7000-bb77-bef7b21e8dcc",
         "crosscode": "",
         "currhashcode": "17759577018429666681",
         "crosshashcode": "0",
@@ -296338,7 +296421,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -296471,8 +296554,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-86f4-572d1b34c487",
-        "crossuuid": "018cc9ab-d1d0-7000-86f4-572d1b34c487",
+        "curruuid": "018cc9ab-d1d0-7000-9737-c47a25c966cf",
+        "crossuuid": "018cc9ab-d1d0-7000-9737-c47a25c966cf",
         "crosscode": "",
         "currhashcode": "501121309786555527",
         "crosshashcode": "0",
@@ -296692,8 +296775,8 @@
         }
       ],
       "event": {
-        "curruuid": "018d648a-4600-7000-b1e2-dd921a7276ba",
-        "crossuuid": "018d648a-4600-7000-b1e2-dd921a7276ba",
+        "curruuid": "018d648a-4600-7000-bef2-ea752f664630",
+        "crossuuid": "018d648a-4600-7000-bef2-ea752f664630",
         "crosscode": "",
         "currhashcode": "17429737127455913658",
         "crosshashcode": "0",
@@ -296846,8 +296929,8 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5508-7000-8786-db339d228be8",
-        "crossuuid": "018d64aa-5508-7000-8786-db339d228be8",
+        "curruuid": "018d64aa-5508-7000-b25f-7266d2426d4b",
+        "crossuuid": "018d64aa-5508-7000-b25f-7266d2426d4b",
         "crosscode": "",
         "currhashcode": "5154047838298213352",
         "crosshashcode": "0",
@@ -297030,8 +297113,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b99a-ee05b492cf81",
-        "crossuuid": "018cc9ab-d1d0-7000-b99a-ee05b492cf81",
+        "curruuid": "018cc9ab-d1d0-7000-9101-68bbc01038a0",
+        "crossuuid": "018cc9ab-d1d0-7000-9101-68bbc01038a0",
         "crosscode": "",
         "currhashcode": "13374263751701876609",
         "crosshashcode": "0",
@@ -297148,7 +297231,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -297281,7 +297364,7 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b854-0e1204641bf0",
+        "curruuid": "018cc9ab-d1d0-7000-a3ce-940265efae64",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
         "currhashcode": "17893942689995693040",
@@ -297409,7 +297492,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
+                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -297503,7 +297586,7 @@
                 "type": "country"
               },
               "metadata": {
-                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
+                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
                 "FIX:tag": "470",
                 "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
                 "display": "CountryOfIssue"
@@ -297593,8 +297676,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-be36-375087242da9",
-        "crossuuid": "018cc9ab-d1d0-7000-be36-375087242da9",
+        "curruuid": "018cc9ab-d1d0-7000-898c-f687fc259736",
+        "crossuuid": "018cc9ab-d1d0-7000-898c-f687fc259736",
         "crosscode": "",
         "currhashcode": "9094517316525501865",
         "crosshashcode": "0",
@@ -297615,7 +297698,7 @@
         "unit": "",
         "side": "BUY",
         "isincode": "US0378331005",
-        "cusipcode": "037833100",
+        "cusipcode": null,
         "sedolcode": null,
         "bloombergcode": null,
         "figicode": null,
@@ -297741,7 +297824,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
+                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -297886,8 +297969,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-8a01-e673d5c1fdda",
-        "crossuuid": "018cc9ab-d1d0-7000-8a01-e673d5c1fdda",
+        "curruuid": "018cc9ab-d1d0-7000-ae8c-c2dfec5cbec4",
+        "crossuuid": "018cc9ab-d1d0-7000-ae8c-c2dfec5cbec4",
         "crosscode": "",
         "currhashcode": "721110800537877978",
         "crosshashcode": "0",
@@ -298059,7 +298142,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -298072,7 +298155,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
+                "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
                 "FIX:tag": "48",
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID"
@@ -298181,7 +298264,7 @@
                 "type": "country"
               },
               "metadata": {
-                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
+                "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
                 "FIX:tag": "470",
                 "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
                 "display": "CountryOfIssue"
@@ -298276,8 +298359,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-a802-462512ef426d",
-        "crossuuid": "018cc9ab-d1d0-7000-a802-462512ef426d",
+        "curruuid": "018cc9ab-d1d0-7000-86e1-80b6db0d23e7",
+        "crossuuid": "018cc9ab-d1d0-7000-86e1-80b6db0d23e7",
         "crosscode": "",
         "currhashcode": "16718001891798106733",
         "crosshashcode": "0",
@@ -298442,7 +298525,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -298587,8 +298670,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b5c4-508ce2ae0a38",
-        "crossuuid": "018cc9ab-d1d0-7000-b5c4-508ce2ae0a38",
+        "curruuid": "018cc9ab-d1d0-7000-bb69-000d3efc2f0f",
+        "crossuuid": "018cc9ab-d1d0-7000-bb69-000d3efc2f0f",
         "crosscode": "",
         "currhashcode": "13097682182328945208",
         "crosshashcode": "0",
@@ -298719,7 +298802,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -298798,7 +298881,7 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-95e4-fa0a149eca52",
+        "curruuid": "018cc9ab-d1d0-7000-93f2-30dfa6b7e967",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
         "currhashcode": "6189346709116471890",
@@ -298912,7 +298995,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299000,8 +299083,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-8e31-b88ccfd291a5",
-        "crossuuid": "018cc9ab-d1d0-7000-8e31-b88ccfd291a5",
+        "curruuid": "018cc9ab-d1d0-7000-8c58-ca73aa50c02c",
+        "crossuuid": "018cc9ab-d1d0-7000-8c58-ca73aa50c02c",
         "crosscode": "",
         "currhashcode": "10246173542166204837",
         "crosshashcode": "0",
@@ -299118,7 +299201,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299191,8 +299274,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9aa7-3c8db4d65374",
-        "crossuuid": "018cc9ab-d1d0-7000-9aa7-3c8db4d65374",
+        "curruuid": "018cc9ab-d1d0-7000-a0fa-e7b6facb6aa3",
+        "crossuuid": "018cc9ab-d1d0-7000-a0fa-e7b6facb6aa3",
         "crosscode": "",
         "currhashcode": "1920570345418806132",
         "crosshashcode": "0",
@@ -299404,8 +299487,8 @@
       "size": 5,
       "columns": [],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b02f-bd3ee1b04372",
-        "crossuuid": "018cc9ab-d1d0-7000-b02f-bd3ee1b04372",
+        "curruuid": "018cc9ab-d1d0-7000-807b-90bd34499d58",
+        "crossuuid": "018cc9ab-d1d0-7000-807b-90bd34499d58",
         "crosscode": "",
         "currhashcode": "12695573952352764786",
         "crosshashcode": "0",
@@ -299536,7 +299619,7 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+                "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
                 "FIX:tag": "55",
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol"
@@ -299621,8 +299704,8 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9e64-7ca810c987d2",
-        "crossuuid": "018cc9ab-d1d0-7000-9e64-7ca810c987d2",
+        "curruuid": "018cc9ab-d1d0-7000-9323-86effea28fe3",
+        "crossuuid": "018cc9ab-d1d0-7000-9323-86effea28fe3",
         "crosscode": "",
         "currhashcode": "6801698398514284498",
         "crosshashcode": "0",

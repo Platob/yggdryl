@@ -710,12 +710,15 @@ mod text {
         options(rowheader).with_framing(true)
     }
 
-    /// The sixteen event columns every line batch opens with, in front of the
+    /// The nineteen event columns every line batch opens with, in front of the
     /// line's own: the line is an event of the graph, and a message parsed out
-    /// of it opens with the same sixteen.
-    const EVENT_COLUMNS: [&str; 16] = [
+    /// of it contains the same nineteen under the same names and datatypes.
+    const EVENT_COLUMNS: [&str; 19] = [
         "currunix",
         "creaunix",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
         "exprtime",
         "prevunix",
         "snapunix",
@@ -839,25 +842,29 @@ mod text {
     mod event {
         use std::sync::Arc;
 
-        use yggdryl::graph::{Element, Event, EventIterator};
+        use yggdryl::graph::{Element, Event, EventColumn, EventIterator};
         use yggdryl::text::{
             DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextBytes, TextEntries,
             TextLine, TextOptions, into_arrow_batch, read_text_lines,
         };
-        use yggdryl::{FieldPath, Scalar, Uuid};
+        use yggdryl::{FieldPath, Scalar, Url, Uuid};
 
         use super::named;
 
-        /// The header naming every fact an event reads off a capture.
+        /// The header naming the facts an event reads off captures. The anonymous
+        /// count and code are ordinary payload framing, never alternate owners of
+        /// `seqnum` or `crosscode`.
         const HEADER: &str = concat!(
             r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ",
-            r"\[(?<state>[A-Za-z]+)\] (?<seqnum>\d+) (?<prevuuid>[0-9a-f-]{36}) (?<crosscode>\S+) ",
+            r"\[(?<state>[A-Za-z]+)\] \d+ (?<prevuuid>[0-9a-f-]{36}) \S+ ",
         );
         /// The same facts, each capture admitting any spelling, so a line that
         /// spells one wrongly still matches and the fact's own reading refuses.
-        const LOOSE: &str = r"^(?<mtime>\S+) \[(?<state>[^\]]+)\] (?<seqnum>\S+) (?<prevuuid>\S+) ";
-        /// A chain's lines: an instant, a state and the code every line shares.
-        const CHAIN: &str = r"^(?<mtime>\S+) \[(?<state>[A-Za-z]+)\] (?<crosscode>\S+) ";
+        const LOOSE: &str = r"^(?<mtime>\S+) \[(?<state>[^\]]+)\] \S+ (?<prevuuid>\S+) ";
+        /// A chain's lines: an instant and a state, with an anonymous token in the
+        /// wire grammar. The source URL is the code every line shares.
+        const CHAIN: &str = r"^(?<mtime>\S+) \[(?<state>[A-Za-z]+)\] \S+ ";
+        const EVENT_TIMES: &str = r"^(?<execunix>\S+) (?<recdunix>\S+) (?<refrecdunix>\S+) ";
         const INSTANT: i64 = 1_767_348_930_000_000_000;
         const PREVIOUS: &str = "0198a3b2-1c4d-7e5f-8a9b-0c1d2e3f4a5b";
 
@@ -899,15 +906,17 @@ mod text {
             // The captures, in the order the header declares them, and the
             // identifiers the named ones make.
             assert_eq!(line.capture(0), Some("2026-01-02T10:15:30Z"));
-            assert_eq!(line.capture(4), Some("O-100"));
+            assert_eq!(line.capture(2), Some(PREVIOUS));
             assert_eq!(line.get_identifiers()["state"], "Filled");
             assert_eq!(line.get_identifiers()["prevuuid"], PREVIOUS);
-            assert_eq!(line.get_identifiers().len(), 5);
-            // Each event fact, read off the capture of its name at its own type.
+            assert_eq!(line.get_identifiers().len(), 3);
+            // Captured facts read at their own types; the place and source facts
+            // come from the line itself. This manually made line is row zero and
+            // has no source.
             assert_eq!(line.mtime().unwrap(), Some(INSTANT));
             assert_eq!(line.get_currunix(), INSTANT);
             assert!(line.get_state().is_done());
-            assert_eq!(line.get_seqnum(), 7);
+            assert_eq!(line.get_seqnum(), 0);
             let Scalar::Uuid(previous) = yggdryl::DataType::Uuid
                 .scalar(Scalar::from(PREVIOUS))
                 .expect("a uuid")
@@ -915,13 +924,22 @@ mod text {
                 panic!("a uuid")
             };
             assert_eq!(line.get_prevuuid(), Some(previous));
-            assert_eq!(line.get_crosscode(), "O-100");
-            assert_eq!(line.get_crosshashcode(), yggdryl::xxhash::xxh3(b"O-100"));
+            assert_eq!(line.get_crosscode(), "");
+            assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.cross_uuid());
-            assert_ne!(line.get_crossuuid(), line.get_curruuid());
+            assert_eq!(line.get_crossuuid(), line.get_curruuid());
             assert_eq!((line.get_creaunix(), line.get_exprtime()), (None, None));
+            assert_eq!(
+                (
+                    line.get_execunix(),
+                    line.get_recdunix(),
+                    line.get_refrecdunix()
+                ),
+                (None, None, None)
+            );
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
-            // The identity: the body's own digest, coupled with the instant.
+            // The identity: instant, physical sequence and body digest, with no
+            // cross-hash seed on this unlocated line.
             assert_eq!(
                 line.get_currhashcode(),
                 yggdryl::xxhash::xxh3(body.as_bytes())
@@ -930,11 +948,149 @@ mod text {
             // A line is read from a handle: no source, and no parent until a
             // walk states one.
             assert!(line.get_srcuuids().is_empty() && line.get_parentuuids().is_empty());
-            // Two lines stating the same bytes at the same instant are one identity.
+            // The same bytes, instant, physical sequence and absent cross seed
+            // derive the same identity.
             assert_eq!(
                 line.get_curruuid(),
                 self::line(&body, &options).get_curruuid()
             );
+        }
+
+        #[test]
+        fn execution_and_recording_captures_are_typed_event_instants() {
+            const EXECUTED: i64 = INSTANT + 1_000_000_000;
+            const RECORDED: i64 = INSTANT + 2_000_000_000;
+            const REFERENCE_RECORDED: i64 = INSTANT + 3_000_000_000;
+            let options = Arc::new(
+                TextOptions::new()
+                    .try_with_rowheader(EVENT_TIMES)
+                    .expect("a header"),
+            );
+            let mut line = line(
+                "2026-01-02T10:15:31Z 2026-01-02T10:15:32Z 2026-01-02T10:15:33Z body",
+                &options,
+            );
+
+            assert_eq!(line.execunix().unwrap(), Some(EXECUTED));
+            assert_eq!(line.recdunix().unwrap(), Some(RECORDED));
+            assert_eq!(line.refrecdunix().unwrap(), Some(REFERENCE_RECORDED));
+            assert_eq!(line.get_execunix(), Some(EXECUTED));
+            assert_eq!(line.get_recdunix(), Some(RECORDED));
+            assert_eq!(line.get_refrecdunix(), Some(REFERENCE_RECORDED));
+            assert_eq!(
+                line.event_fact(EventColumn::ExecUnix)
+                    .unwrap()
+                    .and_then(|value| value.temporal_count()),
+                Some(EXECUTED)
+            );
+            assert_eq!(
+                line.event_fact(EventColumn::RecdUnix)
+                    .unwrap()
+                    .and_then(|value| value.temporal_count()),
+                Some(RECORDED)
+            );
+            assert_eq!(
+                line.event_fact(EventColumn::RefRecdUnix)
+                    .unwrap()
+                    .and_then(|value| value.temporal_count()),
+                Some(REFERENCE_RECORDED)
+            );
+
+            // A changed body drops both resolved readings.
+            line.set_body(
+                TextBytes::from_bytes(
+                    "2026-01-02T10:15:33Z 2026-01-02T10:15:34Z 2026-01-02T10:15:35Z changed",
+                )
+                .expect("a page"),
+            )
+            .expect("a body");
+            assert_eq!(line.get_execunix(), Some(INSTANT + 3_000_000_000));
+            assert_eq!(line.get_recdunix(), Some(INSTANT + 4_000_000_000));
+            assert_eq!(line.get_refrecdunix(), Some(INSTANT + 5_000_000_000));
+
+            // A value stated through the Event contract stands over later bodies.
+            line.set_execunix(Some(7));
+            line.set_recdunix(Some(8));
+            line.set_refrecdunix(Some(9));
+            line.set_body(
+                TextBytes::from_bytes(
+                    "2026-01-02T10:15:35Z 2026-01-02T10:15:36Z 2026-01-02T10:15:37Z stated",
+                )
+                .expect("a page"),
+            )
+            .expect("a body");
+            assert_eq!(
+                (
+                    line.get_execunix(),
+                    line.get_recdunix(),
+                    line.get_refrecdunix()
+                ),
+                (Some(7), Some(8), Some(9))
+            );
+
+            // The capture feeds the event columns themselves, not duplicate text
+            // columns behind them, and a row read back states both facts again.
+            let source = self::line(
+                "2026-01-02T10:15:31Z 2026-01-02T10:15:32Z 2026-01-02T10:15:33Z body",
+                &options,
+            );
+            let batch = into_arrow_batch([source], &options).expect("an event row");
+            let schema = batch.schema();
+            let names: Vec<&str> = schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect();
+            assert_eq!(names, super::with_event(&["sourceurl", "mtime", "body"]));
+            for name in ["execunix", "recdunix", "refrecdunix"] {
+                assert_eq!(
+                    schema.field_with_name(name).unwrap().data_type(),
+                    &arrow_schema::DataType::Timestamp(
+                        arrow_schema::TimeUnit::Nanosecond,
+                        Some("UTC".into())
+                    )
+                );
+            }
+            let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("a line");
+            assert_eq!(back[0].get_execunix(), Some(EXECUTED));
+            assert_eq!(back[0].get_recdunix(), Some(RECORDED));
+            assert_eq!(back[0].get_refrecdunix(), Some(REFERENCE_RECORDED));
+        }
+
+        #[test]
+        fn execution_and_recording_captures_refuse_bad_instants_by_name() {
+            let options = Arc::new(
+                TextOptions::new()
+                    .try_with_rowheader(EVENT_TIMES)
+                    .expect("a header"),
+            );
+            let line = line(
+                "not-an-instant still-not-an-instant nor-an-instant body",
+                &options,
+            );
+            for (name, refused) in [
+                ("execunix", line.execunix().err()),
+                ("recdunix", line.recdunix().err()),
+                ("refrecdunix", line.refrecdunix().err()),
+            ] {
+                let refused = refused
+                    .unwrap_or_else(|| panic!("{name} refuses"))
+                    .to_string();
+                assert!(refused.contains(&format!("$[0].{name}")), "{refused}");
+            }
+            assert_eq!(
+                (
+                    line.get_execunix(),
+                    line.get_recdunix(),
+                    line.get_refrecdunix()
+                ),
+                (None, None, None)
+            );
+            let error = line
+                .event_fact(EventColumn::ExecUnix)
+                .expect_err("the event column refuses")
+                .to_string();
+            assert!(error.contains("$[0].execunix"), "{error}");
         }
 
         #[test]
@@ -968,6 +1124,99 @@ mod text {
         }
 
         #[test]
+        fn changing_the_source_refreshes_derived_cross_facts_but_not_a_stated_code() {
+            let options = Arc::new(TextOptions::new());
+            let mut line = line("plain", &options);
+            let anonymous_uuid = line.get_curruuid();
+            let first = Arc::new(Url::from_str("file:///first.log").expect("a source URL"));
+            line.set_sourceurl(Some(Arc::clone(&first)));
+            let first_code = first.to_string();
+            assert_eq!(line.get_crosscode(), first_code.as_str());
+            assert_eq!(
+                line.get_crosshashcode(),
+                yggdryl::xxhash::xxh3(first_code.as_bytes())
+            );
+            let first_uuid = line.get_curruuid();
+            assert_ne!(first_uuid, anonymous_uuid);
+            let first_crossuuid = line.get_crossuuid();
+
+            let second = Arc::new(Url::from_str("file:///second.log").expect("a source URL"));
+            line.set_sourceurl(Some(Arc::clone(&second)));
+            let second_code = second.to_string();
+            assert_eq!(line.get_crosscode(), second_code.as_str());
+            assert_eq!(
+                line.get_crosshashcode(),
+                yggdryl::xxhash::xxh3(second_code.as_bytes())
+            );
+            let second_uuid = line.get_curruuid();
+            assert_ne!(second_uuid, first_uuid);
+            assert_ne!(line.get_crossuuid(), first_crossuuid);
+
+            line.set_sourceurl(None);
+            assert_eq!(line.get_crosscode(), "");
+            assert_eq!(line.get_crosshashcode(), 0);
+            assert_eq!(line.get_curruuid(), anonymous_uuid);
+            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+
+            line.set_crosscode("stated-chain".to_owned());
+            let stated_uuid = line.get_curruuid();
+            assert_ne!(stated_uuid, anonymous_uuid);
+            line.set_sourceurl(Some(first));
+            assert_eq!(line.get_crosscode(), "stated-chain");
+            assert_eq!(line.get_curruuid(), stated_uuid);
+        }
+
+        #[test]
+        fn changing_identity_inputs_rederives_a_restored_lines_generic_identities() {
+            fn state_generic_identities(line: &mut TextLine) {
+                line.set_curruuid(Uuid::from_v8(1));
+                line.set_crossuuid(Uuid::from_v8(2));
+            }
+
+            fn assert_derived_identities(line: &TextLine) {
+                assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+                assert_eq!(line.get_crossuuid(), line.cross_uuid());
+            }
+
+            let options = Arc::new(TextOptions::new());
+            let mut line = line("plain", &options);
+            line.set_crosshashcode(0xCD);
+            state_generic_identities(&mut line);
+
+            line.set_crosscode("stated-chain".to_owned());
+            let crosshashcode = yggdryl::xxhash::xxh3(b"stated-chain");
+            assert_eq!(line.get_crosshashcode(), crosshashcode);
+            assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), Uuid::from_v8(1));
+            assert_eq!(
+                line.get_crossuuid(),
+                Uuid::from_v8(u128::from(crosshashcode))
+            );
+
+            state_generic_identities(&mut line);
+            line.set_crosshashcode(0xEF);
+            assert_derived_identities(&line);
+
+            state_generic_identities(&mut line);
+            line.set_currhashcode(0xAB);
+            assert_derived_identities(&line);
+
+            state_generic_identities(&mut line);
+            line.set_currunix(1_000_000);
+            assert_derived_identities(&line);
+
+            state_generic_identities(&mut line);
+            line.set_seqnum(17);
+            assert_derived_identities(&line);
+
+            state_generic_identities(&mut line);
+            line.set_crosscode(String::new());
+            assert_eq!(line.get_crosshashcode(), 0);
+            assert_derived_identities(&line);
+            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+        }
+
+        #[test]
         fn a_capture_that_does_not_read_as_its_fact_refuses_by_name() {
             let options = Arc::new(
                 TextOptions::new()
@@ -978,7 +1227,6 @@ mod text {
             for (name, refused) in [
                 ("mtime", line.mtime().err()),
                 ("state", line.state().err()),
-                ("seqnum", line.seqnum().err()),
                 ("prevuuid", line.prevuuid().err()),
             ] {
                 let refused = refused
@@ -1013,16 +1261,14 @@ mod text {
             line.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert!(line.get_state().is_done());
             assert_eq!(line.get_seqnum(), 9);
-            assert_eq!(
-                line.get_curruuid(),
-                resolved,
-                "a stated fact is not the identity's"
-            );
+            let sequenced = line.get_curruuid();
+            assert_ne!(sequenced, resolved, "the sequence is part of the identity");
+            assert_eq!(sequenced, line.time_uuid().expect("an identity"));
             // A new body: the readings resolve afresh from it, and the stated
             // facts stand.
             line.set_body(TextBytes::from_bytes("plain").expect("a page"))
                 .expect("a body");
-            assert_ne!(line.get_curruuid(), resolved);
+            assert_ne!(line.get_curruuid(), sequenced);
             assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
             assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
             assert!(line.get_state().is_done(), "stated, so it stands");
@@ -1104,16 +1350,18 @@ mod text {
         }
 
         #[test]
-        fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
+        fn the_identity_reads_the_cross_hash_but_not_a_stated_cross_element_or_source() {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let stated = line(&body, &options);
             let mut crossed = line(&body, &options);
             crossed.set_crosshashcode(0xCD);
+            let crossed_identity = crossed.get_curruuid();
+            assert_ne!(crossed_identity, stated.get_curruuid());
             crossed.set_crossuuid(Uuid::from_v8(77));
             crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
-            assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
+            assert_eq!(crossed.get_curruuid(), crossed_identity);
             assert_eq!(
                 crossed.get_crossuuid(),
                 Uuid::from_v8(77),
@@ -1147,8 +1395,10 @@ mod text {
                     .try_with_rowheader(CHAIN)
                     .expect("a header"),
             );
+            let source = Arc::new(Url::from_str("file:///events.log").expect("a source URL"));
             let read = |instant: &str, state: &str| {
                 line(&format!("{instant} [{state}] O-100 k=v"), &options)
+                    .with_sourceurl(Arc::clone(&source))
             };
             let arrived = vec![
                 read("2026-01-02T10:15:30Z", "New"),
@@ -1173,15 +1423,21 @@ mod text {
             assert!(
                 walked
                     .iter()
+                    .all(|line| line.get_crosscode() == source.to_string())
+            );
+            assert!(
+                walked
+                    .iter()
                     .all(|line| line.get_crossuuid() == first.get_crossuuid())
             );
         }
 
         #[test]
         fn a_read_line_reads_as_the_batch_reads_it() {
-            let options = TextOptions::new()
+            let mut options = TextOptions::new()
                 .try_with_rowheader(HEADER)
                 .expect("a header");
+            options.start_rownum = Some(7);
             let text = format!("2026-01-02T10:15:30Z [Filled] 7 {PREVIOUS} O-100 k=v\n");
             let source = named("events.log", text.as_bytes());
             let lines: Vec<TextLine> = read_text_lines(&source, &options)
@@ -1190,7 +1446,8 @@ mod text {
                 .collect();
             assert_eq!(lines[0].get_currunix(), INSTANT);
             assert_eq!(lines[0].get_seqnum(), 7);
-            assert!(lines[0].sourceurl().is_some());
+            let sourceurl = lines[0].sourceurl().expect("a source").to_string();
+            assert_eq!(lines[0].get_crosscode(), sourceurl.as_str());
             let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
             let schema = batch.schema();
             let names: Vec<&str> = schema
@@ -1198,14 +1455,13 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            // The batch opens with the sixteen event columns the line is stated
-            // in, and a capture named for an event fact - `state`, `seqnum`,
-            // `prevuuid`, `crosscode` - feeds that column rather than trailing
-            // beside it as a column of its own.
-            assert_eq!(names, super::with_event(&["sourceurl", "mtime", "body"]));
-            // Every fact the line read off its captures is what the column
-            // states, at the fact's own datatype rather than as the text the
-            // capture held.
+            // The batch opens with the nineteen event columns the line is stated
+            // in. Captured facts feed their own event columns, while `seqnum` and
+            // `crosscode` come from the line's row number and source URL.
+            assert_eq!(
+                names,
+                super::with_event(&["sourceurl", "rownum", "mtime", "body"])
+            );
             let cell = |name: &str| batch.column_by_name(name).expect(name).clone();
             assert_eq!(
                 cell("seqnum")
@@ -1221,7 +1477,7 @@ mod text {
                     .downcast_ref::<arrow_array::StringArray>()
                     .expect("a code")
                     .value(0),
-                "O-100"
+                sourceurl.as_str()
             );
             assert_eq!(
                 cell("state")
@@ -1239,7 +1495,7 @@ mod text {
             assert_eq!(back[0].get_seqnum(), 7);
             assert!(back[0].get_state().is_done());
             assert_eq!(back[0].get_prevuuid(), lines[0].get_prevuuid());
-            assert_eq!(back[0].get_crosscode(), "O-100");
+            assert_eq!(back[0].get_crosscode(), sourceurl.as_str());
             assert_eq!(back[0].get_curruuid(), lines[0].get_curruuid());
             assert_eq!(back[0].get_crossuuid(), lines[0].get_crossuuid());
             assert_eq!(back[0].get_currhashcode(), lines[0].get_currhashcode());
@@ -1247,28 +1503,94 @@ mod text {
         }
 
         #[test]
-        fn a_batch_refuses_a_capture_the_event_column_cannot_hold_by_the_facts_name() {
-            // The column states the fact at the fact's own datatype, so a
-            // capture spelled as the fact and not readable as it refuses the
-            // batch by the fact's name, where a capture column would have
-            // carried the text: one owner per fact, and one type.
-            let options = TextOptions::new()
-                .try_with_rowheader(LOOSE)
-                .expect("a header");
-            let text = format!("2026-01-02T10:15:30Z [Filled] seven {PREVIOUS} k=v\n");
-            let source = named("events.log", text.as_bytes());
+        fn explicit_event_sequence_and_cross_code_win_over_arrow_base_facts() {
+            let mut options = TextOptions::new();
+            options.start_rownum = Some(10);
+            let mut lines: Vec<TextLine> =
+                read_text_lines(&named("events.log", b"body\n"), &options)
+                    .expect("a reader")
+                    .map(|line| line.expect("a line"))
+                    .collect();
+            let sourceurl = lines[0].sourceurl().expect("a source").to_string();
+            assert_eq!(lines[0].get_seqnum(), 10);
+            assert_eq!(lines[0].get_crosscode(), sourceurl.as_str());
+
+            lines[0].set_seqnum(77);
+            lines[0].set_crosscode("explicit-chain".to_owned());
+            let batch = into_arrow_batch(lines, &options).expect("a batch");
+            assert_eq!(
+                batch
+                    .column_by_name("rownum")
+                    .expect("rownum")
+                    .as_any()
+                    .downcast_ref::<arrow_array::Int64Array>()
+                    .expect("a signed row number")
+                    .value(0),
+                10
+            );
+            assert_eq!(
+                batch
+                    .column_by_name("sourceurl")
+                    .expect("sourceurl")
+                    .as_any()
+                    .downcast_ref::<arrow_array::StringArray>()
+                    .expect("a URL")
+                    .value(0),
+                sourceurl
+            );
+            assert_eq!(
+                batch
+                    .column_by_name("seqnum")
+                    .expect("seqnum")
+                    .as_any()
+                    .downcast_ref::<arrow_array::UInt64Array>()
+                    .expect("a sequence")
+                    .value(0),
+                77
+            );
+            assert_eq!(
+                batch
+                    .column_by_name("crosscode")
+                    .expect("crosscode")
+                    .as_any()
+                    .downcast_ref::<arrow_array::StringArray>()
+                    .expect("a code")
+                    .value(0),
+                "explicit-chain"
+            );
+
+            let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("lines read back");
+            assert_eq!(back[0].index(), 0);
+            assert_eq!(
+                back[0].sourceurl().map(ToString::to_string),
+                Some(sourceurl)
+            );
+            assert_eq!(back[0].get_seqnum(), 77);
+            assert_eq!(back[0].get_crosscode(), "explicit-chain");
+        }
+
+        #[test]
+        fn a_negative_row_number_refuses_the_unsigned_event_sequence() {
+            let mut options = TextOptions::new();
+            options.start_rownum = Some(-1);
+            let source = named("events.log", b"body\n");
             let lines: Vec<TextLine> = read_text_lines(&source, &options)
                 .expect("a reader")
                 .map(|line| line.expect("a line"))
                 .collect();
-            // The trait door answers the default over the refusal...
-            assert_eq!(lines[0].get_seqnum(), 0);
-            // ...and the batch, built from the refusing reading, names the fact.
-            let error = into_arrow_batch(lines, &options)
-                .expect_err("a seqnum that is not a count")
+            let refusal = lines[0]
+                .seqnum()
+                .expect_err("a negative row number is not a sequence")
                 .to_string();
-            assert!(error.contains("seqnum"), "{error}");
-            assert!(error.contains("seven"), "{error}");
+            assert!(refusal.contains("rownum"), "{refusal}");
+            assert!(refusal.contains("-1"), "{refusal}");
+            // The infallible trait door falls back to the physical index.
+            assert_eq!(lines[0].get_seqnum(), 0);
+            let error = into_arrow_batch(lines, &options)
+                .expect_err("the event column refuses the negative sequence")
+                .to_string();
+            assert!(error.contains("rownum"), "{error}");
+            assert!(error.contains("-1"), "{error}");
             assert!(error.contains("physical line 1"), "{error}");
         }
     }

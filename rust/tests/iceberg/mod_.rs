@@ -6391,7 +6391,7 @@ mod line_projection {
             .into();
         options.set_batch_row_size(Some(2));
 
-        // The row opens with the sixteen event columns, two of them the
+        // The row opens with the nineteen event columns, two of them the
         // `uint64` codes Iceberg has no type for: the table takes the
         // schema as the scheme widens it, `decimal(20, 0)` for those, as a
         // FIX row's table does.
@@ -7182,7 +7182,13 @@ mod isolation {
 
     #[test]
     fn a_time_partition_range_skips_manifests_like_the_equality_form() {
-        let path = root("isolation-timepartition");
+        let filesystem: Arc<dyn yggdryl::fs::FileSystem> =
+            Arc::new(yggdryl::fs::MemoryFileSystem::new());
+        filesystem
+            .create_dir("isolation-timepartition", true)
+            .unwrap();
+        let folder =
+            yggdryl::fs::Folder::from_path(filesystem, "isolation-timepartition", None).unwrap();
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::DateTime(DateTimeType::DateTime64 {
@@ -7196,13 +7202,12 @@ mod isolation {
         .required_field("row");
         assign_field_ids(&mut schema, 1).unwrap();
         let spec = PartitionSpec::identity(1, &schema, &["timepartition"]).unwrap();
-        let mut table = Table::create(
-            Folder::new(&path).unwrap(),
-            FormatVersion::V2,
-            schema.clone(),
-            spec,
-        )
-        .unwrap();
+        let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(yggdryl::iceberg::WriteStaging::Off)
+                .unwrap(),
+        );
         let arrow = schema.into_arrow_schema().unwrap();
         let hour = 3_600_000_000_i64;
         // Three hourly partitions from 2024-01-01T00:00Z, one commit each.
@@ -7242,8 +7247,6 @@ mod isolation {
             .unwrap();
         assert_eq!(wide.tasks.len(), 2);
         assert_eq!(wide.manifests_skipped(), 1);
-
-        let _ = std::fs::remove_dir_all(&path);
     }
 
     #[test]

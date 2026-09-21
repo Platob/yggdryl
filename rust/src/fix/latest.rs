@@ -259,6 +259,140 @@ impl Level {
             }
         }
     }
+
+    /// Folds `other` into this level with this level's stated values leading.
+    /// One logical child remains one child; repeating groups merge occurrence
+    /// by occurrence, and an absent scalar is filled from the other statement.
+    fn merge_from(&mut self, registry: &FixRegistry, other: Self) {
+        for child in other.children {
+            let Some(at) = self
+                .children
+                .iter()
+                .position(|held| same_child(registry, held, &child))
+            else {
+                self.children.push(child);
+                continue;
+            };
+            match (&mut self.children[at], child) {
+                (Child::Flat(field, value), Child::Flat(other_field, other_value)) => {
+                    if value.is_null() && !other_value.is_null() {
+                        *field = other_field;
+                        *value = other_value;
+                    }
+                }
+                (Child::Group(_, occurrences), Child::Group(_, other_occurrences)) => {
+                    if occurrences.len() < other_occurrences.len() {
+                        occurrences.resize_with(other_occurrences.len(), || None);
+                    }
+                    for (index, other) in other_occurrences.into_iter().enumerate() {
+                        match (&mut occurrences[index], other) {
+                            (Some(held), Some(other)) => held.merge_from(registry, other),
+                            (slot @ None, Some(other)) => *slot = Some(other),
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Collapses duplicates within one statement through the same leading
+    /// merge used between statements.
+    fn deduplicated(registry: &FixRegistry, level: Self) -> Self {
+        let mut deduplicated = Self::default();
+        deduplicated.merge_from(registry, level);
+        for child in &mut deduplicated.children {
+            if let Child::Group(_, occurrences) = child {
+                for occurrence in occurrences.iter_mut().flatten() {
+                    *occurrence = Self::deduplicated(registry, std::mem::take(occurrence));
+                }
+            }
+        }
+        deduplicated
+    }
+
+    /// Orders one merged level by its FIX identity. Tagged members lead in
+    /// ascending tag order; untagged bridge fields follow by folded name.
+    fn sort(&mut self, registry: &FixRegistry) {
+        for child in &mut self.children {
+            if let Child::Group(_, occurrences) = child {
+                for occurrence in occurrences.iter_mut().flatten() {
+                    occurrence.sort(registry);
+                }
+            }
+        }
+        self.children
+            .sort_by(|left, right| child_order(registry, left, right));
+    }
+
+    /// Brings every scalar counter in step with the merged List it counts.
+    fn sync_group_counts(&mut self, registry: &FixRegistry) -> Result<()> {
+        for child in &mut self.children {
+            if let Child::Group(_, occurrences) = child {
+                for occurrence in occurrences.iter_mut().flatten() {
+                    occurrence.sync_group_counts(registry)?;
+                }
+            }
+        }
+        let groups: Vec<(i32, usize)> = self
+            .children
+            .iter()
+            .filter_map(|child| match child {
+                Child::Group(field, occurrences) => tag_and_counter(registry, field)
+                    .1
+                    .map(|counter| (counter, occurrences.len())),
+                Child::Flat(..) => None,
+            })
+            .collect();
+        for (counter, count) in groups {
+            let Some(field) = registry.get_field_by_tag(counter).map(stated_field) else {
+                continue;
+            };
+            let value = field.scalar(Scalar::from(i64::try_from(count).unwrap_or(i64::MAX)))?;
+            match self.position_of_field(Some(counter), field.name()) {
+                Some(at) => self.children[at] = Child::Flat(field, value),
+                None => self.children.push(Child::Flat(field, value)),
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The FIX identity one child states. A group is named by its counter; a
+/// scalar by its tag. Shape remains part of the identity because the scalar
+/// counter and the List it counts legitimately share one numeric tag.
+fn child_tag(registry: &FixRegistry, child: &Child) -> Option<i32> {
+    let field = child.field();
+    let (tag, counter) = tag_and_counter(registry, field);
+    match child {
+        Child::Flat(..) => tag,
+        Child::Group(..) => counter.or(tag),
+    }
+}
+
+fn same_child(registry: &FixRegistry, left: &Child, right: &Child) -> bool {
+    if std::mem::discriminant(left) != std::mem::discriminant(right) {
+        return false;
+    }
+    match (child_tag(registry, left), child_tag(registry, right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => crate::folds_equal(left.name(), right.name()),
+    }
+}
+
+fn child_order(registry: &FixRegistry, left: &Child, right: &Child) -> std::cmp::Ordering {
+    let left_group = matches!(left, Child::Group(..));
+    let right_group = matches!(right, Child::Group(..));
+    match (child_tag(registry, left), child_tag(registry, right)) {
+        (Some(left), Some(right)) => left.cmp(&right).then_with(|| left_group.cmp(&right_group)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left
+            .name()
+            .to_ascii_lowercase()
+            .cmp(&right.name().to_ascii_lowercase()),
+    }
 }
 
 impl Child {
@@ -1613,6 +1747,257 @@ pub(super) fn restates(registry: &FixRegistry, tag: i32) -> bool {
                 |facts| facts.ruled,
             )
         })
+}
+
+/// Synchronizes one keyed occurrence of a root repeating group.
+///
+/// The same unpacker and packer the restating pass uses preserve every
+/// unrelated occurrence and optional member. `value` replaces the one
+/// occurrence whose `selector_tag` equals `selector`, removing duplicates;
+/// `None` removes every matching occurrence. The group's counter is written
+/// from the resulting length.
+pub(super) fn sync_group_occurrence(
+    msg: &mut FixMsg,
+    group: &str,
+    selector_tag: i32,
+    selector: &str,
+    value_tag: i32,
+    value: Option<&str>,
+) -> Result<()> {
+    let registry = Arc::clone(msg.registry());
+    let Some(definition) = registry
+        .get_definition(crate::FixCategory::Groups, group)
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let Some(counter_tag) = definition.as_fix().counter()? else {
+        return Ok(());
+    };
+    let Some(selector_field) = registry.get_field_by_tag(selector_tag).map(stated_field) else {
+        return Ok(());
+    };
+    let Some(value_field) = registry.get_field_by_tag(value_tag).map(stated_field) else {
+        return Ok(());
+    };
+    let Some(counter_field) = registry.get_field_by_tag(counter_tag).map(stated_field) else {
+        return Ok(());
+    };
+    let selector = typed_spelling(&registry, &selector_field, selector);
+    if selector.is_null() {
+        return Ok(());
+    }
+    let value = value.map(|held| typed_spelling(&registry, &value_field, held));
+    if value.as_ref().is_some_and(Scalar::is_null) {
+        return Ok(());
+    }
+
+    let root = msg.as_field().clone();
+    let Some(children) = root.dtype().as_fields() else {
+        return Ok(());
+    };
+    let Some(values) = msg.as_value().as_sequence() else {
+        return Ok(());
+    };
+    let mut level = Level::unpack(children, values);
+    let at = match level.position_of_group(counter_tag, definition.name()) {
+        Some(at) => at,
+        None if value.is_none() => return Ok(()),
+        None => {
+            level
+                .children
+                .push(Child::Group(stated_field(&definition), Vec::new()));
+            level.children.len() - 1
+        }
+    };
+    if let Child::Flat(declared, held) = &level.children[at] {
+        if !held.is_null() {
+            return Ok(());
+        }
+        level.children[at] = Child::Group(declared.clone(), Vec::new());
+    }
+    let Child::Group(_, occurrences) = &mut level.children[at] else {
+        return Ok(());
+    };
+
+    let mut matched = false;
+    occurrences.retain_mut(|occurrence| {
+        let is_match = occurrence.as_ref().is_some_and(|held| {
+            held.position_of_field(Some(selector_tag), selector_field.name())
+                .and_then(|at| held.value_at(at))
+                == Some(&selector)
+        });
+        if !is_match {
+            return true;
+        }
+        let Some(value) = value.as_ref() else {
+            return false;
+        };
+        if matched {
+            return false;
+        }
+        matched = true;
+        let target = occurrence.get_or_insert_with(Level::default);
+        let at = target.position_of_field(Some(value_tag), value_field.name());
+        target.write_field(FieldWrite {
+            at,
+            field: value_field.clone(),
+            value: value.clone(),
+        });
+        true
+    });
+    if let Some(value) = value.filter(|_| !matched) {
+        let mut occurrence = Level::default();
+        occurrence.write_field(FieldWrite {
+            at: None,
+            field: value_field,
+            value,
+        });
+        occurrence.write_field(FieldWrite {
+            at: None,
+            field: selector_field,
+            value: selector,
+        });
+        occurrences.push(Some(occurrence));
+    }
+    let Ok(count) = i64::try_from(occurrences.len()) else {
+        return Ok(());
+    };
+    let counter = counter_field.scalar(Scalar::from(count))?;
+    let counter_at = level.position_of_field(Some(counter_tag), counter_field.name());
+    level.write_field(FieldWrite {
+        at: counter_at,
+        field: counter_field,
+        value: counter,
+    });
+
+    let (fields, values) = level.pack()?;
+    let root = Field::new_with_metadata(
+        root.name(),
+        DataType::from(StructType::from_checked_fields(fields)?),
+        root.is_nullable(),
+        root.as_metadata().clone(),
+    );
+    msg.replace_content(root, values)
+}
+
+/// Folds an older observation's FIX content into the selected reference.
+///
+/// The reference is the conflict base. Missing lifted and scalar facts are
+/// filled, while repeating groups merge the occurrences at equal indexes and
+/// their members recursively. The rebuilt levels have one logical key each
+/// and deterministic FIX tag/name order.
+pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()> {
+    let root = reference.as_field().clone();
+    let Some(reference_values) = reference.as_value().as_sequence() else {
+        return Ok(());
+    };
+    let Some(other_values) = other.as_value().as_sequence() else {
+        return Ok(());
+    };
+    let registry = Arc::clone(reference.registry());
+    let mut merged = Level::deduplicated(&registry, Level::unpack(root.fields(), reference_values));
+    let other_level = Level::deduplicated(
+        &registry,
+        Level::unpack(other.as_field().fields(), other_values),
+    );
+    merged.merge_from(&registry, other_level);
+    merged.sync_group_counts(&registry)?;
+    merged.sort(&registry);
+    let (fields, values) = merged.pack()?;
+    let root = Field::new_with_metadata(
+        root.name(),
+        DataType::from(StructType::from_checked_fields(fields)?),
+        root.is_nullable(),
+        root.as_metadata().clone(),
+    );
+    reference.replace_content(root, values)?;
+
+    // These are the body facts stored beside the row. Frame fields remain
+    // the selected observation's exact envelope.
+    for tag in super::identity::LIFTED_TAGS
+        .into_iter()
+        .chain(std::iter::once(super::identity::TEXT_TAG))
+    {
+        let missing = reference
+            .get_by_tag(tag)
+            .as_ref()
+            .is_none_or(Scalar::is_null);
+        if missing {
+            if let Some(value) = other.get_by_tag(tag).filter(|value| !value.is_null()) {
+                reference.set_unsettled(tag, value)?;
+            }
+        }
+    }
+    reference.settle();
+    Ok(())
+}
+
+/// Carries order-link spellings from the exact lifecycle predecessor without
+/// overwriting anything the current message stated.
+pub(super) fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> Result<bool> {
+    let previous_order = previous.lifted().orderid().map(str::to_owned);
+    let current_order = current.lifted().orderid().map(str::to_owned);
+    let previous_clord = previous.lifted().clordid().map(str::to_owned);
+    let current_clord = current.lifted().clordid().map(str::to_owned);
+    let parent_missing = current
+        .get_by_name("parentorderid")
+        .as_ref()
+        .is_none_or(|value| value.is_null() || value.as_str() == Some(""));
+    let inherit_parent = parent_missing
+        && matches!(
+            (previous_order.as_deref(), current_order.as_deref()),
+            (Some(previous), Some(current)) if previous != current
+        );
+    let inherit_clord = current_clord.is_none()
+        && previous_clord
+            .as_deref()
+            .is_some_and(|previous| current_clord.as_deref() != Some(previous));
+    if !inherit_parent && !inherit_clord {
+        return Ok(false);
+    }
+
+    if inherit_parent {
+        let root = current.as_field().clone();
+        let Some(values) = current.as_value().as_sequence() else {
+            return Ok(false);
+        };
+        let mut level = Level::unpack(root.fields(), values);
+        let value = Scalar::from(previous_order.as_deref().expect("checked above"));
+        match level
+            .children
+            .iter()
+            .position(|child| crate::folds_equal(child.name(), "parentorderid"))
+        {
+            Some(at) => {
+                if let Child::Flat(field, held) = &mut level.children[at] {
+                    if held.is_null() || held.as_str() == Some("") {
+                        *held = field.scalar(value)?;
+                    }
+                }
+            }
+            None => level.children.push(Child::Flat(
+                DataType::utf8().nullable_field("parentorderid"),
+                value,
+            )),
+        }
+        let (fields, values) = level.pack()?;
+        let root = Field::new_with_metadata(
+            root.name(),
+            DataType::from(StructType::from_checked_fields(fields)?),
+            root.is_nullable(),
+            root.as_metadata().clone(),
+        );
+        current.replace_content(root, values)?;
+    }
+    if inherit_clord {
+        current.set_unsettled(
+            11,
+            Scalar::from(previous_clord.as_deref().expect("checked above")),
+        )?;
+    }
+    current.settle();
+    Ok(true)
 }
 
 /// Every rule `field` carries, in the document's order, each the plan it

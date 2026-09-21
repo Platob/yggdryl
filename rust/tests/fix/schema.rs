@@ -46,16 +46,20 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat and six normalized identifiers join the existing standard CFI column.
-    assert_eq!(tags.len(), 119);
+    // MsgCat, three optional event clocks and six normalized identifiers join
+    // the existing standard CFI column.
+    assert_eq!(tags.len(), 123);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
     // groups kept whole, and last the frame.
     assert_eq!(
-        &tags[..13],
+        &tags[..16],
         [
             yggdryl::CURRUNIX_TAG_NAME.0,
+            yggdryl::EXECUNIX_TAG_NAME.0,
+            yggdryl::RECDUNIX_TAG_NAME.0,
+            yggdryl::REFRECDUNIX_TAG_NAME.0,
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
@@ -72,7 +76,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[13..23],
+        &tags[16..26],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -88,7 +92,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[23..31],
+        &tags[26..34],
         [
             8,
             35,
@@ -135,6 +139,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
+    assert_eq!(schema.fields().len(), 128);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     // The frame closes the row: the trailer, then the bridge's own keys, then
     // the arrival record and the counter that counts it.
@@ -148,7 +153,13 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             "fixentries"
         ]
     );
-    for tag in [yggdryl::PREVUNIX_TAG_NAME.0, yggdryl::PREVUUID_TAG_NAME.0] {
+    for tag in [
+        yggdryl::EXECUNIX_TAG_NAME.0,
+        yggdryl::RECDUNIX_TAG_NAME.0,
+        yggdryl::REFRECDUNIX_TAG_NAME.0,
+        yggdryl::PREVUNIX_TAG_NAME.0,
+        yggdryl::PREVUUID_TAG_NAME.0,
+    ] {
         assert_eq!(
             schema
                 .fields()
@@ -158,6 +169,15 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             1
         );
         assert!(schema.fields()[column_of(&schema, tag)].is_nullable());
+    }
+    let clock = DataType::datetime64(yggdryl::TimeUnit::Nanosecond, yggdryl::Timezone::UTC)
+        .expect("the event clock");
+    for tag in [
+        yggdryl::EXECUNIX_TAG_NAME.0,
+        yggdryl::RECDUNIX_TAG_NAME.0,
+        yggdryl::REFRECDUNIX_TAG_NAME.0,
+    ] {
+        assert_eq!(schema.fields()[column_of(&schema, tag)].dtype(), &clock);
     }
 }
 
@@ -925,6 +945,109 @@ fn a_group_keeps_the_members_that_read() {
     let members = group(&marked, &schema)[0].as_sequence().expect("a party");
     assert_eq!(members[0].as_str(), Some("BUYSIDE"));
     assert_eq!(members[2].as_i128(), Some(1));
+}
+
+/// The regulatory identifiers are one typed List column beside their FIX
+/// counter, and a projected occurrence leaves no duplicate in the residual.
+#[test]
+fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let at_group = schema
+        .index_of("regulatorytradeids")
+        .expect("the regulatory trade identifiers column");
+    let field = &schema.fields()[at_group];
+    assert_eq!(field.display(), Some("RegulatoryTradeIDGrp"));
+    assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
+    assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
+    assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());
+    let DataType::Sequence(yggdryl::SequenceType::List(item)) = field.dtype() else {
+        panic!("regulatorytradeids is a List, got {}", field.dtype());
+    };
+    assert_eq!(item.name(), "regulatorytradeidcomponent");
+    let member_names: Vec<_> = item.fields().iter().map(Field::name).collect();
+    assert_eq!(
+        member_names,
+        [
+            "regulatorytradeid",
+            "regulatorytradeidsource",
+            "regulatorytradeidevent",
+            "regulatorytradeidtype",
+            "regulatorylegrefid",
+            "regulatorytradeidscope",
+        ]
+    );
+    let member_tags: Vec<_> = item
+        .fields()
+        .iter()
+        .map(|member| member.as_fix().tag().unwrap())
+        .collect();
+    assert_eq!(
+        member_tags,
+        [
+            Some(1903),
+            Some(1905),
+            Some(1904),
+            Some(1906),
+            Some(2411),
+            Some(2397)
+        ]
+    );
+
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=8|17=E1|1907=1|1903=035B40DQK6702PNV|1906=5|10=0|")
+        .unwrap();
+    assert!(message.get_by_name("regulatorytradeidgrp").is_none());
+    assert!(message.get_by_name("regulatorytradeids").is_some());
+    let row = message.into_row(&schema).unwrap();
+    assert_eq!(at(&row, &schema, 1907).as_i128(), Some(1));
+    let occurrences = row.as_sequence().unwrap()[at_group]
+        .as_sequence()
+        .expect("the regulatory trade identifier occurrences");
+    assert_eq!(occurrences.len(), 1);
+    let members = occurrences[0].as_sequence().expect("one occurrence");
+    assert_eq!(members[0].as_str(), Some("035B40DQK6702PNV"));
+    assert!(members[1].is_null());
+    assert!(members[2].is_null());
+    assert_eq!(members[3].as_i128(), Some(5));
+    assert!(members[4].is_null());
+    assert!(members[5].is_null());
+
+    let residual = row.as_sequence().unwrap()[schema.index_of("fixentries").unwrap()]
+        .as_sequence()
+        .expect("the residual entries");
+    assert!(
+        residual
+            .iter()
+            .all(|entry| entry.get(0).and_then(Scalar::as_i128) != Some(1907)),
+        "the projected group is not duplicated in fixentries"
+    );
+    let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
+
+    // A venue may reuse the standard counter while packing a proprietary
+    // occurrence whose members are not RegulatoryTradeIDGrp members. The
+    // fixed List must not claim that shape: its List and scalar counter stay
+    // null together, while the complete group remains in the residual.
+    let proprietary = reader
+        .sole_line(
+            b"MSGTYPE=tradecapturereport|NOREGULATORYTRADEIDS=1|NOREGULATORYTRADEIDS[0]=TRADEID=R1\x04\x03TRADEIDTYPE=custom\x04\x03",
+        )
+        .unwrap();
+    let row = proprietary.into_row(&schema).unwrap();
+    assert!(at(&row, &schema, 1907).is_null());
+    assert!(row.as_sequence().unwrap()[at_group].is_null());
+    let residual = row.as_sequence().unwrap()[schema.index_of("fixentries").unwrap()]
+        .as_sequence()
+        .expect("the residual entries");
+    assert!(
+        residual
+            .iter()
+            .any(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(1907)),
+        "the proprietary group remains whole in fixentries"
+    );
+    let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
 }
 
 // ---------------------------------------------------------------------------

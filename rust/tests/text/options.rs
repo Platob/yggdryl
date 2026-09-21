@@ -2,7 +2,7 @@
 //! takes, and what they refuse.
 
 mod text {
-    use arrow_array::{Array as _, Int64Array, StringArray};
+    use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
     use yggdryl::IOMedia as _;
     use yggdryl::Timezone;
     use yggdryl::holder::Buffer;
@@ -21,12 +21,15 @@ mod text {
         TextOptions::new().try_with_rowheader(rowheader).unwrap()
     }
 
-    /// The sixteen event columns every line batch opens with, in front of the
+    /// The nineteen event columns every line batch opens with, in front of the
     /// line's own: the line is an event of the graph, and a message parsed out
-    /// of it opens with the same sixteen.
-    const EVENT_COLUMNS: [&str; 16] = [
+    /// of it contains the same nineteen under the same names and datatypes.
+    const EVENT_COLUMNS: [&str; 19] = [
         "currunix",
         "creaunix",
+        "execunix",
+        "recdunix",
+        "refrecdunix",
         "exprtime",
         "prevunix",
         "snapunix",
@@ -92,6 +95,22 @@ mod text {
             .collect()
     }
 
+    fn uint64s(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<u64>> {
+        batches
+            .iter()
+            .flat_map(|batch| {
+                let index = batch.schema().index_of(name).unwrap();
+                batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .unwrap()
+                    .iter()
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     fn strings(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<String>> {
         batches
             .iter()
@@ -149,6 +168,14 @@ mod text {
         assert!(error.contains(
             "distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives"
         ));
+        for name in ["seqnum", "CROSSCODE"] {
+            let error = TextOptions::new()
+                .try_with_rowheader(&format!(r"(?<{name}>.+)"))
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(name), "{name}: {error}");
+            assert!(error.contains("event columns the line derives"), "{error}");
+        }
     }
 
     #[test]
@@ -289,7 +316,9 @@ mod text {
     /// and not a record - the line's own doors refuse one, and a write refuses a
     /// row that carries one.
     mod body {
-        use super::{EVENT_COLUMNS, bodies, collect, named, options, rownums, strings, with_event};
+        use super::{
+            EVENT_COLUMNS, bodies, collect, named, options, rownums, strings, uint64s, with_event,
+        };
         use yggdryl::IOMedia as _;
         use yggdryl::text::{Text, TextBytes, TextLine, TextOptions};
 
@@ -309,8 +338,10 @@ mod text {
             let batches = collect(&source, read);
             assert_eq!(bodies(&batches), [b"alpha".to_vec(), b"beta".to_vec()]);
             // The numbering is the physical line's own, so the gap the blank
-            // line left is visible rather than closed over.
+            // line left is visible rather than closed over. The event sequence is
+            // the same numbering, with zero represented by its nullable cell.
             assert_eq!(rownums(&batches), [0, 2]);
+            assert_eq!(uint64s(&batches, "seqnum"), [None, Some(2)]);
         }
 
         #[test]
@@ -460,7 +491,7 @@ mod text {
                     field.name()
                 );
             }
-            // And the sixteen a line opens with carry the spelling their own
+            // And the nineteen a line opens with carry the spelling their own
             // column states, so a line's row and a message's row name one fact
             // one way.
             for name in EVENT_COLUMNS {

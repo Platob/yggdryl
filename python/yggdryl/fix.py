@@ -83,8 +83,11 @@ fields to their latest aliases, runs the dictionary's ``FIX:derivation``
 rules, fills the identifiers the message component declares and an order's
 lanes, and settles the identity: ``SendingTime`` is the message's own, else
 the carrier's, else the codec's ``default_sending_time``, else UTC now
-read once, and the instant ``currunix`` is the stated one, else
-``SendingTime``; what ``TransactTime`` says is the lifecycle's to read off
+read once, and the instant ``currunix`` is the stated one, else the official
+transaction clock standing within ``official_time_delay_ms`` of that
+``SendingTime`` - a ``TransactTime``, else the ``TrdRegTimestamp`` its
+``TrdRegTimestampType`` says is about the event or a hop - else that
+``SendingTime``; what ``OrigSendingTime`` says is the lifecycle's to read off
 the structured message. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
@@ -108,14 +111,17 @@ every row's wire. :meth:`FixCodec.format_messages` and
 field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
-``payload_column``, ``null_values``, ``direction``, ``batch_byte_size`` and
-``snapshot_ns`` - is on the codec; a positive ``snapshot_ns`` emits independent
-living views on its epoch-aligned grid and zero, a negative width or ``None``
-disables them. A stage is a call, and no pin decides a version: a row states one in
-its ``beginstring`` capture, else the line implies it.
+``payload_column``, ``null_values``, ``direction``, ``batch_byte_size``,
+``snapshot_ns`` and ``official_time_delay_ms`` - is on the codec; a positive
+``snapshot_ns`` emits independent living views on its epoch-aligned grid and
+zero, a negative width or ``None`` disables them, while
+``official_time_delay_ms`` is how far from ``SendingTime(52)`` an official
+transaction clock may stand and still date the message. A stage is a call, and
+no pin decides a version: a row states one in its ``beginstring`` capture, else
+the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - the
 crate's own columns first, its clocks then its identities, then the standard
-header, the fields a consumer reads, the three groups worth persisting whole,
+header, the fields a consumer reads, the four groups worth persisting whole,
 the trailer and ``MsgDirection`` (385) - each spelled by the dictionary's
 folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;

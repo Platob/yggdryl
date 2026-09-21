@@ -878,7 +878,365 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
         assert_eq!(arrow.get_state(), direct.get_state());
         assert_eq!(arrow.get_seqnum(), direct.get_seqnum());
         assert_eq!(arrow.get_currunix(), direct.get_currunix());
+        assert_eq!(arrow.get_recdunix(), direct.get_recdunix());
+        assert_eq!(arrow.get_refrecdunix(), direct.get_refrecdunix());
     }
+}
+
+#[test]
+fn lifecycle_fully_merges_one_capture_delivery_on_the_latest_recording_base() {
+    let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
+    let captured = |context: &[u8], body: &[u8], recdunix: i64, execunix: i64| {
+        let line = TextLine::from_bytes(
+            recdunix as u64,
+            TextBytes::from_bytes(body).unwrap(),
+            Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![
+            Some(TextBytes::from_bytes(b"SESSION-A").unwrap()),
+            Some(TextBytes::from_bytes(context).unwrap()),
+            Some(TextBytes::from_bytes(b"7").unwrap()),
+        ])
+        .unwrap()
+        .with_handle_mtime(recdunix);
+        let mut message = codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        message.set_execunix(Some(execunix));
+        message
+    };
+
+    let older = captured(
+        b"CONTEXT-A",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|isincode=US0378331005|miccode=XNYS|10=0|",
+        100,
+        90,
+    );
+    let newer = captured(
+        b"CONTEXT-A",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=MSFT|10=0|",
+        200,
+        110,
+    );
+    assert_ne!(older.get_curruuid(), newer.get_curruuid());
+    let older_source = older.get_srcuuids()[0];
+    let newer_source = newer.get_srcuuids()[0];
+
+    for source in [
+        vec![older.clone(), newer.clone()],
+        vec![newer.clone(), older.clone()],
+    ] {
+        let walked = codec
+            .lifecycle(source)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(walked.len(), 1);
+        let message = &walked[0];
+        assert_eq!(message.header().msgseqnum(), Some(7));
+        assert_eq!(message.capture().msgsessionid(), Some("SESSION-A"));
+        assert_eq!(message.capture().msgctxid(), Some("CONTEXT-A"));
+        assert_eq!(message.get_by_tag(55), Some(Scalar::from("MSFT")));
+        assert_eq!(
+            message.get_isincode().map(|code| code.as_str()),
+            Some("US0378331005"),
+            "the reference keeps its row and the full graph merge fills a missing market fact"
+        );
+        assert_eq!(message.get_srcuuids(), [newer_source, older_source]);
+        assert_eq!(message.get_execunix(), Some(90));
+        assert_eq!(
+            message.get_recdunix(),
+            Some(100),
+            "the latest recording selects the base while the merged fact remains the earliest"
+        );
+        assert_eq!(message.get_refrecdunix(), Some(200));
+        assert_eq!(
+            message.get_seqnum(),
+            0,
+            "one delivery takes one chain place"
+        );
+        assert!(message.get_prevuuid().is_none());
+    }
+
+    let middle = captured(
+        b"CONTEXT-A",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=GOOG|miccode=XPAR|10=0|",
+        150,
+        100,
+    );
+    let observations = [newer.clone(), older.clone(), middle];
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let walked = codec
+            .lifecycle(order.map(|index| observations[index].clone()))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(walked.len(), 1);
+        assert_eq!(
+            walked[0].get_by_tag(55),
+            Some(Scalar::from("MSFT")),
+            "the maximum recording remains the base after its recording fact folds to the minimum"
+        );
+        assert_eq!(
+            walked[0].get_miccode().map(|code| code.as_str()),
+            Some("XPAR"),
+            "the next-latest observation fills a fact the reference omitted"
+        );
+        assert_eq!(walked[0].get_recdunix(), Some(100));
+        assert_eq!(walked[0].get_refrecdunix(), Some(200));
+    }
+
+    let premerged = codec
+        .lifecycle([older.clone(), newer.clone()])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+        .pop()
+        .expect("one premerged delivery");
+    assert_eq!(premerged.get_recdunix(), Some(100));
+    assert_eq!(premerged.get_refrecdunix(), Some(200));
+    for source in [
+        vec![premerged.clone(), observations[2].clone()],
+        vec![observations[2].clone(), premerged.clone()],
+    ] {
+        let replayed = codec
+            .lifecycle(source)
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].get_recdunix(), Some(100));
+        assert_eq!(
+            replayed[0].get_refrecdunix(),
+            Some(200),
+            "replaying a premerged observation retains its reference rank"
+        );
+    }
+
+    let other_type = captured(
+        b"CONTEXT-A",
+        b"8=FIX.4.4|35=F|52=20260102-10:15:30|55=TSLA|10=0|",
+        300,
+        120,
+    );
+    let walked = codec
+        .lifecycle([older.clone(), other_type, newer.clone()])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(
+        walked.len(),
+        2,
+        "one session/context/sequence under two message types is two deliveries"
+    );
+    let order = walked
+        .iter()
+        .find(|message| message.header().msgtype() == "D")
+        .expect("the order delivery");
+    assert_eq!(order.get_by_tag(55), Some(Scalar::from("MSFT")));
+    assert_eq!(order.get_srcuuids(), [newer_source, older_source]);
+    assert_eq!(order.get_recdunix(), Some(100));
+    assert_eq!(order.get_refrecdunix(), Some(200));
+    let cancel = walked
+        .iter()
+        .find(|message| message.header().msgtype() == "F")
+        .expect("the cancel delivery");
+    assert_eq!(cancel.get_by_tag(55), Some(Scalar::from("TSLA")));
+
+    let first_context = captured(
+        b"CONTEXT-A",
+        b"8=FIX.4.4|35=D|49=S|56=T|52=20260102-10:15:30|55=MSFT|10=0|",
+        300,
+        120,
+    );
+    let other_context = captured(
+        b"CONTEXT-B",
+        b"8=FIX.4.4|35=D|49=S|56=T|52=20260102-10:15:30|55=MSFT|10=0|",
+        400,
+        130,
+    );
+    assert_eq!(
+        codec
+            .lifecycle([first_context, other_context])
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+            .len(),
+        2,
+        "all four capture identity facts must match"
+    );
+
+    let expiring = captured(
+        b"CONTEXT-C",
+        b"8=FIX.4.4|35=D|49=S|56=T|52=20260102-10:15:30|126=20260102-10:15:31|55=AAPL|10=0|",
+        500,
+        140,
+    );
+    let walked = codec
+        .lifecycle([expiring])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2, "the deadline emits one expiry");
+}
+
+#[test]
+fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
+    let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
+    let captured = |body: &[u8], recdunix: i64| {
+        let line = TextLine::from_bytes(
+            recdunix as u64,
+            TextBytes::from_bytes(body).unwrap(),
+            Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![
+            Some(TextBytes::from_bytes(b"FIDESSA-X1").unwrap()),
+            Some(TextBytes::from_bytes(b"HOCHE-BAINS-XPAR").unwrap()),
+            Some(TextBytes::from_bytes(b"42").unwrap()),
+        ])
+        .unwrap()
+        .with_handle_mtime(recdunix);
+        codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+    };
+    // Each observation uses the marked and bare spelling at the same raw
+    // index. The bridge parser makes their stable A/B order; the delivery
+    // fold must merge A with A and B with B, not append four occurrences.
+    let older = captured(
+        b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=12",
+        100,
+    );
+    let newer = captured(
+        b"MSGTYPE=D|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=3|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYIDSOURCE=D",
+        200,
+    );
+    let merged = codec
+        .lifecycle([older, newer])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(merged.len(), 1);
+    let message = &merged[0];
+    assert_eq!(
+        message.get_by_tag(453).as_ref().and_then(Scalar::as_i128),
+        Some(2)
+    );
+    let parties = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 453)
+        .expect("one merged Parties group");
+    assert_eq!(parties.entries().len(), 2);
+    let ids: Vec<&str> = parties
+        .entries()
+        .iter()
+        .map(|occurrence| {
+            occurrence
+                .entries()
+                .iter()
+                .find(|member| member.tag() == 448)
+                .and_then(|member| member.value())
+                .expect("a PartyID")
+        })
+        .collect();
+    assert_eq!(ids, ["A", "B"], "occurrence order is deterministic");
+    for occurrence in parties.entries() {
+        let tags: Vec<i32> = occurrence
+            .entries()
+            .iter()
+            .map(|member| member.tag())
+            .collect();
+        assert_eq!(tags, [447, 448, 452], "members are sorted and unique");
+    }
+    let value = |occurrence: usize, tag: i32| {
+        parties.entries()[occurrence]
+            .entries()
+            .iter()
+            .find(|member| member.tag() == tag)
+            .and_then(|member| member.value())
+    };
+    assert_eq!(value(0, 447), Some("D"), "older fills the missing source");
+    assert_eq!(value(0, 452), Some("3"), "latest recording wins a conflict");
+    assert_eq!(value(1, 447), Some("D"), "latest recording wins a conflict");
+    assert_eq!(value(1, 452), Some("12"), "older fills the missing role");
+    assert_eq!(message.get_recdunix(), Some(100));
+    assert_eq!(message.get_refrecdunix(), Some(200));
+}
+
+#[test]
+fn lifecycle_inherits_missing_order_links_from_the_exact_predecessor() {
+    let codec = codec();
+    let previous = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=8|52=20260102-10:15:30|11=CLIENT-A|37=ORDER-A|198=SHARED|39=0|10=0|",
+        )
+        .unwrap();
+    let current = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=8|52=20260102-10:15:31|37=ORDER-B|198=SHARED|parentorderid=|39=1|10=0|",
+        )
+        .unwrap();
+    let before = current.get_curruuid();
+    let walked = codec
+        .lifecycle([previous, current])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    let (previous, current) = (&walked[0], &walked[1]);
+    assert_eq!(current.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(
+        current.get_by_tag(11).as_ref().and_then(Scalar::as_str),
+        Some("CLIENT-A")
+    );
+    assert_eq!(
+        current
+            .get_by_name("parentorderid")
+            .as_ref()
+            .and_then(Scalar::as_str),
+        Some("ORDER-A")
+    );
+    assert_ne!(
+        current.get_curruuid(),
+        before,
+        "the inherited FIX facts restate identity"
+    );
+    assert_eq!(current.get_curruuid(), current.time_uuid().unwrap());
+
+    let previous = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=8|52=20260102-10:16:30|11=CLIENT-PREV|37=ORDER-PREV|198=SHARED-STATED|39=0|10=0|",
+        )
+        .unwrap();
+    let current = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=8|52=20260102-10:16:31|11=CLIENT-STATED|37=ORDER-NEXT|198=SHARED-STATED|parentorderid=PARENT-STATED|39=1|10=0|",
+        )
+        .unwrap();
+    let walked = codec
+        .lifecycle([previous, current])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    let current = &walked[1];
+    assert_eq!(
+        current.get_by_tag(11).as_ref().and_then(Scalar::as_str),
+        Some("CLIENT-STATED")
+    );
+    assert_eq!(
+        current
+            .get_by_name("parentorderid")
+            .as_ref()
+            .and_then(Scalar::as_str),
+        Some("PARENT-STATED"),
+        "stated links are never overwritten"
+    );
 }
 
 #[test]
@@ -1161,9 +1519,9 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
 }
 
 /// The batch door reads a row as the line it is, and states that line as the
-/// message's one source - the same identity the line door states for the
-/// same bytes at the same instant, so a message names its line whichever
-/// door read it.
+/// message's one source - the same identity the line door states for the same
+/// bytes, instant, sequence and source-derived seed, so a message names its
+/// line whichever door read it.
 #[test]
 fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
     const REPORT: &str = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
@@ -1215,18 +1573,18 @@ fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
 }
 
 /// The three steps - the lines as a batch, the messages parsed out of it,
-/// the lifecycle's rows - each open with the sixteen columns every event is
+/// the lifecycle's rows - each contain the nineteen columns every event is
 /// stated in, under one name and one datatype, and join on them: a
 /// message's `srcuuids` is the `curruuid` its line's batch states, read off
 /// that column rather than recomputed, and a chained message's `prevuuid`
 /// and `parentuuids` are the `curruuid` of the messages before it, its
 /// `state` the furthest the chain reached.
 #[test]
-fn the_three_steps_join_on_the_columns_every_event_opens_with() {
+fn the_three_steps_join_on_the_columns_every_event_states() {
     use yggdryl::graph::EventColumn;
 
     const PLACED: &str = "8=FIX.4.4|35=D|11=C-1|37=A|39=0|54=1|38=100|10=0|";
-    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|10=0|";
+    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|65063=20240102-10:15:30.100|10=0|";
     let codec = codec();
     let options = Arc::new(yggdryl::text::TextOptions::new());
     let mut lines: Vec<TextLine> = [PLACED, FILLED]
@@ -1248,7 +1606,7 @@ fn the_three_steps_join_on_the_columns_every_event_opens_with() {
     lines[1].set_curruuid(yggdryl::Uuid::from_v8(7));
     let identities: Vec<yggdryl::Uuid> = lines.iter().map(Element::get_curruuid).collect();
 
-    // Step 1: the lines as a batch, opening with the sixteen as fields.
+    // Step 1: the lines as a batch, opening with the nineteen as fields.
     let carrier = yggdryl::text::into_arrow_batch(lines.clone(), &options).unwrap();
     let stated = yggdryl::Field::from_arrow_schema("lines", &carrier.schema()).unwrap();
     let expected = EventColumn::fields().unwrap();
@@ -1264,7 +1622,7 @@ fn the_three_steps_join_on_the_columns_every_event_opens_with() {
     }
 
     // Step 2: the messages parsed out of the batch, each stating the line
-    // the carrier said it was as its one source, and the same sixteen under
+    // the carrier said it was as its one source, and the same nineteen under
     // the row's own names and datatypes.
     let parsed = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
@@ -1297,7 +1655,18 @@ fn the_three_steps_join_on_the_columns_every_event_opens_with() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].get_srcuuids(), &identities[..1]);
     assert_eq!(messages[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
-    // The row's own sixteen name the message, never the line it came from.
+    assert_eq!(messages[0].get_recdunix(), Some(1_704_190_530_000_000_000));
+    assert_eq!(messages[1].get_recdunix(), Some(1_704_190_530_100_000_000));
+    assert_eq!(
+        messages[0].get_refrecdunix(),
+        Some(1_704_190_530_000_000_000),
+        "a raw message starts with its carrier recording as its reference clock"
+    );
+    assert_eq!(
+        messages[1].get_refrecdunix(),
+        Some(1_704_190_530_100_000_000)
+    );
+    // The row's own nineteen name the message, never the line it came from.
     assert_ne!(messages[0].get_curruuid(), identities[0]);
     assert_eq!(messages[0].get_currunix(), 1_704_190_530_000_000_000);
 
@@ -1330,6 +1699,15 @@ fn the_three_steps_join_on_the_columns_every_event_opens_with() {
     // Provenance travels along no chain: each keeps its own line.
     assert_eq!(chained[0].get_srcuuids(), &identities[..1]);
     assert_eq!(chained[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
+    assert_eq!(
+        chained[0].get_refrecdunix(),
+        Some(1_704_190_530_000_000_000)
+    );
+    assert_eq!(
+        chained[1].get_refrecdunix(),
+        Some(1_704_190_530_100_000_000),
+        "the carrier-derived reference clock survives lifecycle Arrow reread"
+    );
 }
 
 #[test]

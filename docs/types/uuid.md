@@ -383,13 +383,19 @@ One [cast](cast.md) tier reads both directions.
 
 The version is a fact about the value, never about the column: four bits, so
 every identifier answers one, and an identifier written by no version scheme
-answers whatever those bits hold. `Uuid::from_v7` packs a Unix microsecond
-instant and a 62-bit payload - the 12-bit sub-millisecond fraction is RFC
-9562's fractional-clock method, so increasing microseconds sort in time order
-whatever the payload is - and `Uuid::from_v8` sets the version and variant bits
-over a payload that is already resolved. Neither reads a clock, allocates, or
-supplies randomness of its own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection)
-is the one caller that projects an instant and a digest through `from_v7`.
+answers whatever those bits hold. `Uuid::from_v7` packs a Unix millisecond
+instant, a sequence number and a 64-bit payload: the first 48 bits hold the
+millisecond, `rand_a` holds the low 12 sequence bits, and `rand_b` holds the
+low 62 bits of an XXH3-64 fingerprint over the complete big-endian
+`(seqnum, payload)` pair, so every bit of both inputs contributes instead of
+being truncated. Milliseconds sort first and sequences sort within one
+4,096-value low-bit window, never across its wrap; the 74 identity bits are a
+non-cryptographic fingerprint rather than an injective encoding of the 128
+that went in. `Uuid::from_v8` sets the version and variant bits over a payload
+that is already resolved. Neither reads a clock, allocates, or supplies
+randomness of its own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection)
+is the one caller that projects an instant, a sequence and a digest through
+`from_v7`.
 
 The two constructors are Rust-only; a binding receives the identifier they made
 as any other `uuid` value.
@@ -399,11 +405,11 @@ as any other `uuid` value.
     ```rust
     use yggdryl::Uuid;
 
-    // A UUIDv7 carries its instant, so microseconds order before payloads.
-    let value = Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210)?;
-    assert_eq!(value.to_string(), "017f22e2-79b0-774b-bedc-ba9876543210");
+    // A UUIDv7 carries its instant, so milliseconds order before the rest.
+    let value = Uuid::from_v7(1_645_557_742_000, 0x74b, 0xfedc_ba98_7654_3210)?;
+    assert_eq!(value.to_string(), "017f22e2-79b0-774b-baaf-e6545098617d");
     assert_eq!(value.version(), 7);
-    assert!(Uuid::from_v7(999, u64::MAX)? < Uuid::from_v7(1_000, 0)?);
+    assert!(Uuid::from_v7(999, u64::MAX, u64::MAX)? < Uuid::from_v7(1_000, 0, 0)?);
 
     // A UUIDv8 replaces the six version and variant bits and keeps the other 122.
     let derived = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
@@ -415,8 +421,8 @@ as any other `uuid` value.
     assert!(!value.is_nil());
 
     // An instant outside the 48-bit millisecond range has no UUIDv7.
-    assert!(Uuid::from_v7(-1, 0).is_err());
-    assert!(Uuid::from_v7(281_474_976_710_656_000, 0).is_err());
+    assert!(Uuid::from_v7(-1, 0, 0).is_err());
+    assert!(Uuid::from_v7(281_474_976_710_656, 0, 0).is_err());
     ```
 
 ## Edges

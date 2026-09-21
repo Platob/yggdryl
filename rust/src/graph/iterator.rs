@@ -368,6 +368,9 @@ where
         let mut expired = previous.clone();
         expired.set_currunix(deadline);
         expired.set_state(State::read("expired").expect("the shipped expired state"));
+        expired.set_execunix(None);
+        expired.set_recdunix(None);
+        expired.set_refrecdunix(None);
         expired.set_snapunix(None);
         expired.finalize();
         let fallback = expired.clone();
@@ -375,17 +378,23 @@ where
     }
 
     /// States one source element against the live generation it reaches.
-    fn walk_source(&mut self, element: E) -> E {
+    fn walk_source(&mut self, mut element: E) -> E {
         let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
         let element = match self.alive.get(&identity) {
             Some(live) if live.arrived == arrived => element.restating(&live.element),
-            Some(live) if element.is_before(&live.element) => return element,
+            Some(live) if element.is_before(&live.element) => {
+                super::element::fill_execution(&mut element);
+                return element;
+            }
             Some(live) => element
                 .clone()
                 .with_previous(&live.element)
                 .unwrap_or(element),
-            None => element,
+            None => {
+                super::element::fill_execution(&mut element);
+                element
+            }
         };
         let identity = if self.alive.contains_key(&identity) {
             identity

@@ -37,12 +37,16 @@ struct Report {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
+    execunix: Option<i64>,
+    recdunix: Option<i64>,
+    refrecdunix: Option<i64>,
     exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
-    /// Whether the identity derives from the instant and the content, which
-    /// is what finalizing resets it to; an assigned identity keeps its code.
+    /// Whether the identity derives from the instant, sequence, cross seed and
+    /// content code, which is what finalizing resets it to; an assigned
+    /// identity stays assigned.
     derived: bool,
 }
 
@@ -61,6 +65,9 @@ impl Report {
             state: State::from_spelling("New").expect("a shipped state"),
             seqnum: 0,
             creaunix: None,
+            execunix: None,
+            recdunix: None,
+            refrecdunix: None,
             exprtime: None,
             prevunix: None,
             prevuuid: None,
@@ -192,6 +199,30 @@ impl Event for Report {
         self.creaunix = unix;
     }
 
+    fn get_execunix(&self) -> Option<i64> {
+        self.execunix
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.execunix = unix;
+    }
+
+    fn get_recdunix(&self) -> Option<i64> {
+        self.recdunix
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        self.recdunix = unix;
+    }
+
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.refrecdunix
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.refrecdunix = unix;
+    }
+
     fn get_exprtime(&self) -> Option<i64> {
         self.exprtime
     }
@@ -226,7 +257,7 @@ impl Event for Report {
 }
 
 /// One nanosecond count per millisecond: the instants below are spaced so
-/// two of them never share the microsecond a derived identity opens with.
+/// two of them never share the millisecond a derived identity opens with.
 const MS: i64 = 1_000_000;
 
 /// An instant a derived identity holds: `ms` milliseconds after one
@@ -455,8 +486,13 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
     // A state is never absent: a new event reached none, says so with the
     // code that means exactly that, and moves as the lifecycle does.
     assert_eq!(event.get_state().as_str(), "00UNKNOWN");
+    assert!(!event.is_execution());
     assert!(event.get_state().is_live(), "not ended, so still live");
     event.set_state(filled());
+    assert!(
+        event.is_execution(),
+        "the default reads the lifecycle state"
+    );
     assert!(event.get_state().is_done());
     assert!(
         event.get_state().as_str().ends_with("FILLED"),
@@ -487,18 +523,24 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
 fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     let mut event = MarketEventData::at(40);
     assert_eq!(event.get_creaunix(), None);
+    assert_eq!(event.get_execunix(), None);
+    assert_eq!(event.get_recdunix(), None);
     assert_eq!(event.get_exprtime(), None);
     assert_eq!(event.get_prevunix(), None);
     assert_eq!(event.get_prevuuid(), None);
     assert_eq!(event.get_snapunix(), None);
 
     event.set_creaunix(Some(35));
+    event.set_execunix(Some(37));
+    event.set_recdunix(Some(39));
     event.set_exprtime(Some(100));
     event.set_prevunix(Some(30));
     event.set_prevuuid(Some(Uuid::from_v8(3)));
     event.set_snapunix(Some(40));
     assert_eq!(event.get_snapunix(), Some(40));
     assert_eq!(event.get_creaunix(), Some(35));
+    assert_eq!(event.get_execunix(), Some(37));
+    assert_eq!(event.get_recdunix(), Some(39));
     assert_eq!(event.get_exprtime(), Some(100));
     assert_eq!(event.get_prevunix(), Some(30));
     assert_eq!(event.get_prevuuid(), Some(Uuid::from_v8(3)));
@@ -635,6 +677,123 @@ fn following_carries_the_lifecycle_forward() {
 }
 
 #[test]
+fn following_carries_the_latest_execution_but_not_the_recording_clock() {
+    let mut previous = Report::at(1, 10);
+    previous.set_state(filled());
+    previous.set_execunix(Some(7));
+    previous.set_recdunix(Some(9));
+
+    let next = Report::at(2, 20)
+        .with_previous(&previous)
+        .expect("the later event follows");
+    assert_eq!(
+        next.get_execunix(),
+        Some(7),
+        "the latest lifecycle execution carries"
+    );
+    assert_eq!(
+        next.get_recdunix(),
+        None,
+        "no predecessor recording carries"
+    );
+
+    // The successor inherited the predecessor's furthest lifecycle state and
+    // execution clock. Restating and fully merging it preserve that clock
+    // without dating the non-execution successor from its own instant.
+    let restated = Report::at(2, 20).restating(&next);
+    assert_eq!(restated.get_execunix(), Some(7));
+    let merged = Report::at(2, 20)
+        .merge_with(&next)
+        .expect("the inherited lifecycle moved");
+    assert_eq!(merged.get_execunix(), Some(7));
+
+    let restated = next.clone().restating(&Report::at(2, 20));
+    assert_eq!(
+        restated.get_execunix(),
+        Some(7),
+        "the carried clock survives another observation"
+    );
+    let mut other = Report::at(2, 20);
+    other.set_srcuuids(vec![Uuid::from_v8(99)]);
+    let merged = next
+        .clone()
+        .merge_with(&other)
+        .expect("the other statement added a source");
+    assert_eq!(
+        merged.get_execunix(),
+        Some(7),
+        "the carried clock survives a full merge"
+    );
+    assert!(
+        next.clone().with_previous(&previous).is_none(),
+        "replaying the same lifecycle edge changes nothing"
+    );
+    assert_eq!(
+        next.get_execunix(),
+        Some(7),
+        "replay keeps the clock rather than dating the inherited state anew"
+    );
+    let inserted = Report::at(7, 15)
+        .with_previous(&previous)
+        .expect("the inserted event follows");
+    let reparented = next
+        .clone()
+        .with_previous(&inserted)
+        .expect("the stamped successor takes the inserted predecessor");
+    assert_eq!(reparented.get_execunix(), Some(7));
+    assert_eq!(reparented.get_prevuuid(), Some(inserted.get_curruuid()));
+
+    let mut execution = Report::at(3, 30);
+    execution.set_state(filled());
+    execution.set_recdunix(Some(31));
+    let execution = execution
+        .with_previous(&Report::at(4, 25))
+        .expect("the execution follows");
+    assert_eq!(execution.get_execunix(), Some(30));
+    assert_eq!(execution.get_recdunix(), Some(31));
+
+    let later = Report::at(9, 40)
+        .with_previous(&execution)
+        .expect("the non-execution successor follows");
+    assert_eq!(
+        later.get_execunix(),
+        Some(30),
+        "a later non-execution carries the last execution clock"
+    );
+
+    let mut later_execution = Report::at(10, 50);
+    later_execution.set_state(State::read("PartiallyFilled").unwrap());
+    let later_execution = later_execution
+        .with_previous(&later)
+        .expect("the later execution follows");
+    assert_eq!(
+        later_execution.get_execunix(),
+        Some(50),
+        "a later execution replaces the carried clock"
+    );
+
+    let mut stated = Report::at(5, 40);
+    stated.set_state(filled());
+    stated.set_execunix(Some(35));
+    let stated = stated
+        .with_previous(&Report::at(6, 39))
+        .expect("the stated execution follows");
+    assert_eq!(stated.get_execunix(), Some(35), "an explicit instant wins");
+
+    let mut stale_execution = Report::at(11, 60);
+    stale_execution.set_state(filled());
+    stale_execution.set_execunix(Some(25));
+    let stale_execution = stale_execution
+        .with_previous(&later_execution)
+        .expect("the delayed execution report follows");
+    assert_eq!(
+        stale_execution.get_execunix(),
+        Some(50),
+        "a delayed report cannot regress the lifecycle's latest execution"
+    );
+}
+
+#[test]
 fn following_adopts_the_predecessors_cross_code() {
     // Two events of one chain share the cross code, so the predecessor's
     // is forced onto the follower where its own differs - and the cross
@@ -766,6 +925,62 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
 }
 
 #[test]
+fn restating_and_merging_keep_the_earliest_per_event_instants() {
+    let mut one = Report::at(1, 20);
+    one.set_state(filled());
+    one.set_recdunix(Some(30));
+    let mut other = Report::at(1, 20);
+    other.set_execunix(Some(18));
+    other.set_recdunix(Some(25));
+
+    let restated = one.clone().restating(&other);
+    assert_eq!(restated.get_execunix(), Some(18));
+    assert_eq!(restated.get_recdunix(), Some(25));
+    assert_eq!(restated.get_refrecdunix(), Some(30));
+
+    let merged = one.merge_with(&other).expect("the instants moved");
+    assert_eq!(merged.get_execunix(), Some(18));
+    assert_eq!(merged.get_recdunix(), Some(25));
+    assert_eq!(merged.get_refrecdunix(), Some(30));
+    assert!(
+        merged.clone().merge_with(&other).is_none(),
+        "the fold is idempotent"
+    );
+
+    let mut unstamped = Report::at(8, 40);
+    unstamped.set_state(filled());
+    let observed = Report::at(8, 40);
+    let merged = unstamped
+        .merge_with(&observed)
+        .expect("the execution clock was filled");
+    assert_eq!(
+        merged.get_execunix(),
+        Some(40),
+        "a raw execution observation dates itself before the full merge"
+    );
+
+    // Market events override both readings to fold their market facts too;
+    // the shared per-event clocks obey the same contract there.
+    let mut market = trade(20);
+    market.set_state(filled());
+    market.set_recdunix(Some(at(30)));
+    market.finalize();
+    let mut market_other = market.clone();
+    market_other.set_execunix(Some(at(18)));
+    market_other.set_recdunix(Some(at(25)));
+    let restated = market_other.clone().restating(&market);
+    assert_eq!(restated.get_execunix(), Some(at(18)));
+    assert_eq!(restated.get_recdunix(), Some(at(25)));
+    assert_eq!(restated.get_refrecdunix(), Some(at(30)));
+    let merged = market
+        .merge_with(&market_other)
+        .expect("the market event instants moved");
+    assert_eq!(merged.get_execunix(), Some(at(18)));
+    assert_eq!(merged.get_recdunix(), Some(at(25)));
+    assert_eq!(merged.get_refrecdunix(), Some(at(30)));
+}
+
+#[test]
 fn merging_folds_another_statement_of_the_same_element() {
     let mut first = Report::at(1, 10);
     first.set_currhashcode(0xA);
@@ -797,34 +1012,32 @@ fn merging_folds_another_statement_of_the_same_element() {
     assert_eq!(merged.get_currunix(), 20);
     assert_eq!(merged.get_currhashcode(), 0xB);
     assert_eq!(merged.get_seqnum(), 3);
-    // The cross code fills what this one left out, its digest and the
-    // cross element in step; the parents are the union in this element's
-    // order, then the other's.
+    // With no recording clocks, the later event is the reference: its cross
+    // code leads, and the parents and sources are the union in its order.
     assert_eq!(merged.get_crosscode(), "O-10");
     assert_eq!(merged.get_crosshashcode(), crosshash("O-10"));
     assert_eq!(merged.get_crossuuid(), later.get_crossuuid());
     assert_eq!(
         merged.get_parentuuids(),
-        [Uuid::from_v8(7), Uuid::from_v8(8)]
+        [Uuid::from_v8(8), Uuid::from_v8(7)]
     );
     // The sources are the same union, once each: the merged statement was
     // read from both lines.
     assert_eq!(
         merged.get_srcuuids(),
-        [Uuid::from_v8(70), Uuid::from_v8(71)]
+        [Uuid::from_v8(71), Uuid::from_v8(70)]
     );
     // The lifecycle folds as following folds it.
     assert_eq!(merged.get_creaunix(), Some(4));
     assert_eq!(merged.get_exprtime(), Some(99));
     assert!(merged.get_state().is_done());
-    // The predecessor is this element's where it names one.
-    assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(0)));
-    assert_eq!(merged.get_prevunix(), Some(1));
+    // The predecessor is the reference's where it names one.
+    assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(5)));
+    assert_eq!(merged.get_prevunix(), Some(6));
 
     // Merged the other way, the earlier statement adds nothing the later
-    // one lacks - its instant and code lose, the predecessor the later one
-    // names is kept - so the fold answers nothing, and the later statement
-    // stands as it was.
+    // one lacks. Same-event folding never infers an execution clock from the
+    // lifecycle state; intake and ordinary following own normalization.
     assert!(later.clone().merge_with(&first).is_none());
     assert_eq!(later.get_currunix(), 20);
     assert_eq!(later.get_currhashcode(), 0xB);
@@ -846,6 +1059,126 @@ fn merging_folds_another_statement_of_the_same_element() {
     );
     assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(0)));
     assert_eq!(merged.get_creaunix(), Some(9));
+}
+
+#[test]
+fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks() {
+    let mut event_time_later = Report::at(1, 30);
+    event_time_later.set_currhashcode(0xA);
+    event_time_later.set_recdunix(Some(100));
+    event_time_later.set_execunix(Some(12));
+    event_time_later.set_crosscode("OLD".to_owned());
+    event_time_later.set_identifiers(identifiers([("OrderID", "OLD"), ("OldOnly", "1")]));
+    event_time_later.set_parentuuids(vec![Uuid::from_v8(7)]);
+    event_time_later.set_srcuuids(vec![Uuid::from_v8(70)]);
+    event_time_later.set_prevuuid(Some(Uuid::from_v8(2)));
+    event_time_later.set_prevunix(Some(20));
+    event_time_later.set_snapunix(Some(31));
+
+    let mut recorded_later = Report::at(1, 20);
+    recorded_later.set_currhashcode(0xB);
+    recorded_later.set_recdunix(Some(200));
+    recorded_later.set_execunix(Some(15));
+    recorded_later.set_crosscode("REFERENCE".to_owned());
+    recorded_later.set_identifiers(identifiers([
+        ("OrderID", "REFERENCE"),
+        ("ReferenceOnly", "1"),
+    ]));
+    recorded_later.set_parentuuids(vec![Uuid::from_v8(8)]);
+    recorded_later.set_srcuuids(vec![Uuid::from_v8(71)]);
+    recorded_later.set_prevuuid(Some(Uuid::from_v8(3)));
+    recorded_later.set_prevunix(Some(19));
+    recorded_later.set_snapunix(Some(21));
+
+    for merged in [
+        event_time_later
+            .clone()
+            .merge_with(&recorded_later)
+            .expect("the recording-selected reference moves the event"),
+        recorded_later
+            .clone()
+            .merge_with(&event_time_later)
+            .expect("the other statement contributes facts"),
+    ] {
+        assert_eq!(merged.get_currunix(), 20);
+        assert_eq!(merged.get_currhashcode(), 0xB);
+        assert_eq!(merged.get_crosscode(), "REFERENCE");
+        assert_eq!(merged.get_identifiers()["OrderID"], "REFERENCE");
+        assert_eq!(merged.get_identifiers()["OldOnly"], "1");
+        assert_eq!(merged.get_identifiers()["ReferenceOnly"], "1");
+        assert_eq!(
+            merged.get_parentuuids(),
+            [Uuid::from_v8(8), Uuid::from_v8(7)]
+        );
+        assert_eq!(
+            merged.get_srcuuids(),
+            [Uuid::from_v8(71), Uuid::from_v8(70)]
+        );
+        assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(3)));
+        assert_eq!(merged.get_prevunix(), Some(19));
+        assert_eq!(merged.get_snapunix(), Some(21));
+        assert_eq!(merged.get_execunix(), Some(12));
+        assert_eq!(
+            merged.get_recdunix(),
+            Some(100),
+            "the reference selects conflicts; recording history still folds earliest"
+        );
+        assert_eq!(
+            merged.get_refrecdunix(),
+            Some(200),
+            "the selected reference's recording clock remains available to the next fold"
+        );
+    }
+
+    let mut unstated = Report::at(2, 40);
+    unstated.set_currhashcode(0xC);
+    let mut stated = Report::at(2, 10);
+    stated.set_currhashcode(0xD);
+    stated.set_recdunix(Some(50));
+    let merged = unstated
+        .merge_with(&stated)
+        .expect("a stated recording clock selects the reference");
+    assert_eq!(
+        (merged.get_currunix(), merged.get_currhashcode()),
+        (10, 0xD)
+    );
+    assert_eq!(merged.get_refrecdunix(), Some(50));
+}
+
+#[test]
+fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
+    let observation = |unix, recdunix, hashcode, crosscode: &str| {
+        let mut event = Report::at(1, unix);
+        event.set_recdunix(Some(recdunix));
+        event.set_currhashcode(hashcode);
+        event.set_crosscode(crosscode.to_owned());
+        event
+    };
+    let oldest = observation(30, 100, 0xA, "OLD");
+    let reference = observation(20, 200, 0xB, "REFERENCE");
+    let middle = observation(40, 150, 0xC, "MIDDLE");
+    let observations = [&oldest, &reference, &middle];
+
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let mut merged = observations[order[0]].clone();
+        for index in &order[1..] {
+            if let Some(next) = merged.clone().merge_with(observations[*index]) {
+                merged = next;
+            }
+        }
+        assert_eq!(merged.get_currunix(), 20, "order {order:?}");
+        assert_eq!(merged.get_currhashcode(), 0xB, "order {order:?}");
+        assert_eq!(merged.get_crosscode(), "REFERENCE", "order {order:?}");
+        assert_eq!(merged.get_recdunix(), Some(100), "order {order:?}");
+        assert_eq!(merged.get_refrecdunix(), Some(200), "order {order:?}");
+    }
 }
 
 #[test]
@@ -877,24 +1210,31 @@ fn a_walk_over_elements_reaches_a_root_by_identity() {
 }
 
 #[test]
-fn the_instant_and_the_code_derive_one_time_ordered_identity() {
+fn the_instant_sequence_seed_and_code_derive_one_time_ordered_identity() {
     let mut event = Report::at(1, at(0));
     event.set_currhashcode(0xCAFE);
     let held = event.txhash().expect("an instant a TxHash holds");
     assert_eq!(held.unix(), at(0));
     assert_eq!(held.digest().as_u64(), Some(0xCAFE));
 
-    // The same instant and code derive the same identity, every time.
+    // The same instant, sequence, cross seed and code derive the same identity.
     let identity = event.time_uuid().expect("an identity");
     assert_eq!(event.time_uuid().expect("an identity"), identity);
-    assert_eq!(identity, held.into_uuid().expect("the TxHash's own UUID"));
+    assert_eq!(
+        identity,
+        held.into_uuid(0, 0).expect("the TxHash's own UUID")
+    );
 
-    // A later instant sorts later whatever the code, and the same instant
-    // sorts by code: the instant is in front, as a UUIDv7's is.
+    // A later millisecond sorts later whatever the sequence or code. Within
+    // one millisecond the low sequence bits lead the content fingerprint.
     let mut later = event.clone();
-    later.set_currunix(at(0) + 1_000);
+    later.set_currunix(at(0) + MS);
     later.set_currhashcode(0);
     assert!(later.time_uuid().expect("an identity") > identity);
+    let mut sequenced = event.clone();
+    sequenced.set_seqnum(1);
+    sequenced.set_currhashcode(0);
+    assert!(sequenced.time_uuid().expect("an identity") > identity);
     let mut sibling = event.clone();
     sibling.set_currhashcode(0xCAFF);
     assert_ne!(sibling.time_uuid().expect("an identity"), identity);
@@ -910,9 +1250,9 @@ fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     assert!(before.txhash().is_ok());
     assert!(before.time_uuid().is_err());
 
-    // Finalized with a code, an event's identity is the one they derive
-    // and its cross element the identity itself where it states no cross
-    // code; the cross code's own identity where it does.
+    // Finalized with a code, an event's identity is the one its instant,
+    // sequence, cross seed and code derive. Its cross element is that identity
+    // where it states no cross code, and the cross code's own identity otherwise.
     let mut finalized = event.clone();
     finalized.finalized(0xCAFE);
     assert_eq!(finalized.get_currhashcode(), 0xCAFE);
@@ -921,7 +1261,12 @@ fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     finalized.set_crosscode("O-1".to_owned());
     finalized.sync_cross();
     finalized.finalized(0xCAFE);
-    assert_eq!(finalized.get_curruuid(), identity);
+    assert_ne!(finalized.get_curruuid(), identity);
+    assert_eq!(finalized.get_curruuid(), finalized.time_uuid().unwrap());
+    assert_eq!(
+        finalized.get_curruuid(),
+        held.into_uuid(0, crosshash("O-1")).unwrap()
+    );
     assert_eq!(
         finalized.get_crossuuid(),
         Uuid::from_v8(u128::from(crosshash("O-1")))
@@ -929,6 +1274,57 @@ fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     // An instant a UUIDv7 cannot hold leaves the identity as it was.
     before.finalized(0xCAFE);
     assert_eq!(before.get_curruuid(), Uuid::from_v8(1));
+}
+
+#[test]
+fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
+    let mut event = MarketEventData::at(at(0));
+    event.set_currhashcode(0xCAFE);
+    let uncrossed = event.get_curruuid();
+    assert_eq!(uncrossed, event.time_uuid().unwrap());
+    assert_eq!(event.get_crossuuid(), uncrossed);
+
+    event.set_currunix(at(1));
+    assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_ne!(event.get_curruuid(), uncrossed);
+    event.set_currunix(at(0));
+    assert_eq!(event.get_curruuid(), uncrossed);
+
+    event.set_seqnum(1);
+    assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_ne!(event.get_curruuid(), uncrossed);
+    event.set_seqnum(0);
+    assert_eq!(event.get_curruuid(), uncrossed);
+
+    event.set_crosshashcode(0xBEEF);
+    assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_ne!(event.get_curruuid(), uncrossed);
+    assert_eq!(event.get_crossuuid(), Uuid::from_v8(0xBEEF));
+    event.set_crosshashcode(0);
+    assert_eq!(event.get_curruuid(), uncrossed);
+    assert_eq!(event.get_crossuuid(), uncrossed);
+
+    event.finalized(0xCAFF);
+    assert_eq!(event.get_currhashcode(), 0xCAFF);
+    assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_eq!(event.get_crossuuid(), event.get_curruuid());
+    event.finalized(0xCAFE);
+    assert_eq!(event.get_curruuid(), uncrossed);
+
+    event.set_crosscode("O-100".to_owned());
+    let crossed = event.get_curruuid();
+    assert_ne!(crossed, uncrossed);
+    assert_eq!(crossed, event.time_uuid().unwrap());
+    assert_eq!(event.get_crosshashcode(), crosshash("O-100"));
+    assert_eq!(
+        event.get_crossuuid(),
+        Uuid::from_v8(u128::from(crosshash("O-100")))
+    );
+
+    event.set_crosscode(String::new());
+    assert_eq!(event.get_crosshashcode(), 0);
+    assert_eq!(event.get_curruuid(), uncrossed);
+    assert_eq!(event.get_crossuuid(), uncrossed);
 }
 
 #[test]
@@ -1051,6 +1447,10 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     later.set_side(Side::read("2").expect("a side"));
     later.set_cficode(Some(CfiCode::new("ESVUFX").expect("a CFI")));
     later.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
+    // The capture protocol already proved these are two observations of one
+    // event. Identity-input setters keep a standalone event coherent, so
+    // state that shared capture identity explicitly before the generic fold.
+    later.set_curruuid(first.get_curruuid());
 
     // The later statement has the last word on the market's facts, and each
     // code is the better of the two: the earlier fills what the later left
@@ -1094,12 +1494,50 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let mut bare = later.clone();
     bare.set_currunix(at(30));
     bare.set_currency(Currency::none());
+    bare.set_curruuid(later.get_curruuid());
     let merged = later.clone().merge_with(&bare).expect("the same trade");
     assert_eq!(merged.get_currency().as_str(), "EUR");
     assert_eq!(merged.get_currunix(), at(30));
 
     // Another trade does not merge at all.
     assert!(first.merge_with(&trade(30)).is_none());
+}
+
+#[test]
+fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
+    let first = trade(10);
+    let mut event_time_later = first.clone();
+    event_time_later.set_currunix(at(30));
+    event_time_later.set_recdunix(Some(at(100)));
+    event_time_later.set_execunix(Some(at(12)));
+    event_time_later.set_px(Decimal18::from_int(83));
+    event_time_later.set_unit("old".to_owned());
+    event_time_later.set_curruuid(first.get_curruuid());
+
+    let mut recorded_later = first.clone();
+    recorded_later.set_currunix(at(20));
+    recorded_later.set_recdunix(Some(at(200)));
+    recorded_later.set_execunix(Some(at(15)));
+    recorded_later.set_px(Decimal18::from_int(84));
+    recorded_later.set_unit("reference".to_owned());
+    recorded_later.set_curruuid(first.get_curruuid());
+
+    for merged in [
+        event_time_later
+            .clone()
+            .merge_with(&recorded_later)
+            .expect("the reference moves the event"),
+        recorded_later
+            .clone()
+            .merge_with(&event_time_later)
+            .expect("the other statement contributes its earlier clocks"),
+    ] {
+        assert_eq!(merged.get_currunix(), at(20));
+        assert_eq!(merged.get_px(), Decimal18::from_int(84));
+        assert_eq!(merged.get_unit(), "reference");
+        assert_eq!(merged.get_execunix(), Some(at(12)));
+        assert_eq!(merged.get_recdunix(), Some(at(100)));
+    }
 }
 
 #[test]
@@ -1168,7 +1606,7 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
     assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
 
     // An identity assigned stays through a change; one derived from the
-    // instant and the content is reset to what they now derive.
+    // instant, sequence, cross seed and content is reset from those inputs.
     assert_eq!(second.get_curruuid(), Uuid::from_v8(2));
     let mut derived = Report::at(3, at(30));
     derived.derived = true;
@@ -1189,6 +1627,7 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
     let trade = trade(40);
     let mut later = trade.clone();
     later.set_currunix(at(50));
+    later.set_curruuid(trade.get_curruuid());
     let merged = trade
         .clone()
         .merge_with(&later)
@@ -1260,6 +1699,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     later.set_currunix(at(50));
     later.set_bidpx(None);
     later.set_askpx(Some(Decimal18::from_int(85)));
+    later.set_curruuid(quoted.get_curruuid());
     let merged = quoted.merge_with(&later).expect("the same quote");
     assert_eq!(merged.get_bidpx(), Some(Decimal18::from_int(80)));
     assert_eq!(merged.get_askpx(), Some(Decimal18::from_int(85)));
@@ -1281,6 +1721,8 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_crossuuid(Uuid::from_v8(77));
     moved.set_srcuuids(vec![Uuid::from_v8(70)]);
     moved.set_creaunix(Some(1));
+    moved.set_execunix(Some(2));
+    moved.set_recdunix(Some(3));
     moved.set_exprtime(Some(200));
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
@@ -1334,12 +1776,10 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
 }
 
 #[test]
-fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
-    // The code and the identity are what an element states and when: the
-    // cross hash code and the cross element are derived from the cross
-    // code and a source is where the element was read, so none of the
-    // three is an input to either, on the crate's holder or on an
-    // implementor of the signatures alone.
+fn the_content_code_ignores_derived_cross_facts_but_identity_uses_the_cross_hash_seed() {
+    // The content code excludes all derived cross facts and provenance. The
+    // time identity deliberately uses the cross hash as its projection seed;
+    // the cross UUID and source identities remain outside both.
     let stated = trade(10);
     let mut crossed = stated.clone();
     crossed.set_crosshashcode(0xCD);
@@ -1349,7 +1789,7 @@ fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
         crossed.digest_market_event().as_u64(),
         stated.digest_market_event().as_u64()
     );
-    assert_eq!(
+    assert_ne!(
         crossed.time_uuid().expect("an identity"),
         stated.time_uuid().expect("an identity")
     );
@@ -1376,7 +1816,7 @@ fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
         crossed.digest_event().as_u64(),
         report.digest_event().as_u64()
     );
-    assert_eq!(
+    assert_ne!(
         crossed.time_uuid().expect("an identity"),
         report.time_uuid().expect("an identity")
     );
@@ -1385,8 +1825,9 @@ fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
 #[test]
 fn merging_two_incarnations_of_one_identity_unions_their_lineages_once() {
     // Two incarnations of one identity, each walked behind a chain of its
-    // own: merged, the lineage is the union in this one's order, then the
-    // other's, each identity once, and merged again it moves nothing.
+    // own: with no recording clocks the later event is the reference, so the
+    // lineage is the union in its order, then the other's, each identity
+    // once, and merged again it moves nothing.
     let root = Report::at(1, 10);
     let branch = Report::at(2, 15).with_previous(&root).expect("follows");
     let mut left = Report::at(5, 20).with_previous(&branch).expect("follows");
@@ -1407,8 +1848,8 @@ fn merging_two_incarnations_of_one_identity_unions_their_lineages_once() {
         merged.get_parentuuids(),
         [
             root.get_curruuid(),
-            branch.get_curruuid(),
-            other.get_curruuid()
+            other.get_curruuid(),
+            branch.get_curruuid()
         ]
     );
     // Each identity once: the same statement folded again changes nothing,
@@ -1447,8 +1888,8 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     assert_eq!(alone.get_crossuuid(), alone.get_curruuid());
     assert_ne!(alone.get_curruuid(), Uuid::default());
 
-    // A market event's identity is its instant and its content: UUIDv7,
-    // so the same facts at another instant are another identity.
+    // A market event's identity is UUIDv7 over its instant, sequence and
+    // cross-seeded content, so the same facts at another instant differ.
     let event = trade(10);
     assert_eq!(
         event.get_curruuid(),
@@ -1474,6 +1915,8 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     event.set_state(filled());
     event.set_seqnum(3);
     event.set_creaunix(Some(at(5)));
+    event.set_execunix(Some(at(6)));
+    event.set_recdunix(Some(at(7)));
     event.set_exprtime(Some(at(99)));
     event.set_prevuuid(Some(Uuid::from_v8(8)));
     event.set_prevunix(Some(at(8)));
@@ -1513,6 +1956,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(back.get_state(), &State::unknown());
     assert_eq!(back.get_seqnum(), 0);
     assert_eq!((back.get_creaunix(), back.get_exprtime()), (None, None));
+    assert_eq!((back.get_execunix(), back.get_recdunix()), (None, None));
     assert_eq!((back.get_prevuuid(), back.get_prevunix()), (None, None));
     assert_eq!(back.get_snapunix(), None);
     assert_eq!(back.get_curruuid(), element.get_curruuid());
@@ -1675,6 +2119,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     later.set_tif(None);
     later.set_tradable(Some(true));
     later.set_symbolticker(Some("BRN".to_owned()));
+    later.set_curruuid(first.get_curruuid());
     let merged = first.merge_with(&later).expect("the same event");
     assert_eq!(merged.get_lastpx(), Some(Decimal18::from_int(81)));
     assert_eq!(merged.get_cumqty(), Some(Decimal18::from_int(100)));

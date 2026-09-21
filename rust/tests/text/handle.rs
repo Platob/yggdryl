@@ -2,7 +2,7 @@
 //! handle.
 
 mod text {
-    use arrow_array::{Array as _, Int64Array, StringArray};
+    use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
     use yggdryl::holder::Buffer;
     use yggdryl::media::{IORecordOptions as _, RecordOptions};
     use yggdryl::text::{Text, TextOptions};
@@ -65,6 +65,39 @@ mod text {
                     .unwrap()
                     .values()
                     .to_vec()
+            })
+            .collect()
+    }
+
+    fn uint64s(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<u64>> {
+        batches
+            .iter()
+            .flat_map(|batch| {
+                let index = batch.schema().index_of(name).unwrap();
+                batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<UInt64Array>()
+                    .unwrap()
+                    .iter()
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn strings(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<String>> {
+        batches
+            .iter()
+            .flat_map(|batch| {
+                let index = batch.schema().index_of(name).unwrap();
+                batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .iter()
+                    .map(|value| value.map(str::to_owned))
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -162,6 +195,11 @@ mod text {
             ]
         );
         assert_eq!(rownums(&batches), [1, 1, 2]);
+        assert_eq!(uint64s(&batches, "seqnum"), [Some(1), Some(1), Some(2)]);
+        let sourceurls = strings(&batches, "sourceurl");
+        assert_eq!(strings(&batches, "crosscode"), sourceurls);
+        assert_ne!(sourceurls[0], sourceurls[1]);
+        assert_eq!(sourceurls[1], sourceurls[2]);
 
         folder.remove(true).unwrap();
     }

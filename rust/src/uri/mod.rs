@@ -30,7 +30,7 @@ mod parameters;
 mod parser;
 mod path;
 pub(crate) mod pattern;
-mod url;
+pub(crate) mod url;
 mod urn;
 
 pub use authority::Authority;

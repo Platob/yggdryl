@@ -2,8 +2,8 @@
 //!
 //! Every generated schema of an event - a [text line](crate::text::TextLine)
 //! read into a batch, a FIX message parsed out of it, a message the
-//! lifecycle chained - opens with these sixteen, under one name and one
-//! datatype each, so the three join on them without a mapping: a message's
+//! lifecycle chained - states these nineteen under one name and one datatype
+//! each, so the three join on them without a mapping: a message's
 //! `srcuuids` are the `curruuid` of the lines it was read from, and a
 //! chained message's `prevuuid` and `parentuuids` are the `curruuid` of the
 //! messages before it. The names are the traits' own: what
@@ -16,10 +16,11 @@ use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
 
 use super::Event;
 
-/// One column of the sixteen every graph event is stated in.
+/// One column of the nineteen every graph event is stated in.
 ///
-/// [`Self::ALL`] is the order a schema opens with: **when** it happened -
-/// the instant, then the instants it is read against - then **which**
+/// [`Self::ALL`] is the canonical order [`Self::fields`] and event-native
+/// schemas use: **when** it happened - the instant, then the instants it is
+/// read against - then **which**
 /// event it is - its identity, the chain's, the codes, what it follows, its
 /// place, what it descends from, what it was read from, the names it goes
 /// by - and last the state it reached.
@@ -30,10 +31,10 @@ use super::Event;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
-/// assert_eq!(fields.len(), 16);
+/// assert_eq!(fields.len(), 19);
 /// assert_eq!(fields[0].name(), "currunix");
-/// assert_eq!(fields[5].name(), "curruuid");
-/// assert_eq!(fields[15].name(), "state");
+/// assert_eq!(fields[8].name(), "curruuid");
+/// assert_eq!(fields[18].name(), "state");
 /// // What an event states under a column, and the same fact stated back.
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
@@ -55,6 +56,12 @@ pub enum EventColumn {
     CurrUnix,
     /// When it was created, where that is known.
     CreaUnix,
+    /// The latest execution clock its lifecycle reached, where known.
+    ExecUnix,
+    /// When it was recorded, where that is known.
+    RecdUnix,
+    /// The recording clock of the observation selected as the merge reference.
+    RefRecdUnix,
     /// When it stops being good, where it does.
     ExprTime,
     /// When the event it follows happened, where it follows one.
@@ -91,10 +98,13 @@ pub enum EventColumn {
 }
 
 impl EventColumn {
-    /// Every column, in the order a schema opens with them.
-    pub const ALL: [Self; 16] = [
+    /// Every column, in canonical event order.
+    pub const ALL: [Self; 19] = [
         Self::CurrUnix,
         Self::CreaUnix,
+        Self::ExecUnix,
+        Self::RecdUnix,
+        Self::RefRecdUnix,
         Self::ExprTime,
         Self::PrevUnix,
         Self::SnapUnix,
@@ -117,6 +127,9 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "currunix",
             Self::CreaUnix => "creaunix",
+            Self::ExecUnix => "execunix",
+            Self::RecdUnix => "recdunix",
+            Self::RefRecdUnix => "refrecdunix",
             Self::ExprTime => "exprtime",
             Self::PrevUnix => "prevunix",
             Self::SnapUnix => "snapunix",
@@ -140,6 +153,9 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "CurrUnix",
             Self::CreaUnix => "CreaUnix",
+            Self::ExecUnix => "ExecUnix",
+            Self::RecdUnix => "RecdUnix",
+            Self::RefRecdUnix => "RefRecdUnix",
             Self::ExprTime => "ExprTime",
             Self::PrevUnix => "PrevUnix",
             Self::SnapUnix => "SnapUnix",
@@ -165,6 +181,15 @@ impl EventColumn {
             Self::CreaUnix => {
                 "When the event was created, where that is known; the earliest its chain knows once followed."
             }
+            Self::ExecUnix => {
+                "The latest execution clock this lifecycle reached as of this event; an execution dates itself, following carries it, and duplicate statements keep their earliest observation."
+            }
+            Self::RecdUnix => {
+                "When this event was recorded, where that is known; the earliest its statements know."
+            }
+            Self::RefRecdUnix => {
+                "The recording clock of the observation selected as this event's merge reference; the latest its statements know."
+            }
             Self::ExprTime => {
                 "When the event stops being good, where it does; the latest its chain knows once followed."
             }
@@ -172,7 +197,9 @@ impl EventColumn {
             Self::SnapUnix => {
                 "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
             }
-            Self::CurrUuid => "The event's identity: the UUIDv7 its instant and its code derive.",
+            Self::CurrUuid => {
+                "The event's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive."
+            }
             Self::CrossUuid => {
                 "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
             }
@@ -220,9 +247,14 @@ impl EventColumn {
             })
         };
         Ok(match self {
-            Self::CurrUnix | Self::CreaUnix | Self::ExprTime | Self::PrevUnix | Self::SnapUnix => {
-                clock()
-            }
+            Self::CurrUnix
+            | Self::CreaUnix
+            | Self::ExecUnix
+            | Self::RecdUnix
+            | Self::RefRecdUnix
+            | Self::ExprTime
+            | Self::PrevUnix
+            | Self::SnapUnix => clock(),
             Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
             Self::CrossCode => DataType::utf8(),
             Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
@@ -290,6 +322,9 @@ impl EventColumn {
         match self {
             Self::CurrUnix => instant(event.get_currunix()),
             Self::CreaUnix => event.get_creaunix().and_then(instant),
+            Self::ExecUnix => event.get_execunix().and_then(instant),
+            Self::RecdUnix => event.get_recdunix().and_then(instant),
+            Self::RefRecdUnix => event.get_refrecdunix().and_then(instant),
             Self::ExprTime => event.get_exprtime().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
@@ -333,6 +368,9 @@ impl EventColumn {
                 }
             }
             Self::CreaUnix => event.set_creaunix(instant()),
+            Self::ExecUnix => event.set_execunix(instant()),
+            Self::RecdUnix => event.set_recdunix(instant()),
+            Self::RefRecdUnix => event.set_refrecdunix(instant()),
             Self::ExprTime => event.set_exprtime(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),
             Self::SnapUnix => event.set_snapunix(instant()),

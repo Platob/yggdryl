@@ -21,10 +21,10 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::graph::Event;
+use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
+use yggdryl::{BloombergCode, FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -174,13 +174,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
 
-    // Three steps of the parse measured through the doors that expose them,
+    // Four steps of the parse measured through the doors that expose them,
     // so the whole is attributed: the assembly of a message from a row it
     // already holds - the typed facts lifted, the clocks and the identity
     // settled - which is what `with_registry` costs over the content row;
-    // one typed write, which is what settling the identity again costs; and
-    // the entries derived from the row, which is what the wire re-emission
-    // starts from.
+    // one typed write, which is what settling the identity again costs; one
+    // normalized identifier write, including its `secaltids` occurrence;
+    // and the entries derived from the row, which is what the wire
+    // re-emission starts from.
     let rows: Vec<(yggdryl::Field, Scalar)> = messages
         .iter()
         .map(|message| (message.as_field().clone(), message.as_value().clone()))
@@ -206,6 +207,19 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     message
                         .set(58, Scalar::from("restated"))
                         .expect("a typed write");
+                }
+                held
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    let bloombergcode = BloombergCode::new("AAPL US EQUITY").expect("a Bloomberg identifier");
+    group.bench_function("step/set_bloombergcode", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |mut held| {
+                for message in &mut held {
+                    message.set_bloombergcode(Some(bloombergcode.clone()));
                 }
                 held
             },

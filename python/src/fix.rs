@@ -1509,9 +1509,12 @@ impl PyFixMsg {
     /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
     /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `currunix` is the stated one, else `SendingTime`,
-    /// and the creation the stated one, else the instant - what
-    /// `TransactTime` or `OrigSendingTime` says is the lifecycle's to read.
+    /// one; the instant `currunix` is the stated one, else the official
+    /// transaction clock standing within the crate's default one-second
+    /// delay of `SendingTime` - a `TransactTime`, else a ranked
+    /// `TrdRegTimestamp` - else `SendingTime` itself, and the creation the
+    /// stated one, else the instant. What `OrigSendingTime` says is the
+    /// lifecycle's to read.
     /// The identity is then derived:
     /// the cross code from the bridge's `msgsessionid:msgctxid` where the
     /// row header stated both, else the first stated of `OrderID`,
@@ -1884,8 +1887,8 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The message's identity: the `uuid` its instant and its hash code
-    /// derive.
+    /// The message's `UUIDv7` identity: its millisecond instant and full
+    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())
@@ -1924,7 +1927,9 @@ impl PyFixMsg {
     }
 
     /// When the message happened: nanoseconds since the Unix epoch, UTC -
-    /// the stated instant, else `SendingTime`.
+    /// the stated instant, else the official transaction clock standing
+    /// within the codec's `official_time_delay_ms` of `SendingTime`, else
+    /// that `SendingTime`.
     #[getter]
     fn currunix(&self) -> i64 {
         self.inner.get_currunix()
@@ -2301,7 +2306,11 @@ impl PyFixCodec {
     /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
     /// empty `exclude_msgtypes` keeps every type. `snapshot_ns` is an
     /// epoch-aligned lifecycle snapshot width in nanoseconds; `None`, zero
-    /// and a negative width disable snapshots.
+    /// and a negative width disable snapshots;
+    /// `official_time_delay_ms` is how far from `SendingTime(52)` an
+    /// official transaction clock may stand and still date the message, the
+    /// core's one second when unstated, and a nonpositive delay admits only
+    /// a transaction clock equal to the sending clock.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -2318,6 +2327,7 @@ impl PyFixCodec {
         exclude_msgtypes=None,
         threads=None,
         snapshot_ns=None,
+        official_time_delay_ms=None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -2334,6 +2344,7 @@ impl PyFixCodec {
         exclude_msgtypes: Option<Vec<String>>,
         threads: Option<usize>,
         snapshot_ns: Option<i64>,
+        official_time_delay_ms: Option<i64>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -2372,6 +2383,9 @@ impl PyFixCodec {
         }
         if let Some(held) = snapshot_ns {
             inner = inner.with_snapshot_ns(held);
+        }
+        if let Some(held) = official_time_delay_ms {
+            inner = inner.with_official_time_delay_ms(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2441,6 +2455,13 @@ impl PyFixCodec {
     #[getter]
     fn snapshot_ns(&self) -> Option<i64> {
         self.inner.snapshot_ns()
+    }
+
+    /// How far from `SendingTime(52)` an official transaction clock may
+    /// stand and still date the message, in milliseconds.
+    #[getter]
+    fn official_time_delay_ms(&self) -> i64 {
+        self.inner.official_time_delay_ms()
     }
 
     /// The message types a parse keeps, empty where it keeps every type
@@ -2816,7 +2837,7 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 ///
 /// The crate's own columns lead - its clocks, then its identities, then the
 /// rest - because a table is read by time and joined by identity; then the
-/// standard header, the fields a consumer reads, the three groups worth
+/// standard header, the fields a consumer reads, the four groups worth
 /// persisting whole, the trailer, `MsgDirection` (385), and the one
 /// `fixentries` list that closes every row with residual content under the
 /// `nofixentries` that counts it. Projected content stays in its columns.
@@ -3208,8 +3229,8 @@ pub(crate) struct PyMarketEventData {
 
 #[pymethods]
 impl PyMarketEventData {
-    /// The event's identity: the `uuid` its instant and its hash code
-    /// derive.
+    /// The event's `UUIDv7` identity: its millisecond instant and full
+    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())

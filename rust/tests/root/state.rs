@@ -70,6 +70,19 @@ mod coded {
         assert!(State::new("80FILLED").unwrap().is_done());
         assert!(State::new("90CANCELED").unwrap().is_cancelled());
         assert!(State::new("95REJECTED").unwrap().is_failed());
+        for held in ["40PARTFILL", "40TRADE", "80FILLED"] {
+            assert!(State::new(held).unwrap().is_execution(), "{held}");
+        }
+        for held in [
+            "40INPROGR",
+            "80COMPLETE",
+            "40TRDCORR",
+            "40TRDCXL",
+            "40TRDHOLD",
+            "80TRDRELS",
+        ] {
+            assert!(!State::new(held).unwrap().is_execution(), "{held}");
+        }
         for held in ["80FILLED", "90CANCELED", "95REJECTED"] {
             assert!(!State::new(held).unwrap().is_live(), "{held}");
         }

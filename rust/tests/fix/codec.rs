@@ -67,6 +67,62 @@ const CAPTURE: &[&str] = &[
 const SILENT: [usize; 5] = [7, 8, 11, 12, 13];
 
 #[test]
+fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
+    const DIRECT: i64 = 1_704_190_530_100_000_000;
+    const REFERENCE: i64 = 1_704_190_530_200_000_000;
+    const CARRIER: i64 = 1_704_190_530_900_000_000;
+
+    let reader = reader();
+    let raw = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|122=20240102-10:15:30.200|629=20240102-10:15:30.300|10=0|",
+        )
+        .expect("a raw message");
+    assert_eq!(
+        raw.get_recdunix(),
+        None,
+        "FIX sending clocks are not carrier recording time"
+    );
+    assert_eq!(raw.get_refrecdunix(), None);
+
+    let options = Arc::new(yggdryl::text::TextOptions::new());
+    let carried = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=8|10=0|").unwrap(),
+        Arc::clone(&options),
+    )
+    .unwrap()
+    .with_handle_mtime(CARRIER);
+    let message = reader
+        .parse_text_line(&carried)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(message.get_recdunix(), Some(CARRIER));
+    assert_eq!(message.get_refrecdunix(), Some(CARRIER));
+
+    let direct = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(
+            b"8=FIX.4.4|35=8|65063=20240102-10:15:30.100|65064=20240102-10:15:30.200|10=0|",
+        )
+        .unwrap(),
+        options,
+    )
+    .unwrap()
+    .with_handle_mtime(CARRIER);
+    let message = reader
+        .parse_text_line(&direct)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(message.get_recdunix(), Some(DIRECT));
+    assert_eq!(message.get_refrecdunix(), Some(REFERENCE));
+}
+
+#[test]
 fn every_capture_row_states_its_messages_and_none_is_skipped() {
     let reader = reader();
     for (at, row) in CAPTURE.iter().enumerate() {
@@ -1535,7 +1591,7 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
     // counter stated.
     let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
-    let alternates = super::sequence(message.by_name("secaltidgrp").unwrap());
+    let alternates = super::sequence(message.by_name("secaltids").unwrap());
     let ids: Vec<&str> = alternates
         .iter()
         .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
@@ -2103,9 +2159,10 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let reader = super::fixed_codec(Arc::new(FixRegistry::new()));
     // A native ns/UTC datetime accepts time with an offset on the epoch day.
     // The seed has no stricter FIX UTCTimestamp metadata, pinned above.
-    // The parse dates the message by `SendingTime` alone - here the codec's
-    // clock, the line stating none - and `TransactTime` stays the typed
-    // field it is, for the lifecycle to read.
+    // The parse dates the message against `SendingTime` - here the codec's
+    // clock, the line stating none - and this `TransactTime`, a time on the
+    // epoch day, stands decades outside the delay that would let it date the
+    // message, so it stays the typed field it is.
     let dateless = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
         .unwrap();
@@ -2384,11 +2441,189 @@ fn the_default_refusals_are_the_session_traffic_and_the_typeless_row() {
     );
 }
 
+/// The sending clock is the reference and the message happened at the best
+/// official clock standing within the codec's delay of it.
+///
+/// `TrdRegTimestamp(769)` says nothing on its own - the same tag carries an
+/// execution's instant, a desk's receipt and the moment a report reached a
+/// repository - so the `TrdRegTimestampType(770)` beside it in the same
+/// occurrence is what decides, and only the stamps that are about the event
+/// or about a hop it crossed are clocks at all.
+#[test]
+fn the_regulatory_group_dates_a_message_by_type_before_nearness() {
+    /// `20260102-10:15:30` UTC, the sending clock every line below states.
+    const SENDING: i64 = 1_767_348_930_000_000_000;
+    let dated = |line: &str| {
+        reader()
+            .parse_fix_line(line.as_bytes())
+            .expect("the line parses")
+            .get_currunix()
+    };
+    // A publicly-reported stamp ten milliseconds off never dates a message,
+    // so the execution half a second off is the one that does: what the
+    // stamp is about decides before how near it stands.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=11|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_500_000_000
+    );
+    // A desk receipt is a hop the message crossed rather than the event, so
+    // the execution outranks it even standing further from the sending clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=6|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_500_000_000
+    );
+    // Two stamps of one rank - an execution time and a broker execution -
+    // and the nearer of them decides.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=5|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_990_000_000
+    );
+    // Only stamps about the trade's afterlife: a submission to a repository
+    // is not when the trade happened, so the one clock every message carries
+    // keeps it.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:29.990|770=23|10=0|"
+        ),
+        SENDING
+    );
+    // A code no set names is silence rather than a clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:29.990|770=9999|10=0|"
+        ),
+        SENDING
+    );
+    // An execution a second and a half before the sending clock is a
+    // different event of the session's day, whatever its type says.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:28.500|770=1|10=0|"
+        ),
+        SENDING
+    );
+}
+
+/// What the message says about its own transaction outranks what another
+/// party stamped, and the group is read where the message filled no
+/// `TransactTime(60)` the delay admits.
+#[test]
+fn the_transaction_outranks_the_group_and_a_far_one_falls_through_to_it() {
+    let dated = |line: &str| {
+        reader()
+            .parse_fix_line(line.as_bytes())
+            .expect("the line parses")
+            .get_currunix()
+    };
+    // A stated transaction inside the delay is the message's own statement
+    // of when its event happened; a nearer regulatory stamp does not displace
+    // it.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:15:29.100|768=1|\
+             769=20260102-10:15:29.990|770=1|10=0|"
+        ),
+        1_767_348_929_100_000_000
+    );
+    // A transaction the delay refuses leaves the question open, and the
+    // group answers it: the parse falls through to the best stamp inside the
+    // delay rather than back to the sending clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:14:00|768=1|\
+             769=20260102-10:15:29.990|770=1|10=0|"
+        ),
+        1_767_348_929_990_000_000
+    );
+    // Neither inside the delay: the sending clock keeps the message.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:14:00|768=1|\
+             769=20260102-10:14:30|770=1|10=0|"
+        ),
+        1_767_348_930_000_000_000
+    );
+}
+
+/// The group is read as a group: a dictionary that declares none leaves two
+/// flat children whose pairing is a guess, and a guess about which
+/// regulatory clock this is would date the message by a stamp that belongs
+/// to a different question.
+#[test]
+fn a_dictionary_declaring_no_group_reads_no_regulatory_clock() {
+    let message = super::fixed_codec(Arc::new(FixRegistry::new()))
+        .parse_fix_line(
+            b"8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|769=20260102-10:15:29.990|770=1|10=0|",
+        )
+        .expect("the line parses");
+    assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
+}
+
+/// The delay is the codec's own and bounds which official clock may date a
+/// message.
+#[test]
+fn the_official_time_delay_is_the_codecs_own_and_bounds_the_transaction() {
+    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new()));
+    assert_eq!(
+        codec.official_time_delay_ms(),
+        FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS
+    );
+    let line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:29.500|10=0|";
+    let sending = 1_767_348_930_000_000_000;
+    let transaction = 1_767_348_929_500_000_000;
+    // Half a second of hop: inside the default delay, inside one stated at
+    // exactly that distance, outside one nanosecond tighter, and outside
+    // every nonpositive one - a delay of zero admits only a transaction
+    // equal to the sending clock, which is the reading that dates nothing
+    // the sending clock did not already date.
+    for (delay, expected) in [
+        (FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, transaction),
+        (500, transaction),
+        (499, sending),
+        (0, sending),
+        (-1, sending),
+    ] {
+        let dated = codec
+            .clone()
+            .with_official_time_delay_ms(delay)
+            .parse_fix_line(line)
+            .expect("the line parses");
+        assert_eq!(dated.get_currunix(), expected, "a {delay} ms delay");
+        assert_eq!(dated.get_creaunix(), Some(dated.get_currunix()));
+    }
+}
+
+/// `60=20260102` states a day, which the parse restates as that day's
+/// midnight. Midnight to the nanosecond is that statement and no other a
+/// venue makes, so the sending clock keeps the message even where the two
+/// stand well inside the delay.
+#[test]
+fn a_day_only_transaction_dates_nothing() {
+    let message = super::fixed_codec(Arc::new(FixRegistry::new()))
+        .with_official_time_delay_ms(i64::MAX)
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-00:00:00.100|60=20260102|10=0|")
+        .expect("the line parses");
+    assert_eq!(message.get_currunix(), 1_767_312_000_100_000_000);
+}
+
 // ---------------------------------------------------------------------------
 // Moved out of `rust/src/fix/codec.rs`, which is the file this one mirrors:
 // which message types a codec reads, and which clock a row settles on. The
-// second reaches `CLOCK_DATATYPE` through `yggdryl::internals`; the first is a
-// caller's own door throughout.
+// second reaches `CLOCK_DATATYPE` and the nanosecond delay reading through
+// `yggdryl::internals`; the first is a caller's own door throughout.
 // ---------------------------------------------------------------------------
 
 mod msgtype_filter_tests {
@@ -2493,6 +2728,7 @@ mod clock_intake_tests {
     use std::sync::Arc;
 
     use yggdryl::graph::Event;
+    use yggdryl::internals::fix_codec::{default_official_time_delay_ns, official_time_delay_ns};
     use yggdryl::internals::fix_schema::clock_datatype;
     use yggdryl::text::{TextBytes, TextLine};
     use yggdryl::{DataType, Error, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone};
@@ -2538,7 +2774,7 @@ mod clock_intake_tests {
     }
 
     #[test]
-    fn seeded_clocks_type_once_and_sending_dates_the_event() {
+    fn seeded_clocks_type_once_and_the_transaction_dates_the_event() {
         let codec = codec();
         for tag in [52, 60] {
             assert_eq!(
@@ -2551,16 +2787,11 @@ mod clock_intake_tests {
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
-        // `SendingTime` dates the event and `TransactTime` stays the typed
-        // field the lifecycle reads; neither fills `snapunix`, which says
-        // this row is a reading a walk took.
-        assert_eq!(
-            Some(message.get_currunix()),
-            message
-                .by_tag(52)
-                .unwrap()
-                .temporal_count_at(TimeUnit::Nanosecond)
-        );
+        // The transaction stands one second from the sending clock, which is
+        // exactly the default delay, so the two are the one event said twice
+        // and the more exact saying of it dates the message. `TransactTime`
+        // stays the typed field it was, and neither clock fills `snapunix`,
+        // which says this row is a reading a walk took.
         assert_eq!(
             message
                 .by_tag(60)
@@ -2568,10 +2799,52 @@ mod clock_intake_tests {
                 .temporal_count_at(TimeUnit::Nanosecond),
             Some(1_767_348_931_000_000_000)
         );
+        assert_eq!(message.get_currunix(), 1_767_348_931_000_000_000);
+        assert_eq!(message.get_creaunix(), Some(message.get_currunix()));
         assert_eq!(message.get_snapunix(), None);
+        // One nanosecond further and they are two events: the sending clock
+        // is the one every message carries, so it keeps the message.
+        let apart = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31.000000001|")
+            .unwrap();
+        assert_eq!(apart.get_currunix(), 1_767_348_930_000_000_000);
+        assert_eq!(
+            Some(apart.get_currunix()),
+            apart
+                .by_tag(52)
+                .unwrap()
+                .temporal_count_at(TimeUnit::Nanosecond)
+        );
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
         assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(absent.get_by_tag(60).is_none());
+        assert_eq!(absent.get_currunix(), 17);
+    }
+
+    /// The delay crosses into the dating as nanoseconds, through a
+    /// `pub(super)` reading only `yggdryl::internals` reaches.
+    #[test]
+    fn the_delay_converts_to_nanoseconds_and_saturates() {
+        assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+        assert_eq!(
+            default_official_time_delay_ns(),
+            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS * 1_000_000
+        );
+        let codec = codec();
+        assert_eq!(
+            official_time_delay_ns(&codec),
+            default_official_time_delay_ns()
+        );
+        // A nonpositive delay is no distance at all, and a delay no span of
+        // nanoseconds could hold saturates rather than wrapping into a
+        // negative distance that would admit nothing.
+        for (delay, expected) in [(500, 500_000_000), (0, 0), (-1, 0), (i64::MAX, i64::MAX)] {
+            assert_eq!(
+                official_time_delay_ns(&codec.clone().with_official_time_delay_ms(delay)),
+                expected,
+                "a {delay} ms delay"
+            );
+        }
     }
 
     #[test]
@@ -3303,17 +3576,21 @@ mod equivalence {
     /// same read the batch path is built from, handed over rather than made
     /// again.
     fn capture_lines() -> Vec<TextLine> {
-        let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(
-            Url::from_str("file:///ulbridge.log")
-                .expect("a URL")
-                .media_type(),
-        );
+        let url = Arc::new(Url::from_str("file:///ulbridge.log").expect("a URL"));
+        let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(url.media_type());
         let RecordOptions::Text(options) = reading() else {
             panic!("a text read")
         };
         read_text_lines(&source, &options)
             .expect("a line reader")
-            .map(|line| line.expect("a line"))
+            .map(|line| {
+                let mut line = line.expect("a line");
+                // The bytes are the committed file above, not the temporary
+                // in-memory allocation used to exercise the reader. Text-line
+                // identity includes its source URL, so state that stable source.
+                line.set_sourceurl(Some(Arc::clone(&url)));
+                line
+            })
             .collect()
     }
 

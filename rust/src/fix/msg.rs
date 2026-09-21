@@ -26,22 +26,24 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 
 /// The row stated the state the message reached: the derivation leaves it.
-const ROW_STATED_STATE: u8 = 1;
+const ROW_STATED_STATE: u16 = 1;
 
 /// The row stated when the message expires: the derivation leaves it.
-const ROW_STATED_EXPIRY: u8 = 1 << 1;
+const ROW_STATED_EXPIRY: u16 = 1 << 1;
 
 /// The row stated this normalized market code, rather than a raw FIX pair
 /// from which market derivation could replace it.
-const ROW_STATED_ISIN: u8 = 1 << 2;
-const ROW_STATED_CUSIP: u8 = 1 << 3;
-const ROW_STATED_SEDOL: u8 = 1 << 4;
-const ROW_STATED_BLOOMBERG: u8 = 1 << 5;
-const ROW_STATED_MIC: u8 = 1 << 6;
-const ROW_STATED_FIGI: u8 = 1 << 7;
+const ROW_STATED_ISIN: u16 = 1 << 2;
+const ROW_STATED_CUSIP: u16 = 1 << 3;
+const ROW_STATED_SEDOL: u16 = 1 << 4;
+const ROW_STATED_BLOOMBERG: u16 = 1 << 5;
+const ROW_STATED_MIC: u16 = 1 << 6;
+const ROW_STATED_FIGI: u16 = 1 << 7;
+const ROW_STATED_EXECUTION: u16 = 1 << 8;
+const ROW_STATED_RECORDING: u16 = 1 << 9;
 
 /// The row-owned facts whose non-null value must survive market derivation.
-fn row_stated_bit(tag: i32) -> Option<u8> {
+fn row_stated_bit(tag: i32) -> Option<u16> {
     if tag == super::STATE_TAG_NAME.0 {
         Some(ROW_STATED_STATE)
     } else if tag == super::EXPRTIME_TAG_NAME.0 {
@@ -58,6 +60,10 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
         Some(ROW_STATED_MIC)
     } else if tag == super::FIGICODE_TAG_NAME.0 {
         Some(ROW_STATED_FIGI)
+    } else if tag == super::EXECUNIX_TAG_NAME.0 {
+        Some(ROW_STATED_EXECUTION)
+    } else if tag == super::RECDUNIX_TAG_NAME.0 {
+        Some(ROW_STATED_RECORDING)
     } else {
         None
     }
@@ -93,8 +99,8 @@ fn row_stated_bit(tag: i32) -> Option<u8> {
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
 /// lifted and the named content of the row - everything but the standard
 /// header and trailer, less `MsgType`, and never the chain it is in - the
-/// identity the UUIDv7 the instant and the code derive, and the cross
-/// identity the UUIDv8 the cross code's digest derives - the first chain
+/// identity the UUIDv7 the millisecond instant, sequence and cross-seeded code
+/// derive, and the cross identity the UUIDv8 the cross code's digest derives - the first chain
 /// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
 /// bracketed `session:context` is retained among the message identifiers as
 /// capture provenance and never replaces that chain code. Every write settles it again, so a written code or identity
@@ -174,7 +180,7 @@ pub struct FixMsg {
     /// The lifecycle and normalized market facts the row stated. Derivation
     /// leaves them as the row's word, so reconstruction keeps an explicit
     /// value rather than replacing it from a raw FIX field.
-    row_stated: u8,
+    row_stated: u16,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
     /// What a bridge stated under its own namespaces - `TECH.CLIENTID`,
@@ -365,6 +371,100 @@ fn tag_positions(columns: &[super::schema::Column]) -> Vec<(i32, usize)> {
     held
 }
 
+/// Two instants standing no further apart than `delay`, in either
+/// direction: what makes an official clock and a sending clock the one
+/// event said twice. A nonpositive delay admits only equality.
+fn within(unix: i64, reference: i64, delay: i64) -> bool {
+    unix.abs_diff(reference) <= delay.unsigned_abs()
+}
+
+/// The rank `TransactTime(60)` takes among the official clocks: what the
+/// message itself says about when its transaction happened, which no stamp
+/// of another party outranks.
+const TRANSACT_RANK: u8 = 0;
+
+/// The `TrdRegTimestampType(770)` codes that stamp the event this message
+/// reports - when it executed, when it entered the book, when it took its
+/// priority, when it was submitted, cancelled or modified. These are the
+/// venue's own answer to the question `currunix` asks.
+const EVENT_TRDREG_TYPES: [i64; 9] = [
+    1,  // ExecutionTime
+    5,  // BrokerExecution
+    8,  // TimePriority
+    9,  // OrderbookEntryTime
+    10, // OrderSubmissionTime
+    29, // OrderCancellationTime
+    30, // OrderModificationTime
+    32, // TradeCancellationTime
+    33, // TradeModificationTime
+];
+
+/// The `TrdRegTimestampType(770)` codes that stamp a hop the message
+/// crossed on its way here rather than the event itself. Nearer the event
+/// than the sending clock and further from it than the stamps above, which
+/// is exactly the rank they take.
+const HOP_TRDREG_TYPES: [i64; 5] = [
+    2,  // TimeIn
+    3,  // TimeOut
+    4,  // BrokerReceipt
+    6,  // DeskReceipt
+    31, // OrderRoutingTime
+];
+
+/// How well one `TrdRegTimestampType(770)` answers when the event this
+/// message reports happened; `None` where it answers something else.
+///
+/// The code set names thirty-six stamps and twenty-two of them answer
+/// something else. Nineteen are the trade's afterlife rather than the trade:
+/// submission to clearing, public and non-public reporting and their updates,
+/// confirmation, clearing, allocation, submission to a repository,
+/// continuation events, valuation, an identifier's assignment, affirmation
+/// and a bare update time all happen after the event and say nothing about
+/// when it happened. Three are about something other than this message: a
+/// previous time priority and a previous identifier describe the state it
+/// replaced, and a reference time for the BBO describes the market it was
+/// measured against. A code no set names is one of these until someone says
+/// otherwise - an unranked stamp is silence, never a clock - so only the two
+/// lists above date a message.
+fn trdregtimestamp_rank(kind: i64) -> Option<u8> {
+    if EVENT_TRDREG_TYPES.contains(&kind) {
+        return Some(TRANSACT_RANK + 1);
+    }
+    if HOP_TRDREG_TYPES.contains(&kind) {
+        return Some(TRANSACT_RANK + 2);
+    }
+    None
+}
+
+/// One typed clock as the nanoseconds since the epoch it counts; nothing
+/// where the value is not an instant, which is what a clock the dictionary
+/// does not type as one, or one that would not read, leaves in the row.
+fn instant_of(value: &Scalar) -> Option<i64> {
+    let held @ Scalar::DateTime64(_) = value else {
+        return None;
+    };
+    held.temporal_count_at(crate::TimeUnit::Nanosecond)
+}
+
+/// One code of a set as the number it is, however the dictionary typed the
+/// tag: the integer a code set answers with, else the digits a dictionary
+/// that left the tag as text carries.
+fn code_of(value: &Scalar) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str()?.trim().parse().ok())
+}
+
+/// The position of the child carrying one tag among `fields`, by the
+/// dictionary's own reading of each child. A group occurrence is positional,
+/// the names living on the field and never in the value, so this is found once
+/// on the occurrence's field and every occurrence is read by it.
+fn position_of_tag(registry: &FixRegistry, fields: &[Field], tag: i32) -> Option<usize> {
+    fields
+        .iter()
+        .position(|child| super::schema::tag_and_counter(registry, child).0 == Some(tag))
+}
+
 fn group_positions(field: &Field, registry: &FixRegistry) -> Vec<(i32, usize)> {
     let mut held: Vec<_> = field
         .fields()
@@ -411,7 +511,15 @@ impl FixMsg {
     /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        Self::assemble(registry, field, value, None, None, true)
+        Self::assemble(
+            registry,
+            field,
+            value,
+            None,
+            None,
+            super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            true,
+        )
     }
 
     /// Builds the message the one builder finished, checking nothing twice.
@@ -419,19 +527,30 @@ impl FixMsg {
     /// Every value in the row went through the contract of the field it
     /// lands under, so the row is canonical by construction. The sending
     /// clock is what the message stated, else `fallback_sending_time`, else
-    /// now: initial intake settles clocks, and replay never reads now. The
-    /// identity is not settled here: the [enriching pass](super::enrich)
-    /// that takes every built message restates and fills it first, and
-    /// settles it once at its end, so nothing is digested that a later
-    /// write of the same pass rewrites.
+    /// now: initial intake settles clocks, and replay never reads now.
+    /// `official_time_delay_ns` is how far from that clock an official
+    /// transaction may stand and still date the message, which the codec
+    /// states for the whole run. The identity is not settled here: the
+    /// [enriching pass](super::enrich) that takes every built message
+    /// restates and fills it first, and settles it once at its end, so
+    /// nothing is digested that a later write of the same pass rewrites.
     pub(super) fn from_built(
         registry: Arc<FixRegistry>,
         built: super::build::Built,
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
+        official_time_delay_ns: i64,
     ) -> Result<Self> {
         let super::build::Built { field, value, .. } = built;
-        Self::assemble(registry, field, value, fallback_sending_time, source, false)
+        Self::assemble(
+            registry,
+            field,
+            value,
+            fallback_sending_time,
+            source,
+            official_time_delay_ns,
+            false,
+        )
     }
 
     /// Builds a message from the content reconstructed out of a semantic row.
@@ -445,11 +564,19 @@ impl FixMsg {
         retains_identity: bool,
     ) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        let mut message = Self::assemble(registry, field, value, None, None, false)?;
+        let mut message = Self::assemble(
+            registry,
+            field,
+            value,
+            None,
+            None,
+            super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
+            false,
+        )?;
         message.sync_capture_identifier();
         if retains_identity {
             message.derive_market();
-            message.event.fill_market();
+            message.fill_market();
         } else {
             message.settle();
         }
@@ -462,12 +589,15 @@ impl FixMsg {
     /// derived. `source` is the identity of the line the row was parsed out
     /// of, stated as the message's one source before it is settled; a row
     /// stating a `srcuuids` column of its own states those instead.
+    /// `official_time_delay_ns` is how far from the sending clock an
+    /// official transaction may stand and still date the message.
     fn assemble(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
+        official_time_delay_ns: i64,
         settle: bool,
     ) -> Result<Self> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
@@ -489,7 +619,7 @@ impl FixMsg {
         let mut stated_sending = false;
         let mut stated_unix = false;
         let mut stated_creation = false;
-        let mut row_stated = 0_u8;
+        let mut row_stated = 0_u16;
         // A typed tag is lifted out of the row onto its holder, and a holder
         // keeps one fact per tag - so a row stating one tag twice is left
         // where it stands rather than collapsed into one slot. Two children
@@ -553,17 +683,6 @@ impl FixMsg {
                 header.set_sendingtime(unix);
             }
         }
-        // The instant the message happened: what it states, else when it
-        // was sent - the one clock every message carries. A parse structures
-        // what a line said and dates it by that clock; what a transaction's
-        // own `TransactTime(60)` or a resend's `OrigSendingTime(122)` says
-        // is the lifecycle's to read off the structured message.
-        if !stated_unix {
-            event.set_currunix(header.sendingtime());
-        }
-        if !stated_creation {
-            event.set_creaunix(Some(event.get_currunix()));
-        }
         if lifted.msgcat().is_none() {
             let category = registry
                 .get_msgtype(header.msgtype())
@@ -603,10 +722,119 @@ impl FixMsg {
             entries: OnceLock::new(),
             carried: Vec::new(),
         };
+        // The instant the message happened: what it states, else when the
+        // transaction it reports happened, else when it was sent - the one
+        // clock every message carries. A parse structures what a line said
+        // and dates it against the sending clock, taking the official
+        // transaction over it only where the two stand within
+        // `official_time_delay_ns` of each other and are therefore the one
+        // event said twice; what a resend's `OrigSendingTime(122)` says, and
+        // what a `TransactTime(60)` further off than that says, is the
+        // lifecycle's to read off the structured message.
+        if !stated_unix {
+            message
+                .event
+                .set_currunix(message.official_unix(official_time_delay_ns));
+        }
+        if !stated_creation {
+            message.event.set_creaunix(Some(message.get_currunix()));
+        }
         if settle {
             message.settle();
         }
         Ok(message)
+    }
+
+    /// The instant this message happened: the best official clock standing
+    /// within `delay` of the sending clock, else the sending clock itself.
+    ///
+    /// The sending clock is the reference because every message carries one
+    /// and no message carries two. An official clock is the more exact
+    /// saying of when the event happened, and the distance between the two
+    /// is the only evidence a parse has that they are saying the same thing:
+    /// inside the delay they are one event and the official clock wins,
+    /// outside it they are two and the parse keeps the clock it can trust.
+    /// Rank decides between several that qualify - what the message says its
+    /// transaction was before what a regulatory stamp says a hop was - and
+    /// the nearer of two equal ranks decides after that, the earlier
+    /// instant closing the last tie so that one row reads one way.
+    fn official_unix(&self, delay: i64) -> i64 {
+        let sending = self.header.sendingtime();
+        self.official_clocks()
+            .filter(|(_, unix)| within(*unix, sending, delay))
+            .min_by_key(|(rank, unix)| (*rank, unix.abs_diff(sending), *unix))
+            .map_or(sending, |(_, unix)| unix)
+    }
+
+    /// Every clock this message states about when its own event happened,
+    /// each under the rank that says how well it answers that question.
+    ///
+    /// `TransactTime(60)` is the message's own statement and outranks
+    /// everything; the `TrdRegTimestamps(768)` group is the venue's, and
+    /// [`trdregtimestamp_rank`] reads each occurrence's
+    /// `TrdRegTimestampType(770)` to say which of its stamps are about this
+    /// event at all. Nothing here is ordered or bounded: the caller bounds
+    /// them by the delay and picks one.
+    fn official_clocks(&self) -> impl Iterator<Item = (u8, i64)> + use<'_> {
+        self.transact_unix()
+            .map(|unix| (TRANSACT_RANK, unix))
+            .into_iter()
+            .chain(self.trdregtimestamps())
+    }
+
+    /// The `TransactTime(60)` this message states, as an instant.
+    ///
+    /// By the index alone: a lookup that falls through to the name table is a
+    /// read a dating has no use for. A transaction stating a day and no clock
+    /// dates nothing - `60=20260814`, which the parse restates as that day's
+    /// midnight - because what it says is the day, and midnight to the
+    /// nanosecond is that statement and no other a venue makes.
+    fn transact_unix(&self) -> Option<i64> {
+        instant_of(&self.indexed_by_tag(60)?).filter(|unix| unix.rem_euclid(NANOS_PER_DAY) != 0)
+    }
+
+    /// Every `TrdRegTimestamp(769)` this message states that is about the
+    /// event the message reports, under its rank.
+    ///
+    /// The group is read as a group and only as a group: `TrdRegTimestamp`
+    /// says nothing on its own - the same tag carries the execution's
+    /// instant, a desk's receipt and the moment a report reached a
+    /// repository - and what tells them apart is the
+    /// `TrdRegTimestampType(770)` standing beside it in the same
+    /// occurrence. A dictionary that declares the group pairs them; one that
+    /// does not leaves two flat children whose pairing is a guess, and a
+    /// guess about which regulatory clock this is would date the message by
+    /// a stamp that belongs to a different question.
+    ///
+    /// A group occurrence is positional - the names live on the field and
+    /// never in the value - so the two members are found once on the
+    /// occurrence's field and every occurrence is read by those positions.
+    fn trdregtimestamps(&self) -> impl Iterator<Item = (u8, i64)> + use<'_> {
+        self.trdregtimestamp_members()
+            .into_iter()
+            .flat_map(|(occurrences, stamp, kind)| {
+                occurrences.iter().filter_map(move |occurrence| {
+                    let held = occurrence.as_sequence()?;
+                    let rank = trdregtimestamp_rank(code_of(held.get(kind)?)?)?;
+                    Some((rank, instant_of(held.get(stamp)?)?))
+                })
+            })
+    }
+
+    /// The `TrdRegTimestamps(768)` occurrences beside the positions its
+    /// `TrdRegTimestamp(769)` and `TrdRegTimestampType(770)` members hold in
+    /// each of them; nothing where the dictionary declares no such group, or
+    /// where the group it declares does not carry both members.
+    fn trdregtimestamp_members(&self) -> Option<(&[Scalar], usize, usize)> {
+        let at = self.index_of_group(768)?;
+        let DataType::Sequence(sequence) = self.field.fields().get(at)?.dtype() else {
+            return None;
+        };
+        let members = sequence.item().fields();
+        let stamp = position_of_tag(&self.registry, members, 769)?;
+        let kind = position_of_tag(&self.registry, members, 770)?;
+        let occurrences = self.value.as_sequence()?.get(at)?.as_sequence()?;
+        Some((occurrences, stamp, kind))
     }
 
     /// Replaces the row with another statement of the same content, as a
@@ -726,8 +954,8 @@ impl FixMsg {
 
     /// Settles the identity from what the message states: the cross code
     /// where it names none yet, the cross codes in step with it, the code
-    /// the content digests to, and the identity the instant and the code
-    /// derive.
+    /// the content digests to, and the identity the instant, sequence and
+    /// cross-seeded code derive.
     ///
     /// The cross code names the chain and defaults to the first nonempty FIX
     /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. Capture
@@ -749,7 +977,7 @@ impl FixMsg {
         // What the message implies about its market, read off the FIX
         // fields it stated, before the code it answers to covers either.
         self.derive_market();
-        self.event.fill_market();
+        self.fill_market();
         self.event.sync_cross();
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
@@ -788,16 +1016,74 @@ impl FixMsg {
         }
     }
 
+    /// Whether an explicitly stated `ExecType(150)` reports an execution.
+    /// Its raw FIX code is inspected, never the lifecycle state derived from
+    /// `OrdStatus`: trade corrections, cancels and clearing transitions can
+    /// carry a filled order state without being executions themselves.
+    fn explicit_execution_type(&self) -> Option<bool> {
+        self.get_by_tag(150)
+            .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
+    }
+
+    /// One FIX or proprietary timestamp read as the event clock the graph
+    /// keeps. Dictionary timestamps are already typed; an unresolved bridge
+    /// key is read once through the crate execution field's FIX spelling.
+    fn execution_instant(&self, value: Option<Scalar>) -> Option<i64> {
+        let value = value?;
+        value
+            .temporal_count_at(crate::TimeUnit::Nanosecond)
+            .or_else(|| {
+                let text = value.as_str()?;
+                let field = self.registry.get_field_by_tag(super::EXECUNIX_TAG_NAME.0)?;
+                super::build::typed_spelling(&self.registry, field, text)
+                    .temporal_count_at(crate::TimeUnit::Nanosecond)
+            })
+    }
+
+    /// The first regulatory timestamp explicitly classified as execution
+    /// time. A timestamp of any other type says nothing about execution.
+    fn trdreg_execution_instant(&self) -> Option<i64> {
+        let at = self.index_of_group(768)?;
+        let column = self.field.fields().get(at)?;
+        let DataType::Sequence(sequence) = column.dtype() else {
+            return None;
+        };
+        let item = sequence.item();
+        let (timestamp, kind) = (
+            item.index_of("trdregtimestamp")?,
+            item.index_of("trdregtimestamptype")?,
+        );
+        self.value
+            .as_sequence()?
+            .get(at)?
+            .as_sequence()?
+            .iter()
+            .find_map(|occurrence| {
+                let held = occurrence.as_sequence()?;
+                let kind = held.get(kind)?;
+                let execution = kind.as_i64() == Some(1)
+                    || kind.as_str().is_some_and(|kind| {
+                        kind == "1" || crate::folds_equal(kind, "ExecutionTime")
+                    });
+                execution
+                    .then(|| self.execution_instant(held.get(timestamp).cloned()))
+                    .flatten()
+            })
+    }
+
     /// What the message implies about its market, read off the FIX fields
     /// it states and filled onto the event.
     ///
     /// Every market fact is FIX's own, and a message states the ones it
     /// states: `Price(44)`, `OrderQty(38)` or `Quantity(53)`, the fill and
-    /// the progress, the side and the currency, the instrument's
+    /// the progress, the side and the currency, the ISIN, Bloomberg and FIGI
     /// identifiers under their sources, the market, the unit, the state and
-    /// the two quote lanes. This reads each and hands it to the trait,
-    /// which is where the ladder that decides what the message is *about*
-    /// lives - [`MarketElement::fill_market`], called straight after.
+    /// the two quote lanes. CUSIP and SEDOL stay in `SecurityID` or
+    /// `secaltids` unless a semantic row or setter states their normalized
+    /// columns. This reads each lifted fact and hands it to the trait, which
+    /// is where the ladder that decides what the message is *about* lives -
+    /// [`MarketElement::fill_market`], called straight after through the
+    /// FIX-specific guard below.
     ///
     /// What a lifecycle walk forced - the state it reached, what a price
     /// moved from, the instrument the chain is about - survives being
@@ -848,8 +1134,6 @@ impl FixMsg {
             .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| CfiCode::new(&held).ok()));
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
         let isincode = self.identifier(&["4"], |held| IsinCode::new(held).ok());
-        let cusipcode = self.identifier(&["1"], |held| CusipCode::new(held).ok());
-        let sedolcode = self.identifier(&["2"], |held| SedolCode::new(held).ok());
         let bloombergcode = self.identifier(&["A"], |held| BloombergCode::new(held).ok());
         let figicode = self.identifier(&["S"], |held| FIGICode::new(held).ok());
         // The market it is listed on, routed to, or last traded on.
@@ -885,6 +1169,20 @@ impl FixMsg {
         let exprtime = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
+        // Execution time is not the message time. It is stated directly by
+        // the crate column, then by FIX's execution-specific timestamp,
+        // regulatory execution member, a bridge's event timestamp, or the
+        // transaction time of an actual trade. Corrections and cancels do
+        // not make their transaction clock an execution clock.
+        let execunix = self
+            .execution_instant(by_tag(2749))
+            .or_else(|| self.trdreg_execution_instant())
+            .or_else(|| self.execution_instant(self.get_by_name("eventtimestamp")))
+            .or_else(|| {
+                (self.explicit_execution_type() == Some(true))
+                    .then(|| self.execution_instant(by_tag(60)))
+                    .flatten()
+            });
         // What a price moved from, and the two lanes a quote states.
         let prevpx = number(140);
         let (bidpx, bidqty) = (number(132), number(134));
@@ -909,6 +1207,9 @@ impl FixMsg {
         if row_stated & ROW_STATED_EXPIRY == 0 {
             event.set_exprtime(exprtime);
         }
+        if row_stated & ROW_STATED_EXECUTION == 0 {
+            event.set_execunix(execunix);
+        }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
         event.set_currency(currency.unwrap_or_else(Currency::none));
@@ -918,12 +1219,6 @@ impl FixMsg {
         event.set_cficode(cficode);
         if row_stated & ROW_STATED_ISIN == 0 {
             event.set_isincode(isincode);
-        }
-        if row_stated & ROW_STATED_CUSIP == 0 {
-            event.set_cusipcode(cusipcode);
-        }
-        if row_stated & ROW_STATED_SEDOL == 0 {
-            event.set_sedolcode(sedolcode);
         }
         if row_stated & ROW_STATED_BLOOMBERG == 0 {
             event.set_bloombergcode(bloombergcode);
@@ -936,6 +1231,22 @@ impl FixMsg {
         }
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
+        }
+    }
+
+    /// Fills the generic market ladders without turning FIX's contextual
+    /// CUSIP or SEDOL identifiers into normalized message facts.
+    ///
+    /// A normalized value stated directly by a semantic row or instrument
+    /// setter survives. Raw `SecurityID` and `secaltids` occurrences remain
+    /// FIX content under their own source codes.
+    fn fill_market(&mut self) {
+        self.event.fill_market();
+        if self.row_stated & ROW_STATED_CUSIP == 0 {
+            self.event.set_cusipcode(None);
+        }
+        if self.row_stated & ROW_STATED_SEDOL == 0 {
+            self.event.set_sedolcode(None);
         }
     }
 
@@ -964,7 +1275,7 @@ impl FixMsg {
         // A group occurrence is positional - the names live on the field
         // and never in the value - so the two members are found once and
         // every occurrence is read by those positions.
-        let at = self.field.index_of("secaltidgrp")?;
+        let at = self.field.index_of("secaltids")?;
         let column = self.field.fields().get(at)?;
         let DataType::Sequence(sequence) = column.dtype() else {
             return None;
@@ -986,6 +1297,13 @@ impl FixMsg {
                 word(held.get(identifier).cloned())
             })
             .find_map(|held| read(&held))
+    }
+
+    /// Synchronizes one normalized instrument identifier into FIX's
+    /// alternate-identifier group. A registry without that group still keeps
+    /// the event fact: the trait is infallible and invents no private schema.
+    fn set_secaltid(&mut self, source: &str, value: Option<&str>) {
+        let _ = super::latest::sync_group_occurrence(self, "secaltids", 456, source, 455, value);
     }
 
     /// The code the message digests to: the event's own facts - the names
@@ -1070,7 +1388,10 @@ impl FixMsg {
     /// the rules its date selects, filled and settled - exactly as a parse
     /// dated there would have built it. A stated sending clock stands: the
     /// parse dated the message by what it said, and the walk does not
-    /// second-guess it. What the
+    /// second-guess it. No delay bounds this one: a clock nobody stated is
+    /// no reference to measure a distance from, which is why the parse's own
+    /// [`FixCodec::official_time_delay_ms`](super::FixCodec::official_time_delay_ms)
+    /// reading of the transaction ends where this one begins. What the
     /// [lifecycle](super::FixCodec::lifecycle) reads off the structured
     /// message before it walks, so a capture whose frames state no sending
     /// clock still orders, expires and folds by when its transactions
@@ -1084,23 +1405,9 @@ impl FixMsg {
         if self.header.stated_sendingtime() {
             return Ok(self);
         }
-        // By the index alone: a lookup that falls through to the name table
-        // is a read the walk has no use for.
-        let Some(Scalar::DateTime64(transaction)) = self.indexed_by_tag(60) else {
+        let Some(unix) = self.transact_unix() else {
             return Ok(self);
         };
-        let Some(unix) =
-            Scalar::DateTime64(transaction).temporal_count_at(crate::TimeUnit::Nanosecond)
-        else {
-            return Ok(self);
-        };
-        // A transaction stating a day and no clock - `60=20260814`, which
-        // the parse restates as that day's midnight - dates nothing: what it
-        // says is the day, and the sending clock stands. Midnight to the
-        // nanosecond is that statement and no other a venue makes.
-        if unix.rem_euclid(NANOS_PER_DAY) == 0 {
-            return Ok(self);
-        }
         let current = self.get_currunix();
         let created = self.get_creaunix();
         self.event.set_currunix(unix);
@@ -1902,8 +2209,8 @@ impl FixMsg {
     /// The value a tag names by the index alone: a typed fact, else the
     /// child declaring the tag, and never the two fallbacks of
     /// [`Self::get_by_tag`], which end in a name table built on the first
-    /// miss. The [enriching pass](super::enrich) gathers its working row
-    /// through this, a column per tag it reads.
+    /// miss. The [enriching pass](super::enrich) reads every native source
+    /// and gathers every generic working-row column through this.
     pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<Scalar> {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
@@ -2591,6 +2898,11 @@ impl Event for FixMsg {
         self.event.set_state(state);
     }
 
+    fn is_execution(&self) -> bool {
+        self.explicit_execution_type()
+            .unwrap_or_else(|| self.event.is_execution())
+    }
+
     fn get_seqnum(&self) -> u64 {
         self.event.get_seqnum()
     }
@@ -2605,6 +2917,40 @@ impl Event for FixMsg {
 
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.event.set_creaunix(unix);
+    }
+
+    fn get_execunix(&self) -> Option<i64> {
+        self.event.get_execunix()
+    }
+
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        if unix.is_some() {
+            self.row_stated |= ROW_STATED_EXECUTION;
+        } else {
+            self.row_stated &= !ROW_STATED_EXECUTION;
+        }
+        self.event.set_execunix(unix);
+    }
+
+    fn get_recdunix(&self) -> Option<i64> {
+        self.event.get_recdunix()
+    }
+
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        if unix.is_some() {
+            self.row_stated |= ROW_STATED_RECORDING;
+        } else {
+            self.row_stated &= !ROW_STATED_RECORDING;
+        }
+        self.event.set_recdunix(unix);
+    }
+
+    fn get_refrecdunix(&self) -> Option<i64> {
+        self.event.get_refrecdunix()
+    }
+
+    fn set_refrecdunix(&mut self, unix: Option<i64>) {
+        self.event.set_refrecdunix(unix);
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -2693,6 +3039,7 @@ impl MarketElement for FixMsg {
 
     fn set_isincode(&mut self, isincode: Option<IsinCode>) {
         self.forced = true;
+        self.set_secaltid("4", isincode.as_ref().map(IsinCode::as_str));
         self.event.set_isincode(isincode);
     }
 
@@ -2702,6 +3049,12 @@ impl MarketElement for FixMsg {
 
     fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
         self.forced = true;
+        self.set_secaltid("1", cusipcode.as_ref().map(CusipCode::as_str));
+        if cusipcode.is_some() {
+            self.row_stated |= ROW_STATED_CUSIP;
+        } else {
+            self.row_stated &= !ROW_STATED_CUSIP;
+        }
         self.event.set_cusipcode(cusipcode);
     }
 
@@ -2711,6 +3064,12 @@ impl MarketElement for FixMsg {
 
     fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
         self.forced = true;
+        self.set_secaltid("2", sedolcode.as_ref().map(SedolCode::as_str));
+        if sedolcode.is_some() {
+            self.row_stated |= ROW_STATED_SEDOL;
+        } else {
+            self.row_stated &= !ROW_STATED_SEDOL;
+        }
         self.event.set_sedolcode(sedolcode);
     }
 
@@ -2720,6 +3079,7 @@ impl MarketElement for FixMsg {
 
     fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.forced = true;
+        self.set_secaltid("A", bloombergcode.as_ref().map(BloombergCode::as_str));
         self.event.set_bloombergcode(bloombergcode);
     }
 
@@ -2729,6 +3089,7 @@ impl MarketElement for FixMsg {
 
     fn set_figicode(&mut self, figicode: Option<FIGICode>) {
         self.forced = true;
+        self.set_secaltid("S", figicode.as_ref().map(FIGICode::as_str));
         self.event.set_figicode(figicode);
     }
 

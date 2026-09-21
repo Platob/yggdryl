@@ -801,7 +801,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
+      "FIX:derivation": "try_cast(secaltids[securityaltidsource = '4'][0].securityaltid as isin)",
       "FIX:tag": "48",
       "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
       "display": "SecurityID"
@@ -894,7 +894,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
+      "FIX:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltids[securityaltidsource = '8'][0].securityaltid)",
       "FIX:tag": "55",
       "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
       "display": "Symbol"

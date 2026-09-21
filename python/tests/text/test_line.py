@@ -85,10 +85,11 @@ class TestTextLine:
         assert line.captures == ("INFO",)
         assert line.mtime is None
         assert line.currunix == 0
-        # Its identity derives from its bytes and its instant: the same line
-        # is the same event, and another instant is another one.
+        # Its identity derives from its instant, physical sequence and bytes.
         assert isinstance(line.curruuid, Scalar)
-        assert line.curruuid == TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options).curruuid
+        later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
+        assert later.index == 7
+        assert line.curruuid != later.curruuid
         assert line.currhashcode == TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
         assert line.crosscode == "" and line.crosshashcode == 0
         assert line.crossuuid != line.curruuid or line.crosscode == ""
