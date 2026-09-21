@@ -1,0 +1,15 @@
+{
+  "name": "returnratedatemodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PriceValuation",
+      "doc": "Price valuation"
+    },
+    {
+      "value": "1",
+      "name": "DividendValuation",
+      "doc": "Dividend valuation"
+    }
+  ]
+}

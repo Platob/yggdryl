@@ -1,0 +1,20 @@
+{
+  "name": "securitylisttypesourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ICB",
+      "doc": "ICB (Industry Classification Benchmark) published by Dow Jones and FTSE - www.icbenchmark.com"
+    },
+    {
+      "value": "2",
+      "name": "NAICS",
+      "doc": "NAICS (North American Industry Classification System). Replaced SIC (Standard Industry Classification) www.census.gov/naics or www.naics.com."
+    },
+    {
+      "value": "3",
+      "name": "GICS",
+      "doc": "GICS (Global Industry Classification Standard) published by Standards & Poor"
+    }
+  ]
+}

@@ -36,7 +36,7 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
 /// | `get_seqnum` | a `seqnum` capture, else the row number under `start_rownum`, else the index |
 /// | `get_state` | a `state` capture, else `00UNKNOWN` |
-/// | `get_creaunix`, `get_expirunix`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_creaunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | a `crosscode` capture, else none |
 /// | `get_currhashcode` | the XXH3-64 of the body's bytes |
@@ -122,7 +122,7 @@ struct Stated {
     state: Option<State>,
     seqnum: Option<u64>,
     creaunix: Option<Option<i64>>,
-    expirunix: Option<Option<i64>>,
+    exprtime: Option<Option<i64>>,
     prevunix: Option<Option<i64>>,
     prevuuid: Option<Option<Uuid>>,
     snapunix: Option<Option<i64>>,
@@ -174,7 +174,7 @@ struct Resolved {
     seqnum: OnceLock<Reading<u64>>,
     state: OnceLock<Reading<State>>,
     creaunix: OnceLock<Reading<Option<i64>>>,
-    expirunix: OnceLock<Reading<Option<i64>>>,
+    exprtime: OnceLock<Reading<Option<i64>>>,
     prevunix: OnceLock<Reading<Option<i64>>>,
     snapunix: OnceLock<Reading<Option<i64>>>,
     prevuuid: OnceLock<Reading<Option<Uuid>>>,
@@ -521,7 +521,7 @@ impl TextLine {
         self.resolved.seqnum = OnceLock::new();
         self.resolved.state = OnceLock::new();
         self.resolved.creaunix = OnceLock::new();
-        self.resolved.expirunix = OnceLock::new();
+        self.resolved.exprtime = OnceLock::new();
         self.resolved.prevunix = OnceLock::new();
         self.resolved.snapunix = OnceLock::new();
         self.resolved.prevuuid = OnceLock::new();
@@ -799,20 +799,20 @@ impl TextLine {
         self.answer(reading).copied()
     }
 
-    /// When the line's record expires: an `expirunix` capture, else none.
+    /// When the line's record expires: an `exprtime` capture, else none.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
     /// the capture when it does not read as an instant.
-    pub fn expirunix(&self) -> Result<Option<i64>> {
-        if let Some(stated) = self.stated.expirunix {
+    pub fn exprtime(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.exprtime {
             return Ok(stated);
         }
         let reading = self
             .resolved
-            .expirunix
-            .get_or_init(|| self.instant_capture("expirunix"));
+            .exprtime
+            .get_or_init(|| self.instant_capture("exprtime"));
         self.answer(reading).copied()
     }
 
@@ -984,8 +984,8 @@ impl TextLine {
             EventColumn::CreaUnix => {
                 self.creaunix()?;
             }
-            EventColumn::ExpirUnix => {
-                self.expirunix()?;
+            EventColumn::ExprTime => {
+                self.exprtime()?;
             }
             EventColumn::PrevUnix => {
                 self.prevunix()?;
@@ -1198,13 +1198,13 @@ impl Event for TextLine {
         self.stated.creaunix = Some(unix);
     }
 
-    /// [`TextLine::expirunix`]; none over a refused capture.
-    fn get_expirunix(&self) -> Option<i64> {
-        self.expirunix().ok().flatten()
+    /// [`TextLine::exprtime`]; none over a refused capture.
+    fn get_exprtime(&self) -> Option<i64> {
+        self.exprtime().ok().flatten()
     }
 
-    fn set_expirunix(&mut self, unix: Option<i64>) {
-        self.stated.expirunix = Some(unix);
+    fn set_exprtime(&mut self, unix: Option<i64>) {
+        self.stated.exprtime = Some(unix);
     }
 
     /// [`TextLine::prevunix`]; none over a refused capture.

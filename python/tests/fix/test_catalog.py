@@ -119,18 +119,30 @@ def test_update_merges_a_definition_and_remove_keeps_a_referenced_one() -> None:
     assert registry.field_by_counter(65020).name == "identifiers"
 
 
-def test_inline_codes_are_per_field_and_a_snapshot_preserves_every_definition() -> None:
+def test_a_code_set_is_the_dictionarys_and_a_snapshot_preserves_every_definition() -> None:
     registry = _catalog()
+    # The members are stated first: a dictionary refuses a field naming a
+    # vocabulary nothing states.
+    registry.set_codeset("partyidcodeset", [{"value": "B", "name": "Broker"}])
     value = registry.field(448)
-    value.metadata["FIX:codes"] = '[{"value":"B","name":"Broker"}]'
+    value.fix.codeset = "partyidcodeset"
     # Membership is metadata like any other: it travels with the field.
     value.fix.branches = ["Pending"]
     registry.update(value)
-    assert "Broker" in registry.field_by_path("NewOrderSingle.Parties.PartyID").metadata["FIX:codes"]
+    # Every reference reaches the one field, and the field names the one set.
+    member = registry.field_by_path("NewOrderSingle.Parties.PartyID")
+    assert member.fix.codeset == "partyidcodeset"
+    assert member.metadata["FIX:codeset"] == "partyidcodeset"
+    codes = registry.codeset_of(member)
+    assert codes is not None and [code["name"] for code in codes] == ["Broker"]
     assert registry.dialects() == ["pending"]
 
     document = json.loads(registry.into_json())
-    assert set(document) == {"fields", "components", "groups"}
+    # The vocabularies are the fourth key, and they lead the document: a
+    # field names the set it reads by, so a reader holds the sets before it
+    # meets a field naming one.
+    assert set(document) == {"codesets", "fields", "components", "groups"}
+    assert [held["name"] for held in document["codesets"]] == ["msgcatcodeset", "partyidcodeset"]
     with pytest.raises(TypeError):
         hash(registry)
 
@@ -157,18 +169,25 @@ def test_inline_codes_are_per_field_and_a_snapshot_preserves_every_definition() 
 
 def test_a_store_round_trips_every_definition(tmp_path: Any) -> None:
     registry = _catalog()
+    registry.set_codeset("partyidcodeset", [{"value": "B", "name": "Broker"}])
+    member = registry.field(448)
+    member.fix.codeset = "partyidcodeset"
+    registry.update(member)
     root = tmp_path / "catalog"
     registry.write_into(root)
 
     # The definitions land in the folders their shapes name, beside the
-    # crate's own dump of the fixed row.
+    # crate's own dump of the fixed row; a vocabulary is the fourth folder,
+    # filed under the name the field that reads by it states.
     assert (root / "components" / "Party.json").exists()
     assert (root / "groups" / "Parties.json").exists()
     assert (root / "components" / "fixmsg.json").exists()
+    assert (root / "codesets" / "partyidcodeset.json").exists()
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
     assert reloaded.field_by_path("NewOrderSingle.Parties.PartyID").fix.tag == 448
+    assert [code["name"] for code in reloaded.codeset("partyidcodeset")] == ["Broker"]
     assert reloaded.msgtype("D").get_group_by_tag(453).name == "Parties"
 
 
@@ -288,11 +307,12 @@ def test_identifier_declarations_merge_whole() -> None:
 
 def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     target, source = _catalog(), _catalog()
+    # One name, two statements of it: the fold is the dictionary's to make,
+    # and the field only ever carries the name.
     for registry, code, name in ((target, "B", "Broker"), (source, "C", "Client")):
+        registry.set_codeset("partyidcodeset", [{"value": code, "name": name}])
         member = registry.field(448)
-        member.metadata["FIX:codes"] = json.dumps(
-            [{"value": code, "name": name}], separators=(",", ":")
-        )
+        member.fix.codeset = "partyidcodeset"
         registry.update(member)
     message = source.field_by_name("NewOrderSingle")
     message.set_name("IncomingOrder")
@@ -305,7 +325,10 @@ def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     assert (added, merged) == (0, merged)
     assert merged >= 2
     for path in ("PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID"):
-        codes = json.loads(target.field_by_path(path).metadata["FIX:codes"])
+        member = target.field_by_path(path)
+        assert member.fix.codeset == "partyidcodeset", path
+        codes = target.codeset_of(member)
+        assert codes is not None, path
         assert {item["value"]: item["name"] for item in codes} == {"B": "Broker", "C": "Client"}, path
     assert target.msgtype("I").get_group_by_tag(453).name == "Parties"
     assert source.into_json() == before_source, "the source is untouched"

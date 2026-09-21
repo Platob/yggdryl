@@ -93,6 +93,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "MKST",
     "FIX:msgtype": "ES",
     "FIX:tag": "144031",
     "description": "MsgType = ES",

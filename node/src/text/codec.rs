@@ -125,7 +125,7 @@ impl JsScalar {
 
 #[napi]
 impl JsScalar {
-    /// Convert a JavaScript value, applying its declared core Field when supplied.
+    /// Convert a JavaScript value, applying its declared core `Field` or `DataType`.
     #[napi(factory, js_name = "_fromJsNative", skip_typescript)]
     pub fn from_js_native(
         env: Env,
@@ -134,6 +134,7 @@ impl JsScalar {
         native_wrapper_prototypes: Array<'_>,
         native_intrinsics: Array<'_>,
         field: Option<&JsField>,
+        datatype: Option<&JsDataType>,
     ) -> Result<Self> {
         let inner = encode_js_value(
             env,
@@ -142,9 +143,15 @@ impl JsScalar {
             &native_wrapper_prototypes,
             &native_intrinsics,
         )?;
-        let inner = match field {
-            Some(field) => field.inner.scalar(inner).map_err(napi_error)?,
-            None => inner,
+        let inner = match (field, datatype) {
+            (Some(_), Some(_)) => {
+                return Err(napi_error(
+                    "a field and datatype cannot both type one scalar",
+                ));
+            }
+            (Some(field), None) => field.inner.scalar(inner).map_err(napi_error)?,
+            (None, Some(datatype)) => datatype.inner.scalar(inner).map_err(napi_error)?,
+            (None, None) => inner,
         };
         Ok(Self { inner })
     }
@@ -477,24 +484,25 @@ impl JsScalar {
         self.inner.stable_hash()
     }
 
-    /// This value as the variant encoding: one `Buffer` holding the
-    /// version, the datatype's identifier and the payload the identifier
-    /// says how to read - a number as its little-endian bytes, a text as a
+    /// This value as the value stream: one `Buffer` holding the version,
+    /// the datatype's identifier and the payload the identifier says how
+    /// to read - a number as its little-endian bytes, a text as a
     /// compression byte, a size and the characters, a nested value as a
     /// count and its children - compressed with zstd past four kibibytes.
-    /// What a variant column stores per row.
+    /// A `variant` column stores the Parquet Variant encoding instead,
+    /// which a cast into that datatype writes.
     #[napi]
-    pub fn into_variant_bytes(&self) -> Buffer {
-        self.inner.into_variant_bytes().into()
+    pub fn into_value_bytes(&self) -> Buffer {
+        self.inner.into_value_bytes().into()
     }
 
-    /// The value one variant encoding holds, as `intoVariantBytes` wrote
-    /// it. Throws naming the byte where the bytes could not be read:
+    /// The value one value stream holds, as `intoValueBytes` wrote it.
+    /// Throws naming the byte where the bytes could not be read:
     /// another version, a byte naming no datatype, a payload cut short, or
     /// bytes left after the value.
     #[napi(factory)]
-    pub fn from_variant_bytes(data: Uint8Array) -> Result<Self> {
-        Scalar::decode_variant_bytes(data.as_ref())
+    pub fn from_value_bytes(data: Uint8Array) -> Result<Self> {
+        Scalar::decode_value_bytes(data.as_ref())
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -2414,6 +2422,15 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Duration64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Mapping(entries) => mapping_transport(entries.as_slice(), depth, max_depth),
         Scalar::Struct(entries) => record_transport(entries.as_map(), depth, max_depth),
+        // A variant crosses as the value it holds, which is what a caller
+        // asked a variant column for; the bytes stay on the Rust side.
+        Scalar::Variant(held) => value_to_transport(
+            &held
+                .scalar()
+                .map_err(|error| napi_error(error.to_string()))?,
+            depth,
+            max_depth,
+        ),
         _ => Err(napi_error("unsupported native Scalar representation")),
     }
 }

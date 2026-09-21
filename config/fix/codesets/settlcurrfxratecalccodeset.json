@@ -1,0 +1,15 @@
+{
+  "name": "settlcurrfxratecalccodeset",
+  "codes": [
+    {
+      "value": "M",
+      "name": "Multiply",
+      "doc": "Multiply"
+    },
+    {
+      "value": "D",
+      "name": "Divide",
+      "doc": "Divide"
+    }
+  ]
+}

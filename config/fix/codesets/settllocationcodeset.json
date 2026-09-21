@@ -1,0 +1,33 @@
+{
+  "name": "settllocationcodeset",
+  "codes": [
+    {
+      "value": "CED",
+      "name": "Cedel"
+    },
+    {
+      "value": "DTC",
+      "name": "DepositoryTrustCompany"
+    },
+    {
+      "value": "EUR",
+      "name": "EuroClear"
+    },
+    {
+      "value": "FED",
+      "name": "FederalBookEntry"
+    },
+    {
+      "value": "ISO Country Code",
+      "name": "LocalMarketSettleLocation"
+    },
+    {
+      "value": "PNY",
+      "name": "Physical"
+    },
+    {
+      "value": "PTC",
+      "name": "ParticipantTrustCompany"
+    }
+  ]
+}

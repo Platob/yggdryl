@@ -1,0 +1,20 @@
+{
+  "name": "subscriptionrequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Snapshot",
+      "doc": "Snapshot"
+    },
+    {
+      "value": "1",
+      "name": "SnapshotAndUpdates",
+      "doc": "Snapshot + Updates (Subscribe)"
+    },
+    {
+      "value": "2",
+      "name": "DisablePreviousSnapshot",
+      "doc": "Disable previous Snapshot + Update Request (Unsubscribe)"
+    }
+  ]
+}

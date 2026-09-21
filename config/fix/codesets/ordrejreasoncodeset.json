@@ -1,0 +1,178 @@
+{
+  "name": "ordrejreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BrokerCredit",
+      "doc": "Broker / Exchange option"
+    },
+    {
+      "value": "1",
+      "name": "UnknownSymbol",
+      "doc": "Unknown symbol"
+    },
+    {
+      "value": "2",
+      "name": "ExchangeClosed",
+      "doc": "Exchange closed"
+    },
+    {
+      "value": "3",
+      "name": "OrderExceedsLimit",
+      "doc": "Order exceeds limit"
+    },
+    {
+      "value": "4",
+      "name": "TooLateToEnter",
+      "doc": "Too late to enter"
+    },
+    {
+      "value": "5",
+      "name": "UnknownOrder",
+      "doc": "Unknown order"
+    },
+    {
+      "value": "6",
+      "name": "DuplicateOrder",
+      "doc": "Duplicate Order (e.g. dupe ClOrdID)"
+    },
+    {
+      "value": "7",
+      "name": "DuplicateOfAVerballyCommunicatedOrder",
+      "doc": "Duplicate of a verbally communicated order"
+    },
+    {
+      "value": "8",
+      "name": "StaleOrder",
+      "doc": "Stale order"
+    },
+    {
+      "value": "9",
+      "name": "TradeAlongRequired",
+      "doc": "Trade along required"
+    },
+    {
+      "value": "10",
+      "name": "InvalidInvestorID",
+      "doc": "Invalid Investor ID"
+    },
+    {
+      "value": "11",
+      "name": "UnsupportedOrderCharacteristic",
+      "doc": "Unsupported order characteristic"
+    },
+    {
+      "value": "12",
+      "name": "SurveillanceOption",
+      "aliases": [
+        "SurveillenceOption"
+      ],
+      "doc": "Surveillance option"
+    },
+    {
+      "value": "13",
+      "name": "IncorrectQuantity",
+      "doc": "Incorrect quantity"
+    },
+    {
+      "value": "14",
+      "name": "IncorrectAllocatedQuantity",
+      "doc": "Incorrect allocated quantity"
+    },
+    {
+      "value": "15",
+      "name": "UnknownAccount",
+      "doc": "Unknown account(s)"
+    },
+    {
+      "value": "16",
+      "name": "PriceExceedsCurrentPriceBand",
+      "doc": "Price exceeds current price band"
+    },
+    {
+      "value": "18",
+      "name": "InvalidPriceIncrement",
+      "doc": "Invalid price increment"
+    },
+    {
+      "value": "19",
+      "name": "ReferencePriceNotAvailable",
+      "doc": "Reference price not available"
+    },
+    {
+      "value": "20",
+      "name": "NotionalValueExceedsThreshold",
+      "doc": "Notional value exceeds threshold"
+    },
+    {
+      "value": "21",
+      "name": "AlgorithmRiskThresholdBreached",
+      "doc": "Algorithm risk threshold breached"
+    },
+    {
+      "value": "22",
+      "name": "ShortSellNotPermitted",
+      "doc": "Short sell not permitted"
+    },
+    {
+      "value": "23",
+      "name": "ShortSellSecurityPreBorrowRestriction",
+      "doc": "Short sell rejected due to security pre-borrow restriction"
+    },
+    {
+      "value": "24",
+      "name": "ShortSellAccountPreBorrowRestriction",
+      "doc": "Short sell rejected due to account pre-borrow restriction"
+    },
+    {
+      "value": "25",
+      "name": "InsufficientCreditLimit",
+      "doc": "Insufficient credit limit"
+    },
+    {
+      "value": "26",
+      "name": "ExceededClipSizeLimit",
+      "doc": "Exceeded clip size limit"
+    },
+    {
+      "value": "27",
+      "name": "ExceededMaxNotionalOrderAmt",
+      "doc": "Exceeded maximum notional order amount"
+    },
+    {
+      "value": "28",
+      "name": "ExceededDV01PV01Limit",
+      "doc": "Exceeded DV01/PV01 limit"
+    },
+    {
+      "value": "29",
+      "name": "ExceededCS01Limit",
+      "doc": "Exceeded CS01 limit"
+    },
+    {
+      "value": "30",
+      "name": "LastLook",
+      "doc": "Last look"
+    },
+    {
+      "value": "31",
+      "name": "LastLookLatency",
+      "doc": "Last look latency"
+    },
+    {
+      "value": "32",
+      "name": "UnavailablePriceLiquidity",
+      "doc": "Unavailable price or liquidity"
+    },
+    {
+      "value": "33",
+      "name": "InvalidMissingEntitlements",
+      "doc": "Invalid or missing entitlements"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

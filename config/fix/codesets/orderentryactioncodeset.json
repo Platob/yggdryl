@@ -1,0 +1,30 @@
+{
+  "name": "orderentryactioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Add",
+      "doc": "Add"
+    },
+    {
+      "value": "2",
+      "name": "Modify",
+      "doc": "Modify"
+    },
+    {
+      "value": "3",
+      "name": "Delete",
+      "doc": "Delete / Cancel"
+    },
+    {
+      "value": "4",
+      "name": "Suspend",
+      "doc": "Suspend"
+    },
+    {
+      "value": "5",
+      "name": "Release",
+      "doc": "Release"
+    }
+  ]
+}

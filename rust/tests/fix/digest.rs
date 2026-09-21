@@ -9,7 +9,7 @@ fn reader() -> FixCodec {
 }
 
 #[test]
-fn identical_entries_hash_equal_and_a_different_order_does_not() {
+fn sibling_order_changes_the_wire_digest_and_structural_hash_but_not_event_identity() {
     let reader = reader();
     let one = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
@@ -21,10 +21,9 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
     assert_eq!(one.stable_hash(), same.stable_hash());
     assert_eq!(one.stable_hash(), one.clone().stable_hash());
 
-    // Order carries meaning inside a repeating group, so it is never sorted
-    // away: the same pairs in another order are another message. The pairs
-    // have to be the row's own - `ClOrdID(11)` is a fact the message lifts
-    // and holds, and a held fact has no place in the row to have moved.
+    // The wire digest and structural hash retain independent siblings in
+    // arrival order. The event identity reads those siblings canonically, so
+    // a semantic row reconstructed in schema order remains the same event.
     let ordered = reader
         .sole_line(b"8=FIX.4.4|35=D|1=ACCT|55=AAPL|10=0|")
         .unwrap();
@@ -33,6 +32,10 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
         .unwrap();
     assert_ne!(ordered.digest(), reordered.digest());
     assert_ne!(ordered.stable_hash(), reordered.stable_hash());
+    assert_eq!(
+        yggdryl::graph::Element::get_currhashcode(&ordered),
+        yggdryl::graph::Element::get_currhashcode(&reordered)
+    );
     // And a lifted fact is held, so where the line put it changes nothing.
     let moved = reader
         .sole_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|")
@@ -41,6 +44,22 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
 
     // Two calls are the same walk twice, because nothing was stored.
     assert_eq!(one.digest(), one.digest());
+}
+
+#[test]
+fn repeated_scalar_order_remains_part_of_the_event_identity() {
+    let reader = reader();
+    let ordered = reader
+        .sole_line(b"MSGTYPE=D|ACCOUNT=FIRST|ACCOUNT=SECOND")
+        .unwrap();
+    let reversed = reader
+        .sole_line(b"MSGTYPE=D|ACCOUNT=SECOND|ACCOUNT=FIRST")
+        .unwrap();
+
+    assert_ne!(
+        yggdryl::graph::Element::get_currhashcode(&ordered),
+        yggdryl::graph::Element::get_currhashcode(&reversed)
+    );
 }
 
 #[test]
@@ -107,6 +126,34 @@ fn the_envelope_is_not_the_message() {
         original.digest(),
         typed.digest(),
         "a type is not an envelope"
+    );
+}
+
+#[test]
+fn every_header_extra_is_excluded_from_the_canonical_message_hash() {
+    let reader = reader();
+    let original = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    let replay = reader
+        .sole_line(
+            b"8=FIX.4.4|9=999|35=D|122=20240102-10:15:30.000|97=Y|50=DESK|11=A|55=AAPL|10=000|",
+        )
+        .unwrap();
+    // The wire digest already ignores all envelope fields. The canonical
+    // message hash must do the same for deduplication and lifecycle identity.
+    assert_eq!(original.digest(), replay.digest());
+    assert_eq!(
+        yggdryl::graph::Element::get_currhashcode(&original),
+        yggdryl::graph::Element::get_currhashcode(&replay)
+    );
+
+    let changed = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=0|")
+        .unwrap();
+    assert_ne!(
+        yggdryl::graph::Element::get_currhashcode(&original),
+        yggdryl::graph::Element::get_currhashcode(&changed)
     );
 }
 
@@ -225,12 +272,9 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Twenty-two definitions, and every one a fact no dictionary publishes:
-    // the instants, the identities and the codes, the chain, the state
-    // reached and the expiry a walk folds forward, what a bridge's own log
-    // said, and what the reader said about the line. Nothing about the
-    // *market* is here - the price, the quantity, the instrument's codes and
-    // the lanes are FIX's own fields, and the traits answer them off those.
+    // Twenty-nine definitions: the event and capture facts, MsgCat, and six
+    // normalized identifiers whose standard FIX representation is contextual.
+    // CFI already has its own standard tag, so it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -255,7 +299,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "metadata",
             "srcuuids",
             "state",
-            "expirunix",
+            "exprtime",
+            "msgcat",
+            "isincode",
+            "cusipcode",
+            "sedolcode",
+            "bloombergcode",
+            "miccode",
+            "figicode",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -283,7 +334,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Metadata"),
             Some("SrcUuids"),
             Some("State"),
-            Some("ExpirUnix"),
+            Some("ExprTime"),
+            Some("MsgCat"),
+            Some("IsinCode"),
+            Some("CusipCode"),
+            Some("SedolCode"),
+            Some("BloombergCode"),
+            Some("MicCode"),
+            Some("FIGICode"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -322,7 +380,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "expirunix"] {
+    for name in ["prevunix", "snapunix", "exprtime"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -408,7 +466,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FIXMSG_TAG_NAME,
             yggdryl::SRCUUIDS_TAG_NAME,
             yggdryl::STATE_TAG_NAME,
-            yggdryl::EXPIRUNIX_TAG_NAME
+            yggdryl::EXPRTIME_TAG_NAME
         ],
         [
             (65_048, "crosscode"),
@@ -416,7 +474,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             (65_050, "fixmsg"),
             (65_051, "srcuuids"),
             (65_052, "state"),
-            (65_053, "expirunix")
+            (65_053, "exprtime")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:

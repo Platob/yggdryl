@@ -1,0 +1,25 @@
+{
+  "name": "partydetailrequeststatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "AcceptedWithChanges",
+      "doc": "Accepted with changes"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "3",
+      "name": "AcceptancePending",
+      "doc": "Acceptance pending"
+    }
+  ]
+}

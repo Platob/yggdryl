@@ -242,13 +242,6 @@ impl GeospatialParameters {
     }
 }
 
-/// The Arrow extension name of the variant type.
-///
-/// The storage is a `Binary` holding [the variant
-/// encoding](crate::Scalar::into_variant_bytes) of each value, and the
-/// extension metadata is the empty string.
-pub(crate) const VARIANT_EXTENSION_NAME: &str = "yggdryl.variant";
-
 /// The community GeoArrow extension name of the geospatial pair.
 ///
 /// The storage is a Binary column of WKB payloads and the extension metadata
@@ -548,22 +541,11 @@ geospatial_value!(Geometry, DataType::geometry(None));
 geospatial_value!(Geography, DataType::geography(None, None));
 
 // ------------------------------------------------------------------------
-// Arrow projection: WKB bytes, and the variant encoding as binary.
+// Arrow projection: WKB bytes. The variant's own is in `crate::variant`.
 // ------------------------------------------------------------------------
 
 mod arrow {
     use arrow_schema::DataType as ArrowDataType;
-
-    use crate::VariantType;
-
-    impl VariantType {
-        /// The Arrow storage a variant column lays out: one binary per
-        /// row, holding [the variant encoding](crate::Scalar::into_variant_bytes)
-        /// of the row's value, under the `yggdryl.variant` extension name.
-        pub(crate) const fn arrow_storage() -> ArrowDataType {
-            ArrowDataType::Binary
-        }
-    }
 
     /// The Arrow storage a geospatial column lays out: Well-Known Binary.
     ///
@@ -572,11 +554,6 @@ mod arrow {
     pub(crate) const fn geospatial_arrow_storage() -> ArrowDataType {
         ArrowDataType::Binary
     }
-
-    /// Reports whether an Arrow datatype is the variant storage: a binary.
-    pub(crate) fn is_variant_storage(dtype: &ArrowDataType) -> bool {
-        matches!(dtype, ArrowDataType::Binary)
-    }
 }
 
-pub(crate) use arrow::{geospatial_arrow_storage, is_variant_storage};
+pub(crate) use arrow::geospatial_arrow_storage;

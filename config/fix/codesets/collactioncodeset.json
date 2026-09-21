@@ -1,0 +1,20 @@
+{
+  "name": "collactioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Retain",
+      "doc": "Retain"
+    },
+    {
+      "value": "1",
+      "name": "Add",
+      "doc": "Add"
+    },
+    {
+      "value": "2",
+      "name": "Remove",
+      "doc": "Remove"
+    }
+  ]
+}

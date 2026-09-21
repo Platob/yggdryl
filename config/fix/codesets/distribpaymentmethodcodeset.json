@@ -1,0 +1,70 @@
+{
+  "name": "distribpaymentmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CREST",
+      "doc": "CREST"
+    },
+    {
+      "value": "2",
+      "name": "NSCC",
+      "doc": "NSCC"
+    },
+    {
+      "value": "3",
+      "name": "Euroclear",
+      "doc": "Euroclear"
+    },
+    {
+      "value": "4",
+      "name": "Clearstream",
+      "doc": "Clearstream"
+    },
+    {
+      "value": "5",
+      "name": "Cheque",
+      "doc": "Cheque"
+    },
+    {
+      "value": "6",
+      "name": "TelegraphicTransfer",
+      "doc": "Telegraphic Transfer"
+    },
+    {
+      "value": "7",
+      "name": "FedWire",
+      "doc": "Fed Wire"
+    },
+    {
+      "value": "8",
+      "name": "DirectCredit",
+      "doc": "Direct Credit (BECS, BACS)"
+    },
+    {
+      "value": "9",
+      "name": "ACHCredit",
+      "doc": "ACH Credit"
+    },
+    {
+      "value": "10",
+      "name": "BPAY",
+      "doc": "BPAY"
+    },
+    {
+      "value": "11",
+      "name": "HighValueClearingSystemHVACS",
+      "doc": "High Value Clearing System HVACS"
+    },
+    {
+      "value": "12",
+      "name": "ReinvestInFund",
+      "doc": "Reinvest In Fund"
+    },
+    {
+      "value": "999",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

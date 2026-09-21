@@ -1,0 +1,15 @@
+{
+  "name": "deliveryscheduletolerancetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Absolute",
+      "doc": "Absolute"
+    },
+    {
+      "value": "1",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

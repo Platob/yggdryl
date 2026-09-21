@@ -82,6 +82,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "listid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "m",
     "FIX:tag": "869150",
     "description": "MsgType = m (lowercase M)",

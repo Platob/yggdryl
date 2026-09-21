@@ -1,0 +1,35 @@
+{
+  "name": "transferstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Received",
+      "doc": "Received"
+    },
+    {
+      "value": "1",
+      "name": "RejectedByIntermediary",
+      "doc": "Rejected by intermediary"
+    },
+    {
+      "value": "2",
+      "name": "AcceptPending",
+      "doc": "Accept pending"
+    },
+    {
+      "value": "3",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "4",
+      "name": "Declined",
+      "doc": "Declined"
+    },
+    {
+      "value": "5",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    }
+  ]
+}

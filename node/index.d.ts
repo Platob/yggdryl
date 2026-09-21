@@ -1323,9 +1323,11 @@ export declare class FixCodec {
    * empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
    * rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
    * unstated, whichever the batch reaches first; `threads` is how many
-   * threads the line and row doors read on, one when unstated - more
-   * read a stream a chunk ahead, each line on some thread, and answer in
-   * the lines' order; `includeMsgtypes` and
+   * workers parsing and row conversion use, the available CPUs when
+   * unstated. Arrow capture parsing keeps at most one input batch per
+   * worker and yields in order; line doors use bounded row chunks.
+   * One thread reads lazily without a pool; zero reads as one;
+   * `includeMsgtypes` and
    * `excludeMsgtypes` are the message types a parse keeps and refuses,
    * each read before a frame is built and spelled as a code or a name -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
@@ -1336,6 +1338,8 @@ export declare class FixCodec {
    * states one - a `Scalar` crosses as it is and must already be
    * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
    * in nanoseconds, and `null` or absence reads UTC now per new message.
+   * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
+   * nanoseconds; `null`, zero and a negative width disable snapshots.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1360,11 +1364,13 @@ export declare class FixCodec {
   get batchByteSize(): number
   /** The rows one Arrow batch targets. */
   get batchRowSize(): number
-  /**
-   * The threads the line and row doors read on; one reads a stream
-   * where it stands.
-   */
+  /** The workers parsing and row conversion use; available CPUs by default. */
   get threads(): number
+  /**
+   * The epoch-aligned lifecycle snapshot width in nanoseconds, or `null`
+   * where snapshots are disabled.
+   */
+  get snapshotNs(): bigint | null
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -1634,6 +1640,8 @@ export declare class FixMsg {
    * in sorted order; empty where it stated none.
    */
   get metadata(): Record<string, string>
+  /** The fixed four-byte business category lifted from this message type. */
+  get msgcat(): string | null
   /** This message's own identity, as its hyphenated text. */
   get curruuid(): string
   /**
@@ -1735,6 +1743,11 @@ export declare class FixMsg {
   get sedolcode(): string | null
   /** The instrument's Bloomberg identifier, read the same way, or `null`. */
   get bloombergcode(): string | null
+  /**
+   * The instrument's FIGI, read off `SecurityID(48)` under source `S` or
+   * the `SecurityAltID` group, or `null` where none validates.
+   */
+  get figicode(): string | null
   /**
    * The instrument's classification, read off `CFICode(461)` and what the
    * message says about the security, or `null` where nothing does.
@@ -2109,6 +2122,74 @@ export declare class FixRegistry {
    * `id` is read exactly as every other identifier argument is.
    */
   removeById(id: number): JsField | null
+  /**
+   * The code set held under `name`, or `null`.
+   *
+   * The lenient door beside `codeset`, which throws absence: a caller
+   * asking whether a vocabulary is held asks this. The name is folded,
+   * so whichever spelling a field states reaches it.
+   */
+  getCodeset(name: string): FixCodeSetView | null
+  /** The code set held under `name`, failing when absent. */
+  codeset(name: string): FixCodeSetView
+  /**
+   * The code set `field` reads its values by, or `null`.
+   *
+   * The field states the name and the dictionary holds the members, so
+   * this is the one door between them. A field naming no set answers
+   * `null`; a held field never names one this dictionary lacks, because
+   * every door a field arrives through refuses that.
+   */
+  codesetOf(field: JsField): FixCodeSetView | null
+  /**
+   * The names of every code set held, in name order.
+   *
+   * The listing, the way `dialects` lists membership: a set is read by
+   * name through `codeset`, so nothing parses here.
+   */
+  codesetNames(): Array<string>
+  /**
+   * The symbolic name one wire value stands for in the set `name`.
+   *
+   * What a field's own `codeName` answered before a set had a name of its
+   * own; the set is where the vocabulary lives now, so this is keyed by
+   * it and throws when the dictionary holds none.
+   */
+  codeName(name: string, value: string): string | null
+  /**
+   * The wire value any spelling of a code stands for in the set `name`:
+   * the value itself, a symbolic name, or an alias, folded.
+   *
+   * A spelling the set does not answer to is `null` rather than a
+   * refusal, because a venue sends codes no dictionary lists.
+   */
+  codeValue(name: string, text: string): string | null
+  /**
+   * State the members of the code set `name`, replacing what it held.
+   *
+   * The set is filed under the folded name, which is the stem a store
+   * writes it as. An empty array removes the set, and one a held field
+   * still reads by is refused: a field may not be left naming a
+   * vocabulary nothing states.
+   */
+  setCodeset(name: string, codes: Array<FixCode>): void
+  /**
+   * Fold `codes` into the code set `name`, keeping what it already held.
+   *
+   * Keyed by wire value: a placeholder name yields to a real one, every
+   * surviving spelling is kept as an alias, and a set the dictionary did
+   * not hold arrives whole. So a venue's statement of a vocabulary
+   * enriches the one held rather than replacing it.
+   */
+  mergeCodeset(name: string, codes: Array<FixCode>): void
+  /**
+   * Remove the code set `name`, answering the members it held.
+   *
+   * A set no field reads by leaves; one a held field still names is
+   * refused, naming the field. A name nothing is filed under answers
+   * `null`.
+   */
+  removeCodeset(name: string): Array<FixCode> | null
   /**
    * The distinct dictionaries any field or definition names on its
    * `FIX:branches`, sorted.
@@ -3034,6 +3115,11 @@ export type JsMimeType = MimeType
  * later mutation of the dictionary leaves it as it was answered.
  */
 export declare class MsgType {
+  /**
+   * The fixed four-byte business category, or `null` for an unclassified
+   * custom definition.
+   */
+  get msgcat(): string | null
   /** The native canonical name. */
   get name(): string
   /** The complete wire message code. */
@@ -3458,10 +3544,27 @@ export declare class ProtocolField {
   get msgtype(): string | null
   /** Set this occurrence's complete wire message code. */
   set msgtype(value: string)
-  /** The symbolic name of a wire value in this field's inline enumeration. */
-  codeName(value: string): string | null
-  /** The wire value of a symbolic name or value in this field's inline enumeration. */
-  codeValue(text: string): string | null
+  /** The fixed four-byte business category this FIX field declares. */
+  get msgcat(): string | null
+  /** Set the FIX business category, or clear it with `null`. */
+  set msgcat(value: string | undefined | null)
+  /**
+   * The name of the FIX code set this field reads its values by, or
+   * `null` for a field drawing on none.
+   *
+   * A field states the name and never a copy of the members: the
+   * dictionary holds each set once under it, so a vocabulary is named,
+   * documented and aliased in one place however many fields read by it.
+   * `FixRegistry#codesetOf` is what answers the members.
+   */
+  get codeset(): string | null
+  /**
+   * Record the set this field reads by; `null` or an empty name removes
+   * the property, and a name no store can file throws leaving the field
+   * unchanged. A dictionary refuses a field naming a set it does not
+   * hold, so the set is stated before the field points at it.
+   */
+  set codeset(value: string | undefined | null)
   /**
    * The alternate tags, highest priority first.
    *
@@ -3868,21 +3971,22 @@ export declare class Scalar {
   /** Return deterministic hash bits shared with Rust and Python. */
   stableHash(): bigint
   /**
-   * This value as the variant encoding: one `Buffer` holding the
-   * version, the datatype's identifier and the payload the identifier
-   * says how to read - a number as its little-endian bytes, a text as a
+   * This value as the value stream: one `Buffer` holding the version,
+   * the datatype's identifier and the payload the identifier says how
+   * to read - a number as its little-endian bytes, a text as a
    * compression byte, a size and the characters, a nested value as a
    * count and its children - compressed with zstd past four kibibytes.
-   * What a variant column stores per row.
+   * A `variant` column stores the Parquet Variant encoding instead,
+   * which a cast into that datatype writes.
    */
-  intoVariantBytes(): Buffer
+  intoValueBytes(): Buffer
   /**
-   * The value one variant encoding holds, as `intoVariantBytes` wrote
-   * it. Throws naming the byte where the bytes could not be read:
+   * The value one value stream holds, as `intoValueBytes` wrote it.
+   * Throws naming the byte where the bytes could not be read:
    * another version, a byte naming no datatype, a payload cut short, or
    * bytes left after the value.
    */
-  static fromVariantBytes(data: Uint8Array): Scalar
+  static fromValueBytes(data: Uint8Array): Scalar
   /**
    * Digest this value's canonical byte representation.
    *
@@ -5909,6 +6013,29 @@ export interface FixCaptureView {
   msgsessionid: string | null
 }
 
+/**
+ * One member of a FIX code set, as the plain object JavaScript reads and
+ * writes.
+ *
+ * The record a store writes under `codesets/<name>.json`: the wire value
+ * and the symbolic name every member states, and the spellings, the wording
+ * and the group a specification adds where it has them. A key a member does
+ * not state is absent rather than empty, so a bare code is the two facts it
+ * is.
+ */
+export interface FixCode {
+  /** The wire value this code stands for. */
+  value: string
+  /** The symbolic name. */
+  name: string
+  /** The venue and per-version spellings that also reach this code. */
+  aliases?: Array<string>
+  /** The specification's own wording, decoded. */
+  doc?: string
+  /** The group the specification files this code under, decoded. */
+  group?: string
+}
+
 /** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
   /** The byte a numeric frame splits on where the line does not say. */
@@ -5936,12 +6063,17 @@ export interface FixCodecOptions {
    */
   batchRowSize?: number
   /**
-   * The threads the line and row doors read on; one when unstated. More
-   * read a stream a chunk ahead, each line on some thread, and answer in
-   * the lines' order, so the doors answer what one thread answers,
-   * sooner. Zero reads as one.
+   * The workers parsing and row conversion use; available CPUs when unstated.
+   * Arrow capture parsing holds at most one input batch per worker and
+   * yields in order; line doors use bounded row chunks. One reads lazily
+   * without a pool, and zero reads as one.
    */
   threads?: number
+  /**
+   * The epoch-aligned lifecycle snapshot width in exact nanoseconds.
+   * `null`, zero and a negative width disable snapshots.
+   */
+  snapshotNs?: bigint | null
   /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
@@ -5964,11 +6096,25 @@ export interface FixCodecOptions {
 }
 
 /**
+ * One named FIX code set, as the plain object JavaScript reads.
+ *
+ * The dictionary owns the members under the name and a field states only
+ * the name, so this is the pair read together: one vocabulary, however many
+ * fields draw on it.
+ */
+export interface FixCodeSetView {
+  /** The name the dictionary files this set under. */
+  name: string
+  /** The members, ordered by wire value. */
+  codes: Array<FixCode>
+}
+
+/**
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
  * The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
- * `snapunix` and `expirunix`; the identities `currhashcode`,
+ * `snapunix` and `exprtime`; the identities `currhashcode`,
  * `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
  * `parentuuids` list; the `srcuuids` list of the lines it was read from;
  * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
@@ -6083,7 +6229,7 @@ export interface FixEventView {
   /** When the chain was created, where stated. */
   creaunix: bigint | null
   /** When the chain expires, where stated. */
-  expirunix: bigint | null
+  exprtime: bigint | null
   /**
    * The instant of the message this one follows, where a lifecycle
    * stated it.
@@ -6114,6 +6260,8 @@ export interface FixEventView {
   sedolcode: string | null
   /** The instrument's Bloomberg code, where stated. */
   bloombergcode: string | null
+  /** The instrument's FIGI, where stated. */
+  figicode: string | null
   /** The instrument's CFI classification, where stated. */
   cficode: string | null
   /** The market the message names, where stated. */

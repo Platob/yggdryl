@@ -15,13 +15,13 @@ use crate::metadata::{
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::{
-    BloombergType, BooleanType, BytesType, CfiType, CountryType, CurrencyType, CusipType,
-    DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type, Float32Type,
-    Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
-    IntervalType, IsinType, MappingType, MediaTypeType, MicType, MimeTypeType, NullType,
-    RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructType,
-    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UriType, UuidType, VariantType, VersionType,
+    BloombergCodeType, BooleanType, BytesType, CfiCodeType, CountryType, CurrencyType,
+    CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType,
+    Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
+    Int32Type, Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType,
+    MimeTypeType, NullType, RunEndType, SedolCodeType, SequenceType, SideType, StateType,
+    StringType, StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type,
+    UInt32Type, UInt64Type, UnionType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1601,9 +1601,9 @@ field_leaves! {
     String => StringField / StringType,
     Country => CountryField / CountryType,
     Currency => CurrencyField / CurrencyType,
-    Mic => MicField / MicType,
-    Cfi => CfiField / CfiType,
-    Isin => IsinField / IsinType,
+    MicCode => MicCodeField / MicCodeType,
+    CfiCode => CfiCodeField / CfiCodeType,
+    IsinCode => IsinCodeField / IsinCodeType,
     Side => SideField / SideType,
     State => StateField / StateType,
     TimeInForce => TimeInForceField / TimeInForceType,
@@ -1623,9 +1623,10 @@ field_leaves! {
     Timezone => TimezoneField / TimezoneType,
     MimeType => MimeTypeField / MimeTypeType,
     MediaType => MediaTypeField / MediaTypeType,
-    Cusip => CusipField / CusipType,
-    Sedol => SedolField / SedolType,
-    Bloomberg => BloombergField / BloombergType,
+    CusipCode => CusipCodeField / CusipCodeType,
+    SedolCode => SedolCodeField / SedolCodeType,
+    BloombergCode => BloombergCodeField / BloombergCodeType,
+    FIGICode => FIGICodeField / FIGICodeType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different
@@ -1811,11 +1812,11 @@ impl Field {
 /// child, so a caller walking one object graph got two unrelated things from
 /// identical syntax.
 ///
-/// Chained subscripts are the nesting story: `field["order"]["price"]` descends
-/// two levels, because each subscript returns a node that subscripts again.
-/// There is no dotted-string or tuple path form.
+/// Each string subscript uses the shared selector path grammar. Chained
+/// subscripts and a dotted selector both descend through children; a literal
+/// dotted name must be quoted, as in `field[r#""literal.name""#]`.
 ///
-/// Panics when the name is not a child, as [`Index`] idiomatically does;
+/// Panics when the selector path does not resolve, as [`Index`] idiomatically does;
 /// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
@@ -1832,13 +1833,14 @@ impl Field {
 /// assert_eq!(order["id"].dtype(), &DataType::Int64);
 /// // Each subscript answers a node that subscripts again.
 /// assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
+/// assert_eq!(order["line.price"].dtype(), &DataType::Float64);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Panics
 ///
-/// Panics when this node has no child with that name.
+/// Panics when the selector path does not resolve to a child of this node.
 impl Index<&str> for Field {
     type Output = Self;
 
@@ -2315,8 +2317,8 @@ mod arrow {
     /// The core identity an Arrow field's extension metadata declares, when it
     /// declares one of the first-class extension-typed datatypes.
     pub(crate) enum RecognizedExtension {
-        /// The crate's own `yggdryl.variant` over its binary storage, the
-        /// variant encoding of each value.
+        /// The canonical `arrow.parquet.variant` over the struct of two
+        /// binaries the Parquet Variant encoding is.
         Variant,
         /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
         /// document says whether it is a geometry or a geography.
@@ -2375,8 +2377,9 @@ mod arrow {
     }
 
     /// Recognizes the Arrow extension spellings the first-class datatypes ride:
-    /// `geoarrow.wkb` over Binary storage, the crate's own `yggdryl.variant`
-    /// over Binary storage with an empty extension metadata document,
+    /// `geoarrow.wkb` over Binary storage, the canonical
+    /// `arrow.parquet.variant` over the two binaries of the Parquet Variant
+    /// encoding with an empty extension metadata document,
     /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
     /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
     /// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with

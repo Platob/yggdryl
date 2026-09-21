@@ -1,0 +1,25 @@
+{
+  "name": "priceprotectionscopecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "Local",
+      "doc": "Local (Exchange, ECN, ATS)"
+    },
+    {
+      "value": "2",
+      "name": "National",
+      "doc": "National (Across all national markets)"
+    },
+    {
+      "value": "3",
+      "name": "Global",
+      "doc": "Global (Across all markets)"
+    }
+  ]
+}

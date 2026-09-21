@@ -19,16 +19,16 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDateTime, PyInt, PyIterator};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData as CoreMarketEventData};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
-    FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,
-    FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
-    StructType, TimeUnit, Timezone,
+    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
+    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
+    MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -95,6 +95,78 @@ where
     Scalar: From<C>,
 {
     PyScalar::from_inner(Scalar::from(code.clone()))
+}
+
+/// One code as the record Python reads: `{"value", "name", "description",
+/// "aliases", "group"}`.
+///
+/// The shape `FIX:directions` already crosses in - one record per entry of
+/// the document, every key stated - because a code set is that same kind of
+/// document and a binding is a view rather than a second vocabulary. A key
+/// the specification said nothing about is `None` rather than absent, so one
+/// record reads like the next.
+fn code_record<'py>(py: Python<'py>, code: &CoreFixCode) -> PyResult<Bound<'py, PyDict>> {
+    let record = PyDict::new(py);
+    record.set_item("value", code.value())?;
+    record.set_item("name", code.name())?;
+    record.set_item("description", code.description())?;
+    let aliases: Vec<&str> = code.aliases().iter().map(AsRef::as_ref).collect();
+    record.set_item("aliases", aliases)?;
+    record.set_item("group", code.group())?;
+    Ok(record)
+}
+
+/// Every member of one stored set, in the order the document states them.
+fn code_records<'py>(
+    py: Python<'py>,
+    set: CoreFixCodeSet<'_>,
+) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    set.codes()
+        .map(|code| {
+            let code = CoreFixCode::from(code.map_err(value_error)?);
+            code_record(py, &code)
+        })
+        .collect()
+}
+
+/// One optional text of a code record, absent and `None` reading alike.
+fn code_text(record: &Bound<'_, PyAny>, key: &str) -> PyResult<Option<String>> {
+    match record.get_item(key) {
+        Ok(value) => value.extract::<Option<String>>(),
+        Err(_) => Ok(None),
+    }
+}
+
+/// The codes a Python value states, typed.
+///
+/// An iterable of records shaped the way `codeset` answers them, where
+/// `value` and `name` are the two keys a code has to state and the rest are
+/// optional - the one shape `directions` already crosses in, so the two
+/// document properties a caller states are stated alike.
+fn codes_from_py(codes: &Bound<'_, PyAny>) -> PyResult<Vec<CoreFixCode>> {
+    let mut held = Vec::new();
+    for record in codes.try_iter()? {
+        let record = record?;
+        let mut code = CoreFixCode::new(
+            record.get_item("name")?.extract::<String>()?,
+            record.get_item("value")?.extract::<String>()?,
+        );
+        if let Some(description) = code_text(&record, "description")? {
+            code = code.with_description(description);
+        }
+        if let Some(group) = code_text(&record, "group")? {
+            code = code.with_group(group);
+        }
+        if let Ok(aliases) = record.get_item("aliases")
+            && !aliases.is_none()
+        {
+            for alias in aliases.try_iter()? {
+                code.push_alias(alias?.extract::<String>()?);
+            }
+        }
+        held.push(code);
+    }
+    Ok(held)
 }
 
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
@@ -495,6 +567,120 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
+    /// The members of the code set `name`, or `None`.
+    ///
+    /// The lenient door beside `codeset`, which raises absence: a caller
+    /// asking whether a vocabulary is held asks this. The name folds the way
+    /// every name folds, so `SideCodeSet` and `sidecodeset` are one set.
+    fn get_codeset<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        self.inner
+            .get_codeset(name)
+            .map(|set| code_records(py, set))
+            .transpose()
+    }
+
+    /// The members of the code set `name`; absence is a `KeyError`.
+    ///
+    /// A field states the name of the set it reads by and the dictionary
+    /// holds the members, once, under that name: this is the door between
+    /// them. Each member is a record - `value`, `name`, `description`,
+    /// `aliases`, `group` - in the order the set states them, which is the
+    /// presentation rank the specification gives each code.
+    fn codeset<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        let set = self.inner.codeset(name).map_err(|error| absent(&error))?;
+        code_records(py, set)
+    }
+
+    /// The members of the set `field` reads by, or `None`.
+    ///
+    /// `field` is anything `Field` accepts. A field naming no set answers
+    /// `None`; a held field never names a set this dictionary lacks, because
+    /// every door a field arrives through refuses one that does.
+    fn codeset_of<'py>(
+        &self,
+        py: Python<'py>,
+        field: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        let field = core_field_from_value(field)?;
+        self.inner
+            .codeset_of(&field)
+            .map(|set| code_records(py, set))
+            .transpose()
+    }
+
+    /// The name of every code set held, in name order.
+    ///
+    /// The names alone, and named so: the shipped dictionary holds hundreds
+    /// of sets and one of them is read by a hundred and three fields, so
+    /// the members are asked for one set at a time through `codeset`. The
+    /// JavaScript view spells it `codesetNames` for the same reason.
+    fn codeset_names(&self) -> Vec<String> {
+        self.inner
+            .codesets()
+            .map(|set| set.name().to_owned())
+            .collect()
+    }
+
+    /// State the members of the code set `name`, replacing what it held.
+    ///
+    /// `codes` is an iterable of records - `value` and `name` are required,
+    /// `description`, `aliases` and `group` optional - or the canonical JSON
+    /// document a store writes, as one `str`. The set is filed under the
+    /// folded name, and two names may share a value - that is an alias - but
+    /// two codes may not share a name.
+    ///
+    /// An empty list removes the set, exactly as an empty tag or alias list
+    /// removes its own property; removing one a held field still reads by is
+    /// a `ValueError`, because a field may not be left naming a vocabulary
+    /// nothing states. One mutation: a refusal leaves the dictionary exactly
+    /// as it was.
+    fn set_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
+        let codes = codes_from_py(codes)?;
+        self.inner_mut()?
+            .set_codeset(name, &codes)
+            .map_err(value_error)
+    }
+
+    /// Fold `codes` into the code set `name`, keeping what it already held.
+    ///
+    /// The fold is by wire value: a placeholder name yields to a real one,
+    /// every surviving spelling is kept as an alias, and a description or a
+    /// group either side stated stays. So a venue's statement of a set
+    /// enriches the one the dictionary holds rather than replacing it, and a
+    /// set no dictionary held yet arrives whole.
+    fn merge_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
+        let codes = codes_from_py(codes)?;
+        self.inner_mut()?
+            .merge_codeset(name, &codes)
+            .map_err(value_error)
+    }
+
+    /// Remove the code set `name`, answering the members it held.
+    ///
+    /// A set nothing holds answers `None`. A set a held field still reads by
+    /// is a `ValueError` naming that field: the field is moved to another set
+    /// first, or removed with it.
+    fn remove_codeset<'py>(
+        &mut self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        self.inner_mut()?
+            .remove_codeset(name)
+            .map_err(value_error)?
+            .map(|codes| {
+                codes
+                    .iter()
+                    .map(|code| code_record(py, code))
+                    .collect::<PyResult<Vec<_>>>()
+            })
+            .transpose()
+    }
+
     /// The repeating group one counter tag opens, or `None`.
     ///
     /// `tag` is the counter's: `get_field_by_tag` answers the counter itself
@@ -846,6 +1032,12 @@ impl PyMsgType {
     #[getter]
     fn value(&self) -> &str {
         self.inner().as_str()
+    }
+
+    /// The definition's fixed four-byte business category, or `None`.
+    #[getter]
+    fn msgcat(&self) -> Option<&str> {
+        self.inner().msgcat()
     }
 
     /// The definition's own Struct field, read-only.
@@ -1346,9 +1538,10 @@ impl PyFixMsg {
     /// `fix_schema_carrying` built, or the one read off a batch - and `row`
     /// anything the `Scalar` boundary reads as it: a native `Scalar`, a
     /// mapping of names, a sequence in the schema's order. The typed
-    /// columns fill the holders, the content is rebuilt from the
-    /// `fixentries` column - so `into_bytes` re-emits the line the row was
-    /// read from, and a row without that column has no content - and a
+    /// columns fill the holders, while `fixentries` carries only content the
+    /// columns did not represent. `from_row` combines both, so a row without
+    /// that residual column still rebuilds its projected content; a wire is
+    /// rendered in canonical schema order rather than its arrival order. A
     /// capture's own column is carried - the one the crate tags,
     /// `sourceurl`, and every column no tag and no counter names - each
     /// under its name, as `carried` answers, and held as no fact; a column
@@ -1377,7 +1570,7 @@ impl PyFixMsg {
     #[staticmethod]
     fn _from_pickle(field: &str, value: &[u8], registry: &str) -> PyResult<Self> {
         let field = CoreField::from_json(field).map_err(value_error)?;
-        let value = Scalar::decode_variant_bytes(value).map_err(value_error)?;
+        let value = Scalar::decode_value_bytes(value).map_err(value_error)?;
         let registry = CoreFixRegistry::from_json(registry).map_err(value_error)?;
         CoreFixMsg::with_registry(Arc::new(registry), field, value)
             .map(Self::from_inner)
@@ -1621,7 +1814,7 @@ impl PyFixMsg {
             .map_err(value_error)?;
         let field = field.into_json().map_err(value_error)?;
         let value =
-            pyo3::types::PyBytes::new(py, &Scalar::from_sequence(values).into_variant_bytes())
+            pyo3::types::PyBytes::new(py, &Scalar::from_sequence(values).into_value_bytes())
                 .into_any()
                 .unbind();
         let registry = self.inner.registry().into_json().map_err(value_error)?;
@@ -1653,6 +1846,12 @@ impl PyFixMsg {
         PyFixHeader {
             inner: self.inner.header().clone(),
         }
+    }
+
+    /// The fixed four-byte business category lifted from the message type.
+    #[getter]
+    fn msgcat(&self) -> Option<&str> {
+        self.inner.lifted().msgcat()
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -1914,6 +2113,13 @@ impl PyFixMsg {
         self.inner.get_bloombergcode().map(code_scalar)
     }
 
+    /// The instrument's FIGI, read off `SecurityID(48)` under source `S` or
+    /// its alternate group; `None` where no checked identifier is stated.
+    #[getter]
+    fn figicode(&self) -> Option<PyScalar> {
+        self.inner.get_figicode().map(code_scalar)
+    }
+
     /// The instrument's classification, read off `CFICode(461)` and what
     /// the message says about the security; `None` where nothing does.
     #[getter]
@@ -1957,8 +2163,8 @@ impl PyFixMsg {
     /// comparable at all. The capture's own columns answer null - the one
     /// the crate tags, `sourceurl`, and every column no tag and no counter
     /// names - because a message holds no fact for any of
-    /// them; the capture readers state them on the row instead. The `fixentries` list closes the row with the
-    /// whole content, counted by `nofixentries`. A value a column will not
+    /// them; the capture readers state them on the row instead. The `fixentries` list holds only residual
+    /// content, counted by `nofixentries`; projected values remain in their columns. A value a column will not
     /// hold is that column's null; a column that cannot be null keeps the
     /// refusal as a `ValueError`.
     #[allow(clippy::wrong_self_convention)]
@@ -2083,16 +2289,19 @@ impl PyFixCodec {
     /// empty; `batch_byte_size` and `batch_row_size` are the raw bytes and
     /// the row count one Arrow batch targets, the core's 128 MiB and 32,768
     /// rows when unstated, whichever the batch reaches first;
-    /// `threads` is how many threads the line and row doors read on, one
-    /// when unstated - more read a stream a chunk ahead, each line on some
-    /// thread, and answer in the lines' order, so the doors answer what one
-    /// thread answers, sooner; `include_msgtypes` and `exclude_msgtypes`
+    /// `threads` is how many threads the line and row doors read on, the
+    /// available CPUs when unstated; `threads=1` pulls a stream lazily,
+    /// while more read a stream ahead and answer in its order. Arrow parse
+    /// doors give whole input batches to at most this many jobs and keep
+    /// their batch order; `include_msgtypes` and `exclude_msgtypes`
     /// are the message types a parse keeps and refuses, each read before a
     /// frame is built, spelled
     /// as codes or as names - `"0"`, `"Heartbeat"` - with `"unknown"`
     /// standing for a line stating no type at all. Unstated, the core
     /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
-    /// empty `exclude_msgtypes` keeps every type.
+    /// empty `exclude_msgtypes` keeps every type. `snapshot_ns` is an
+    /// epoch-aligned lifecycle snapshot width in nanoseconds; `None`, zero
+    /// and a negative width disable snapshots.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -2108,6 +2317,7 @@ impl PyFixCodec {
         include_msgtypes=None,
         exclude_msgtypes=None,
         threads=None,
+        snapshot_ns=None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -2123,6 +2333,7 @@ impl PyFixCodec {
         include_msgtypes: Option<Vec<String>>,
         exclude_msgtypes: Option<Vec<String>>,
         threads: Option<usize>,
+        snapshot_ns: Option<i64>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -2158,6 +2369,9 @@ impl PyFixCodec {
         }
         if let Some(held) = threads {
             inner = inner.with_threads(held);
+        }
+        if let Some(held) = snapshot_ns {
+            inner = inner.with_snapshot_ns(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2215,11 +2429,18 @@ impl PyFixCodec {
         self.inner.batch_row_size()
     }
 
-    /// The threads the line and row doors read on; one reads a stream
-    /// where it stands.
+    /// The threads the line and row doors read on: the available CPUs by
+    /// default, and one where a stream is pulled lazily.
     #[getter]
     fn threads(&self) -> usize {
         self.inner.threads()
+    }
+
+    /// The epoch-aligned lifecycle snapshot width in nanoseconds, or `None`
+    /// where snapshots are disabled.
+    #[getter]
+    fn snapshot_ns(&self) -> Option<i64> {
+        self.inner.snapshot_ns()
     }
 
     /// The message types a parse keeps, empty where it keeps every type
@@ -2367,7 +2588,9 @@ impl PyFixCodec {
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the bytes each row lands as
-    /// against `batch_byte_size`.
+    /// against `batch_byte_size`. With more than one `threads`, at most that
+    /// many whole input batches are jobs at once and their answers stay in
+    /// input-batch order.
     ///
     /// The capture's own columns fill nothing: the carried ones, and the one
     /// the crate tags - a `sourceurl` column - are read off the source row
@@ -2595,8 +2818,9 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// rest - because a table is read by time and joined by identity; then the
 /// standard header, the fields a consumer reads, the three groups worth
 /// persisting whole, the trailer, `MsgDirection` (385), and the one
-/// `fixentries` list that closes every row with the whole content under the
-/// `nofixentries` that counts it. Columns are spelled by the dictionary's
+/// `fixentries` list that closes every row with residual content under the
+/// `nofixentries` that counts it. Projected content stays in its columns.
+/// Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,
 /// and is what fills it. `beginstring`, `currunix`, `creaunix`, `currhashcode`,
@@ -2654,7 +2878,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The definitions this crate lists, in tag order from 65003.
 ///
 /// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix`,
-/// `expirunix` - its identities - `currhashcode`, `crosshashcode`,
+/// `exprtime` - its identities - `currhashcode`, `crosshashcode`,
 /// `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
@@ -2671,31 +2895,6 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
     yggdryl::fix_crate_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
         .map_err(value_error)
-}
-
-/// The vocabulary one Ullink `CBlock` declares, in declaration order.
-///
-/// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
-/// field carries the `FIX:tag` that keys it, the dialect in `FIX:branches`,
-/// and whatever code set the file's maps decode for it, which is what
-/// `FixRegistry.add_fields` needs to fold one counterparty's file into a
-/// dictionary that exists. The message roots are what the registry form
-/// answers instead.
-///
-/// `dialect` names the dictionary, and the file names it when the caller does
-/// not: with none supplied the location's own stem stands in. A stem or a
-/// dialect that is empty or carries a comma is a `ValueError` rather than a
-/// guess.
-#[pyfunction]
-#[pyo3(name = "fix_cfb_fields", signature = (location, dialect=None))]
-pub(crate) fn fix_cfb_fields(
-    location: &Bound<'_, PyAny>,
-    dialect: Option<&str>,
-) -> PyResult<Vec<PyField>> {
-    read_located(location, |handle| {
-        CoreFixField::from_cfb_file(handle, dialect)
-    })
-    .map(|held| held.into_iter().map(PyField::from_inner).collect())
 }
 
 /// The `(name, value)` pairs of one message's root, in declared order.
@@ -3098,8 +3297,8 @@ impl PyMarketEventData {
 
     /// When the event stops being good, or `None`.
     #[getter]
-    fn expirunix(&self) -> Option<i64> {
-        self.inner.get_expirunix()
+    fn exprtime(&self) -> Option<i64> {
+        self.inner.get_exprtime()
     }
 
     /// When the event this one follows happened, or `None`.
@@ -3174,6 +3373,12 @@ impl PyMarketEventData {
     #[getter]
     fn bloombergcode(&self) -> Option<PyScalar> {
         self.inner.get_bloombergcode().map(code_scalar)
+    }
+
+    /// The instrument's FIGI, or `None`.
+    #[getter]
+    fn figicode(&self) -> Option<PyScalar> {
+        self.inner.get_figicode().map(code_scalar)
     }
 
     /// The instrument's CFI classification, or `None`.

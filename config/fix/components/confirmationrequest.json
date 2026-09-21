@@ -181,6 +181,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "allocid,secondaryallocid,individualallocid",
+    "FIX:msgcat": "CONF",
     "FIX:msgtype": "BH",
     "FIX:tag": "162059",
     "description": "MsgType = BH",

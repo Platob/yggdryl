@@ -1,0 +1,65 @@
+{
+  "name": "massactionscopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AllOrdersForASecurity",
+      "doc": "All orders for a security"
+    },
+    {
+      "value": "2",
+      "name": "AllOrdersForAnUnderlyingSecurity",
+      "doc": "All orders for an underlying security"
+    },
+    {
+      "value": "3",
+      "name": "AllOrdersForAProduct",
+      "doc": "All orders for a product"
+    },
+    {
+      "value": "4",
+      "name": "AllOrdersForACFICode",
+      "doc": "All orders for a CFI Code"
+    },
+    {
+      "value": "5",
+      "name": "AllOrdersForASecurityType",
+      "doc": "All orders for a security type"
+    },
+    {
+      "value": "6",
+      "name": "AllOrdersForATradingSession",
+      "doc": "All orders for a trading session"
+    },
+    {
+      "value": "7",
+      "name": "AllOrders",
+      "doc": "All orders"
+    },
+    {
+      "value": "8",
+      "name": "AllOrdersForAMarket",
+      "doc": "All orders for a market"
+    },
+    {
+      "value": "9",
+      "name": "AllOrdersForAMarketSegment",
+      "doc": "All orders for a market segment (or multiple segments)"
+    },
+    {
+      "value": "10",
+      "name": "AllOrdersForASecurityGroup",
+      "doc": "All orders for a security group"
+    },
+    {
+      "value": "11",
+      "name": "CancelForSecurityIssuer",
+      "doc": "All orders for an issuer"
+    },
+    {
+      "value": "12",
+      "name": "CancelForIssuerOfUnderlyingSecurity",
+      "doc": "All orders for an issuer of underlying security"
+    }
+  ]
+}

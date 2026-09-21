@@ -3,14 +3,17 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use crate::xxhash::Xxh3;
+use crate::DigestAlgorithm;
+use crate::xxhash::Feed;
 
 /// Hash canonical display output with the stable Yggdryl XXH3-64 contract.
 ///
-/// The rendering is streamed through the hasher rather than assembled, so a
+/// The rendering is written into the sink rather than assembled: a short
+/// one - a name, a term, a plan - is staged on the stack and hashed in one
+/// shot, and a long one streams from the byte it outgrows the stage, so a
 /// value whose canonical text is large costs no copy of it.
 pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
-    let mut hasher = StableHash::default();
+    let mut hasher = StableHash::new();
     let result = fmt::write(&mut hasher, format_args!("{value}"));
     debug_assert!(result.is_ok(), "the stable hash sink is infallible");
     hasher.finish()
@@ -18,7 +21,7 @@ pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
 
 /// Hash a native structural [`Hash`] implementation with the stable sink.
 pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
-    let mut hasher = StableHash::default();
+    let mut hasher = StableHash::new();
     value.hash(&mut hasher);
     hasher.finish()
 }
@@ -26,12 +29,17 @@ pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
 /// XXH3-64 behind explicit little-endian integer writes.
 ///
 /// [`Hasher`]'s default `write_u8` through `write_usize` bodies use
-/// native-endian bytes, so handing a bare [`Xxh3`] to a [`Hash`]
+/// native-endian bytes, so handing a bare XXH3 state to a [`Hash`]
 /// implementation would make a stored hash disagree between a big-endian and a
 /// little-endian machine. Overriding them is the whole reason this stays a
 /// named type rather than an inline call.
-#[derive(Default)]
-struct StableHash(Xxh3);
+struct StableHash(Feed);
+
+impl StableHash {
+    const fn new() -> Self {
+        Self(Feed::new(DigestAlgorithm::Xxh3))
+    }
+}
 
 impl fmt::Write for StableHash {
     fn write_str(&mut self, value: &str) -> fmt::Result {
@@ -46,7 +54,7 @@ impl Hasher for StableHash {
     }
 
     fn write(&mut self, bytes: &[u8]) {
-        self.0.write_bytes(bytes);
+        self.0.write(bytes);
     }
 
     fn write_u8(&mut self, value: u8) {
@@ -126,7 +134,7 @@ mod tests {
         // little-endian one stored. Pointer widths always use 64-bit storage.
         macro_rules! check {
             ($method:ident, $value:expr, $bytes:expr) => {{
-                let mut sink = StableHash::default();
+                let mut sink = StableHash::new();
                 sink.$method($value);
                 let expected = xxh3(&$bytes);
                 assert_eq!(sink.finish(), expected);
@@ -151,7 +159,7 @@ mod tests {
         check!(write_i128, i128::MIN + 1, (i128::MIN + 1).to_le_bytes());
         check!(write_isize, -7_isize, (-7_i64).to_le_bytes());
 
-        let mut sink = StableHash::default();
+        let mut sink = StableHash::new();
         sink.write_u32(0x0102_0304);
         sink.write_i64(-2);
         sink.write_usize(7);

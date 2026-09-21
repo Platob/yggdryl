@@ -589,6 +589,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "AX",
     "FIX:tag": "844452",
     "description": "MsgType = AX",

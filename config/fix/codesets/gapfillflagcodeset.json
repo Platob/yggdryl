@@ -1,0 +1,21 @@
+{
+  "name": "gapfillflagcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "SequenceReset",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Sequence Reset, Ignore Msg Seq Num (N/A For FIXML - Not Used)"
+    },
+    {
+      "value": "Y",
+      "name": "GapFillMessage",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Gap Fill Message, Msg Seq Num Field Valid"
+    }
+  ]
+}

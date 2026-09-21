@@ -190,6 +190,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "z",
     "FIX:tag": "261914",
     "description": "MsgType = z (lowercase Z)",

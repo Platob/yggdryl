@@ -1,0 +1,25 @@
+{
+  "name": "allochandlinstcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Match",
+      "doc": "Match"
+    },
+    {
+      "value": "2",
+      "name": "Forward",
+      "doc": "Forward"
+    },
+    {
+      "value": "3",
+      "name": "ForwardAndMatch",
+      "doc": "Forward and Match"
+    },
+    {
+      "value": "4",
+      "name": "AutoClaimGiveUp",
+      "doc": "Auto claim give-up"
+    }
+  ]
+}

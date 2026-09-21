@@ -1,0 +1,25 @@
+{
+  "name": "payreportstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Received",
+      "doc": "Received, not yet processed"
+    },
+    {
+      "value": "1",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "3",
+      "name": "Disputed",
+      "doc": "Disputed"
+    }
+  ]
+}

@@ -4,9 +4,11 @@
 //! it: `Rule80A(47)` became `OrderCapacity(528)` beside
 //! `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)`
 //! folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence
-//! with role `1`. Those rules are facts about the field being restated, so
-//! they travel on it: a registry adds or edits one by editing metadata, and
-//! nothing in Rust holds a table of them.
+//! with role `1`. Those retirements are the crate's own
+//! [table](super::retired). A rule a registry states of its own is a fact
+//! about the field being restated, so it travels on the field: a registry
+//! adds or edits one by editing metadata, and a field's own document wins
+//! whole over the specification's entries for its tag.
 //!
 //! `FIX:replacements` is that document: one [canonical
 //! document](super::document) of entries in **document order**, read

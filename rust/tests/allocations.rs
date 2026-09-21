@@ -23,6 +23,7 @@ use std::fmt::Write as _;
 use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use std::sync::Arc;
 
@@ -35,8 +36,8 @@ use yggdryl::{
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
-    FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
-    Timezone, Version,
+    FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar,
+    TimeUnit, Timezone, Value, Variant, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -129,6 +130,103 @@ fn costs(what: &str, each: usize, work: impl FnMut()) {
         repeated,
         each * 1_000,
         "{what} did not cost {each} per read over a thousand"
+    );
+}
+
+/// Pin the measured codec cost after warming shared empty metadata.
+fn variant_cost(what: &str, expected: usize, work: impl FnMut()) {
+    let (once, repeated) = counted_once_and_repeated(work);
+    assert_eq!(once, expected, "variant {what}: allocations on one call");
+    assert_eq!(
+        repeated,
+        expected * 1_000,
+        "variant {what}: repeated allocations"
+    );
+    eprintln!("variant_{what}: once={once} repeated={repeated}");
+}
+
+fn variant_object(fields: usize) -> Scalar {
+    Scalar::from_struct((0..fields).map(|index| {
+        (
+            format!("field{index:04}"),
+            Scalar::from(i64::try_from(index).expect("a small fixture")),
+        )
+    }))
+    .expect("the fixture builds")
+}
+
+fn variant_nested(width: usize) -> Scalar {
+    let children = Scalar::from_sequence(
+        (0..width).map(|index| Scalar::from(i64::try_from(index).expect("a small fixture"))),
+    );
+    Scalar::from_sequence([children.clone(), children])
+}
+
+#[test]
+fn variant_allocations_are_encoding_buffers_and_decoded_values() {
+    let primitive = Scalar::from(7_i64);
+    let object4 = variant_object(4);
+    let object64 = variant_object(64);
+    let nested = variant_nested(64);
+    let primitive_variant = Variant::encode(&primitive).expect("the fixture encodes");
+    let object4_variant = Variant::encode(&object4).expect("the fixture encodes");
+    let object64_variant = Variant::encode(&object64).expect("the fixture encodes");
+    let nested_variant = Variant::encode(&nested).expect("the fixture encodes");
+
+    // Empty metadata is shared; encoding retains its payload after one scratch Vec.
+    variant_cost("primitive_encode", 2, || {
+        black_box(primitive.into_variant().expect("the primitive encodes"));
+    });
+    variant_cost("primitive_decode", 0, || {
+        black_box(Scalar::from_variant(&primitive_variant).expect("the primitive decodes"));
+    });
+    variant_cost("object4_encode", 12, || {
+        black_box(object4.into_variant().expect("the object encodes"));
+    });
+    variant_cost("object4_decode", 2, || {
+        black_box(Scalar::from_variant(&object4_variant).expect("the object decodes"));
+    });
+    variant_cost("object64_encode", 25, || {
+        black_box(object64.into_variant().expect("the object encodes"));
+    });
+    variant_cost("object64_decode", 11, || {
+        black_box(Scalar::from_variant(&object64_variant).expect("the object decodes"));
+    });
+    // Each of the three decoded lists owns one final Arc slice, with no staging Vec.
+    variant_cost("nested_decode", 3, || {
+        black_box(Scalar::from_variant(&nested_variant).expect("the sequence decodes"));
+    });
+    let decoded = Scalar::from_variant(&nested_variant).expect("the sequence decodes");
+    variant_cost("nested_scalar_clone", 0, || {
+        black_box(decoded.clone());
+    });
+    variant_cost("nested_variant_clone", 0, || {
+        black_box(nested_variant.clone());
+    });
+}
+
+#[test]
+fn variant_identity_projections_allocate_nothing() {
+    let primitive = Int64::new(7);
+    let encoded = Value::into_variant(&primitive).expect("the integer encodes");
+    let wrapped = Scalar::Variant(encoded.clone());
+
+    costs("a Variant Value into_variant projection", 0, || {
+        black_box(Value::into_variant(&encoded).expect("the variant stays itself"));
+    });
+    costs("a Variant Value from_variant projection", 0, || {
+        black_box(<Variant as Value>::from_variant(&encoded).expect("the variant stays itself"));
+    });
+    costs("a Scalar::Variant into_variant projection", 0, || {
+        black_box(
+            wrapped
+                .into_variant()
+                .expect("the wrapped variant stays itself"),
+        );
+    });
+    assert_eq!(
+        <Int64 as Value>::from_variant(&encoded).expect("the exact integer decodes"),
+        primitive
     );
 }
 
@@ -432,9 +530,11 @@ fn a_fix_registry_lookup_borrows_whatever_the_catalog_walks_past() {
         });
     }
     // A name nothing declares is the one probe that is not free: the fold
-    // renders the spelling it looks up before it can say there is no field
-    // under it.
-    costs("a name nothing declares", 4, || {
+    // parses the spelling it looks up as a path - the tokens, the segments
+    // and the path they make - before it can say there is no field under
+    // it. It last moved down by one when the reserved-word check began to
+    // compare a word case-insensitively rather than render it lower-cased.
+    costs("a name nothing declares", 3, || {
         let _ = black_box(registry.get_field(black_box(yggdryl::FixKey::Name("absent"))));
     });
     free("the counter door", || {
@@ -490,27 +590,37 @@ fn reading_which_way_a_line_moved_allocates_nothing() {
 
 #[test]
 fn a_fix_code_lookup_allocates_nothing() {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
+        )
+        .expect("a static code set");
     let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(9_995).expect("a static tag");
     field
         .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])
-        .expect("a static code set");
-    let view = field.as_fix();
+        .set_codeset("sidecodeset")
+        .expect("the set the field reads by");
+    // The field names the set and the dictionary holds its members, so the
+    // name is resolved here, once: what is counted below is the scan over
+    // the set alone.
+    let set = registry.codeset_of(&field).expect("a held code set");
     free("a code by its wire value", || {
-        let _ = black_box(view.code(black_box("1")));
+        let _ = black_box(set.code(black_box("1")));
     });
     free("a code by its name", || {
-        let _ = black_box(view.code_by_name(black_box("buy")));
+        let _ = black_box(set.code_by_name(black_box("buy")));
     });
     free("a name for a wire value", || {
-        let _ = black_box(view.code_name(black_box("2")));
+        let _ = black_box(set.code_name(black_box("2")));
     });
     free("a value no code spells", || {
-        let _ = black_box(view.code(black_box("9")));
+        let _ = black_box(set.code(black_box("9")));
     });
     free("the walk over the set", || {
-        let _ = black_box(view.codes().count());
+        let _ = black_box(set.codes().count());
     });
 }
 
@@ -574,6 +684,40 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
     free("get_by_path", || {
         let _ = black_box(msg.get_by_path(black_box(&absent_member)));
+    });
+}
+
+#[test]
+fn schema_path_hits_and_misses_on_short_names_allocate_nothing() {
+    // The nested child proves the common root lookup does not fall through to
+    // a traversal. This pins only one short identifier, not parsed compound or
+    // long paths.
+    let nested = StructType::from_fields([DataType::Int64.required_field("outside")])
+        .map(DataType::from)
+        .expect("a nested struct")
+        .required_field("nested");
+    let row = StructType::from_fields([DataType::Int64.required_field("id"), nested])
+        .map(DataType::from)
+        .expect("a row")
+        .required_field("row");
+    let dtype = row.dtype();
+
+    assert_eq!(dtype.get_field_by_path("id").map(Field::name), Some("id"));
+    assert!(dtype.get_field_by_path("missing").is_none());
+    assert_eq!(row.get_field_by_path("id").map(Field::name), Some("id"));
+    assert!(row.get_field_by_path("missing").is_none());
+
+    free("a short datatype path hit and miss", || {
+        black_box((
+            dtype.get_field_by_path(black_box("id")).is_some(),
+            dtype.get_field_by_path(black_box("missing")).is_none(),
+        ));
+    });
+    free("a short field path hit and miss", || {
+        black_box((
+            row.get_field_by_path(black_box("id")).is_some(),
+            row.get_field_by_path(black_box("missing")).is_none(),
+        ));
     });
 }
 
@@ -1061,6 +1205,54 @@ fn canonicalizing_a_row_a_schema_already_holds_allocates_nothing() {
     );
 }
 
+fn row_storage_fixture(width: usize) -> (Field, Scalar, Scalar) {
+    let fields = (0..width)
+        .map(|index| DataType::Int64.required_field(format!("c{index}")))
+        .collect::<Vec<_>>();
+    let named = Scalar::from_struct(
+        fields
+            .iter()
+            .map(|field| (field.name(), Scalar::from(7_i32))),
+    )
+    .expect("unique column names");
+    let row = Scalar::from_sequence((0..width).map(|_| Scalar::from(7_i32)));
+    let field = DataType::from(StructType::from_fields(fields).expect("unique fields"))
+        .required_field("row");
+    (field, row, named)
+}
+
+#[test]
+fn canonical_row_storage_is_allocated_once_when_cells_change() {
+    for width in [4, 64, 1_024] {
+        let (field, row, _) = row_storage_fixture(width);
+        costs(&format!("canonicalizing {width} integer cells"), 1, || {
+            black_box(field.canonicalize_value(black_box(&row).clone()).unwrap());
+        });
+    }
+}
+
+#[test]
+fn canonical_row_storage_is_allocated_once_for_named_input() {
+    for width in [4, 64] {
+        let (field, _, named) = row_storage_fixture(width);
+        costs(&format!("ordering {width} named integer cells"), 1, || {
+            black_box(field.canonicalize_value(black_box(&named).clone()).unwrap());
+        });
+    }
+}
+
+#[test]
+fn typed_row_storage_is_allocated_once_for_named_or_rewritten_input() {
+    for width in [4, 64] {
+        let (field, row, named) = row_storage_fixture(width);
+        for (shape, value) in [("ordered", row), ("named", named)] {
+            costs(&format!("reading {width} {shape} integer cells"), 1, || {
+                black_box(FieldRecord::new(&field, black_box(&value).clone()).unwrap());
+            });
+        }
+    }
+}
+
 #[test]
 fn rewriting_a_layout_shares_the_storage_it_rewrites() {
     // An offset width is a layout, not a payload. Rewriting between two of
@@ -1356,7 +1548,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 35] = [
+    let seeds: [(DataTypeId, Scalar); 36] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1380,12 +1572,13 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
-        (DataTypeId::Mic, Scalar::from("XNAS")),
-        (DataTypeId::Cfi, Scalar::from("ESVUFR")),
-        (DataTypeId::Isin, Scalar::from("US0378331005")),
-        (DataTypeId::Cusip, Scalar::from("037833100")),
-        (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
-        (DataTypeId::Bloomberg, Scalar::from("AAPL US EQUITY")),
+        (DataTypeId::MicCode, Scalar::from("XNAS")),
+        (DataTypeId::CfiCode, Scalar::from("ESVUFR")),
+        (DataTypeId::IsinCode, Scalar::from("US0378331005")),
+        (DataTypeId::CusipCode, Scalar::from("037833100")),
+        (DataTypeId::SedolCode, Scalar::from("B0YBKJ7")),
+        (DataTypeId::BloombergCode, Scalar::from("AAPL US EQUITY")),
+        (DataTypeId::FIGICode, Scalar::from("BBG000BLNQ16")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -1565,6 +1758,28 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
     }
 }
 
+#[test]
+fn a_typed_row_projects_without_general_row_staging() {
+    for width in [4, 64] {
+        let (field, row) = wide_row(width);
+        let record = FieldRecord::new(&field, row.clone()).unwrap();
+        let rows = Scalar::from_sequence([row]);
+        // Warm Arrow field projection caches before comparing the two doors.
+        drop(yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
+        drop(record.clone().into_arrow_batch().unwrap());
+        let (general_cost, expected) =
+            counted(|| yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
+        let prepared = record.clone();
+        let (typed_cost, actual) = counted(|| prepared.into_arrow_batch().unwrap());
+        assert_eq!(actual, expected);
+        eprintln!("{width}-column Arrow row: general={general_cost}, typed={typed_cost}");
+        assert!(
+            typed_cost < general_cost,
+            "a proven row must skip general row staging"
+        );
+    }
+}
+
 /// A framed body of `pairs` pairs, every one of them a field the dictionary
 /// holds.
 ///
@@ -1595,13 +1810,10 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// takes it: the page's own vector saved at each, and the one source the
 /// message states - the line it was read from - paid instead.
 ///
-/// The constant last moved down by two when the enriching pass began to
-/// settle a message once, after everything it writes: one arrival record
-/// derived and one digest fed per message, rather than one per write.
-/// It last moved up by one when the content code took `MsgType` as a
-/// cell of its own: the header's one tag that says what a message is is
-/// fed beside the lifted fields, and its text is one allocation.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
+/// Per-slot `Vec` buffers are gone: every unique ordinary field has one
+/// inline scalar, and the fallback `BeginString` contributes once, saving
+/// `pairs + 1` allocations from this path.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 35), (64, 38)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1651,7 +1863,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (40, 46)), (16, (60, 90)), (64, (115, 241))];
+    [(4, (31, 37)), (16, (35, 65)), (64, (38, 164))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1733,11 +1945,11 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// keys no range of the line names - so they are the one thing on this path
 /// that has to be built rather than pointed at.
 ///
-/// Each is exactly one allocation: the path, held as the bytes it is. That is
-/// the whole reason a rendered key is not a `TextBytes` - wrapping one in a
-/// counted page of its own is three, the rendered vector, a copy of it and
-/// the page, and the page is then only ever borrowed back as a slice. Two
-/// more per member, measured, on the very path whose cost is named above.
+/// Each rendered key is exactly one allocation: the path, held as the bytes
+/// it is, rather than a counted page that would only be borrowed back.
+/// Members stay in `Member::Value` and the group keeps occurrences, so no
+/// `Slot.values` buffer exists. A packed row has exactly three scalar slots:
+/// `MsgType`, the counter, and fallback `BeginString`.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
 /// and the rest of it is the row a wider group builds. The codec reads a
@@ -1745,7 +1957,8 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// packed value would have been scanned into is not among these.
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 85), (16, 147)];
+///
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 77), (16, 137)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1768,28 +1981,35 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 
 /// What the same three lines cost through the door that takes a decoded line.
 ///
-/// The same count as [`FIX_LINE_COSTS`] at every width, and two things move
-/// inside it. One allocation is saved: the page's own buffer. A caller
-/// holding a [`TextLine`] already owns the bytes as a range of a page it
-/// read them into, so the codec is handed that page instead of making a
-/// second one - which is what the byte door must do, because a bare slice
-/// is not a page and a message keeps ranges of one. One allocation is paid:
-/// the source. A message read from a line states that line's identity as
-/// the one element it was read from, and the list holding it is the
-/// message's own; the byte door reads from no element and states none.
+/// One less than [`FIX_LINE_COSTS`] at every width, and three things move
+/// inside it. Two allocations are saved: the page's own buffer and the
+/// handle that counts it. A caller holding a [`TextLine`] already owns the
+/// bytes as a range of a page it read them into, so the codec is handed
+/// that page instead of making a second one - which is what the byte door
+/// must do, because a bare slice is not a page and a message keeps ranges
+/// of one. One allocation is paid: the source. A message read from a line
+/// states that line's identity as the one element it was read from, and
+/// the list holding it is the message's own; the byte door reads from no
+/// element and states none.
 ///
-/// Both are per message and not per pair, which is exactly right: a page is
-/// one page and a source one source however many pairs the line carries, so
-/// the slope is unchanged and only the constant moves. Three widths again, so
-/// that the claim is the constant and not a number that happens to be equal.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
+/// All three are per message and not per pair, which is exactly right: a
+/// page is one page and a source one source however many pairs the line
+/// carries, so the slope is unchanged and only the constant moves. Three
+/// widths again, so that the claim is the constant and not a number that
+/// happens to be equal.
+///
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 34), (64, 37)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     let codec = FixCodec::new(Arc::new(fix_registry(64)));
     for ((pairs, each), (widest, bytes)) in FIX_TEXT_LINE_COSTS.iter().zip(FIX_LINE_COSTS) {
         assert_eq!(*pairs, widest, "the two pins measure the same widths");
-        assert_eq!(*each, bytes, "the page saved is the source paid");
+        assert_eq!(
+            *each + 1,
+            bytes,
+            "the page and its handle saved are the source paid and one more"
+        );
         let held = fix_pairs_line(*pairs);
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and
@@ -2232,6 +2452,26 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
 }
 
 #[test]
+fn encoded_variants_build_arrow_columns_without_per_row_allocations() {
+    let field = DataType::Variant.nullable_field("value");
+    let encoded = Scalar::Variant(variant_object(4).into_variant().unwrap());
+    let mut counts = Vec::new();
+    for rows in [16_usize, 1_024, 16_384] {
+        let column = Scalar::from_sequence((0..rows).map(|_| encoded.clone()));
+        let build = || yggdryl::arrow::array_from_value(&field, &column).unwrap();
+        drop(build());
+        let (allocations, array) = counted(build);
+        assert_eq!(array.len(), rows);
+        counts.push(allocations);
+    }
+    eprintln!("encoded_variant_arrow_columns: {counts:?} allocations at 16, 1024, 16384 rows");
+    assert!(
+        counts.windows(2).all(|pair| pair[0] == pair[1]),
+        "encoded Variant columns must allocate their final buffers, not buffers per row: {counts:?}"
+    );
+}
+
+#[test]
 fn an_ascii_payload_in_a_declared_charset_column_transcribes_by_borrowing() {
     // Every charset with a byte to transcribe is still ASCII-compatible, so an
     // all-ASCII payload is already its own answer. `decode`, `decode_lossy`
@@ -2274,6 +2514,70 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
 }
 
 #[test]
+fn default_aliases_allocation_profile_is_idempotent() {
+    // Before direct reindexing, the first pass made 313,853,260 allocations
+    // by refreshing the catalog for each of 170 fields; the repeat still made
+    // 7,867,934. One alias registration now rebuilds the catalog once, so the
+    // first cap permits one refresh with 37% fixture headroom. An already
+    // aliased registry skips that refresh; its cap leaves room for spelling
+    // generation but remains below the cost of cloning the full catalog.
+    const FIRST_MAX_ALLOCATIONS: usize = 2_500_000;
+    const REPEATED_MAX_ALLOCATIONS: usize = 4_096;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+    let loaded_at = Instant::now();
+    let registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    let load_elapsed = loaded_at.elapsed();
+
+    let first_input = registry.clone();
+    let first_at = Instant::now();
+    let (first_allocations, registered) = counted(|| {
+        first_input
+            .with_default_aliases()
+            .expect("the committed aliases register")
+    });
+    let first_elapsed = first_at.elapsed();
+    assert!(
+        first_allocations <= FIRST_MAX_ALLOCATIONS,
+        "default aliases first pass made {first_allocations} allocations; \
+         the one catalog refresh budget is {FIRST_MAX_ALLOCATIONS}"
+    );
+    assert_eq!(
+        registered
+            .field_by_name("askprice")
+            .expect("AskPrice resolves")
+            .name(),
+        "offerpx",
+        "the default aliases retain their canonical owner"
+    );
+
+    let repeated_input = registered.clone();
+    let repeated_at = Instant::now();
+    let (repeated_allocations, repeated) = counted(|| {
+        repeated_input
+            .with_default_aliases()
+            .expect("registering aliases twice succeeds")
+    });
+    let repeated_elapsed = repeated_at.elapsed();
+    assert!(
+        repeated_allocations <= REPEATED_MAX_ALLOCATIONS,
+        "default aliases repeat made {repeated_allocations} allocations; \
+         the no-op budget is {REPEATED_MAX_ALLOCATIONS}"
+    );
+    assert_eq!(
+        repeated
+            .field_by_name("askprice")
+            .expect("AskPrice still resolves")
+            .name(),
+        "offerpx"
+    );
+    eprintln!(
+        "default_aliases: load={load_elapsed:?}; first={first_allocations} allocations, \
+         {first_elapsed:?}; repeated={repeated_allocations} allocations, {repeated_elapsed:?}"
+    );
+}
+
+#[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
@@ -2307,4 +2611,41 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
          {cold} cold, {warm} warm"
     );
     assert_eq!(warm, again, "the refusal is kept, not recompiled");
+}
+#[test]
+fn instrument_codes_construct_and_classify_without_allocating() {
+    use yggdryl::{BloombergCode, CfiCode, CusipCode, FIGICode, IsinCode, SedolCode};
+    free("long Bloomberg validation", || {
+        assert!(BloombergCode::is_canonical(
+            "AAPL US Equity Long Identifier"
+        ));
+    });
+    free("ISIN construction", || {
+        std::hint::black_box(IsinCode::new("us0378331005").unwrap());
+    });
+    free("CUSIP construction", || {
+        std::hint::black_box(CusipCode::new("037833100").unwrap());
+    });
+    free("SEDOL construction", || {
+        std::hint::black_box(SedolCode::new("b0swjx3").unwrap());
+    });
+    let figi = FIGICode::new("BBG000BLNQ16").unwrap();
+    free("FIGI construction", || {
+        black_box(FIGICode::new("bbg000blnq16").unwrap());
+    });
+    free("FIGI clone", || {
+        black_box(figi.clone());
+    });
+    free("CFI validation", || {
+        assert!(CfiCode::is_classified("ESVUFR"));
+    });
+    free("CFI merging", || {
+        assert_eq!(
+            CfiCode::merged("ESXXXX", "ESVUFR").as_deref(),
+            Some("ESVUFR")
+        );
+    });
+    free("CFI inference", || {
+        assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+    });
 }

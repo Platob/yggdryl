@@ -69,6 +69,8 @@ const charset: string | null = fixedAsciiType.charset
 const fixedByteWidth: number | null = fixedAsciiType.fixedByteWidth
 const currencyType: DataType = new DataType('currency')
 const currencyTypeWidth: number | null = currencyType.fixedByteWidth
+const figiType: DataType = new DataType('figi')
+const figiTypeWidth: number | null = figiType.codeWidth
 const urlType: DataType = new DataType('url')
 const urlTypeWidth: number | null = urlType.fixedByteWidth
 
@@ -111,6 +113,8 @@ void charset
 void fixedByteWidth
 void currencyType
 void currencyTypeWidth
+void figiType
+void figiTypeWidth
 void urlType
 void urlTypeWidth
 

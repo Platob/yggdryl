@@ -235,6 +235,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "AV",
     "FIX:tag": "723222",
     "description": "MsgType = AV",

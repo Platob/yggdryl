@@ -1,0 +1,30 @@
+{
+  "name": "custordercapacitycodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "MemberTradingForTheirOwnAccount",
+      "doc": "Member trading for their own account"
+    },
+    {
+      "value": "2",
+      "name": "ClearingFirmTradingForItsProprietaryAccount",
+      "doc": "Clearing firm trading for its proprietary account"
+    },
+    {
+      "value": "3",
+      "name": "MemberTradingForAnotherMember",
+      "doc": "Member trading for another member"
+    },
+    {
+      "value": "4",
+      "name": "AllOther",
+      "doc": "All other"
+    },
+    {
+      "value": "5",
+      "name": "RetailCustomer",
+      "doc": "Retail customer"
+    }
+  ]
+}

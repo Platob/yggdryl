@@ -145,8 +145,8 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
         ),
         (DataType::Country, DataTypeId::Country),
         (DataType::Currency, DataTypeId::Currency),
-        (DataType::Mic, DataTypeId::Mic),
-        (DataType::Cfi, DataTypeId::Cfi),
+        (DataType::MicCode, DataTypeId::MicCode),
+        (DataType::CfiCode, DataTypeId::CfiCode),
         (DataType::Uuid, DataTypeId::Uuid),
         (
             DataType::interval(TimeUnit::YearMonth).unwrap(),

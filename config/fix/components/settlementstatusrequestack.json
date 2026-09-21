@@ -82,6 +82,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "ED",
     "FIX:tag": "490132",
     "description": "MsgType = ED",

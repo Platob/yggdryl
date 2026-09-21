@@ -1,0 +1,35 @@
+{
+  "name": "triggeredcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotTriggered",
+      "doc": "Not triggered (default)"
+    },
+    {
+      "value": "1",
+      "name": "Triggered",
+      "doc": "Triggered"
+    },
+    {
+      "value": "2",
+      "name": "StopOrderTriggered",
+      "doc": "Stop order triggered"
+    },
+    {
+      "value": "3",
+      "name": "OCOOrderTriggered",
+      "doc": "One Cancels the Other (OCO) order triggered"
+    },
+    {
+      "value": "4",
+      "name": "OTOOrderTriggered",
+      "doc": "One Triggers the Other (OTO) order triggered"
+    },
+    {
+      "value": "5",
+      "name": "OUOOrderTriggered",
+      "doc": "One Updates the Other (OUO) order triggered"
+    }
+  ]
+}

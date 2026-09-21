@@ -1,0 +1,25 @@
+{
+  "name": "provisioncalculationagentcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ExercisingParty",
+      "doc": "Exercising party"
+    },
+    {
+      "value": "1",
+      "name": "NonExercisingParty",
+      "doc": "Non-exercising party"
+    },
+    {
+      "value": "2",
+      "name": "MasterAgreeent",
+      "doc": "As specified in the master agreement"
+    },
+    {
+      "value": "3",
+      "name": "Supplement",
+      "doc": "As specified in the standard terms supplement"
+    }
+  ]
+}

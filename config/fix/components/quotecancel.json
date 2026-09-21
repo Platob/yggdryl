@@ -223,6 +223,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "Z",
     "FIX:tag": "416241",
     "description": "MsgType = Z",

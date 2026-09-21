@@ -1,0 +1,25 @@
+{
+  "name": "respondenttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AllMarketParticipants",
+      "doc": "All market participants"
+    },
+    {
+      "value": "2",
+      "name": "SpecifiedMarketParticipants",
+      "doc": "Specified market participants"
+    },
+    {
+      "value": "3",
+      "name": "AllMarketMakers",
+      "doc": "All Market Makers"
+    },
+    {
+      "value": "4",
+      "name": "PrimaryMarketMaker",
+      "doc": "Primary Market Maker(s)"
+    }
+  ]
+}

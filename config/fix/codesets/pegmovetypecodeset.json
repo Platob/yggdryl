@@ -1,0 +1,15 @@
+{
+  "name": "pegmovetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Floating",
+      "doc": "Floating (default)"
+    },
+    {
+      "value": "1",
+      "name": "Fixed",
+      "doc": "Fixed"
+    }
+  ]
+}

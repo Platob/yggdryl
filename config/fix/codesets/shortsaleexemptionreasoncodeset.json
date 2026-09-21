@@ -1,0 +1,55 @@
+{
+  "name": "shortsaleexemptionreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ExemptionReasonUnknown",
+      "doc": "Exemption reason unknown"
+    },
+    {
+      "value": "1",
+      "name": "IncomingSSE",
+      "doc": "Income sell short exempt"
+    },
+    {
+      "value": "2",
+      "name": "AboveNationalBestBid",
+      "doc": "Above national best bid (broker/dealer provision)"
+    },
+    {
+      "value": "3",
+      "name": "DelayedDelivery",
+      "doc": "Delayed delivery"
+    },
+    {
+      "value": "4",
+      "name": "OddLot",
+      "doc": "Odd lot"
+    },
+    {
+      "value": "5",
+      "name": "DomesticArbitrage",
+      "doc": "Domestic arbitrage"
+    },
+    {
+      "value": "6",
+      "name": "InternationalArbitrage",
+      "doc": "International arbitrage"
+    },
+    {
+      "value": "7",
+      "name": "UnderwriterOrSyndicateDistribution",
+      "doc": "Underwriter or syndicate distribution"
+    },
+    {
+      "value": "8",
+      "name": "RisklessPrincipal",
+      "doc": "Riskless principal"
+    },
+    {
+      "value": "9",
+      "name": "VWAP",
+      "doc": "VWAP"
+    }
+  ]
+}

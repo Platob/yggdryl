@@ -1080,7 +1080,7 @@ pub(super) fn read_root(root: &Field, schema: &Field, filter: &Filter) -> Result
         {
             continue;
         }
-        let Some(column) = schema.get_field_by_path(&name) else {
+        let Some(column) = schema.dtype().get_field_by_name(&name) else {
             continue;
         };
         children.push(column.clone());

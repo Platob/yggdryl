@@ -193,6 +193,10 @@ def _build_code_field() -> Field:
     return types.currency("ccy", nullable=False)
 
 
+def _build_figi_scalar() -> object:
+    return DataType("figi").scalar("bbg000blnq16")
+
+
 def _build_variant_datatype() -> DataType:
     return DataType.variant(VARIANT_MEMBERS)
 
@@ -422,6 +426,7 @@ def main() -> None:
         _measure("bytes parameters read", _read_bytes_parameters, args.iterations)
         _measure("code datatype", _build_code_datatype, args.iterations)
         _measure("code field", _build_code_field, args.iterations)
+        _measure("FIGI scalar", _build_figi_scalar, args.iterations)
         _measure("native variant datatype", _build_variant_datatype, args.iterations)
         _measure("native variant field", _build_variant_field, args.iterations)
         _measure("inferred variant datatype", _infer_variant_datatype, args.iterations)

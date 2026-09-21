@@ -330,6 +330,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,secondaryclordid,orderid,secondaryorderid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "r",
     "FIX:tag": "203677",
     "description": "MsgType = r (lowercase R)",

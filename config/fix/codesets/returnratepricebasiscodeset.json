@@ -1,0 +1,25 @@
+{
+  "name": "returnratepricebasiscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Gross",
+      "doc": "Gross"
+    },
+    {
+      "value": "1",
+      "name": "Net",
+      "doc": "Net"
+    },
+    {
+      "value": "2",
+      "name": "Accrued",
+      "doc": "Accrued"
+    },
+    {
+      "value": "3",
+      "name": "CleanNet",
+      "doc": "Clean net"
+    }
+  ]
+}

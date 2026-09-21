@@ -72,7 +72,7 @@ use smol_str::SmolStr;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
 };
-use crate::{Mapping, Struct};
+use crate::{Mapping, Struct, Variant};
 
 /// One concrete scalar representation.
 ///
@@ -92,6 +92,36 @@ pub trait Value:
     fn into_scalar(self) -> Scalar;
     /// Narrow a dynamic scalar to this leaf without re-validating it.
     fn from_scalar(value: &Scalar) -> Option<&Self>;
+
+    /// Encode this value using the Apache Parquet Variant version-one mapping.
+    ///
+    /// The mapping preserves the standard's representations; use the value
+    /// stream when widths, charsets or other leaf parameters must survive.
+    // Generic encoding borrows the leaf and returns owned encoded bytes,
+    // matching Scalar::into_variant without moving values out of row holders.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_variant(&self) -> Result<crate::Variant> {
+        self.clone().into_scalar().into_variant()
+    }
+
+    /// Decode a variant and narrow its result to this concrete leaf.
+    ///
+    /// This has the exact projection semantics of [`Self::from_scalar`].
+    /// A different decoded leaf is an error, even when a cast could convert it;
+    /// use [`DataType::decode_variant`] to request that cast explicitly.
+    fn from_variant(value: &crate::Variant) -> Result<Self> {
+        let decoded = Scalar::from_variant(value)?;
+        Self::from_scalar(&decoded)
+            .cloned()
+            .ok_or_else(|| crate::Error::InvalidRecord {
+                path: "$".into(),
+                reason: smol_str::format_smolstr!(
+                    "expected {}, variant decoded as {}",
+                    std::any::type_name::<Self>(),
+                    decoded.id().as_str()
+                ),
+            })
+    }
 }
 
 /// What a family's value enum owes: it stands for any one leaf of the family,
@@ -437,7 +467,7 @@ family_value!(
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence => crate::Serie, Mapping => Mapping, Struct => Struct]
+    Nested, Nested, [Sequence => crate::Serie, Mapping => Mapping, Struct => Struct, Variant => Variant]
 );
 
 /// The per-column facts a field carries that only one datatype has.
@@ -582,15 +612,15 @@ pub trait DataTypeValue:
     // ---------------------------------------------------------------------
 
     /// `value` cast to this datatype and encoded as [the variant
-    /// encoding](crate::Scalar::encode_variant_stream_bytes), one chunk at
+    /// encoding](crate::Scalar::encode_value_stream_bytes), one chunk at
     /// a time.
     ///
     /// # Errors
     ///
     /// Returns the cast's refusal where the value is not one this datatype
     /// holds.
-    fn encode_variant_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::VariantStream> {
-        self.clone().into_dtype().encode_variant_stream_bytes(value)
+    fn encode_value_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::ValueStream> {
+        self.clone().into_dtype().encode_value_stream_bytes(value)
     }
 
     /// `value` cast to this datatype and encoded, whole.
@@ -599,8 +629,8 @@ pub trait DataTypeValue:
     ///
     /// Returns the cast's refusal where the value is not one this datatype
     /// holds.
-    fn encode_variant_bytes(&self, value: &crate::Scalar) -> Result<Vec<u8>> {
-        self.clone().into_dtype().encode_variant_bytes(value)
+    fn encode_value_bytes(&self, value: &crate::Scalar) -> Result<Vec<u8>> {
+        self.clone().into_dtype().encode_value_bytes(value)
     }
 
     /// The value one variant encoding holds, cast to this datatype.
@@ -609,8 +639,8 @@ pub trait DataTypeValue:
     ///
     /// Returns the codec's refusal, or the cast's where the bytes hold a
     /// value this datatype does not.
-    fn decode_variant_bytes(&self, bytes: &[u8]) -> Result<crate::Scalar> {
-        self.clone().into_dtype().decode_variant_bytes(bytes)
+    fn decode_value_bytes(&self, bytes: &[u8]) -> Result<crate::Scalar> {
+        self.clone().into_dtype().decode_value_bytes(bytes)
     }
 
     /// The value a variant encoding split into chunks holds, cast to this
@@ -618,15 +648,15 @@ pub trait DataTypeValue:
     ///
     /// # Errors
     ///
-    /// [`Self::decode_variant_bytes`] carries the rule.
-    fn decode_variant_stream_bytes<I>(&self, chunks: I) -> Result<crate::Scalar>
+    /// [`Self::decode_value_bytes`] carries the rule.
+    fn decode_value_stream_bytes<I>(&self, chunks: I) -> Result<crate::Scalar>
     where
         I: IntoIterator,
         I::Item: AsRef<[u8]>,
     {
         self.clone()
             .into_dtype()
-            .decode_variant_stream_bytes(chunks)
+            .decode_value_stream_bytes(chunks)
     }
 
     /// Cast an Arrow array to this datatype's exact physical array.

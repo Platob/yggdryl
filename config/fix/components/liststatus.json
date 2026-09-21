@@ -192,6 +192,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "listid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "N",
     "FIX:tag": "881014",
     "description": "MsgType = N",

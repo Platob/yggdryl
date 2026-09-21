@@ -1,0 +1,55 @@
+{
+  "name": "mdorigintypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Book",
+      "doc": "Book"
+    },
+    {
+      "value": "1",
+      "name": "OffBook",
+      "doc": "Off-Book"
+    },
+    {
+      "value": "2",
+      "name": "Cross",
+      "doc": "Cross"
+    },
+    {
+      "value": "3",
+      "name": "QuoteDrivenMarket",
+      "doc": "Quote driven market"
+    },
+    {
+      "value": "4",
+      "name": "DarkOrderBook",
+      "doc": "Dark order book"
+    },
+    {
+      "value": "5",
+      "name": "AuctionDrivenMarket",
+      "doc": "Auction driven market"
+    },
+    {
+      "value": "6",
+      "name": "QuoteNegotiation",
+      "doc": "Quote negotiation"
+    },
+    {
+      "value": "7",
+      "name": "VoiceNegotiation",
+      "doc": "Voice negotiation"
+    },
+    {
+      "value": "8",
+      "name": "HybridMarket",
+      "doc": "Hybrid market"
+    },
+    {
+      "value": "9",
+      "name": "OtherMarket",
+      "doc": "Other market"
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "name": "assetsubclasscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "SingleCurrency",
+      "group": "Interest Rate",
+      "doc": "Single currency"
+    },
+    {
+      "value": "2",
+      "name": "CrossCurrency",
+      "group": "Interest Rate",
+      "doc": "Cross currency"
+    },
+    {
+      "value": "3",
+      "name": "Basket",
+      "group": "Currency",
+      "doc": "Basket [for multi-currency]"
+    },
+    {
+      "value": "4",
+      "name": "SingleName",
+      "group": "Credit",
+      "doc": "Single name"
+    },
+    {
+      "value": "5",
+      "name": "CreditIndex",
+      "group": "Credit",
+      "doc": "Credit index"
+    },
+    {
+      "value": "6",
+      "name": "IndexTranche",
+      "group": "Credit",
+      "doc": "Index tranche"
+    },
+    {
+      "value": "7",
+      "name": "CreditBasket",
+      "group": "Credit",
+      "doc": "Credit basket"
+    },
+    {
+      "value": "8",
+      "name": "Exotic",
+      "group": "Other",
+      "doc": "Exotic"
+    },
+    {
+      "value": "9",
+      "name": "Common",
+      "group": "Equity",
+      "doc": "Common"
+    },
+    {
+      "value": "10",
+      "name": "Preferred",
+      "group": "Equity",
+      "doc": "Preferred"
+    },
+    {
+      "value": "11",
+      "name": "EquityIndex",
+      "group": "Equity",
+      "doc": "Equity index"
+    },
+    {
+      "value": "12",
+      "name": "EquityBasket",
+      "group": "Equity",
+      "doc": "Equity basket"
+    },
+    {
+      "value": "13",
+      "name": "Metals",
+      "group": "Commodity",
+      "doc": "Metals"
+    },
+    {
+      "value": "14",
+      "name": "Bullion",
+      "group": "Commodity",
+      "doc": "Bullion"
+    },
+    {
+      "value": "15",
+      "name": "Energy",
+      "group": "Commodity",
+      "doc": "Energy"
+    },
+    {
+      "value": "16",
+      "name": "CommodityIndex",
+      "group": "Commodity",
+      "doc": "Commodity index"
+    },
+    {
+      "value": "17",
+      "name": "Agricultural",
+      "group": "Commodity",
+      "doc": "Agricultural"
+    },
+    {
+      "value": "18",
+      "name": "Environmental",
+      "group": "Commodity",
+      "doc": "Environmental"
+    },
+    {
+      "value": "19",
+      "name": "Freight",
+      "group": "Commodity",
+      "doc": "Freight"
+    },
+    {
+      "value": "20",
+      "name": "Government",
+      "group": "Debt",
+      "doc": "Government"
+    },
+    {
+      "value": "21",
+      "name": "Agency",
+      "group": "Debt",
+      "doc": "Agency"
+    },
+    {
+      "value": "22",
+      "name": "Corporate",
+      "group": "Debt",
+      "doc": "Corporate"
+    },
+    {
+      "value": "23",
+      "name": "Financing",
+      "group": "Debt",
+      "doc": "Financing"
+    },
+    {
+      "value": "24",
+      "name": "MoneyMarket",
+      "group": "Debt",
+      "doc": "Money market"
+    },
+    {
+      "value": "25",
+      "name": "Mortgage",
+      "group": "Debt",
+      "doc": "Mortgage"
+    },
+    {
+      "value": "26",
+      "name": "Municipal",
+      "group": "Debt",
+      "doc": "Municipal"
+    },
+    {
+      "value": "27",
+      "name": "MutualFund",
+      "group": "Fund",
+      "doc": "Mutual fund"
+    },
+    {
+      "value": "28",
+      "name": "CollectiveInvestmentVehicle",
+      "group": "Fund",
+      "doc": "Collective investment vehicle"
+    },
+    {
+      "value": "29",
+      "name": "InvestmentProgram",
+      "group": "Fund",
+      "doc": "Investment program"
+    },
+    {
+      "value": "30",
+      "name": "SpecializedAccountProgram",
+      "group": "Fund",
+      "doc": "Specialized account program"
+    },
+    {
+      "value": "31",
+      "name": "TermLoan",
+      "group": "Loan Facility",
+      "doc": "Term loan"
+    },
+    {
+      "value": "32",
+      "name": "BridgeLoan",
+      "group": "Loan Facility",
+      "doc": "Bridge loan"
+    },
+    {
+      "value": "33",
+      "name": "LetterOfCredit",
+      "group": "Loan Facility",
+      "doc": "Letter of credit"
+    },
+    {
+      "value": "34",
+      "name": "DividendIndex",
+      "group": "Equity",
+      "doc": "Dividend index"
+    },
+    {
+      "value": "35",
+      "name": "StockDividend",
+      "group": "Equity",
+      "doc": "Stock dividend"
+    },
+    {
+      "value": "36",
+      "name": "ExchangeTradedFund",
+      "group": "Equity",
+      "doc": "Exchange traded fund"
+    },
+    {
+      "value": "37",
+      "name": "VolatilityIndex",
+      "group": "Equity",
+      "doc": "Volatility index"
+    },
+    {
+      "value": "38",
+      "name": "FXCrossRates",
+      "group": "Currency",
+      "doc": "FX cross rates"
+    },
+    {
+      "value": "39",
+      "name": "FXEmergingMarkets",
+      "group": "Currency",
+      "doc": "FX emerging markets"
+    },
+    {
+      "value": "40",
+      "name": "FXMajors",
+      "group": "Currency",
+      "doc": "FX Majors"
+    },
+    {
+      "value": "41",
+      "name": "Fertilizer",
+      "group": "Commodity",
+      "doc": "Fertilizer"
+    },
+    {
+      "value": "42",
+      "name": "IndustrialProduct",
+      "group": "Commodity",
+      "doc": "Industrial product"
+    },
+    {
+      "value": "43",
+      "name": "Inflation",
+      "group": "Commodity",
+      "doc": "Inflation"
+    },
+    {
+      "value": "44",
+      "name": "Paper",
+      "group": "Commodity",
+      "doc": "Paper"
+    },
+    {
+      "value": "45",
+      "name": "Polypropylene",
+      "group": "Commodity",
+      "doc": "Polypropylene"
+    },
+    {
+      "value": "46",
+      "name": "OfficialEconomicStatistics",
+      "group": "Commodity",
+      "doc": "Official economic statistics"
+    },
+    {
+      "value": "47",
+      "name": "OtherC10",
+      "group": "Other",
+      "doc": "Other C10"
+    },
+    {
+      "value": "48",
+      "name": "Other",
+      "group": "Other",
+      "doc": "Other"
+    }
+  ]
+}

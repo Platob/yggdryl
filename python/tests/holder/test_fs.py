@@ -400,7 +400,7 @@ class TestFramedText:
         assert reader.schema.names[:16] == [
             "currunix",
             "creaunix",
-            "expirunix",
+            "exprtime",
             "prevunix",
             "snapunix",
             "curruuid",

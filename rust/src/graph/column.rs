@@ -56,7 +56,7 @@ pub enum EventColumn {
     /// When it was created, where that is known.
     CreaUnix,
     /// When it stops being good, where it does.
-    ExpirUnix,
+    ExprTime,
     /// When the event it follows happened, where it follows one.
     PrevUnix,
     /// The grid instant a walk read it as the snapshot of, where one did.
@@ -95,7 +95,7 @@ impl EventColumn {
     pub const ALL: [Self; 16] = [
         Self::CurrUnix,
         Self::CreaUnix,
-        Self::ExpirUnix,
+        Self::ExprTime,
         Self::PrevUnix,
         Self::SnapUnix,
         Self::CurrUuid,
@@ -117,7 +117,7 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "currunix",
             Self::CreaUnix => "creaunix",
-            Self::ExpirUnix => "expirunix",
+            Self::ExprTime => "exprtime",
             Self::PrevUnix => "prevunix",
             Self::SnapUnix => "snapunix",
             Self::CurrUuid => "curruuid",
@@ -140,7 +140,7 @@ impl EventColumn {
         match self {
             Self::CurrUnix => "CurrUnix",
             Self::CreaUnix => "CreaUnix",
-            Self::ExpirUnix => "ExpirUnix",
+            Self::ExprTime => "ExprTime",
             Self::PrevUnix => "PrevUnix",
             Self::SnapUnix => "SnapUnix",
             Self::CurrUuid => "CurrUuid",
@@ -165,7 +165,7 @@ impl EventColumn {
             Self::CreaUnix => {
                 "When the event was created, where that is known; the earliest its chain knows once followed."
             }
-            Self::ExpirUnix => {
+            Self::ExprTime => {
                 "When the event stops being good, where it does; the latest its chain knows once followed."
             }
             Self::PrevUnix => "When the event this one follows happened, where it follows one.",
@@ -220,7 +220,7 @@ impl EventColumn {
             })
         };
         Ok(match self {
-            Self::CurrUnix | Self::CreaUnix | Self::ExpirUnix | Self::PrevUnix | Self::SnapUnix => {
+            Self::CurrUnix | Self::CreaUnix | Self::ExprTime | Self::PrevUnix | Self::SnapUnix => {
                 clock()
             }
             Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
@@ -290,7 +290,7 @@ impl EventColumn {
         match self {
             Self::CurrUnix => instant(event.get_currunix()),
             Self::CreaUnix => event.get_creaunix().and_then(instant),
-            Self::ExpirUnix => event.get_expirunix().and_then(instant),
+            Self::ExprTime => event.get_exprtime().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
             Self::CurrUuid => Some(Scalar::Uuid(event.get_curruuid())),
@@ -333,7 +333,7 @@ impl EventColumn {
                 }
             }
             Self::CreaUnix => event.set_creaunix(instant()),
-            Self::ExpirUnix => event.set_expirunix(instant()),
+            Self::ExprTime => event.set_exprtime(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),
             Self::SnapUnix => event.set_snapunix(instant()),
             Self::CurrUuid => {
@@ -429,7 +429,7 @@ mod tests {
     fn every_column_states_back_what_it_read() {
         let mut event = MarketEventData::at(1_700_000_000_000_000_000);
         event.set_creaunix(Some(1_600_000_000_000_000_000));
-        event.set_expirunix(Some(1_800_000_000_000_000_000));
+        event.set_exprtime(Some(1_800_000_000_000_000_000));
         event.set_prevunix(Some(1_650_000_000_000_000_000));
         event.set_snapunix(Some(1_700_000_000_000_000_001));
         event.set_curruuid(Uuid::from_v8(1));
@@ -455,7 +455,7 @@ mod tests {
         }
         assert_eq!(again.get_currunix(), event.get_currunix());
         assert_eq!(again.get_creaunix(), event.get_creaunix());
-        assert_eq!(again.get_expirunix(), event.get_expirunix());
+        assert_eq!(again.get_exprtime(), event.get_exprtime());
         assert_eq!(again.get_prevunix(), event.get_prevunix());
         assert_eq!(again.get_snapunix(), event.get_snapunix());
         assert_eq!(again.get_curruuid(), event.get_curruuid());
@@ -498,7 +498,7 @@ mod tests {
             [
                 "currunix",
                 "creaunix",
-                "expirunix",
+                "exprtime",
                 "prevunix",
                 "snapunix",
                 "curruuid",

@@ -1,0 +1,225 @@
+{
+  "name": "instrattribtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Flat",
+      "doc": "Flat (securities pay interest on a current basis but are traded without interest)"
+    },
+    {
+      "value": "2",
+      "name": "ZeroCoupon",
+      "doc": "Zero coupon"
+    },
+    {
+      "value": "3",
+      "name": "InterestBearing",
+      "doc": "Interest bearing (for Euro commercial paper when not issued at discount)"
+    },
+    {
+      "value": "4",
+      "name": "NoPeriodicPayments",
+      "doc": "No periodic payments"
+    },
+    {
+      "value": "5",
+      "name": "VariableRate",
+      "doc": "Variable rate"
+    },
+    {
+      "value": "6",
+      "name": "LessFeeForPut",
+      "doc": "Less fee for put"
+    },
+    {
+      "value": "7",
+      "name": "SteppedCoupon",
+      "doc": "Stepped coupon"
+    },
+    {
+      "value": "8",
+      "name": "CouponPeriod",
+      "doc": "Coupon period (if not semi-annual)"
+    },
+    {
+      "value": "9",
+      "name": "When",
+      "doc": "When [and if] issued"
+    },
+    {
+      "value": "10",
+      "name": "OriginalIssueDiscount",
+      "doc": "Original issue discount"
+    },
+    {
+      "value": "11",
+      "name": "Callable",
+      "doc": "Callable, puttable"
+    },
+    {
+      "value": "12",
+      "name": "EscrowedToMaturity",
+      "doc": "Escrowed to Maturity"
+    },
+    {
+      "value": "13",
+      "name": "EscrowedToRedemptionDate",
+      "doc": "Escrowed to redemption date - callable"
+    },
+    {
+      "value": "14",
+      "name": "PreRefunded",
+      "doc": "Pre-refunded"
+    },
+    {
+      "value": "15",
+      "name": "InDefault",
+      "doc": "In default"
+    },
+    {
+      "value": "16",
+      "name": "Unrated",
+      "doc": "Unrated"
+    },
+    {
+      "value": "17",
+      "name": "Taxable",
+      "doc": "Taxable"
+    },
+    {
+      "value": "18",
+      "name": "Indexed",
+      "doc": "Indexed"
+    },
+    {
+      "value": "19",
+      "name": "SubjectToAlternativeMinimumTax",
+      "doc": "Subject To Alternative Minimum Tax"
+    },
+    {
+      "value": "20",
+      "name": "OriginalIssueDiscountPrice",
+      "doc": "Original issue discount price"
+    },
+    {
+      "value": "21",
+      "name": "CallableBelowMaturityValue",
+      "doc": "Callable below maturity value"
+    },
+    {
+      "value": "22",
+      "name": "CallableWithoutNotice",
+      "doc": "Callable without notice by mail to holder unless registered"
+    },
+    {
+      "value": "23",
+      "name": "PriceTickRulesForSecurity",
+      "doc": "Price tick rules for security"
+    },
+    {
+      "value": "24",
+      "name": "TradeTypeEligibilityDetailsForSecurity",
+      "doc": "Trade type eligibility details for security"
+    },
+    {
+      "value": "25",
+      "name": "InstrumentDenominator",
+      "doc": "Instrument denominator"
+    },
+    {
+      "value": "26",
+      "name": "InstrumentNumerator",
+      "doc": "Instrument numerator"
+    },
+    {
+      "value": "27",
+      "name": "InstrumentPricePrecision",
+      "doc": "Instrument price precision"
+    },
+    {
+      "value": "28",
+      "name": "InstrumentStrikePrice",
+      "doc": "Instrument strike price"
+    },
+    {
+      "value": "29",
+      "name": "TradeableIndicator",
+      "doc": "Tradeable indicator"
+    },
+    {
+      "value": "30",
+      "name": "InstrumentEligibleAnonOrders",
+      "doc": "Instrument is eligible to accept anonymous orders"
+    },
+    {
+      "value": "31",
+      "name": "MinGuaranteedFillVolume",
+      "doc": "Minimum guaranteed fill volume"
+    },
+    {
+      "value": "32",
+      "name": "MinGuaranteedFillStatus",
+      "doc": "Minimum guaranteed fill status"
+    },
+    {
+      "value": "33",
+      "name": "TradeAtSettlementEligibility",
+      "doc": "Trade at settlement (TAS) eligibility"
+    },
+    {
+      "value": "34",
+      "name": "TestInstrument",
+      "doc": "Test instrument"
+    },
+    {
+      "value": "35",
+      "name": "DummyInstrument",
+      "doc": "Dummy instrument"
+    },
+    {
+      "value": "36",
+      "name": "NegativeSettlementPriceEligibility",
+      "doc": "Negative settlement price eligibility"
+    },
+    {
+      "value": "37",
+      "name": "NegativeStrikePriceEligibility",
+      "doc": "Negative strike price eligibility"
+    },
+    {
+      "value": "38",
+      "name": "USStdContractInd",
+      "doc": "US standard contract indicator"
+    },
+    {
+      "value": "39",
+      "name": "AdmittedToTradingOnTradingVenue",
+      "doc": "Admitted to trading on a trading venue"
+    },
+    {
+      "value": "40",
+      "name": "AverageDailyNotionalAmount",
+      "doc": "Average daily notional amount"
+    },
+    {
+      "value": "41",
+      "name": "AverageDailyNumberTrades",
+      "doc": "Average daily number of trades"
+    },
+    {
+      "value": "42",
+      "name": "PrimaryIssuance",
+      "doc": "Primary issuance"
+    },
+    {
+      "value": "43",
+      "name": "SecondaryIssuance",
+      "doc": "Secondary issuance"
+    },
+    {
+      "value": "99",
+      "name": "Text",
+      "doc": "Text"
+    }
+  ]
+}

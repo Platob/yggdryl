@@ -387,6 +387,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "allocid,secondaryallocid",
+    "FIX:msgcat": "ALLO",
     "FIX:msgtype": "AT",
     "FIX:tag": "971168",
     "description": "MsgType = AT",

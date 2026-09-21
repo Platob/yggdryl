@@ -247,6 +247,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['cusip', fields.cusip('value')],
     ['sedol', fields.sedol('value')],
     ['bloomberg', fields.bloomberg('value')],
+    ['figi', fields.figi('value')],
     ['side', fields.side('value')],
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
@@ -513,6 +514,7 @@ test('the registered codes build their own datatype at their own width', () => {
     ['cusip', [fields.cusip('cusip'), 9]],
     ['sedol', [fields.sedol('sedol'), 7]],
     ['bloomberg', [fields.bloomberg('bloomberg'), 32]],
+    ['figi', [fields.figi('figi'), 12]],
   ])
 
   for (const [name, [value, width]] of declared) {
@@ -540,12 +542,20 @@ test('the registered codes build their own datatype at their own width', () => {
     [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']))],
     ['B0YBKJ7', null, null],
   )
+  assert.deepEqual(
+    [...fields.figi('sid').castArrowArray(utf8(['BBG000BLNQ16', 'BBG000BLNQ17', 'bbg000blnq16']))],
+    ['BBG000BLNQ16', null, null],
+  )
   assert.throws(
     () => fields.cusip('sid').castArrowArray(utf8(['037833101']), strict),
     /canonical spelling/,
   )
   assert.throws(
     () => fields.sedol('sid').castArrowArray(utf8(['b0ybkj7']), strict),
+    /canonical spelling/,
+  )
+  assert.throws(
+    () => fields.figi('sid').castArrowArray(utf8(['BBG000BLNQ17']), strict),
     /canonical spelling/,
   )
   assert.equal(declared.get('country')[0].name, 'venue_country')

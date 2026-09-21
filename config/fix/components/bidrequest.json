@@ -377,6 +377,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "k",
     "FIX:tag": "253071",
     "description": "MsgType = k (lowercase K)",

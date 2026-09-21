@@ -1,0 +1,45 @@
+{
+  "name": "locktypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotLocked",
+      "doc": "Not locked"
+    },
+    {
+      "value": "1",
+      "name": "AwayMarketNetter",
+      "doc": "Away market better"
+    },
+    {
+      "value": "2",
+      "name": "ThreeTickLocked",
+      "doc": "Three tick locked"
+    },
+    {
+      "value": "3",
+      "name": "LockedByMarketMaker",
+      "doc": "Locked by market maker"
+    },
+    {
+      "value": "4",
+      "name": "DirectedOrderLock",
+      "doc": "Directed order lock"
+    },
+    {
+      "value": "5",
+      "name": "MultilegLock",
+      "doc": "Multileg lock"
+    },
+    {
+      "value": "6",
+      "name": "MarketOrderLock",
+      "doc": "Market order lock"
+    },
+    {
+      "value": "7",
+      "name": "PreAssignmentLock",
+      "doc": "Pre-assignment lock"
+    }
+  ]
+}

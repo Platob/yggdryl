@@ -58,6 +58,8 @@ mod uuid;
 mod value;
 #[path = "types/value_bounds.rs"]
 mod value_bounds;
+#[path = "types/valuestream.rs"]
+mod valuestream;
 #[path = "types/variant.rs"]
 mod variant;
 #[path = "types/version.rs"]

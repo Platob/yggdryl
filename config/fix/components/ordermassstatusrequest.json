@@ -166,6 +166,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "AF",
     "FIX:tag": "1085293",
     "description": "MsgType = AF",

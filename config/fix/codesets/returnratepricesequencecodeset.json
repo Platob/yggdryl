@@ -1,0 +1,20 @@
+{
+  "name": "returnratepricesequencecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "1",
+      "name": "Interim",
+      "doc": "Interim"
+    },
+    {
+      "value": "2",
+      "name": "Final",
+      "doc": "Final"
+    }
+  ]
+}

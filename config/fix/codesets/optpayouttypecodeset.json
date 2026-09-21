@@ -1,0 +1,50 @@
+{
+  "name": "optpayouttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Vanilla",
+      "doc": "Vanilla"
+    },
+    {
+      "value": "2",
+      "name": "Capped",
+      "doc": "Capped"
+    },
+    {
+      "value": "3",
+      "name": "Binary",
+      "doc": "Digital (Binary)"
+    },
+    {
+      "value": "4",
+      "name": "Asian",
+      "doc": "Asian"
+    },
+    {
+      "value": "5",
+      "name": "Barrier",
+      "doc": "Barrier"
+    },
+    {
+      "value": "6",
+      "name": "DigitalBarrier",
+      "doc": "Digital Barrier"
+    },
+    {
+      "value": "7",
+      "name": "Lookback",
+      "doc": "Lookback"
+    },
+    {
+      "value": "8",
+      "name": "OtherPathDependent",
+      "doc": "Other path dependent"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

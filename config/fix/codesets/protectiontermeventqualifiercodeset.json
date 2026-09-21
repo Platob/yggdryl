@@ -1,0 +1,20 @@
+{
+  "name": "protectiontermeventqualifiercodeset",
+  "codes": [
+    {
+      "value": "H",
+      "name": "RestructuringMultipleHoldingObligations",
+      "doc": "Retructuring - multiple holding obligations"
+    },
+    {
+      "value": "E",
+      "name": "RestructuringMultipleCreditEventNotices",
+      "doc": "Restructuring - multiple credit event notices"
+    },
+    {
+      "value": "C",
+      "name": "FloatingRateInterestShortfall",
+      "doc": "Floating rate interest shortfall"
+    }
+  ]
+}

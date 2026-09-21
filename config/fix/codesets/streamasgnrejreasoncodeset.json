@@ -1,0 +1,30 @@
+{
+  "name": "streamasgnrejreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownClient",
+      "doc": "Unknown client"
+    },
+    {
+      "value": "1",
+      "name": "ExceedsMaximumSize",
+      "doc": "Exceeds maximum size"
+    },
+    {
+      "value": "2",
+      "name": "UnknownOrInvalidCurrencyPair",
+      "doc": "Unknown or Invalid currency pair"
+    },
+    {
+      "value": "3",
+      "name": "NoAvailableStream",
+      "doc": "No available stream"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "tradematchrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful"
+    },
+    {
+      "value": "1",
+      "name": "InvalidPartyInformation",
+      "doc": "Invalid party information"
+    },
+    {
+      "value": "2",
+      "name": "UnknownInstrument",
+      "doc": "Unknown instrument"
+    },
+    {
+      "value": "3",
+      "name": "Unauthorized",
+      "doc": "Not authorized to report trades"
+    },
+    {
+      "value": "4",
+      "name": "InvalidTradeType",
+      "doc": "Invalid trade type"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

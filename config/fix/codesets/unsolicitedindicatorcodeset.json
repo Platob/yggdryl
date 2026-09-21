@@ -1,0 +1,21 @@
+{
+  "name": "unsolicitedindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "MessageIsBeingSentAsAResultOfAPriorRequest",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Message is being sent as a result of a prior request"
+    },
+    {
+      "value": "Y",
+      "name": "MessageIsBeingSentUnsolicited",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Message is being sent unsolicited"
+    }
+  ]
+}

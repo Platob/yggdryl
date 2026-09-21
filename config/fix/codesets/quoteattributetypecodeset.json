@@ -1,0 +1,30 @@
+{
+  "name": "quoteattributetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "QuoteAboveStandardMarketSize",
+      "doc": "Quote is above standard market size"
+    },
+    {
+      "value": "1",
+      "name": "QuoteAboveSpecificInstrumentSize",
+      "doc": "Quote is above size specific to the instrument"
+    },
+    {
+      "value": "2",
+      "name": "QuoteApplicableForLiquidtyProvisionActivity",
+      "doc": "Quote applicable for liquidity provision activity"
+    },
+    {
+      "value": "3",
+      "name": "QuoteIssuerStatus",
+      "doc": "Quote issuer status"
+    },
+    {
+      "value": "4",
+      "name": "BidOrAskRequest",
+      "doc": "Bid or ask request"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "name": "partyrelationshipcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "IsAlso",
+      "doc": "Is also"
+    },
+    {
+      "value": "1",
+      "name": "ClearsFor",
+      "doc": "Clears for"
+    },
+    {
+      "value": "2",
+      "name": "ClearsThrough",
+      "doc": "Clears through"
+    },
+    {
+      "value": "3",
+      "name": "TradesFor",
+      "doc": "Trades for"
+    },
+    {
+      "value": "4",
+      "name": "TradesThrough",
+      "doc": "Trades through"
+    },
+    {
+      "value": "5",
+      "name": "Sponsors",
+      "doc": "Sponsors"
+    },
+    {
+      "value": "6",
+      "name": "SponsoredThrough",
+      "doc": "Sponsored through"
+    },
+    {
+      "value": "7",
+      "name": "ProvidesGuaranteeFor",
+      "doc": "Provides guarantee for"
+    },
+    {
+      "value": "8",
+      "name": "IsGuaranteedBy",
+      "doc": "Is guaranteed by"
+    },
+    {
+      "value": "9",
+      "name": "MemberOf",
+      "doc": "Member of"
+    },
+    {
+      "value": "10",
+      "name": "HasMembers",
+      "doc": "Has members"
+    },
+    {
+      "value": "11",
+      "name": "ProvidesMarketplaceFor",
+      "doc": "Provides marketplace for"
+    },
+    {
+      "value": "12",
+      "name": "ParticipantOfMarketplace",
+      "doc": "Participant of marketplace"
+    },
+    {
+      "value": "13",
+      "name": "CarriesPositionsFor",
+      "doc": "Carries positions for"
+    },
+    {
+      "value": "14",
+      "name": "PostsTradesTo",
+      "doc": "Posts trades to"
+    },
+    {
+      "value": "15",
+      "name": "EntersTradesFor",
+      "doc": "Enters trades for"
+    },
+    {
+      "value": "16",
+      "name": "EntersTradesThrough",
+      "doc": "Enters trades through"
+    },
+    {
+      "value": "17",
+      "name": "ProvidesQuotesTo",
+      "doc": "Provides quotes to"
+    },
+    {
+      "value": "18",
+      "name": "RequestsQuotesFrom",
+      "doc": "Requests quotes from"
+    },
+    {
+      "value": "19",
+      "name": "InvestsFor",
+      "doc": "Invests for"
+    },
+    {
+      "value": "20",
+      "name": "InvestsThrough",
+      "doc": "Invests through"
+    },
+    {
+      "value": "21",
+      "name": "BrokersTradesFor",
+      "doc": "Brokers trades for"
+    },
+    {
+      "value": "22",
+      "name": "BrokersTradesThrough",
+      "doc": "Brokers trades through"
+    },
+    {
+      "value": "23",
+      "name": "ProvidesTradingServicesFor",
+      "doc": "Provides trading services for"
+    },
+    {
+      "value": "24",
+      "name": "UsesTradingServicesOf",
+      "doc": "Uses trading services of"
+    },
+    {
+      "value": "25",
+      "name": "ApprovesOf",
+      "doc": "Approves of"
+    },
+    {
+      "value": "26",
+      "name": "ApprovedBy",
+      "doc": "Approved by"
+    },
+    {
+      "value": "27",
+      "name": "ParentFirmFor",
+      "doc": "Parent firm for"
+    },
+    {
+      "value": "28",
+      "name": "SubsidiaryOf",
+      "doc": "Subsidiary of"
+    },
+    {
+      "value": "29",
+      "name": "RegulatoryOwnerOf",
+      "doc": "Regulatory owner of"
+    },
+    {
+      "value": "30",
+      "name": "OwnedByRegulatory",
+      "doc": "Owned by (regulatory)"
+    },
+    {
+      "value": "31",
+      "name": "Controls",
+      "doc": "Controls"
+    },
+    {
+      "value": "32",
+      "name": "IsControlledBy",
+      "doc": "Is controlled by"
+    },
+    {
+      "value": "33",
+      "name": "LegalOwnerOf",
+      "doc": "Legal / titled owner of"
+    },
+    {
+      "value": "34",
+      "name": "OwnedByLegal",
+      "doc": "Owned by (legal / title)"
+    },
+    {
+      "value": "35",
+      "name": "BeneficialOwnerOf",
+      "doc": "Beneficial owner of"
+    },
+    {
+      "value": "36",
+      "name": "OwnedByBeneficial",
+      "doc": "Owned by (beneficial)"
+    },
+    {
+      "value": "37",
+      "name": "SettlesFor",
+      "doc": "Settles for"
+    },
+    {
+      "value": "38",
+      "name": "SettlesThrough",
+      "doc": "Settles through"
+    }
+  ]
+}

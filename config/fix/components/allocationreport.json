@@ -1331,6 +1331,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "allocid,secondaryallocid,refallocid",
+    "FIX:msgcat": "ALLO",
     "FIX:msgtype": "AS",
     "FIX:tag": "591464",
     "description": "MsgType = AS",

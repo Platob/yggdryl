@@ -236,7 +236,13 @@ impl Node {
             return true;
         }
         let mut found = false;
-        self.for_each_child(|child| found |= child.reads_rows());
+        // The walk stops descending once a column is found: one column
+        // read answers the question for the whole tree.
+        self.for_each_child(|child| {
+            if !found {
+                found = child.reads_rows();
+            }
+        });
         found
     }
 
@@ -1017,7 +1023,7 @@ impl Binder<'_> {
         if let Term::Literal(held) = term {
             return Ok(Some(held.clone()));
         }
-        if !term.columns().is_empty() || term.has_attributes() || !term.parameters().is_empty() {
+        if !term.is_constant() {
             return Ok(None);
         }
         let node = fold(self.lower(term, None)?)?;

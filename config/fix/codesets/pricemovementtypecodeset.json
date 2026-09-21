@@ -1,0 +1,15 @@
+{
+  "name": "pricemovementtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Amount",
+      "doc": "Amount"
+    },
+    {
+      "value": "1",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

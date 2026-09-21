@@ -165,14 +165,15 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    # Eighty-three, laid out by family: every identifier sits in its
+    # Eighty-four, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and
     # `urn` follow `version` in the text family, `sized_utf8` follows
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 83
+    assert len(enums.DATA_TYPE_IDS) == 84
+    assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
     assert ids.index("url") == ids.index("version") + 1
     assert ids.index("urn") == ids.index("url") + 1

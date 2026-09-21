@@ -11,13 +11,13 @@
 //! held it. The registry is built rarely and resolved constantly, so that
 //! `O(n)` insertion trade is deliberate.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FusedIterator;
 use std::sync::{Arc, OnceLock};
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::{FixId, FixKey};
 use crate::folds_equal;
@@ -183,6 +183,10 @@ type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
 /// name-keyed maps keep the default, which is what an unspread key needs.
 pub(super) type FixMap<K, V> = HashMap<K, V, BuildHasherDefault<Mix>>;
 
+/// One field's replacement rules compiled, in the order the field states
+/// them, a rule that did not parse holding its place as `None`.
+type FieldPlans = Arc<[Option<Arc<crate::Plan>>]>;
+
 /// Fold a name directly into a seeded streaming state.
 ///
 /// The crate's one fold: ASCII case folded, and `_`, `-` and space dropped.
@@ -295,17 +299,21 @@ pub(super) struct FieldFacts {
     pub(super) tag: Option<i32>,
     /// `FIX:counter`, on a group's count field.
     pub(super) counter: Option<i32>,
-    /// Whether the field carries a replacement rule.
+    /// Whether a replacement rule could restate the field: one the field
+    /// states on its own `FIX:replacements`, or one the specification
+    /// states of its tag.
     pub(super) ruled: bool,
 }
 
 impl FieldFacts {
     pub(super) fn of(field: &Field) -> Option<Self> {
         let view = field.as_fix();
+        let tag = view.tag().ok()?;
         Some(Self {
-            tag: view.tag().ok()?,
+            tag,
             counter: view.counter().ok()?,
-            ruled: view.replacements().next_ok().is_some(),
+            ruled: view.replacements().next_ok().is_some()
+                || tag.is_some_and(|tag| super::retired::rules_of(tag).is_some()),
         })
     }
 }
@@ -314,6 +322,17 @@ impl FieldFacts {
 pub struct FixRegistry {
     fields: Vec<Field>,
     pub(super) catalog: super::catalog::Catalog,
+    /// The [code sets](super::codes) this dictionary holds, by folded name.
+    ///
+    /// One owner per vocabulary: a field's `FIX:codeset` names the set it
+    /// draws on and the document lives here once, however many fields read
+    /// by it - 103 of them for one offset-unit set in the shipped dictionary,
+    /// and 2,026 fields over 735 sets in all. Held
+    /// behind an `Arc` because every clone of a registry, and every staged
+    /// copy a mutation makes, shares the documents rather than copying
+    /// them; ordered because the store, the snapshot and the hash all read
+    /// them in one order.
+    pub(super) codesets: BTreeMap<SmolStr, Arc<str>>,
     ids: Index<FixId>,
     /// A canonical tag, and the first field that held it: a bare wire tag
     /// answers that field, and a later field on the same tag under another
@@ -333,6 +352,11 @@ pub struct FixRegistry {
     /// metadata storage, which a message's child stated under the field
     /// shares. Kept in step by [`Self::index`] and [`Self::unindex`].
     facts: Vec<Option<FieldFacts>>,
+    /// The replacement rules each field carries, compiled once when the
+    /// field is indexed, by position: a rule is data the dictionary states
+    /// once, and a capture of a million messages reads the same forty rules
+    /// a million times. `None` for a field carrying none.
+    plans: Vec<Option<FieldPlans>>,
     by_metadata: FixMap<usize, usize>,
     /// What this dictionary has answered about itself - a key's field, a
     /// field's null spellings, a code's translation - shared by every codec
@@ -347,6 +371,18 @@ pub struct FixRegistry {
     /// so an edited derivation is the one the next reader evaluates.
     derivations:
         OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
+    /// The names a message digests its lifted facts under, read off the
+    /// fields once on the first digest and forgotten with the derivations.
+    lifted_names: OnceLock<LiftedNames>,
+}
+
+/// The names [`FixMsg`](super::FixMsg) feeds its typed facts under when it
+/// digests itself: the dictionary's name for each lifted tag, the tag's
+/// decimal spelling where the dictionary lacks it, and the `MsgType` name.
+pub(super) struct LiftedNames {
+    pub(super) msgtype: SmolStr,
+    /// One per tag of [`identity::LIFTED_TAGS`](super::identity::LIFTED_TAGS), in its order.
+    pub(super) lifted: Vec<SmolStr>,
 }
 
 impl Default for FixRegistry {
@@ -388,6 +424,7 @@ impl FixRegistry {
         let mut registry = Self {
             fields: Vec::new(),
             catalog: super::catalog::Catalog::default(),
+            codesets: BTreeMap::new(),
             ids: Index::default(),
             tags: Index::default(),
             alternate_tags: Index::default(),
@@ -396,10 +433,18 @@ impl FixRegistry {
             positions_by_id: Vec::new(),
             identities: Vec::new(),
             facts: Vec::new(),
+            plans: Vec::new(),
             by_metadata: FixMap::default(),
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
+            lifted_names: OnceLock::new(),
         };
+        if let Some(document) = super::crated::msgcat_codeset() {
+            registry.codesets.insert(
+                SmolStr::new_static(super::crated::MSGCAT_CODESET_NAME),
+                document,
+            );
+        }
         match super::fix_crate_fields() {
             Ok(fields) => {
                 for field in fields {
@@ -778,6 +823,61 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Applies generated scalar aliases in one bounded registry pass.
+    ///
+    /// The alias generator owns the spelling combinations; this owner keeps
+    /// the indexes and catalog coherent. A lender changes only for spellings
+    /// no field already answers, in input order, so a dictionary's canonical
+    /// name and earlier aliases keep their first claim. The consumed registry
+    /// makes a refusal atomic to the caller without a full-registry clone.
+    pub(super) fn lend_field_aliases<I>(mut self, lending: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (SmolStr, Vec<SmolStr>)>,
+    {
+        let mut changed = false;
+        for (name, spellings) in lending {
+            let Some(position) = self.position_by_name(&name) else {
+                continue;
+            };
+            // A spelling another field claims canonically or as an alias is
+            // that field's. Check before cloning the lender or its aliases:
+            // most catalog fields lend nothing new on a repeated call.
+            let mut spellings = spellings;
+            spellings.retain(|spelled| self.get_field_by_name(spelled).is_none());
+            if spellings.is_empty() {
+                continue;
+            }
+            let mut field = self.fields[position].clone();
+            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
+            for spelled in spellings {
+                if !aliases.iter().any(|held| held == &spelled) {
+                    aliases.push(spelled);
+                }
+            }
+            field
+                .as_fix_mut()
+                .set_names(aliases.iter().map(SmolStr::as_str))?;
+            let (tag, id) = canonical_identity(&field)?;
+            let alternate = field.as_fix().tags()?;
+            self.check_free(&field, tag, id, &alternate, Some(position))?;
+            // Existing fields have already been validated. Validate their
+            // catalog once before the first direct replacement, then refresh
+            // references once after every new alias is indexed.
+            if !changed {
+                self.validate_catalog()?;
+            }
+            self.unindex(position, position);
+            self.fields[position] = field;
+            self.index(position);
+            changed = true;
+        }
+        if changed {
+            self.refresh_references()?;
+            self.validate_catalog()?;
+        }
+        Ok(self)
+    }
+
     /// Merges a definition into the field with the same canonical identity.
     /// A name folding to the stored one retains the stored canonical spelling.
     pub fn update(&mut self, field: Field) -> Result<()> {
@@ -798,6 +898,7 @@ impl FixRegistry {
         let Some(position) = self.position_of_identity(&field)? else {
             return Err(absent(FixKey::Id(id)));
         };
+        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         if stored.dtype() != field.dtype() {
             return Err(datatype_disagreement(stored, id, &field));
@@ -820,6 +921,15 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Folds the set `field` reads by into the one the stored field at
+    /// `position` reads by, so the fold that keeps the stored name keeps
+    /// every member too.
+    fn unify_named_codeset(&mut self, position: usize, field: &Field) -> Result<()> {
+        let stored = self.fields[position].as_fix().codeset().map(SmolStr::new);
+        let incoming = field.as_fix().codeset().map(SmolStr::new);
+        self.unify_codeset(stored.as_deref(), incoming.as_deref())
+    }
+
     /// Folds `field` into the stored field at `position`, which its name
     /// reaches.
     ///
@@ -839,6 +949,10 @@ impl FixRegistry {
     fn merge_named(&mut self, position: usize, field: Field) -> Result<()> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (incoming, _) = canonical_identity(&field)?;
+        // Before the fold, because the fold keeps the stored field's set
+        // name: what the incoming field's set declares has to be in that set
+        // by the time the name is settled.
+        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         let (tag, id) = canonical_identity(stored)?;
         if stored.dtype() != field.dtype() {
@@ -1134,6 +1248,11 @@ impl FixRegistry {
         // removal swaps the last field into the hole, and a store round trip
         // writes in `iter` order and loads in file order, so two dictionaries
         // that compare equal could merge to two different answers.
+        // The vocabularies first, and this is why: a field keeps the set it
+        // already reads by, so the members the other dictionary states have
+        // to be in that set by the time the field is folded. Fold them after
+        // and a merge would narrow a vocabulary instead of widening one.
+        self.merge_codesets(other)?;
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
         // one fold twice.
@@ -1368,12 +1487,14 @@ impl FixRegistry {
         }
         self.unindex(position, position);
         self.derivations.take();
+        self.lifted_names.take();
         // The field departing may be the last, which `index` never touches
         // again: the memo forgets what it answered for it here.
         self.memo.clear();
         let removed = self.fields.swap_remove(position);
         let departed = self.identities.swap_remove(position);
         self.facts.swap_remove(position);
+        self.plans.swap_remove(position);
         if position != last {
             self.index(position);
         }
@@ -1566,6 +1687,34 @@ impl FixRegistry {
             .map(|_| at)
     }
 
+    /// The position of `field` in this registry: its own, or the one whose
+    /// metadata it shares - a message's child stated under the
+    /// dictionary's field.
+    fn position_sharing(&self, field: &Field) -> Option<usize> {
+        if let Some(at) = self.position_of_own(field) {
+            return Some(at);
+        }
+        let storage = field.as_metadata().storage_address();
+        let position = self.by_metadata.get(&storage).copied()?;
+        self.fields
+            .get(position)
+            .filter(|held| held.as_metadata().shares_storage_with(field.as_metadata()))
+            .map(|_| position)
+    }
+
+    /// The replacement rules `field` carries, compiled when the field was
+    /// indexed: `None` for a field this registry does not hold and shares
+    /// no metadata with, an empty slice for one carrying no rule.
+    pub(super) fn plans_of(&self, field: &Field) -> Option<&[Option<Arc<crate::Plan>>]> {
+        let position = self.position_sharing(field)?;
+        Some(
+            self.plans
+                .get(position)
+                .and_then(|held| held.as_deref())
+                .unwrap_or(&[]),
+        )
+    }
+
     /// What `field`'s metadata states, read off the index: for one of this
     /// registry's own fields, and for a field sharing its metadata with
     /// one - a message's child stated under the dictionary's field - so a
@@ -1658,6 +1807,7 @@ impl FixRegistry {
         // Every change to the fields lands here, so what was compiled off
         // them, and what was answered off them, is forgotten here too.
         self.derivations.take();
+        self.lifted_names.take();
         self.memo.clear();
         let Some(field) = self.fields.get(position) else {
             return;
@@ -1675,6 +1825,11 @@ impl FixRegistry {
             self.facts.resize(position + 1, None);
         }
         self.facts[position] = facts;
+        let plans = super::latest::compiled_plans(field);
+        if position >= self.plans.len() {
+            self.plans.resize(position + 1, None);
+        }
+        self.plans[position] = (!plans.is_empty()).then(|| Arc::from(plans));
         self.by_metadata
             .insert(field.as_metadata().storage_address(), position);
         let Some((tag, id)) = identity else {
@@ -1759,7 +1914,10 @@ impl fmt::Debug for FixRegistry {
 
 impl PartialEq for FixRegistry {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().eq(other.iter()) && self.catalog == other.catalog
+        self.len() == other.len()
+            && self.iter().eq(other.iter())
+            && self.catalog == other.catalog
+            && self.codesets == other.codesets
     }
 }
 
@@ -1814,12 +1972,34 @@ impl FixRegistry {
     /// catalog change that lands without staging a clone calls this.
     pub(super) fn forget_derivations(&mut self) {
         self.derivations.take();
+        self.lifted_names.take();
         self.memo.clear();
     }
 
     /// What this dictionary has answered about itself.
     pub(super) fn memo(&self) -> &super::memo::Memo {
         &self.memo
+    }
+
+    /// The names a message digests its lifted facts under, read once.
+    pub(super) fn lifted_names(&self) -> &LiftedNames {
+        self.lifted_names.get_or_init(|| LiftedNames {
+            msgtype: self
+                .get_field_by_tag(super::MSGTYPE_TAG_NAME.0)
+                .map_or_else(
+                    || SmolStr::new_static(super::MSGTYPE_TAG_NAME.1),
+                    |field| SmolStr::new(field.name()),
+                ),
+            lifted: super::identity::LIFTED_TAGS
+                .into_iter()
+                .map(|tag| {
+                    self.get_field_by_tag(tag).map_or_else(
+                        || format_smolstr!("{tag}"),
+                        |field| SmolStr::new(field.name()),
+                    )
+                })
+                .collect(),
+        })
     }
 }
 
@@ -1833,6 +2013,7 @@ impl Clone for FixRegistry {
         Self {
             fields: self.fields.clone(),
             catalog: self.catalog.clone(),
+            codesets: self.codesets.clone(),
             ids: self.ids.clone(),
             tags: self.tags.clone(),
             alternate_tags: self.alternate_tags.clone(),
@@ -1841,9 +2022,11 @@ impl Clone for FixRegistry {
             positions_by_id: self.positions_by_id.clone(),
             identities: self.identities.clone(),
             facts: self.facts.clone(),
+            plans: self.plans.clone(),
             by_metadata: self.by_metadata.clone(),
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
+            lifted_names: OnceLock::new(),
         }
     }
 }
@@ -1853,6 +2036,14 @@ impl Hash for FixRegistry {
         self.len().hash(state);
         for field in self {
             field.hash(state);
+        }
+        // The vocabularies the fields read by: two dictionaries whose fields
+        // agree but whose sets do not are two dictionaries, and a name a
+        // field states means whatever the set under it says.
+        self.codesets.len().hash(state);
+        for (name, document) in &self.codesets {
+            name.hash(state);
+            document.hash(state);
         }
         for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
             category.hash(state);
@@ -1988,5 +2179,68 @@ mod tests {
             "{error}"
         );
         assert_eq!(registry.fields, before);
+    }
+
+    #[test]
+    fn default_aliases_refuse_a_digest_collision_without_mutating_the_source() {
+        let offer = tagged("offerpx", 1);
+        let unrelated = tagged("Unrelated", 2);
+        let mut registry = FixRegistry::from_fields([offer, unrelated]).unwrap();
+        let unrelated_at = registry
+            .fields
+            .iter()
+            .position(|field| field.name() == "Unrelated")
+            .expect("the unrelated holder");
+        registry
+            .aliases
+            .insert(name_digest("askpx", ALIAS_SEED), unrelated_at);
+
+        assert!(
+            registry.get_field_by_name("askpx").is_none(),
+            "a colliding alias digest is rechecked before lookup answers"
+        );
+        let before = registry.clone();
+        let error = registry.clone().with_default_aliases().unwrap_err();
+        assert!(
+            matches!(&error, Error::Conflict { path, .. } if path.contains("askpx")),
+            "{error}"
+        );
+        assert_eq!(
+            registry, before,
+            "the consumed attempt leaves its source intact"
+        );
+    }
+
+    #[test]
+    fn default_aliases_do_not_reindex_an_unchanged_second_pass() {
+        let registry = FixRegistry::from_fields([tagged("offerpx", 1)])
+            .unwrap()
+            .with_default_aliases()
+            .unwrap();
+        let before = registry
+            .get_field_by_name("offerpx")
+            .expect("the lender")
+            .as_metadata()
+            .storage_address();
+        let derivations = registry.derivations().unwrap();
+        registry.lifted_names();
+        let registry = registry.with_default_aliases().unwrap();
+        let after = registry
+            .get_field_by_name("offerpx")
+            .expect("the lender")
+            .as_metadata()
+            .storage_address();
+        assert_eq!(
+            after, before,
+            "an unchanged field keeps its metadata storage"
+        );
+        assert!(
+            Arc::ptr_eq(&derivations, &registry.derivations().unwrap()),
+            "an unchanged pass keeps the compiled derivations"
+        );
+        assert!(
+            registry.lifted_names.get().is_some(),
+            "an unchanged pass keeps the lifted-name cache"
+        );
     }
 }

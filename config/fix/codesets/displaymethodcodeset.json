@@ -1,0 +1,25 @@
+{
+  "name": "displaymethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Initial",
+      "doc": "Initial (use original DisplayQty)"
+    },
+    {
+      "value": "2",
+      "name": "New",
+      "doc": "New (use RefreshQty)"
+    },
+    {
+      "value": "3",
+      "name": "Random",
+      "doc": "Random (randomize value)"
+    },
+    {
+      "value": "4",
+      "name": "Undisclosed",
+      "doc": "Undisclosed (invisible order)"
+    }
+  ]
+}

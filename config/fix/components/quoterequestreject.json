@@ -169,6 +169,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "AG",
     "FIX:tag": "1016263",
     "description": "MsgType = AG",

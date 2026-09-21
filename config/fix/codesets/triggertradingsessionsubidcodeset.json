@@ -1,0 +1,80 @@
+{
+  "name": "triggertradingsessionsubidcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "PreTrading",
+      "doc": "Pre-Trading"
+    },
+    {
+      "value": "2",
+      "name": "OpeningOrOpeningAuction",
+      "doc": "Opening or opening auction"
+    },
+    {
+      "value": "3",
+      "name": "Continuous",
+      "doc": "(Continuous) Trading"
+    },
+    {
+      "value": "4",
+      "name": "ClosingOrClosingAuction",
+      "doc": "Closing or closing auction"
+    },
+    {
+      "value": "5",
+      "name": "PostTrading",
+      "doc": "Post-Trading"
+    },
+    {
+      "value": "6",
+      "name": "ScheduledIntradayAuction",
+      "doc": "Scheduled intraday auction"
+    },
+    {
+      "value": "7",
+      "name": "Quiescent",
+      "doc": "Quiescent"
+    },
+    {
+      "value": "8",
+      "name": "AnyAuction",
+      "doc": "Any auction"
+    },
+    {
+      "value": "9",
+      "name": "UnscheduledIntradayAuction",
+      "doc": "Unscheduled intraday auction"
+    },
+    {
+      "value": "10",
+      "name": "OutOfMainSessionTrading",
+      "doc": "Out of main session trading"
+    },
+    {
+      "value": "11",
+      "name": "PrivateAuction",
+      "doc": "Private auction"
+    },
+    {
+      "value": "12",
+      "name": "PublicAuction",
+      "doc": "Public auction"
+    },
+    {
+      "value": "13",
+      "name": "GroupAuction",
+      "doc": "Group auction"
+    },
+    {
+      "value": "14",
+      "name": "OrderInitiatedAuction",
+      "doc": "Order initiated auction"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

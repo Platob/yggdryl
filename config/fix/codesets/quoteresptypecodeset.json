@@ -1,0 +1,65 @@
+{
+  "name": "quoteresptypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Hit",
+      "doc": "Hit/Lift"
+    },
+    {
+      "value": "2",
+      "name": "Counter",
+      "doc": "Counter"
+    },
+    {
+      "value": "3",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "4",
+      "name": "Cover",
+      "doc": "Cover"
+    },
+    {
+      "value": "5",
+      "name": "DoneAway",
+      "doc": "Done away"
+    },
+    {
+      "value": "6",
+      "name": "Pass",
+      "doc": "Pass"
+    },
+    {
+      "value": "7",
+      "name": "EndTrade",
+      "doc": "End trade"
+    },
+    {
+      "value": "8",
+      "name": "TimedOut",
+      "doc": "Timed out"
+    },
+    {
+      "value": "9",
+      "name": "Tied",
+      "doc": "Tied"
+    },
+    {
+      "value": "10",
+      "name": "TiedCover",
+      "doc": "Tied cover"
+    },
+    {
+      "value": "11",
+      "name": "Accept",
+      "doc": "Accept"
+    },
+    {
+      "value": "12",
+      "name": "TerminateContract",
+      "doc": "Terminate contract"
+    }
+  ]
+}

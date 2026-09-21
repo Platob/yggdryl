@@ -1,0 +1,20 @@
+{
+  "name": "affirmstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Received",
+      "doc": "Received"
+    },
+    {
+      "value": "2",
+      "name": "ConfirmRejected",
+      "doc": "Confirm rejected, i.e. not affirmed"
+    },
+    {
+      "value": "3",
+      "name": "Affirmed",
+      "doc": "Affirmed"
+    }
+  ]
+}

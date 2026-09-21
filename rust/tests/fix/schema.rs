@@ -5,7 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::graph::MarketElement;
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::{
     DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };
@@ -46,7 +46,8 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 112);
+    // MsgCat and six normalized identifiers join the existing standard CFI column.
+    assert_eq!(tags.len(), 119);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -58,7 +59,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::EXPIRUNIX_TAG_NAME.0,
+            yggdryl::EXPRTIME_TAG_NAME.0,
             52,
             122,
             60,
@@ -87,8 +88,17 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[23..30],
-        [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
+        &tags[23..31],
+        [
+            8,
+            35,
+            yggdryl::MSGCAT_TAG_NAME.0,
+            34,
+            49,
+            56,
+            43,
+            yggdryl::MSGDIRECTION_TAG_NAME.0
+        ],
         "which message"
     );
     // And not where the capture read it: the object a line came out of is
@@ -181,8 +191,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     );
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(
-        &names[header..header + 3],
-        ["beginstring", "msgtype", "msgseqnum"]
+        &names[header..header + 4],
+        ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     );
     assert_eq!(schema.index_of("msgtype"), Some(header + 1));
     assert_eq!(column_of(&schema, 35), header + 1);
@@ -225,7 +235,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
         (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::EXPIRUNIX_TAG_NAME.0, "ExpirUnix"),
+        (yggdryl::EXPRTIME_TAG_NAME.0, "ExprTime"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -321,9 +331,28 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
 
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(restored.into_row(&schema).unwrap(), row);
-    assert_eq!(restored.digest(), digest);
-    assert_eq!(restored.into_bytes(b'|'), message.into_bytes(b'|'));
+    for tag in [11, 55] {
+        assert_eq!(
+            restored.by_tag(tag).unwrap(),
+            message.by_tag(tag).unwrap(),
+            "tag {tag}"
+        );
+    }
+    // A complete row carries the supplied event identity rather than deriving
+    // another identity from the reconstructed content order.
+    assert_eq!(restored.get_curruuid(), message.get_curruuid());
+    assert_eq!(restored.get_crossuuid(), message.get_crossuuid());
+    assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+    assert_eq!(restored.get_crosshashcode(), message.get_crosshashcode());
+    assert_eq!(restored.get_prevuuid(), message.get_prevuuid());
+    assert_eq!(restored.get_prevunix(), message.get_prevunix());
 
+    let identity = (
+        message.get_curruuid(),
+        message.get_crossuuid(),
+        message.get_prevuuid(),
+        message.get_prevunix(),
+    );
     let outgoing = codec.arrow_reader(schema.clone(), [Ok(message)]).unwrap();
     let arrow_schema = outgoing.schema();
     assert_eq!(
@@ -365,6 +394,10 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     let restored = messages.next().unwrap().unwrap();
     assert!(messages.next().is_none());
     assert_eq!(restored.into_row(&schema).unwrap(), row);
+    assert_eq!(restored.get_curruuid(), identity.0);
+    assert_eq!(restored.get_crossuuid(), identity.1);
+    assert_eq!(restored.get_prevuuid(), identity.2);
+    assert_eq!(restored.get_prevunix(), identity.3);
 
     let mut encoded = Vec::new();
     assert_eq!(
@@ -521,22 +554,19 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
 }
 
 #[test]
-fn the_row_stays_lossless_and_says_what_nothing_explained() {
+fn the_row_keeps_unrepresented_content_and_projects_explained_values() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let row = reader
+    let message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
-        .unwrap()
-        .into_row(&schema)
         .unwrap();
+    let row = message.into_row(&schema).unwrap();
     let held = row.as_sequence().expect("a row");
     let entries = held.last().unwrap().as_sequence().expect("the record");
 
-    // The record is the content the message holds, in its order, so the
-    // wire is rebuilt from it and never from the columns: the version, the
-    // type and the checksum are facts the frame holds typed, and so is the
-    // identifier the message lifted, so none of the four is an entry.
-    assert_eq!(entries.len(), 3);
+    // Only content no column explained remains in the residual. The frame,
+    // order identifier and derived `TimeInForce` each have a column.
+    assert_eq!(entries.len(), 2);
     // A key no dictionary explains is named after itself, folded as every
     // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries
@@ -546,13 +576,11 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
         .collect();
     assert_eq!(named, ["9999", "venueownthing"]);
 
-    // A key one does explain carries the dictionary's canonical name, so a
-    // consumer groups by name without a dictionary of its own.
-    let derived = entries
-        .iter()
-        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(59))
-        .expect("the TimeInForce arrival");
-    assert_eq!(derived.get(1).and_then(Scalar::as_str), Some("timeinforce"));
+    // A dictionary value the schema represents is read from its named
+    // column, and rebuilding preserves it beside the residual.
+    let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(restored.by_tag(59).unwrap(), message.by_tag(59).unwrap());
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
 }
 
 /// The two documents a datatype writes name it the same way.

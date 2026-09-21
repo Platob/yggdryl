@@ -145,7 +145,8 @@ nav:
       - Nested: types/nested.md
       - Serie: types/serie.md
       - Geospatial: types/geospatial.md
-      - Variant encoding: types/variant.md
+      - Variant: types/variant.md
+      - Value stream: types/value-stream.md
       - Protocol: types/protocol.md
     - Playground: types/playground.md
   - Holder:

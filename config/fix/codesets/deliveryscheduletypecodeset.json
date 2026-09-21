@@ -1,0 +1,20 @@
+{
+  "name": "deliveryscheduletypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Notional",
+      "doc": "Notional"
+    },
+    {
+      "value": "1",
+      "name": "Delivery",
+      "doc": "Delivery"
+    },
+    {
+      "value": "2",
+      "name": "PhysicalSettlPeriods",
+      "doc": "Physical settlement period"
+    }
+  ]
+}

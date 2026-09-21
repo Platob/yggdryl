@@ -1,0 +1,35 @@
+{
+  "name": "senioritycodeset",
+  "codes": [
+    {
+      "value": "SD",
+      "name": "SeniorSecured",
+      "doc": "Senior Secured"
+    },
+    {
+      "value": "SR",
+      "name": "Senior",
+      "doc": "Senior"
+    },
+    {
+      "value": "SB",
+      "name": "Subordinated",
+      "doc": "Subordinated"
+    },
+    {
+      "value": "JR",
+      "name": "Junior",
+      "doc": "Junior"
+    },
+    {
+      "value": "MZ",
+      "name": "Mezzanine",
+      "doc": "Mezzanine"
+    },
+    {
+      "value": "SN",
+      "name": "SeniorNonPreferred",
+      "doc": "Senior Non-Preferred"
+    }
+  ]
+}

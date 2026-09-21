@@ -1,0 +1,50 @@
+{
+  "name": "auctiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "BlockOrderAuction",
+      "doc": "Block order auction"
+    },
+    {
+      "value": "2",
+      "name": "DirectedOrderAuction",
+      "doc": "Directed order auction"
+    },
+    {
+      "value": "3",
+      "name": "ExposureOrderAuction",
+      "doc": "Exposure order auction"
+    },
+    {
+      "value": "4",
+      "name": "FlashOrderAuction",
+      "doc": "Flash order auction"
+    },
+    {
+      "value": "5",
+      "name": "FacilitationOrderAuction",
+      "doc": "Facilitation order auction"
+    },
+    {
+      "value": "6",
+      "name": "SolicitationOrderAuction",
+      "doc": "Solicitation order auction"
+    },
+    {
+      "value": "7",
+      "name": "PriceImprovementMechanism",
+      "doc": "Price improvement mechanism (PIM)"
+    },
+    {
+      "value": "8",
+      "name": "DirectedOrderPriceImprovementMechanism",
+      "doc": "Directed Order price improvement mechanism (PIM)"
+    }
+  ]
+}

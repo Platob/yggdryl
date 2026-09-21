@@ -1,0 +1,30 @@
+{
+  "name": "deliverystreamdeliveryrestrictioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Firm",
+      "doc": "Firm"
+    },
+    {
+      "value": "2",
+      "name": "NonFirm",
+      "doc": "Interruptable or non-firm"
+    },
+    {
+      "value": "3",
+      "name": "ForceMajeure",
+      "doc": "Force majeure"
+    },
+    {
+      "value": "4",
+      "name": "SystemFirm",
+      "doc": "System firm"
+    },
+    {
+      "value": "5",
+      "name": "UnitFirm",
+      "doc": "Unit firm"
+    }
+  ]
+}

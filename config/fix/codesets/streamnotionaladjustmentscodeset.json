@@ -1,0 +1,20 @@
+{
+  "name": "streamnotionaladjustmentscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Execution",
+      "doc": "Execution"
+    },
+    {
+      "value": "1",
+      "name": "PortfolioRebalancing",
+      "doc": "Portfolio rebalancing"
+    },
+    {
+      "value": "2",
+      "name": "Standard",
+      "doc": "Standard"
+    }
+  ]
+}

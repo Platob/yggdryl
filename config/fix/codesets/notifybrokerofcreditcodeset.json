@@ -1,0 +1,21 @@
+{
+  "name": "notifybrokerofcreditcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "DetailsShouldNotBeCommunicated",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Details should not be communicated"
+    },
+    {
+      "value": "Y",
+      "name": "DetailsShouldBeCommunicated",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Details should be communicated"
+    }
+  ]
+}

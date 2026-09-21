@@ -1,0 +1,75 @@
+{
+  "name": "mdreporteventcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "StartInstrumentRefData",
+      "doc": "Start of instrument reference data"
+    },
+    {
+      "value": "2",
+      "name": "EndInstrumentRefData",
+      "doc": "End of instrument reference data"
+    },
+    {
+      "value": "3",
+      "name": "StartOffMarketTrades",
+      "doc": "Start of off-market trades"
+    },
+    {
+      "value": "4",
+      "name": "EndOffMarketTrades",
+      "doc": "End of off-market trades"
+    },
+    {
+      "value": "5",
+      "name": "StartOrderBookTrades",
+      "doc": "Start of order book trades"
+    },
+    {
+      "value": "6",
+      "name": "EndOrderBookTrades",
+      "doc": "End of order book trades"
+    },
+    {
+      "value": "7",
+      "name": "StartOpenInterest",
+      "doc": "Start of open interest"
+    },
+    {
+      "value": "8",
+      "name": "EndOpenInterest",
+      "doc": "End of open interest"
+    },
+    {
+      "value": "9",
+      "name": "StartSettlementPrices",
+      "doc": "Start of settlement prices"
+    },
+    {
+      "value": "10",
+      "name": "EndSettlementPrices",
+      "doc": "End of settlement prices"
+    },
+    {
+      "value": "11",
+      "name": "StartStatsRefData",
+      "doc": "Start of statistics reference data"
+    },
+    {
+      "value": "12",
+      "name": "EndStatsRefData",
+      "doc": "End of statistics reference data"
+    },
+    {
+      "value": "13",
+      "name": "StartStatistics",
+      "doc": "Start of statistics"
+    },
+    {
+      "value": "14",
+      "name": "EndStatistics",
+      "doc": "End of statistics"
+    }
+  ]
+}

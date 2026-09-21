@@ -1,0 +1,25 @@
+{
+  "name": "posmaintactioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "2",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "3",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "4",
+      "name": "Reverse",
+      "doc": "Reverse"
+    }
+  ]
+}

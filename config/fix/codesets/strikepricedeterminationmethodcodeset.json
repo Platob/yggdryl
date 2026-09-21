@@ -1,0 +1,25 @@
+{
+  "name": "strikepricedeterminationmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "FixedStrike",
+      "doc": "Fixed strike (default if not specified)"
+    },
+    {
+      "value": "2",
+      "name": "StrikeSetAtExpiration",
+      "doc": "Strike set at expiration to underlying or other value (lookback floating)"
+    },
+    {
+      "value": "3",
+      "name": "StrikeSetToAverageAcrossLife",
+      "doc": "Strike set to average of underlying settlement price across the life of the option"
+    },
+    {
+      "value": "4",
+      "name": "StrikeSetToOptimalValue",
+      "doc": "Strike set to optimal value"
+    }
+  ]
+}

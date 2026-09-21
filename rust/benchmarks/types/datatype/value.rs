@@ -7,6 +7,32 @@ use yggdryl::{
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
+    {
+        use yggdryl::graph::{MarketElement, MarketElementData};
+        use yggdryl::{CfiCode, FIGICode, IsinCode};
+        let mut codes = criterion.benchmark_group("instrument_codes");
+        codes.bench_function("isin", |bench| {
+            bench.iter(|| IsinCode::new(black_box("us0378331005")).unwrap());
+        });
+        codes.bench_function("figi", |bench| {
+            bench.iter(|| FIGICode::new(black_box("bbg000blnq16")).unwrap());
+        });
+        codes.bench_function("cfi_classification", |bench| {
+            bench.iter(|| CfiCode::is_classified(black_box("ESVUFR")));
+        });
+        codes.bench_function("cfi_merge", |bench| {
+            bench.iter(|| CfiCode::merged(black_box("ESXXXX"), black_box("ESVUFR")));
+        });
+        let isin = IsinCode::new("US0378331005").unwrap();
+        codes.bench_function("market_identifier_setter", |bench| {
+            bench.iter(|| {
+                let mut element = MarketElementData::default();
+                element.set_isincode(Some(black_box(&isin).clone()));
+                black_box(element)
+            });
+        });
+        codes.finish();
+    }
     let record = Scalar::from_struct([
         (
             "at",

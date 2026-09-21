@@ -1,0 +1,25 @@
+{
+  "name": "tickdirectioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PlusTick",
+      "doc": "Plus Tick"
+    },
+    {
+      "value": "1",
+      "name": "ZeroPlusTick",
+      "doc": "Zero-Plus Tick"
+    },
+    {
+      "value": "2",
+      "name": "MinusTick",
+      "doc": "Minus Tick"
+    },
+    {
+      "value": "3",
+      "name": "ZeroMinusTick",
+      "doc": "Zero-Minus Tick"
+    }
+  ]
+}

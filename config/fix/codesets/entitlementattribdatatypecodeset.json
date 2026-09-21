@@ -1,0 +1,215 @@
+{
+  "name": "entitlementattribdatatypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Int",
+      "group": "int",
+      "doc": "int"
+    },
+    {
+      "value": "2",
+      "name": "Length",
+      "group": "int",
+      "doc": "Length"
+    },
+    {
+      "value": "3",
+      "name": "NumInGroup",
+      "group": "int",
+      "doc": "NumInGroup"
+    },
+    {
+      "value": "4",
+      "name": "SeqNum",
+      "group": "int",
+      "doc": "SeqNum"
+    },
+    {
+      "value": "5",
+      "name": "TagNum",
+      "group": "int",
+      "doc": "TagNum"
+    },
+    {
+      "value": "6",
+      "name": "Float",
+      "group": "float",
+      "doc": "float"
+    },
+    {
+      "value": "7",
+      "name": "Qty",
+      "group": "float",
+      "doc": "Qty"
+    },
+    {
+      "value": "8",
+      "name": "Price",
+      "group": "float",
+      "doc": "Price"
+    },
+    {
+      "value": "9",
+      "name": "PriceOffset",
+      "group": "float",
+      "doc": "PriceOffset"
+    },
+    {
+      "value": "10",
+      "name": "Amt",
+      "group": "float",
+      "doc": "Amt"
+    },
+    {
+      "value": "11",
+      "name": "Percentage",
+      "group": "float",
+      "doc": "Percentage"
+    },
+    {
+      "value": "12",
+      "name": "Char",
+      "group": "char",
+      "doc": "char"
+    },
+    {
+      "value": "13",
+      "name": "Boolean",
+      "group": "char",
+      "doc": "Boolean"
+    },
+    {
+      "value": "14",
+      "name": "String",
+      "group": "String",
+      "doc": "String"
+    },
+    {
+      "value": "15",
+      "name": "MultipleCharValue",
+      "group": "String",
+      "doc": "MultipleCharValue"
+    },
+    {
+      "value": "16",
+      "name": "Currency",
+      "group": "String",
+      "doc": "Currency"
+    },
+    {
+      "value": "17",
+      "name": "Exchange",
+      "group": "String",
+      "doc": "Exchange"
+    },
+    {
+      "value": "18",
+      "name": "MonthYear",
+      "group": "String",
+      "doc": "MonthYear"
+    },
+    {
+      "value": "19",
+      "name": "UTCTimestamp",
+      "group": "String",
+      "doc": "UTCTimestamp"
+    },
+    {
+      "value": "20",
+      "name": "UTCTimeOnly",
+      "group": "String",
+      "doc": "UTCTimeOnly"
+    },
+    {
+      "value": "21",
+      "name": "LocalMktDate",
+      "group": "String",
+      "doc": "LocalMktDate"
+    },
+    {
+      "value": "22",
+      "name": "UTCDateOnly",
+      "group": "String",
+      "doc": "UTCDateOnly"
+    },
+    {
+      "value": "23",
+      "name": "Data",
+      "group": "String",
+      "doc": "data"
+    },
+    {
+      "value": "24",
+      "name": "MultipleStringValue",
+      "group": "String",
+      "doc": "MultipleStringValue"
+    },
+    {
+      "value": "25",
+      "name": "Country",
+      "group": "String",
+      "doc": "Country"
+    },
+    {
+      "value": "26",
+      "name": "Language",
+      "group": "String",
+      "doc": "Language"
+    },
+    {
+      "value": "27",
+      "name": "TZTimeOnly",
+      "group": "String",
+      "doc": "TZTimeOnly"
+    },
+    {
+      "value": "28",
+      "name": "TZTimestamp",
+      "group": "String",
+      "doc": "TZTimestamp"
+    },
+    {
+      "value": "29",
+      "name": "Tenor",
+      "group": "Pattern",
+      "doc": "Tenor"
+    },
+    {
+      "value": "30",
+      "name": "DayOfMonth",
+      "group": "int",
+      "doc": "DayOfMonth"
+    },
+    {
+      "value": "31",
+      "name": "XMLData",
+      "group": "String",
+      "doc": "XMLData"
+    },
+    {
+      "value": "32",
+      "name": "Pattern",
+      "group": "Pattern",
+      "doc": "Pattern"
+    },
+    {
+      "value": "33",
+      "name": "Reserved100Plus",
+      "group": "Pattern",
+      "doc": "Reserved100Plus"
+    },
+    {
+      "value": "34",
+      "name": "Reserved1000Plus",
+      "group": "Pattern",
+      "doc": "Reserved1000Plus"
+    },
+    {
+      "value": "35",
+      "name": "Reserved4000Plus",
+      "group": "Pattern",
+      "doc": "Reserved4000Plus"
+    }
+  ]
+}

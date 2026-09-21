@@ -74,7 +74,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
 
     assert_eq!(columns[0].id(), DataTypeId::Currency);
     assert_eq!(columns[0].as_str(), Some("USD"));
-    assert_eq!(columns[1].id(), DataTypeId::Mic);
+    assert_eq!(columns[1].id(), DataTypeId::MicCode);
     assert_eq!(columns[1].as_str(), Some("XCME"));
     // The specification declares the float family as `float` and states no
     // scale, so a price reads as a double and the exact characters stay in
@@ -112,7 +112,7 @@ fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
 
     // The listing is what a field declares, so a venue column crosses Arrow
     // carrying the vocabulary its values come from.
-    let venue = Field::new("venue", DataType::Mic, false)
+    let venue = Field::new("venue", DataType::MicCode, false)
         .try_with_string_enum(&venues)
         .unwrap();
     let recovered = Field::from_arrow_field(&venue.clone().into_arrow_field().unwrap()).unwrap();
@@ -121,17 +121,17 @@ fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
 
     // A member's code is the value's own bytes under the resolved width, so
     // two processes reading this schema answer the same integers.
-    let members = venues.into_members(&DataType::Mic).unwrap();
+    let members = venues.into_members(&DataType::MicCode).unwrap();
     for (member, code) in &members {
         assert_eq!(
             *code,
-            DataType::Mic.ascii_packed(member.as_bytes()).unwrap()
+            DataType::MicCode.ascii_packed(member.as_bytes()).unwrap()
         );
     }
     assert_eq!(
         StringEnum::from_logical_name("mic")
             .unwrap()
-            .into_members(&DataType::Mic)
+            .into_members(&DataType::MicCode)
             .unwrap(),
         members
     );

@@ -73,7 +73,7 @@ fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
     // A map key gate that nothing else in the tree exercises for a
     // non-Utf8 key.
     fields.push(
-        DataType::map_of(DataType::Mic, DataType::Int64, true)
+        DataType::map_of(DataType::MicCode, DataType::Int64, true)
             .unwrap()
             .required_field("by_venue"),
     );

@@ -1,0 +1,160 @@
+{
+  "name": "taxadvantagetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None/Not Applicable (default)"
+    },
+    {
+      "value": "1",
+      "name": "MaxiISA",
+      "doc": "Maxi ISA (UK)"
+    },
+    {
+      "value": "2",
+      "name": "TESSA",
+      "doc": "TESSA (UK)"
+    },
+    {
+      "value": "3",
+      "name": "MiniCashISA",
+      "doc": "Mini Cash ISA (UK)"
+    },
+    {
+      "value": "4",
+      "name": "MiniStocksAndSharesISA",
+      "doc": "Mini Stocks And Shares ISA (UK)"
+    },
+    {
+      "value": "5",
+      "name": "MiniInsuranceISA",
+      "doc": "Mini Insurance ISA (UK)"
+    },
+    {
+      "value": "6",
+      "name": "CurrentYearPayment",
+      "doc": "Current Year Payment (US)"
+    },
+    {
+      "value": "7",
+      "name": "PriorYearPayment",
+      "doc": "Prior Year Payment (US)"
+    },
+    {
+      "value": "8",
+      "name": "AssetTransfer",
+      "doc": "Asset Transfer (US)"
+    },
+    {
+      "value": "9",
+      "name": "EmployeePriorYear",
+      "doc": "Employee - prior year (US)"
+    },
+    {
+      "value": "10",
+      "name": "EmployeeCurrentYear",
+      "doc": "Employee - current year (US)"
+    },
+    {
+      "value": "11",
+      "name": "EmployerPriorYear",
+      "doc": "Employer - prior year (US)"
+    },
+    {
+      "value": "12",
+      "name": "EmployerCurrentYear",
+      "doc": "Employer - current year (US)"
+    },
+    {
+      "value": "13",
+      "name": "NonFundPrototypeIRA",
+      "doc": "Non-fund prototype IRA (US)"
+    },
+    {
+      "value": "14",
+      "name": "NonFundQualifiedPlan",
+      "doc": "Non-fund qualified plan (US)"
+    },
+    {
+      "value": "15",
+      "name": "DefinedContributionPlan",
+      "doc": "Defined contribution plan (US)"
+    },
+    {
+      "value": "16",
+      "name": "IRA",
+      "doc": "Individual Retirement Account (US)"
+    },
+    {
+      "value": "17",
+      "name": "IRARollover",
+      "doc": "Individual Retirement Account - Rollover (US)"
+    },
+    {
+      "value": "18",
+      "name": "KEOGH",
+      "doc": "KEOGH (US)"
+    },
+    {
+      "value": "19",
+      "name": "ProfitSharingPlan",
+      "doc": "Profit Sharing Plan (US)"
+    },
+    {
+      "value": "20",
+      "name": "US401K",
+      "doc": "401(k) (US)"
+    },
+    {
+      "value": "21",
+      "name": "SelfDirectedIRA",
+      "doc": "Self-directed IRA (US)"
+    },
+    {
+      "value": "22",
+      "name": "US403b",
+      "doc": "403(b) (US)"
+    },
+    {
+      "value": "23",
+      "name": "US457",
+      "doc": "457 (US)"
+    },
+    {
+      "value": "24",
+      "name": "RothIRAPrototype",
+      "doc": "Roth IRA (Fund Prototype) (US)"
+    },
+    {
+      "value": "25",
+      "name": "RothIRANonPrototype",
+      "doc": "Roth IRA (Non-prototype) (US)"
+    },
+    {
+      "value": "26",
+      "name": "RothConversionIRAPrototype",
+      "doc": "Roth Conversion IRA (Fund Prototype) (US)"
+    },
+    {
+      "value": "27",
+      "name": "RothConversionIRANonPrototype",
+      "doc": "Roth Conversion IRA (Non-prototype) (US)"
+    },
+    {
+      "value": "28",
+      "name": "EducationIRAPrototype",
+      "doc": "Education IRA (Fund Prototype) (US)"
+    },
+    {
+      "value": "29",
+      "name": "EducationIRANonPrototype",
+      "doc": "Education IRA (Non-prototype) (US)"
+    },
+    {
+      "value": "999",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

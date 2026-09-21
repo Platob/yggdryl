@@ -1,0 +1,10 @@
+{
+  "name": "streamcommoditysettldaterollunitcodeset",
+  "codes": [
+    {
+      "value": "D",
+      "name": "Day",
+      "doc": "Day"
+    }
+  ]
+}

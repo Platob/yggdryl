@@ -1,0 +1,15 @@
+{
+  "name": "modeltypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UtilityProvidedStandardModel",
+      "doc": "Utility provided standard model"
+    },
+    {
+      "value": "1",
+      "name": "ProprietaryModel",
+      "doc": "Proprietary (user supplied) model"
+    }
+  ]
+}

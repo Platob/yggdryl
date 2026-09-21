@@ -1,0 +1,15 @@
+{
+  "name": "paymentpaysidecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Buy",
+      "doc": "Buy"
+    },
+    {
+      "value": "2",
+      "name": "Sell",
+      "doc": "Sell"
+    }
+  ]
+}

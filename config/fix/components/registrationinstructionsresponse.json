@@ -148,6 +148,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid",
+    "FIX:msgcat": "REGI",
     "FIX:msgtype": "p",
     "FIX:tag": "849606",
     "description": "MsgType = p (lowercase P)",

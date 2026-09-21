@@ -1,0 +1,30 @@
+{
+  "name": "settlobligsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InstructionsOfBroker",
+      "doc": "Instructions of Broker"
+    },
+    {
+      "value": "2",
+      "name": "InstructionsForInstitution",
+      "doc": "Instructions for Institution"
+    },
+    {
+      "value": "3",
+      "name": "Investor",
+      "doc": "Investor"
+    },
+    {
+      "value": "4",
+      "name": "BuyersSettlementInstructions",
+      "doc": "Buyer's settlement instructions"
+    },
+    {
+      "value": "5",
+      "name": "SellersSettlementInstructions",
+      "doc": "Seller's settlement instructions"
+    }
+  ]
+}

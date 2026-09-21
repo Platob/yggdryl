@@ -34,7 +34,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 83);
+    assert_eq!(DataTypeId::ALL.len(), 84);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -186,15 +186,16 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::MediaType, 0x68),
         (DataTypeId::Country, 0x71),
         (DataTypeId::Currency, 0x72),
-        (DataTypeId::Mic, 0x73),
-        (DataTypeId::Cfi, 0x74),
+        (DataTypeId::MicCode, 0x73),
+        (DataTypeId::CfiCode, 0x74),
         (DataTypeId::Side, 0x75),
         (DataTypeId::State, 0x76),
         (DataTypeId::TimeInForce, 0x77),
-        (DataTypeId::Isin, 0x78),
-        (DataTypeId::Cusip, 0x79),
-        (DataTypeId::Sedol, 0x7a),
-        (DataTypeId::Bloomberg, 0x7b),
+        (DataTypeId::IsinCode, 0x78),
+        (DataTypeId::CusipCode, 0x79),
+        (DataTypeId::SedolCode, 0x7a),
+        (DataTypeId::BloombergCode, 0x7b),
+        (DataTypeId::FIGICode, 0x7c),
         (DataTypeId::Uuid, 0x81),
         (DataTypeId::List, 0x91),
         (DataTypeId::LargeList, 0x92),
@@ -216,9 +217,10 @@ fn every_discriminant_is_stated_and_pinned() {
         assert_eq!(id, held, "declaration order");
         assert_eq!(id.as_u8(), byte, "{id}");
     }
-    assert_eq!(DataTypeId::Isin.code_width(), Some(12));
-    assert_eq!(DataTypeId::Cusip.code_width(), Some(9));
-    assert_eq!(DataTypeId::Sedol.code_width(), Some(7));
+    assert_eq!(DataTypeId::IsinCode.code_width(), Some(12));
+    assert_eq!(DataTypeId::CusipCode.code_width(), Some(9));
+    assert_eq!(DataTypeId::SedolCode.code_width(), Some(7));
+    assert_eq!(DataTypeId::FIGICode.code_width(), Some(12));
 }
 
 #[test]
@@ -290,9 +292,9 @@ fn fixed_widths_match_their_layout() {
 #[test]
 fn a_code_width_is_a_bound_and_never_a_layout() {
     assert_eq!(DataTypeId::Currency.code_width(), Some(3));
-    assert_eq!(DataTypeId::Cfi.code_width(), Some(6));
+    assert_eq!(DataTypeId::CfiCode.code_width(), Some(6));
     assert_eq!(DataTypeId::Currency.fixed_byte_width(), None);
-    assert_eq!(DataTypeId::Cfi.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::CfiCode.fixed_byte_width(), None);
     // Only a code has one: a width that is a layout is not this fact.
     assert_eq!(DataTypeId::Uuid.code_width(), None);
     assert_eq!(DataTypeId::FixedUtf8String.code_width(), None);

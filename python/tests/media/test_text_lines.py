@@ -25,7 +25,7 @@ MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.time
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
-    "expirunix",
+    "exprtime",
     "prevunix",
     "snapunix",
     "curruuid",
@@ -208,7 +208,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
         return {
             "currunix": MTIME,
             "creaunix": None,
-            "expirunix": None,
+            "exprtime": None,
             "prevunix": None,
             "snapunix": None,
             "curruuid": identity,

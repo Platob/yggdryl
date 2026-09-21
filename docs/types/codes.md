@@ -1,6 +1,6 @@
 # Codes
 
-The eleven registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
+The twelve registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
 
 A code is an identity over a published registry, not a string with a charset: a currency is ISO 4217 the way a [URL](../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is - Arrow's `Utf8`, under the code's own extension name - held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](text.md).
 
@@ -19,12 +19,13 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `state`, a ranked lifecycle | 10 | `utf8`, `yggdryl.state` |
 | `timeinforce`, FIX `TimeInForce(59)` | 8 | `utf8`, `yggdryl.timeinforce` |
 | `bloomberg`, a Bloomberg identifier | 32 | `utf8`, `yggdryl.bloomberg` |
+| `figi`, ANSI X9.145 Financial Instrument Global Identifier | 12 | `utf8`, `yggdryl.figi` |
 
 | | |
 | --- | --- |
-| Value | one `Scalar` variant per code - `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` - holding the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values, and they sort the way their datatypes sort |
-| Family | `Code` is the eleven as one value - a variant per code, named as the `Scalar` variant is - and a `FamilyValue` beside `CodeValue`: `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](scalar.md#families)) |
-| Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name its dictionary gives each code, so a dialect's own code maps as its dictionary says |
+| Value | one `Scalar` variant per code - `Country`, `Currency`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` - holding the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values, and they sort the way their datatypes sort |
+| Family | `Code` is the twelve as one value - a variant per code, named as the `Scalar` variant is - and a `FamilyValue` beside `CodeValue`: `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](scalar.md#families)) |
+| Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) it reads by gives each code, so a dialect's own code maps as its dictionary says |
 | Storage | the text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | the extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
@@ -32,17 +33,19 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `StringEnum` | a name plus one US-ASCII value per member under `FIELD:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
 | Lanes | `Side::is_bid` and `Side::is_ask` say which lane of a quote a side takes - `BUY` and `BUYMINUS` the bid, `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` the ask, and a cross, `UNDISC`, `ASDEF`, `OPPOSITE` or `UNKNOWN` neither - which is what the FIX lift and a market element fill a lane by |
 | Merge | `CodeValue::merge_with(self, &Self) -> Self` is the better statement of two codes of one kind: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. What a [graph element](../graph.md) folds two statements of one fact with |
-| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
+| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `IsinCode`/`CusipCode`/`SedolCode`/`FIGICode::{is_valid, is_canonical, closing_digit}` |
+
+ISIN, CUSIP, SEDOL and FIGI construction and validation scan their bounded ASCII bytes directly: a valid value, its canonical-spelling probe and its closing digit stay on the stack, with the accepted code held inline. A FIGI is twelve ASCII characters: a permitted two-consonant prefix, `G`, eight consonants or digits, then its decimal check digit. Rust keeps the accepted twelve-byte FIGI inline; its constructor, clone and shared field are allocation-free. CFI classification and `merged` use the same six-byte stack path. A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../graph.md); this context is not a codec parser, a global mapper, or a replacement for a stated fact.
 
 ## Use
 
-`DataType::CODES` lists the codes; `is_code` and `code_name` tell one from the text beside it. The [playground](playground.md) renders every code, refusal and vocabulary as the package answered them.
+`DataType::CODES` lists the codes; `is_code` and `code_name` tell one from the text beside it. The [playground](playground.md) renders sample codes, refusals and vocabularies as the package answered them.
 
 === "Rust"
 
     ```rust
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{DataType, DataTypeKind, Field, Scalar};
+    use yggdryl::{DataType, DataTypeKind, Field, FIGICode, Scalar};
 
     // A registered code is a datatype, not a name over a width.
     let currency = DataType::currency();
@@ -62,16 +65,16 @@ A code is an identity over a published registry, not a string with a charset: a 
         &[
             ("country", DataType::Country, 2),
             ("currency", DataType::Currency, 3),
-            ("mic", DataType::Mic, 4),
+            ("mic", DataType::MicCode, 4),
             // Six bytes: `cfi` is what it is, not the eight some other
             // width would pad it to.
-            ("cfi", DataType::Cfi, 6),
+            ("cfi", DataType::CfiCode, 6),
             // Twelve, nine and seven bytes, each closed by a check digit, so
             // a value is an identifier or is refused, never a typo stored as
             // a security.
-            ("isin", DataType::Isin, 12),
-            ("cusip", DataType::Cusip, 9),
-            ("sedol", DataType::Sedol, 7),
+            ("isin", DataType::IsinCode, 12),
+            ("cusip", DataType::CusipCode, 9),
+            ("sedol", DataType::SedolCode, 7),
             // The lifecycle codes, each at the width it needs: a side is
             // its explicit spelling, `SSHORTEX` the longest, and a state
             // carries two digits of rank before its name.
@@ -81,7 +84,10 @@ A code is an identity over a published registry, not a string with a charset: a 
             // Thirty-two bytes, and the one width that is only a bound: a
             // ticker, a market and a yellow key have no fixed length between
             // them, and no standard closes a Bloomberg identifier.
-            ("bloomberg", DataType::Bloomberg, 32),
+            ("bloomberg", DataType::BloombergCode, 32),
+            // A FIGI has its own shape and check digit, distinct from a
+            // Bloomberg identifier.
+            ("figi", DataType::FIGICode, 12),
         ]
     );
 
@@ -104,10 +110,14 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert!(DataType::cusip().scalar("037833101").is_err());
     assert_eq!(DataType::sedol().scalar("b0ybkj7")?.as_str(), Some("B0YBKJ7"));
     assert!(DataType::sedol().scalar("B0YBKJ8").is_err());
-    assert_eq!(DataType::Isin.scalar("us0378331005")?.as_str(), Some("US0378331005"));
+    assert_eq!(DataType::IsinCode.scalar("us0378331005")?.as_str(), Some("US0378331005"));
+    let figi = FIGICode::new("bbg000blnq16")?;
+    assert_eq!(figi.as_str(), "BBG000BLNQ16");
+    assert_eq!(DataType::figi().scalar("BBG000BLNQ16")?.as_str(), Some("BBG000BLNQ16"));
+    assert!(FIGICode::new("BBG000BLNQ17").is_err());
 
     // A code rides its own Arrow extension, so the identity survives the trip.
-    let venue = Field::new("venue", DataType::Mic, false);
+    let venue = Field::new("venue", DataType::MicCode, false);
     let arrow = venue.clone().into_arrow_field()?;
     // The storage is the text; the name beside it is the identity.
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
@@ -140,10 +150,10 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "currency", "mic", "cfi", "isin", "cusip", "sedol",
-             "side", "state", "timeinforce", "bloomberg")] == [
+             "side", "state", "timeinforce", "bloomberg", "figi")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("side", 8), ("state", 10), ("timeinforce", 8),
-        ("bloomberg", 32),
+        ("bloomberg", 32), ("figi", 12),
     ]
 
     # A value is the text, and carries its identity.
@@ -168,6 +178,11 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert DataType("sedol").scalar("b0ybkj7").as_py() == "B0YBKJ7"
     with pytest.raises(ValueError, match="check digit"):
         DataType("sedol").scalar("B0YBKJ8")
+    figi = DataType("figi")
+    assert figi.scalar("bbg000blnq16").as_py() == "BBG000BLNQ16"
+    with pytest.raises(ValueError, match="check digit"):
+        figi.scalar("BBG000BLNQ17")
+    assert types.figi("figi", nullable=False).dtype == figi
 
     # A code rides its own Arrow extension, so the identity survives the trip.
     venue = types.mic("venue", nullable=False)
@@ -199,9 +214,9 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg']
+      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg', 'figi']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32],
+      [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32, 12],
     )
 
     // A securities identifier is closed by its own check digit: a column of
@@ -216,6 +231,11 @@ A code is an identity over a published registry, not a string with a charset: a 
       [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'b0ybkj7']))],
       ['B0YBKJ7', null],
     )
+
+    const figi = DataType.fromString('figi')
+    assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
+    assert.throws(() => figi.scalar('BBG000BLNQ17'), /FIGI|check/i)
+    assert.equal(fields.figi('figi', { nullable: false }).dtype.id, 'figi')
 
     // A code rides its own Arrow extension, so the identity survives the trip.
     const venue = fields.struct('row', [fields.mic('venue', { nullable: false })], {
@@ -241,8 +261,14 @@ A code is an identity over a published registry, not a string with a charset: a 
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
 The [FIX registry](../fix/registry.md)
 owns `MsgType`: the registry's immutable message Struct definition, a component
-carrying `FIX:msgtype`, obtained through registry lookup. Its wire code stays
-intact; message definitions have no generic datatype or code field helper.
+carrying `FIX:msgtype` and optional fixed `FIX:msgcat`, obtained through registry
+lookup. Its wire code stays intact; message definitions have no generic datatype
+or code field helper. A fixed row carries `msgcat` at crate tag 65054 and its
+six normalized identifier columns: `isincode(65055)`, `cusipcode(65057)`,
+`sedolcode(65058)`, `bloombergcode(65059)`, `miccode(65060)` and
+`figicode(65061)`. `CFICode(461)` is the standard classification field, so no
+crate 65056 exists. `SecurityIDSource(22)=S` and
+`SecurityAltIDSource(456)=S` lift a valid FIGI; source `A` remains Bloomberg.
 
 ## Packed integers and the declared vocabulary
 
@@ -274,7 +300,7 @@ intact; message definitions have no generic datatype or code field helper.
     let venues = StringEnum::from_members("Venue", [("XNAS", "XNAS"), ("N_A", "n/a")])?;
     assert_eq!(venues.get("N_A"), Some("n/a"));
     assert_eq!(
-        venues.into_members(&DataType::Mic)?,
+        venues.into_members(&DataType::MicCode)?,
         [("N_A".into(), 0x6E2F_6100), ("XNAS".into(), 0x584E_4153)]
     );
 
@@ -430,7 +456,7 @@ Declaring a vocabulary *over* one of these widths is Python-only: `yggdryl.enums
 builds an `IntEnum` base whose members are their own storage bytes read
 big-endian, so a member is the text and the integer at once. Rust and JavaScript
 express the same column as the datatype alone. The four registered bases -
-`Currency`, `Country`, `Mic`, `CFI` - ship declared; `fixed_ascii(width)` builds
+`Currency`, `Country`, `MicCode`, `CFI` - ship declared; `fixed_ascii(width)` builds
 one over any fixed width.
 
 === "Python"
@@ -468,11 +494,12 @@ one over any fixed width.
 `OrdStatus(39)` says where the order stands and `ExecType(150)` says what the
 report is - and a scheduler names a job's state in ordinary English. They are
 the same shape, so a capture and the pipeline reading it need one vocabulary
-rather than two and a join. The two FIX code sets share their letters and not
-always their meaning - `D` is Restated in one and AcceptedForBidding in the
-other - so a [FIX column](../fix/capture.md) reads a code through the name its
-own field gives it before it reads the letter: `150=D` is `70RESTATED` and
-`39=D` is `20ACCEPTED`.
+rather than two and a join. FIX's two are named [code sets](../fix/registry.md#a-field-names-the-code-set-it-reads-by)
+the dictionary holds, `ordstatuscodeset` and `exectypecodeset`; they share
+their letters and not always their meaning - `D` is Restated in one and
+AcceptedForBidding in the other - so a [FIX column](../fix/capture.md) reads a
+code through the name the set its own field reads by gives it, before it reads
+the letter: `150=D` is `70RESTATED` and `39=D` is `20ACCEPTED`.
 
 A value is **two decimal digits of rank then a name**, ten US-ASCII bytes. The
 rank is what makes the stored bytes sort from the first state to the terminal
@@ -538,24 +565,26 @@ the wire value rather than a name for it, exactly as `side` is.
 
 `bloomberg` is the one code here with no shape to check: an identifier is a
 ticker, a market and a yellow key with spaces between them - `AAPL US EQUITY` -
-or a FIGI, and the standard that would say which is a terminal's rather than a
-registry's. So canonical is what it is for every code - ASCII that fits the
-thirty-two bytes, in upper case - and no more, because refusing a spelling
-nobody published would be a guess.
+and no standard closes that terminal identifier. So canonical is what it is for
+every code - nonempty ASCII that fits the thirty-two bytes, retaining the
+published spelling - and no more, because refusing a spelling nobody published
+would be a guess. FIGI is a separate checked identity, never a Bloomberg
+fallback.
 
 ## Edges
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> the text itself, so nothing is padded and nothing has to be trimmed back. A cast from a fixed-width column still trims the NUL that column's slot wrote; the padding was the slot's, never the value's. Text carrying trailing NULs canonicalizes to the trimmed value.
 - `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
-- A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values. The eleven share one value rank, so what separates them is the identity their datatypes sort by.
+- A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values. The twelve share one value rank, so what separates them is the identity their datatypes sort by.
 - `utf8` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.currency` over any other storage imports as that storage.
-- `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
-- `cusip` -> eight alphanumerics and one digit that closes them: a letter reads as ten plus its alphabet position, every second value is doubled, the digits of every value are summed, and the digit closes the sum to a multiple of ten (modulus-10 double-add-double); a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected nine characters`. Lower case -> the upper case it spells. `Cusip::issuer` and `Cusip::issue` read the six and two characters before the digit; `Cusip::is_valid` and `Cusip::closing_digit` answer the rule without building a value.
-- `sedol` -> six alphanumerics and one digit that closes them: the same letter values weighted `1, 3, 1, 7, 3, 9`, the digit closing the weighted sum to a multiple of ten; a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected seven characters`. Lower case -> the upper case it spells. `Sedol::is_valid` and `Sedol::closing_digit` answer the rule without building a value.
-- An Arrow cast into `isin`, `cusip` or `sedol` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise (`canonical spelling`, naming the row and the column; null under `safe`), because a column's bytes are what every reader digests; only a scalar read folds the case. `try_cast(x as cusip)` in an [expression](../expression/terms.md) is that safe cast: an identifier the check digit closes answers, anything else is null.
-- `isin`, `cusip` and `sedol` name no vocabulary: `StringEnum::from_logical_name` answers an enum of no members for each, and no Python code class declares them.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](cast.md#empty-text)). `isin`, `cusip`, `sedol`, `bloomberg`, `side` and `state` are the exceptions, because their value door gates the space rather than holding it - a check digit closes the first three, a securities identifier has no empty spelling, and a published vocabulary spells the last two - so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
+- `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `IsinCode::is_valid` and `IsinCode::closing_digit` answer the rule without building a value.
+- `cusip` -> eight alphanumerics and one digit that closes them: a letter reads as ten plus its alphabet position, every second value is doubled, the digits of every value are summed, and the digit closes the sum to a multiple of ten (modulus-10 double-add-double); a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected nine characters`. Lower case -> the upper case it spells. `CusipCode::issuer` and `CusipCode::issue` read the six and two characters before the digit; `CusipCode::is_valid` and `CusipCode::closing_digit` answer the rule without building a value.
+- `sedol` -> six alphanumerics and one digit that closes them: the same letter values weighted `1, 3, 1, 7, 3, 9`, the digit closing the weighted sum to a multiple of ten; a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected seven characters`. Lower case -> the upper case it spells. `SedolCode::is_valid` and `SedolCode::closing_digit` answer the rule without building a value.
+- `figi` -> twelve ASCII characters: a permitted two-consonant prefix, `G`, eight consonants or digits, and the decimal digit closing those eleven characters. A bad prefix, shape or check digit is refused; lower case folds to uppercase when constructing a scalar, while Arrow casts require the canonical spelling.
+- An Arrow cast into `isin`, `cusip`, `sedol` or `figi` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise (`canonical spelling`, naming the row and the column; null under `safe`), because a column's bytes are what every reader digests; only a scalar read folds the case. `try_cast(x as cusip)` in an [expression](../expression/terms.md) is that safe cast: an identifier the check digit closes answers, anything else is null.
+- `isin`, `cusip`, `sedol` and `figi` name no vocabulary: `StringEnum::from_logical_name` answers an enum of no members for each, and no Python code class declares them.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](cast.md#empty-text)). `isin`, `cusip`, `sedol`, `figi`, `bloomberg`, `side` and `state` are the exceptions, because their value door gates the space rather than holding it - a check digit closes the first four, a securities identifier has no empty spelling, and a published vocabulary spells the last two - so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](cast.md)).
 - [Merged](field.md) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.

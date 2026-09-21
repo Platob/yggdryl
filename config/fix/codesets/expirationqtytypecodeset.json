@@ -1,0 +1,30 @@
+{
+  "name": "expirationqtytypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AutoExercise",
+      "doc": "Auto Exercise"
+    },
+    {
+      "value": "2",
+      "name": "NonAutoExercise",
+      "doc": "Non Auto Exercise"
+    },
+    {
+      "value": "3",
+      "name": "FinalWillBeExercised",
+      "doc": "Final Will Be Exercised"
+    },
+    {
+      "value": "4",
+      "name": "ContraryIntention",
+      "doc": "Contrary Intention"
+    },
+    {
+      "value": "5",
+      "name": "Difference",
+      "doc": "Difference"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "requestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ValidRequest",
+      "doc": "Valid request"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnsupportedRequest",
+      "doc": "Invalid or unsupported request"
+    },
+    {
+      "value": "2",
+      "name": "NoDataFound",
+      "doc": "No data found that match selection criteria"
+    },
+    {
+      "value": "3",
+      "name": "NotAuthorized",
+      "doc": "Not authorized to retrieve data"
+    },
+    {
+      "value": "4",
+      "name": "DataTemporarilyUnavailable",
+      "doc": "Data temporarily unavailable"
+    },
+    {
+      "value": "5",
+      "name": "RequestForDataNotSupported",
+      "doc": "Request for data not supported"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other (further information in RejectText (1328) field)"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "exerciseconfirmationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotRequired",
+      "doc": "Not required"
+    },
+    {
+      "value": "1",
+      "name": "NonElectronic",
+      "doc": "Non-electronic"
+    },
+    {
+      "value": "2",
+      "name": "Electronic",
+      "doc": "Electronic"
+    },
+    {
+      "value": "3",
+      "name": "Unknown",
+      "doc": "Unknown at time of report"
+    }
+  ]
+}

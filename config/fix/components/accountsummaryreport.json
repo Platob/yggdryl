@@ -251,6 +251,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ACCT",
     "FIX:msgtype": "CQ",
     "FIX:tag": "339355",
     "description": "MsgType = CQ",

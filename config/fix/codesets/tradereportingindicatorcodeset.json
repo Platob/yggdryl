@@ -1,0 +1,55 @@
+{
+  "name": "tradereportingindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotReported",
+      "doc": "Trade has not (yet) been reported"
+    },
+    {
+      "value": "1",
+      "name": "OnBook",
+      "doc": "Trade has been or will be reported by a trading venue as an \"on-book\" trade"
+    },
+    {
+      "value": "2",
+      "name": "SISeller",
+      "doc": "Trade has or will be reported as a seller trade by the authorised reporter"
+    },
+    {
+      "value": "3",
+      "name": "SIBuyer",
+      "doc": "Trade has or will be reported as a buyer trade by the authorised reporter"
+    },
+    {
+      "value": "4",
+      "name": "NonSISeller",
+      "doc": "Trade has or will be reported as a seller trade by an entity other than the authorised reporter"
+    },
+    {
+      "value": "5",
+      "name": "SubDelegationByFirm",
+      "doc": "Trade has been or will be reported under a sub-delegation arrangement by an investment firm to a reporting facility (e.g. APA) on behalf of another investment firm"
+    },
+    {
+      "value": "6",
+      "name": "Reportable",
+      "doc": "Trade has been or will be reported"
+    },
+    {
+      "value": "7",
+      "name": "NonSIBuyer",
+      "doc": "Trade has been or will be reported as a buyer trade by an entity other than the authorised reporter"
+    },
+    {
+      "value": "8",
+      "name": "OffBook",
+      "doc": "Trade has been or will be reported by a trading venue as an \"off-book\" trade"
+    },
+    {
+      "value": "9",
+      "name": "NotReportable",
+      "doc": "Trade is not reportable"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "reporttoexchcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "SenderReports",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Indicates the party sending message will report trade"
+    },
+    {
+      "value": "Y",
+      "name": "ReceiverReports",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Indicates the party receiving message must report trade"
+    }
+  ]
+}

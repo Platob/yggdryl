@@ -1,0 +1,20 @@
+{
+  "name": "confirmtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Status",
+      "doc": "Status"
+    },
+    {
+      "value": "2",
+      "name": "Confirmation",
+      "doc": "Confirmation"
+    },
+    {
+      "value": "3",
+      "name": "ConfirmationRequestRejected",
+      "doc": "Confirmation Request Rejected (reason can be stated in Text (58) field)"
+    }
+  ]
+}

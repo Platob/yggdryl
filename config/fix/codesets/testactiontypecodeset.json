@@ -1,0 +1,20 @@
+{
+  "name": "testactiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Start",
+      "doc": "Start"
+    },
+    {
+      "value": "1",
+      "name": "Stop",
+      "doc": "Stop"
+    },
+    {
+      "value": "2",
+      "name": "State",
+      "doc": "State"
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "name": "confirmrejreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "MismatchedAccount",
+      "doc": "Incorrect or missing account"
+    },
+    {
+      "value": "2",
+      "name": "MissingSettlementInstructions",
+      "doc": "Incorrect or missing settlement instructions"
+    },
+    {
+      "value": "3",
+      "name": "UnknownOrMissingIndividualAllocId",
+      "doc": "Unknown or missing IndividualAllocId(467)"
+    },
+    {
+      "value": "4",
+      "name": "TransactionNotRecognized",
+      "doc": "Transaction not recognized"
+    },
+    {
+      "value": "5",
+      "name": "DuplicateTransaction",
+      "doc": "Duplicate transaction"
+    },
+    {
+      "value": "6",
+      "name": "IncorrectOrMissingInstrument",
+      "doc": "Incorrect or missing instrument"
+    },
+    {
+      "value": "7",
+      "name": "IncorrectOrMissingPrice",
+      "doc": "Incorrect or missing price"
+    },
+    {
+      "value": "8",
+      "name": "IncorrectOrMissingCommission",
+      "doc": "Incorrect or missing commission"
+    },
+    {
+      "value": "9",
+      "name": "IncorrectOrMissingSettlDate",
+      "doc": "Incorrect or missing settlement date"
+    },
+    {
+      "value": "10",
+      "name": "IncorrectOrMissingFundIDOrFundName",
+      "doc": "Incorrect or missing fund ID or fund name"
+    },
+    {
+      "value": "11",
+      "name": "IncorrectOrMissingQuantity",
+      "doc": "Incorrect or missing quantity"
+    },
+    {
+      "value": "12",
+      "name": "IncorrectOrMissingFees",
+      "doc": "Incorrect or missing fees"
+    },
+    {
+      "value": "13",
+      "name": "IncorrectOrMissingTax",
+      "doc": "Incorrect or missing tax"
+    },
+    {
+      "value": "14",
+      "name": "IncorrectOrMissingParty",
+      "doc": "Incorrect or missing party"
+    },
+    {
+      "value": "15",
+      "name": "IncorrectOrMissingSide",
+      "doc": "Incorrect or missing side"
+    },
+    {
+      "value": "16",
+      "name": "IncorrectOrMissingNetMoney",
+      "doc": "Incorrect or missing net-money"
+    },
+    {
+      "value": "17",
+      "name": "IncorrectOrMissingTradeDate",
+      "doc": "Incorrect or missing trade date"
+    },
+    {
+      "value": "18",
+      "name": "IncorrectOrMissingSettlCcyInstructions",
+      "doc": "Incorrect or missing settlement currency instructions"
+    },
+    {
+      "value": "19",
+      "name": "IncorrectOrMissingCapacity",
+      "doc": "Incorrect or missing capacity"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

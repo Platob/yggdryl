@@ -1,0 +1,40 @@
+{
+  "name": "streamnotionalcommodityfrequencycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Term",
+      "doc": "Term"
+    },
+    {
+      "value": "1",
+      "name": "PerBusinessDay",
+      "doc": "Per business day"
+    },
+    {
+      "value": "2",
+      "name": "PerCalculationPeriod",
+      "doc": "Per calculation period"
+    },
+    {
+      "value": "3",
+      "name": "PerSettlPeriod",
+      "doc": "Per settlement period"
+    },
+    {
+      "value": "4",
+      "name": "PerCalendarDay",
+      "doc": "Per calendar day"
+    },
+    {
+      "value": "5",
+      "name": "PerHour",
+      "doc": "Per hour"
+    },
+    {
+      "value": "6",
+      "name": "PerMonth",
+      "doc": "Per month"
+    }
+  ]
+}

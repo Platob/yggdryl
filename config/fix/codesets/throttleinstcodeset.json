@@ -1,0 +1,15 @@
+{
+  "name": "throttleinstcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RejectIfThrottleLimitExceeded",
+      "doc": "Reject if throttle limit exceeded"
+    },
+    {
+      "value": "1",
+      "name": "QueueIfThrottleLimitExceeded",
+      "doc": "Queue if throttle limit exceeded"
+    }
+  ]
+}

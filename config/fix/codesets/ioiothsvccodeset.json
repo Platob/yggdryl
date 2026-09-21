@@ -1,0 +1,13 @@
+{
+  "name": "ioiothsvccodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Autex"
+    },
+    {
+      "value": "B",
+      "name": "Bridge"
+    }
+  ]
+}

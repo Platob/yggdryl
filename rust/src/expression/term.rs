@@ -842,6 +842,27 @@ impl Term {
         found
     }
 
+    /// Return whether this term reads no column, no handle attribute and no
+    /// parameter: what [`columns`](Self::columns),
+    /// [`has_attributes`](Self::has_attributes) and
+    /// [`parameters`](Self::parameters) together answer, stopping at the
+    /// first node that reads anything. A path reads the column it starts
+    /// at, so one rooted at a column is never constant; one rooted
+    /// elsewhere is constant exactly where its predicate segments are.
+    #[must_use]
+    pub(crate) fn is_constant(&self) -> bool {
+        let mut pending: Vec<&Self> = Vec::with_capacity(8);
+        pending.push(self);
+        while let Some(node) = pending.pop() {
+            match node {
+                Self::Path(_) if node.root_column().is_some() => return false,
+                Self::Attribute(_) | Self::Parameter(_) => return false,
+                _ => node.for_each_child(|child| pending.push(child)),
+            }
+        }
+        true
+    }
+
     /// Return whether this term reads any handle attribute.
     ///
     /// A predicate that reads none can be answered by the rows alone; one that

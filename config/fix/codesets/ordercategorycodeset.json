@@ -1,0 +1,55 @@
+{
+  "name": "ordercategorycodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Order",
+      "doc": "Order"
+    },
+    {
+      "value": "2",
+      "name": "Quote",
+      "doc": "Quote"
+    },
+    {
+      "value": "3",
+      "name": "PrivatelyNegotiatedTrade",
+      "doc": "Privately Negotiated Trade"
+    },
+    {
+      "value": "4",
+      "name": "MultilegOrder",
+      "doc": "Multileg order"
+    },
+    {
+      "value": "5",
+      "name": "LinkedOrder",
+      "doc": "Linked order"
+    },
+    {
+      "value": "6",
+      "name": "QuoteRequest",
+      "doc": "Quote Request"
+    },
+    {
+      "value": "7",
+      "name": "ImpliedOrder",
+      "doc": "Implied Order"
+    },
+    {
+      "value": "8",
+      "name": "CrossOrder",
+      "doc": "Cross Order"
+    },
+    {
+      "value": "9",
+      "name": "StreamingPrice",
+      "doc": "Streaming price (quote)"
+    },
+    {
+      "value": "A",
+      "name": "InternalCrossOrder",
+      "doc": "Internal Cross Order"
+    }
+  ]
+}

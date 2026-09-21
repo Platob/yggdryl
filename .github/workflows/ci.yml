@@ -62,7 +62,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
       - name: Tests and benchmark smoke tests
-        run: cargo test --locked -p yggdryl --all-targets ${{ matrix.flags }}
+        run: cargo test --locked -p yggdryl --all-targets --no-fail-fast ${{ matrix.flags }}
       # `--all-targets` is `--lib --bins --examples --tests --benches`, and
       # doctests are none of those: the step above has never compiled one.
       # They are the examples the published API pages carry, so they are the

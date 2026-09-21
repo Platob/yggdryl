@@ -1,0 +1,30 @@
+{
+  "name": "ratesourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Bloomberg",
+      "doc": "Bloomberg"
+    },
+    {
+      "value": "1",
+      "name": "Reuters",
+      "doc": "Reuters"
+    },
+    {
+      "value": "2",
+      "name": "Telerate",
+      "doc": "Telerate"
+    },
+    {
+      "value": "3",
+      "name": "ISDARateOption",
+      "doc": "ISDA Settlement Rate Option"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "notaffectedreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "OrderSuspended",
+      "doc": "Order suspended"
+    },
+    {
+      "value": "1",
+      "name": "InstrumentSuspended",
+      "doc": "Instrument suspended"
+    }
+  ]
+}

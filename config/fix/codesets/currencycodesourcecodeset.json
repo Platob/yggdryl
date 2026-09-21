@@ -1,0 +1,35 @@
+{
+  "name": "currencycodesourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CUSIP",
+      "doc": "CUSIP"
+    },
+    {
+      "value": "2",
+      "name": "SEDOL",
+      "doc": "SEDOL"
+    },
+    {
+      "value": "4",
+      "name": "ISINNumber",
+      "doc": "ISIN"
+    },
+    {
+      "value": "6",
+      "name": "ISOCurrencyCode",
+      "doc": "ISO Currency Code (ISO 4217)"
+    },
+    {
+      "value": "S",
+      "name": "FinancialInstrumentGlobalIdentifier",
+      "doc": "Financial Instrument Global Identifier"
+    },
+    {
+      "value": "Y",
+      "name": "DigitalTokenIdentifier",
+      "doc": "Digital Token Identifier (ISO 24165)"
+    }
+  ]
+}

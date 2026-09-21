@@ -1,0 +1,15 @@
+{
+  "name": "ratesourcetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Primary",
+      "doc": "Primary"
+    },
+    {
+      "value": "1",
+      "name": "Secondary",
+      "doc": "Secondary"
+    }
+  ]
+}

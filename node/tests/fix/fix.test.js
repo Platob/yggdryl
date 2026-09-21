@@ -33,8 +33,8 @@ function reading(registry, options) {
 // The crate's own definitions, which every registry holds from construction
 // beside the seeded SendingTime (52) and TransactTime (60) clocks. A
 // definition is filed by the shape it has: the columns are scalar fields,
-// the `identifiers` and `metadata` Maps are groups, and the `parentuuids`
-// and `srcuuids` lists are columns of the fixed row alone, held by no registry.
+// the `identifiers` and `metadata` Maps are groups, and the parent/source
+// UUID lists are registered scalar columns.
 const CRATE = fix.crateFields()
 // Which category a definition lands in is the core's answer, not a shape a
 // test guesses: a snapshot states the three, so the fields it lists are the
@@ -49,6 +49,9 @@ const CRATE_TAGS = CRATE_SCALARS.map((field) => field.fix.tag)
 const SEEDED = 2 + CRATE.length
 // The scalar fields the committed dictionary stores.
 const STORED = 6241
+// The named code sets it stores beside them, one per vocabulary however many
+// fields read by it.
+const CODESETS = 736
 
 /**
  * The scalar fields a registry holds, and the definitions behind them.
@@ -97,22 +100,32 @@ test('the protocol view carries the typed fix vocabulary', () => {
   field.fix.tag = 38
   field.fix.tags = [1088]
   field.fix.names = ['Qty', 'Quantity']
+  field.fix.msgcat = 'ORDR'
   field.fix.description = 'Quantity ordered.'
 
   assert.equal(field.fix.tag, 38)
   assert.deepEqual(field.fix.tags, [1088])
   assert.deepEqual(field.fix.names, ['Qty', 'Quantity'])
+  assert.equal(field.fix.msgcat, 'ORDR')
   assert.equal(field.fix.description, 'Quantity ordered.')
   // Ordinary namespaced text, in the one metadata map: a list is the
   // compact JSON array it is.
   assert.equal(field.get('FIX:names'), '["Qty","Quantity"]')
   assert.equal(field.get('FIX:tags'), '[1088]')
   assert.equal(field.fix.get('tag'), '38')
-  // Three, not four: a description is a fact about the column rather than a
+  // Four: a description is a fact about the column rather than a
   // FIX fact, so it lives on the generic key every catalog reads.
   assert.equal(field.get('description'), 'Quantity ordered.')
   assert.equal(field.has('FIX:description'), false)
-  assert.equal(field.fix.size, 3)
+  assert.equal(field.fix.size, 4)
+
+  const before = field.toJSON()
+  assert.throws(() => {
+    field.fix.msgcat = 'order'
+  })
+  assert.deepEqual(field.toJSON(), before, 'a refused category is atomic')
+  field.fix.msgcat = null
+  assert.equal(field.fix.msgcat, null)
 
   // An empty array removes a list property; `delete` removes any of them.
   field.fix.tags = []
@@ -148,11 +161,19 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => view.hasBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.id, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.directions, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.msgcat, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.codeset, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.codeset = 'sidecodeset'
+    }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.tag = 55
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.directions = [{ code: 'S', patterns: ['^TX '] }]
+    }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.msgcat = 'ORDR'
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.derivation, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
@@ -283,6 +304,169 @@ test('direction rules cross as a typed list', () => {
   assert.deepEqual(field.fix.directions, [])
   assert.equal(field.has('FIX:directions'), false)
   assert.deepEqual(new Field('MsgDirection', 'utf8').fix.directions, [])
+})
+
+test('a field names the code set it reads by, and the dictionary holds it', () => {
+  const registry = new fix.FixRegistry()
+  assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+
+  // The set is stated first: a dictionary refuses a field naming a
+  // vocabulary nothing states, so the members exist before a field points
+  // at them.
+  registry.setCodeset('sidecodeset', [
+    { value: '1', name: 'Buy' },
+    { value: '2', name: 'Sell', aliases: ['Sold'], doc: 'Sell side', group: 'Outright' },
+  ])
+  assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset'])
+
+  const side = fixField('Side', 'utf8', 54)
+  assert.equal(side.fix.codeset, null)
+  side.fix.codeset = 'sidecodeset'
+  assert.equal(side.fix.codeset, 'sidecodeset')
+  // The name is ordinary namespaced text, in the one metadata map: a field
+  // carries the name and never a copy of the members.
+  assert.equal(side.get('FIX:codeset'), 'sidecodeset')
+  registry.insert(side)
+
+  // One vocabulary, read through the set the field names.
+  const set = registry.codesetOf(registry.fieldByTag(54))
+  assert.equal(set.name, 'sidecodeset')
+  assert.deepEqual(set.codes, [
+    { value: '1', name: 'Buy' },
+    { value: '2', name: 'Sell', aliases: ['Sold'], doc: 'Sell side', group: 'Outright' },
+  ])
+  assert.deepEqual(registry.codeset('sidecodeset'), set)
+  // The name is folded, so whichever spelling a caller states reaches it.
+  assert.deepEqual(registry.getCodeset('SideCodeSet'), set)
+  assert.equal(registry.getCodeset('absent'), null)
+  assert.throws(() => registry.codeset('absent'), /expected a codesets at "absent", got nothing/)
+  // A field drawing on no set answers null rather than a refusal.
+  assert.equal(registry.codesetOf(fixField('Symbol', 'utf8', 55)), null)
+
+  // Every spelling of a code reaches its wire value - the value itself, the
+  // symbolic name, an alias - and a value answers its name. What the set
+  // does not answer to is null: a venue sends codes no dictionary lists.
+  assert.equal(registry.codeValue('sidecodeset', '2'), '2')
+  assert.equal(registry.codeValue('sidecodeset', 'Buy'), '1')
+  assert.equal(registry.codeValue('sidecodeset', 'sold'), '2')
+  assert.equal(registry.codeValue('sidecodeset', 'Neither'), null)
+  assert.equal(registry.codeName('sidecodeset', '1'), 'Buy')
+  assert.equal(registry.codeName('sidecodeset', '9'), null)
+
+  // A set a held field still reads by may not be taken away, by removal or
+  // by an empty statement; the field lets go first.
+  assert.throws(() => registry.removeCodeset('sidecodeset'), /sidecodeset.*side/i)
+  assert.throws(() => registry.setCodeset('sidecodeset', []), /sidecodeset.*side/i)
+  const held = registry.fieldByTag(54)
+  held.fix.codeset = null
+  assert.equal(held.fix.codeset, null)
+  assert.equal(held.has('FIX:codeset'), false)
+  registry.insert(held)
+  assert.deepEqual(registry.removeCodeset('sidecodeset'), set.codes)
+  assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+  assert.equal(registry.removeCodeset('sidecodeset'), null)
+
+  // The committed dictionary is the same shape at scale: one set per
+  // vocabulary, and a field states only which one it reads by.
+  const shipped = seed()
+  assert.equal(shipped.codesetNames().length, CODESETS)
+  assert.equal(shipped.fieldByTag(54).fix.codeset, 'sidecodeset')
+  assert.equal(shipped.codeValue('sidecodeset', 'Buy'), '1')
+  assert.equal(shipped.codeName('sidecodeset', '2'), 'Sell')
+  assert.equal(shipped.codesetOf(shipped.fieldByTag(54)).name, 'sidecodeset')
+  for (const tag of [447, 525]) {
+    const partySource = shipped.codesetOf(shipped.fieldByTag(tag))
+    assert.equal(shipped.codeValue(partySource.name, 'proprietary/customcode'), 'D')
+  }
+})
+
+test('a field naming a code set the dictionary does not hold is refused', () => {
+  const stray = fixField('Side', 'utf8', 54)
+  stray.fix.codeset = 'sidecodeset'
+
+  // Every door a field arrives through holds the same invariant, and each
+  // refusal names the set that is missing rather than the field.
+  const refused = /expected a codesets at "sidecodeset", got nothing/
+  assert.throws(() => fix.FixRegistry.fromFields([stray]), refused)
+  const registry = new fix.FixRegistry()
+  assert.throws(() => registry.insert(stray), refused)
+  assert.equal(registry.getFieldByTag(54), null)
+  assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+
+  // With the set stated the same field arrives, and a held field sent to a
+  // set nothing states is refused on update, the dictionary unchanged.
+  registry.setCodeset('sidecodeset', [{ value: '1', name: 'Buy' }])
+  registry.insert(stray)
+  registry.insert(fixField('Symbol', 'utf8', 55))
+  const settled = registry.intoJson()
+  const moved = registry.fieldByTag(55)
+  moved.fix.codeset = 'othercodeset'
+  assert.throws(() => registry.update(moved), /expected a codesets at "othercodeset", got nothing/)
+  assert.equal(registry.intoJson(), settled)
+  assert.equal(registry.fieldByTag(55).fix.codeset, null)
+
+  // A snapshot is read under the same rule: the vocabularies lead it, so a
+  // document whose field names one it does not carry is not a dictionary.
+  const document = registry.toJSON()
+  document.fields.find((field) => field.metadata['FIX:tag'] === '54').metadata['FIX:codeset'] = 'othercodeset'
+  assert.throws(
+    () => fix.FixRegistry.fromJson(JSON.stringify(document)),
+    /expected a codesets at "othercodeset", got nothing/,
+  )
+})
+
+test('a code set merges by wire value, keeping what the dictionary held', () => {
+  const registry = new fix.FixRegistry()
+
+  // A set the dictionary does not hold arrives whole through the fold.
+  registry.mergeCodeset('sidecodeset', [
+    { value: '1', name: 'Buy', doc: 'Buy side' },
+    { value: '2', name: 'Sell' },
+  ])
+  assert.deepEqual(registry.codeset('sidecodeset').codes, [
+    { value: '1', name: 'Buy', doc: 'Buy side' },
+    { value: '2', name: 'Sell' },
+  ])
+
+  // A venue's statement enriches what is held rather than replacing it: a
+  // wire value already held keeps its name, its wording and its order, and
+  // the spelling the venue declared becomes another alias; a value nothing
+  // held joins the end.
+  registry.mergeCodeset('sidecodeset', [
+    { value: '2', name: 'Sold' },
+    { value: '7', name: 'Undisclosed' },
+  ])
+  assert.deepEqual(registry.codeset('sidecodeset').codes, [
+    { value: '1', name: 'Buy', doc: 'Buy side' },
+    { value: '2', name: 'Sell', aliases: ['Sold'] },
+    { value: '7', name: 'Undisclosed' },
+  ])
+  assert.equal(registry.codeValue('sidecodeset', 'Sold'), '2')
+  assert.equal(registry.codeValue('sidecodeset', 'Sell'), '2')
+
+  // A statement replaces, which is the other verb: what it does not carry
+  // is gone.
+  registry.setCodeset('sidecodeset', [{ value: '1', name: 'Buy' }])
+  assert.deepEqual(registry.codeset('sidecodeset').codes, [{ value: '1', name: 'Buy' }])
+  assert.equal(registry.codeValue('sidecodeset', 'Sold'), null)
+
+  // A field keeps the set it already reads by, and a second statement of
+  // that field's vocabulary folds into the held set: the members are the
+  // dictionary's to fold, so nothing moves the field to a set holding
+  // strictly less than the one it reads by.
+  registry.setCodeset('venuesidecodeset', [{ value: '2', name: 'Sell' }])
+  const side = fixField('Side', 'utf8', 54)
+  side.fix.codeset = 'sidecodeset'
+  registry.insert(side)
+  const venue = fixField('Side', 'utf8', 54)
+  venue.fix.codeset = 'venuesidecodeset'
+  registry.update(venue)
+  assert.equal(registry.fieldByTag(54).fix.codeset, 'sidecodeset')
+  assert.deepEqual(registry.codeset('sidecodeset').codes, [
+    { value: '1', name: 'Buy' },
+    { value: '2', name: 'Sell' },
+  ])
+  assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'venuesidecodeset'])
 })
 
 test('a tag crosses as a number and is never narrowed', () => {
@@ -861,13 +1045,19 @@ test('a malformed native shard names its location', (t) => {
   assert.throws(() => fix.FixRegistry.fromHandle(root), /0.json/)
 })
 
-test('a written catalog reloads all three categories', (t) => {
+test('a written catalog reloads its three categories and the sets they read by', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const dictionary = path.join(root, 'dictionary')
   const reference = seed()
   reference.writeInto(dictionary)
-  assert.deepEqual(fs.readdirSync(dictionary).sort(), ['components', 'fields', 'groups'])
+  // Four folders: the three categories, and the vocabularies the fields name.
+  assert.deepEqual(fs.readdirSync(dictionary).sort(), ['codesets', 'components', 'fields', 'groups'])
+  // One document per set, filed under the name a field states.
+  assert.deepEqual(
+    fs.readdirSync(path.join(dictionary, 'codesets')).sort(),
+    reference.codesetNames().map((name) => `${name}.json`).sort(),
+  )
   const shards = fs.readdirSync(path.join(dictionary, 'fields'))
   // A shard is named by its tag block, nine digits with leading zeros. The
   // crate's own fields are written too - a store states the whole row - and
@@ -923,9 +1113,11 @@ test('membership is stored on the field, in the one shard tree', (t) => {
   assert.deepEqual(reloaded.fieldByTag(35).fix.branches, [])
   assert.deepEqual(reloaded.dialects(), ['cme'])
   // Membership is metadata like any other: it is in the snapshot's fields
-  // and nowhere else.
+  // and nowhere else. The vocabularies are the fourth key, beside the three
+  // categories, because a code set is the dictionary's and not a field's.
   const document = registry.toJSON()
-  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
+  assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
+  assert.deepEqual(document.codesets.map((codeset) => codeset.name), ['msgcatcodeset'])
   assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['FIX:branches'], 'cme')
 })
 
@@ -1308,11 +1500,11 @@ test('the identity is settled on every message and follows what it says', () => 
   for (const lane of ['bidpx', 'bidcurrency', 'bidunit', 'askpx', 'askqty', 'askcurrency', 'askunit']) {
     assert.equal(event[lane], null, lane)
   }
-  for (const code of ['isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'cficode', 'miccode']) {
+  for (const code of ['isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'cficode', 'miccode']) {
     assert.equal(event[code], null, code)
   }
   assert.equal(event.unit, '')
-  assert.equal(event.expirunix, null)
+  assert.equal(event.exprtime, null)
   assert.equal(event.prevunix, null)
   assert.equal(event.snapunix, null)
   // No cross code names no chain: the chain identity is the message's own.
@@ -1327,6 +1519,47 @@ test('the identity is settled on every message and follows what it says', () => 
   assert.equal(heartbeat.size, 0)
   assert.deepEqual(heartbeat.entries(), [])
   assert.equal(heartbeat.intoText('|'), '35=0|52=20240102-10:15:30|')
+})
+
+test('bridge capture context is an identifier but never the crosscode or content', () => {
+  const registry = seed()
+  const message = fixedCodec(registry).parseUllinkLine(Buffer.from(
+    'MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|' +
+    '#MSGCTXID=CONTEXT-1|#SYMBOL=n/A|#VENUEOWNTHING=n/A|',
+  ))
+
+  assert.equal(message.crosscode, 'ORDER-1')
+  assert.deepEqual(message.identifiers, {
+    clordid: 'CLIENT-1',
+    msgsectxid: 'SESSION-1:CONTEXT-1',
+    orderid: 'ORDER-1',
+  })
+  assert.equal(message.getByTag(55), null)
+  assert.equal(message.getByName('venueownthing'), null)
+  const contentHash = message.currhashcode
+  const contentUuid = message.curruuid
+
+  message.set('msgsessionid', 'SESSION-2')
+  assert.equal(message.capture().msgsessionid, 'SESSION-2')
+  assert.deepEqual(message.identifiers, {
+    clordid: 'CLIENT-1',
+    msgsectxid: 'SESSION-2:CONTEXT-1',
+    orderid: 'ORDER-1',
+  })
+  assert.equal(message.currhashcode, contentHash)
+  assert.equal(message.curruuid, contentUuid)
+
+  message.set('msgctxid', null)
+  assert.equal(message.capture().msgctxid, null)
+  assert.deepEqual(message.identifiers, {
+    clordid: 'CLIENT-1',
+    orderid: 'ORDER-1',
+  })
+  assert.equal(message.currhashcode, contentHash)
+
+  message.set('msgctxid', 'CONTEXT-2')
+  assert.equal(message.identifiers.msgsectxid, 'SESSION-2:CONTEXT-2')
+  assert.equal(message.currhashcode, contentHash)
 })
 
 test('a message is a value: equality, hash, clone and JSON', () => {
@@ -1453,13 +1686,17 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(stored.name, held.name)
   assert.deepEqual(stored.dtype, held.dtype)
   assert.equal(stored.metadata['FIX:tag'], '1')
-  // A snapshot is the store's shape, so a document property is the JSON it
-  // is; a `Field`'s own JSON is the core shape, where metadata is text.
-  const coded = document.fields.find((field) => field.metadata['FIX:codes'] !== undefined)
+  // A field states the name of the vocabulary it reads by and nothing more,
+  // in the snapshot exactly as on the field: the members are the
+  // dictionary's, under `codesets`, which leads the document because a
+  // reader has the sets before it meets a field naming one.
+  const coded = document.fields.find((field) => field.metadata['FIX:codeset'] !== undefined)
   const codedHeld = JSON.parse(JSON.stringify(registry.fieldByTag(Number(coded.metadata['FIX:tag']))))
-  assert.ok(Array.isArray(coded.metadata['FIX:codes']))
-  assert.equal(typeof codedHeld.metadata['FIX:codes'], 'string')
-  assert.deepEqual(coded.metadata['FIX:codes'], JSON.parse(codedHeld.metadata['FIX:codes']))
+  assert.equal(typeof coded.metadata['FIX:codeset'], 'string')
+  assert.equal(codedHeld.metadata['FIX:codeset'], coded.metadata['FIX:codeset'])
+  assert.equal(Object.keys(document)[0], 'codesets')
+  const set = document.codesets.find((held) => held.name === coded.metadata['FIX:codeset'])
+  assert.deepEqual(set.codes, registry.codeset(set.name).codes)
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 })
 
@@ -1659,6 +1896,96 @@ test('a parse derives what the dictionary derives and states it on the wire', ()
   assert.equal(opaque.event().isincode, null)
 })
 
+test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
+  const registry = seed()
+  assert.equal(new fix.FixCodec(registry).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: undefined }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: null }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: 0n }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: -1n }).snapshotNs, null)
+  assert.throws(() => new fix.FixCodec(registry, { snapshotNs: 1 }), /bigint/i)
+  assert.throws(() => new fix.FixCodec(registry, { snapshotNs: 9_223_372_036_854_775_808n }), /signed 64-bit/i)
+  const codec = fixedCodec(registry)
+  const snapshots = fixedCodec(registry, { snapshotNs: 1_000_000_000n })
+  assert.equal(snapshots.snapshotNs, 1_000_000_000n)
+  assert.equal(registry.msgtype('D').msgcat, 'ORDR')
+
+  const original = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
+  const replay = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
+  const distinct = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|'))
+  assert.equal(original.msgcat, 'ORDR')
+  const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
+  assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
+  assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 1])
+
+  const later = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|'))
+  const earlier = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|'))
+  const learned = [...codec.lifecycle([later, earlier])]
+  assert.equal(learned[1].bloombergcode, 'AAPL US Equity')
+  assert.equal(later.bloombergcode, null, 'the input is never enriched in place')
+  const schema = fix.schema(registry)
+  const rebuilt = fix.FixMsg.fromRow(schema, learned[1].intoRow(schema), registry)
+  assert.equal(rebuilt.bloombergcode, 'AAPL US Equity')
+
+  const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
+  const entries = expiring.entries()
+  const deadline = expiring.event().exprtime
+  const walked = [...snapshots.lifecycle([expiring])]
+  assert.deepEqual(expiring.entries(), entries)
+  assert.equal(expiring.event().snapunix, null)
+  assert.ok(walked.some((message) => message.currunix === deadline && message.state === '95EXPIRED'))
+  const emittedSnapshots = walked.filter((message) => message.event().snapunix !== null)
+  assert.ok(emittedSnapshots.length > 0)
+  assert.ok(emittedSnapshots.every((message) => message.currunix <= message.event().snapunix && message.event().snapunix < deadline))
+})
+
+test('the fixed schema places category beside message type and normalized codes once', () => {
+  const registry = seed()
+  const schema = fix.schema(registry)
+  assert.equal(CRATE.length, 29)
+  assert.equal(CRATE_SCALARS.length, 27)
+  assert.equal(new fix.FixRegistry().size, 31)
+  assert.equal(scalars(new fix.FixRegistry()).length, 29)
+  assert.equal(schema.fieldLen, 123)
+  assert.equal(fix.schemaTags().length, 119)
+  const at = schema.indexOf('msgtype')
+  assert.deepEqual(
+    [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
+    ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'],
+  )
+  for (const [name, tag] of [['isincode', 65055], ['cusipcode', 65057], ['sedolcode', 65058], ['bloombergcode', 65059], ['miccode', 65060], ['figicode', 65061]]) {
+    assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
+  }
+  assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
+  assert.equal(fix.schemaTags().includes(65056), false)
+})
+
+test('security source S identifies FIGI while A remains Bloomberg', () => {
+  const registry = seed()
+  const codec = fixedCodec(registry)
+  const figi = codec.parseFixLine(Buffer.from(
+    '8=FIX.4.4|35=D|52=20240102-10:15:30|22=S|48=BBG000BLNQ16|454=1|455=BBG000BLNQ16|456=S|10=0|',
+  ))
+  assert.equal(figi.figicode, 'BBG000BLNQ16')
+  assert.equal(figi.event().figicode, 'BBG000BLNQ16')
+  assert.equal(figi.bloombergcode, null)
+
+  const schema = fix.schema(registry)
+  const rebuilt = fix.FixMsg.fromRow(schema, figi.intoRow(schema), registry)
+  assert.equal(rebuilt.figicode, 'BBG000BLNQ16')
+  assert.ok(rebuilt.intoRow(schema).equals(figi.intoRow(schema)))
+
+  const bloomberg = codec.parseFixLine(Buffer.from(
+    '8=FIX.4.4|35=D|52=20240102-10:15:30|22=A|48=AAPL US Equity|10=0|',
+  ))
+  assert.equal(bloomberg.bloombergcode, 'AAPL US Equity')
+  assert.equal(bloomberg.figicode, null)
+
+  const stated = figi.clone()
+  stated.set(65061, 'BBG000BLNQ16')
+  assert.equal(stated.figicode, 'BBG000BLNQ16')
+})
+
 test('a parse restates deprecated fields to their latest aliases', () => {
   // A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
   // capacity and two identities the specification later moved into `Parties`.
@@ -1744,13 +2071,10 @@ test('a row reads back into a message stating the same facts', () => {
   const row = message.intoRow(schema)
   const held = fix.FixMsg.fromRow(schema, row, registry)
 
-  // The typed facts are read off their columns and the content rebuilt from
-  // the entries, so the message reached the same way emits the same wire
-  // and derives the same identity - and makes the row it came from, whole.
+  // Projected columns and residual entries are one semantic message. Their
+  // internal child order may differ, while the row and every named fact stay
+  // fixed and the row-provided identity remains exact.
   assert.ok(held.field.equals(schema) === false, 'the root is the content, not the schema')
-  assert.deepEqual(held.entries(), message.entries())
-  assert.equal(held.intoText('|'), message.intoText('|'))
-  assert.deepEqual(held.digest(), message.digest())
   assert.equal(held.currhashcode, message.currhashcode)
   assert.equal(held.curruuid, message.curruuid)
   assert.equal(held.crossuuid, message.crossuuid)
@@ -1758,8 +2082,6 @@ test('a row reads back into a message stating the same facts', () => {
   assert.equal(held.side, 'BUY')
   for (const tag of [8, 35, 11, 55, 54, 52]) assert.ok(held.byTag(tag).equals(message.byTag(tag)), `tag ${tag}`)
   assert.ok(held.intoRow(schema).equals(row))
-  assert.ok(held.value.equals(message.value))
-  assert.deepEqual([...held.field.dtype.keys()], [...message.field.dtype.keys()])
   // The process default is the registry when none is named.
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
   // A row that does not fit the schema is refused.
@@ -1849,10 +2171,13 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
 
   // Membership is provenance: the codec reads the one namespace with no pin
   // and the venue's field resolves like any other.
-  const message = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
-  assert.equal(message.byName('ExcludedDealers').asJs(), 'NONE')
-  assert.equal(message.byTag(10001).asJs(), 'NONE')
+  const message = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=DEALER-A|10=0|')).next().value
+  assert.equal(message.byName('ExcludedDealers').asJs(), 'DEALER-A')
+  assert.equal(message.byTag(10001).asJs(), 'DEALER-A')
   assert.ok(flat(message).every(([tag]) => Number.isInteger(tag)))
+  const excluded = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
+  assert.equal(excluded.getByName('ExcludedDealers'), null)
+  assert.equal(excluded.getByTag(10001), null)
 
   // With no dialect named nothing is stamped, and a name that is empty or
   // carries the separator is refused before anything is read.
@@ -1870,8 +2195,20 @@ test('a message type keeps its complete wire code and immutable schema', () => {
   const value = registry.registerMsgtype('P Report Ack', 'AllocationReportAck', 'Allocation Report ACK')
   assert.equal(value.asStr(), 'P Report Ack')
   assert.equal(value.name, 'allocationreportack')
-  assert.match(registry.fieldByTag(35).get('FIX:codes'), /"name":"AllocationReportAck"/)
-  assert.match(registry.fieldByTag(35).get('FIX:codes'), /P Report Ack/)
+  // The vocabulary is the dictionary's, never a copy on the field: tag 35
+  // names the set derived from its own name, and the code registered is a
+  // member of that set, its full wire spelling kept as an alias.
+  assert.equal(registry.fieldByTag(35).fix.codeset, 'msgtypecodeset')
+  assert.deepEqual(registry.codeset('msgtypecodeset').codes, [
+    {
+      value: 'P Report Ack',
+      name: 'AllocationReportAck',
+      aliases: ['P Report Ack'],
+      doc: 'Allocation Report ACK',
+    },
+  ])
+  assert.equal(registry.codeValue('msgtypecodeset', 'AllocationReportAck'), 'P Report Ack')
+  assert.equal(registry.codeName('msgtypecodeset', 'P Report Ack'), 'AllocationReportAck')
   assert.equal(value.asField().fix.msgtype, 'P Report Ack')
   // The registered definition is a component of the registry, reached
   // through the field doors like every definition.
@@ -1979,4 +2316,3 @@ test('unresolved counters keep their members in arrival order under tag 0', () =
   assert.equal(rows.byPath('rows[0].ownthing').asJs(), 'named')
   assert.equal(rows.intoText('|'), '8=FIX.4.4|90001=1|90002=known|999999=numeric|ownthing=named|')
 })
-

@@ -5,8 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use yggdryl::Uuid;
 use yggdryl::graph::{Element, Event, EventIterator, MarketEventData};
+use yggdryl::{State, Uuid};
 
 use super::element::filled;
 
@@ -177,24 +177,31 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
     // An element past its expiration ended the same way; one that expires
     // later than it happened is still alive.
     let mut expired = incarnation("O-100", 20);
-    expired.set_expirunix(Some(at(20)));
+    expired.set_exprtime(Some(at(20)));
     let mut open = incarnation("O-100", 30);
-    open.set_expirunix(Some(at(31)));
+    open.set_exprtime(Some(at(31)));
     let arrived = vec![
         incarnation("O-100", 10),
         expired,
         open,
         incarnation("O-100", 40),
     ];
-    let walk = EventIterator::new(arrived, true);
+    let walked: Vec<_> = EventIterator::new(arrived, true).collect();
     assert_eq!(
-        places(walk),
+        places(walked.clone().into_iter()),
         [
             (10, 0, None),
             (20, 1, Some(10)),
             (30, 0, None),
-            (40, 1, Some(30)),
+            (31, 1, Some(30)),
+            (40, 0, None),
         ]
+    );
+    assert_eq!(walked[3].get_state(), &State::read("expired").unwrap());
+    assert_eq!(
+        (walked[4].get_seqnum(), walked[4].get_prevuuid()),
+        (0, None),
+        "the emitted expiry retired the identity"
     );
 }
 
@@ -279,8 +286,8 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
         Some(twin.get_curruuid())
     );
 
-    // On a grid, the twin holds the step the live one consumed: it is the
-    // snapshot the live one was, and the step stays consumed.
+    // On a grid, source statements stay source statements. The owned views
+    // are separate and a twin changes no chain place in either one.
     let first = incarnation("O-100", 10);
     let arrived = vec![
         first.clone(),
@@ -292,7 +299,14 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     assert_eq!(
         walk.map(|event| (event.get_seqnum(), event.get_snapunix().map(ms)))
             .collect::<Vec<_>>(),
-        [(0, Some(10)), (0, Some(10)), (1, None), (2, Some(20))]
+        [
+            (0, None),
+            (0, None),
+            (0, Some(10)),
+            (1, None),
+            (2, None),
+            (2, Some(20)),
+        ]
     );
 }
 
@@ -390,13 +404,13 @@ fn an_element_before_the_live_one_is_yielded_as_it_came_and_changes_nothing() {
 fn the_walk_states_its_size_and_is_fused() {
     let arrived = || vec![incarnation("O-100", 10), incarnation("O-100", 20)];
     let mut streamed = EventIterator::new(arrived(), true);
-    assert_eq!(streamed.size_hint(), (2, Some(2)));
+    assert_eq!(streamed.size_hint(), (2, None));
     streamed.next();
-    assert_eq!(streamed.size_hint(), (1, Some(1)));
+    assert_eq!(streamed.size_hint(), (1, None));
     let mut sorted = EventIterator::new(arrived(), false);
-    assert_eq!(sorted.size_hint(), (2, Some(2)));
+    assert_eq!(sorted.size_hint(), (2, None));
     assert_eq!(sorted.by_ref().count(), 2);
-    assert_eq!(sorted.size_hint(), (0, Some(0)));
+    assert_eq!(sorted.size_hint(), (0, None));
     assert!(sorted.next().is_none());
     assert!(sorted.next().is_none());
     // A walk over an empty source is alive to nothing.
@@ -406,62 +420,26 @@ fn the_walk_states_its_size_and_is_fused() {
 }
 
 #[test]
-fn a_grid_reads_one_snapshot_per_step_per_identity() {
-    let mut late = incarnation("O-100", 25);
-    late.set_snapunix(Some(at(99)));
-    let arrived = vec![
-        incarnation("O-100", 10),
-        incarnation("O-100", 12),
-        incarnation("O-900", 12),
-        incarnation("O-100", 20),
-        late,
-    ];
-    let walk = EventIterator::new(arrived, true).with_snapshot_ns(10 * MS);
-    assert_eq!(walk.snapshot_ns(), Some(10 * MS));
-    let snapshots: Vec<(String, Option<i64>)> = walk
-        .map(|event| {
-            (
-                event.get_crosscode().to_owned(),
-                event.get_snapunix().map(ms),
-            )
-        })
-        .collect();
-    assert_eq!(
-        snapshots,
-        [
-            // The first element in a step is its snapshot; a later one in
-            // the same step is stamped with none, whatever it arrived with.
-            ("O-100".to_owned(), Some(10)),
-            ("O-100".to_owned(), None),
-            // Another identity reads its own steps.
-            ("O-900".to_owned(), Some(10)),
-            ("O-100".to_owned(), Some(20)),
-            ("O-100".to_owned(), None),
-        ]
-    );
-
-    // The grid is aligned on the epoch and floors, so an instant before it
-    // falls in the step opening below it.
+fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps() {
+    // The grid is aligned on the epoch. A first observation just before its
+    // boundary becomes live at that observation, then is copied at zero;
+    // it is never copied into the earlier step where it did not yet exist.
     let mut before = MarketEventData::at(-1);
     before.set_crosscode("O-100".to_owned());
     before.finalize();
-    let walk = EventIterator::new(vec![before], true).with_snapshot_ns(10);
+    let mut after = MarketEventData::at(1);
+    after.set_crosscode("O-900".to_owned());
+    after.finalize();
+    let walked: Vec<_> = EventIterator::new(vec![before, after], true)
+        .with_snapshot_ns(10)
+        .collect();
+    assert_eq!(walked[0].get_snapunix(), None);
     assert_eq!(
-        walk.map(|event| event.get_snapunix()).collect::<Vec<_>>(),
-        [Some(-10)]
-    );
-
-    // A chain that ended reads its snapshots afresh: the step it consumed
-    // went with it.
-    let mut done = incarnation("O-100", 12);
-    done.set_state(filled());
-    done.finalize();
-    let arrived = vec![incarnation("O-100", 10), done, incarnation("O-100", 15)];
-    let walk = EventIterator::new(arrived, true).with_snapshot_ns(10 * MS);
-    assert_eq!(
-        walk.map(|event| event.get_snapunix().map(ms))
+        walked
+            .iter()
+            .filter_map(|event| event.get_snapunix())
             .collect::<Vec<_>>(),
-        [Some(10), None, Some(10)]
+        [0]
     );
 
     // Without a grid the snapshot instant is left as it came, and a step
@@ -490,5 +468,217 @@ fn the_walk_yields_the_callers_own_copy_and_reads_any_event() {
     assert_eq!(
         walk.alive().next().map(Element::get_curruuid),
         Some(second.get_curruuid())
+    );
+}
+
+#[test]
+fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
+    let mut order = incarnation("O-100", 10);
+    order.set_exprtime(Some(at(20)));
+    let original = order.clone();
+    let walked: Vec<_> = EventIterator::new(
+        [order, incarnation("O-900", 30), incarnation("O-100", 40)],
+        true,
+    )
+    .collect();
+
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| ms(event.get_currunix()))
+            .collect::<Vec<_>>(),
+        [10, 20, 30, 40]
+    );
+    assert_eq!(walked[0], original, "an emitted snapshot stays immutable");
+    let expired = &walked[1];
+    assert_eq!(
+        expired.get_state(),
+        &State::from_spelling("expired").unwrap()
+    );
+    assert_eq!(expired.get_exprtime(), Some(at(20)));
+    assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(expired.get_parentuuids(), [walked[0].get_curruuid()]);
+    assert_eq!(expired.get_seqnum(), 1);
+    assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(
+        (walked[3].get_seqnum(), walked[3].get_prevuuid()),
+        (0, None),
+        "the later incarnation starts after expiry"
+    );
+}
+
+#[test]
+fn deadlines_precede_equal_time_sources_and_views_and_eof_drains_in_order() {
+    let mut first = incarnation("O-100", 10);
+    first.set_exprtime(Some(at(20)));
+    let mut second = incarnation("O-900", 20);
+    second.set_exprtime(Some(at(30)));
+    let walked: Vec<_> = EventIterator::new([first, second], true)
+        .with_snapshot_ns(10 * MS)
+        .collect();
+
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| (
+                ms(event.get_currunix()),
+                event.get_snapunix().map(ms),
+                event.get_crosscode(),
+                event.get_state().is_failed(),
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (10, None, "O-100", false),
+            (10, Some(10), "O-100", false),
+            (20, None, "O-100", true),
+            (20, None, "O-900", false),
+            (20, Some(20), "O-900", false),
+            (30, None, "O-900", true),
+        ]
+    );
+}
+
+#[test]
+fn eof_keeps_the_deadline_horizon_for_nonexpiring_neighbors() {
+    let mut finite = incarnation("O-100", 10);
+    finite.set_exprtime(Some(at(20)));
+    let forever = incarnation("O-900", 10);
+    let walked: Vec<_> = EventIterator::new([finite, forever], true)
+        .with_snapshot_ns(10 * MS)
+        .collect();
+
+    assert!(
+        walked.iter().any(|event| {
+            event.get_crosscode() == "O-100"
+                && event.get_currunix() == at(20)
+                && event.get_state().is_failed()
+        }),
+        "the finite identity expires at the horizon"
+    );
+    assert_eq!(
+        walked
+            .iter()
+            .filter(|event| event.get_snapunix() == Some(at(20)))
+            .map(|event| event.get_crosscode())
+            .collect::<Vec<_>>(),
+        ["O-900"],
+        "the neighbor still living at that horizon gets its view"
+    );
+    assert!(
+        walked
+            .iter()
+            .all(|event| event.get_snapunix().is_none_or(|tick| tick <= at(20))),
+        "a nonexpiring identity does not extend the finite source"
+    );
+}
+
+#[test]
+fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
+    let mut first = incarnation("O-100", 10);
+    first.set_exprtime(Some(at(20)));
+    let mut replacement = incarnation("O-100", 15);
+    replacement.set_exprtime(Some(at(40)));
+    let mut canceled = incarnation("O-100", 30);
+    canceled.set_state(State::from_spelling("canceled").unwrap());
+    canceled.finalize();
+
+    let walked: Vec<_> =
+        EventIterator::new([first.clone(), replacement.clone(), canceled], true).collect();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| ms(event.get_currunix()))
+            .collect::<Vec<_>>(),
+        [10, 15, 30],
+        "neither replaced deadline survives the terminal generation"
+    );
+
+    let walked: Vec<_> = EventIterator::new([first, replacement], true).collect();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| ms(event.get_currunix()))
+            .collect::<Vec<_>>(),
+        [10, 15, 40],
+        "the replacement owns the one remaining deadline"
+    );
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+
+    let mut later = incarnation("O-200", 10);
+    later.set_exprtime(Some(at(40)));
+    let mut shortened = incarnation("O-200", 15);
+    shortened.set_exprtime(Some(at(20)));
+    let walked: Vec<_> = EventIterator::new([later, shortened], true).collect();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|event| ms(event.get_currunix()))
+            .collect::<Vec<_>>(),
+        [10, 15, 20],
+        "an explicitly replaced deadline may move earlier"
+    );
+}
+
+#[test]
+fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
+    let mut first = incarnation("O-100", 10);
+    first.set_exprtime(Some(at(35)));
+    let arrived = [first, incarnation("O-900", 15), incarnation("O-100", 25)];
+    let walked: Vec<_> = EventIterator::new(arrived, true)
+        .with_snapshot_ns(10 * MS)
+        .collect();
+
+    let sources: Vec<_> = walked
+        .iter()
+        .filter(|event| event.get_snapunix().is_none() && !event.get_state().is_failed())
+        .collect();
+    assert_eq!(
+        sources
+            .iter()
+            .map(|event| ms(event.get_currunix()))
+            .collect::<Vec<_>>(),
+        [10, 15, 25],
+        "source events keep their stated snapshot fact"
+    );
+    let mut snapshots: Vec<_> = walked
+        .iter()
+        .filter_map(|event| {
+            event
+                .get_snapunix()
+                .map(|tick| (ms(tick), event.get_crosscode(), ms(event.get_currunix())))
+        })
+        .collect();
+    snapshots.sort_unstable();
+    assert_eq!(
+        snapshots,
+        [
+            (10, "O-100", 10),
+            (20, "O-100", 10),
+            (20, "O-900", 15),
+            (30, "O-100", 25),
+            (30, "O-900", 15),
+        ]
+    );
+    for snapshot in walked.iter().filter(|event| event.get_snapunix().is_some()) {
+        let source = sources
+            .iter()
+            .rev()
+            .find(|source| {
+                source.get_crosscode() == snapshot.get_crosscode()
+                    && source.get_currunix() == snapshot.get_currunix()
+            })
+            .expect("the living source copied at this tick");
+        assert_eq!(snapshot.get_curruuid(), source.get_curruuid());
+        assert_eq!(snapshot.get_seqnum(), source.get_seqnum());
+    }
+    assert!(walked.iter().all(|event| {
+        event
+            .get_snapunix()
+            .is_none_or(|tick| tick <= event.get_exprtime().unwrap_or(i64::MAX))
+    }));
+    assert_eq!(
+        walked.last().map(|event| ms(event.get_currunix())),
+        Some(35),
+        "EOF stops the grid at the greatest finite deadline"
     );
 }

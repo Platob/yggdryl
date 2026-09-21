@@ -1,0 +1,25 @@
+{
+  "name": "liquidityindtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "FiveDayMovingAverage",
+      "doc": "5-day moving average"
+    },
+    {
+      "value": "2",
+      "name": "TwentyDayMovingAverage",
+      "doc": "20-day moving average"
+    },
+    {
+      "value": "3",
+      "name": "NormalMarketSize",
+      "doc": "Normal market size"
+    },
+    {
+      "value": "4",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

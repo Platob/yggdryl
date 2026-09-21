@@ -17,8 +17,14 @@ use crate::sequence::SequenceType;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, FieldPath, FieldSegment, Result};
 use std::collections::{BTreeMap, HashSet};
+
+/// One failed borrowed schema traversal, before a public wrapper owns its error.
+enum SchemaPathError<'node, 'segment> {
+    Missing(&'node DataType),
+    Unsupported(&'segment FieldSegment),
+}
 
 impl DataType {
     /// Returns the number of direct child fields without allocating.
@@ -53,9 +59,8 @@ impl DataType {
 
     /// Returns a direct child field by exact name without allocating.
     ///
-    /// This is the step [`Self::get_field_by_path`] takes before it decomposes
-    /// anything, and the whole of it for a name carrying no dot.
-    fn get_field_by_name(&self, name: &str) -> Option<&Field> {
+    /// This is the step every named [`FieldSegment`] takes.
+    pub(crate) fn get_field_by_name(&self, name: &str) -> Option<&Field> {
         match self {
             Self::Sequence(sequence) => {
                 let field = sequence.item();
@@ -82,14 +87,11 @@ impl DataType {
         }
     }
 
-    /// Returns a nested child by path, preferring an exact name at every step.
+    /// Returns a nested child by the expression path grammar.
     ///
-    /// A child carrying the whole string as its own name wins outright, so a
-    /// name containing a dot stays reachable. Only when nothing carries the
-    /// whole string is it decomposed: each `.` is tried as a boundary, left to
-    /// right, and a head that names a child is descended into. A descent that
-    /// finds nothing falls back to the next boundary, so `"a.b.c"` resolves
-    /// even when `a.b` is one child carrying `c`.
+    /// A bare name is one child lookup. A name containing a dot is quoted, so
+    /// `"a.b"` is one child and `a.b` is two steps. Every non-bare spelling is
+    /// parsed once into [`FieldSegment`]s before this borrowed walk begins.
     ///
     /// A list-shaped datatype - `List`, `LargeList`, `FixedSizeList`,
     /// `ListView`, `LargeListView` - is transparent to a path: a segment is
@@ -109,9 +111,9 @@ impl DataType {
     /// ])?);
     /// assert_eq!(row.get_field_by_path("line.price").unwrap().name(), "price");
     ///
-    /// // The whole string first: a dotted name is a name, not a path.
+    /// // A dotted name is quoted, so it is one name rather than two steps.
     /// let dotted = DataType::from(StructType::from_fields([DataType::Int64.required_field("a.b")])?);
-    /// assert_eq!(dotted.get_field_by_path("a.b").unwrap().name(), "a.b");
+    /// assert_eq!(dotted.get_field_by_path("\"a.b\"").unwrap().name(), "a.b");
     ///
     /// // A list is transparent: its item is a step the path need not spell.
     /// let orders = DataType::from_str("struct<orders:array<struct<price:double>>>")?;
@@ -121,23 +123,9 @@ impl DataType {
     /// # }
     /// ```
     pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
-        if let Some(field) = self.get_field_by_name(path) {
-            return Some(field);
-        }
-        let mut offset = 0;
-        while let Some(at) = path[offset..].find('.') {
-            let boundary = offset + at;
-            if let Some(child) = self.get_field_by_name(&path[..boundary]) {
-                if let Some(found) = child.get_field_by_path(&path[boundary + 1..]) {
-                    return Some(found);
-                }
-            }
-            offset = boundary + 1;
-        }
-        // Nothing here carries the path, so a list hands it to its item: the
-        // item's own name was already tried above, and this is the rest of it.
-        self.list_item()
-            .and_then(|item| item.get_field_by_path(path))
+        FieldPath::with_schema_segments(path, |segments| self.walk_field_by_segments(segments).ok())
+            .ok()
+            .flatten()
     }
 
     /// Returns a nested child by position or by path.
@@ -185,11 +173,16 @@ impl DataType {
     ///
     /// # Errors
     ///
-    /// Returns an error when no child carries that name and no decomposition
-    /// of it resolves.
+    /// Returns a parse error for an invalid path spelling, a named refusal for
+    /// aliases, ranges, and predicates, or an error when no child resolves.
     pub fn field_by_path(&self, path: &str) -> Result<&Field> {
-        self.get_field_by_path(path)
-            .ok_or_else(|| missing_child(self, path))
+        FieldPath::with_schema_segments(path, |segments| {
+            self.walk_field_by_segments(segments)
+                .map_err(|error| match error {
+                    SchemaPathError::Missing(node) => missing_child(node, path),
+                    SchemaPathError::Unsupported(segment) => schema_segment_refusal(path, segment),
+                })
+        })?
     }
 
     /// Returns a nested child by position or by path, raising when absent.
@@ -243,15 +236,11 @@ impl DataType {
         Ok(())
     }
 
-    /// Replaces the child `path` resolves to, appending an unresolved name.
+    /// Replaces the child `path` resolves to, appending one missing final name.
     ///
-    /// Resolution is [`Self::get_field_by_path`]'s, so a reader and a writer
-    /// never disagree about which child one string names: a child carrying the
-    /// whole string is replaced in place, otherwise a resolving head is
-    /// descended into and the remainder set there. A string that resolves to
-    /// nothing appends one child under that name - which is how a struct gets
-    /// built up - so a path whose parents do not exist appends a single child
-    /// rather than conjuring the chain.
+    /// The expression grammar is parsed once. A missing final named segment
+    /// appends only to the current struct; a missing parent or a non-container
+    /// refuses, so a dotted spelling never becomes one literal child name.
     ///
     /// The one difference from the reader is deliberate: a list is not
     /// transparent to a write. Reading `orders.price` may reach into a list's
@@ -275,7 +264,7 @@ impl DataType {
     /// row.set_field_by_path("line.price", DataType::Float64.required_field("price"))?;
     /// assert_eq!(row["line"]["price"].dtype(), &DataType::Float64);
     ///
-    /// // An unresolved name appends.
+    /// // A missing final name appends to this struct.
     /// row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     /// # Ok(())
@@ -288,35 +277,9 @@ impl DataType {
     /// append lands on a layout with fixed arity, or when the rebuilt datatype
     /// does not validate. Failure leaves `self` unchanged.
     pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()> {
-        // Whole string first, exactly as the reader resolves it.
-        if let Some(index) = self.index_of_name(path) {
-            let mut children = self.children();
-            children[index] = child.with_name(path);
-            *self = self.with_fields(children)?;
-            return Ok(());
-        }
-        let mut offset = 0;
-        while let Some(at) = path[offset..].find('.') {
-            let boundary = offset + at;
-            let head = &path[..boundary];
-            let rest = &path[boundary + 1..];
-            if let Some(index) = self.index_of_name(head) {
-                let mut children = self.children();
-                if children[index]
-                    .set_field_by_path(rest, child.clone())
-                    .is_ok()
-                {
-                    *self = self.with_fields(children)?;
-                    return Ok(());
-                }
-            }
-            offset = boundary + 1;
-        }
-        // Nothing resolved, so the whole string names a new child here.
-        let mut children = self.require_struct_children()?;
-        children.push(child.with_name(path));
-        *self = Self::from(StructType::from_fields(children)?);
-        Ok(())
+        FieldPath::with_schema_segments(path, |segments| {
+            self.set_field_by_segments(path, segments, child)
+        })?
     }
 
     /// Replaces a child by position or by path.
@@ -362,22 +325,9 @@ impl DataType {
     /// Returns an error when the path resolves to no child, or when the
     /// rebuilt datatype does not validate. Failure leaves `self` unchanged.
     pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field> {
-        if let Some(index) = self.index_of_name(path) {
-            return self.remove_field_at(index);
-        }
-        let mut offset = 0;
-        while let Some(at) = path[offset..].find('.') {
-            let boundary = offset + at;
-            if let Some(index) = self.index_of_name(&path[..boundary]) {
-                let mut children = self.children();
-                if let Ok(removed) = children[index].remove_field_by_path(&path[boundary + 1..]) {
-                    *self = self.with_fields(children)?;
-                    return Ok(removed);
-                }
-            }
-            offset = boundary + 1;
-        }
-        Err(missing_child(self, path))
+        FieldPath::with_schema_segments(path, |segments| {
+            self.remove_field_by_segments(path, segments)
+        })?
     }
 
     /// Removes a child by position or by path, returning it.
@@ -534,6 +484,137 @@ impl DataType {
         (0..self.field_len())
             .find(|index| self.get_field_at(*index).is_some_and(|f| f.name() == name))
     }
+
+    /// The one borrowed walk a schema address takes.
+    fn walk_field_by_segments<'node, 'segment>(
+        &'node self,
+        segments: &'segment [FieldSegment],
+    ) -> std::result::Result<&'node Field, SchemaPathError<'node, 'segment>> {
+        let Some((segment, rest)) = segments.split_first() else {
+            return Err(SchemaPathError::Missing(self));
+        };
+        if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
+            return Err(SchemaPathError::Unsupported(segment));
+        }
+        if matches!(self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+            return Err(SchemaPathError::Unsupported(segment));
+        }
+        let child = if let Some(name) = segment.as_name() {
+            match self.get_field_by_name(name) {
+                Some(child) => child,
+                None => match self.list_item() {
+                    // Reading a schema sees through a list item, but writes
+                    // name that item explicitly because they rebuild the list.
+                    Some(item) => return item.dtype().walk_field_by_segments(segments),
+                    None => return Err(SchemaPathError::Missing(self)),
+                },
+            }
+        } else {
+            match segment {
+                FieldSegment::Index(_) => self.list_item().ok_or(SchemaPathError::Missing(self))?,
+                FieldSegment::Key(_) => return Err(SchemaPathError::Unsupported(segment)),
+                FieldSegment::Field(_) => unreachable!("named above"),
+                FieldSegment::Range { .. } | FieldSegment::Where(_) => {
+                    unreachable!("refused above")
+                }
+            }
+        };
+        if rest.is_empty() {
+            Ok(child)
+        } else {
+            child.dtype().walk_field_by_segments(rest)
+        }
+    }
+
+    /// Replaces one parsed child, appending only a missing final named child.
+    fn set_field_by_segments(
+        &mut self,
+        path: &str,
+        segments: &[FieldSegment],
+        child: Field,
+    ) -> Result<()> {
+        let Some((segment, rest)) = segments.split_first() else {
+            return Err(missing_child(self, path));
+        };
+        if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
+            return Err(schema_segment_refusal(path, segment));
+        }
+        if matches!(&*self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+            return Err(schema_segment_refusal(path, segment));
+        }
+        if rest.is_empty() {
+            if let Some(name) = segment.as_name() {
+                if let Some(index) = self.index_of_name(name) {
+                    let mut children = self.children();
+                    children[index] = child.with_name(name);
+                    *self = self.with_fields(children)?;
+                    return Ok(());
+                }
+                let mut children = self.require_struct_children()?;
+                children.push(child.with_name(name));
+                *self = Self::from(StructType::from_fields(children)?);
+                return Ok(());
+            }
+            let Some(index) = self.schema_segment_index(segment) else {
+                return Err(missing_child(self, path));
+            };
+            let mut children = self.children();
+            children[index] = child;
+            *self = self.with_fields(children)?;
+            return Ok(());
+        }
+
+        let Some(index) = self.schema_segment_index(segment) else {
+            return Err(missing_child(self, path));
+        };
+        let mut children = self.children();
+        let mut nested = children[index].dtype().clone();
+        nested.set_field_by_segments(path, rest, child)?;
+        children[index].set_dtype(nested)?;
+        *self = self.with_fields(children)?;
+        Ok(())
+    }
+
+    /// Removes one parsed child without making a fixed-arity node grow or shrink.
+    fn remove_field_by_segments(&mut self, path: &str, segments: &[FieldSegment]) -> Result<Field> {
+        let Some((segment, rest)) = segments.split_first() else {
+            return Err(missing_child(self, path));
+        };
+        if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
+            return Err(schema_segment_refusal(path, segment));
+        }
+        if matches!(&*self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+            return Err(schema_segment_refusal(path, segment));
+        }
+        if rest.is_empty() {
+            let Some(index) = self.schema_segment_index(segment) else {
+                return Err(missing_child(self, path));
+            };
+            return self.remove_field_at(index);
+        }
+        let Some(index) = self.schema_segment_index(segment) else {
+            return Err(missing_child(self, path));
+        };
+        let mut children = self.children();
+        let mut nested = children[index].dtype().clone();
+        let removed = nested.remove_field_by_segments(path, rest)?;
+        children[index].set_dtype(nested)?;
+        *self = self.with_fields(children)?;
+        Ok(removed)
+    }
+
+    /// The direct child a write or removal may walk into.
+    fn schema_segment_index(&self, segment: &FieldSegment) -> Option<usize> {
+        match segment {
+            FieldSegment::Field(name) => self.index_of_name(name),
+            FieldSegment::Key(key) => key
+                .value()
+                .as_str()
+                .and_then(|name| self.index_of_name(name)),
+            FieldSegment::Index(_) => self.list_item().map(|_| 0),
+            FieldSegment::Range { .. } | FieldSegment::Where(_) => None,
+        }
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -662,7 +743,7 @@ impl Field {
         self.dtype().get_field_at(index)
     }
 
-    /// Returns one nested child by path, an exact name first.
+    /// Returns one nested child by the expression path grammar.
     ///
     /// [`DataType::get_field_by_path`] carries the rule, including the one
     /// that makes a list transparent - `orders.price` reaches the price of an
@@ -706,8 +787,7 @@ impl Field {
     ///
     /// # Errors
     ///
-    /// Returns an error when no child carries that name and no decomposition
-    /// of it resolves.
+    /// Returns the parse, selector, or missing-child error its datatype raises.
     pub fn field_by_path(&self, path: &str) -> Result<&Field> {
         self.dtype().field_by_path(path)
     }
@@ -987,7 +1067,7 @@ impl Field {
     pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self> {
         self.require_struct()?;
         for name in names {
-            if self.get_field_by_path(name).is_none() {
+            if self.dtype().get_field_by_name(name).is_none() {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$.{name}"),
                     reason: crate::text::expected_got(
@@ -1065,8 +1145,7 @@ impl Field {
     ///
     /// Dict-like on purpose, and the asymmetry with [`Self::set_field`] is
     /// deliberate: a known name is replaced *in place*, keeping its position,
-    /// and an unknown name appends a new child - which is the natural way to
-    /// build a schema up. A position, by contrast, only ever replaces.
+    /// and a missing final name appends a new child. A position only replaces.
     ///
     /// The child is stored under `name` whatever it calls itself, so
     /// `row.set_field_by_path("price", DataType::Float64.required_field("x"))`
@@ -1080,7 +1159,7 @@ impl Field {
     /// let mut row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     ///
-    /// // An unknown name appends.
+    /// // A missing final name appends.
     /// row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     ///
@@ -1354,6 +1433,14 @@ impl StructType {
         }
     }
 
+    /// The address of the children's storage, which names it for as long as
+    /// a clone of this collection is held; zero for no children.
+    pub(crate) fn storage_address(&self) -> usize {
+        self.0
+            .as_ref()
+            .map_or(0, |held| Arc::as_ptr(held).cast::<()>() as usize)
+    }
+
     /// Consumes the collection and returns owned fields.
     pub fn into_fields(self) -> Vec<Field> {
         self.as_ref().to_vec()
@@ -1581,6 +1668,14 @@ pub(crate) fn missing_child(node: &DataType, path: &str) -> Error {
             format_smolstr!("a child among {names:?}"),
             format_smolstr!("{path:?}"),
         ),
+    }
+}
+
+/// Refuse a selector that cannot name one borrowed schema child.
+fn schema_segment_refusal(path: &str, segment: &FieldSegment) -> Error {
+    Error::InvalidRecord {
+        path: format_smolstr!("$.{path}"),
+        reason: format_smolstr!("expected a named child or one list item, got {segment}"),
     }
 }
 

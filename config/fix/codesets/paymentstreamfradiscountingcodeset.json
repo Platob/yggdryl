@@ -1,0 +1,20 @@
+{
+  "name": "paymentstreamfradiscountingcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "ISDA",
+      "doc": "International Swaps and Derivatives Association (ISDA)"
+    },
+    {
+      "value": "2",
+      "name": "AFMA",
+      "doc": "Australian Financial Markets Association (AFMA)"
+    }
+  ]
+}

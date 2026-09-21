@@ -1,0 +1,20 @@
+{
+  "name": "multilegreportingtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "SingleSecurity",
+      "doc": "Single security (default if not specified)"
+    },
+    {
+      "value": "2",
+      "name": "IndividualLegOfAMultiLegSecurity",
+      "doc": "Individual leg of a multi-leg security"
+    },
+    {
+      "value": "3",
+      "name": "MultiLegSecurity",
+      "doc": "Multi-leg security"
+    }
+  ]
+}

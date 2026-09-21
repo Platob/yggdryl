@@ -1,0 +1,30 @@
+{
+  "name": "allocsettlinsttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UseDefaultInstructions",
+      "doc": "Use default instructions"
+    },
+    {
+      "value": "1",
+      "name": "DeriveFromParametersProvided",
+      "doc": "Derive from parameters provided"
+    },
+    {
+      "value": "2",
+      "name": "FullDetailsProvided",
+      "doc": "Full details provided"
+    },
+    {
+      "value": "3",
+      "name": "SSIDBIDsProvided",
+      "doc": "SSI DB IDs provided"
+    },
+    {
+      "value": "4",
+      "name": "PhoneForInstructions",
+      "doc": "Phone for instructions"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "handlinstcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AutomatedExecutionNoIntervention",
+      "doc": "Automated execution order, private, no Broker intervention"
+    },
+    {
+      "value": "2",
+      "name": "AutomatedExecutionInterventionOK",
+      "doc": "Automated execution order, public, Broker intervention OK"
+    },
+    {
+      "value": "3",
+      "name": "ManualOrder",
+      "doc": "Manual order, best execution"
+    }
+  ]
+}

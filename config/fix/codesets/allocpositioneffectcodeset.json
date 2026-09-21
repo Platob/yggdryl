@@ -1,0 +1,25 @@
+{
+  "name": "allocpositioneffectcodeset",
+  "codes": [
+    {
+      "value": "O",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "C",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "R",
+      "name": "Rolled",
+      "doc": "Rolled"
+    },
+    {
+      "value": "F",
+      "name": "FIFO",
+      "doc": "FIFO"
+    }
+  ]
+}

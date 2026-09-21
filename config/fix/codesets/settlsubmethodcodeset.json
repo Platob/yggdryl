@@ -1,0 +1,40 @@
+{
+  "name": "settlsubmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Shares",
+      "doc": "Shares"
+    },
+    {
+      "value": "2",
+      "name": "Derivatives",
+      "doc": "Derivatives"
+    },
+    {
+      "value": "3",
+      "name": "PaymentVsPayment",
+      "doc": "Payment vs payment"
+    },
+    {
+      "value": "4",
+      "name": "Notional",
+      "doc": "Notional"
+    },
+    {
+      "value": "5",
+      "name": "Cascade",
+      "doc": "Cascade"
+    },
+    {
+      "value": "6",
+      "name": "Repurchase",
+      "doc": "Repurchase"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

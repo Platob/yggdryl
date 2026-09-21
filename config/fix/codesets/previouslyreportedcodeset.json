@@ -1,0 +1,21 @@
+{
+  "name": "previouslyreportedcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotReportedToCounterparty",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not reported to counterparty or market"
+    },
+    {
+      "value": "Y",
+      "name": "PreviouslyReportedToCounterparty",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Previously reported to counterparty or market"
+    }
+  ]
+}

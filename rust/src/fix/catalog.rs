@@ -228,16 +228,16 @@ impl Catalog {
         self.message_codes.get(code).copied()
     }
 
-    fn index_message_aliases(&mut self, field: Option<&Field>) {
+    fn index_message_aliases(&mut self, codes: Option<&str>) {
         self.message_aliases.clear();
         self.code_names.clear();
-        let Some(field) = field else {
+        let Some(codes) = codes else {
             // The code set decides which message a bare code answers, so
             // its going re-decides them.
             self.index_messages();
             return;
         };
-        for code in field.as_fix().codes().filter_map(Result::ok) {
+        for code in super::codes::FixCodes::over(Some(codes)).filter_map(Result::ok) {
             self.code_names
                 .insert(SmolStr::new(code.value()), SmolStr::new(code.name()));
             for spelling in std::iter::once(code.name()).chain(code.aliases()) {
@@ -618,7 +618,16 @@ impl Documents {
 }
 
 pub(super) fn validate_name(field: &Field) -> Result<()> {
-    let name = field.name();
+    validate_definition_name(field.name())
+}
+
+/// The one rule a name a store files a document under is held to.
+///
+/// A named definition and a named [code set](super::codes) are both written
+/// as `<name>.json` under their folder and read back by that stem, so one
+/// rule answers for both: what a store can file, a checkout can hold, and a
+/// reader can key.
+pub(super) fn validate_definition_name(name: &str) -> Result<()> {
     if name.is_empty()
         || matches!(name, "." | "..")
         || !name
@@ -695,8 +704,14 @@ impl FixRegistry {
     }
 
     pub(super) fn refresh_msgtype_aliases(&mut self) {
-        let field = self.get_field_by_tag(35).cloned();
-        self.catalog.index_message_aliases(field.as_ref());
+        // The document rather than the field: tag 35 names its set and the
+        // dictionary holds it, and the index is over the set's members.
+        let codes = self
+            .get_field_by_tag(35)
+            .and_then(|field| field.as_fix().codeset())
+            .and_then(|name| self.get_codeset(name))
+            .map(|set| set.document().to_owned());
+        self.catalog.index_message_aliases(codes.as_deref());
     }
 
     /// Resolves one category's folded name.
@@ -1391,8 +1406,14 @@ impl FixRegistry {
         }
         let view = field.as_fix();
         view.compiled_identifier_positions()?;
-        for code in view.codes() {
-            code?;
+        // A code set is a reference like any other: the name is one a store
+        // can file, and the dictionary has to hold the set it names, or the
+        // field reads by a vocabulary nothing states.
+        if let Some(name) = view.codeset() {
+            validate_definition_name(name)?;
+            if self.get_codeset(name).is_none() {
+                return Err(Error::absent("codesets", name));
+            }
         }
         // A derivation is read at every enrichment and never re-checked, so
         // a text that is not a term, or one past the budget, is refused here

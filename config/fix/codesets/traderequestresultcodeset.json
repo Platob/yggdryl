@@ -1,0 +1,50 @@
+{
+  "name": "traderequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful (default)"
+    },
+    {
+      "value": "1",
+      "name": "InvalidOrUnknownInstrument",
+      "doc": "Invalid or unknown instrument"
+    },
+    {
+      "value": "2",
+      "name": "InvalidTypeOfTradeRequested",
+      "doc": "Invalid type of trade requested"
+    },
+    {
+      "value": "3",
+      "name": "InvalidParties",
+      "doc": "Invalid parties"
+    },
+    {
+      "value": "4",
+      "name": "InvalidTransportTypeRequested",
+      "doc": "Invalid transport type requested"
+    },
+    {
+      "value": "5",
+      "name": "InvalidDestinationRequested",
+      "doc": "Invalid destination requested"
+    },
+    {
+      "value": "8",
+      "name": "TradeRequestTypeNotSupported",
+      "doc": "TradeRequestType not supported"
+    },
+    {
+      "value": "9",
+      "name": "NotAuthorized",
+      "doc": "Not authorized"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

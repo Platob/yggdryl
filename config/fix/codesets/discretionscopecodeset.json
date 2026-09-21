@@ -1,0 +1,25 @@
+{
+  "name": "discretionscopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Local",
+      "doc": "Local (Exchange, ECN, ATS)"
+    },
+    {
+      "value": "2",
+      "name": "National",
+      "doc": "National"
+    },
+    {
+      "value": "3",
+      "name": "Global",
+      "doc": "Global"
+    },
+    {
+      "value": "4",
+      "name": "NationalExcludingLocal",
+      "doc": "National excluding local"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "name": "postranstypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Exercise",
+      "doc": "Exercise"
+    },
+    {
+      "value": "2",
+      "name": "DoNotExercise",
+      "doc": "Do not exercise"
+    },
+    {
+      "value": "3",
+      "name": "PositionAdjustment",
+      "doc": "Position adjustment"
+    },
+    {
+      "value": "4",
+      "name": "PositionChangeSubmission",
+      "doc": "Position change submission / margin disposition"
+    },
+    {
+      "value": "5",
+      "name": "Pledge",
+      "doc": "Pledge"
+    },
+    {
+      "value": "6",
+      "name": "LargeTraderSubmission",
+      "doc": "Large trader submission"
+    },
+    {
+      "value": "7",
+      "name": "LargePositionsReportingSubmission",
+      "doc": "Large positions reporting submission"
+    },
+    {
+      "value": "8",
+      "name": "LongHoldings",
+      "doc": "Long holdings"
+    },
+    {
+      "value": "9",
+      "name": "InternalTransfer",
+      "doc": "Internal transfer"
+    },
+    {
+      "value": "10",
+      "name": "TransferOfFirm",
+      "doc": "Transfer of firm"
+    },
+    {
+      "value": "11",
+      "name": "ExternalTransfer",
+      "doc": "External transfer"
+    },
+    {
+      "value": "12",
+      "name": "CorporateAction",
+      "doc": "Corporate action"
+    },
+    {
+      "value": "13",
+      "name": "Notification",
+      "doc": "Notification"
+    },
+    {
+      "value": "14",
+      "name": "PositionCreation",
+      "doc": "Position creation"
+    },
+    {
+      "value": "15",
+      "name": "Closeout",
+      "doc": "Close out"
+    },
+    {
+      "value": "16",
+      "name": "Reopen",
+      "doc": "Reopen"
+    }
+  ]
+}

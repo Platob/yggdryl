@@ -1,0 +1,25 @@
+{
+  "name": "tradepublishindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DoNotPublishTrade",
+      "doc": "Do Not Publish Trade"
+    },
+    {
+      "value": "1",
+      "name": "PublishTrade",
+      "doc": "Publish Trade"
+    },
+    {
+      "value": "2",
+      "name": "DeferredPublication",
+      "doc": "Deferred Publication"
+    },
+    {
+      "value": "3",
+      "name": "Published",
+      "doc": "Published"
+    }
+  ]
+}

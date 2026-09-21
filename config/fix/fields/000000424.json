@@ -32,18 +32,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "None",
-          "doc": "None"
-        },
-        {
-          "value": "1",
-          "name": "LinearZeroYield",
-          "doc": "Linear zero yield"
-        }
-      ],
+      "FIX:codeset": "paymentstreaminflationinterpolationmethodcodeset",
       "FIX:tag": "42402",
       "description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
       "display": "LegPaymentStreamInterpolationMethod"
@@ -56,28 +45,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Initial",
-          "doc": "Initial"
-        },
-        {
-          "value": "1",
-          "name": "InitialAndFinal",
-          "doc": "Initial and final"
-        },
-        {
-          "value": "2",
-          "name": "Final",
-          "doc": "Final"
-        },
-        {
-          "value": "3",
-          "name": "AnyPeriod",
-          "doc": "Any period"
-        }
-      ],
+      "FIX:codeset": "paymentstreaminterpolationperiodcodeset",
       "FIX:tag": "42403",
       "description": "Defines applicable periods for interpolation.",
       "display": "LegPaymentStreamInterpolationPeriod"
@@ -127,18 +95,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codeset": "nondeliverablefixingdatetypecodeset",
       "FIX:tag": "42407",
       "description": "Specifies the type of payment compounding date (e.g. adjusted for holidays).",
       "display": "LegPaymentStreamCompoundingDateType"
@@ -151,48 +108,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "42408",
       "description": "The compounding dates business day convention.",
       "display": "LegPaymentStreamCompoundingDatesBusinessDayConvention"
@@ -229,28 +145,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42411",
       "description": "Time unit associated with the relative compounding date offset.",
       "display": "LegPaymentStreamCompoundingDatesOffsetUnit"
@@ -263,38 +158,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42412",
       "description": "Specifies the day type of the relative compounding date offset.",
       "display": "LegPaymentStreamCompoundingDatesOffsetDayType"
@@ -331,48 +195,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codeset": "couponfrequencyunitcodeset",
       "FIX:tag": "42415",
       "description": "Time unit associated with the frequency at which compounding dates occur.",
       "display": "LegPaymentStreamCompoundingFrequencyUnit"
@@ -385,238 +208,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "FirstDay",
-          "doc": "1st day of the month"
-        },
-        {
-          "value": "2",
-          "name": "SecondDay",
-          "doc": "2nd day of the month"
-        },
-        {
-          "value": "3",
-          "name": "ThirdDay",
-          "doc": "3rd day of the month"
-        },
-        {
-          "value": "4",
-          "name": "FourthDay",
-          "doc": "4th day of the month"
-        },
-        {
-          "value": "5",
-          "name": "FifthDay",
-          "doc": "5th day of the month"
-        },
-        {
-          "value": "6",
-          "name": "SixthDay",
-          "doc": "6thd day of the month"
-        },
-        {
-          "value": "7",
-          "name": "SeventhDay",
-          "doc": "7th day of the month"
-        },
-        {
-          "value": "8",
-          "name": "EighthDay",
-          "doc": "8th day of the month"
-        },
-        {
-          "value": "9",
-          "name": "NinthDay",
-          "doc": "9th day of the month"
-        },
-        {
-          "value": "10",
-          "name": "TenthDay",
-          "doc": "10th day of the month"
-        },
-        {
-          "value": "11",
-          "name": "EleventhDay",
-          "doc": "11th day of the month"
-        },
-        {
-          "value": "12",
-          "name": "TwelvthDay",
-          "doc": "12th day of the month"
-        },
-        {
-          "value": "13",
-          "name": "ThirteenthDay",
-          "doc": "13th day of the month"
-        },
-        {
-          "value": "14",
-          "name": "ForteenthDay",
-          "doc": "14th day of the month"
-        },
-        {
-          "value": "15",
-          "name": "FifteenthDay",
-          "doc": "15th day of the month"
-        },
-        {
-          "value": "16",
-          "name": "SixteenthDay",
-          "doc": "16th day of the month"
-        },
-        {
-          "value": "17",
-          "name": "SeventeenthDay",
-          "doc": "17th day of the month"
-        },
-        {
-          "value": "18",
-          "name": "EighteenthDay",
-          "doc": "18th day of the month"
-        },
-        {
-          "value": "19",
-          "name": "NineteenthDay",
-          "doc": "19th day of the month"
-        },
-        {
-          "value": "20",
-          "name": "TwentiethDay",
-          "doc": "20th day of the month"
-        },
-        {
-          "value": "21",
-          "name": "TwentyFirstDay",
-          "doc": "21st day of the month"
-        },
-        {
-          "value": "22",
-          "name": "TwentySecondDay",
-          "doc": "22nd day of the month"
-        },
-        {
-          "value": "23",
-          "name": "TwentyThirdDay",
-          "doc": "23rd day of the month"
-        },
-        {
-          "value": "24",
-          "name": "TwentyFourthDay",
-          "doc": "24th day of the month"
-        },
-        {
-          "value": "25",
-          "name": "TwentyFifthDay",
-          "doc": "25th day of the month"
-        },
-        {
-          "value": "26",
-          "name": "TwentySixthDay",
-          "doc": "26th day of the month"
-        },
-        {
-          "value": "27",
-          "name": "TwentySeventhDay",
-          "doc": "27th day of the month"
-        },
-        {
-          "value": "28",
-          "name": "TwentyEigthDa28y",
-          "doc": "28th day of the month"
-        },
-        {
-          "value": "29",
-          "name": "TwentyNinthDay",
-          "doc": "29th day of the month"
-        },
-        {
-          "value": "30",
-          "name": "ThirtiethDay",
-          "doc": "30th day of the month"
-        },
-        {
-          "value": "EOM",
-          "name": "EOM",
-          "doc": "The end of the month."
-        },
-        {
-          "value": "FRN",
-          "name": "FRN",
-          "doc": "The floating rate note convention or Eurodollar convention."
-        },
-        {
-          "value": "IMM",
-          "name": "IMM",
-          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
-        },
-        {
-          "value": "IMMCAD",
-          "name": "IMMCAD",
-          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
-        },
-        {
-          "value": "IMMAUD",
-          "name": "IMMAUD",
-          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
-        },
-        {
-          "value": "IMMNZD",
-          "name": "IMMNZD",
-          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
-        },
-        {
-          "value": "SFE",
-          "name": "SFE",
-          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
-        },
-        {
-          "value": "NONE",
-          "name": "NONE",
-          "doc": "No adjustment"
-        },
-        {
-          "value": "TBILL",
-          "name": "TBILL",
-          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
-        },
-        {
-          "value": "MON",
-          "name": "MON",
-          "doc": "Monday"
-        },
-        {
-          "value": "TUE",
-          "name": "TUE",
-          "doc": "Tuesday"
-        },
-        {
-          "value": "WED",
-          "name": "WED",
-          "doc": "Wednesday"
-        },
-        {
-          "value": "THU",
-          "name": "THU",
-          "doc": "Thursday"
-        },
-        {
-          "value": "FRI",
-          "name": "FRI",
-          "doc": "Friday"
-        },
-        {
-          "value": "SAT",
-          "name": "SAT",
-          "doc": "Saturday"
-        },
-        {
-          "value": "SUN",
-          "name": "SUN",
-          "doc": "Sunday"
-        }
-      ],
+      "FIX:codeset": "daterollconventioncodeset",
       "FIX:tag": "42416",
       "description": "The convention for determining the sequence of compounding dates. It is used in conjunction with a specified frequency.",
       "display": "LegPaymentStreamCompoundingRollConvention"
@@ -716,28 +308,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42424",
       "description": "Time unit associated with the relative compounding end date offset.",
       "display": "LegPaymentStreamCompoundingEndDateOffsetUnit"
@@ -750,38 +321,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42425",
       "description": "Specifies the day type of the relative compounding end date offset.",
       "display": "LegPaymentStreamCompoundingEndDateOffsetDayType"
@@ -831,28 +371,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "42429",
       "description": "Time unit associated with the payment stream's compounding floating rate index curve period.",
       "display": "LegPaymentStreamCompoundingRateIndexCurveUnit"
@@ -891,18 +410,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Short",
-          "doc": "Short"
-        },
-        {
-          "value": "1",
-          "name": "Long",
-          "doc": "Long"
-        }
-      ],
+      "FIX:codeset": "paymentstreamratespreadpositiontypecodeset",
       "FIX:tag": "42432",
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "LegPaymentStreamCompoundingRateSpreadPositionType"
@@ -915,18 +423,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "doc": "Bond equivalent yield"
-        },
-        {
-          "value": "1",
-          "name": "MoneyMarketYield",
-          "doc": "Money market yield"
-        }
-      ],
+      "FIX:codeset": "paymentstreamratetreatmentcodeset",
       "FIX:tag": "42433",
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "LegPaymentStreamCompoundingRateTreatment"
@@ -951,18 +448,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codeset": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "42435",
       "description": "Reference to the buyer of the compounding cap rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingCapRateBuySide"
@@ -975,18 +461,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codeset": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "42436",
       "description": "Reference to the seller of the compounding cap rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingCapRateSellSide"
@@ -1011,18 +486,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "42438",
       "description": "Reference to the buyer of the compounding floor rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingFloorRateBuySide"
@@ -1035,18 +499,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codeset": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "42439",
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingFloorRateSellSide"
@@ -1071,23 +524,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RoundToNearest",
-          "doc": "Round to nearest"
-        },
-        {
-          "value": "1",
-          "name": "RoundDown",
-          "doc": "Round down"
-        },
-        {
-          "value": "2",
-          "name": "RoundUp",
-          "doc": "Round up"
-        }
-      ],
+      "FIX:codeset": "roundingdirectioncodeset",
       "FIX:tag": "42441",
       "description": "Specifies the rounding direction for the compounding floating rate.",
       "display": "LegPaymentStreamCompoundingFinalRateRoundingDirection"
@@ -1112,18 +549,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unweighted",
-          "doc": "Unweighted"
-        },
-        {
-          "value": "1",
-          "name": "Weighted",
-          "doc": "Weighted"
-        }
-      ],
+      "FIX:codeset": "paymentstreamaveragingmethodcodeset",
       "FIX:tag": "42443",
       "description": "Specifies the averaging method when compounding floating rate averaging is applicable (e.g. weighted or unweighted).",
       "display": "LegPaymentStreamCompoundingAveragingMethod"
@@ -1136,18 +562,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ZeroInterestRateMethod",
-          "doc": "Zero interest rate method"
-        },
-        {
-          "value": "1",
-          "name": "NegativeInterestRateMethod",
-          "doc": "Negative interest rate method"
-        }
-      ],
+      "FIX:codeset": "paymentstreamnegativeratetreatmentcodeset",
       "FIX:tag": "42444",
       "description": "Specifies the method for calculating payment obligations when a compounding floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "LegPaymentStreamCompoundingNegativeRateTreatment"
@@ -1197,28 +612,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42448",
       "description": "Time unit associated with the relative compounding start date offset.",
       "display": "LegPaymentStreamCompoundingStartDateOffsetUnit"
@@ -1231,38 +625,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42449",
       "description": "Specifies the day type of the relative compounding start date offset.",
       "display": "LegPaymentStreamCompoundingStartDateOffsetDayType"
@@ -1349,28 +712,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42456",
       "description": "Time unit associated with the relative final price payment date offset.",
       "display": "LegPaymentStreamFinalPricePaymentDateOffsetUnit"
@@ -1383,38 +725,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42457",
       "description": "Specifies the day type of the relative final price payment date offset.",
       "display": "LegPaymentStreamFinalPricePaymentDateOffsetDayType"
@@ -1465,18 +776,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codeset": "nondeliverablefixingdatetypecodeset",
       "FIX:tag": "42461",
       "description": "Specifies the type of fixing date (e.g. adjusted for holidays).",
       "display": "LegPaymentStreamFixingDateType"
@@ -1514,38 +814,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42464",
       "description": "Specifies the day type of the initial price observation date offset.",
       "display": "LegPaymentStreamFirstObservationDateOffsetDayType"
@@ -1659,18 +928,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Volatility",
-          "doc": "Volatility"
-        },
-        {
-          "value": "1",
-          "name": "Variance",
-          "doc": "Variance"
-        }
-      ],
+      "FIX:codeset": "paymentstreamlinkstrikepricetypecodeset",
       "FIX:tag": "42473",
       "description": "For a variance swap specifies how LegPaymentStreamLinkStrikePrice(42472) is expressed.",
       "display": "LegPaymentStreamLinkStrikePriceType"
@@ -1731,23 +989,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Previous",
-          "doc": "Previous"
-        },
-        {
-          "value": "1",
-          "name": "Last",
-          "doc": "Last"
-        },
-        {
-          "value": "2",
-          "name": "Both",
-          "doc": "Both"
-        }
-      ],
+      "FIX:codeset": "paymentstreamrealizedvariancemethodcodeset",
       "FIX:tag": "42478",
       "description": "Indicates which price to use to satisfy the boundary condition.",
       "display": "LegPaymentStreamRealizedVarianceMethod"
@@ -1881,48 +1123,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "42489",
       "description": "The stub end date business day convention.",
       "display": "LegPaymentStubEndDateBusinessDayConvention"
@@ -1959,28 +1160,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42492",
       "description": "Time unit associated with the relative stub end date offset.",
       "display": "LegPaymentStubEndDateOffsetUnit"
@@ -1993,38 +1173,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codeset": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42493",
       "description": "Specifies the day type of the relative stub end date offset.",
       "display": "LegPaymentStubEndDateOffsetDayType"
@@ -2087,48 +1236,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codeset": "businessdayconventioncodeset",
       "FIX:tag": "42498",
       "description": "The stub start date business day convention.",
       "display": "LegPaymentStubStartDateBusinessDayConvention"

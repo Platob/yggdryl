@@ -1,0 +1,15 @@
+{
+  "name": "throttlestatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ThrottleLimitNotExceededNotQueued",
+      "doc": "Throttle limit not exceeded, not queued"
+    },
+    {
+      "value": "1",
+      "name": "QueuedDueToThrottleLimitExceeded",
+      "doc": "Queued due to throttle limit exceeded"
+    }
+  ]
+}

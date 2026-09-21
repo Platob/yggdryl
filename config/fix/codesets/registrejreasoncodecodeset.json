@@ -1,0 +1,100 @@
+{
+  "name": "registrejreasoncodecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InvalidAccountType",
+      "doc": "Invalid/unacceptable Account Type"
+    },
+    {
+      "value": "2",
+      "name": "InvalidTaxExemptType",
+      "doc": "Invalid/unacceptable Tax Exempt Type"
+    },
+    {
+      "value": "3",
+      "name": "InvalidOwnershipType",
+      "doc": "Invalid/unacceptable Ownership Type"
+    },
+    {
+      "value": "4",
+      "name": "NoRegDetails",
+      "doc": "Invalid/unacceptable No Reg Details"
+    },
+    {
+      "value": "5",
+      "name": "InvalidRegSeqNo",
+      "doc": "Invalid/unacceptable Reg Seq No"
+    },
+    {
+      "value": "6",
+      "name": "InvalidRegDetails",
+      "doc": "Invalid/unacceptable Reg Details"
+    },
+    {
+      "value": "7",
+      "name": "InvalidMailingDetails",
+      "doc": "Invalid/unacceptable Mailing Details"
+    },
+    {
+      "value": "8",
+      "name": "InvalidMailingInstructions",
+      "doc": "Invalid/unacceptable Mailing Instructions"
+    },
+    {
+      "value": "9",
+      "name": "InvalidInvestorID",
+      "doc": "Invalid/unacceptable Investor ID"
+    },
+    {
+      "value": "10",
+      "name": "InvalidInvestorIDSource",
+      "doc": "Invalid/unaceeptable Investor ID Source"
+    },
+    {
+      "value": "11",
+      "name": "InvalidDateOfBirth",
+      "doc": "Invalid/unacceptable Date Of Birth"
+    },
+    {
+      "value": "12",
+      "name": "InvalidCountry",
+      "doc": "Invalid/unacceptable Investor Country Of Residence"
+    },
+    {
+      "value": "13",
+      "name": "InvalidDistribInstns",
+      "doc": "Invalid/unacceptable No Distrib Instns"
+    },
+    {
+      "value": "14",
+      "name": "InvalidPercentage",
+      "doc": "Invalid/unacceptable Distrib Percentage"
+    },
+    {
+      "value": "15",
+      "name": "InvalidPaymentMethod",
+      "doc": "Invalid/unacceptable Distrib Payment Method"
+    },
+    {
+      "value": "16",
+      "name": "InvalidAccountName",
+      "doc": "Invalid/unacceptable Cash Distrib Agent Acct Name"
+    },
+    {
+      "value": "17",
+      "name": "InvalidAgentCode",
+      "doc": "Invalid/unacceptable Cash Distrib Agent Code"
+    },
+    {
+      "value": "18",
+      "name": "InvalidAccountNum",
+      "doc": "Invalid/unacceptable Cash Distrib Agent Acct Num"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

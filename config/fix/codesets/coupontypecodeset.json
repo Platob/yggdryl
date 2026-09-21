@@ -1,0 +1,25 @@
+{
+  "name": "coupontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Zero",
+      "doc": "Zero"
+    },
+    {
+      "value": "1",
+      "name": "FixedRate",
+      "doc": "Fixed rate"
+    },
+    {
+      "value": "2",
+      "name": "FloatingRate",
+      "doc": "Floating rate"
+    },
+    {
+      "value": "3",
+      "name": "Structured",
+      "doc": "Structured"
+    }
+  ]
+}

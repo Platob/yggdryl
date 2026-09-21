@@ -168,6 +168,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "EG",
     "FIX:tag": "201842",
     "description": "MsgType = EG",

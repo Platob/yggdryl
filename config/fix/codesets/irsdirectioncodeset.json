@@ -1,0 +1,20 @@
+{
+  "name": "irsdirectioncodeset",
+  "codes": [
+    {
+      "value": "PAY",
+      "name": "Pay",
+      "doc": "Principal is paying fixed rate"
+    },
+    {
+      "value": "RCV",
+      "name": "Rcv",
+      "doc": "Principal is receiving fixed rate"
+    },
+    {
+      "value": "NA",
+      "name": "NA",
+      "doc": "Swap is float/float or fixed/fixed"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "multilegpricemethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NetPrice",
+      "doc": "Net Price"
+    },
+    {
+      "value": "1",
+      "name": "ReversedNetPrice",
+      "doc": "Reversed Net Price"
+    },
+    {
+      "value": "2",
+      "name": "YieldDifference",
+      "doc": "Yield Difference"
+    },
+    {
+      "value": "3",
+      "name": "Individual",
+      "doc": "Individual"
+    },
+    {
+      "value": "4",
+      "name": "ContractWeightedAveragePrice",
+      "doc": "Contract Weighted Average Price"
+    },
+    {
+      "value": "5",
+      "name": "MultipliedPrice",
+      "doc": "Multiplied Price"
+    }
+  ]
+}

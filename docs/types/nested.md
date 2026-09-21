@@ -13,7 +13,7 @@ Child-bearing datatypes: read-only children, dictionary and run-end wrappers, an
 | Dictionary | Integer key; ordering and id on the `Field` |
 | Run-end | `run_ends` non-null `int16`/`int32`/`int64`; `values` carries type and nullability |
 | Union | Unique non-negative `i8` ids; `Dense` or `Sparse` |
-| `variant(...)` | Dense union, ids `0..`, at most 128 members |
+| `variant(...)` | Dense union, ids `0..`, at most 128 members; bare `variant` is [the semi-structured datatype](variant.md), a family leaf of its own |
 | Parser | `variant(...)`, `dense_union(...)`, `sparse_union(...)` -> `union(<mode>, ...)` |
 
 ## Use

@@ -346,6 +346,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,secondaryorderid,secondaryclordid,clordid,origclordid,listid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "9",
     "FIX:tag": "458702",
     "description": "MsgType = 9",

@@ -247,6 +247,7 @@ function createFields(DataType, Field, native) {
     cusip: simple('cusip'),
     sedol: simple('sedol'),
     bloomberg: simple('bloomberg'),
+    figi: simple('figi'),
     side: simple('side'),
     state: simple('state'),
     timeinforce: simple('timeinforce'),

@@ -1,0 +1,21 @@
+{
+  "name": "privatequotecodeset",
+  "codes": [
+    {
+      "value": "Y",
+      "name": "PrivateQuote",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Private Quote"
+    },
+    {
+      "value": "N",
+      "name": "PublicQuote",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Public Quote"
+    }
+  ]
+}

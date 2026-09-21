@@ -1,0 +1,25 @@
+{
+  "name": "paymentstubtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "1",
+      "name": "Final",
+      "doc": "Final"
+    },
+    {
+      "value": "2",
+      "name": "CompoundingInitial",
+      "doc": "Compounding initial"
+    },
+    {
+      "value": "3",
+      "name": "CompoundingFinal",
+      "doc": "Compounding final"
+    }
+  ]
+}

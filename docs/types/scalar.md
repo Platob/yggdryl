@@ -15,6 +15,7 @@
 | `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
+| `Scalar::Variant` | one Apache Parquet Variant metadata dictionary and value payload; `into_variant` encodes any supported scalar and `from_variant` decodes it, while `DataType::encode_variant` / `decode_variant` apply one declared type |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Families | one value enum per family with several leaves - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial`, `Nested` - each a `FamilyValue`; `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial`, `as_nested` narrow a `Scalar` to one by value, `None` for another kind |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
@@ -134,7 +135,7 @@ assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 
 ## Families
 
-A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`.
+A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`. `Nested` has four leaves, not three: a sequence, a mapping, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children.
 Rust only.
 
 ```rust
@@ -229,11 +230,11 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
 | text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
-| registered codes | `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` |
+| registered codes | `Country`, `Currency`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
-| containers | `Sequence`, `Mapping`, `Record`; a `Sequence` is a schema-free run or a [column](serie.md), and `kind()` says which |
+| containers | `Sequence`, `Mapping`, `Record`, `Variant`; a `Sequence` is a schema-free run or a [column](serie.md), and `kind()` says which |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
 
@@ -330,6 +331,17 @@ let raw = UncheckedFieldScalar::from_str(&price, "42");
 assert_eq!(raw.as_i64(), Some(42));
 assert!(matches!(raw.checked()?.value(), Scalar::Int32(_)));
 ```
+
+`FieldRecord` (Rust only) holds a row under a borrowed, non-null Struct field.
+Ordered and named inputs use the same validation and canonicalization as
+`Field::canonicalize_value`; missing named children take their field defaults.
+The holder allocates one vector for its cells, including when their widths
+change. Nested values allocate separately when they need rewriting.
+
+Canonicalizing an already-canonical ordered row reuses its shared storage.
+A changed or named row is built directly in one shared allocation, without a
+temporary vector. The allocation tests cover flat rows at several widths;
+these claims exclude any storage required by nested values or leaf payloads.
 
 ## Inferred fields
 

@@ -1,0 +1,20 @@
+{
+  "name": "qtytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Units",
+      "doc": "Units (shares, par, currency)"
+    },
+    {
+      "value": "1",
+      "name": "Contracts",
+      "doc": "Contracts"
+    },
+    {
+      "value": "2",
+      "name": "UnitsOfMeasurePerTimeUnit",
+      "doc": "Unit of Measure per Time Unit"
+    }
+  ]
+}

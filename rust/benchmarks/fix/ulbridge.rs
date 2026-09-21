@@ -91,10 +91,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .iter()
         .map(|message| message.into_row(&schema).expect("a row"))
         .collect();
-    // The entries round-trip; the wire and the code do not yet for this
-    // bridge row, which states no sending clock (see the bench report).
+    // Projected content and residual entries reconstruct the same row.
     let back = FixMsg::from_row(Arc::clone(&registry), &schema, &rows[1]).expect("a message");
-    assert_eq!(back.entries(), messages[1].entries(), "the row round-trips");
+    assert_eq!(
+        back.into_row(&schema).expect("a row"),
+        rows[1],
+        "the row round-trips"
+    );
     let chained = codec
         .lifecycle(messages.clone())
         .filter(|message| {

@@ -1,7 +1,85 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
-use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Map, Mapping, Scalar, StructType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, TimeType};
+
+#[test]
+fn variant_digest_keeps_the_native_depth_budget() {
+    let mut native = Scalar::from(7_i64);
+    for _ in 1..DataType::PARSE_RECURSION_LIMIT {
+        native = Scalar::from_sequence([native]);
+    }
+    let held = Scalar::Variant(native.into_variant().unwrap());
+    assert_eq!(
+        held.digest(yggdryl::DigestAlgorithm::Xxh3),
+        native.digest(yggdryl::DigestAlgorithm::Xxh3)
+    );
+}
+
+#[test]
+fn variant_conversions_share_the_value_and_scalar_contract() {
+    use yggdryl::{Int64, UInt8, Value};
+
+    let scalar = Scalar::from(7_i64);
+    let leaf = Int64::from_scalar(&scalar).unwrap();
+    let encoded = leaf.into_variant().unwrap();
+    assert_eq!(encoded, scalar.into_variant().unwrap());
+    assert_eq!(Int64::from_variant(&encoded).unwrap(), *leaf);
+    assert_eq!(Scalar::from_variant(&encoded).unwrap(), scalar);
+
+    let unsigned = Scalar::from(7_u8).into_variant().unwrap();
+    let refused = UInt8::from_variant(&unsigned).unwrap_err();
+    assert!(matches!(refused, yggdryl::Error::InvalidRecord { .. }));
+    let message = refused.to_string();
+    assert!(
+        message.contains("UInt8") && message.contains("int16"),
+        "{message}"
+    );
+    assert_eq!(
+        DataType::UInt8.decode_variant(&unsigned).unwrap(),
+        Scalar::from(7_u8)
+    );
+
+    let malformed = yggdryl::Variant::new(vec![0x11, 0, 0], vec![5 << 2]).unwrap();
+    assert!(matches!(
+        Int64::from_variant(&malformed),
+        Err(yggdryl::Error::Codec { .. })
+    ));
+}
+
+#[test]
+fn variant_casts_cross_the_encoding_boundary_once() {
+    let encoded = DataType::Variant.cast_scalar(&Scalar::from(7_i32)).unwrap();
+    let Scalar::Variant(variant) = &encoded else {
+        panic!("a variant value, got {encoded:?}");
+    };
+    assert_eq!(variant.scalar().unwrap(), Scalar::from(7_i32));
+    assert_eq!(
+        DataType::Int64.cast_scalar(&encoded).unwrap(),
+        Scalar::from(7_i64)
+    );
+    assert_eq!(
+        DataType::utf8().cast_scalar(&encoded).unwrap(),
+        Scalar::from("7")
+    );
+
+    let encoded_null = DataType::Variant.cast_scalar(&Scalar::Null).unwrap();
+    let Scalar::Variant(variant_null) = &encoded_null else {
+        panic!("an encoded variant null, got {encoded_null:?}");
+    };
+    assert_eq!(variant_null.scalar().unwrap(), Scalar::Null);
+    assert_eq!(
+        DataType::Int64.cast_scalar(&encoded_null).unwrap(),
+        Scalar::Null
+    );
+
+    let malformed = Scalar::Variant(yggdryl::Variant::new(vec![0x11, 0, 0], vec![5 << 2]).unwrap());
+    assert!(matches!(
+        DataType::Int64.cast_scalar(&malformed),
+        Err(yggdryl::Error::Codec { .. })
+    ));
+    assert_eq!(DataType::Int64.try_cast_scalar(&malformed), Scalar::Null);
+}
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
@@ -32,6 +110,49 @@ fn a_record_refuses_unknown_names() {
     let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
     assert!(validation.contains("unknown field"), "{validation}");
     assert!(canonical.contains("unknown field"), "{canonical}");
+}
+
+#[test]
+fn canonicalization_diagnostics_keep_field_entry_and_union_locations() {
+    let map = DataType::map_of(DataType::Int32, DataType::Int32, false).unwrap();
+    let map_root = root([map.required_field("lookup")]);
+    for (value, path) in [
+        (
+            Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::from("not an integer"),
+                Scalar::from(1_i32),
+            )]))),
+            "$.row.lookup[0].key",
+        ),
+        (
+            Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::from(1_i32),
+                Scalar::from("not an integer"),
+            )]))),
+            "$.row.lookup[0].value",
+        ),
+    ] {
+        let refused = map_root
+            .canonicalize_value(Scalar::from_sequence([value]))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(path), "{refused}");
+    }
+
+    let union = DataType::union(
+        [(1, DataType::Int32.required_field("integer"))],
+        UnionMode::Dense,
+    )
+    .unwrap();
+    let union_root = root([union.required_field("choice")]);
+    let refused = union_root
+        .canonicalize_value(Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from("not an integer"),
+        ])]))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("$.row.choice.union[1]"), "{refused}");
 }
 
 #[test]

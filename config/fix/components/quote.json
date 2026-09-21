@@ -1330,6 +1330,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,reforderid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "S",
     "FIX:tag": "449484",
     "description": "MsgType = S",

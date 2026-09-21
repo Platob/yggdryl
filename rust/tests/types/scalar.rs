@@ -158,10 +158,13 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 }
 
 #[test]
-fn the_eleven_codes_sort_by_which_code_then_by_text() {
+fn the_twelve_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
-    use yggdryl::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, TimeInForce};
+    use yggdryl::{
+        BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
+        SedolCode, TimeInForce,
+    };
 
     fn hash_of(value: &Scalar) -> u64 {
         let mut hasher = std::hash::DefaultHasher::new();
@@ -169,21 +172,22 @@ fn the_eleven_codes_sort_by_which_code_then_by_text() {
         hasher.finish()
     }
 
-    // The eleven share one value rank, so nothing but the identity separates
+    // The twelve share one value rank, so nothing but the identity separates
     // them - and that identity is the one their datatypes sort by, which is
     // what makes a sorted column of fields and a sorted column of values agree.
     let ascending = [
         Scalar::Country(Country::new("FR").unwrap()),
         Scalar::Currency(Currency::new("EUR").unwrap()),
-        Scalar::Mic(Mic::new("XPAR").unwrap()),
-        Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
+        Scalar::MicCode(MicCode::new("XPAR").unwrap()),
+        Scalar::CfiCode(CfiCode::new("ESVUFR").unwrap()),
         Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
         Scalar::State(yggdryl::State::read("New").unwrap()),
         Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
-        Scalar::Isin(Isin::new("US0378331005").unwrap()),
-        Scalar::Cusip(Cusip::new("037833100").unwrap()),
-        Scalar::Sedol(Sedol::new("2046251").unwrap()),
-        Scalar::Bloomberg(Bloomberg::new("BBG000B9XRY4").unwrap()),
+        Scalar::IsinCode(IsinCode::new("US0378331005").unwrap()),
+        Scalar::CusipCode(CusipCode::new("037833100").unwrap()),
+        Scalar::SedolCode(SedolCode::new("2046251").unwrap()),
+        Scalar::BloombergCode(BloombergCode::new("BBG000B9XRY4").unwrap()),
+        Scalar::FIGICode(FIGICode::new("BBG000BLNQ16").unwrap()),
     ];
     for pair in ascending.windows(2) {
         assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);
@@ -844,7 +848,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
             .try_with_parameters(string::StringType::FixedAsciiString(0))
             .is_err()
     );
-    assert!(yggdryl::Cfi::new("TOO-LONG").is_err());
+    assert!(yggdryl::CfiCode::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary

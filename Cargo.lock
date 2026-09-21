@@ -201,6 +201,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
+name = "arrow"
+version = "59.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61d285d16bce7d0be61912f7928342b673067b6b7d7ef6cc179258ba7de1fecf"
+dependencies = [
+ "arrow-arith 59.2.0",
+ "arrow-array 59.2.0",
+ "arrow-buffer 59.2.0",
+ "arrow-cast 59.2.0",
+ "arrow-data 59.2.0",
+ "arrow-ord 59.2.0",
+ "arrow-row",
+ "arrow-schema 59.2.0",
+ "arrow-select 59.2.0",
+ "arrow-string 59.2.0",
+]
+
+[[package]]
 name = "arrow-arith"
 version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -210,6 +228,20 @@ dependencies = [
  "arrow-buffer 58.4.0",
  "arrow-data 58.4.0",
  "arrow-schema 58.4.0",
+ "chrono",
+ "num-traits",
+]
+
+[[package]]
+name = "arrow-arith"
+version = "59.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "757ef1836251e88222542a7da2623bc1c9cb9e20afefa6db2c41e79991cd91d4"
+dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-buffer 59.2.0",
+ "arrow-data 59.2.0",
+ "arrow-schema 59.2.0",
  "chrono",
  "num-traits",
 ]
@@ -435,6 +467,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6fed2ca0d1eade57e811cbe73b98ad50cc08a1183e13b2d2aa43a7df593f40e"
 dependencies = [
  "bitflags",
+ "serde_core",
+ "serde_json",
 ]
 
 [[package]]
@@ -476,6 +510,23 @@ dependencies = [
  "arrow-data 58.4.0",
  "arrow-schema 58.4.0",
  "arrow-select 58.4.0",
+ "memchr",
+ "num-traits",
+ "regex",
+ "regex-syntax",
+]
+
+[[package]]
+name = "arrow-string"
+version = "59.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c838a25bb3691e919e0f617616ac51a4ff8517a952e29ca133cf0c22b2ce65b1"
+dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-buffer 59.2.0",
+ "arrow-data 59.2.0",
+ "arrow-schema 59.2.0",
+ "arrow-select 59.2.0",
  "memchr",
  "num-traits",
  "regex",
@@ -1701,14 +1752,14 @@ dependencies = [
  "anyhow",
  "apache-avro",
  "array-init",
- "arrow-arith",
+ "arrow-arith 58.4.0",
  "arrow-array 58.4.0",
  "arrow-buffer 58.4.0",
  "arrow-cast 58.4.0",
  "arrow-ord 58.4.0",
  "arrow-schema 58.4.0",
  "arrow-select 58.4.0",
- "arrow-string",
+ "arrow-string 58.4.0",
  "as-any",
  "async-trait",
  "backon",
@@ -2477,6 +2528,22 @@ dependencies = [
  "snap",
  "twox-hash",
  "zstd",
+]
+
+[[package]]
+name = "parquet-variant"
+version = "59.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f7e5fff3ed0c07514a7fb8bee3f2ea5a53f36939410ecac4a466620213539a8"
+dependencies = [
+ "arrow",
+ "arrow-schema 59.2.0",
+ "chrono",
+ "half",
+ "indexmap 2.14.0",
+ "num-traits",
+ "simdutf8",
+ "uuid",
 ]
 
 [[package]]
@@ -4201,7 +4268,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "yggdryl"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-buffer 59.2.0",
@@ -4226,6 +4293,7 @@ dependencies = [
  "memmap2",
  "object_store",
  "parquet 59.2.0",
+ "parquet-variant",
  "quick-xml 0.41.0",
  "regex",
  "regex-automata",
@@ -4247,7 +4315,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-cli"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "clap",
  "crossterm",
@@ -4257,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-node"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-ipc 59.2.0",
@@ -4273,7 +4341,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-python"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-data 59.2.0",

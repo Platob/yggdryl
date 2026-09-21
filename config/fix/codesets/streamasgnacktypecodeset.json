@@ -1,0 +1,15 @@
+{
+  "name": "streamasgnacktypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AssignmentAccepted",
+      "doc": "Assignment Accepted"
+    },
+    {
+      "value": "1",
+      "name": "AssignmentRejected",
+      "doc": "Assignment Rejected"
+    }
+  ]
+}

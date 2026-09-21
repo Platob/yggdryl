@@ -1,0 +1,21 @@
+{
+  "name": "trdregtimestampmanualindicatorcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotManuallyCaptured",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not manually captured"
+    },
+    {
+      "value": "Y",
+      "name": "ManuallyCaptured",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Manually captured"
+    }
+  ]
+}

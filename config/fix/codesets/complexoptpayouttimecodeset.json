@@ -1,0 +1,40 @@
+{
+  "name": "complexoptpayouttimecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "1",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "2",
+      "name": "OfficialSettl",
+      "doc": "Official settlement"
+    },
+    {
+      "value": "3",
+      "name": "ValuationTime",
+      "doc": "Valuation time"
+    },
+    {
+      "value": "4",
+      "name": "ExcahgneSettlTime",
+      "doc": "Exchange settlement time"
+    },
+    {
+      "value": "5",
+      "name": "DerivativesClose",
+      "doc": "Derivatives close"
+    },
+    {
+      "value": "6",
+      "name": "AsSpecified",
+      "doc": "As specified in master confirmation"
+    }
+  ]
+}

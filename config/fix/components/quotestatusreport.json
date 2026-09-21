@@ -1156,6 +1156,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,bidquoteid,offerquoteid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "AI",
     "FIX:tag": "729973",
     "description": "MsgType = AI",

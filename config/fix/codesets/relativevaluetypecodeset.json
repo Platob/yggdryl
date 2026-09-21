@@ -1,0 +1,65 @@
+{
+  "name": "relativevaluetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ASWSpread",
+      "doc": "Asset Swap Spread"
+    },
+    {
+      "value": "2",
+      "name": "OIS",
+      "doc": "Overnight Indexed Swap Spread"
+    },
+    {
+      "value": "3",
+      "name": "ZSpread",
+      "doc": "Zero Volatility Spread"
+    },
+    {
+      "value": "4",
+      "name": "DiscountMargin",
+      "doc": "Discount Margin"
+    },
+    {
+      "value": "5",
+      "name": "ISpread",
+      "doc": "Interpolated Spread"
+    },
+    {
+      "value": "6",
+      "name": "OAS",
+      "doc": "Option Adjusted Spread"
+    },
+    {
+      "value": "7",
+      "name": "GSpread",
+      "doc": "G-Spread"
+    },
+    {
+      "value": "8",
+      "name": "CDSBasis",
+      "doc": "CDS Basis"
+    },
+    {
+      "value": "9",
+      "name": "CDSInterpolatedBasis",
+      "doc": "CDS Interpolated Basis"
+    },
+    {
+      "value": "10",
+      "name": "DV01",
+      "doc": "DV01"
+    },
+    {
+      "value": "11",
+      "name": "PV01",
+      "doc": "PV01"
+    },
+    {
+      "value": "12",
+      "name": "CS01",
+      "doc": "CS01"
+    }
+  ]
+}

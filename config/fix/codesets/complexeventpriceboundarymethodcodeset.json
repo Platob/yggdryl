@@ -1,0 +1,30 @@
+{
+  "name": "complexeventpriceboundarymethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LessThanComplexEventPrice",
+      "doc": "Less than ComplexEventPrice(1486)"
+    },
+    {
+      "value": "2",
+      "name": "LessThanOrEqualToComplexEventPrice",
+      "doc": "Less than or equal to ComplexEventPrice(1486)"
+    },
+    {
+      "value": "3",
+      "name": "EqualToComplexEventPrice",
+      "doc": "Equal to ComplexEventPrice(1486)"
+    },
+    {
+      "value": "4",
+      "name": "GreaterThanOrEqualToComplexEventPrice",
+      "doc": "Greater than or equal to ComplexEventPrice(1486)"
+    },
+    {
+      "value": "5",
+      "name": "GreaterThanComplexEventPrice",
+      "doc": "Greater than ComplexEventPrice(1486)"
+    }
+  ]
+}

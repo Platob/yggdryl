@@ -1,0 +1,15 @@
+{
+  "name": "cashsettlpricedefaultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "1",
+      "name": "Hedge",
+      "doc": "Hedge"
+    }
+  ]
+}

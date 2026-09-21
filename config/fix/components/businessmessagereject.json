@@ -137,6 +137,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SESS",
     "FIX:msgtype": "j",
     "FIX:tag": "345093",
     "description": "MsgType = j (lowercase J)",

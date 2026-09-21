@@ -1,0 +1,35 @@
+{
+  "name": "shortsalereasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DealerSoldShort",
+      "doc": "Dealer Sold Short"
+    },
+    {
+      "value": "1",
+      "name": "DealerSoldShortExempt",
+      "doc": "Dealer Sold Short Exempt"
+    },
+    {
+      "value": "2",
+      "name": "SellingCustomerSoldShort",
+      "doc": "Selling Customer Sold Short"
+    },
+    {
+      "value": "3",
+      "name": "SellingCustomerSoldShortExempt",
+      "doc": "Selling Customer Sold Short Exempt"
+    },
+    {
+      "value": "4",
+      "name": "QualifiedServiceRepresentative",
+      "doc": "Qualified Service Representative (QSR) or Automatic Give-up (AGU) Contra Side Sold Short"
+    },
+    {
+      "value": "5",
+      "name": "QSROrAGUContraSideSoldShortExempt",
+      "doc": "QSR or AGU Contra Side Sold Short Exempt"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "liensenioritycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "1",
+      "name": "FirstLien",
+      "doc": "First lien"
+    },
+    {
+      "value": "2",
+      "name": "SecondLien",
+      "doc": "Second lien"
+    },
+    {
+      "value": "3",
+      "name": "ThirdLien",
+      "doc": "Third lien"
+    }
+  ]
+}

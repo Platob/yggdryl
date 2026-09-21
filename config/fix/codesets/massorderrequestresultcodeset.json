@@ -1,0 +1,30 @@
+{
+  "name": "massorderrequestresultcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Successful",
+      "doc": "Successful"
+    },
+    {
+      "value": "1",
+      "name": "ResponseLevelNotSupported",
+      "doc": "Response level not supported"
+    },
+    {
+      "value": "2",
+      "name": "InvalidMarket",
+      "doc": "Invalid market"
+    },
+    {
+      "value": "3",
+      "name": "InvalidMarketSegment",
+      "doc": "Invalid market segment"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

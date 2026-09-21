@@ -1,0 +1,80 @@
+{
+  "name": "risklimitcheckstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "2",
+      "name": "ClaimRequired",
+      "doc": "Claim required"
+    },
+    {
+      "value": "3",
+      "name": "PreDefinedLimitCheckSucceeded",
+      "doc": "Pre-defined limit check succeeded"
+    },
+    {
+      "value": "4",
+      "name": "PreDefinedLimitCheckFailed",
+      "doc": "Pre-defined limit check failed"
+    },
+    {
+      "value": "5",
+      "name": "PreDefinedAutoAcceptRuleInvoked",
+      "doc": "Pre-defined auto-accept rule invoked"
+    },
+    {
+      "value": "6",
+      "name": "PreDefinedAutoRejectRuleInvoked",
+      "doc": "Pre-defined auto-reject rule invoked"
+    },
+    {
+      "value": "7",
+      "name": "AcceptedByClearingFirm",
+      "doc": "Accepted by clearing firm"
+    },
+    {
+      "value": "8",
+      "name": "RejectedByClearingFirm",
+      "doc": "Rejected by clearing firm"
+    },
+    {
+      "value": "9",
+      "name": "Pending",
+      "doc": "Pending"
+    },
+    {
+      "value": "10",
+      "name": "AcceptedByCreditHub",
+      "doc": "Accepted by credit hub"
+    },
+    {
+      "value": "11",
+      "name": "RejectedByCreditHub",
+      "doc": "Rejected by credit hub"
+    },
+    {
+      "value": "12",
+      "name": "PendingCreditHubCheck",
+      "doc": "Pending credit hub check"
+    },
+    {
+      "value": "13",
+      "name": "AcceptedByExecVenue",
+      "doc": "Accepted by execution venue"
+    },
+    {
+      "value": "14",
+      "name": "RejectedByExecVenue",
+      "doc": "Rejected by execution venue"
+    }
+  ]
+}

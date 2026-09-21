@@ -488,7 +488,7 @@ assert_eq!(
 
 ## Encoding
 
-The tag byte is a wire contract laid out by family: every [`DataTypeKind`](types/datatype.md#identity-and-family) owns a range of bytes, its leaves sit in it and a leaf added later takes the next free byte of its family, so a stored digest never moves; the same byte is what the [variant encoding](types/variant.md) writes after its version. A digest identifies the value, not its storage width.
+The tag byte is a wire contract laid out by family: every [`DataTypeKind`](types/datatype.md#identity-and-family) owns a range of bytes, its leaves sit in it and a leaf added later takes the next free byte of its family, so a stored digest never moves; the same byte is what the [value stream](types/value-stream.md) writes after its version. A digest identifies the value, not its storage width.
 
 The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
@@ -1475,7 +1475,7 @@ All three columns hash the same bytes with the same implementation; the differen
 | 4 KiB | 148.7 ns | 147.2 ns | 162.7 ns |
 | 64 KiB | 2.38 µs | 2.33 µs | 2.43 µs |
 
-From 4 KiB up the columns sit inside each other's run-to-run spread; below it the coupling is the eight-byte copy it is. A `TxHasher` clones its configured state per answer, and XXH3 keeps its secret on the heap, which is the algorithm's cost rather than the coupling's:
+From 4 KiB up the columns sit inside each other's run-to-run spread; below it the coupling is the eight-byte copy it is. A `TxHasher` clones its configured state per answer - a few hundred bytes of accumulator, and a heap copy of the secret only where it was given one of its own - which is the coupling's own cost:
 
 | case | `TxHasher` | the one-shot beside it |
 | --- | ---: | ---: |

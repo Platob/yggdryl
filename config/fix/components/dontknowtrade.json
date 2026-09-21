@@ -200,6 +200,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,secondaryorderid,execid",
+    "FIX:msgcat": "EXEC",
     "FIX:msgtype": "Q",
     "FIX:tag": "579859",
     "description": "MsgType = Q",

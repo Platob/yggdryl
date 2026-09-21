@@ -1,0 +1,30 @@
+{
+  "name": "strikepriceboundarymethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LessThan",
+      "doc": "Less than underlying price is in-the-money (ITM)"
+    },
+    {
+      "value": "2",
+      "name": "LessThanOrEqual",
+      "doc": "Less than or equal to the underlying price is in-the-money(ITM)"
+    },
+    {
+      "value": "3",
+      "name": "Equal",
+      "doc": "Equal to the underlying price is in-the-money(ITM)"
+    },
+    {
+      "value": "4",
+      "name": "GreaterThanOrEqual",
+      "doc": "Greater than or equal to underlying price is in-the-money(ITM)"
+    },
+    {
+      "value": "5",
+      "name": "GreaterThan",
+      "doc": "Greater than underlying is in-the-money(ITM)"
+    }
+  ]
+}

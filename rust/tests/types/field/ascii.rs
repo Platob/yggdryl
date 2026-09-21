@@ -14,7 +14,7 @@ use yggdryl::string;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructType,
 };
-use yggdryl::{CfiField, CountryField, CurrencyField, MicField, StringField};
+use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField, StringField};
 
 use super::typed::assert_typed_marker;
 use yggdryl::FieldValue as _;
@@ -31,8 +31,8 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     assert_typed_marker::<string::StringType>(DataType::from_str("string(windows-1252)").unwrap());
     assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
     assert_typed_marker::<yggdryl::CurrencyType>(DataType::Currency);
-    assert_typed_marker::<yggdryl::MicType>(DataType::Mic);
-    assert_typed_marker::<yggdryl::CfiType>(DataType::Cfi);
+    assert_typed_marker::<yggdryl::MicCodeType>(DataType::MicCode);
+    assert_typed_marker::<yggdryl::CfiCodeType>(DataType::CfiCode);
 
     // Every string is one parameterized datatype, so the field takes it
     // through `try_new`; a code is not a string and is refused by name.
@@ -49,10 +49,13 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
         &DataType::Currency
     );
     assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
-    assert_eq!(MicField::unit("venue", true).dtype(), &DataType::Mic);
+    assert_eq!(
+        MicCodeField::unit("venue", true).dtype(),
+        &DataType::MicCode
+    );
     assert!(CurrencyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
     // Six bytes against eight: the confusion a width/code mix-up produces.
-    assert!(CfiField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
+    assert!(CfiCodeField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
     // The typed value is checked under the one US-ASCII rule for its width.
     let width = StringField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).unwrap();
@@ -69,7 +72,7 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
         Some("USD")
     );
     assert!(FieldScalar::new(&ccy.to_field(), "EURO").is_err());
-    let cfi = CfiField::unit("classification", false);
+    let cfi = CfiCodeField::unit("classification", false);
     assert!(FieldScalar::new(&cfi.to_field(), "ESVUFR").is_ok());
 }
 

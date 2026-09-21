@@ -223,6 +223,33 @@ fn toml_refuses_shapes_its_grammar_cannot_represent() {
 }
 
 #[test]
+fn variants_preflight_as_the_values_their_bytes_hold() {
+    let table = Scalar::from_struct([("id", Scalar::from(7_i64))]).unwrap();
+    let root = Scalar::Variant(table.clone().into_variant().unwrap());
+    assert_eq!(
+        ytoml::into_utf8(&root).unwrap(),
+        ytoml::into_utf8(&table).unwrap()
+    );
+
+    let null = Scalar::Variant(Scalar::Null.into_variant().unwrap());
+    let document = Scalar::from_struct([("payload", null)]).unwrap();
+    let refused = ytoml::validate_for_write(&document)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("null"), "{refused}");
+
+    let nested =
+        Scalar::from_struct([("inner", Scalar::from_sequence([Scalar::from(1_i64)]))]).unwrap();
+    let document =
+        Scalar::from_struct([("payload", Scalar::Variant(nested.into_variant().unwrap()))])
+            .unwrap();
+    let refused = ytoml::validate_for_write_with_limits(&document, Limits::new(2, 1024, 100, 1))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("depth"), "{refused}");
+}
+
+#[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
     let value = Scalar::from_struct([
         ("active", Scalar::from(true)),

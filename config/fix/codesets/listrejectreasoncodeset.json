@@ -1,0 +1,40 @@
+{
+  "name": "listrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BrokerCredit",
+      "doc": "Broker / Exchange option"
+    },
+    {
+      "value": "2",
+      "name": "ExchangeClosed",
+      "doc": "Exchange closed"
+    },
+    {
+      "value": "4",
+      "name": "TooLateToEnter",
+      "doc": "Too late to enter"
+    },
+    {
+      "value": "5",
+      "name": "UnknownOrder",
+      "doc": "Unknown order"
+    },
+    {
+      "value": "6",
+      "name": "DuplicateOrder",
+      "doc": "Duplicate Order (e.g. dupe ClOrdID)"
+    },
+    {
+      "value": "11",
+      "name": "UnsupportedOrderCharacteristic",
+      "doc": "Unsupported order characteristic"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

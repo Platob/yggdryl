@@ -1,0 +1,23 @@
+{
+  "name": "commissionamountsubtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ResearchPaymentAccount",
+      "group": "Research Payment",
+      "doc": "Research payment account (RPA)"
+    },
+    {
+      "value": "1",
+      "name": "CommissionSharingAgreement",
+      "group": "Research Payment",
+      "doc": "Commission sharing agreement (CSA)"
+    },
+    {
+      "value": "2",
+      "name": "OtherTypeResearchPayment",
+      "group": "Research Payment",
+      "doc": "Other type of research payment"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "collateralamounttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MarketValuation",
+      "doc": "Market valuation (the default)"
+    },
+    {
+      "value": "1",
+      "name": "PortfolioValue",
+      "doc": "Portfolio value before processing pledge request"
+    },
+    {
+      "value": "2",
+      "name": "ValueConfirmed",
+      "doc": "Value confirmed as \"locked-up\" for processing a pledge request"
+    },
+    {
+      "value": "3",
+      "name": "CollateralCreditValue",
+      "doc": "Credit value of collateral at CCP processing a pledge request"
+    },
+    {
+      "value": "4",
+      "name": "AdditionalCollateralValue",
+      "doc": "Additional collateral value"
+    },
+    {
+      "value": "5",
+      "name": "EstimatedMarketValuation",
+      "doc": "Estimated market valuation"
+    }
+  ]
+}

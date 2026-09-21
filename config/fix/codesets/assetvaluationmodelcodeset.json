@@ -1,0 +1,45 @@
+{
+  "name": "assetvaluationmodelcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BlackScholes",
+      "doc": "Black-Scholes"
+    },
+    {
+      "value": "2",
+      "name": "Whaley",
+      "doc": "Whaley"
+    },
+    {
+      "value": "3",
+      "name": "Bachelier",
+      "doc": "Bachelier"
+    },
+    {
+      "value": "4",
+      "name": "Kirk",
+      "doc": "Kirk"
+    },
+    {
+      "value": "5",
+      "name": "Curran",
+      "doc": "Curran"
+    },
+    {
+      "value": "6",
+      "name": "Black76",
+      "doc": "Black-76"
+    },
+    {
+      "value": "7",
+      "name": "Binomial",
+      "doc": "Binomial"
+    },
+    {
+      "value": "99",
+      "name": "OtherModel",
+      "doc": "Other model"
+    }
+  ]
+}

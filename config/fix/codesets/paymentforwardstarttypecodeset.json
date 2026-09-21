@@ -1,0 +1,25 @@
+{
+  "name": "paymentforwardstarttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Prepaid",
+      "doc": "Prepaid"
+    },
+    {
+      "value": "1",
+      "name": "Postpaid",
+      "doc": "Post-paid"
+    },
+    {
+      "value": "2",
+      "name": "Variable",
+      "doc": "Variable"
+    },
+    {
+      "value": "3",
+      "name": "Fixed",
+      "doc": "Fixed"
+    }
+  ]
+}

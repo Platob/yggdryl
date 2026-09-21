@@ -1,0 +1,45 @@
+{
+  "name": "collinquiryqualifiercodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TradeDate",
+      "doc": "Trade Date"
+    },
+    {
+      "value": "1",
+      "name": "GCInstrument",
+      "doc": "GC Instrument"
+    },
+    {
+      "value": "2",
+      "name": "CollateralInstrument",
+      "doc": "Collateral Instrument"
+    },
+    {
+      "value": "3",
+      "name": "SubstitutionEligible",
+      "doc": "Substitution Eligible"
+    },
+    {
+      "value": "4",
+      "name": "NotAssigned",
+      "doc": "Not Assigned"
+    },
+    {
+      "value": "5",
+      "name": "PartiallyAssigned",
+      "doc": "Partially Assigned"
+    },
+    {
+      "value": "6",
+      "name": "FullyAssigned",
+      "doc": "Fully Assigned"
+    },
+    {
+      "value": "7",
+      "name": "OutstandingTrades",
+      "doc": "Outstanding Trades (Today < end date)"
+    }
+  ]
+}

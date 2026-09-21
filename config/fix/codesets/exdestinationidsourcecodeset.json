@@ -1,0 +1,30 @@
+{
+  "name": "exdestinationidsourcecodeset",
+  "codes": [
+    {
+      "value": "B",
+      "name": "BIC",
+      "doc": "BIC (Bank Identification Code) (ISO 9362)"
+    },
+    {
+      "value": "C",
+      "name": "GeneralIdentifier",
+      "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
+    },
+    {
+      "value": "D",
+      "name": "Proprietary",
+      "doc": "Proprietary / Custom code"
+    },
+    {
+      "value": "E",
+      "name": "ISOCountryCode",
+      "doc": "ISO Country Code"
+    },
+    {
+      "value": "G",
+      "name": "MIC",
+      "doc": "MIC (ISO 10383 - Market Identifier Code)"
+    }
+  ]
+}

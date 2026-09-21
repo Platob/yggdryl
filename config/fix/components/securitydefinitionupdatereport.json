@@ -412,6 +412,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "BP",
     "FIX:tag": "290192",
     "description": "MsgType = BP",

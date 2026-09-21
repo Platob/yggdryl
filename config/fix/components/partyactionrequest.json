@@ -199,6 +199,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "DH",
     "FIX:tag": "817448",
     "description": "MsgType = DH",

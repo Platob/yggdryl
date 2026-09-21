@@ -246,6 +246,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quotereqid,clordid",
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "R",
     "FIX:tag": "231968",
     "description": "MsgType = R",

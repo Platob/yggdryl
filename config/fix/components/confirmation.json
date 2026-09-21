@@ -1096,6 +1096,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "allocid,secondaryallocid,individualallocid",
+    "FIX:msgcat": "CONF",
     "FIX:msgtype": "AK",
     "FIX:tag": "489272",
     "description": "MsgType = AK",

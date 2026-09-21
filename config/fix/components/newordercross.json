@@ -773,6 +773,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "quoteid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "s",
     "FIX:tag": "898316",
     "description": "MsgType = s (lowercase S)",

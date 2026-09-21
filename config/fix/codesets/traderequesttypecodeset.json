@@ -1,0 +1,30 @@
+{
+  "name": "traderequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AllTrades",
+      "doc": "All Trades"
+    },
+    {
+      "value": "1",
+      "name": "MatchedTradesMatchingCriteria",
+      "doc": "Matched trades matching criteria provided on request (Parties, ExecID, TradeID, OrderID, Instrument, InputSource, etc.)"
+    },
+    {
+      "value": "2",
+      "name": "UnmatchedTradesThatMatchCriteria",
+      "doc": "Unmatched trades that match criteria"
+    },
+    {
+      "value": "3",
+      "name": "UnreportedTradesThatMatchCriteria",
+      "doc": "Unreported trades that match criteria"
+    },
+    {
+      "value": "4",
+      "name": "AdvisoriesThatMatchCriteria",
+      "doc": "Advisories that match criteria"
+    }
+  ]
+}

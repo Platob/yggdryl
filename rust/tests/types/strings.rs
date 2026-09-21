@@ -56,11 +56,11 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
         ("Country", DataType::Country),
         ("currency", DataType::Currency),
         ("Currency", DataType::Currency),
-        ("mic", DataType::Mic),
-        ("MIC", DataType::Mic),
-        ("Exchange", DataType::Mic),
-        ("cfi", DataType::Cfi),
-        ("CFI", DataType::Cfi),
+        ("mic", DataType::MicCode),
+        ("MIC", DataType::MicCode),
+        ("Exchange", DataType::MicCode),
+        ("cfi", DataType::CfiCode),
+        ("CFI", DataType::CfiCode),
         ("MonthYear", DataType::fixed_ascii(8).unwrap()),
     ] {
         let parsed: DataType = spelling
@@ -85,7 +85,7 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
     );
     assert_eq!(
         row.get_field_by_path("code").map(Field::dtype),
-        Some(&DataType::Cfi)
+        Some(&DataType::CfiCode)
     );
     assert_eq!(
         row.get_field_by_path("iso").map(Field::dtype),
@@ -169,23 +169,23 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
     assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
     assert_ne!(DataType::Currency, DataType::fixed_ascii(3).unwrap());
     // ISO 10962 is six characters, and `cfi` holds at most those six.
-    assert_eq!(DataType::Cfi.code_width(), Some(6));
+    assert_eq!(DataType::CfiCode.code_width(), Some(6));
     // A width of six bytes is spellable, and it is still not a CFI code.
-    assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
+    assert_ne!(DataType::CfiCode, DataType::fixed_ascii(6).unwrap());
     assert!(!DataType::fixed_ascii(6).unwrap().is_code());
     // ISO 6166 is twelve characters closed by a check digit, and `isin`
     // stores exactly those twelve.
-    assert_eq!("isin".parse::<DataType>().unwrap(), DataType::Isin);
-    assert_eq!(DataType::Isin.code_width(), Some(12));
-    assert_ne!(DataType::Isin, DataType::fixed_ascii(12).unwrap());
+    assert_eq!("isin".parse::<DataType>().unwrap(), DataType::IsinCode);
+    assert_eq!(DataType::IsinCode.code_width(), Some(12));
+    assert_ne!(DataType::IsinCode, DataType::fixed_ascii(12).unwrap());
     // A CUSIP is nine and a SEDOL seven, each closed by its own check digit,
     // and neither is the ASCII width that would hold the same text.
-    assert_eq!("cusip".parse::<DataType>().unwrap(), DataType::Cusip);
-    assert_eq!(DataType::Cusip.code_width(), Some(9));
-    assert_ne!(DataType::Cusip, DataType::fixed_ascii(9).unwrap());
-    assert_eq!("sedol".parse::<DataType>().unwrap(), DataType::Sedol);
-    assert_eq!(DataType::Sedol.code_width(), Some(7));
-    assert_ne!(DataType::Sedol, DataType::fixed_ascii(7).unwrap());
+    assert_eq!("cusip".parse::<DataType>().unwrap(), DataType::CusipCode);
+    assert_eq!(DataType::CusipCode.code_width(), Some(9));
+    assert_ne!(DataType::CusipCode, DataType::fixed_ascii(9).unwrap());
+    assert_eq!("sedol".parse::<DataType>().unwrap(), DataType::SedolCode);
+    assert_eq!(DataType::SedolCode.code_width(), Some(7));
+    assert_ne!(DataType::SedolCode, DataType::fixed_ascii(7).unwrap());
 
     // A code name is a grammar keyword like every other, so the parser
     // reads it case-insensitively and trimmed.
@@ -193,9 +193,11 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         " CURRENCY ".parse::<DataType>().unwrap(),
         DataType::Currency
     );
-    // The grammar reports a word that names nothing as unknown.
-    let error = "figi".parse::<DataType>().unwrap_err().to_string();
-    assert!(error.contains("unknown datatype \"figi\""), "{error}");
+    // FIGI is its own checked twelve-character code, not a Bloomberg alias.
+    assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::FIGICode);
+    // The grammar still reports words that name nothing as unknown.
+    let error = "figx".parse::<DataType>().unwrap_err().to_string();
+    assert!(error.contains("unknown datatype \"figx\""), "{error}");
 }
 
 #[test]
@@ -216,7 +218,7 @@ fn a_code_packs_and_merges_by_the_ascii_rules() {
     );
     assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
     assert_eq!(
-        DataType::Cfi.ascii_packed(b"ESVUFR").unwrap(),
+        DataType::CfiCode.ascii_packed(b"ESVUFR").unwrap(),
         0x4553_5655_4652
     );
     let refused = DataType::Country
@@ -417,8 +419,8 @@ fn ordering_and_hashing_are_consistent_for_every_width() {
     for (code, width) in [
         (DataType::Country, DataType::fixed_ascii(2).unwrap()),
         (DataType::Currency, DataType::fixed_ascii(3).unwrap()),
-        (DataType::Mic, DataType::fixed_ascii(4).unwrap()),
-        (DataType::Cfi, DataType::fixed_ascii(6).unwrap()),
+        (DataType::MicCode, DataType::fixed_ascii(4).unwrap()),
+        (DataType::CfiCode, DataType::fixed_ascii(6).unwrap()),
     ] {
         assert_ne!(code.stable_hash(), width.stable_hash(), "{code}");
         assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{code}");

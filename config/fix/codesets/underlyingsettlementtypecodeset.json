@@ -1,0 +1,35 @@
+{
+  "name": "underlyingsettlementtypecodeset",
+  "codes": [
+    {
+      "value": "2",
+      "name": "TPlus1",
+      "doc": "T+1"
+    },
+    {
+      "value": "4",
+      "name": "TPlus3",
+      "doc": "T+3"
+    },
+    {
+      "value": "5",
+      "name": "TPlus4",
+      "doc": "T+4"
+    },
+    {
+      "value": "10",
+      "name": "SMinus0",
+      "doc": "S"
+    },
+    {
+      "value": "11",
+      "name": "SMinus1",
+      "doc": "S-1"
+    },
+    {
+      "value": "12",
+      "name": "SMinus2",
+      "doc": "S-2"
+    }
+  ]
+}

@@ -69,6 +69,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "MKST",
     "FIX:msgtype": "BJ",
     "FIX:tag": "205003",
     "description": "MsgType = BJ",

@@ -1,0 +1,25 @@
+{
+  "name": "registstatuscodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "R",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "H",
+      "name": "Held",
+      "doc": "Held"
+    },
+    {
+      "value": "N",
+      "name": "Reminder",
+      "doc": "Reminder - i.e. Registration Instructions are still outstanding"
+    }
+  ]
+}

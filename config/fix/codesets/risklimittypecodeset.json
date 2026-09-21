@@ -1,0 +1,95 @@
+{
+  "name": "risklimittypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CreditLimit",
+      "doc": "Credit limit"
+    },
+    {
+      "value": "1",
+      "name": "GrossLimit",
+      "doc": "Gross limit"
+    },
+    {
+      "value": "2",
+      "name": "NetLimit",
+      "doc": "Net limit"
+    },
+    {
+      "value": "3",
+      "name": "Exposure",
+      "doc": "Exposure"
+    },
+    {
+      "value": "4",
+      "name": "LongLimit",
+      "doc": "Long limit"
+    },
+    {
+      "value": "5",
+      "name": "ShortLimit",
+      "doc": "Short limit"
+    },
+    {
+      "value": "6",
+      "name": "CashMargin",
+      "doc": "Cash margin"
+    },
+    {
+      "value": "7",
+      "name": "AdditionalMargin",
+      "doc": "Additional margin"
+    },
+    {
+      "value": "8",
+      "name": "TotalMargin",
+      "doc": "Total margin"
+    },
+    {
+      "value": "9",
+      "name": "LimitConsumed",
+      "doc": "Limit consumed"
+    },
+    {
+      "value": "10",
+      "name": "ClipSize",
+      "doc": "Clip size/notional limit per time period"
+    },
+    {
+      "value": "11",
+      "name": "MaxNotionalOrderSize",
+      "doc": "Maximum notional order size"
+    },
+    {
+      "value": "12",
+      "name": "DV01PV01Limit",
+      "doc": "DV01/PV01 limit"
+    },
+    {
+      "value": "13",
+      "name": "CS01Limit",
+      "doc": "CS01 limit"
+    },
+    {
+      "value": "14",
+      "name": "VolumeLimitPerTimePeriod",
+      "doc": "Volume limit per time period"
+    },
+    {
+      "value": "15",
+      "name": "VolFilledPctOrdVolTmPeriod",
+      "doc": "Volume filled as percent of ordered volume per time period"
+    },
+    {
+      "value": "16",
+      "name": "NotlFilledPctNotlTmPeriod",
+      "doc": "Notional filled as percent of notional per time period"
+    },
+    {
+      "value": "17",
+      "name": "TransactionExecutionLimitPerTimePeriod",
+      "doc": "Transaction/execution limit per time period"
+    }
+  ]
+}

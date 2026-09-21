@@ -1,0 +1,15 @@
+{
+  "name": "posttradepaymentdebitorcreditcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DebitPay",
+      "doc": "Debit / Pay"
+    },
+    {
+      "value": "1",
+      "name": "CreditReceive",
+      "doc": "Credit / Receive"
+    }
+  ]
+}

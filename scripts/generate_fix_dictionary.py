@@ -14,13 +14,22 @@ Orchestra's fields, components and groups each have their own directory of
 native Field documents; a message is a component carrying ``FIX:msgtype`` and
 is written into ``components/`` beside the others. Only wire
 fields have tags. A group references its ordinary int32 counter and contains
-a non-null component. Each field stores its enum records directly in
-FIX:codes metadata. Datatypes resolve through the crate's logical-name table.
+a non-null component. Datatypes resolve through the crate's logical-name table.
 
-The three ``FIX:`` properties that hold a document - ``FIX:codes``,
-``FIX:replacements``, ``FIX:directions`` - are written as the JSON arrays they
-are rather than as one escaped line, so an indented document renders a code set
-as a code set; the crate restates each as its canonical compact text when it
+``codesets/`` is the fourth directory, and it holds vocabularies rather than
+fields. A code set is named by the specification - ``SideCodeSet``,
+``UnitOfMeasureCodeSet`` - and named from as many fields as draw on it, 165 of
+them for one unit set; so its members are written once under
+``codesets/<name>.json`` and a field's ``FIX:codeset`` states the name of the set
+it reads by. Where Orchestra names no set, or names one whose members differ
+between the fields claiming it, the set is named after the field that reads by
+it. The dictionary holds each set once and a merge folds two statements of one
+set together, so a code named, aliased or documented once is named for every
+field that reads it.
+
+The two remaining ``FIX:`` properties that hold a document - ``FIX:replacements``
+and ``FIX:directions`` - are written as the JSON arrays they are rather than as
+one escaped line; the crate restates each as its canonical compact text when it
 reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
@@ -28,9 +37,10 @@ field is written under the one name and datatype the newest source gives it,
 and every spelling an earlier version used is written beside it in its
 ``FIX:names`` list, so an old name still reaches the field. What a *value*
 was does travel - a code set holds every value an older version declared and
-every older spelling of a surviving one, dated - and a field whose value
-another field took over carries the FIX:replacements document that says which
-and how.
+every older spelling of a surviving one, dated. What the specification retired
+and what stands in for it is not the dictionary's to state: the crate holds
+those retirements as its own table, so no generated field carries a
+``FIX:replacements`` document.
 
 Usage::
 
@@ -53,6 +63,37 @@ from typing import Any, Iterable, NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "config" / "fix"
+
+# One classification for every current FIX message type. The source formats
+# do not retain a business-area property, so coverage is held against their
+# exact wire-code set below rather than inferred from a generated name.
+MSGCAT_BY_TYPE = {
+    code: category
+    for category, codes in (
+        ("SESS", "0 1 2 3 4 5 A j n BC BD BE BF CB BW BX BY EL EM EN EO EP"),
+        ("ORDR", "D E F G H 9 q r s t u AB AC AF CA BZ DJ DK K L M N DS DT"),
+        ("QUOT", "6 7 R S Z a b i AG AH AI AJ CW k l m"),
+        ("EXEC", "8 BN Q BO"),
+        ("TRAD", "AD AE AQ AR DC DD DW DX AW"),
+        ("BOOK", "V W X Y DO DP DR EQ BT BU BV"),
+        ("SECU", "c d e f v w x y z AA BK BP BR CN CO EG ER"),
+        ("MKST", "g h BI BJ BS ES"),
+        ("ALLO", "J P AS AT BM DU DV"),
+        ("POSN", "AL AM AN AO AP BL DL DM DN"),
+        ("SETL", "T AV BQ EC ED EE EF"),
+        ("COLL", "AX AY AZ BA BB BG DQ CH CI CJ"),
+        ("PRTY", "CF CG CK CX CY DH DI CU CV CZ DA DB"),
+        ("RISK", "CL CM CR CS CT DE DF DG"),
+        ("PAYM", "DY DZ EA EB"),
+        ("CONF", "AK AU BH"),
+        ("REGI", "o p"),
+        ("STRM", "CC CD CE"),
+        ("ACCT", "CQ"),
+        ("COMM", "B C"),
+        ("CERT", "EH EI EJ EK"),
+    )
+    for code in codes.split()
+}
 
 # Pinned commits. A branch would make the output unreproducible.
 ORCHESTRA_COMMIT = "099914dd0edd49a699326f0441776d6e21cfaf93"
@@ -474,7 +515,7 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
 def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`FIX:codes`, in the rank the specification gives, `value` leading each record.
+    """`FIX:codeset`, in the rank the specification gives, `value` leading each record.
 
     Where a code sits in the list *is* its presentation rank, so the rank is
     the order rather than a key beside it. A code the source ranks keeps that
@@ -510,6 +551,28 @@ def camel_case(description: str) -> str:
 # QuickFIX description would spell them differently. `State::from_spelling`
 # knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
 LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
+
+# PartyIDSource is copied into every Party family member but reads one shared
+# vocabulary. The bridge spelling belongs to that family alone; another
+# Proprietary code keeps the standard spelling it declares.
+PARTY_ID_SOURCE_ALIASES = {("D", "Proprietary"): ("proprietary/customcode",)}
+
+
+def party_id_source_aliases(
+    name: str, declared: str | None, codes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Add the bridge spelling to the shared PartyIDSource vocabulary."""
+    if not name.endswith("partyidsource") and folded(declared or "") != "partyidsourcecodeset":
+        return codes
+    for code in codes:
+        aliases = PARTY_ID_SOURCE_ALIASES.get((code["value"], code["name"]))
+        if aliases is None:
+            continue
+        current = code.setdefault("aliases", [])
+        for alias in aliases:
+            if alias not in current:
+                current.append(alias)
+    return codes
 
 def fold_legacy_codes(
     tag: int,
@@ -1356,8 +1419,19 @@ def entry_name(group_name: str) -> str:
     return _singularize(matched[1]) + matched[2]
 
 
-def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Resolve the source graph once into the registry's five categories."""
+def build(
+    parsed: dict[str, dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+    """Resolve the source graph once into the catalog and the code sets.
+
+    A code set is a vocabulary rather than a property of one field: the
+    specification names it - ``SideCodeSet``, ``UnitOfMeasureCodeSet`` - and
+    names it from as many fields as draw on it. So the members are written
+    once under ``codesets/<name>.json`` and a field's ``FIX:codeset`` states
+    which set it reads by. The two answers are separate because a code set is
+    not a catalog category: it holds no ``Field`` document and resolves no
+    reference to one.
+    """
     latest = parsed["orchestra-latest"]
 
     # Per-tag history, oldest first, from the versions QuickFIX publishes:
@@ -1389,17 +1463,55 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     code_values: dict[int, set[str]] = {}
     code_records: dict[int, list[dict[str, Any]]] = {}
     multi_valued: set[int] = set()
+    # Every named set, by the name a field's `FIX:codeset` states.
+    code_sets: dict[str, list[dict[str, Any]]] = {}
 
-    def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
-        """The field's `FIX:codes`, legacy values folded in, or nothing."""
+    def name_codes(tag: int, name: str, declared: str | None, document: list[dict[str, Any]]) -> str:
+        """The name this set is filed under, claimed once and never shared.
+
+        The specification's own name leads, folded. Fields are walked in
+        ascending tag order, so the lowest tag holding a set claims its
+        spec name - and a second field whose *document* differs, which is
+        what per-tag legacy folding produces for fifteen of the shipped
+        sets, takes a name of its own rather than overwriting the first.
+        A tag the specification names no set for is filed under the field
+        that reads by it. Two sets are never merged by name alone: a name
+        is the identity, and equal members are what let one be shared.
+        """
+        for candidate in [folded(declared) if declared else None, f"{name}codeset", f"{name}{tag}codeset"]:
+            if candidate is None:
+                continue
+            if re.fullmatch(r"[a-z0-9][a-z0-9_.-]*", candidate) is None:
+                continue
+            held = code_sets.get(candidate)
+            if held is None:
+                code_sets[candidate] = document
+                return candidate
+            if held == document:
+                return candidate
+        raise ValueError(f"tag {tag}: no free code set name for {declared or name!r}")
+
+    def coded(
+        tag: int,
+        name: str,
+        fix_type: str,
+        codes: list[dict[str, Any]],
+        declared: str | None = None,
+    ) -> str | None:
+        """The name of the set this field reads by, or nothing for no set.
+
+        The members - legacy values folded in - are filed under that name,
+        and what the field carries is the name alone.
+        """
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
+        folded_codes = party_id_source_aliases(name, declared, folded_codes)
         if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
             multi_valued.add(tag)
         if not folded_codes:
             return None
         code_values[tag] = {code["value"] for code in folded_codes}
         code_records[tag] = folded_codes
-        return codes_document(folded_codes)
+        return name_codes(tag, name, declared, codes_document(folded_codes))
 
     fields: list[dict[str, Any]] = []
     # A tag some version declared and Latest no longer does was removed: its
@@ -1418,9 +1530,9 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
             metadata["FIX:names"] = list(dict.fromkeys(names))
-        codes = coded(tag, fix_type, [])
+        codes = coded(tag, name, fix_type, [])
         if codes is not None:
-            metadata["FIX:codes"] = codes
+            metadata["FIX:codeset"] = codes
         fields.append(
             {
                 "name": name,
@@ -1485,15 +1597,16 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
         if code_set_name in latest["code_sets"]:
             held = latest["code_sets"][code_set_name]
-            codes = coded(tag, held["type"], held["codes"])
+            codes = coded(tag, name, held["type"], held["codes"], code_set_name)
             if codes is not None:
-                metadata["FIX:codes"] = codes
+                metadata["FIX:codeset"] = codes
         elif listings.get(tag):
             # Latest declares no set, so every value an older version listed
-            # is a legacy code: the set is what those versions said.
-            codes = coded(tag, field["type"], [])
+            # is a legacy code: the set is what those versions said, and it
+            # is named after the field that reads by it.
+            codes = coded(tag, name, field["type"], [])
             if codes is not None:
-                metadata["FIX:codes"] = codes
+                metadata["FIX:codeset"] = codes
 
         fields.append(
             {
@@ -1506,7 +1619,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     catalog = build_catalog(latest, fields)
     attach_replacements(catalog, code_values, multi_valued)
     attach_derivations(catalog, code_records)
-    return catalog
+    return catalog, code_sets
 
 
 def build_catalog(
@@ -1662,9 +1775,11 @@ def build_catalog(
             if identifiers:
                 metadata["FIX:identifiers"] = identifiers
         if category == "messages":
-            metadata["FIX:msgtype"] = next(
+            wire = next(
                 wire for wire, held in latest["messages"].items() if held["id"] == identifier
             )
+            metadata["FIX:msgtype"] = wire
+            metadata["FIX:msgcat"] = MSGCAT_BY_TYPE[wire]
         result[category].append(
             {"name": names[key], "dtype": dtype, "nullable": False, "metadata": dict(sorted(metadata.items()))}
         )
@@ -1861,8 +1976,16 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
             field["metadata"] = dict(sorted(metadata.items()))
 
 
-def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
-    """Render native Field documents with compact references between owners."""
+def render_tree(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_sets: dict[str, list[dict[str, Any]]],
+) -> dict[str, str]:
+    """Render native Field documents, and the code sets they read by.
+
+    One `path -> text` map for the whole store, which is also what the
+    provenance manifest hashes: a document that is not here is not written,
+    not checksummed and not swept.
+    """
     shards: dict[int, list[dict[str, Any]]] = {}
     for field in catalog["fields"]:
         tag = int(field["metadata"]["FIX:tag"])
@@ -1880,18 +2003,30 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
             if path in documents:
                 raise ValueError(f"a message and a component share one document: {path}")
             documents[path] = field
+    # A code set is a vocabulary rather than a definition: it holds no tag,
+    # no datatype and no reference, so it lives in a folder of its own and
+    # states the name it is filed under.
+    for name, codes in code_sets.items():
+        path = f"codesets/{name}.json"
+        if path in documents:
+            raise ValueError(f"two code sets share one document: {path}")
+        documents[path] = {"name": name, "codes": codes}
     return {
         name: json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         for name, document in sorted(documents.items())
     }
 
 
-def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
+def summary(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_sets: dict[str, list[dict[str, Any]]],
+) -> str:
     """The counts as the store holds them: messages among the components."""
     components = len(catalog["components"]) + len(catalog["messages"])
     return (
         f"{len(catalog['fields'])} fields, {components} components "
-        f"({len(catalog['messages'])} of them messages), {len(catalog['groups'])} groups"
+        f"({len(catalog['messages'])} of them messages), {len(catalog['groups'])} groups, "
+        f"{len(code_sets)} code sets"
     )
 
 
@@ -1899,17 +2034,23 @@ def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
 CRATE_TAG_MIN = 65_000
 
 # The named documents the crate defines and a store dump writes: the fixed
-# row and the two Map groups whose keys are the crate's own vocabulary.
+# row, its message-category vocabulary, and the two Map groups whose keys are
+# the crate's own vocabulary.
 CRATE_DOCUMENTS = frozenset(
-    {"components/fixmsg.json", "groups/identifiers.json", "groups/metadata.json"}
+    {
+        "codesets/msgcatcodeset.json",
+        "components/fixmsg.json",
+        "groups/identifiers.json",
+        "groups/metadata.json",
+    }
 )
 
 
 def crate_owned(name: str) -> bool:
     """Whether a document under the output root is the crate's own dump.
 
-    The crate's own documents - its field shard, its two Map groups, and
-    the fixed row ``components/fixmsg.json`` - are written by
+    The crate's own documents - its field shard, code set, two Map groups,
+    and fixed row ``components/fixmsg.json`` - are written by
     ``FixRegistry::write_into`` and pinned by the Rust store tests; this
     generator neither writes nor checks them, and never removes them.
     """
@@ -1922,7 +2063,7 @@ def crate_owned(name: str) -> bool:
 def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
     """Replace generated files only; every target stays under the output root."""
     out = out.resolve()
-    for tree in ("fields", "components", "groups", "messages", "primitive", "nested"):
+    for tree in ("codesets", "fields", "components", "groups", "messages", "primitive", "nested"):
         for stale in sorted((out / tree).glob("*.json")):
             relative = stale.resolve().relative_to(out).as_posix()
             if relative not in documents and not crate_owned(relative):
@@ -2011,10 +2152,29 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
             [
                 f"/// The tags every version's standard {what} declares, in wire",
                 "/// order.",
+                "#[rustfmt::skip]",
                 f"pub const {name}: [i32; {len(tags)}] = [{rendered}];",
                 "",
             ]
         )
+    categories = sorted({*MSGCAT_BY_TYPE.values(), "UNKN"})
+    rendered = ", ".join(f'"{category}"' for category in categories)
+    lines.extend(
+        [
+            "/// The fixed categories a FIX message can answer.",
+            "#[rustfmt::skip]",
+            f"pub const MSGCATEGORIES: [&str; {len(categories)}] = [{rendered}];",
+            "",
+            "/// The generated category of one standard FIX message type.",
+            "pub(super) fn msgcat_of(msgtype: &str) -> Option<&'static str> {",
+            "    match msgtype {",
+        ]
+    )
+    lines.extend(
+        f'        "{msgtype}" => Some("{category}"),'
+        for msgtype, category in sorted(MSGCAT_BY_TYPE.items())
+    )
+    lines.extend(["        _ => None,", "    }", "}", ""])
     (ROOT / "rust" / "src" / "fix" / "constants.rs").write_text(
         "\n".join(lines), encoding="utf-8", newline="\n"
     )
@@ -2056,9 +2216,16 @@ def main() -> int:
     if unmapped:
         raise SystemExit(f"unmapped FIX datatypes: {', '.join(unmapped)}")
 
-    catalog = build(parsed)
+    # Exhaustiveness belongs to the complete upstream repository; the graph
+    # builder also reads deliberately partial fixture repositories.
+    message_types = set(latest["messages"])
+    if message_types != set(MSGCAT_BY_TYPE):
+        missing = ", ".join(sorted(message_types - set(MSGCAT_BY_TYPE)))
+        extra = ", ".join(sorted(set(MSGCAT_BY_TYPE) - message_types))
+        raise ValueError(f"message category coverage differs: missing={missing}; extra={extra}")
+    catalog, code_sets = build(parsed)
     assign_definition_tags(catalog)
-    documents = render_tree(catalog)
+    documents = render_tree(catalog, code_sets)
     written = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in documents.items()}
     manifest = {
         "version": latest["version"],
@@ -2077,7 +2244,7 @@ def main() -> int:
             if actual != expected:
                 failures.append(f"changed {name}")
         expected_names = set(documents)
-        for category in ("fields", "components", "groups", "messages", "primitive", "nested"):
+        for category in ("codesets", "fields", "components", "groups", "messages", "primitive", "nested"):
             for path in (out / category).glob("*.json"):
                 name = path.relative_to(out).as_posix()
                 if name not in expected_names and not crate_owned(name):
@@ -2093,7 +2260,7 @@ def main() -> int:
         if failures:
             print("\n".join(failures), file=sys.stderr)
             return 1
-        print(f"verified {len(documents)} documents; " + summary(catalog))
+        print(f"verified {len(documents)} documents; " + summary(catalog, code_sets))
         return 0
     write_tree(out, documents)
 
@@ -2108,7 +2275,10 @@ def main() -> int:
         newline="\n",
     )
     write_constants(latest, parsed)
-    print(f"wrote {len(written)} documents ({summary(catalog)}) at FIX {latest['version']} EP{latest['ep']}")
+    print(
+        f"wrote {len(written)} documents ({summary(catalog, code_sets)})"
+        f" at FIX {latest['version']} EP{latest['ep']}"
+    )
     return 0
 
 

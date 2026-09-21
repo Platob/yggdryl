@@ -12,7 +12,7 @@ Owns the Parquet footer: field identifiers, `FileStatistics`, geospatial and var
 | Bounds | `min_bytes` / `max_bytes` are Parquet's encoded bytes; missing bounds and counts stay null, never zero |
 | `null_count(column)` | sums across row groups; `None` when no row group recorded any |
 | Geospatial column | no min/max; `bounding_box` plus sorted ISO `geometry_types`; a geography records no box |
-| Variant column | the metadata/value storage struct under a schema-level `VARIANT` logical type only |
+| Variant column | the group of two required `BYTE_ARRAY` children, `metadata` and `value`, annotated `VARIANT(1)`, neither child carrying a field id; the values are the [Parquet Variant encoding](../../types/variant.md) |
 | Cache | `open` parses the footer once, `close` drops it, any write invalidates it |
 | Bindings | `read_parquet_statistics` and `read_parquet_geospatial_statistics(column)` (camelCase in JavaScript) return native records through [`Scalar`](../../types/scalar.md) |
 | Rust only | `Parquet<H>` and the `parquet::*` free functions |
@@ -238,7 +238,7 @@ Projecting the root to Arrow before the write carries the ids into the file; rea
 
 ## Geospatial and variant columns
 
-A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEOMETRY` or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB; the defaults `OGC:CRS84` and `spherical` write as absent. `read_parquet_geospatial_statistics(column)` rescans the stored WKB as a projected read, so it answers when the writer recorded nothing.
+A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEOMETRY` or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB; the defaults `OGC:CRS84` and `spherical` write as absent. A [variant](../../types/variant.md) field writes the group the format states - `required binary metadata`, `required binary value`, annotated `VARIANT(1)` - so a Spark, Iceberg or Arrow reader sees a variant rather than an untyped pair of binaries. `read_parquet_geospatial_statistics(column)` rescans the stored WKB as a projected read, so it answers when the writer recorded nothing.
 
 === "Rust"
 
@@ -523,8 +523,8 @@ assert!(!media.opened());
 - write with no batches -> a real file; the footer holds the schema and `num_rows == 0`.
 - geospatial column -> the writer records no min/max; a foreign writer's min/max is ignored on read.
 - geometry / geography declaration -> the CRS, and a geography's edge algorithm, ride into the file's logical type.
-- foreign `GEOMETRY` / `GEOGRAPHY` / `VARIANT` file -> plain Arrow `Binary` / `Struct` types without extension metadata; files written here round-trip through the embedded Arrow schema.
-- variant value across an Arrow array boundary -> unsupported until the Iceberg v3 layer lands.
+- foreign `GEOMETRY` / `GEOGRAPHY` file -> plain Arrow `Binary` without extension metadata; files written here round-trip through the embedded Arrow schema.
+- foreign `VARIANT` group -> read back as a variant: the annotation is what names it, so the column imports as `variant` whatever Arrow schema the file carries.
 - `geoarrow.wkb` spelling -> revisitable, GeoArrow is not finalized.
 - Python and JavaScript -> an opened `IOBase` retains the same wrapper, so the footer cache applies there too.
 

@@ -1,0 +1,20 @@
+{
+  "name": "risklimitrequesttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Definitions",
+      "doc": "Definitions(Default)"
+    },
+    {
+      "value": "2",
+      "name": "Utilization",
+      "doc": "Utilization"
+    },
+    {
+      "value": "3",
+      "name": "DefinitionsAndUtilizations",
+      "doc": "Definitions and utilization"
+    }
+  ]
+}

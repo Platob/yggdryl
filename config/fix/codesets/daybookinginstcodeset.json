@@ -1,0 +1,20 @@
+{
+  "name": "daybookinginstcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Auto",
+      "doc": "Can trigger booking without reference to the order initiator (\"auto\")"
+    },
+    {
+      "value": "1",
+      "name": "SpeakWithOrderInitiatorBeforeBooking",
+      "doc": "Speak with order initiator before booking (\"speak first\")"
+    },
+    {
+      "value": "2",
+      "name": "Accumulate",
+      "doc": "Accumulate"
+    }
+  ]
+}

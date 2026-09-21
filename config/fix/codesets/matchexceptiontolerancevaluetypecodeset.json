@@ -1,0 +1,15 @@
+{
+  "name": "matchexceptiontolerancevaluetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "FixedAmount",
+      "doc": "Fixed amount"
+    },
+    {
+      "value": "2",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

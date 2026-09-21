@@ -1,0 +1,15 @@
+{
+  "name": "throttletypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "InboundRate",
+      "doc": "Inbound Rate"
+    },
+    {
+      "value": "1",
+      "name": "OutstandingRequests",
+      "doc": "Outstanding Requests"
+    }
+  ]
+}

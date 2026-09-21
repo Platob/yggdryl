@@ -1,0 +1,45 @@
+{
+  "name": "commtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "PerUnit",
+      "doc": "Amount per unit"
+    },
+    {
+      "value": "2",
+      "name": "Percent",
+      "doc": "Percent"
+    },
+    {
+      "value": "3",
+      "name": "Absolute",
+      "doc": "Absolute"
+    },
+    {
+      "value": "4",
+      "name": "PercentageWaivedCashDiscount",
+      "doc": "Percentage waived, cash discount basis"
+    },
+    {
+      "value": "5",
+      "name": "PercentageWaivedEnhancedUnits",
+      "doc": "Percentage waived, enhanced units basis"
+    },
+    {
+      "value": "6",
+      "name": "PointsPerBondOrContract",
+      "doc": "Points per bond or contract"
+    },
+    {
+      "value": "7",
+      "name": "BasisPoints",
+      "doc": "Basis points"
+    },
+    {
+      "value": "8",
+      "name": "AmountPerContract",
+      "doc": "Amount per contract"
+    }
+  ]
+}

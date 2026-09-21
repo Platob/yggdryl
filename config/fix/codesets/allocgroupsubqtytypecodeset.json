@@ -1,0 +1,20 @@
+{
+  "name": "allocgroupsubqtytypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "TradeType",
+      "doc": "Trade type"
+    },
+    {
+      "value": "2",
+      "name": "TradePublicationIndicator",
+      "doc": "Trade publication indicator"
+    },
+    {
+      "value": "3",
+      "name": "OrderHandlingInstruction",
+      "doc": "Order handling instruction"
+    }
+  ]
+}

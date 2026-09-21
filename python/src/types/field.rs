@@ -2843,6 +2843,34 @@ impl PyProtocolField {
         }
     }
 
+    #[getter]
+    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("msgcat")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .msgcat()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_msgcat(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("msgcat")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_msgcat(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_msgcat();
+            Ok(())
+        }
+    }
+
     /// The alternate tags, highest priority first.
     ///
     /// An absent property is an empty list, and assigning an empty iterable
@@ -2952,6 +2980,46 @@ impl PyProtocolField {
             .as_fix_mut()
             .set_nulls(parsed)
             .map_err(value_error)
+    }
+
+    /// The name of the FIX code set this field reads its values by, or
+    /// `None` for a field drawing on none.
+    ///
+    /// A field states the name; the dictionary holds the members, once, under
+    /// it - `FixRegistry.codeset` answers them and `FixRegistry.set_codeset`
+    /// states them. So a vocabulary is named, documented and aliased in one
+    /// place however many fields read by it.
+    ///
+    /// Assigning a name records it and assigning `None` removes the property;
+    /// a name no store can file is a `ValueError` that leaves the field
+    /// unchanged. A dictionary refuses a field naming a set it does not hold,
+    /// so the set is stated before the field points at it.
+    #[getter]
+    fn codeset(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("codeset")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .codeset()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_codeset(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("codeset")?;
+        let name = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(name) = name {
+            field
+                .inner
+                .as_fix_mut()
+                .set_codeset(&name)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_codeset();
+            Ok(())
+        }
     }
 
     /// The rules that read tag 385 off the prose in front of a payload, one

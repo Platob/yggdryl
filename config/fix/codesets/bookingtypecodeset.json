@@ -1,0 +1,20 @@
+{
+  "name": "bookingtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RegularBooking",
+      "doc": "Regular booking"
+    },
+    {
+      "value": "1",
+      "name": "CFD",
+      "doc": "CFD (Contract for difference)"
+    },
+    {
+      "value": "2",
+      "name": "TotalReturnSwap",
+      "doc": "Total Return Swap"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "tradsescontrolcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Automatic",
+      "doc": "Automatic (Default)"
+    },
+    {
+      "value": "1",
+      "name": "Manual",
+      "doc": "Manual"
+    }
+  ]
+}

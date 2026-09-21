@@ -1,0 +1,185 @@
+{
+  "name": "mdstatisticscopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BidPrices",
+      "doc": "Bid prices"
+    },
+    {
+      "value": "2",
+      "name": "OfferPrices",
+      "doc": "Offer prices"
+    },
+    {
+      "value": "3",
+      "name": "BidDepth",
+      "doc": "Bid depth"
+    },
+    {
+      "value": "4",
+      "name": "OfferDepth",
+      "doc": "Offer depth"
+    },
+    {
+      "value": "5",
+      "name": "Orders",
+      "doc": "Orders"
+    },
+    {
+      "value": "6",
+      "name": "Quotes",
+      "doc": "Quotes"
+    },
+    {
+      "value": "7",
+      "name": "OrdersAndQuotes",
+      "doc": "Orders and Quotes"
+    },
+    {
+      "value": "8",
+      "name": "Trades",
+      "doc": "Trades"
+    },
+    {
+      "value": "9",
+      "name": "TradePrices",
+      "doc": "Trade prices"
+    },
+    {
+      "value": "10",
+      "name": "AuctionPrices",
+      "doc": "Auction prices"
+    },
+    {
+      "value": "11",
+      "name": "OpeningPrices",
+      "doc": "Opening prices"
+    },
+    {
+      "value": "12",
+      "name": "ClosingPrices",
+      "doc": "Closing prices"
+    },
+    {
+      "value": "13",
+      "name": "SettlementPrices",
+      "doc": "Settlement prices"
+    },
+    {
+      "value": "14",
+      "name": "UnderlyingPrices",
+      "doc": "Underlying prices"
+    },
+    {
+      "value": "15",
+      "name": "OpenInterest",
+      "doc": "Open interest"
+    },
+    {
+      "value": "16",
+      "name": "IndexValues",
+      "doc": "Index values"
+    },
+    {
+      "value": "17",
+      "name": "MarginRates",
+      "doc": "Margin rates"
+    },
+    {
+      "value": "18",
+      "name": "Outages",
+      "doc": "Outages"
+    },
+    {
+      "value": "19",
+      "name": "ScheduledAuctions",
+      "doc": "Scheduled auctions"
+    },
+    {
+      "value": "20",
+      "name": "ReferencePrices",
+      "doc": "Reference prices"
+    },
+    {
+      "value": "21",
+      "name": "TradeValue",
+      "doc": "Trade value"
+    },
+    {
+      "value": "22",
+      "name": "MarketDataFeeItems",
+      "doc": "Market data fee items"
+    },
+    {
+      "value": "23",
+      "name": "Rebates",
+      "doc": "Rebates"
+    },
+    {
+      "value": "24",
+      "name": "Discounts",
+      "doc": "Discounts"
+    },
+    {
+      "value": "25",
+      "name": "Payments",
+      "doc": "Payments"
+    },
+    {
+      "value": "26",
+      "name": "Taxes",
+      "doc": "Taxes"
+    },
+    {
+      "value": "27",
+      "name": "Levies",
+      "doc": "Levies"
+    },
+    {
+      "value": "28",
+      "name": "Benefits",
+      "doc": "Benefits"
+    },
+    {
+      "value": "29",
+      "name": "Fees",
+      "doc": "Fees"
+    },
+    {
+      "value": "30",
+      "name": "OrdersRFQs",
+      "doc": "Orders and RFQs (Request for quotes)"
+    },
+    {
+      "value": "31",
+      "name": "MarketMakers",
+      "doc": "Market makers"
+    },
+    {
+      "value": "32",
+      "name": "TradingInterruptions",
+      "doc": "Trading interruptions"
+    },
+    {
+      "value": "33",
+      "name": "TradingSuspensions",
+      "doc": "Trading suspensions"
+    },
+    {
+      "value": "34",
+      "name": "NoQuotes",
+      "doc": "No quotes"
+    },
+    {
+      "value": "35",
+      "name": "RequestForQuotes",
+      "doc": "Request for quotes"
+    },
+    {
+      "value": "36",
+      "name": "TradeVolume",
+      "doc": "Trade volume"
+    }
+  ]
+}

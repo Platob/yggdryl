@@ -1,0 +1,50 @@
+{
+  "name": "tradehandlinginstrcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TradeConfirmation",
+      "doc": "Trade confirmation"
+    },
+    {
+      "value": "1",
+      "name": "TwoPartyReport",
+      "doc": "Two-party report"
+    },
+    {
+      "value": "2",
+      "name": "OnePartyReportForMatching",
+      "doc": "One-party report for matching"
+    },
+    {
+      "value": "3",
+      "name": "OnePartyReportForPassThrough",
+      "doc": "One-party report for pass through"
+    },
+    {
+      "value": "4",
+      "name": "AutomatedFloorOrderRouting",
+      "doc": "Automated floor order routing"
+    },
+    {
+      "value": "5",
+      "name": "TwoPartyReportForClaim",
+      "doc": "Two-party report for claim"
+    },
+    {
+      "value": "6",
+      "name": "OnePartyReport",
+      "doc": "One-party report"
+    },
+    {
+      "value": "7",
+      "name": "ThirdPtyRptForPassThrough",
+      "doc": "Third-party report for pass through"
+    },
+    {
+      "value": "8",
+      "name": "OnePartyReportAutoMatch",
+      "doc": "One-party report for auto-match"
+    }
+  ]
+}

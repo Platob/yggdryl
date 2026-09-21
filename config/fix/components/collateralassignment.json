@@ -720,6 +720,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "AY",
     "FIX:tag": "720980",
     "description": "MsgType = AY",

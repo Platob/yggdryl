@@ -1,0 +1,55 @@
+{
+  "name": "tradsesstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "1",
+      "name": "Halted",
+      "doc": "Halted"
+    },
+    {
+      "value": "2",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "3",
+      "name": "Closed",
+      "doc": "Closed"
+    },
+    {
+      "value": "4",
+      "name": "PreOpen",
+      "doc": "Pre-Open"
+    },
+    {
+      "value": "5",
+      "name": "PreClose",
+      "doc": "Pre-Close"
+    },
+    {
+      "value": "6",
+      "name": "RequestRejected",
+      "doc": "Request Rejected"
+    },
+    {
+      "value": "7",
+      "name": "Outage",
+      "doc": "Outage"
+    },
+    {
+      "value": "8",
+      "name": "PartialOutage",
+      "doc": "Partial outage"
+    },
+    {
+      "value": "9",
+      "name": "Delayed",
+      "doc": "Delayed"
+    }
+  ]
+}

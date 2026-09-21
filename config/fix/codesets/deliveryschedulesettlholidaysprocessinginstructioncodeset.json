@@ -1,0 +1,15 @@
+{
+  "name": "deliveryschedulesettlholidaysprocessinginstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "DoNotIncludeHolidays",
+      "doc": "Do not include holidays"
+    },
+    {
+      "value": "1",
+      "name": "IncludeHolidays",
+      "doc": "Include holidays"
+    }
+  ]
+}

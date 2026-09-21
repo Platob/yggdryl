@@ -1,0 +1,40 @@
+{
+  "name": "provisioncashsettlmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CashPrice",
+      "doc": "Cash price"
+    },
+    {
+      "value": "1",
+      "name": "CashPriceAlternate",
+      "doc": "Cash price alternate"
+    },
+    {
+      "value": "2",
+      "name": "ParYieldCurveAdjusted",
+      "doc": "Par yield curve adjusted"
+    },
+    {
+      "value": "3",
+      "name": "ZeroCouponYieldCurveAdjusted",
+      "doc": "Zero coupon yield curve adjusted"
+    },
+    {
+      "value": "4",
+      "name": "ParYieldCurveUnadjusted",
+      "doc": "Par yield curve unadjusted"
+    },
+    {
+      "value": "5",
+      "name": "CrossCurrency",
+      "doc": "Cross currency"
+    },
+    {
+      "value": "6",
+      "name": "CollateralizedPrice",
+      "doc": "Collateralized price"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "name": "pegpricetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "LastPeg",
+      "doc": "Last peg (last sale)"
+    },
+    {
+      "value": "2",
+      "name": "MidPricePeg",
+      "doc": "Mid-price peg (midprice of inside quote)"
+    },
+    {
+      "value": "3",
+      "name": "OpeningPeg",
+      "doc": "Opening peg"
+    },
+    {
+      "value": "4",
+      "name": "MarketPeg",
+      "doc": "Market peg"
+    },
+    {
+      "value": "5",
+      "name": "PrimaryPeg",
+      "doc": "Primary peg (primary market - buy at bid or sell at offer)"
+    },
+    {
+      "value": "7",
+      "name": "PegToVWAP",
+      "doc": "Peg to VWAP"
+    },
+    {
+      "value": "8",
+      "name": "TrailingStopPeg",
+      "doc": "Trailing Stop Peg"
+    },
+    {
+      "value": "9",
+      "name": "PegToLimitPrice",
+      "doc": "Peg to Limit Price"
+    },
+    {
+      "value": "10",
+      "name": "ShortSaleMinPricePeg",
+      "doc": "Short sale minimum price Peg"
+    },
+    {
+      "value": "6",
+      "name": "FixedPegToLocalBestBidOrOfferAtTimeOfOrder"
+    }
+  ]
+}

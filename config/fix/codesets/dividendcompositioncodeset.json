@@ -1,0 +1,15 @@
+{
+  "name": "dividendcompositioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "EquityAmountReceiver",
+      "doc": "Equity amount receiver election"
+    },
+    {
+      "value": "1",
+      "name": "CalculationAgent",
+      "doc": "Calculation agent election"
+    }
+  ]
+}

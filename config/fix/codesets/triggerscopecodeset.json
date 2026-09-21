@@ -1,0 +1,35 @@
+{
+  "name": "triggerscopecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ThisOrder",
+      "doc": "This order (default)"
+    },
+    {
+      "value": "1",
+      "name": "OtherOrder",
+      "doc": "Other order (use RefID)"
+    },
+    {
+      "value": "2",
+      "name": "AllOtherOrdersForGivenSecurity",
+      "doc": "All other orders for the given security"
+    },
+    {
+      "value": "3",
+      "name": "AllOtherOrdersForGivenSecurityAndPrice",
+      "doc": "All other orders for the given security and price"
+    },
+    {
+      "value": "4",
+      "name": "AllOtherOrdersForGivenSecurityAndSide",
+      "doc": "All other orders for the given security and side"
+    },
+    {
+      "value": "5",
+      "name": "AllOtherOrdersForGivenSecurityPriceAndSide",
+      "doc": "All other orders for the given security, price and side"
+    }
+  ]
+}

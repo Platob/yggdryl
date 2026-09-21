@@ -1,0 +1,25 @@
+{
+  "name": "marketmakeractivitycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoParticipation",
+      "doc": "No participation"
+    },
+    {
+      "value": "1",
+      "name": "BuyParticipation",
+      "doc": "Buy participation"
+    },
+    {
+      "value": "2",
+      "name": "SellParticipation",
+      "doc": "Sell participation"
+    },
+    {
+      "value": "3",
+      "name": "BothBuyAndSellParticipation",
+      "doc": "Both buy and sell participation"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "marketsegmenttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Pool",
+      "doc": "Pool"
+    },
+    {
+      "value": "2",
+      "name": "Retail",
+      "doc": "Retail"
+    },
+    {
+      "value": "3",
+      "name": "Wholesale",
+      "doc": "Wholesale"
+    }
+  ]
+}

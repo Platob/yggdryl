@@ -1,0 +1,20 @@
+{
+  "name": "transfertypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RequestTransfer",
+      "doc": "Request transfer"
+    },
+    {
+      "value": "1",
+      "name": "AcceptTransfer",
+      "doc": "Accept transfer"
+    },
+    {
+      "value": "2",
+      "name": "DeclineTransfer",
+      "doc": "Decline transfer"
+    }
+  ]
+}

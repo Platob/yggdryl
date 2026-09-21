@@ -1,0 +1,20 @@
+{
+  "name": "crossprioritizationcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "BuySideIsPrioritized",
+      "doc": "Buy side is prioritized"
+    },
+    {
+      "value": "2",
+      "name": "SellSideIsPrioritized",
+      "doc": "Sell side is prioritized"
+    }
+  ]
+}

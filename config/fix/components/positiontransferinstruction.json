@@ -307,6 +307,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "DL",
     "FIX:tag": "351138",
     "description": "MsgType = DL",

@@ -135,6 +135,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PRTY",
     "FIX:msgtype": "CY",
     "FIX:tag": "810627",
     "description": "MsgType = CY",

@@ -79,15 +79,17 @@
 //! it beside what it would have kept of a compiled list, and every door -
 //! the enrichment and the row fill alike - answers it until a field changes.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::iter::FusedIterator;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::vec;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
-use crate::graph::{Element, EventIterator};
+use crate::graph::instrument::InstrumentCodes;
+use crate::graph::iterator::order;
+use crate::graph::{Element, Event, EventIterator};
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructType};
 
 use super::msg::FixMsg;
@@ -109,6 +111,11 @@ struct Derivation {
     reads: Vec<usize>,
     /// The target's column in the working schema.
     slot: usize,
+    /// What the term answers over a row stating nothing it reads, probed
+    /// once at compile: a term is a function of the columns it reads, so a
+    /// message stating none of them answers exactly this - which for most
+    /// derivations over most messages is nothing - without an evaluation.
+    unread_answer: Option<Scalar>,
 }
 
 impl Derivation {
@@ -323,13 +330,19 @@ impl Derivations {
                     &"the working schema lacks the derived column",
                 ));
             };
-            list.push(Derivation {
+            let mut derivation = Derivation {
                 tag,
                 field,
                 bound,
                 reads,
                 slot,
-            });
+                unread_answer: None,
+            };
+            // Through the one door every answer takes, so the decimal
+            // restatement and the field's refusal are part of the probe.
+            let unread = vec![Scalar::Null; inputs.len()];
+            derivation.unread_answer = derivation.answer(&unread);
+            list.push(derivation);
         }
         // The registry iterates tag-major already; stated here so the sweep
         // order is this list's contract rather than the iteration's.
@@ -394,12 +407,16 @@ impl Derivations {
         // last sweep wrote answers what it answered then: a later sweep
         // evaluates only the derivations reading a column that moved, and
         // the first evaluates every one.
-        let mut moved: Vec<bool> = Vec::new();
+        // Two buffers for every sweep of the message rather than one per
+        // sweep: the last sweep's writes are read while this sweep's are
+        // marked, and the two swap places at its end.
+        let mut moved: Vec<bool> = vec![false; self.inputs.len()];
+        let mut wrote: Vec<bool> = vec![false; self.inputs.len()];
         // A productive sweep fills at least one target and a filled target
         // is never revisited, so the derivation count bounds the sweeps; the
         // one past it is the sweep that writes nothing.
         for sweep in 0..=self.list.len() {
-            let mut wrote: Vec<bool> = vec![false; self.inputs.len()];
+            wrote.fill(false);
             let mut any = false;
             for derivation in &self.list {
                 // A stated value is never overwritten, which is what makes
@@ -411,7 +428,15 @@ impl Derivations {
                 if sweep > 0 && !derivation.reads.iter().any(|at| moved[*at]) {
                     continue;
                 }
-                let Some(value) = derivation.answer(&row) else {
+                // A term is a function of the columns it reads: over a row
+                // stating none of them it answers what the probe answered,
+                // and the evaluation is skipped.
+                let answer = if derivation.reads.iter().all(|at| row[*at].is_null()) {
+                    derivation.unread_answer.clone()
+                } else {
+                    derivation.answer(&row)
+                };
+                let Some(value) = answer else {
                     continue;
                 };
                 row[derivation.slot] = value.clone();
@@ -428,7 +453,7 @@ impl Derivations {
             if !any {
                 break;
             }
-            moved = wrote;
+            std::mem::swap(&mut moved, &mut wrote);
         }
         if landed.is_empty() {
             return Ok(());
@@ -506,26 +531,6 @@ impl Refused {
     }
 }
 
-/// The fields the arrival record names that the message no longer holds.
-///
-/// A row is a projection. [`fix_schema`](super::fix_schema) names a column
-/// for the tags a book, a blotter, a quote feed and a monitor read, and a
-/// field outside that list reaches a message rebuilt from a row only through
-/// the arrival record - which the row carries whole, under
-/// [`FIXENTRIES_COLUMN`](super::schema::FIXENTRIES_COLUMN), whatever the columns
-/// made of it. `ExecBroker(76)` and `ClientID(109)` are two such fields, and
-/// the replacements that restate them write the `parties` group and its
-/// `NoPartyIDs(453)` counter, which do have columns. A pass reading only the
-/// columns would therefore answer two parties on the line door and none on
-/// the batch door for one message, which is the one thing the two doors may
-/// never do.
-///
-/// So the pass opens on the record rather than on the columns, and it costs
-/// nothing where nothing was dropped: a message parsed from a line already
-/// holds a child for every tag its record names, so the walk writes nothing
-/// and allocates nothing. Only a tag the message holds no child for at all is
-/// taken - a stated null is a child, and a message that said "nothing sent"
-/// said it.
 /// Fills what `msg` implies, leaving what it stated alone.
 ///
 /// Four steps in order, and the last step of every parse. The message is
@@ -543,7 +548,8 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads by canonical name, and a child stored under an alias
     // is invisible until it has been canonicalized.
-    let mut held = super::latest::restate(msg)?;
+    let mut held = msg;
+    super::latest::restate(&mut held)?;
     // The derivations, compiled and bound once per registry; a refused
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.
@@ -563,104 +569,174 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     Ok(held)
 }
 
-/// The errors a stream met, kept aside while the walk reads past them.
-type Failures = Arc<Mutex<VecDeque<Error>>>;
-
-/// A stream of messages walked: the one [`EventIterator`] over the messages
-/// in the order they come, so each is stated as the message after the live
-/// one it follows.
-///
-/// The walk reads elements and not results, so a source error is kept
-/// aside while the walk reads past it and yielded before the message the
-/// walk pulled past it, which keeps the order the source had. A failure
-/// never advances the walk.
-pub(super) struct Walked<I> {
-    walk: EventIterator<FixMsg, Sieve<I>>,
-    failures: Failures,
-    /// The message the walk pulled while a failure was met, owed after it.
-    pending: Option<FixMsg>,
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum DeliveryKey {
+    Session {
+        beginstring: SmolStr,
+        sender: SmolStr,
+        target: SmolStr,
+        sender_sub: Option<SmolStr>,
+        target_sub: Option<SmolStr>,
+        sender_location: Option<SmolStr>,
+        target_location: Option<SmolStr>,
+        capture_session: Option<SmolStr>,
+        sequence: u64,
+        original_time: i64,
+        content: u64,
+    },
+    /// A headerless bridge row can only prove an exact repeated event. Its
+    /// capture facts keep equal content observed in distinct contexts apart.
+    Exact {
+        uuid: crate::Uuid,
+        content: u64,
+        sequence: Option<u64>,
+        capture_session: Option<SmolStr>,
+        capture_context: Option<SmolStr>,
+        direction: Option<SmolStr>,
+    },
 }
 
-/// The source read as messages, its failures kept aside.
-struct Sieve<I> {
-    source: I,
-    failures: Failures,
+fn text(message: &FixMsg, tag: i32) -> Option<SmolStr> {
+    message
+        .get_by_tag(tag)
+        .and_then(|value| value.as_str().map(SmolStr::new))
 }
 
-fn failed(failures: &Failures) -> Option<Error> {
-    failures
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .pop_front()
+fn delivery_key(message: &FixMsg) -> DeliveryKey {
+    let header = message.header();
+    let content = message.get_currhashcode();
+    let capture_session = message.capture().msgsessionid().map(SmolStr::new);
+    let (Some(sender), Some(target), Some(sequence)) = (
+        header.sendercompid(),
+        header.targetcompid(),
+        header.msgseqnum(),
+    ) else {
+        return DeliveryKey::Exact {
+            uuid: message.get_curruuid(),
+            content,
+            sequence: header.msgseqnum(),
+            capture_session,
+            capture_context: message.capture().msgctxid().map(SmolStr::new),
+            direction: header.msgdirection().map(SmolStr::new),
+        };
+    };
+    let replay = header.possdupflag() == Some(true)
+        || message.get_by_tag(97).is_some_and(|value| {
+            value.as_bool() == Some(true)
+                || value
+                    .as_str()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("Y"))
+        });
+    let sending_time = if header.stated_sendingtime() {
+        header.sendingtime()
+    } else {
+        message.get_currunix()
+    };
+    let original_time = if replay {
+        message
+            .get_by_tag(122)
+            .and_then(|value| value.temporal_count_at(crate::TimeUnit::Nanosecond))
+            .unwrap_or(sending_time)
+    } else {
+        sending_time
+    };
+    DeliveryKey::Session {
+        beginstring: SmolStr::new(header.beginstring()),
+        sender: SmolStr::new(sender),
+        target: SmolStr::new(target),
+        sender_sub: text(message, 50),
+        target_sub: text(message, 57),
+        sender_location: text(message, 142),
+        target_location: text(message, 143),
+        capture_session,
+        sequence,
+        original_time,
+        content,
+    }
 }
 
-impl<I> Iterator for Sieve<I>
-where
-    I: Iterator<Item = Result<FixMsg>>,
-{
+/// Sorted messages prepared in lifecycle order: retransmissions removed and
+/// missing instrument codes learned only from messages already observed.
+struct Prepared {
+    source: vec::IntoIter<FixMsg>,
+    codes: InstrumentCodes,
+    /// At most one key per distinct delivery in this already collected finite
+    /// capture. A late retransmission must remain a repeat after any number of
+    /// intervening deliveries; retaining only a recent window loses that fact.
+    seen: HashSet<DeliveryKey>,
+}
+
+impl Prepared {
+    fn new(source: Vec<FixMsg>) -> Self {
+        // Reserve a small capture once, without reserving a giant repeated
+        // capture's upper bound. Growth beyond this hint follows unique keys.
+        let capacity = source.len().min(4_096);
+        Self {
+            source: source.into_iter(),
+            codes: InstrumentCodes::default(),
+            seen: HashSet::with_capacity(capacity),
+        }
+    }
+}
+
+impl Iterator for Prepared {
     type Item = FixMsg;
 
     fn next(&mut self) -> Option<FixMsg> {
         loop {
-            match self.source.next()? {
-                Ok(message) => return Some(message),
-                Err(error) => self
-                    .failures
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push_back(error),
+            let mut message = self.source.next()?;
+            if !self.seen.insert(delivery_key(&message)) {
+                continue;
+            }
+            self.codes.enrich(&mut message);
+            return Some(message);
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, self.source.size_hint().1)
+    }
+}
+
+impl FusedIterator for Prepared {}
+
+/// A finite capture walked in event-time order. Intake failures are reported
+/// before messages because sorting necessarily consumes the capture first.
+pub(super) struct Walked {
+    walk: EventIterator<FixMsg, Prepared>,
+    failures: VecDeque<Error>,
+}
+
+impl Walked {
+    pub(super) fn new<I>(source: I, snapshot_ns: i64) -> Self
+    where
+        I: Iterator<Item = Result<FixMsg>>,
+    {
+        let mut messages = Vec::new();
+        let mut failures = VecDeque::new();
+        for held in source {
+            match held {
+                Ok(message) => messages.push(message),
+                Err(error) => failures.push_back(error),
             }
         }
-    }
-}
-
-impl<I> Walked<I>
-where
-    I: Iterator<Item = Result<FixMsg>>,
-{
-    pub(super) fn new(source: I) -> Self {
-        // Collected and sorted by instant, not streamed: a capture's order is
-        // the order its lines were written, and a message's instant is the
-        // clock it states, so two messages of one chain routinely arrive out
-        // of their own order and a walk over the stream would refuse to chain
-        // them.
-        Self::over(source, false)
-    }
-
-    fn over(source: I, sorted: bool) -> Self {
-        let failures: Failures = Arc::new(Mutex::new(VecDeque::new()));
-        let sieve = Sieve {
-            source,
-            failures: Arc::clone(&failures),
-        };
+        messages.sort_by(order);
         Self {
-            walk: EventIterator::new(sieve, sorted),
+            walk: EventIterator::new(Prepared::new(messages), true).with_snapshot_ns(snapshot_ns),
             failures,
-            pending: None,
         }
     }
 }
 
-impl<I> Iterator for Walked<I>
-where
-    I: Iterator<Item = Result<FixMsg>>,
-{
+impl Iterator for Walked {
     type Item = Result<FixMsg>;
 
     fn next(&mut self) -> Option<Result<FixMsg>> {
-        if let Some(error) = failed(&self.failures) {
+        if let Some(error) = self.failures.pop_front() {
             return Some(Err(error));
         }
-        if let Some(message) = self.pending.take() {
-            return Some(Ok(message));
-        }
-        let next = self.walk.next();
-        if let Some(error) = failed(&self.failures) {
-            self.pending = next;
-            return Some(Err(error));
-        }
-        next.map(Ok)
+        self.walk.next().map(Ok)
     }
 }
 
-impl<I> FusedIterator for Walked<I> where I: Iterator<Item = Result<FixMsg>> {}
+impl FusedIterator for Walked {}

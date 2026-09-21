@@ -1,0 +1,125 @@
+{
+  "name": "paymentscheduletypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Notional",
+      "doc": "Notional"
+    },
+    {
+      "value": "1",
+      "name": "CashFlow",
+      "doc": "Cash flow"
+    },
+    {
+      "value": "2",
+      "name": "FXLinkedNotional",
+      "doc": "FX linked notional"
+    },
+    {
+      "value": "3",
+      "name": "FixedRate",
+      "doc": "Fixed rate"
+    },
+    {
+      "value": "4",
+      "name": "FutureValueNotional",
+      "doc": "Future value notional"
+    },
+    {
+      "value": "5",
+      "name": "KnownAmount",
+      "doc": "Known amount"
+    },
+    {
+      "value": "6",
+      "name": "FloatingRateMultiplier",
+      "doc": "Floating rate multiplier"
+    },
+    {
+      "value": "7",
+      "name": "Spread",
+      "doc": "Spread"
+    },
+    {
+      "value": "8",
+      "name": "CapRate",
+      "doc": "Cap rate"
+    },
+    {
+      "value": "9",
+      "name": "FloorRate",
+      "doc": "Floor rate"
+    },
+    {
+      "value": "10",
+      "name": "NonDeliverableSettlPaymentDates",
+      "doc": "Non-deliverable settlement payment dates"
+    },
+    {
+      "value": "11",
+      "name": "NonDeliverableSettlCalculationDates",
+      "doc": "Non-deliverable settlement calculation dates"
+    },
+    {
+      "value": "12",
+      "name": "NonDeliverableFXFixingDates",
+      "doc": "Non-deliverable fixing dates."
+    },
+    {
+      "value": "13",
+      "name": "SettlPeriodNotnl",
+      "doc": "Settlement period notional"
+    },
+    {
+      "value": "14",
+      "name": "SettlPeriodPx",
+      "doc": "Settlement period price"
+    },
+    {
+      "value": "15",
+      "name": "CalcPeriod",
+      "doc": "Calculation period"
+    },
+    {
+      "value": "16",
+      "name": "DividendAccrualRateMultiplier",
+      "doc": "Dividend accrual rate multiplier"
+    },
+    {
+      "value": "17",
+      "name": "DividendAccrualRateSpread",
+      "doc": "Dividend accrual rate spread"
+    },
+    {
+      "value": "18",
+      "name": "DividendAccrualCapRate",
+      "doc": "Dividend accrual cap rate"
+    },
+    {
+      "value": "19",
+      "name": "DividendAccrualFloorRate",
+      "doc": "Dividend accrual floor rate"
+    },
+    {
+      "value": "20",
+      "name": "CompoundingRateMultiplier",
+      "doc": "Compounding rate multiplier"
+    },
+    {
+      "value": "21",
+      "name": "CompoundingRateSpread",
+      "doc": "Compounding rate spread"
+    },
+    {
+      "value": "22",
+      "name": "CompoundingCapRate",
+      "doc": "Compounding cap rate"
+    },
+    {
+      "value": "23",
+      "name": "CompoundingFloorRate",
+      "doc": "Compounding floor rate"
+    }
+  ]
+}

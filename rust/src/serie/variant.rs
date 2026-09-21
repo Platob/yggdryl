@@ -6,7 +6,7 @@
 //! [`VariantSerie::bytes`] lends that run where it lies.
 //!
 //! The encoding itself is [`crate::variant`]'s, reached through
-//! [`Scalar::into_variant_bytes`] and [`Scalar::decode_variant_bytes`] -
+//! [`Scalar::into_value_bytes`] and [`Scalar::decode_value_bytes`] -
 //! the same two the crate's own variant column is built and read by - so a
 //! column grows no second encoder and a row written here reads back byte
 //! for byte wherever else the encoding is read.
@@ -114,7 +114,7 @@ impl SerieValue for VariantSerie {
         let Some(bytes) = self.bytes(index) else {
             return Ok(Scalar::Null);
         };
-        Scalar::decode_variant_bytes(bytes)
+        Scalar::decode_value_bytes(bytes)
     }
 
     fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
@@ -124,7 +124,7 @@ impl SerieValue for VariantSerie {
             self.runs = self.rebuilt(Some(index), None);
             return Ok(());
         }
-        self.runs = self.rebuilt(Some(index), Some(&value.into_variant_bytes()));
+        self.runs = self.rebuilt(Some(index), Some(&value.into_value_bytes()));
         Ok(())
     }
 
@@ -134,7 +134,7 @@ impl SerieValue for VariantSerie {
             self.push_bytes(None);
             return Ok(());
         }
-        self.push_bytes(Some(&value.into_variant_bytes()));
+        self.push_bytes(Some(&value.into_value_bytes()));
         Ok(())
     }
 

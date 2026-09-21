@@ -47,20 +47,26 @@ pub(super) struct Memo {
     /// What one of the registry's own fields states about the values it
     /// takes, by the field's address in the registry.
     facts: Mutex<FixMap<usize, Arc<Facts>>>,
-    /// The wire value a text spells for a field at a version.
-    translations: Mutex<TextMap<Question, Option<SmolStr>>>,
+    /// The wire value a text spells for a field: by the field's address,
+    /// then by the text, so a question is asked with the text borrowed and
+    /// owns it only where the answer is first remembered.
+    translations: Mutex<Translations>,
     /// What the dictionary holds under one key.
     names: Mutex<TextMap<SmolStr, Lookup>>,
 }
 
-/// One translation asked: the field's address and the text.
-type Question = (usize, SmolStr);
+/// Every translation a field has answered, by the field's address.
+///
+/// Bounded per field at [`Memo::CAPACITY`] texts: a code set is a handful
+/// of spellings, and a field asked more distinct texts than that is being
+/// asked about values that are not codes.
+type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 
 /// What one field states about the values it takes, read off its metadata
 /// once: the spellings it declares as an absence, and its code set.
 pub(super) struct Facts {
     nulls: Box<[SmolStr]>,
-    codes: Option<Box<str>>,
+    codes: Option<Arc<str>>,
 }
 
 impl Facts {
@@ -69,6 +75,12 @@ impl Facts {
     /// answers with, over the spellings read off the field once.
     pub(super) fn is_null(&self, text: &str) -> bool {
         super::field::spells_absence(self.nulls.iter().map(SmolStr::as_str), text)
+    }
+
+    /// The document of the set this field reads by, as the dictionary held it
+    /// when the field was first asked about.
+    pub(super) fn codes(&self) -> Option<&str> {
+        self.codes.as_deref()
     }
 }
 
@@ -97,11 +109,19 @@ fn address(field: &Field) -> usize {
 /// How many memos have been numbered, which numbers the next.
 static MEMOS: AtomicU64 = AtomicU64::new(1);
 
+/// Remembers one translation under its text, while the field's table has
+/// room.
+fn remember(table: &mut TextMap<SmolStr, Option<SmolStr>>, text: &str, answer: &Option<SmolStr>) {
+    if table.len() < Memo::CAPACITY {
+        table.insert(SmolStr::new(text), answer.clone());
+    }
+}
+
 /// One thread's own copy of the answers it has read, by memo.
 #[derive(Default)]
-pub(super) struct Mirror {
+struct Mirror {
     facts: FixMap<u64, FixMap<usize, Arc<Facts>>>,
-    translations: FixMap<u64, TextMap<Question, Option<SmolStr>>>,
+    translations: FixMap<u64, Translations>,
     names: FixMap<u64, TextMap<SmolStr, Lookup>>,
 }
 
@@ -125,12 +145,6 @@ thread_local! {
     static MIRROR: RefCell<Mirror> = RefCell::new(Mirror::default());
 }
 
-/// This thread's mirror exchanged with `with`: how a thread that dies with
-/// its chunk hands what it has read to the one spawned for the next.
-pub(super) fn swap_mirror(with: &mut Mirror) {
-    MIRROR.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
-}
-
 impl Memo {
     /// How many answers each table remembers before it stops growing.
     pub(super) const CAPACITY: usize = 1 << 16;
@@ -140,7 +154,7 @@ impl Memo {
         Self {
             id: AtomicU64::new(MEMOS.fetch_add(1, Ordering::Relaxed)),
             facts: Mutex::new(FixMap::default()),
-            translations: Mutex::new(HashMap::with_hasher(Xxh64::new())),
+            translations: Mutex::new(Translations::default()),
             names: Mutex::new(HashMap::with_hasher(Xxh64::new())),
         }
     }
@@ -163,7 +177,11 @@ impl Memo {
 
     /// What `source`, a field the registry keeps, states about its values,
     /// read off its metadata the first time and remembered.
-    pub(super) fn facts(&self, source: &Field) -> Arc<Facts> {
+    pub(super) fn facts(
+        &self,
+        source: &Field,
+        codes: impl FnOnce() -> Option<Arc<str>>,
+    ) -> Arc<Facts> {
         let key = address(source);
         let id = self.id();
         let mirrored = MIRROR.with(|mirror| {
@@ -186,7 +204,10 @@ impl Memo {
                 let view = source.as_fix();
                 let facts = Arc::new(Facts {
                     nulls: view.nulls().map(SmolStr::new).collect(),
-                    codes: view.codes_document().map(Box::from),
+                    // The set the field names, resolved once here rather than
+                    // once per entry: a run translates a million spellings
+                    // through one document and looks its name up once.
+                    codes: codes(),
                 });
                 let mut table = held(&self.facts);
                 if table.len() < Self::CAPACITY {
@@ -206,44 +227,44 @@ impl Memo {
     }
 
     /// The wire value `text` spells for `source`, exactly as
-    /// [`FixField::code_value`](crate::FixField::code_value) answers it, read
+    /// [`FixCodeSet::code_value`](super::FixCodeSet::code_value) answers it, read
     /// once per distinct question. A field carrying no code set answers
     /// `None` without touching the table.
     pub(super) fn translation(&self, source: &Field, facts: &Facts, text: &str) -> Option<SmolStr> {
         let stored = facts.codes.as_deref()?;
-        let key = (address(source), SmolStr::new(text));
+        let key = address(source);
         let id = self.id();
+        // Asked with the text borrowed: a hit on the mirror, which is what
+        // every value after the first of its spelling is, owns nothing.
         let mirrored = MIRROR.with(|mirror| {
             mirror
                 .borrow()
                 .translations
                 .get(&id)
                 .and_then(|table| table.get(&key))
+                .and_then(|table| table.get(text))
                 .cloned()
         });
         if let Some(answer) = mirrored {
             return answer;
         }
-        let known = held(&self.translations).get(&key).cloned();
+        let known = held(&self.translations)
+            .get(&key)
+            .and_then(|table| table.get(text))
+            .cloned();
         let answer = match known {
             Some(answer) => answer,
             None => {
-                let answer = super::field::translate(stored, text).map(SmolStr::new);
+                let answer = super::codes::translate(stored, text).map(SmolStr::new);
                 let mut table = held(&self.translations);
-                if table.len() < Self::CAPACITY {
-                    table.insert(key.clone(), answer.clone());
-                }
+                remember(table.entry(key).or_default(), text, &answer);
                 answer
             }
         };
         MIRROR.with(|mirror| {
             let mut mirror = mirror.borrow_mut();
-            let table = table_of(&mut mirror.translations, id, || {
-                HashMap::with_hasher(Xxh64::new())
-            });
-            if table.len() < Self::CAPACITY {
-                table.insert(key, answer.clone());
-            }
+            let table = table_of(&mut mirror.translations, id, Translations::default);
+            remember(table.entry(key).or_default(), text, &answer);
         });
         answer
     }
@@ -283,5 +304,41 @@ impl Memo {
             }
         });
         answer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::DataType;
+
+    #[test]
+    fn field_facts_resolve_and_share_the_code_document_once_until_cleared() {
+        let memo = Memo::new();
+        let field = DataType::utf8().nullable_field("side");
+        let calls = Cell::new(0);
+        let first: Arc<str> = Arc::from(r#"[{"value":"1","name":"Buy"}]"#);
+        let supplied = || {
+            calls.set(calls.get() + 1);
+            Some(Arc::clone(&first))
+        };
+
+        let facts = memo.facts(&field, supplied);
+        let repeated = memo.facts(&field, supplied);
+        assert_eq!(calls.get(), 1);
+        assert!(Arc::ptr_eq(facts.codes.as_ref().unwrap(), &first));
+        assert!(Arc::ptr_eq(&facts, &repeated));
+
+        memo.clear();
+        let replacement: Arc<str> = Arc::from(r#"[{"value":"2","name":"Sell"}]"#);
+        let refreshed = memo.facts(&field, || {
+            calls.set(calls.get() + 1);
+            Some(Arc::clone(&replacement))
+        });
+        assert_eq!(calls.get(), 2);
+        assert!(Arc::ptr_eq(refreshed.codes.as_ref().unwrap(), &replacement));
+        assert!(!Arc::ptr_eq(&facts, &refreshed));
     }
 }

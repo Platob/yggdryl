@@ -1,0 +1,70 @@
+{
+  "name": "massactionreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "No special reason (default)"
+    },
+    {
+      "value": "1",
+      "name": "TradingRiskControl",
+      "doc": "Trading risk control"
+    },
+    {
+      "value": "2",
+      "name": "ClearingRiskControl",
+      "doc": "Clearing risk control"
+    },
+    {
+      "value": "3",
+      "name": "MarketMakerProtection",
+      "doc": "Market maker protection"
+    },
+    {
+      "value": "4",
+      "name": "StopTrading",
+      "doc": "Stop trading"
+    },
+    {
+      "value": "5",
+      "name": "EmergencyAction",
+      "doc": "Emergency action"
+    },
+    {
+      "value": "6",
+      "name": "SessionLossLogout",
+      "doc": "Session loss or logout"
+    },
+    {
+      "value": "7",
+      "name": "DuplicateLogin",
+      "doc": "Duplicate login"
+    },
+    {
+      "value": "8",
+      "name": "ProductNotTraded",
+      "doc": "Product not traded"
+    },
+    {
+      "value": "9",
+      "name": "InstrumentNotTraded",
+      "doc": "Instrument not traded"
+    },
+    {
+      "value": "10",
+      "name": "CompleInstrumentDeleted",
+      "doc": "Complex instrument deleted"
+    },
+    {
+      "value": "11",
+      "name": "CircuitBreakerActivated",
+      "doc": "Circuit breaker activated"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

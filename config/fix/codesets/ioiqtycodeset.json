@@ -1,0 +1,25 @@
+{
+  "name": "ioiqtycodeset",
+  "codes": [
+    {
+      "value": "S",
+      "name": "Small",
+      "doc": "Small"
+    },
+    {
+      "value": "M",
+      "name": "Medium",
+      "doc": "Medium"
+    },
+    {
+      "value": "L",
+      "name": "Large",
+      "doc": "Large"
+    },
+    {
+      "value": "U",
+      "name": "UndisclosedQuantity",
+      "doc": "Undisclosed Quantity"
+    }
+  ]
+}

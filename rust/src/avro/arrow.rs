@@ -86,6 +86,9 @@ fn dtype_from(
         return Ok((dtype, matches!(node, Node::Null)));
     }
     Ok(match node {
+        // A record the schema annotated as a variant is one value in the
+        // Parquet Variant encoding, not a struct of two byte columns.
+        Node::Record(record) if record.variant => (DataType::Variant, false),
         Node::Record(record) => struct_of(record, schema, visiting)?,
         Node::Array(items) => {
             let (item_type, nullable) = dtype_from(items, schema, visiting)?;
@@ -266,6 +269,32 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             let record_name = unique_name(name, counter);
             let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;
             record_json(&record_name, fields, counter)
+        }
+        // A variant is the record the Iceberg specification states for one:
+        // `metadata` and `value`, both `bytes`, read by name and carrying no
+        // field ids. The `logicalType` beside them is what names the record
+        // a variant when this reads it back; a reader that does not know the
+        // annotation reads the record, as the specification requires.
+        DataType::Variant => {
+            *counter += 1;
+            Scalar::from_struct([
+                ("type", Scalar::from("record")),
+                ("name", Scalar::from(unique_name(name, counter))),
+                ("logicalType", Scalar::from("variant")),
+                (
+                    "fields",
+                    Scalar::from_sequence([
+                        Scalar::from_struct([
+                            ("name", Scalar::from(crate::VARIANT_METADATA_FIELD)),
+                            ("type", Scalar::from("bytes")),
+                        ])?,
+                        Scalar::from_struct([
+                            ("name", Scalar::from(crate::VARIANT_VALUE_FIELD)),
+                            ("type", Scalar::from("bytes")),
+                        ])?,
+                    ]),
+                ),
+            ])
         }
         DataType::Sequence(SequenceType::List(item))
         | DataType::Sequence(SequenceType::LargeList(item)) => {

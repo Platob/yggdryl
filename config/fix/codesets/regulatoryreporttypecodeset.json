@@ -1,0 +1,213 @@
+{
+  "name": "regulatoryreporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RT",
+      "doc": "Real-time (RT)"
+    },
+    {
+      "value": "1",
+      "name": "PET",
+      "doc": "Primary economic terms (PET)"
+    },
+    {
+      "value": "2",
+      "name": "Snapshot",
+      "doc": "Snapshot"
+    },
+    {
+      "value": "3",
+      "name": "Confirmation",
+      "doc": "Confirmation"
+    },
+    {
+      "value": "4",
+      "name": "RTPET",
+      "doc": "Combination of RT and PET"
+    },
+    {
+      "value": "5",
+      "name": "PETConfirmation",
+      "doc": "Combination of PET and confirmation"
+    },
+    {
+      "value": "6",
+      "name": "RTPETConfirmation",
+      "doc": "Combination of RT, PET and confirmation"
+    },
+    {
+      "value": "7",
+      "name": "PostTrade",
+      "doc": "Post-trade valuation"
+    },
+    {
+      "value": "8",
+      "name": "Verification",
+      "doc": "Verification"
+    },
+    {
+      "value": "9",
+      "name": "PstTrdEvnt",
+      "doc": "Post-trade event"
+    },
+    {
+      "value": "10",
+      "name": "PstTrdEvntRTReportable",
+      "doc": "Post trade event RT reportable"
+    },
+    {
+      "value": "11",
+      "name": "LimitedDetailsTrade",
+      "aliases": [
+        "Lmtf"
+      ],
+      "doc": "Limited Details Trade"
+    },
+    {
+      "value": "12",
+      "name": "DailyAggregatedTrade",
+      "aliases": [
+        "Datf"
+      ],
+      "doc": "Daily Aggregated Trade"
+    },
+    {
+      "value": "13",
+      "name": "VolumeOmissionTrade",
+      "aliases": [
+        "Volo"
+      ],
+      "doc": "Volume Omission Trade"
+    },
+    {
+      "value": "14",
+      "name": "FourWeeksAggregationTrade",
+      "aliases": [
+        "Fwaf"
+      ],
+      "doc": "Four Weeks Aggregation Trade"
+    },
+    {
+      "value": "15",
+      "name": "IndefiniteAggregationTrade",
+      "aliases": [
+        "Idaf"
+      ],
+      "doc": "Indefinite Aggregation Trade"
+    },
+    {
+      "value": "16",
+      "name": "VolumeOmissionTradeEnrichment",
+      "aliases": [
+        "Volw"
+      ],
+      "doc": "Volume Omission Trade Eligible for Subsequent Aggregated Enrichment"
+    },
+    {
+      "value": "17",
+      "name": "FullDetailsLimitedDetailsTrade",
+      "aliases": [
+        "Fulf"
+      ],
+      "doc": "Full Details of \"Limited Details Trade\""
+    },
+    {
+      "value": "18",
+      "name": "FullDetailsDailyAggregatedTrade",
+      "aliases": [
+        "Fula"
+      ],
+      "doc": "Full Details of \"Daily Aggregated Trade\""
+    },
+    {
+      "value": "19",
+      "name": "FullDetailsVolumeOmissionTrade",
+      "aliases": [
+        "Fulv"
+      ],
+      "doc": "Full Details of \"Volume Omission Trade\""
+    },
+    {
+      "value": "20",
+      "name": "FullDetailsFourWeeksAggregationTrade",
+      "aliases": [
+        "Fulj"
+      ],
+      "doc": "Full Details of \"Four Weeks Aggregation Trade\""
+    },
+    {
+      "value": "21",
+      "name": "FullDetailsVolumeOmissionTradeEnrichment",
+      "aliases": [
+        "Coaf"
+      ],
+      "doc": "Full Details in Aggregated Form of \"Volume Omission Trade Eligible for Subsequent Aggregated Enrichment\""
+    },
+    {
+      "value": "22",
+      "name": "Order",
+      "doc": "Order"
+    },
+    {
+      "value": "23",
+      "name": "ChildOrder",
+      "doc": "Child order"
+    },
+    {
+      "value": "24",
+      "name": "OrderRoute",
+      "doc": "Order route"
+    },
+    {
+      "value": "25",
+      "name": "Trade",
+      "doc": "Trade"
+    },
+    {
+      "value": "26",
+      "name": "Quote",
+      "doc": "Quote"
+    },
+    {
+      "value": "27",
+      "name": "Supplement",
+      "doc": "Supplement"
+    },
+    {
+      "value": "28",
+      "name": "NewTransaction",
+      "doc": "New transaction"
+    },
+    {
+      "value": "29",
+      "name": "TransactionCorrection",
+      "doc": "Transaction correction"
+    },
+    {
+      "value": "30",
+      "name": "TransactionModification",
+      "doc": "Transaction modification"
+    },
+    {
+      "value": "31",
+      "name": "CollateralUpdate",
+      "doc": "Collateral update"
+    },
+    {
+      "value": "32",
+      "name": "MarginUpdate",
+      "doc": "Margin update"
+    },
+    {
+      "value": "33",
+      "name": "TransactionReportedInError",
+      "doc": "Transaction reported in error"
+    },
+    {
+      "value": "34",
+      "name": "TerminationEarlyTermination",
+      "doc": "Termination / Early termination"
+    }
+  ]
+}

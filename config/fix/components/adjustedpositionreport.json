@@ -167,6 +167,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "BL",
     "FIX:tag": "231397",
     "description": "MsgType = BL",

@@ -24,7 +24,7 @@ use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
 use yggdryl::expression::{Bound, Bounds};
-use yggdryl::{DataType, Expression, Field, Scalar, StructType, Term};
+use yggdryl::{DataType, Expression, Field, Plan, Scalar, StructType, Term};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
 const ROWS: usize = bench_profile::corpus(65_536, 16_384);
@@ -390,6 +390,86 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// A plan: the statement a caller runs, and the rule a FIX dictionary
+/// states - parsed, printed, hashed, and its condition bound under the
+/// parameters a rule is read with.
+///
+/// The FIX restatement reads a plan per rule per message: it parses each
+/// once per thread and binds each once per shape of root, so the parse and
+/// the bind here are what a cold thread pays, and the display and the hash
+/// are what a rule costs to name.
+fn plan_benchmarks(criterion: &mut Criterion) {
+    const STATEMENT: &str = "create trades (ccy utf8 not null, price decimal128(9, 2), size int64) \
+                             insert into lake.trades select ccy, price * 2 as amount, size \
+                             from (select * from 'file:///data/raw' where size > 0) \
+                             where ccy = 'EUR' and size > 500 order by price desc nulls last \
+                             limit 100 offset 10";
+    const RULE: &str = "select 'A' as ordercapacity where rule80a = 'A' and :msgtype = '8'";
+    let schema = schema();
+    let parsed: Plan = STATEMENT.parse().expect("the static statement must parse");
+    let rule: Plan = RULE.parse().expect("the static rule must parse");
+    let rule_schema = Field::new(
+        "row",
+        StructType::from_fields([
+            Field::new("rule80a", DataType::utf8(), true),
+            Field::new("ordercapacity", DataType::utf8(), true),
+            Field::new("side", DataType::utf8(), true),
+        ])
+        .map(DataType::from)
+        .unwrap(),
+        false,
+    );
+    let parameters = [("msgtype", Scalar::from("8")), ("group", Scalar::Null)];
+
+    let mut group = criterion.benchmark_group("expression_plan");
+    group.bench_function("parse/statement", |bencher| {
+        bencher.iter(|| {
+            black_box(STATEMENT)
+                .parse::<Plan>()
+                .expect("the static statement must parse")
+        });
+    });
+    group.bench_function("parse/rule", |bencher| {
+        bencher.iter(|| {
+            black_box(RULE)
+                .parse::<Plan>()
+                .expect("the static rule must parse")
+        });
+    });
+    group.bench_function("display/statement", |bencher| {
+        bencher.iter(|| black_box(&parsed).to_string());
+    });
+    group.bench_function("display/rule", |bencher| {
+        bencher.iter(|| black_box(&rule).to_string());
+    });
+    group.bench_function("stable_hash/statement", |bencher| {
+        bencher.iter(|| black_box(&parsed).stable_hash());
+    });
+    group.bench_function("stable_hash/rule", |bencher| {
+        bencher.iter(|| black_box(&rule).stable_hash());
+    });
+    group.bench_function("simplify/statement", |bencher| {
+        bencher.iter(|| black_box(&parsed).simplify());
+    });
+    group.bench_function("bind_with/rule_condition", |bencher| {
+        bencher.iter(|| {
+            black_box(&rule)
+                .filter_section()
+                .bind_with(black_box(&rule_schema), black_box(&parameters))
+                .expect("the rule's condition binds")
+        });
+    });
+    group.bench_function("bind/statement_filter", |bencher| {
+        bencher.iter(|| {
+            black_box(&parsed)
+                .filter_section()
+                .bind(black_box(&schema))
+                .expect("the statement's filter binds")
+        });
+    });
+    group.finish();
+}
+
 /// Pruning: the work a predicate does instead of reading anything at all.
 fn prune_benchmarks(criterion: &mut Criterion) {
     let schema = schema();
@@ -435,6 +515,7 @@ criterion_group!(
     apply_benchmarks,
     scalar_benchmarks,
     predicate_path_benchmarks,
+    plan_benchmarks,
     prune_benchmarks
 );
 criterion_main!(expression);

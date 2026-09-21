@@ -1,5 +1,7 @@
 //! What a field's value contract answers beside the field, and what it refuses.
 
+mod record;
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 

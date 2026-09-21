@@ -1,0 +1,180 @@
+{
+  "name": "posamttypecodeset",
+  "codes": [
+    {
+      "value": "CASH",
+      "name": "CashAmount",
+      "doc": "Cash amount (corporate event)"
+    },
+    {
+      "value": "CRES",
+      "name": "CashResidualAmount",
+      "doc": "Cash residual amount"
+    },
+    {
+      "value": "FMTM",
+      "name": "FinalMarkToMarketAmount",
+      "doc": "Final mark-to-market amount"
+    },
+    {
+      "value": "IMTM",
+      "name": "IncrementalMarkToMarketAmount",
+      "doc": "Incremental mark-to-market"
+    },
+    {
+      "value": "PREM",
+      "name": "PremiumAmount",
+      "doc": "Premium amount"
+    },
+    {
+      "value": "SMTM",
+      "name": "StartOfDayMarkToMarketAmount",
+      "doc": "Start of day mark-to-market"
+    },
+    {
+      "value": "TVAR",
+      "name": "TradeVariationAmount",
+      "doc": "Trade variation amount"
+    },
+    {
+      "value": "VADJ",
+      "name": "ValueAdjustedAmount",
+      "doc": "Value adjusted amount"
+    },
+    {
+      "value": "SETL",
+      "name": "SettlementValue",
+      "doc": "Settlement value"
+    },
+    {
+      "value": "ICPN",
+      "name": "InitialTradeCouponAmount",
+      "doc": "Initial trade coupon amount"
+    },
+    {
+      "value": "ACPN",
+      "name": "AccruedCouponAmount",
+      "doc": "Accrued coupon amount"
+    },
+    {
+      "value": "CPN",
+      "name": "CouponAmount",
+      "doc": "Coupon amount"
+    },
+    {
+      "value": "IACPN",
+      "name": "IncrementalAccruedCoupon",
+      "doc": "Incremental accrued coupon"
+    },
+    {
+      "value": "CMTM",
+      "name": "CollateralizedMarkToMarket",
+      "doc": "Collateralized mark-to-market"
+    },
+    {
+      "value": "ICMTM",
+      "name": "IncrementalCollateralizedMarkToMarket",
+      "doc": "Incremental collateralized mark-to-market"
+    },
+    {
+      "value": "DLV",
+      "name": "CompensationAmount",
+      "doc": "Compensation amount"
+    },
+    {
+      "value": "BANK",
+      "name": "TotalBankedAmount",
+      "doc": "Total banked amount"
+    },
+    {
+      "value": "COLAT",
+      "name": "TotalCollateralizedAmount",
+      "doc": "Total collateralized amount"
+    },
+    {
+      "value": "LSNV",
+      "name": "LongPairedSwapNotionalValue",
+      "doc": "Long paired swap or swaption notional value"
+    },
+    {
+      "value": "SSNV",
+      "name": "ShortPairedSwapNotionalValue",
+      "doc": "Short paired swap or swaption notional value"
+    },
+    {
+      "value": "SACPN",
+      "name": "StartOfDayAccruedCoupon",
+      "doc": "Start-of-day accrued coupon"
+    },
+    {
+      "value": "NPV",
+      "name": "NetPresentValue",
+      "doc": "Net present value"
+    },
+    {
+      "value": "SNPV",
+      "name": "StartOfDayNetPresentValue",
+      "doc": "Start-of-day net present value"
+    },
+    {
+      "value": "NCF",
+      "name": "NetCashFlow",
+      "doc": "Net cash flow"
+    },
+    {
+      "value": "PVFEES",
+      "name": "PresentValueOfFees",
+      "doc": "Present value of all fees"
+    },
+    {
+      "value": "PV01",
+      "name": "PresentValueOneBasisPoints",
+      "doc": "Present value of one basis points"
+    },
+    {
+      "value": "5YREN",
+      "name": "FiveYearEquivalentNotional",
+      "doc": "The five year equivalent notional amount"
+    },
+    {
+      "value": "UMTM",
+      "name": "UndiscountedMarkToMarket",
+      "doc": "Undiscounted mark-to-market"
+    },
+    {
+      "value": "MTD",
+      "name": "MarkToModel",
+      "doc": "Mark-to-model"
+    },
+    {
+      "value": "VMTM",
+      "name": "MarkToMarketVariance",
+      "doc": "Mark-to-market variance"
+    },
+    {
+      "value": "VMTD",
+      "name": "MarkToModelVariance",
+      "doc": "Mark-to-model variance"
+    },
+    {
+      "value": "UPFRNT",
+      "name": "UpfrontPayment",
+      "doc": "Upfront payment"
+    },
+    {
+      "value": "ENDV",
+      "name": "EndVale",
+      "doc": "End value"
+    },
+    {
+      "value": "MGNLN",
+      "name": "OutstandingMarginLoan",
+      "doc": "Outstanding margin loan"
+    },
+    {
+      "value": "LNVL",
+      "name": "LoanValue",
+      "doc": "Loan value"
+    }
+  ]
+}

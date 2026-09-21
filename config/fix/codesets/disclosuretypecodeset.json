@@ -1,0 +1,40 @@
+{
+  "name": "disclosuretypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Volume",
+      "doc": "Volume"
+    },
+    {
+      "value": "2",
+      "name": "Price",
+      "doc": "Price"
+    },
+    {
+      "value": "3",
+      "name": "Side",
+      "doc": "Side"
+    },
+    {
+      "value": "4",
+      "name": "AON",
+      "doc": "AON"
+    },
+    {
+      "value": "5",
+      "name": "General",
+      "doc": "General"
+    },
+    {
+      "value": "6",
+      "name": "ClearingAccount",
+      "doc": "Clearing account"
+    },
+    {
+      "value": "7",
+      "name": "CMTAAccount",
+      "doc": "CMTA account"
+    }
+  ]
+}

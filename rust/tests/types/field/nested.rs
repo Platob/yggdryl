@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, StructType, UnionMode};
+use yggdryl::{DataType, Error, Field, FieldPath, StructType, UnionMode};
 
 use super::typed::assert_typed_marker;
 
@@ -163,13 +163,14 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
 }
 
 #[test]
-fn a_path_resolves_by_name_before_it_decomposes() {
+fn a_path_uses_the_shared_grammar_for_routes_and_literal_names() {
     let row = StructType::from_fields([
         StructType::from_fields([DataType::Float64.required_field("price")])
             .map(DataType::from)
             .unwrap()
             .required_field("line"),
         DataType::Int64.required_field("a.b"),
+        DataType::Boolean.required_field("literal.name"),
     ])
     .map(DataType::from)
     .unwrap()
@@ -178,15 +179,23 @@ fn a_path_resolves_by_name_before_it_decomposes() {
     // A route through the graph.
     assert_eq!(row.field_by_path("line.price").unwrap().name(), "price");
 
-    // A child carrying the whole string wins over that route, so a name with a
-    // dot in it stays reachable.
-    assert_eq!(row.field_by_path("a.b").unwrap().dtype(), &DataType::Int64);
-    assert_eq!(row["a.b"].dtype(), &DataType::Int64);
+    // A dot is a route boundary. A literal dot in one name is quoted through
+    // the shared grammar, as is the equivalent text-key spelling.
+    assert!(row.get_field_by_path("a.b").is_none());
+    assert_eq!(
+        row.field_by_path(r#""a.b""#).unwrap().dtype(),
+        &DataType::Int64
+    );
+    assert_eq!(
+        row.field_by_path("['literal.name']").unwrap().dtype(),
+        &DataType::Boolean
+    );
+    assert_eq!(row[r#""a.b""#].dtype(), &DataType::Int64);
 
-    // `a.b` names a child but carries no `c`, and no other boundary resolves.
+    // The route names no root `a`, and the literal child carries no `c`.
     assert!(row.get_field_by_path("a.b.c").is_none());
 
-    // The same string does resolve when the route exists.
+    // Quoting keeps the literal name one segment before the route continues.
     let deep = StructType::from_fields([StructType::from_fields([
         DataType::utf8().required_field("c")
     ])
@@ -196,11 +205,43 @@ fn a_path_resolves_by_name_before_it_decomposes() {
     .map(DataType::from)
     .unwrap()
     .required_field("deep");
-    assert_eq!(deep.field_by_path("a.b.c").unwrap().name(), "c");
+    assert_eq!(deep.field_by_path(r#""a.b".c"#).unwrap().name(), "c");
+
+    // The same grammar addresses literal names for mutation. The stored name
+    // is the segment's value, never its quotes or the replacement's old name.
+    let mut changed = row.clone();
+    changed
+        .set_field_by_path(r#""a.b""#, DataType::utf8().required_field("replacement"))
+        .unwrap();
+    assert_eq!(changed[r#""a.b""#].dtype(), &DataType::utf8());
+    let removed = changed.remove_field_by_path(r#""a.b""#).unwrap();
+    assert_eq!(removed.name(), "a.b");
+    assert!(changed.get_field_by_path(r#""a.b""#).is_none());
 
     // A path naming nothing reports the children that do exist.
     let message = row.field_by_path("missing").unwrap_err().to_string();
     assert!(message.contains("line"), "{message}");
+}
+
+#[test]
+fn partition_names_are_exact_top_level_names() {
+    let row = StructType::from_fields([
+        DataType::Int64.required_field("a.b"),
+        StructType::from_fields([DataType::Float64.required_field("price")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("line"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+
+    let partitioned = row.with_partition_fields(&["a.b"]).unwrap();
+    assert_eq!(
+        partitioned.partition_field_names().collect::<Vec<_>>(),
+        ["a.b"]
+    );
+    assert!(row.with_partition_fields(&["line.price"]).is_err());
 }
 
 #[test]
@@ -241,6 +282,14 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
 
     // The item's own name still wins outright.
     assert_eq!(orders.field_by_path("orders.item").unwrap().name(), "item");
+    assert_eq!(
+        orders.field_by_path("orders[0].price").unwrap().name(),
+        "price"
+    );
+    assert_eq!(
+        orders.field_by_path("orders[-1].price").unwrap().name(),
+        "price"
+    );
 
     // A path that resolves through no child reports the path that failed.
     let message = orders
@@ -299,6 +348,122 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
     );
     assert_eq!(written["orders"].dtype().field_len(), 1);
     assert_eq!(written["orders"]["item"].field_len(), 1);
+}
+
+#[test]
+fn schema_path_refusals_are_located_and_mutations_are_atomic() {
+    let item = StructType::from_fields([DataType::Float64.required_field("price")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("item");
+    let row = StructType::from_fields([
+        StructType::from_fields([DataType::Float64.required_field("price")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("line"),
+        DataType::Int64.required_field("id"),
+        DataType::list(item).nullable_field("orders"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+
+    let malformed = row.field_by_path("line.").unwrap_err();
+    assert!(
+        matches!(
+            &malformed,
+            Error::Parse {
+                target: "field path",
+                position: 5,
+                ..
+            }
+        ),
+        "{malformed}"
+    );
+
+    // Boolean and null segments parse as predicates; a decimal is refused at
+    // the parser boundary because only a whole number can select a list item.
+    for path in ["orders[true].price", "orders[null].price"] {
+        assert!(FieldPath::from_str(path).is_ok(), "{path}");
+    }
+    assert!(matches!(
+        FieldPath::from_str("orders[1.5].price"),
+        Err(Error::Parse {
+            target: "field path",
+            ..
+        })
+    ));
+
+    // These parse as selectors or refuse at the same boundary, but none name
+    // one borrowed schema child.
+    for path in [
+        "line.price as px",
+        "orders[0:1].price",
+        "orders[price > 0].price",
+        "orders[true].price",
+        "orders[null].price",
+        "orders[1.5].price",
+    ] {
+        assert!(row.get_field_by_path(path).is_none(), "{path}");
+        assert!(row.field_by_path(path).is_err(), "{path}");
+    }
+
+    // A missing intermediate, a scalar intermediate, malformed syntax and a
+    // computed selection never become a new dotted child. Both mutations
+    // finish their validation before committing any rebuilt parent.
+    for path in [
+        "missing.price",
+        "line.missing.price",
+        "id.price",
+        "line.",
+        "line.price as px",
+        "orders[0:1].price",
+        "orders[price > 0].price",
+        "orders[true].price",
+        "orders[null].price",
+        "orders[1.5].price",
+    ] {
+        let mut set = row.clone();
+        assert!(
+            set.set_field_by_path(path, DataType::utf8().required_field("replacement"))
+                .is_err(),
+            "set {path}"
+        );
+        assert_eq!(set, row, "set {path} changed the schema");
+
+        let mut removed = row.clone();
+        assert!(removed.remove_field_by_path(path).is_err(), "remove {path}");
+        assert_eq!(removed, row, "remove {path} changed the schema");
+    }
+}
+
+#[test]
+fn a_map_key_is_not_a_borrowed_schema_child() {
+    let row = StructType::from_fields([DataType::map_of(DataType::utf8(), DataType::Int64, false)
+        .unwrap()
+        .required_field("mapping")])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+
+    assert_eq!(
+        row.field_by_path("mapping.entries.value").unwrap().name(),
+        "value"
+    );
+    let key = "mapping['entries']";
+    assert!(row.get_field_by_path(key).is_none());
+    assert!(row.field_by_path(key).is_err());
+
+    let mut set = row.clone();
+    assert!(
+        set.set_field_by_path(key, DataType::utf8().required_field("replacement"))
+            .is_err()
+    );
+    assert_eq!(set, row);
+
+    let mut removed = row.clone();
+    assert!(removed.remove_field_by_path(key).is_err());
+    assert_eq!(removed, row);
 }
 
 #[test]
@@ -504,7 +669,7 @@ fn merging_reaches_into_every_nested_layout() {
     let merged = deep(DataType::Int32)
         .merge_with(&deep(DataType::Int64), true)
         .unwrap();
-    assert_eq!(merged["in"]["n"].dtype(), &DataType::Int64);
+    assert_eq!(merged[r#""in""#]["n"].dtype(), &DataType::Int64);
 }
 
 #[test]

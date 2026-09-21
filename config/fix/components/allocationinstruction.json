@@ -1199,6 +1199,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "allocid,secondaryallocid,refallocid",
+    "FIX:msgcat": "ALLO",
     "FIX:msgtype": "J",
     "FIX:tag": "424150",
     "description": "MsgType = J",

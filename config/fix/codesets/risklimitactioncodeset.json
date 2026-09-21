@@ -1,0 +1,60 @@
+{
+  "name": "risklimitactioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "QueueInbound",
+      "doc": "Queue inbound"
+    },
+    {
+      "value": "1",
+      "name": "QueueOutbound",
+      "doc": "Queue outbound"
+    },
+    {
+      "value": "2",
+      "name": "Reject",
+      "doc": "Reject"
+    },
+    {
+      "value": "3",
+      "name": "Disconnect",
+      "doc": "Disconnect"
+    },
+    {
+      "value": "4",
+      "name": "Warning",
+      "doc": "Warning"
+    },
+    {
+      "value": "5",
+      "name": "PingCreditCheckWithRevalidation",
+      "doc": "Ping credit check model with revalidation"
+    },
+    {
+      "value": "6",
+      "name": "PingCreditCheckNoRevalidation",
+      "doc": "Ping credit check model without revalidation"
+    },
+    {
+      "value": "7",
+      "name": "PushCreditCheckWithRevalidation",
+      "doc": "Push credit check model with revalidation"
+    },
+    {
+      "value": "8",
+      "name": "PushCreditCheckNoRevalidation",
+      "doc": "Push credit check model without revalidation"
+    },
+    {
+      "value": "9",
+      "name": "Suspend",
+      "doc": "Suspend"
+    },
+    {
+      "value": "10",
+      "name": "HaltTrading",
+      "doc": "Halt trading"
+    }
+  ]
+}

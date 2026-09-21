@@ -1,0 +1,35 @@
+{
+  "name": "complexeventperiodtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AsianOut",
+      "doc": "Asian Out"
+    },
+    {
+      "value": "1",
+      "name": "AsianIn",
+      "doc": "Asian In"
+    },
+    {
+      "value": "2",
+      "name": "BarrierCap",
+      "doc": "Barrier Cap"
+    },
+    {
+      "value": "3",
+      "name": "BarrierFloor",
+      "doc": "Barrier Floor"
+    },
+    {
+      "value": "4",
+      "name": "KnockOut",
+      "doc": "Knock Out"
+    },
+    {
+      "value": "5",
+      "name": "KnockIn",
+      "doc": "Knock In"
+    }
+  ]
+}

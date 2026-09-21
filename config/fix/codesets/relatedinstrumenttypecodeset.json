@@ -1,0 +1,35 @@
+{
+  "name": "relatedinstrumenttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "HedgesForInstrument",
+      "doc": "\"hedges for\" instrument"
+    },
+    {
+      "value": "2",
+      "name": "Underlier",
+      "doc": "Underlier"
+    },
+    {
+      "value": "3",
+      "name": "EquityEquivalent",
+      "doc": "Equity equivalent"
+    },
+    {
+      "value": "4",
+      "name": "NearestExchangeTradedContract",
+      "doc": "Nearest exchange traded contract"
+    },
+    {
+      "value": "5",
+      "name": "RetailEquivalent",
+      "doc": "Retail equivalent of wholesale instrument"
+    },
+    {
+      "value": "6",
+      "name": "Leg",
+      "doc": "Leg"
+    }
+  ]
+}

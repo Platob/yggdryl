@@ -1,0 +1,20 @@
+{
+  "name": "adjustmentcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "2",
+      "name": "Error",
+      "doc": "Error"
+    },
+    {
+      "value": "3",
+      "name": "Correction",
+      "doc": "Correction"
+    }
+  ]
+}

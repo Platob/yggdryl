@@ -1,0 +1,80 @@
+{
+  "name": "allocstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted (successfully processed)"
+    },
+    {
+      "value": "1",
+      "name": "BlockLevelReject",
+      "doc": "Block level reject"
+    },
+    {
+      "value": "2",
+      "name": "AccountLevelReject",
+      "doc": "Account level reject"
+    },
+    {
+      "value": "3",
+      "name": "Received",
+      "doc": "Received (received not yet processed)"
+    },
+    {
+      "value": "4",
+      "name": "Incomplete",
+      "doc": "Incomplete"
+    },
+    {
+      "value": "5",
+      "name": "RejectedByIntermediary",
+      "doc": "Rejected by intermediary"
+    },
+    {
+      "value": "6",
+      "name": "AllocationPending",
+      "doc": "Allocation pending"
+    },
+    {
+      "value": "7",
+      "name": "Reversed",
+      "doc": "Reversed"
+    },
+    {
+      "value": "8",
+      "name": "CancelledByIntermediary",
+      "doc": "Cancelled by intermediary"
+    },
+    {
+      "value": "9",
+      "name": "Claimed",
+      "doc": "Claimed"
+    },
+    {
+      "value": "10",
+      "name": "Refused",
+      "doc": "Refused"
+    },
+    {
+      "value": "11",
+      "name": "PendingGiveUpApproval",
+      "doc": "Pending give-up approval"
+    },
+    {
+      "value": "12",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    },
+    {
+      "value": "13",
+      "name": "PendingTakeUpApproval",
+      "doc": "Pending take-up approval"
+    },
+    {
+      "value": "14",
+      "name": "ReversalPending",
+      "doc": "Reversal pending"
+    }
+  ]
+}

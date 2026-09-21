@@ -1,0 +1,65 @@
+{
+  "name": "legsettltypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Regular",
+      "doc": "Regular / FX Spot settlement (T+1 or T+2 depending on currency)"
+    },
+    {
+      "value": "1",
+      "name": "Cash",
+      "doc": "Cash (TOD / T+0)"
+    },
+    {
+      "value": "2",
+      "name": "NextDay",
+      "doc": "Next Day (TOM / T+1)"
+    },
+    {
+      "value": "3",
+      "name": "TPlus2",
+      "doc": "T+2"
+    },
+    {
+      "value": "4",
+      "name": "TPlus3",
+      "doc": "T+3"
+    },
+    {
+      "value": "5",
+      "name": "TPlus4",
+      "doc": "T+4"
+    },
+    {
+      "value": "6",
+      "name": "Future",
+      "doc": "Future"
+    },
+    {
+      "value": "7",
+      "name": "WhenAndIfIssued",
+      "doc": "When And If Issued"
+    },
+    {
+      "value": "8",
+      "name": "SellersOption",
+      "doc": "Sellers Option"
+    },
+    {
+      "value": "9",
+      "name": "TPlus5",
+      "doc": "T+5"
+    },
+    {
+      "value": "B",
+      "name": "BrokenDate",
+      "doc": "Broken date"
+    },
+    {
+      "value": "C",
+      "name": "FXSpotNextSettlement",
+      "doc": "FX Spot Next settlement (Spot+1, aka next day)"
+    }
+  ]
+}

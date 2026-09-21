@@ -1,0 +1,20 @@
+{
+  "name": "contractmultiplierunitcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Shares",
+      "doc": "Shares"
+    },
+    {
+      "value": "1",
+      "name": "Hours",
+      "doc": "Hours"
+    },
+    {
+      "value": "2",
+      "name": "Days",
+      "doc": "Days"
+    }
+  ]
+}

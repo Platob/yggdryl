@@ -374,12 +374,19 @@ fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
 #[test]
 fn a_stated_absence_produces_no_field_and_no_entry() {
     let reader = reader();
-    for spelling in ["", "null", "NULL", "<null>"] {
-        let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
+    for spelling in [
+        "", "   ", "null", " NULL ", "<null>", " n/A ", " [n/a] ", "None", " NoNe ",
+    ] {
+        let row =
+            format!("8=FIX.4.4|35=D|55={spelling}|58={spelling}|VenueOwnThing={spelling}|10=0|");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
+        assert!(message.get_by_tag(55).is_none(), "{spelling}");
         assert!(message.get_by_tag(58).is_none(), "{spelling}");
+        assert!(message.get_by_name("venueownthing").is_none(), "{spelling}");
         assert!(
-            !message.entries().iter().any(|entry| entry.tag() == 58),
+            !message.entries().iter().any(|entry| {
+                entry.tag() == 55 || entry.tag() == 58 || entry.name() == "venueownthing"
+            }),
             "{spelling}"
         );
     }
@@ -390,12 +397,13 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
         .unwrap();
     assert_eq!(kept.by_tag(58).unwrap().as_str(), Some("nullable"));
 
-    let literal = reader
-        .clone()
-        .with_null_values::<[&str; 0], &str>([])
-        .sole_line(b"8=FIX.4.4|35=D|58=null|10=0|")
-        .unwrap();
-    assert_eq!(literal.by_tag(58).unwrap().as_str(), Some("null"));
+    let literal_reader = reader.with_null_values::<[&str; 0], &str>([]);
+    for spelling in ["null", "n/a", "[N/A]", "None"] {
+        let row = format!("8=FIX.4.4|35=D|55={spelling}|58={spelling}|10=0|");
+        let literal = literal_reader.sole_line(row.as_bytes()).unwrap();
+        assert_eq!(literal.by_tag(55).unwrap().as_str(), Some(spelling));
+        assert_eq!(literal.by_tag(58).unwrap().as_str(), Some(spelling));
+    }
 }
 
 #[test]
@@ -648,7 +656,9 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // A bare twin that stated an absence was never sent, so the `#` is the
     // row's sole spelling and drops: the value lands under the dictionary
     // field exactly as a lone `#` key always did.
-    for spelling in ["", "null", "<null>"] {
+    for spelling in [
+        "", "null", "<null>", "n/a", "[N/A]", "None", " [n/a] ", " NoNe ",
+    ] {
         let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
         assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
@@ -1147,7 +1157,8 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
     let DataType::Sequence(SequenceType::List(item)) = party.dtype() else {
         panic!("a list");
     };
-    let marked = item.field("#nopartysubids").expect("the marked group");
+    // A mark belongs to the literal name, quoted in the shared selector grammar.
+    let marked = item.field("\"#nopartysubids\"").expect("the marked group");
     let DataType::Sequence(SequenceType::List(sub)) = marked.dtype() else {
         panic!("a list, got {}", marked.dtype());
     };
@@ -1255,6 +1266,118 @@ fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     assert_eq!(values[0].as_str(), Some("first"));
     assert_eq!(values[1], Scalar::Null);
     assert_eq!(values[2].as_str(), Some("third"));
+}
+
+#[test]
+fn three_flat_values_keep_a_null_and_their_arrival_order() {
+    let message = reader()
+        .sole_line(b"MSGTYPE=D|BODYLENGTH=bad|BODYLENGTH=1|BODYLENGTH=2")
+        .unwrap();
+    let held = message.by_name("bodylength").expect("the repeated field");
+    let values = held.as_sequence().expect("three occurrences");
+    assert_eq!(
+        values,
+        &[Scalar::Null, Scalar::from(1_i32), Scalar::from(2_i32)]
+    );
+}
+
+#[test]
+fn indexed_values_keep_gaps_and_nested_rows_replace_outer_occurrences() {
+    // Index zero arrives first. A later index retains it and materializes the
+    // intervening null rather than shifting either occurrence.
+    let indexed = reader()
+        .sole_line(b"MSGTYPE=D|PartyID[0]=first|PartyID[2]=third")
+        .unwrap();
+    let held = indexed.by_name("partyid").expect("the repeated field");
+    let values = held.as_sequence().expect("indexed occurrences");
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[0].as_str(), Some("first"));
+    assert_eq!(values[1], Scalar::Null);
+    assert_eq!(values[2].as_str(), Some("third"));
+
+    // The nested bridge row is the relayed message. Its values replace every
+    // occurrence the envelope accumulated under the same fields.
+    let payload = b"MSGTYPE=D|ORDERQTY=3";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=bad|38=1|38=2|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+    let nested = reader().sole_line(&frame).unwrap();
+    assert_eq!(nested.by_tag(35).unwrap().as_str(), Some("D"));
+    assert_eq!(nested.by_tag(38).unwrap(), super::decimal("3"));
+}
+
+#[test]
+fn a_nested_payload_keeps_an_outer_group_whole_and_overrides_only_scalars() {
+    let payload = b"MSGTYPE=D|ORDERQTY=3|NOPARTYIDS=1|\
+NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=1|453=2|448=OUTER-A|447=D|452=1|\
+448=OUTER-B|447=D|452=3|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+
+    let message = reader().sole_line(&frame).unwrap();
+    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(message.by_tag(38).unwrap(), super::decimal("3"));
+
+    let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
+    let parties_at = schema.index_of("parties").expect("the projected group");
+    let DataType::Sequence(SequenceType::List(party)) = schema.fields()[parties_at].dtype() else {
+        panic!("parties is not a list")
+    };
+    let partyid = party.index_of("partyid").expect("PartyID");
+    let source = party.index_of("partyidsource").expect("PartyIDSource");
+    let role = party.index_of("partyrole").expect("PartyRole");
+    let row = message.into_row(&schema).unwrap();
+    let parties = row
+        .get(parties_at)
+        .and_then(Scalar::as_sequence)
+        .expect("the projected occurrences");
+    assert_eq!(parties.len(), 2);
+    for (occurrence, (expected_id, expected_role)) in
+        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
+    {
+        let members = occurrence.as_sequence().expect("a party row");
+        assert_eq!(members[partyid].as_str(), Some(expected_id));
+        assert_eq!(members[source].as_str(), Some("D"));
+        assert_eq!(members[role].as_i64(), Some(expected_role));
+    }
+
+    // A shadowed numeric group ends before its later scalar: the outer
+    // group stays whole and the nested scalar still overrides its outer value.
+    let payload = b"MSGTYPE=D|453=1|448=NESTED|447=C|452=7|38=3|";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=1|453=2|448=OUTER-A|447=D|452=1|\
+448=OUTER-B|447=D|452=3|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+    let numeric = reader().sole_line(&frame).unwrap();
+    assert_eq!(numeric.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(numeric.by_tag(38).unwrap(), super::decimal("3"));
+    let row = numeric.into_row(&schema).unwrap();
+    let parties = row
+        .get(parties_at)
+        .and_then(Scalar::as_sequence)
+        .expect("the outer projected occurrences");
+    assert_eq!(parties.len(), 2);
+    for (occurrence, (expected_id, expected_role)) in
+        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
+    {
+        let members = occurrence.as_sequence().expect("an outer party row");
+        assert_eq!(members[partyid].as_str(), Some(expected_id));
+        assert_eq!(members[source].as_str(), Some("D"));
+        assert_eq!(members[role].as_i64(), Some(expected_role));
+    }
 }
 
 #[test]
@@ -2088,7 +2211,10 @@ fn read_line_picks_the_reader_the_row_shape_names() {
 /// answers is the message a line answers.
 #[test]
 fn every_batch_reader_answers_what_the_single_reader_answers() {
-    let codec = codec();
+    // A line keeps an unmarked direction absent; the batch door otherwise
+    // applies its documented default Send pin. Disable that batch-only pin
+    // so this test compares the same intake semantics.
+    let codec = codec().try_with_direction(None).expect("no direction pin");
     let rows = [
         b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
         b"8=FIX.4.4|35=8|37=O-9|55=MSFT|10=0|".to_vec(),
@@ -2145,8 +2271,11 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         .expect("readable rows");
     assert_eq!(again.len(), 2);
     assert_eq!(again[0].by_tag(11).unwrap(), read[0].by_tag(11).unwrap());
-    assert_eq!(again[1].entries(), read[1].entries());
-    assert_eq!(again[1].into_bytes(b'|'), read[1].into_bytes(b'|'));
+    let schema = yggdryl::fix_schema(codec.registry(), "fix").expect("the fixed schema");
+    assert_eq!(
+        again[1].into_row(&schema).expect("a reconstructed row"),
+        read[1].into_row(&schema).expect("the parsed row")
+    );
 }
 
 #[test]

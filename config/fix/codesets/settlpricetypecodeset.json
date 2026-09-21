@@ -1,0 +1,15 @@
+{
+  "name": "settlpricetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Final",
+      "doc": "Final"
+    },
+    {
+      "value": "2",
+      "name": "Theoretical",
+      "doc": "Theoretical"
+    }
+  ]
+}

@@ -169,6 +169,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "MKST",
     "FIX:msgtype": "g",
     "FIX:tag": "1065670",
     "description": "MsgType = g (lowercase G)",

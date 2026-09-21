@@ -1,0 +1,60 @@
+{
+  "name": "collasgnreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "1",
+      "name": "Scheduled",
+      "doc": "Scheduled"
+    },
+    {
+      "value": "2",
+      "name": "TimeWarning",
+      "doc": "Time Warning"
+    },
+    {
+      "value": "3",
+      "name": "MarginDeficiency",
+      "doc": "Margin Deficiency"
+    },
+    {
+      "value": "4",
+      "name": "MarginExcess",
+      "doc": "Margin Excess"
+    },
+    {
+      "value": "5",
+      "name": "ForwardCollateralDemand",
+      "doc": "Forward Collateral Demand"
+    },
+    {
+      "value": "6",
+      "name": "EventOfDefault",
+      "doc": "Event of default"
+    },
+    {
+      "value": "7",
+      "name": "AdverseTaxEvent",
+      "doc": "Adverse tax event"
+    },
+    {
+      "value": "8",
+      "name": "TransferDeposit",
+      "doc": "Transfer deposit"
+    },
+    {
+      "value": "9",
+      "name": "TransferWithdrawal",
+      "doc": "Transfer withdrawal"
+    },
+    {
+      "value": "10",
+      "name": "Pledge",
+      "doc": "Pledge"
+    }
+  ]
+}

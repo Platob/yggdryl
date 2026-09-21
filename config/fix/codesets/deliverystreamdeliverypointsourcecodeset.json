@@ -1,0 +1,15 @@
+{
+  "name": "deliverystreamdeliverypointsourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Proprietary",
+      "doc": "Proprietary"
+    },
+    {
+      "value": "1",
+      "name": "EIC",
+      "doc": "Energy Identification Code (EIC)"
+    }
+  ]
+}

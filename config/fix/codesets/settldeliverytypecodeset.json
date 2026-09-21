@@ -1,0 +1,25 @@
+{
+  "name": "settldeliverytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Versus",
+      "doc": "\"Versus. Payment\": Deliver (if Sell) or Receive (if Buy) vs. (Against) Payment"
+    },
+    {
+      "value": "1",
+      "name": "Free",
+      "doc": "\"Free\": Deliver (if Sell) or Receive (if Buy) Free"
+    },
+    {
+      "value": "2",
+      "name": "TriParty",
+      "doc": "Tri-Party"
+    },
+    {
+      "value": "3",
+      "name": "HoldInCustody",
+      "doc": "Hold In Custody"
+    }
+  ]
+}

@@ -75,7 +75,7 @@ fn the_two_names_of_one_list_prebuild_one_vocabulary() {
 
 #[test]
 fn a_registered_name_with_no_constant_prebuilds_no_members() {
-    for name in ["language", "monthyear", "tenor"] {
+    for name in ["language", "monthyear", "tenor", "figi"] {
         assert!(
             StringEnum::from_logical_name(name).unwrap().is_empty(),
             "{name}"
@@ -85,7 +85,7 @@ fn a_registered_name_with_no_constant_prebuilds_no_members() {
 
 #[test]
 fn a_name_that_is_not_registered_is_refused_by_the_vocabulary() {
-    let refused = StringEnum::from_logical_name("figi")
+    let refused = StringEnum::from_logical_name("unregistered_code")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("currency"), "{refused}");

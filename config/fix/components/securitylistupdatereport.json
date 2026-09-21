@@ -268,6 +268,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "securitylistid",
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "BK",
     "FIX:tag": "664955",
     "description": "MsgType = BK",

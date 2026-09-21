@@ -339,6 +339,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "7",
     "FIX:tag": "544641",
     "description": "MsgType = 7",

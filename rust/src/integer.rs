@@ -8,10 +8,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::typed::define_field_types;
-use crate::value::{
-    IntegerValue, PathSegment, ValidationFailure, canonical_error, expected, family_value,
+use crate::value::{IntegerValue, ValidationFailure, canonical_error, expected, family_value};
+use crate::{
+    DataType, DataTypeId, Error, FieldSegment, IntervalType, Result, Scalar, TimeUnit, Value,
 };
-use crate::{DataType, DataTypeId, Error, IntervalType, Result, Scalar, TimeUnit, Value};
 
 // ------------------------------------------------------------------------
 // Integer datatype family and predicates used by run-end validation.
@@ -314,8 +314,11 @@ pub(crate) fn validate_integer_tuple(
         } else {
             (i128::from(i64::MIN), i128::from(i64::MAX))
         };
-        validate_signed(value, minimum, maximum, expected_name)
-            .map_err(|failure| failure.prepend(PathSegment::Index(index)))?;
+        validate_signed(value, minimum, maximum, expected_name).map_err(|failure| {
+            failure.prepend(FieldSegment::index(
+                i64::try_from(index).expect("allocated index fits i64"),
+            ))
+        })?;
     }
     Ok(())
 }

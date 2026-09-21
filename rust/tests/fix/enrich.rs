@@ -16,7 +16,7 @@ use yggdryl::{
     DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructType, Timezone, Url,
     fix_schema,
 };
-use yggdryl::{Isin, State};
+use yggdryl::{IsinCode, State};
 
 fn reader() -> FixCodec {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -157,7 +157,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
 }
 
 #[test]
-fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
+fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     let reader = reader();
     // The alternate identifier whose source says ISIN is the ISIN, and once
     // the row holds one it holds the primary identifier and its source too.
@@ -194,16 +194,16 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     assert_eq!(text(&bridge, 22).as_deref(), Some("4"));
     assert_eq!(text(&bridge, 470).as_deref(), Some("GB"));
     assert_eq!(isincode(&bridge).as_deref(), Some("GB0002634946"));
-    // A bridge row spelling `ISINCODE` names no field of the dictionary -
-    // this crate stopped owning a column by that name - so it is kept as
-    // the venue's own key and states no identifier.
+    // A bridge row spelling `ISINCODE` writes the crate's normalized code
+    // column directly. It does not synthesize the separate `SecurityID(48)`
+    // message child or its source.
     let spelled = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
-    assert_eq!(isincode(&spelled), None);
+    assert_eq!(isincode(&spelled).as_deref(), Some("GB0002634946"));
     assert_eq!(spelled.get_by_tag(48), None);
     assert_eq!(
         spelled
             .by_name("isincode")
-            .expect("the venue's own key")
+            .expect("the normalized code column")
             .as_str(),
         Some("GB0002634946")
     );
@@ -753,14 +753,12 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
 }
 
 #[test]
-fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
-    // A derived market fact is the traits' answer and not a column: the
-    // row carries the FIX fields it was read off - `SecurityID(48)` under
-    // its source, `ExDestination(100)`, `ExecType(150)` - and no column
-    // restates the ISIN or the market, because a second owner of a fact is
-    // what this crate stopped keeping. The ranked state is the one
-    // exception: an event fact a walk folds forward, stated at its own
-    // column so a reader of the rows sees what the walk folded.
+fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not() {
+    // The row carries its stated FIX children - `SecurityID(48)` under its
+    // source, `ExDestination(100)`, `ExecType(150)` - and lifts the normalized
+    // ISIN and MIC into their dedicated code columns. Other graph answers stay
+    // derived rather than becoming columns. The ranked state is an event fact,
+    // stated at its own column so a reader sees what the walk folded.
     let reader = reader();
     let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
@@ -770,7 +768,7 @@ fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
         let at = schema.index_of(name).expect(name);
         row.as_sequence().expect("a row")[at].clone()
     };
-    for name in ["isincode", "miccode", "px", "qty", "symbolticker"] {
+    for name in ["px", "qty", "symbolticker"] {
         assert_eq!(schema.index_of(name), None, "{name} is no column");
     }
     assert_eq!(
@@ -781,7 +779,9 @@ fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
     assert_eq!(column("securityid").as_str(), Some("US0378331005"));
     assert_eq!(column("exdestination").as_str(), Some("XNAS"));
     assert_eq!(column("exectype").as_str(), Some("F"));
-    // And the traits answer every one of them off exactly those fields.
+    assert_eq!(column("isincode").as_str(), Some("US0378331005"));
+    assert_eq!(column("miccode").as_str(), Some("XNAS"));
+    // The normalized columns answer from the stated message children.
     assert_eq!(isincode(&filled).as_deref(), Some("US0378331005"));
     assert_eq!(miccode(&filled).as_deref(), Some("XNAS"));
     assert_eq!(statecode(&filled).as_deref(), Some(state("F").as_str()));
@@ -962,7 +962,7 @@ fn a_country_of_issue_is_exactly_a_prefix_the_crates_registry_lists() {
         for second in b'A'..=b'Z' {
             let prefix = format!("{}{}", char::from(first), char::from(second));
             let body = format!("{prefix}000000000");
-            let digit = Isin::closing_digit(&body).expect("two letters and nine digits close");
+            let digit = IsinCode::closing_digit(&body).expect("two letters and nine digits close");
             let number = format!("{body}{digit}");
             let line = format!("8=FIX.4.4|35=D|11=A|22=4|48={number}|10=0|");
             let held = reader.sole_line(line.as_bytes()).expect("a readable line");
@@ -1069,7 +1069,7 @@ fn a_typed_read_fires_where_the_old_text_read_could_not() {
 
 #[test]
 fn a_source_code_is_compared_exactly_because_fix_codes_are_case_sensitive() {
-    // `A` is Bloomberg's source; `a` is no code of the set, and the deleted
+    // `A` is BloombergCode's source; `a` is no code of the set, and the deleted
     // rule's case folding read it as one.
     let reader = reader();
     let bloomberg = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN SW|22=A|10=0|");

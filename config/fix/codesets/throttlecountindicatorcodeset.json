@@ -1,0 +1,15 @@
+{
+  "name": "throttlecountindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "OutstandingRequestsUnchanged",
+      "doc": "Outstanding requests unchanged"
+    },
+    {
+      "value": "1",
+      "name": "OutstandingRequestsDecreased",
+      "doc": "Outstanding requests decreased"
+    }
+  ]
+}

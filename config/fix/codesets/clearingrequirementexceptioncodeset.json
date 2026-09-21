@@ -1,0 +1,35 @@
+{
+  "name": "clearingrequirementexceptioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoException",
+      "doc": "No exception"
+    },
+    {
+      "value": "1",
+      "name": "Exception",
+      "doc": "Exception"
+    },
+    {
+      "value": "2",
+      "name": "EndUserException",
+      "doc": "End-user exception"
+    },
+    {
+      "value": "3",
+      "name": "InterAffiliateException",
+      "doc": "Inter-affiliate exception"
+    },
+    {
+      "value": "4",
+      "name": "TreasuryAffiliateException",
+      "doc": "Treasury affiliate exception"
+    },
+    {
+      "value": "5",
+      "name": "CooperativeException",
+      "doc": "Cooperative exception"
+    }
+  ]
+}

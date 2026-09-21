@@ -1,0 +1,25 @@
+{
+  "name": "paymentstreamcompoundingmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "None",
+      "doc": "None"
+    },
+    {
+      "value": "1",
+      "name": "Flat",
+      "doc": "Flat"
+    },
+    {
+      "value": "2",
+      "name": "Straight",
+      "doc": "Straight"
+    },
+    {
+      "value": "3",
+      "name": "SpreadExclusive",
+      "doc": "Spread exclusive"
+    }
+  ]
+}

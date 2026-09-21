@@ -1,0 +1,30 @@
+{
+  "name": "throttleactioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "QueueInbound",
+      "doc": "Queue inbound"
+    },
+    {
+      "value": "1",
+      "name": "QueueOutbound",
+      "doc": "Queue outbound"
+    },
+    {
+      "value": "2",
+      "name": "Reject",
+      "doc": "Reject"
+    },
+    {
+      "value": "3",
+      "name": "Disconnect",
+      "doc": "Disconnect"
+    },
+    {
+      "value": "4",
+      "name": "Warning",
+      "doc": "Warning"
+    }
+  ]
+}

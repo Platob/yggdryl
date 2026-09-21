@@ -1,0 +1,50 @@
+{
+  "name": "crosstypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CrossAON",
+      "doc": "All-or-none cross"
+    },
+    {
+      "value": "2",
+      "name": "CrossIOC",
+      "doc": "Immediate-or-cancel cross"
+    },
+    {
+      "value": "3",
+      "name": "CrossOneSide",
+      "doc": "One sided cross"
+    },
+    {
+      "value": "4",
+      "name": "CrossSamePrice",
+      "doc": "Cross executed against book"
+    },
+    {
+      "value": "5",
+      "name": "BasisCross",
+      "doc": "Basis cross"
+    },
+    {
+      "value": "6",
+      "name": "ContingentCross",
+      "doc": "Contingent cross"
+    },
+    {
+      "value": "7",
+      "name": "VWAPCross",
+      "doc": "Volume-weighted-average-price (VWAP) cross"
+    },
+    {
+      "value": "8",
+      "name": "STSCross",
+      "doc": "Special trading session cross"
+    },
+    {
+      "value": "9",
+      "name": "CustomerToCustomer",
+      "doc": "Customer to customer cross"
+    }
+  ]
+}

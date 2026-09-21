@@ -1,0 +1,30 @@
+{
+  "name": "standinstdbtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "1",
+      "name": "DTCSID",
+      "doc": "DTC SID"
+    },
+    {
+      "value": "2",
+      "name": "ThomsonALERT",
+      "doc": "Thomson ALERT"
+    },
+    {
+      "value": "3",
+      "name": "AGlobalCustodian",
+      "doc": "A Global Custodian (StandInstDBName (70) must be provided)"
+    },
+    {
+      "value": "4",
+      "name": "AccountNet",
+      "doc": "AccountNet"
+    }
+  ]
+}

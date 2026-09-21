@@ -1,0 +1,20 @@
+{
+  "name": "refordidreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "GTCFromPreviousDay",
+      "doc": "GTC from previous day"
+    },
+    {
+      "value": "1",
+      "name": "PartialFillRemaining",
+      "doc": "Partial Fill Remaining"
+    },
+    {
+      "value": "2",
+      "name": "OrderChanged",
+      "doc": "Order Changed"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "mdstatisticvaluetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Absolute",
+      "doc": "Absolute"
+    },
+    {
+      "value": "2",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

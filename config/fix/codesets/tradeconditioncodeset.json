@@ -1,0 +1,459 @@
+{
+  "name": "tradeconditioncodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Cash",
+      "doc": "Cash (only) Market"
+    },
+    {
+      "value": "B",
+      "name": "AveragePriceTrade",
+      "doc": "Average Price Trade"
+    },
+    {
+      "value": "C",
+      "name": "CashTrade",
+      "doc": "Cash Trade (same day clearing)"
+    },
+    {
+      "value": "D",
+      "name": "NextDay",
+      "doc": "Next Day (only)Market"
+    },
+    {
+      "value": "E",
+      "name": "Opening",
+      "doc": "Opening/Reopening Trade Detail"
+    },
+    {
+      "value": "F",
+      "name": "IntradayTradeDetail",
+      "doc": "Intraday Trade Detail"
+    },
+    {
+      "value": "G",
+      "name": "Rule127Trade",
+      "doc": "Rule 127 Trade (NYSE)"
+    },
+    {
+      "value": "H",
+      "name": "Rule155Trade",
+      "doc": "Rule 155 Trade (AMEX)"
+    },
+    {
+      "value": "I",
+      "name": "SoldLast",
+      "doc": "Sold Last (late reporting)"
+    },
+    {
+      "value": "J",
+      "name": "NextDayTrade",
+      "doc": "Next Day Trade (next day clearing)"
+    },
+    {
+      "value": "K",
+      "name": "Opened",
+      "doc": "Opened (late report of opened trade)"
+    },
+    {
+      "value": "L",
+      "name": "Seller",
+      "doc": "Seller"
+    },
+    {
+      "value": "M",
+      "name": "Sold",
+      "doc": "Sold (out of sequence)"
+    },
+    {
+      "value": "N",
+      "name": "StoppedStock",
+      "doc": "Stopped Stock (guarantee of price but does not execute the order)"
+    },
+    {
+      "value": "P",
+      "name": "ImbalanceMoreBuyers",
+      "doc": "Imbalance More Buyers (cannot be used in combination with Q)"
+    },
+    {
+      "value": "Q",
+      "name": "ImbalanceMoreSellers",
+      "doc": "Imbalance More Sellers (cannot be used in combination with P)"
+    },
+    {
+      "value": "R",
+      "name": "OpeningPrice",
+      "doc": "Opening Price"
+    },
+    {
+      "value": "S",
+      "name": "BargainCondition",
+      "doc": "Bargain Condition (LSE)"
+    },
+    {
+      "value": "T",
+      "name": "ConvertedPriceIndicator",
+      "doc": "Converted Price Indicator"
+    },
+    {
+      "value": "U",
+      "name": "ExchangeLast",
+      "doc": "Exchange Last"
+    },
+    {
+      "value": "V",
+      "name": "FinalPriceOfSession",
+      "doc": "Final Price of Session"
+    },
+    {
+      "value": "W",
+      "name": "ExPit",
+      "doc": "Ex-pit"
+    },
+    {
+      "value": "X",
+      "name": "Crossed",
+      "doc": "Crossed"
+    },
+    {
+      "value": "Y",
+      "name": "TradesResultingFromManual",
+      "doc": "Trades resulting from manual/slow quote"
+    },
+    {
+      "value": "Z",
+      "name": "TradesResultingFromIntermarketSweep",
+      "doc": "Trades resulting from intermarket sweep"
+    },
+    {
+      "value": "a",
+      "name": "VolumeOnly",
+      "doc": "Volume Only"
+    },
+    {
+      "value": "b",
+      "name": "DirectPlus",
+      "doc": "Direct Plus"
+    },
+    {
+      "value": "c",
+      "name": "Acquisition",
+      "doc": "Acquisition"
+    },
+    {
+      "value": "d",
+      "name": "Bunched",
+      "doc": "Bunched"
+    },
+    {
+      "value": "e",
+      "name": "Distribution",
+      "doc": "Distribution"
+    },
+    {
+      "value": "f",
+      "name": "BunchedSale",
+      "doc": "Bunched Sale"
+    },
+    {
+      "value": "g",
+      "name": "SplitTrade",
+      "doc": "Split Trade"
+    },
+    {
+      "value": "h",
+      "name": "CancelStopped",
+      "doc": "Cancel Stopped"
+    },
+    {
+      "value": "i",
+      "name": "CancelETH",
+      "doc": "Cancel ETH"
+    },
+    {
+      "value": "j",
+      "name": "CancelStoppedETH",
+      "doc": "Cancel Stopped ETH"
+    },
+    {
+      "value": "k",
+      "name": "OutOfSequenceETH",
+      "doc": "Out of Sequence ETH"
+    },
+    {
+      "value": "l",
+      "name": "CancelLastETH",
+      "doc": "Cancel Last ETH"
+    },
+    {
+      "value": "m",
+      "name": "SoldLastSaleETH",
+      "doc": "Sold Last Sale ETH"
+    },
+    {
+      "value": "n",
+      "name": "CancelLast",
+      "doc": "Cancel Last"
+    },
+    {
+      "value": "o",
+      "name": "SoldLastSale",
+      "doc": "Sold Last Sale"
+    },
+    {
+      "value": "p",
+      "name": "CancelOpen",
+      "doc": "Cancel Open"
+    },
+    {
+      "value": "q",
+      "name": "CancelOpenETH",
+      "doc": "Cancel Open ETH"
+    },
+    {
+      "value": "r",
+      "name": "OpenedSaleETH",
+      "doc": "Opened Sale ETH"
+    },
+    {
+      "value": "s",
+      "name": "CancelOnly",
+      "doc": "Cancel Only"
+    },
+    {
+      "value": "t",
+      "name": "CancelOnlyETH",
+      "doc": "Cancel Only ETH"
+    },
+    {
+      "value": "u",
+      "name": "LateOpenETH",
+      "doc": "Late Open ETH"
+    },
+    {
+      "value": "v",
+      "name": "AutoExecutionETH",
+      "doc": "Auto Execution ETH"
+    },
+    {
+      "value": "w",
+      "name": "Reopen",
+      "doc": "Reopen"
+    },
+    {
+      "value": "x",
+      "name": "ReopenETH",
+      "doc": "Reopen ETH"
+    },
+    {
+      "value": "y",
+      "name": "Adjusted",
+      "doc": "Adjusted"
+    },
+    {
+      "value": "z",
+      "name": "AdjustedETH",
+      "doc": "Adjusted ETH"
+    },
+    {
+      "value": "AA",
+      "name": "Spread",
+      "doc": "Spread"
+    },
+    {
+      "value": "AB",
+      "name": "SpreadETH",
+      "doc": "Spread ETH"
+    },
+    {
+      "value": "AC",
+      "name": "Straddle",
+      "doc": "Straddle"
+    },
+    {
+      "value": "AD",
+      "name": "StraddleETH",
+      "doc": "Straddle ETH"
+    },
+    {
+      "value": "AE",
+      "name": "Stopped",
+      "doc": "Stopped"
+    },
+    {
+      "value": "AF",
+      "name": "StoppedETH",
+      "doc": "Stopped ETH"
+    },
+    {
+      "value": "AG",
+      "name": "RegularETH",
+      "doc": "Regular ETH"
+    },
+    {
+      "value": "AH",
+      "name": "Combo",
+      "doc": "Combo"
+    },
+    {
+      "value": "AI",
+      "name": "ComboETH",
+      "doc": "Combo ETH"
+    },
+    {
+      "value": "AJ",
+      "name": "OfficialClosingPrice",
+      "doc": "Official Closing Price"
+    },
+    {
+      "value": "AK",
+      "name": "PriorReferencePrice",
+      "doc": "Prior Reference Price"
+    },
+    {
+      "value": "AL",
+      "name": "StoppedSoldLast",
+      "doc": "Stopped Sold Last"
+    },
+    {
+      "value": "AM",
+      "name": "StoppedOutOfSequence",
+      "doc": "Stopped Out of Sequence"
+    },
+    {
+      "value": "AN",
+      "name": "OfficialClosingPriceDup",
+      "aliases": [
+        "OfficalClosingPrice"
+      ],
+      "doc": "Official Closing Price (duplicate enumeration - use 'AJ' instead)"
+    },
+    {
+      "value": "AO",
+      "name": "CrossedOld",
+      "doc": "Crossed (duplicate enumeration - use 'X' instead)"
+    },
+    {
+      "value": "AP",
+      "name": "FastMarket",
+      "doc": "Fast Market"
+    },
+    {
+      "value": "AQ",
+      "name": "AutomaticExecution",
+      "doc": "Automatic Execution"
+    },
+    {
+      "value": "AR",
+      "name": "FormT",
+      "doc": "Form T"
+    },
+    {
+      "value": "AS",
+      "name": "BasketIndex",
+      "doc": "Basket Index"
+    },
+    {
+      "value": "AT",
+      "name": "BurstBasket",
+      "doc": "Burst Basket"
+    },
+    {
+      "value": "AU",
+      "name": "TradeThroughExempt",
+      "doc": "Trade through exempt"
+    },
+    {
+      "value": "AV",
+      "name": "QuoteSpread",
+      "aliases": [
+        "OutsideSpread"
+      ],
+      "doc": "Quote spread"
+    },
+    {
+      "value": "AW",
+      "name": "LastAuctionPrice",
+      "doc": "Last auction price"
+    },
+    {
+      "value": "AX",
+      "name": "HighPrice",
+      "doc": "High price"
+    },
+    {
+      "value": "AY",
+      "name": "LowPrice",
+      "doc": "Low price"
+    },
+    {
+      "value": "AZ",
+      "name": "SystematicInternaliser",
+      "doc": "Systematic Internaliser (SI)"
+    },
+    {
+      "value": "BA",
+      "name": "AwayMarket",
+      "doc": "Away market"
+    },
+    {
+      "value": "BB",
+      "name": "MidpointPrice",
+      "doc": "Mid-point price"
+    },
+    {
+      "value": "BC",
+      "name": "TradedBeforeIssueDate",
+      "doc": "Traded before issue date"
+    },
+    {
+      "value": "BD",
+      "name": "PreviousClosingPrice",
+      "doc": "Previous closing price"
+    },
+    {
+      "value": "BE",
+      "name": "NationalBestBidOffer",
+      "doc": "National Best Bid and Offer"
+    },
+    {
+      "value": "0",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "1",
+      "name": "ImpliedTrade",
+      "doc": "Implied Trade"
+    },
+    {
+      "value": "2",
+      "name": "MarketplaceEnteredTrade",
+      "doc": "Marketplace entered trade"
+    },
+    {
+      "value": "3",
+      "name": "MultiAssetClassMultilegTrade",
+      "aliases": [
+        "MultAssetClassMultilegTrade"
+      ],
+      "doc": "Multi-asset class multileg trade"
+    },
+    {
+      "value": "4",
+      "name": "MultilegToMultilegTrade",
+      "doc": "Multileg-to-Multileg Trade"
+    },
+    {
+      "value": "5",
+      "name": "ShortSaleMinPrice",
+      "doc": "Short Sale Minimum Price"
+    },
+    {
+      "value": "6",
+      "name": "Benchmark",
+      "doc": "Benchmark"
+    }
+  ]
+}

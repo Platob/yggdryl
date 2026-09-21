@@ -1,0 +1,20 @@
+{
+  "name": "bidtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "NonDisclosed",
+      "doc": "\"Non Disclosed\" style (e.g. US/European)"
+    },
+    {
+      "value": "2",
+      "name": "Disclosed",
+      "doc": "\"Disclosed\" style (e.g. Japanese)"
+    },
+    {
+      "value": "3",
+      "name": "NoBiddingProcess",
+      "doc": "No bidding process"
+    }
+  ]
+}

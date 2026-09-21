@@ -124,6 +124,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "BOOK",
     "FIX:msgtype": "Y",
     "FIX:tag": "173600",
     "description": "MsgType = Y",

@@ -1,0 +1,20 @@
+{
+  "name": "bookingunitcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "EachPartialExecutionIsABookableUnit",
+      "doc": "Each partial execution is a bookable unit"
+    },
+    {
+      "value": "1",
+      "name": "AggregatePartialExecutionsOnThisOrder",
+      "doc": "Aggregate partial executions on this order, and book one trade per order"
+    },
+    {
+      "value": "2",
+      "name": "AggregateExecutionsForThisSymbol",
+      "doc": "Aggregate executions for this symbol, side, and settlement date"
+    }
+  ]
+}

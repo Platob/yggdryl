@@ -1,0 +1,20 @@
+{
+  "name": "eventinitiatortypecodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "CustomerOrClient",
+      "doc": "Customer or client"
+    },
+    {
+      "value": "E",
+      "name": "ExchangeOrExecutionVenue",
+      "doc": "Exchange or execution venue"
+    },
+    {
+      "value": "F",
+      "name": "FirmOrBroker",
+      "doc": "Firm or broker"
+    }
+  ]
+}
