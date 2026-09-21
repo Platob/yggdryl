@@ -6,7 +6,7 @@ from dataclasses import field as dataclass_field
 from decimal import Decimal
 from typing import Annotated, cast
 
-import pyarrow as pa
+import pyarrow as pa  # type: ignore[import-untyped]
 
 import yggdryl
 from yggdryl import (

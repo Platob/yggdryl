@@ -8,8 +8,8 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Any, Literal
 
-import pyarrow as pa
-import pyarrow.fs as pa_fs
+import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
 
 import yggdryl
 from yggdryl import (
