@@ -470,8 +470,26 @@ the reader would refuse.
     assert spherical.as_py() == default.as_py()
     ```
 
-JavaScript has no default-value reader; a column's default is filled by the
-[cast](../cast.md) rather than asked for.
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    // The default is read off the datatype, as the WKB bytes themselves.
+    const value = Buffer.from(DataType.geometry().defaultJSValue())
+    assert.equal(value.length, 21)
+    assert.equal(value.readUInt32LE(1), 1)
+    assert.ok(Number.isNaN(value.readDoubleLE(5)))
+    assert.ok(Number.isNaN(value.readDoubleLE(13)))
+
+    // The geography defaults to the same empty geometry, read spherically.
+    assert.deepEqual(Buffer.from(DataType.geography().defaultJSValue()), value)
+    ```
+
+Rust and Python answer with a `Scalar`, whose kind names the column it came
+from; `defaultJSValue` hands JavaScript the payload alone, which is what a
+geospatial cell crosses a binding as.
 
 ## Edges
 

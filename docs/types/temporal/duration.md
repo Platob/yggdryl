@@ -285,27 +285,64 @@ decomposes into hours a reader would multiply back. Reading takes the general
 form `P1DT2H3M4.5S` and a plain clock `-25:30:00.5`, whose hours never fold -
 that is a [time of day](time.md)'s rule, not a length's.
 
-```rust
-use yggdryl::{DataType, Scalar, TimeUnit};
+=== "Rust"
 
-let seconds = DataType::duration64(TimeUnit::Second)?;
-assert_eq!(seconds.scalar("P1DT2H3M4S")?, Scalar::duration64(93_784, TimeUnit::Second)?);
-assert_eq!(seconds.scalar("-25:30:00")?, Scalar::duration64(-91_800, TimeUnit::Second)?);
+    ```rust
+    use yggdryl::{DataType, Scalar, TimeUnit};
 
-// The writer states seconds, whichever width held the count.
-assert_eq!(
-    DataType::utf8().scalar(Scalar::duration32(90, TimeUnit::Second)?)?,
-    Scalar::from("PT90S")
-);
-assert_eq!(
-    DataType::utf8().scalar(Scalar::duration64(90, TimeUnit::Second)?)?,
-    Scalar::from("PT90S")
-);
+    let seconds = DataType::duration64(TimeUnit::Second)?;
+    assert_eq!(seconds.scalar("P1DT2H3M4S")?, Scalar::duration64(93_784, TimeUnit::Second)?);
+    assert_eq!(seconds.scalar("-25:30:00")?, Scalar::duration64(-91_800, TimeUnit::Second)?);
 
-// ISO 8601 names the comma the preferred decimal sign, so both read alike.
-let millis = DataType::duration64(TimeUnit::Millisecond)?;
-assert_eq!(millis.scalar("PT1,5S")?, millis.scalar("PT1.5S")?);
-```
+    // The writer states seconds, whichever width held the count.
+    assert_eq!(
+        DataType::utf8().scalar(Scalar::duration32(90, TimeUnit::Second)?)?,
+        Scalar::from("PT90S")
+    );
+    assert_eq!(
+        DataType::utf8().scalar(Scalar::duration64(90, TimeUnit::Second)?)?,
+        Scalar::from("PT90S")
+    );
+
+    // ISO 8601 names the comma the preferred decimal sign, so both read alike.
+    let millis = DataType::duration64(TimeUnit::Millisecond)?;
+    assert_eq!(millis.scalar("PT1,5S")?, millis.scalar("PT1.5S")?);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar
+
+    seconds = DataType("duration64(s)")
+    assert seconds.scalar("P1DT2H3M4S") == Scalar.duration(93_784, "s")
+    assert seconds.scalar("-25:30:00") == Scalar.duration(-91_800, "s")
+
+    # The writer states seconds, whichever width held the count.
+    assert DataType("utf8").scalar(Scalar.duration(90, "s")).as_py() == "PT90S"
+
+    # ISO 8601 names the comma the preferred decimal sign, so both read alike.
+    millis = DataType("duration64(ms)")
+    assert millis.scalar("PT1,5S") == millis.scalar("PT1.5S")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Scalar } = require('yggdryl')
+
+    const seconds = new DataType('duration64(s)')
+    assert.ok(seconds.scalar('P1DT2H3M4S').equals(Scalar.duration(93_784n, 's')))
+    assert.ok(seconds.scalar('-25:30:00').equals(Scalar.duration(-91_800n, 's')))
+
+    // The writer states seconds, whichever width held the count.
+    assert.equal(new DataType('utf8').scalar(Scalar.duration(90, 's')).asStr(), 'PT90S')
+
+    // ISO 8601 names the comma the preferred decimal sign, so both read alike.
+    const millis = new DataType('duration64(ms)')
+    assert.ok(millis.scalar('PT1,5S').equals(millis.scalar('PT1.5S')))
+    ```
 
 ## Arithmetic
 

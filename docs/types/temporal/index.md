@@ -275,7 +275,7 @@ a unit and a zone are read without naming a width.
 | `time64(unit)` | `Time64(unit)` | `time64(unit)` |
 | `datetime64(unit)` | `Timestamp(unit, None)` | `datetime64(unit)` |
 | `datetime64(unit,"zone")` | `Timestamp(unit, Some("zone"))` | `datetime64(unit,"zone")`, the zone canonical |
-| `duration32(unit)`, `duration64(unit)` | `Duration(unit)` | `duration64(unit)` |
+| `duration32(unit)`, `duration64(unit)` | `Duration(unit)`; `d` has no Arrow storage | `duration64(unit)` |
 | `interval(layout)` | `Interval(layout)` | `interval(layout)` |
 
 One Arrow cast serves every family: a temporal column renders as the classic
@@ -287,17 +287,20 @@ spelling and keeps Arrow's rendering.
 ## Vocabulary
 
 Units parse case-insensitively; whitespace, `_`, or `-` may separate words.
+The constructors take every unit its family carries; the grammar's unit
+parameter takes an Arrow resolution only, which is where the two columns
+below differ.
 
-| Canonical | Also accepted | Accepted by |
-| --- | --- | --- |
-| `d` | `day`, `days` | `duration32`, `duration64` |
-| `s` | `sec`, `secs`, `second`, `seconds` | `time32`, `datetime64`, `duration32`, `duration64` |
-| `ms` | `milli`, `millis`, `millisecond`, `milliseconds` | `time32`, `datetime64`, `duration32`, `duration64` |
-| `us` | `µs`, `micro`, `micros`, `microsecond`, `microseconds` | `time64`, `datetime64`, `duration32`, `duration64` |
-| `ns` | `nano`, `nanos`, `nanosecond`, `nanoseconds` | `time64`, `datetime64`, `duration32`, `duration64` |
-| `year_month` | `year`, `years`, `yearmonth`, `year_to_month`, `years_to_months` | `interval` |
-| `day_time` | `daytime`, `day_to_time`, `days_to_time`, `day_to_second`, `days_to_seconds` | `interval` |
-| `month_day_nano` | `monthdaynano`, `monthdaynanos`, `month_day_nanosecond`, `month_day_nanoseconds` | `interval` |
+| Canonical | Also accepted | Taken by | Read back by the grammar |
+| --- | --- | --- | --- |
+| `d` | `day`, `days` | `duration32`, `duration64` | nothing: `duration32(d)` renders but does not read back |
+| `s` | `sec`, `secs`, `second`, `seconds` | `time32`, `datetime64`, `duration32`, `duration64` | the same four |
+| `ms` | `milli`, `millis`, `millisecond`, `milliseconds` | `time32`, `datetime64`, `duration32`, `duration64` | the same four |
+| `us` | `µs`, `micro`, `micros`, `microsecond`, `microseconds` | `time64`, `datetime64`, `duration32`, `duration64` | the same four |
+| `ns` | `nano`, `nanos`, `nanosecond`, `nanoseconds` | `time64`, `datetime64`, `duration32`, `duration64` | the same four |
+| `year_month` | `year`, `years`, `yearmonth`, `year_to_month`, `years_to_months` | `interval` | `interval` |
+| `day_time` | `daytime`, `day_to_time`, `days_to_time`, `day_to_second`, `days_to_seconds` | `interval` | `interval` |
+| `month_day_nano` | `monthdaynano`, `monthdaynanos`, `month_day_nanosecond`, `month_day_nanoseconds` | `interval` | `interval` |
 
 `TimeUnit` is the one unit parser and Arrow converter in the whole crate (the
 shared enums are listed on [Scalar](../scalar.md)); `date32` and `date64` state

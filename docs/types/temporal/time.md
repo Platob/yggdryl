@@ -287,27 +287,71 @@ compact `HHMMSS[.fraction]` reads too. An hour past the day folds into it, and
 a zone is refused: a time of day is naive, and a zoned reading belongs in a
 [datetime](datetime.md).
 
-```rust
-use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
+=== "Rust"
 
-let clock = DataType::time32(TimeUnit::Millisecond)?;
-assert_eq!(
-    clock.scalar("10:15:30.5")?,
-    Scalar::time32(36_930_500, TimeUnit::Millisecond, Timezone::NAIVE)?
-);
+    ```rust
+    use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
 
-// The compact spelling is the same reading.
-let nanos = DataType::time64(TimeUnit::Nanosecond)?;
-assert_eq!(nanos.scalar("101530.5")?, nanos.scalar("10:15:30.5")?);
+    let clock = DataType::time32(TimeUnit::Millisecond)?;
+    assert_eq!(
+        clock.scalar("10:15:30.5")?,
+        Scalar::time32(36_930_500, TimeUnit::Millisecond, Timezone::NAIVE)?
+    );
 
-// An hour past the day folds into it.
-let seconds = DataType::time32(TimeUnit::Second)?;
-assert_eq!(seconds.scalar("25:30:00")?, seconds.scalar("01:30:00")?);
+    // The compact spelling is the same reading.
+    let nanos = DataType::time64(TimeUnit::Nanosecond)?;
+    assert_eq!(nanos.scalar("101530.5")?, nanos.scalar("10:15:30.5")?);
 
-// A zone makes it an instant, and the refusal says which type to use.
-let refused = seconds.scalar("10:15:30Z").unwrap_err().to_string();
-assert!(refused.contains("DateTime64"), "{refused}");
-```
+    // An hour past the day folds into it.
+    let seconds = DataType::time32(TimeUnit::Second)?;
+    assert_eq!(seconds.scalar("25:30:00")?, seconds.scalar("01:30:00")?);
+
+    // A zone makes it an instant, and the refusal says which type to use.
+    let refused = seconds.scalar("10:15:30Z").unwrap_err().to_string();
+    assert!(refused.contains("DateTime64"), "{refused}");
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType
+
+    clock = DataType("time32(ms)")
+    assert clock.scalar("10:15:30.5").count == 36_930_500
+
+    # The compact spelling is the same reading.
+    assert clock.scalar("101530.5") == clock.scalar("10:15:30.5")
+
+    # An hour past the day folds into it.
+    seconds = DataType("time32(s)")
+    assert seconds.scalar("25:30:00") == seconds.scalar("01:30:00")
+
+    # A zone makes it an instant, and the refusal says which type to use.
+    with pytest.raises(ValueError, match="DateTime64"):
+        seconds.scalar("10:15:30Z")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const clock = new DataType('time32(ms)')
+    assert.equal(clock.scalar('10:15:30.5').count, 36_930_500n)
+
+    // The compact spelling is the same reading.
+    assert.ok(clock.scalar('101530.5').equals(clock.scalar('10:15:30.5')))
+
+    // An hour past the day folds into it.
+    const seconds = new DataType('time32(s)')
+    assert.ok(seconds.scalar('25:30:00').equals(seconds.scalar('01:30:00')))
+
+    // A zone makes it an instant, and the refusal says which type to use.
+    assert.throws(() => seconds.scalar('10:15:30Z'), /DateTime64/)
+    ```
 
 ## A hand-built leaf
 

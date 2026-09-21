@@ -88,7 +88,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 | [Write](write.md) | a scalar as a document, to bytes, a location or a handle; multi-document dumps; block and flow layout; then Arrow batches |
 | [Values](values.md) | what a bare parse answers, and what a declared `Field` changes |
 
-Every scheme answers the same two surfaces. YAML answers native scalars in all three bindings, and Arrow rows in Rust and Python only - JavaScript binds neither `read_arrow` nor `write_arrow`. The format-agnostic facade, the `Format` and `Limits` vocabulary, and the shared `Formatting` rules are on [Structured documents](../structured.md).
+Every scheme answers the same two surfaces - native scalars and Arrow rows. YAML answers native scalars in all three bindings, and Arrow rows in Rust and Python only - JavaScript binds neither `read_arrow` nor `write_arrow`. The format-agnostic facade, the `Format` and `Limits` vocabulary, and the shared `Formatting` rules are on [Structured documents](../structured.md).
 
 ## One inferring entry point
 

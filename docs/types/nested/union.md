@@ -12,7 +12,7 @@ One of several member fields per row: a non-negative type id beside each member,
 | Cached | The members in one shared `Arc<[(i8, Field)]>`, so a clone shares them; the Arrow projection on the [`Field`](../field.md) |
 | Refuses | A negative or duplicate type id, a duplicate member name, more than 128 members through the dense sugar, a sparse `variant(...)`, and a value whose type id names no member |
 | Kinds | `DataTypeKind::Nested`, one id `union` (`0x99`) for both modes - the mode is a parameter, not a second identifier |
-| Bindings | `UnionFields` and `UnionMode` are Rust only: Python and JavaScript pass `(type_id, field)` pairs and a mode word, and read the mode and ids back off the datatype |
+| Bindings | `UnionFields` and `UnionMode` are Rust only: Python and JavaScript pass `(type_id, field)` pairs and a mode word; Python reads them back as `union_mode` and `union_type_ids`, and JavaScript, which has no accessor for either, reads them out of the canonical display |
 
 ## DataType
 

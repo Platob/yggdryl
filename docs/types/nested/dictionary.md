@@ -403,7 +403,7 @@ the column's name and its metadata.
 - Two dictionary fields with different identifiers have the same datatype, which is exactly why the identifier is on the field.
 - A value is the decoded value: there is no `Scalar` variant for a code, and a cell's datatype is the value datatype.
 - A merge keeps the options only when both sides have them, and the merged column is ordered only when both are - see [Field](../field.md#merging-two-schemas).
-- Bare Arrow has no `sized` or extension notion here: a dictionary of an extension-typed value declares that identity on the outer node, so an importer reads it once.
+- An encoded extension declares its identity once, on the node the field is: a dictionary of an extension-typed value writes the extension entries on the dictionary node and clears them from the values node, so an importer reads them once and never twice.
 
 ## Commands
 

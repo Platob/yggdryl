@@ -399,7 +399,30 @@ The encoding happens once at the value boundary, and the media layers move the b
 - A timestamp in seconds or milliseconds -> exact in microseconds, which is the precision the standard states.
 - A nanosecond timestamp -> its own two primitive types, zoned and not.
 
-## Cost
+## Commands
+
+=== "Rust"
+
+    ```bash
+    cargo test -p yggdryl --test types variant
+    cargo test -p yggdryl --test interop variant
+    cargo test -p yggdryl --test allocations variant_
+    cargo bench -p yggdryl --bench types -- variant --quick
+    ```
+
+=== "Python"
+
+    ```bash
+    python/.venv/bin/python -m pytest python/tests/types -k variant
+    ```
+
+=== "JavaScript"
+
+    ```bash
+    node --test --test-name-pattern="variant" node/tests/types/datatype.test.js
+    ```
+
+## Performance
 
 Dictionary and offset tables are borrowed during decoding. An ordered array
 allocates its final scalar slice directly; an object allocates its retained
@@ -423,26 +446,3 @@ integer arrays:
 The `types` benchmark measures these shapes, arrays, and the `Value`/`Scalar`
 conversion methods. Apache's reference object iterator borrows values; its
 timing is separate from decoding a complete native `Scalar` tree.
-
-## Commands
-
-=== "Rust"
-
-    ```bash
-    cargo test -p yggdryl --test types variant
-    cargo test -p yggdryl --test interop variant
-    cargo test -p yggdryl --test allocations variant_
-    cargo bench -p yggdryl --bench types -- variant --quick
-    ```
-
-=== "Python"
-
-    ```bash
-    python/.venv/bin/python -m pytest python/tests/types -k variant
-    ```
-
-=== "JavaScript"
-
-    ```bash
-    node --test --test-name-pattern="variant" node/tests/types/datatype.test.js
-    ```

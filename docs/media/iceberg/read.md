@@ -394,30 +394,160 @@ Every level prunes:
 
 Each level answers the [expression](../../expression/index.md) from its own statistics; a file's path answers every free [`&holder.*`](../../expression/holder.md) attribute before a byte is read. `scan_where` and `plan` build the expression from pairs; `scan_matching` and `plan_matching` take the whole language. What each level stores is on [Metadata](metadata.md), and the partition tuple it prunes by on [Partitions](partitions.md).
 
+One predicate crosses every level. Four rows are committed one at a time, so each is its own manifest and its own data file: the partition conjunct settles the 2023 manifest from the manifest-list summary alone, the range and the equality skip two more files on their own statistics, and one file is opened.
+
 === "Rust"
 
-    ```{ .rust .ignore }
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, IOMedia, StructType, arrow};
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("ccy"),
+        DataType::Int64.required_field("price"),
+        DataType::utf8().required_field("year"),
+    ])?)
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    let root = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-planning");
+    let _ = std::fs::remove_dir_all(&root);
+    let spec = PartitionSpec::identity(1, &schema, &["year"])?;
+    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let arrow_schema = schema.into_arrow_schema()?;
+    for (id, ccy, price, year) in [
+        (1_i64, "EUR", 150_i64, "2024"),
+        (2, "EUR", 50, "2024"),
+        (3, "USD", 200, "2024"),
+        (4, "EUR", 300, "2023"),
+    ] {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(Int64Array::from(vec![id])),
+                Arc::new(StringArray::from(vec![ccy])),
+                Arc::new(Int64Array::from(vec![price])),
+                Arc::new(StringArray::from(vec![year])),
+            ],
+        )?;
+        table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    }
+
     // Ranges, null tests, and questions about the file, in one predicate.
-    let reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
-        None,
-    )?;
+    let predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'";
+    let plan = table.plan_matching(predicate)?;
+    assert_eq!(plan.manifests_skipped(), 1);
+    assert_eq!(plan.files_skipped(), 2);
+    assert_eq!(plan.record_count()?, 1);
+
+    let mut rows = 0;
+    for batch in table.scan_matching(predicate, None)? {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 1);
+
+    let _ = std::fs::remove_dir_all(&root);
     ```
 
 === "Python"
 
-    ```{ .python .ignore }
-    reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
-    )
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ccy", pa.string(), nullable=False),
+        pa.field("price", pa.int64(), nullable=False),
+        pa.field("year", pa.string(), nullable=False),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["year"])
+    for id_, ccy, price, year in [
+        (1, "EUR", 150, "2024"),
+        (2, "EUR", 50, "2024"),
+        (3, "USD", 200, "2024"),
+        (4, "EUR", 300, "2023"),
+    ]:
+        table.append(
+            pa.record_batch(
+                {"id": [id_], "ccy": [ccy], "price": [price], "year": [year]},
+                schema=columns,
+            )
+        )
+
+    # Ranges, null tests, and questions about the file, in one predicate.
+    predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
+    plan = table.plan_matching(predicate)
+    assert plan["manifests_skipped"] == 1
+    assert plan["files_skipped"] == 2
+    assert plan["tasks"] == 1
+
+    read = table.scan_matching(predicate).read_all()
+    assert read.num_rows == 1
+    assert read.column("id").to_pylist() == [1]
     ```
 
 === "JavaScript"
 
-    ```{ .javascript .ignore }
-    const reader = table.scanMatching(
-      "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct(
+      'row',
+      [
+        Field.from('id: int64'),
+        Field.from('ccy: utf8'),
+        Field.from('price: int64'),
+        Field.from('year: utf8'),
+      ],
+      { nullable: false },
     )
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['year'])
+    for (const [id, ccy, price, year] of [
+      [1n, 'EUR', 150n, '2024'],
+      [2n, 'EUR', 50n, '2024'],
+      [3n, 'USD', 200n, '2024'],
+      [4n, 'EUR', 300n, '2023'],
+    ]) {
+      table.append(
+        new arrow.Table({
+          id: arrow.vectorFromArray([id], new arrow.Int64()),
+          ccy: arrow.vectorFromArray([ccy], new arrow.Utf8()),
+          price: arrow.vectorFromArray([price], new arrow.Int64()),
+          year: arrow.vectorFromArray([year], new arrow.Utf8()),
+        }),
+      )
+    }
+
+    // Ranges, null tests, and questions about the file, in one predicate.
+    const predicate = "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
+    const plan = table.planMatching(predicate)
+    assert.equal(plan.manifestsSkipped, 1)
+    assert.equal(plan.filesSkipped, 2)
+    assert.equal(plan.tasks, 1)
+
+    const read = table.scanMatching(predicate).intoTable()
+    assert.equal(read.numRows, 1)
+    assert.deepEqual([...read.getChild('id')], [1n])
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
 ## Time travel and the inspection tables

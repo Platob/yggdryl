@@ -171,7 +171,7 @@ assert_eq!(Scalar::Currency(Currency::new("EUR")?).as_code(), Some(held));
 assert_eq!(Code::from_scalar(&Scalar::from("EUR")), None);
 ```
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
 
 ```rust
 use yggdryl::{CodeValue, Currency, IsinCode, MicCode, State};

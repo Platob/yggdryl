@@ -33,7 +33,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
     use yggdryl::Int64Field;
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, Nullability};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability};
 
     let strict_conversion = ArrowCastOptions::new().with_safe(false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
@@ -299,7 +299,7 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
 
     let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
