@@ -29,8 +29,8 @@ use crate::iomedia::{
     frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
 use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::scalar::{PyScalar, from_py};
+use crate::field::{PyField, core_field_from_value};
+use crate::scalar::{PyScalar, from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::value_error;
 
@@ -2325,7 +2325,7 @@ impl PyIOBase {
         &self,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<crate::text_line::PyTextLines> {
+    ) -> PyResult<crate::text::line::PyTextLines> {
         let options = self.resolve_options(options, properties)?;
         let RecordOptions::Text(text) = options else {
             return Err(PyValueError::new_err(
@@ -2334,7 +2334,7 @@ impl PyIOBase {
         };
         let lines = yggdryl::text::read_text_lines(self.inner()?, text.as_ref())
             .map_err(crate::holder::fs::storage_error)?;
-        Ok(crate::text_line::PyTextLines::from_core(lines))
+        Ok(crate::text::line::PyTextLines::from_core(lines))
     }
 
     /// Replace this resource with the batches `reader` yields.
@@ -3156,7 +3156,7 @@ impl PyRecordIterator {
         loop {
             if let Some(row) = self.rows.as_sequence().and_then(|rows| rows.get(self.next)) {
                 self.next += 1;
-                let record = crate::types::scalar::as_py_with_field(py, row, &self.field)?;
+                let record = crate::scalar::as_py_with_field(py, row, &self.field)?;
                 return match &self.from_dict {
                     Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
                     None => Ok(Some(record)),

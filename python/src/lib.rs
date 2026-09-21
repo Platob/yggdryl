@@ -8,7 +8,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use yggdryl::OwnedDifferences;
 
+use crate::datatype::{PyDataType, PyDataTypeIterator, PyStringEnum};
 use crate::enums::{PyMediaType, PyMediaTypeIterator, PyMimeType};
+use crate::field::{
+    PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
+};
+use crate::scalar::PyScalar;
 use crate::text::codec::{
     PyCodecScalarIterator, codec_decode, codec_decode_all, codec_decode_all_reader,
     codec_decode_all_text, codec_decode_inferred, codec_decode_inferred_text, codec_decode_iter,
@@ -16,27 +21,29 @@ use crate::text::codec::{
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
     codec_infer_text, codec_normalize_format,
 };
-use crate::types::datatype::{PyDataType, PyDataTypeIterator, PyStringEnum};
-use crate::types::field::{
-    PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
-};
-use crate::types::scalar::PyScalar;
 use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
 mod arrow;
+mod avro;
+mod cast;
 mod charset;
 mod coding;
+mod datatype;
 mod enums;
 mod expression;
+mod field;
 mod fix;
 mod hashing;
 mod holder;
+mod iceberg;
 mod iobase;
 mod iomedia;
 mod media;
+mod parameters;
+mod protocol;
+mod scalar;
 mod text;
-mod text_line;
-mod types;
+mod timezone;
 mod uri;
 mod version;
 
@@ -428,26 +435,26 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
     module.add_class::<PyStringEnum>()?;
-    module.add_class::<types::parameters::PyStringParameters>()?;
-    module.add_class::<types::parameters::PyBytesParameters>()?;
+    module.add_class::<parameters::PyStringParameters>()?;
+    module.add_class::<parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
     module.add_class::<crate::arrow::PyArrowScalar>()?;
-    module.add_class::<types::scalar::PyScalarIterator>()?;
-    module.add_class::<types::scalar::PyScalarEntryIterator>()?;
-    module.add_class::<media::avro::PyAvroSchema>()?;
-    module.add_class::<media::avro::PyAvroContainer>()?;
-    module.add_class::<media::avro::PyAvroBlock>()?;
-    module.add_class::<media::avro::PyAvroBlockIterator>()?;
-    text_line::register(module)?;
+    module.add_class::<scalar::PyScalarIterator>()?;
+    module.add_class::<scalar::PyScalarEntryIterator>()?;
+    module.add_class::<avro::PyAvroSchema>()?;
+    module.add_class::<avro::PyAvroContainer>()?;
+    module.add_class::<avro::PyAvroBlock>()?;
+    module.add_class::<avro::PyAvroBlockIterator>()?;
+    text::line::register(module)?;
     register_expression(module)?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
-    module.add_class::<types::python::PyPythonMetadata>()?;
-    module.add_class::<types::cast::PyArrowCastPlan>()?;
+    module.add_class::<protocol::PyPythonMetadata>()?;
+    module.add_class::<cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<version::PyVersion>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
@@ -470,7 +477,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUriPathIterator>()?;
     module.add_class::<PyParameters>()?;
     module.add_class::<PyParameterIterator>()?;
-    module.add_class::<types::timezone::PyTimezone>()?;
+    module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
     holder::handles::register(module)?;
     coding::handles::register(module)?;
@@ -484,23 +491,23 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iobase::PyIOBaseIterator>()?;
     module.add_class::<iomedia::PyRecordOptions>()?;
     module.add_class::<iomedia::PyTextOptions>()?;
-    module.add_class::<media::iceberg::PyCatalog>()?;
-    module.add_class::<media::iceberg::PyNamespace>()?;
-    module.add_class::<media::iceberg::PyNamespaces>()?;
-    module.add_class::<media::iceberg::PyTables>()?;
-    module.add_class::<media::iceberg::PyNames>()?;
-    module.add_class::<media::iceberg::PyNamespaceIterator>()?;
-    module.add_class::<media::iceberg::PyTableIterator>()?;
-    module.add_class::<media::iceberg::PyIcebergOptions>()?;
-    module.add_class::<media::iceberg::PyTable>()?;
-    module.add_class::<media::iceberg::PySchemaUpdate>()?;
-    module.add_class::<media::iceberg::PyScanPlan>()?;
-    module.add_class::<media::iceberg::PyCompaction>()?;
-    module.add_class::<media::iceberg::PyPartitionSpec>()?;
-    module.add_class::<media::iceberg::PyPartitionField>()?;
-    module.add_class::<media::iceberg::PySnapshot>()?;
-    module.add_class::<media::iceberg::PyManifestFile>()?;
-    module.add_class::<media::iceberg::PyDataFile>()?;
+    module.add_class::<iceberg::PyCatalog>()?;
+    module.add_class::<iceberg::PyNamespace>()?;
+    module.add_class::<iceberg::PyNamespaces>()?;
+    module.add_class::<iceberg::PyTables>()?;
+    module.add_class::<iceberg::PyNames>()?;
+    module.add_class::<iceberg::PyNamespaceIterator>()?;
+    module.add_class::<iceberg::PyTableIterator>()?;
+    module.add_class::<iceberg::PyIcebergOptions>()?;
+    module.add_class::<iceberg::PyTable>()?;
+    module.add_class::<iceberg::PySchemaUpdate>()?;
+    module.add_class::<iceberg::PyScanPlan>()?;
+    module.add_class::<iceberg::PyCompaction>()?;
+    module.add_class::<iceberg::PyPartitionSpec>()?;
+    module.add_class::<iceberg::PyPartitionField>()?;
+    module.add_class::<iceberg::PySnapshot>()?;
+    module.add_class::<iceberg::PyManifestFile>()?;
+    module.add_class::<iceberg::PyDataFile>()?;
     media::partition::register(module)?;
     hashing::register(module)?;
     Ok(())
@@ -530,19 +537,19 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
     module.add_function(wrap_pyfunction!(
-        media::iceberg::iceberg_assign_field_ids,
+        iceberg::iceberg_assign_field_ids,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(
-        media::iceberg::iceberg_can_promote,
+        iceberg::iceberg_can_promote,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(
-        media::iceberg::iceberg_schema_from_json,
+        iceberg::iceberg_schema_from_json,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(
-        media::iceberg::iceberg_schema_into_json,
+        iceberg::iceberg_schema_into_json,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(codec_encode, module)?)?;
@@ -563,10 +570,10 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(codec_decode_all_text, module)?)?;
     module.add_function(wrap_pyfunction!(codec_decode_all_reader, module)?)?;
     module.add_function(wrap_pyfunction!(codec_infer_text, module)?)?;
-    module.add_function(wrap_pyfunction!(media::avro::avro_loads, module)?)?;
-    module.add_function(wrap_pyfunction!(media::avro::avro_blocks, module)?)?;
-    module.add_function(wrap_pyfunction!(media::avro::avro_dumps, module)?)?;
-    module.add_function(wrap_pyfunction!(media::avro::avro_loads_single, module)?)?;
-    module.add_function(wrap_pyfunction!(media::avro::avro_dumps_single, module)?)?;
+    module.add_function(wrap_pyfunction!(avro::avro_loads, module)?)?;
+    module.add_function(wrap_pyfunction!(avro::avro_blocks, module)?)?;
+    module.add_function(wrap_pyfunction!(avro::avro_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(avro::avro_loads_single, module)?)?;
+    module.add_function(wrap_pyfunction!(avro::avro_dumps_single, module)?)?;
     Ok(())
 }

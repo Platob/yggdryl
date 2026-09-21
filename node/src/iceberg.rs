@@ -29,8 +29,8 @@ use crate::iobase::{JsIOBase, LocationInput, folder_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::types::datatype::{DataTypeInput, dtype_from_input};
-use crate::types::field::{JsField, MetadataEntry};
+use crate::datatype::{DataTypeInput, dtype_from_input};
+use crate::field::{JsField, MetadataEntry};
 use crate::uri::PartitionEntry;
 
 /// A partition spec, or the column names one would be built from.

@@ -12,28 +12,33 @@
     clippy::type_complexity
 )]
 
+mod avro;
 pub mod charset;
 pub mod coding;
+mod datatype;
 // Discovered through NAPI's generated registration inventory rather than
 // ordinary Rust call sites, like `uri` below.
 #[allow(dead_code)]
 mod enums;
 mod expression;
+mod field;
 mod fix;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
 mod hashing;
 mod holder;
+mod iceberg;
 mod iobase;
 mod iomedia;
 mod media;
 mod text;
-mod text_line;
-mod types;
+mod timezone;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
 #[allow(dead_code)]
 mod uri;
+mod value;
+mod version;
 
 use std::cmp::Ordering;
 
@@ -56,11 +61,11 @@ pub use fix::{
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
-pub use media::avro::{
+pub use avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
     avro_dumps_native, avro_loads_native,
 };
-pub use media::iceberg::{
+pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
     JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
     JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
@@ -68,7 +73,7 @@ pub use media::iceberg::{
     iceberg_schema_into_json,
 };
 pub use media::options::JsRecordOptions;
-pub use media::text::JsTextOptions;
+pub use text::options::JsTextOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
@@ -78,10 +83,10 @@ pub use text::codec::{
     yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
     yaml_loads_all_native, yaml_loads_native,
 };
-pub use types::datatype::JsDataType;
-pub use types::field::{JsField, JsProtocolField, MetadataEntry};
-pub use types::timezone::{JsTimezone, TimezoneAlias};
-pub use types::version::JsVersion;
+pub use datatype::JsDataType;
+pub use field::{JsField, JsProtocolField, MetadataEntry};
+pub use timezone::{JsTimezone, TimezoneAlias};
+pub use version::JsVersion;
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
 
 /// Read a structural JSON document from the object or the text a caller holds.

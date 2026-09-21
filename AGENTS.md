@@ -292,9 +292,15 @@ with string leaves - is a root file or folder of its own name; a parent
 folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`)
 holds only what its implementations share. A folder is never a
 facade over root-owned vocabulary, and a module owns implementation rather
-than an empty facade. Tests, benchmarks, bindings and docs are grouped by
-theme - `types`, `holder`, `media` and the rest - which is a caller's
-vocabulary, not a source path.
+than an empty facade. A binding's `src/` is flat the same way and for the same
+reason: `python/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs` and the
+rest hold one type each at the crate root, `avro.rs` and `iceberg.rs` are
+implementations of their own name, and `media/` keeps only the handle classes
+and the partition renderer every medium shares - there is no `types/` or
+`media/` facade over vocabulary the root owns. Tests, benchmarks, the
+caller-facing packages (`python/yggdryl/`, the Node JavaScript files) and docs
+are grouped by theme - `types`, `holder`, `media` and the rest - which is a
+caller's vocabulary, not a source path.
 
 Paths below are under `rust/src/` unless stated otherwise.
 
@@ -342,6 +348,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `parallel.rs` | the one ordered map over persistent stream workers the FIX doors read on: line, message-row and write doors use 64-item chunks at lane depth two; Arrow capture parsing holds at most one whole input batch per worker; answers stay in input order and one thread is the lazy sequential map |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
+| binding `src/` | the crate layout above, one layer thinner: one type per root file (`datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `parameters.rs`, `timezone.rs`, `protocol.rs`, `value.rs`, `version.rs`), one root file per implementation (`avro.rs`, `iceberg.rs`), `text/` holding `codec.rs`, `line.rs` and Node's `options.rs`, and `media/` holding only what every medium shares - Python's `handles.rs` and `partition.rs`, Node's `options.rs` |
 
 Parquet is feature-gated; Avro's scalar codec is unconditional and its record
 surface uses Arrow; Iceberg sits on these codecs. `Text<H>` keeps only options
@@ -1540,10 +1547,20 @@ section change together. What binds every page:
   in that page's Python or JavaScript tab, so one operation is described once
   and every language spelling of it sits beside the others.
   `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
-  Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
-  `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
-  batches; `json/`, `yaml/` and `toml/` document there too, as three of those
-  schemes, and `text/` as the plain-text one.
+  Avro, plain text, JSON, YAML, TOML, Iceberg - each holding `index.md` for the
+  scheme, `read.md` and `write.md` for the two directions, and one page per
+  feature that scheme alone has. A read page and a write page each show native
+  scalars first and Arrow batches second, in Rust, Python and JavaScript tabs,
+  so a reader picks a direction rather than a surface; `json/`, `yaml/` and
+  `toml/` document there too, as three of those schemes, and `text/` as the
+  plain-text one.
+  `docs/types/` is the same shape one level down: the Core pages - `datatype.md`,
+  `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
+  subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,
+  `geospatial/`), each an `index.md` for what the family shares and one page per
+  type in it. A type page reads in the order its core file is written -
+  Contract, DataType, Field, Scalar, Arrow storage - then its features, its
+  edges and its commands, with every example in the three languages.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
   binding. Every block is self-contained with an assertion and runs through

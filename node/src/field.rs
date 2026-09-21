@@ -19,9 +19,9 @@ use crate::{
         mime_type_from_input,
     },
     exact_i32, napi_error, napi_type_error, ordering_value,
-    types::datatype::{JsDataType, JsStringEnum, dtype_from_input},
-    types::value::arrow_scalar_to_ipc,
-    types::value::field_value_to_js,
+    datatype::{JsDataType, JsStringEnum, dtype_from_input},
+    value::arrow_scalar_to_ipc,
+    value::field_value_to_js,
     uri::{JsUri, JsUrl, JsUrn, url_from_input},
 };
 

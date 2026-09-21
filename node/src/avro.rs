@@ -9,7 +9,7 @@ use yggdryl::holder::Buffer as CoreBuffer;
 use yggdryl::{Limits, Scalar};
 
 use crate::text::codec::JsScalar;
-use crate::types::field::MetadataEntry;
+use crate::field::MetadataEntry;
 use crate::{exact_u64, napi_error};
 
 /// Resource limits shared by every Avro decode entry point.

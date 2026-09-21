@@ -12,8 +12,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyModule};
 
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
-use crate::types::field::core_field_from_value;
-use crate::types::scalar::from_py;
+use crate::field::core_field_from_value;
+use crate::scalar::from_py;
 use crate::value_error;
 
 /// Read the `column=value` pairs a caller spells as an iterable of pairs.

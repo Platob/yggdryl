@@ -29,7 +29,7 @@ use yggdryl::{
 };
 use yggdryl::{json, text, toml, yaml};
 
-use crate::types::timezone::{TimezoneInput, timezone_from_input};
+use crate::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
 
 /// Preserve the core's typed arithmetic failures as JavaScript error classes.

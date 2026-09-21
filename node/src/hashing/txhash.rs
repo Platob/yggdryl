@@ -23,8 +23,8 @@ use super::xxhash::{
 };
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::types::datatype::JsDataType;
-use crate::types::field::JsField;
+use crate::datatype::JsDataType;
+use crate::field::JsField;
 
 /// Anything the loader hands a native entry point as an instant.
 ///

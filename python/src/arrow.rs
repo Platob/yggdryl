@@ -24,9 +24,9 @@ use crate::iomedia::{
     Frames, batch_reader_from_value, batch_reader_to_pyarrow, core_root_field_from_value,
     declared_by, frame_from_reader, frame_to_arrow, type_name,
 };
-use crate::types::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::scalar::{PyScalar, arrow_scalar_into_array, as_py_with_field};
+use crate::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::field::{PyField, core_field_from_value};
+use crate::scalar::{PyScalar, arrow_scalar_into_array, as_py_with_field};
 use crate::{cast_options, value_error};
 
 /// One Arrow-backed value: a scalar, a column, a table, or a stream.
@@ -284,7 +284,7 @@ fn pyarrow_scalar(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowScalar>> {
 
 /// Read any other Python value as one native scalar under its inferred Field.
 fn native_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
-    let scalar = crate::types::scalar::from_py(value).map_err(|error| {
+    let scalar = crate::scalar::from_py(value).map_err(|error| {
         PyTypeError::new_err(format!(
             "expected a pyarrow Scalar, Array, ChunkedArray, RecordBatch, Table, \
              RecordBatchReader, Dataset or Scanner, a pandas or polars frame or series, a numpy \

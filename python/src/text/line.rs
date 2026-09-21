@@ -18,7 +18,7 @@ use yggdryl::{FieldPath, FieldSegment};
 
 use crate::fix::uuid_scalar;
 use crate::iomedia::PyTextOptions;
-use crate::types::scalar::PyScalar;
+use crate::scalar::PyScalar;
 use crate::value_error;
 
 /// Resolve whatever spelling of a path the caller used, exactly once.

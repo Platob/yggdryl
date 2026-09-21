@@ -17,7 +17,7 @@ use pyo3::types::PyAny;
 use yggdryl::ArrowCastPlan;
 
 use crate::iomedia::batch_to_pyarrow;
-use crate::types::field::{PyField, arrow_schema_to_pyarrow, core_field_from_value};
+use crate::field::{PyField, arrow_schema_to_pyarrow, core_field_from_value};
 use crate::{cast_options, value_error};
 
 /// One Arrow cast compiled from a source schema and a declared root.

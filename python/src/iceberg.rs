@@ -33,8 +33,8 @@ use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
     core_root_field_from_value, string_pairs_from_value,
 };
-use crate::types::datatype::core_dtype_from_value;
-use crate::types::field::{PyField, core_field_from_value};
+use crate::datatype::core_dtype_from_value;
+use crate::field::{PyField, core_field_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
@@ -80,7 +80,7 @@ pub(crate) fn iceberg_schema_from_json(
     name: &str,
     document: &Bound<'_, PyAny>,
 ) -> PyResult<PyField> {
-    let document = crate::types::scalar::from_py(document)?;
+    let document = crate::scalar::from_py(document)?;
     schema_from_json(name, &document)
         .map(PyField::from_inner)
         .map_err(value_error)
@@ -99,7 +99,7 @@ pub(crate) fn iceberg_schema_into_json(
 ) -> PyResult<Py<PyAny>> {
     let root = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
     let document = schema_into_json(&root).map_err(value_error)?;
-    crate::types::scalar::as_py(py, &document)
+    crate::scalar::as_py(py, &document)
 }
 
 /// Check one type change against the promotions Iceberg allows.
@@ -149,7 +149,7 @@ fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Par
 fn partition_values<'py>(py: Python<'py>, values: &[Scalar]) -> PyResult<Bound<'py, PyTuple>> {
     let projected: Vec<Py<PyAny>> = values
         .iter()
-        .map(|value| crate::types::scalar::as_py(py, value))
+        .map(|value| crate::scalar::as_py(py, value))
         .collect::<PyResult<_>>()?;
     PyTuple::new(py, projected)
 }
@@ -2286,7 +2286,7 @@ impl PyPartitionField {
     /// Read one native partition-field JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::types::scalar::from_py(document)?;
+        let document = crate::scalar::from_py(document)?;
         PartitionField::from_json(&document)
             .map(|inner| Self { inner })
             .map_err(value_error)
@@ -2319,7 +2319,7 @@ impl PyPartitionField {
     /// Return the native partition-field JSON value as natural Python data.
     fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let document = self.inner.clone().into_json().map_err(value_error)?;
-        crate::types::scalar::as_py(py, &document)
+        crate::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2389,7 +2389,7 @@ impl PyPartitionSpec {
     /// Read one native partition-spec JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::types::scalar::from_py(document)?;
+        let document = crate::scalar::from_py(document)?;
         PartitionSpec::from_json(&document)
             .map(Self::from_core)
             .map_err(value_error)
@@ -2450,7 +2450,7 @@ impl PyPartitionSpec {
     /// Return the native partition-spec JSON value as natural Python data.
     fn into_json(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let document = self.inner.clone().into_json().map_err(value_error)?;
-        crate::types::scalar::as_py(py, &document)
+        crate::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2520,7 +2520,7 @@ impl PySnapshot {
     /// Read one native snapshot JSON value.
     #[classmethod]
     fn from_json(_cls: &Bound<'_, PyType>, document: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let document = crate::types::scalar::from_py(document)?;
+        let document = crate::scalar::from_py(document)?;
         Snapshot::from_json(&document)
             .map(Self::from_core)
             .map_err(value_error)
@@ -2611,7 +2611,7 @@ impl PySnapshot {
     fn into_json(&self, py: Python<'_>, version: i64) -> PyResult<Py<PyAny>> {
         let version = FormatVersion::from_number(version).map_err(value_error)?;
         let document = self.inner.clone().into_json(version).map_err(value_error)?;
-        crate::types::scalar::as_py(py, &document)
+        crate::scalar::as_py(py, &document)
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
@@ -2956,7 +2956,7 @@ impl PyDataFile {
             .inner
             .partition
             .iter()
-            .map(|value| crate::types::scalar::scalar_pickle_state(py, value))
+            .map(|value| crate::scalar::scalar_pickle_state(py, value))
             .collect::<PyResult<Vec<_>>>()?;
         state.set_item("partition", PyTuple::new(py, partition)?)?;
         state.set_item("record_count", self.inner.record_count)?;
@@ -2992,7 +2992,7 @@ impl PyDataFile {
     fn _from_pickle(state: &Bound<'_, PyDict>) -> PyResult<Self> {
         let partition = required_pickle_item(state, "partition")?
             .try_iter()?
-            .map(|value| crate::types::scalar::scalar_from_pickle_state(&value?, 0))
+            .map(|value| crate::scalar::scalar_from_pickle_state(&value?, 0))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(Self::from_core(DataFile {
             content: required_pickle_item(state, "content")?.extract()?,

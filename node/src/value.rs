@@ -14,7 +14,7 @@ use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit, UriType, i256};
 use yggdryl::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 use crate::napi_error;
-use crate::types::version::JsVersion;
+use crate::version::JsVersion;
 
 /// The JavaScript constructor category a datatype projects into.
 ///

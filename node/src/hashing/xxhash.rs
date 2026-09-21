@@ -18,7 +18,7 @@ use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::types::field::JsField;
+use crate::field::JsField;
 
 /// Decode exactly one Arrow batch, transform it, and return one IPC batch.
 pub(crate) fn apply_arrow_batch_ipc(

@@ -34,9 +34,9 @@ use yggdryl::{
 };
 
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
-use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::types::field::{PyField, core_field_from_value};
-use crate::types::timezone::core_timezone_from_value;
+use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::field::{PyField, core_field_from_value};
+use crate::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};
 
@@ -701,7 +701,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                         "Scalar byte state must be bytes or (layout, fixed, bytes)",
                     )
                 })?;
-            let parameters = crate::types::parameters::core_bytes_parameters(&layout, fixed)?;
+            let parameters = crate::parameters::core_bytes_parameters(&layout, fixed)?;
             Bytes::from_shared(pickle_bytes(&bytes)?)
                 .try_with_parameters(parameters)
                 .map(Scalar::Bytes)

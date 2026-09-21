@@ -6,7 +6,7 @@ use yggdryl::MsgType;
 
 use super::JsFixMsg;
 use crate::text::codec::JsScalar;
-use crate::types::field::JsField;
+use crate::field::JsField;
 use crate::{exact_i32, napi_error, ordering_value};
 
 /// An immutable message definition: a copy of the registry's own, so a

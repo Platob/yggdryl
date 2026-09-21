@@ -16,9 +16,9 @@ use yggdryl::{
 use crate::{
     JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, exact_u32, napi_error,
     ordering_value,
-    types::field::JsField,
-    types::value::arrow_scalar_to_ipc,
-    types::value::{JsValueHint, dtype_js_hint, field_value_to_js},
+    field::JsField,
+    value::arrow_scalar_to_ipc,
+    value::{JsValueHint, dtype_js_hint, field_value_to_js},
 };
 
 /// A native `DataType` or the type expression naming one.

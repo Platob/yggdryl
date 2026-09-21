@@ -59,8 +59,8 @@ use yggdryl::{
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
-use crate::text_line::{JsFieldPath, JsTextLine, path_from_input};
-use crate::types::field::JsField;
+use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
+use crate::field::JsField;
 use crate::{exact_f64, exact_i32, exact_i64, napi_error, napi_type_error};
 
 /// The root a batch of FIX rows is named by, the core's own spelling.

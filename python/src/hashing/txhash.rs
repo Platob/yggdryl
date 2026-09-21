@@ -21,9 +21,9 @@ use yggdryl::{Digester, Scalar, TimeUnit, Timezone};
 use crate::hashing::xxhash::{
     PyDigest, PyDigester, PyXxh3, PyXxh32, PyXxh64, PyXxh128, algorithm_from_str, feed_content,
 };
-use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::types::field::core_field_from_value;
-use crate::types::scalar::{PyScalar, date_epoch_days, datetime_utc_microseconds};
+use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::field::core_field_from_value;
+use crate::scalar::{PyScalar, date_epoch_days, datetime_utc_microseconds};
 use crate::value_error;
 
 /// Register this module's classes and functions on the native module.
@@ -87,7 +87,7 @@ pub(crate) fn unix_from_py(value: &Bound<'_, PyAny>, unit: TimeUnit) -> PyResult
     }
     let scalar = match value.extract::<PyRef<'_, PyScalar>>() {
         Ok(scalar) => scalar.inner.clone(),
-        Err(_) => crate::types::scalar::from_py(value)?,
+        Err(_) => crate::scalar::from_py(value)?,
     };
     txhash::unix_from_scalar(&scalar, unit).map_err(value_error)
 }

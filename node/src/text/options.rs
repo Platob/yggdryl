@@ -13,8 +13,8 @@ use crate::expression::{
 };
 use crate::media::options::JsRecordOptions;
 use crate::napi_error;
-use crate::types::field::JsField;
-use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
+use crate::field::JsField;
+use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// Flat settings for physical-line or framed `text/plain` records.
 #[napi(js_name = "TextOptions")]
@@ -285,7 +285,7 @@ impl JsTextOptions {
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
             String,
         >,
     ) -> Result<()> {
@@ -654,7 +654,7 @@ impl JsTextOptions {
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::field::JsField>,
             String,
         >,
     ) -> Result<Self> {

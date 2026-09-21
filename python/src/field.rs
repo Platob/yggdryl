@@ -19,13 +19,13 @@ use crate::enums::{
 };
 use crate::fix::FixTag;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
-use crate::types::datatype::{
+use crate::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
-use crate::types::python::{PyPythonMetadata, core_python_metadata_from_value};
-use crate::types::scalar::{PyScalar, from_py as scalar_from_py};
+use crate::protocol::{PyPythonMetadata, core_python_metadata_from_value};
+use crate::scalar::{PyScalar, from_py as scalar_from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
@@ -396,7 +396,7 @@ impl PyField {
                 .map(Self::from_inner)
                 .map_err(value_error);
         }
-        CoreField::from_value(crate::types::scalar::from_py(value)?)
+        CoreField::from_value(crate::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -517,8 +517,8 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = if crate::types::datatype::needs_core_value_rules(self.inner.dtype())
-            || crate::types::datatype::is_parsed_text(self.inner.dtype())
+        let scalar = if crate::datatype::needs_core_value_rules(self.inner.dtype())
+            || crate::datatype::is_parsed_text(self.inner.dtype())
         {
             core_arrow_scalar(py, value, self.inner.dtype(), safe)?
         } else {
@@ -980,7 +980,7 @@ impl PyField {
     /// document a caller already builds.
     #[allow(clippy::wrong_self_convention)]
     fn into_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::types::scalar::as_py(py, &self.inner.clone().into_value())
+        crate::scalar::as_py(py, &self.inner.clone().into_value())
     }
 
     /// Read this value back from a plain structural mapping.
@@ -988,7 +988,7 @@ impl PyField {
     /// The inverse of `into_dict`, through the core's one conversion.
     #[staticmethod]
     fn from_dict(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreField::from_value(crate::types::scalar::from_py(value)?)
+        CoreField::from_value(crate::scalar::from_py(value)?)
             .map(Self::from_inner)
             .map_err(value_error)
     }

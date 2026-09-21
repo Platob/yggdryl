@@ -19,11 +19,11 @@ use napi::bindgen_prelude::{Buffer, Env, Function, FunctionRef, Result, Uint8Arr
 use napi_derive::napi;
 use yggdryl::arrow::{BatchReader, from_reader_error};
 
-use crate::media::iceberg::{FieldInput, field_from_input};
+use crate::iceberg::{FieldInput, field_from_input};
 use yggdryl::media::DEFAULT_ROOT_NAME;
 
 use crate::napi_error;
-use crate::types::field::JsField;
+use crate::field::JsField;
 
 /// Report a stream someone else has already read.
 fn consumed() -> napi::Error {

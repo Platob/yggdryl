@@ -1,6 +1,3 @@
-//! JavaScript views over record media and table formats.
+//! What every JavaScript record medium shares.
 
-pub(crate) mod avro;
-pub(crate) mod iceberg;
 pub(crate) mod options;
-pub(crate) mod text;
