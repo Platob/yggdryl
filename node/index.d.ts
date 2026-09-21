@@ -1339,7 +1339,10 @@ export declare class FixCodec {
    * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
    * in nanoseconds, and `null` or absence reads UTC now per new message.
    * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
-   * nanoseconds; `null`, zero and a negative width disable snapshots.
+   * nanoseconds; `null`, zero and a negative width disable snapshots;
+   * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
+   * transaction clock may stand and still date the message, the core's
+   * one second when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1371,6 +1374,14 @@ export declare class FixCodec {
    * where snapshots are disabled.
    */
   get snapshotNs(): bigint | null
+  /**
+   * How far from `SendingTime(52)` an official transaction clock may
+   * stand and still date the message, in milliseconds.
+   *
+   * A millisecond count is a JavaScript number, exact to 2^53, as every
+   * count at this boundary is.
+   */
+  get officialTimeDelayMs(): number
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -1577,9 +1588,11 @@ export declare class FixMsg {
    * tag, a crate column, one of the FIX fields a message lifts,
    * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
    * when the value states none; the event's instant is the stated one,
-   * else that sending time, and the creation the stated one, else the
-   * instant - what `TransactTime(60)` or `OrigSendingTime(122)` says is
-   * the lifecycle's to read. The identity is then settled.
+   * else the official transaction clock standing within the core's default
+   * one-second delay of that sending time - a `TransactTime(60)`, else a
+   * ranked `TrdRegTimestamp(769)` - else the sending time itself, and the
+   * creation the stated one, else the instant. What `OrigSendingTime(122)`
+   * says is the lifecycle's to read. The identity is then settled.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -6074,6 +6087,13 @@ export interface FixCodecOptions {
    * `null`, zero and a negative width disable snapshots.
    */
   snapshotNs?: bigint | null
+  /**
+   * How far from `SendingTime(52)` an official transaction clock may
+   * stand and still date the message, in milliseconds; the core's one
+   * second when unstated, and a nonpositive delay admits only a
+   * transaction clock equal to the sending clock.
+   */
+  officialTimeDelayMs?: number
   /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
