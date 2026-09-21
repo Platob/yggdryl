@@ -309,11 +309,11 @@ pub trait CodeValue: Value {
     /// one, unless it states less than `other` does.
     ///
     /// What "less" means is each code's own, and the codes that can state
-    /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
+    /// nothing say so: a [`CfiCode`](crate::CfiCode) fills every `X` position from the other
     /// where the two describe one instrument; a
     /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
     /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
-    /// [`Currency`](crate::Currency) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the other. Every other
+    /// [`Currency`](crate::Currency) `XXX` and a [`MicCode`](crate::MicCode) `XXXX` take the other. Every other
     /// code is an identifier with nothing partial about it, so this one
     /// stands as it is. This is what a graph element folds two statements
     /// of one fact with.
