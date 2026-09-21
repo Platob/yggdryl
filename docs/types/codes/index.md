@@ -216,9 +216,11 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
 
-    venue = types.mic("venue", nullable=False)
+    from yggdryl import Field
+
+    venue = yggdryl.mic("venue", nullable=False)
     venue_arrow = venue.into_arrow()
     # The storage is the text; the name beside it is the identity.
     assert venue_arrow.type == pa.string()

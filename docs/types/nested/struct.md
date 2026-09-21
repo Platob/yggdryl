@@ -61,11 +61,13 @@ SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
     ```python
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
 
     row = DataType.from_fields([
-        types.utf8("symbol", nullable=False),
-        types.int64("quantity", nullable=False),
+        yggdryl.utf8("symbol", nullable=False),
+        yggdryl.int64("quantity", nullable=False),
     ])
 
     assert row.id == "struct"
@@ -159,11 +161,13 @@ positional and path accessors.
     ```python
     import pytest
 
-    from yggdryl import Field, types
+    import yggdryl
 
-    schema = types.struct(
+    from yggdryl import Field
+
+    schema = yggdryl.struct(
         "trade",
-        [types.int64("id", nullable=False), types.utf8("symbol")],
+        [yggdryl.int64("id", nullable=False), yggdryl.utf8("symbol")],
         nullable=False,
     )
 
@@ -180,7 +184,7 @@ positional and path accessors.
         nullable.validate_struct_root()
 
     # Metadata rides beside the datatype, never inside it.
-    annotated = types.struct("trade", [types.int64("id")], metadata={"owner": "events"})
+    annotated = yggdryl.struct("trade", [yggdryl.int64("id")], metadata={"owner": "events"})
     assert annotated.metadata["owner"] == "events"
     ```
 
@@ -251,11 +255,11 @@ did not name with that child's default.
 === "Python"
 
     ```python
-    from yggdryl import types
+    import yggdryl
 
-    schema = types.struct(
+    schema = yggdryl.struct(
         "trade",
-        [types.int64("id", nullable=False), types.utf8("symbol")],
+        [yggdryl.int64("id", nullable=False), yggdryl.utf8("symbol")],
         nullable=False,
     )
 
@@ -335,11 +339,13 @@ Arrow *schema* rather than a column, which is the one asymmetry -
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
 
-    schema = types.struct(
+    from yggdryl import Field
+
+    schema = yggdryl.struct(
         "trade",
-        [types.int64("id", nullable=False), types.utf8("symbol")],
+        [yggdryl.int64("id", nullable=False), yggdryl.utf8("symbol")],
         nullable=False,
     )
     arrow = schema.into_arrow()
@@ -415,14 +421,15 @@ and `with_fields` is the whole-collection form, which keeps the count.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    row = DataType.from_fields([types.int64("id", nullable=False)])
+    row = DataType.from_fields([yggdryl.int64("id", nullable=False)])
 
     # An unknown name appends; a known one replaces in place.
-    row["venue"] = types.utf8("venue")
+    row["venue"] = yggdryl.utf8("venue")
     assert len(row) == 2 and row[1].name == "venue"
-    row["id"] = types.utf8("id", nullable=False)
+    row["id"] = yggdryl.utf8("id", nullable=False)
     assert str(row["id"].dtype) == "utf8"
 
     # Removal closes the gap.

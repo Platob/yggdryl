@@ -71,7 +71,9 @@ padded, so a fixed value is exactly its width.
     ```python
     import pytest
 
-    from yggdryl import BytesParameters, DataType, types
+    import yggdryl
+
+    from yggdryl import BytesParameters, DataType
 
     # The leaf is the whole declaration, and a maximum is its own leaf.
     bounded = DataType("varbinary(16)")
@@ -88,8 +90,8 @@ padded, so a fixed value is exactly its width.
         DataType("large_binary(16)")
 
     # One factory per leaf, and one that takes the whole declaration.
-    assert types.bytes("blob", layout="fixed_binary", fixed=16).dtype.id == "fixed_binary"
-    assert types.sized_binary("blob", 16).dtype == bounded
+    assert yggdryl.bytes("blob", layout="fixed_binary", fixed=16).dtype.id == "fixed_binary"
+    assert yggdryl.sized_binary("blob", 16).dtype == bounded
 
     # A byte column has no charset and answers no string parameters.
     assert DataType.binary().string_parameters is None
@@ -157,20 +159,21 @@ whole declaration, nullable unless the call says otherwise.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    blob = types.sized_binary("blob", 16, nullable=False)
+    blob = yggdryl.sized_binary("blob", 16, nullable=False)
     assert isinstance(blob, Field)
     assert blob.name == "blob"
     assert str(blob.dtype) == "sized_binary(16)"
     assert blob.nullable is False
 
     # One factory per leaf, and one that takes the whole declaration.
-    assert types.bytes("blob", max=16).dtype == blob.dtype
-    assert str(types.fixed_size_binary("digest", 16).dtype) == "fixed_binary(16)"
+    assert yggdryl.bytes("blob", max=16).dtype == blob.dtype
+    assert str(yggdryl.fixed_size_binary("digest", 16).dtype) == "fixed_binary(16)"
 
     # Metadata rides beside the datatype, never inside it.
-    payload = types.binary("payload", metadata={"source": "feed"})
+    payload = yggdryl.binary("payload", metadata={"source": "feed"})
     assert payload.metadata["source"] == "feed"
     assert payload.nullable is True
     ```
@@ -312,12 +315,14 @@ storage it does not describe imports as that storage.
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
+
+    from yggdryl import Field
 
     # Bytes are the layout; only a maximum needs a document.
-    assert types.binary("blob").into_arrow().metadata is None
-    assert types.binary("blob").into_arrow().type == pa.binary()
-    assert types.fixed_size_binary("digest", 16).into_arrow().type == pa.binary(16)
+    assert yggdryl.binary("blob").into_arrow().metadata is None
+    assert yggdryl.binary("blob").into_arrow().type == pa.binary()
+    assert yggdryl.fixed_size_binary("digest", 16).into_arrow().type == pa.binary(16)
 
     capped = Field("blob", "binary(16)").into_arrow()
     assert capped.type == pa.binary()

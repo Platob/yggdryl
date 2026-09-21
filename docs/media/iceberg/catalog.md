@@ -14,7 +14,7 @@ One warehouse folder, namespaces as nested folders, and a table per dotted name.
 | Iteration | lazy; membership and iteration consult storage when asked, `values` / `items` / `entries` open one resource per step |
 | Properties | `metadata/catalog.json`, `metadata/namespace.json`, through the shared JSON codec |
 | Absent | `drop_table`, `rename_table`, `__delitem__`, service client |
-| Bindings | `yggdryl.media.iceberg.Catalog`, `iceberg.Catalog` |
+| Bindings | `yggdryl.iceberg.Catalog`, `iceberg.Catalog` |
 | Rust-only | `Catalogs`, over a folder of warehouses |
 
 ## Use
@@ -93,7 +93,7 @@ A caller holding rows and a dotted name needs nothing else.
     import pyarrow as pa
 
     from yggdryl import DataType, Field
-    from yggdryl.media.iceberg import Catalog
+    from yggdryl.iceberg import Catalog
 
     warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
     catalog = Catalog(warehouse)
@@ -220,7 +220,7 @@ A nested namespace comes from its parent's own view.
 
     import pyarrow as pa
 
-    from yggdryl.media.iceberg import Catalog
+    from yggdryl.iceberg import Catalog
 
     warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
     catalog = Catalog(warehouse)

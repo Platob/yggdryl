@@ -89,7 +89,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     encoded = avro.dumps([7], '"long"')
     decoded = avro.loads(

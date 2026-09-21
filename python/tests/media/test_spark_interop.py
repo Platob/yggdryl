@@ -41,7 +41,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import MimeType
-from yggdryl.media.iceberg import Catalog, IcebergOptions, Table
+from yggdryl.iceberg import Catalog, IcebergOptions, Table
 
 pytestmark = pytest.mark.spark_interop
 

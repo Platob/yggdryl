@@ -101,9 +101,11 @@ otherwise.
     ```python
     import pytest
 
-    from yggdryl import Field, Version, types
+    import yggdryl
 
-    release = types.version("release", nullable=False)
+    from yggdryl import Field, Version
+
+    release = yggdryl.version("release", nullable=False)
     assert isinstance(release, Field)
     assert release.name == "release"
     assert str(release.dtype) == "version"
@@ -111,7 +113,7 @@ otherwise.
     assert release.scalar("5.0.300").as_py() == Version(5, 0, 300)
 
     # A required column refuses absence; a nullable one reads it as null.
-    assert types.version("release").scalar("").is_null()
+    assert yggdryl.version("release").scalar("").is_null()
     with pytest.raises(ValueError, match="non-nullable field received null"):
         release.scalar("")
     ```
@@ -233,9 +235,11 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
 
-    release = types.version("release", nullable=False)
+    from yggdryl import Field
+
+    release = yggdryl.version("release", nullable=False)
     arrow = release.into_arrow()
     assert arrow.type == pa.string()
     assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.version"

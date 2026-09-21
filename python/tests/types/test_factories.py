@@ -7,107 +7,108 @@ from collections.abc import Iterator
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, enums, types
+import yggdryl
+from yggdryl import DataType, Field, enums
 
 
 def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
-    item = types.int8("item", nullable=False)
-    entries = types.struct(
+    item = yggdryl.int8("item", nullable=False)
+    entries = yggdryl.struct(
         "entries",
         [
-            types.utf8("key", nullable=False),
-            types.int64("value"),
+            yggdryl.utf8("key", nullable=False),
+            yggdryl.int64("value"),
         ],
         nullable=False,
     )
-    run_ends = types.int16("run_ends", nullable=False)
-    values = types.utf8("values")
+    run_ends = yggdryl.int16("run_ends", nullable=False)
+    values = yggdryl.utf8("values")
 
     values_by_kind = {
-        "null": types.null("value"),
-        "boolean": types.boolean("value"),
-        "int8": types.int8("value"),
-        "int16": types.int16("value"),
-        "int32": types.int32("value"),
-        "int64": types.int64("value"),
-        "uint8": types.uint8("value"),
-        "uint16": types.uint16("value"),
-        "uint32": types.uint32("value"),
-        "uint64": types.uint64("value"),
-        "float16": types.float16("value"),
-        "float32": types.float32("value"),
-        "float64": types.float64("value"),
-        "datetime64": types.datetime64("value", "us", "Europe/Paris"),
-        "date32": types.date32("value"),
-        "date64": types.date64("value"),
-        "time32": types.time32("value", "ms"),
-        "time64": types.time64("value", "ns"),
-        "duration32": types.duration32("value", "ms"),
-        "duration64": types.duration64("value", "us"),
-        "interval": types.interval("value", "month_day_nano"),
-        "binary": types.binary("value"),
-        "fixed_binary": types.fixed_size_binary("value", 16),
-        "sized_binary": types.sized_binary("value", 16),
-        "large_binary": types.large_binary("value"),
-        "binary_view": types.binary_view("value"),
-        "large_binary_view": types.large_binary_view("value"),
-        "utf8": types.utf8("value"),
-        "large_utf8": types.large_utf8("value"),
-        "utf8_view": types.utf8_view("value"),
-        "large_utf8_view": types.large_utf8_view("value"),
-        "fixed_utf8": types.fixed_utf8("value", 8),
-        "sized_utf8": types.sized_utf8("value", 32),
-        "ascii": types.ascii("value"),
-        "large_ascii": types.large_ascii("value"),
-        "ascii_view": types.ascii_view("value"),
-        "large_ascii_view": types.large_ascii_view("value"),
-        "fixed_ascii": types.fixed_ascii("value", 4),
-        "sized_ascii": types.sized_ascii("value", 4),
-        "cp1252": types.cp1252("value"),
-        "large_cp1252": types.large_cp1252("value"),
-        "cp1252_view": types.cp1252_view("value"),
-        "large_cp1252_view": types.large_cp1252_view("value"),
-        "fixed_cp1252": types.fixed_cp1252("value", 8),
-        "sized_cp1252": types.sized_cp1252("value", 32),
-        "list": types.list("value", item),
-        "list_view": types.list_view("value", item),
-        "fixed_size_list": types.fixed_size_list("value", item, 3),
-        "large_list": types.large_list("value", item),
-        "large_list_view": types.large_list_view("value", item),
-        "struct": types.struct("value", [item]),
-        "union": types.union("value", [(3, item)], "dense"),
-        "dictionary": types.dictionary("value", "int16", "utf8"),
-        "decimal32": types.decimal32("value", 9, 2),
-        "decimal64": types.decimal64("value", 18, 2),
-        "decimal128": types.decimal128("value", 38, 2),
-        "decimal256": types.decimal256("value", 76, 2),
-        "map": types.map("value", entries),
-        "sorted_map": types.map("value", entries, keys_sorted=True),
-        "run_end_encoded": types.run_end_encoded(
+        "null": yggdryl.null("value"),
+        "boolean": yggdryl.boolean("value"),
+        "int8": yggdryl.int8("value"),
+        "int16": yggdryl.int16("value"),
+        "int32": yggdryl.int32("value"),
+        "int64": yggdryl.int64("value"),
+        "uint8": yggdryl.uint8("value"),
+        "uint16": yggdryl.uint16("value"),
+        "uint32": yggdryl.uint32("value"),
+        "uint64": yggdryl.uint64("value"),
+        "float16": yggdryl.float16("value"),
+        "float32": yggdryl.float32("value"),
+        "float64": yggdryl.float64("value"),
+        "datetime64": yggdryl.datetime64("value", "us", "Europe/Paris"),
+        "date32": yggdryl.date32("value"),
+        "date64": yggdryl.date64("value"),
+        "time32": yggdryl.time32("value", "ms"),
+        "time64": yggdryl.time64("value", "ns"),
+        "duration32": yggdryl.duration32("value", "ms"),
+        "duration64": yggdryl.duration64("value", "us"),
+        "interval": yggdryl.interval("value", "month_day_nano"),
+        "binary": yggdryl.binary("value"),
+        "fixed_binary": yggdryl.fixed_size_binary("value", 16),
+        "sized_binary": yggdryl.sized_binary("value", 16),
+        "large_binary": yggdryl.large_binary("value"),
+        "binary_view": yggdryl.binary_view("value"),
+        "large_binary_view": yggdryl.large_binary_view("value"),
+        "utf8": yggdryl.utf8("value"),
+        "large_utf8": yggdryl.large_utf8("value"),
+        "utf8_view": yggdryl.utf8_view("value"),
+        "large_utf8_view": yggdryl.large_utf8_view("value"),
+        "fixed_utf8": yggdryl.fixed_utf8("value", 8),
+        "sized_utf8": yggdryl.sized_utf8("value", 32),
+        "ascii": yggdryl.ascii("value"),
+        "large_ascii": yggdryl.large_ascii("value"),
+        "ascii_view": yggdryl.ascii_view("value"),
+        "large_ascii_view": yggdryl.large_ascii_view("value"),
+        "fixed_ascii": yggdryl.fixed_ascii("value", 4),
+        "sized_ascii": yggdryl.sized_ascii("value", 4),
+        "cp1252": yggdryl.cp1252("value"),
+        "large_cp1252": yggdryl.large_cp1252("value"),
+        "cp1252_view": yggdryl.cp1252_view("value"),
+        "large_cp1252_view": yggdryl.large_cp1252_view("value"),
+        "fixed_cp1252": yggdryl.fixed_cp1252("value", 8),
+        "sized_cp1252": yggdryl.sized_cp1252("value", 32),
+        "list": yggdryl.list("value", item),
+        "list_view": yggdryl.list_view("value", item),
+        "fixed_size_list": yggdryl.fixed_size_list("value", item, 3),
+        "large_list": yggdryl.large_list("value", item),
+        "large_list_view": yggdryl.large_list_view("value", item),
+        "struct": yggdryl.struct("value", [item]),
+        "union": yggdryl.union("value", [(3, item)], "dense"),
+        "dictionary": yggdryl.dictionary("value", "int16", "utf8"),
+        "decimal32": yggdryl.decimal32("value", 9, 2),
+        "decimal64": yggdryl.decimal64("value", 18, 2),
+        "decimal128": yggdryl.decimal128("value", 38, 2),
+        "decimal256": yggdryl.decimal256("value", 76, 2),
+        "map": yggdryl.map("value", entries),
+        "sorted_map": yggdryl.map("value", entries, keys_sorted=True),
+        "run_end_encoded": yggdryl.run_end_encoded(
             "value", run_ends, values
         ),
-        "variant": types.variant("value"),
-        "country": types.country("value"),
-        "currency": types.currency("value"),
-        "mic": types.mic("value"),
-        "cfi": types.cfi("value"),
-        "isin": types.isin("value"),
-        "cusip": types.cusip("value"),
-        "sedol": types.sedol("value"),
-        "bloomberg": types.bloomberg("value"),
-        "figi": types.figi("value"),
-        "uuid": types.uuid("value"),
-        "version": types.version("value"),
-        "url": types.url("value"),
-        "urn": types.urn("value"),
-        "timezone": types.timezone("value"),
-        "mimetype": types.mimetype("value"),
-        "mediatype": types.mediatype("value"),
-        "side": types.side("value"),
-        "state": types.state("value"),
-        "timeinforce": types.timeinforce("value"),
-        "geometry": types.geometry("value"),
-        "geography": types.geography("value", "OGC:CRS84", "vincenty"),
+        "variant": yggdryl.variant("value"),
+        "country": yggdryl.country("value"),
+        "currency": yggdryl.currency("value"),
+        "mic": yggdryl.mic("value"),
+        "cfi": yggdryl.cfi("value"),
+        "isin": yggdryl.isin("value"),
+        "cusip": yggdryl.cusip("value"),
+        "sedol": yggdryl.sedol("value"),
+        "bloomberg": yggdryl.bloomberg("value"),
+        "figi": yggdryl.figi("value"),
+        "uuid": yggdryl.uuid("value"),
+        "version": yggdryl.version("value"),
+        "url": yggdryl.url("value"),
+        "urn": yggdryl.urn("value"),
+        "timezone": yggdryl.timezone("value"),
+        "mimetype": yggdryl.mimetype("value"),
+        "mediatype": yggdryl.mediatype("value"),
+        "side": yggdryl.side("value"),
+        "state": yggdryl.state("value"),
+        "timeinforce": yggdryl.timeinforce("value"),
+        "geometry": yggdryl.geometry("value"),
+        "geography": yggdryl.geography("value", "OGC:CRS84", "vincenty"),
     }
 
     assert set(values_by_kind) == {
@@ -120,13 +121,13 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
     assert len(values_by_kind) == len(enums.DATA_TYPE_IDS) - len(unbuildable)
     assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - unbuildable
     assert all(type(value) is Field for value in values_by_kind.values())
-    assert types.Int32Field is Field
-    assert types.VersionField is Field
-    assert types.UrlField is Field
-    assert types.TimezoneField is Field
-    assert types.MimeTypeField is Field
-    assert types.MediaTypeField is Field
-    assert types.TypedField is Field
+    assert yggdryl.Int32Field is Field
+    assert yggdryl.VersionField is Field
+    assert yggdryl.UrlField is Field
+    assert yggdryl.TimezoneField is Field
+    assert yggdryl.MimeTypeField is Field
+    assert yggdryl.MediaTypeField is Field
+    assert yggdryl.TypedField is Field
 
 
 def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
@@ -134,36 +135,36 @@ def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
     # the leaf factories are that one with a leaf picked once. A maximum is
     # the sized leaf of the charset, so `max` beside a large layout is
     # refused by the name of the leaf that carries one.
-    latin = types.string("name", layout="string", charset="cp1252", max=32)
+    latin = yggdryl.string("name", layout="string", charset="cp1252", max=32)
     assert latin.dtype == DataType.string("sized_cp1252", bound=32)
     assert str(latin.dtype) == "sized_cp1252(32)"
     assert latin.dtype.string_parameters.max == 32
-    assert latin.dtype == types.sized_cp1252("name", 32).dtype
+    assert latin.dtype == yggdryl.sized_cp1252("name", 32).dtype
     with pytest.raises(ValueError, match="sized_cp1252"):
-        types.string("name", layout="large_string", charset="cp1252", max=32)
-    fixed = types.string("code", layout="fixed_string", charset="us-ascii", fixed=4)
+        yggdryl.string("name", layout="large_string", charset="cp1252", max=32)
+    fixed = yggdryl.string("code", layout="fixed_string", charset="us-ascii", fixed=4)
     assert fixed.dtype == DataType.fixed_ascii(4)
-    assert types.string("code", layout="fixed_ascii", fixed=4).dtype == fixed.dtype
-    assert types.string("text").dtype == DataType.utf8() == types.utf8("text").dtype
-    assert types.sized_utf8("text", 32).dtype == DataType("utf8(32)")
-    assert types.large_utf8_view("text").dtype == DataType("large_string_view")
-    assert types.fixed_cp1252("text", 8).dtype == DataType("fixed_string(windows-1252,8)")
-    assert types.string("text", nullable=False, metadata={"k": "v"}).metadata["k"] == "v"
-    assert types.StringField is Field
+    assert yggdryl.string("code", layout="fixed_ascii", fixed=4).dtype == fixed.dtype
+    assert yggdryl.string("text").dtype == DataType.utf8() == yggdryl.utf8("text").dtype
+    assert yggdryl.sized_utf8("text", 32).dtype == DataType("utf8(32)")
+    assert yggdryl.large_utf8_view("text").dtype == DataType("large_string_view")
+    assert yggdryl.fixed_cp1252("text", 8).dtype == DataType("fixed_string(windows-1252,8)")
+    assert yggdryl.string("text", nullable=False, metadata={"k": "v"}).metadata["k"] == "v"
+    assert yggdryl.StringField is Field
 
-    bounded = types.bytes("blob", max=16)
+    bounded = yggdryl.bytes("blob", max=16)
     assert bounded.dtype == DataType.bytes(bound=16) == DataType("binary(16)")
     assert bounded.dtype.bytes_parameters.max == 16
-    digest = types.bytes("digest", layout="fixed_binary", fixed=16)
+    digest = yggdryl.bytes("digest", layout="fixed_binary", fixed=16)
     assert digest.dtype == DataType.fixed_size_binary(16)
-    assert digest.dtype == types.fixed_size_binary("digest", 16).dtype
-    assert types.bytes("blob").dtype == DataType.binary() == types.binary("blob").dtype
-    assert types.bytes("blob", layout="binary_view").dtype == DataType.binary_view()
-    assert types.BytesField is Field
+    assert digest.dtype == yggdryl.fixed_size_binary("digest", 16).dtype
+    assert yggdryl.bytes("blob").dtype == DataType.binary() == yggdryl.binary("blob").dtype
+    assert yggdryl.bytes("blob", layout="binary_view").dtype == DataType.binary_view()
+    assert yggdryl.BytesField is Field
 
 
 def test_nested_factories_preserve_exact_child_field_state() -> None:
-    item = types.dictionary(
+    item = yggdryl.dictionary(
         "item",
         "int16",
         "utf8",
@@ -173,7 +174,7 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     item.set_dictionary_options(42, True)
     projected_item = item.into_arrow()
 
-    values = types.list("values", item, metadata={"owner": "events"})
+    values = yggdryl.list("values", item, metadata={"owner": "events"})
     child = values.dtype[0]
 
     assert child.equals(item)
@@ -186,11 +187,11 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
 
 def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
     members = (
-        types.int64("integer", nullable=False, metadata={"branch": "number"}),
-        types.utf8("text", nullable=False),
+        yggdryl.int64("integer", nullable=False, metadata={"branch": "number"}),
+        yggdryl.utf8("text", nullable=False),
     )
 
-    value: types.DenseUnionField = types.dense_union(
+    value: yggdryl.DenseUnionField = yggdryl.dense_union(
         "payload",
         (member for member in members),
         nullable=False,
@@ -199,7 +200,7 @@ def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
     arrow = value.into_arrow()
 
     assert type(value) is Field
-    assert types.DenseUnionField is Field
+    assert yggdryl.DenseUnionField is Field
     assert value.dtype.id == "union"
     assert tuple(value.dtype) == members
     assert arrow.type.mode == "dense"
@@ -208,61 +209,61 @@ def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:
 
 
 def test_typed_factory_parameters_use_native_validation() -> None:
-    assert types.decimal("small", 38).dtype.id == "decimal128"
-    assert types.decimal("wide", 39).dtype.id == "decimal256"
-    assert types.ascii("note").dtype == DataType("ascii")
-    assert types.fixed_ascii("iso", 2).dtype == DataType.fixed_ascii(2)
-    assert types.fixed_ascii("ccy", 3).dtype == DataType.fixed_ascii(3)
+    assert yggdryl.decimal("small", 38).dtype.id == "decimal128"
+    assert yggdryl.decimal("wide", 39).dtype.id == "decimal256"
+    assert yggdryl.ascii("note").dtype == DataType("ascii")
+    assert yggdryl.fixed_ascii("iso", 2).dtype == DataType.fixed_ascii(2)
+    assert yggdryl.fixed_ascii("ccy", 3).dtype == DataType.fixed_ascii(3)
     # A fixed width past the packed integer is still storage, so it builds.
-    assert types.fixed_ascii("isin", 64, nullable=False).dtype.fixed_byte_width == 64
-    assert types.fixed_utf8("name", 8).dtype == DataType.fixed_utf8(8)
-    assert types.fixed_utf8("name", 8).dtype.string_parameters.fixed == 8
-    assert types.currency("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
+    assert yggdryl.fixed_ascii("isin", 64, nullable=False).dtype.fixed_byte_width == 64
+    assert yggdryl.fixed_utf8("name", 8).dtype == DataType.fixed_utf8(8)
+    assert yggdryl.fixed_utf8("name", 8).dtype.string_parameters.fixed == 8
+    assert yggdryl.currency("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
         "ISO 4217"
     )
-    assert types.time("coarse", "ms").dtype == DataType("time32(ms)")
-    assert types.time("precise", "us").dtype == DataType("time64(us)")
-    assert types.datetime64("event", "us", "Custom/Accepted").dtype.id == (
+    assert yggdryl.time("coarse", "ms").dtype == DataType("time32(ms)")
+    assert yggdryl.time("precise", "us").dtype == DataType("time64(us)")
+    assert yggdryl.datetime64("event", "us", "Custom/Accepted").dtype.id == (
         "datetime64"
     )
 
     with pytest.raises(ValueError, match="temporal resolution"):
-        types.time("clock", "day_time")
+        yggdryl.time("clock", "day_time")
     with pytest.raises(ValueError, match="temporal resolution"):
-        types.datetime64("event", "year_month")
+        yggdryl.datetime64("event", "year_month")
     with pytest.raises(ValueError, match="interval layout"):
-        types.interval("window", "us")
+        yggdryl.interval("window", "us")
     with pytest.raises(ValueError, match="precision"):
-        types.decimal32("amount", 10)
+        yggdryl.decimal32("amount", 10)
     with pytest.raises(ValueError, match="at least one byte"):
-        types.fixed_ascii("narrow", 0)
+        yggdryl.fixed_ascii("narrow", 0)
     with pytest.raises(ValueError, match="at least one byte"):
-        types.fixed_size_binary("narrow", 0)
+        yggdryl.fixed_size_binary("narrow", 0)
     with pytest.raises(ValueError, match="fixed_utf8"):
-        types.string("narrow", layout="fixed_string")
+        yggdryl.string("narrow", layout="fixed_string")
     with pytest.raises(ValueError, match="expected no charset on ascii"):
-        types.string("narrow", layout="ascii", charset="utf-8")
+        yggdryl.string("narrow", layout="ascii", charset="utf-8")
     with pytest.raises(TypeError, match="not both"):
-        types.string("narrow", fixed=4, max=8)
+        yggdryl.string("narrow", fixed=4, max=8)
     with pytest.raises(TypeError, match="not both"):
-        types.bytes("narrow", fixed=4, max=8)
+        yggdryl.bytes("narrow", fixed=4, max=8)
     with pytest.raises(ValueError, match="run_ends"):
-        types.run_end_encoded(
+        yggdryl.run_end_encoded(
             "encoded",
-            types.int16("run_ends", nullable=True),
-            types.utf8("values"),
+            yggdryl.int16("run_ends", nullable=True),
+            yggdryl.utf8("values"),
         )
 
 
 def test_field_and_datatype_equality_can_ignore_recursive_metadata() -> None:
-    left_child = types.int32(
+    left_child = yggdryl.int32(
         "id", nullable=False, metadata={"source": "left"}
     )
-    right_child = types.int32(
+    right_child = yggdryl.int32(
         "id", nullable=False, metadata={"source": "right"}
     )
-    left = types.struct("row", [left_child], metadata={"root": "left"})
-    right = types.struct("row", [right_child], metadata={"root": "right"})
+    left = yggdryl.struct("row", [left_child], metadata={"root": "left"})
+    right = yggdryl.struct("row", [right_child], metadata={"root": "right"})
 
     assert not left.equals(right)
     assert left.equals(right, with_metadata=False)
@@ -338,7 +339,7 @@ def test_datatype_difference_iterator_outlives_source_wrappers() -> None:
 
 
 def test_map_factory_projects_exact_arrow_layout() -> None:
-    mapping = types.map_of(
+    mapping = yggdryl.map_of(
         "labels", "utf8", "int32", keys_sorted=True, nullable=False
     )
     arrow = mapping.into_arrow()
@@ -348,8 +349,8 @@ def test_map_factory_projects_exact_arrow_layout() -> None:
 
 
 def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
-    dictionary = types.dictionary("status", int, str, nullable=False)
-    mapping = types.map_of("labels", str, pa.int16(), nullable=False)
+    dictionary = yggdryl.dictionary("status", int, str, nullable=False)
+    mapping = yggdryl.map_of("labels", str, pa.int16(), nullable=False)
 
     assert str(dictionary.dtype) == "dictionary(int64,utf8)"
     assert mapping.dtype.id == "map"

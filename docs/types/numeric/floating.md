@@ -102,15 +102,16 @@ The FIX names resolving to `float64` are `Qty`, `Price`, `PriceOffset`, `Percent
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    price = types.float64("px", nullable=False)
-    ratio = types.float32("ratio", metadata={"unit": "percent"})
+    price = yggdryl.float64("px", nullable=False)
+    ratio = yggdryl.float32("ratio", metadata={"unit": "percent"})
 
     assert isinstance(price, Field)
     assert str(price.dtype) == "float64"
     assert not price.nullable
-    assert str(types.float16("compact").dtype) == "float16"
+    assert str(yggdryl.float16("compact").dtype) == "float16"
     assert ratio.metadata["unit"] == "percent"
     ```
 

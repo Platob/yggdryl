@@ -17,7 +17,7 @@ from typing import NamedTuple
 import pytest
 
 from yggdryl import DataType, Field, Uri, Url, Urn, scalar
-from yggdryl.text import json, yaml
+from yggdryl import json, yaml
 
 
 @scalar
@@ -728,7 +728,7 @@ def test_cycles_and_excessive_depth_are_rejected() -> None:
 
 def test_maximum_native_nesting_is_safe_in_a_subprocess() -> None:
     code = """
-from yggdryl.text import json
+from yggdryl import json
 
 value = None
 for _ in range(127):

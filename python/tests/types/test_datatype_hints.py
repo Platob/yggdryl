@@ -168,7 +168,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
 def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import yggdryl.types._hints as hint_impl
+    import yggdryl._hints as hint_impl
 
     def unexpected_arrow_factory(*args: object, **kwargs: object) -> object:
         raise AssertionError(
@@ -343,7 +343,7 @@ def test_internal_namespace_resolves_deep_local_struct_annotations() -> None:
         Shadowed = int
         value: Shadowed
 
-    from yggdryl.types._hints import _field_from_pyhint
+    from yggdryl._hints import _field_from_pyhint
 
     root = _field_from_pyhint(
         "envelope",

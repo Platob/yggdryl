@@ -126,17 +126,18 @@ One exact base-10 datatype over four backing widths: a precision, a scale, and a
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    amount = types.decimal("amount", 38, 4, nullable=False)
-    small = types.decimal32("small", 9, 2)
+    amount = yggdryl.decimal("amount", 38, 4, nullable=False)
+    small = yggdryl.decimal32("small", 9, 2)
 
     assert isinstance(amount, Field)
     assert str(amount.dtype) == "decimal128(38,4)"
     assert not amount.nullable
     assert str(small.dtype) == "decimal32(9,2)"
-    assert str(types.decimal64("mid", 18, 6).dtype) == "decimal64(18,6)"
-    assert str(types.decimal256("wide", 39, 4).dtype) == "decimal256(39,4)"
+    assert str(yggdryl.decimal64("mid", 18, 6).dtype) == "decimal64(18,6)"
+    assert str(yggdryl.decimal256("wide", 39, 4).dtype) == "decimal256(39,4)"
     ```
 
 === "JavaScript"

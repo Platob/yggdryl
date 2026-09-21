@@ -8,7 +8,8 @@ import pathlib
 import pytest
 
 from yggdryl import Field, IOBase, Scalar
-from yggdryl.text import _codec, json, toml, yaml
+from yggdryl import json, toml, yaml
+from yggdryl.text import _codec
 
 
 @pytest.mark.parametrize("format", [json, yaml])

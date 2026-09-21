@@ -271,7 +271,7 @@ pub(crate) fn core_dtype_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDa
 fn core_dtype_from_pyhint(hint: &Bound<'_, PyAny>) -> PyResult<CoreDataType> {
     let inferred = hint
         .py()
-        .import("yggdryl.types._hints")?
+        .import("yggdryl._hints")?
         .getattr("datatype_from_pyhint")?
         .call1((hint,))?;
     let inferred = inferred.extract::<PyRef<'_, PyDataType>>()?;
@@ -431,7 +431,7 @@ impl PyDataType {
         Self::new(value)
     }
 
-    /// Internal direct constructor used by the typed ``yggdryl.types`` facade.
+    /// Internal direct constructor used by the typed field factories at the package root.
     #[staticmethod]
     fn _simple(kind: &str) -> PyResult<Self> {
         let inner = match kind {
@@ -951,7 +951,7 @@ impl PyDataType {
     /// Returns the cached Python annotation corresponding to this datatype.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let dtype = Py::new(py, self.clone())?;
-        py.import("yggdryl.types._defaults")?
+        py.import("yggdryl._defaults")?
             .getattr("_default_pyhint_from_datatype")?
             .call1((dtype,))
     }

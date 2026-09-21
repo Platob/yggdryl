@@ -130,16 +130,17 @@ as on any other field. The field's canonical default is the nil identifier.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    id = types.uuid("id", nullable=False)
+    id = yggdryl.uuid("id", nullable=False)
     assert isinstance(id, Field)
     assert str(id.dtype) == "uuid"
     assert id.nullable is False
     assert id.default_scalar().as_py() == "00000000-0000-0000-0000-000000000000"
 
     # Nullable unless the call says otherwise; metadata rides beside it.
-    tagged = types.uuid("id", metadata={"source": "feed"})
+    tagged = yggdryl.uuid("id", metadata={"source": "feed"})
     assert tagged.nullable is True
     assert tagged.metadata["source"] == "feed"
     ```

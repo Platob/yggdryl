@@ -1,25 +1,29 @@
-"""Both digest families have one owner, and no top-level path is kept for them."""
+"""Each digest family is a module of its own at the package root."""
 
 from __future__ import annotations
 
 import importlib
+import sys
 
 import pytest
 
 import yggdryl
-from yggdryl import hashing
-from yggdryl.hashing import txhash, xxhash
+from yggdryl import txhash, xxhash
 
 
-def test_the_hashing_package_owns_both_families() -> None:
-    assert set(hashing.__all__) == {"txhash", "xxhash"}
-    assert hashing.xxhash is xxhash
-    assert hashing.txhash is txhash
-    assert "hashing" in yggdryl.__all__
+def test_each_family_is_a_root_module() -> None:
+    # The crate gives `xxhash/` and `txhash/` a root folder each and keeps
+    # `hashing/` for the private adapters they share; the package follows it,
+    # so neither family is reached through a namespace that owns nothing.
+    assert sys.modules["yggdryl.xxhash"] is xxhash
+    assert sys.modules["yggdryl.txhash"] is txhash
+    assert yggdryl.xxhash is xxhash
+    assert yggdryl.txhash is txhash
+    assert {"txhash", "xxhash"} <= set(yggdryl.__all__)
 
 
-@pytest.mark.parametrize("retired", ["xxhash", "txhash"])
-def test_the_top_level_paths_are_gone(retired: str) -> None:
+@pytest.mark.parametrize("retired", ["hashing"])
+def test_the_grouping_package_is_gone(retired: str) -> None:
     assert retired not in yggdryl.__all__
     assert not hasattr(yggdryl, retired)
     with pytest.raises(ModuleNotFoundError):

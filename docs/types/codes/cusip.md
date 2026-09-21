@@ -72,9 +72,10 @@ The nine-character North American securities identifier: six of issuer, two of i
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    sid = types.cusip("sid")
+    sid = yggdryl.cusip("sid")
     assert isinstance(sid, Field)
     assert str(sid.dtype) == "cusip"
     ```

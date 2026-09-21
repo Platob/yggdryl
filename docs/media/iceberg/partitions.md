@@ -66,7 +66,7 @@ A create names the identity partition columns, and every commit after it lays it
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -232,7 +232,7 @@ A table marks its stored schema on create and on open, so `Table::schema` report
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),

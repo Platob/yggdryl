@@ -8,6 +8,8 @@ from typing import Annotated, cast
 
 import pyarrow as pa  # type: ignore[import-untyped]
 
+import yggdryl
+
 from yggdryl import (
     DataType,
     Field,
@@ -16,12 +18,11 @@ from yggdryl import (
     Scalar,
     Version,
     field,
-    types,
     scalar,
 )
 from yggdryl import enums
-from yggdryl.text import json, toml, yaml
-from yggdryl.types import (
+from yggdryl import json, toml, yaml
+from yggdryl import (
     CurrencyField,
     MediaTypeField,
     MimeTypeField,
@@ -72,17 +73,17 @@ imported: Field = Field.from_arrow_schema(arrow_schema, name=root.name)
 dynamic_class: type[object] = imported.into_dataclass(
     name="DynamicTypedOrder"
 )
-currency: CurrencyField = types.currency("currency", nullable=False)
+currency: CurrencyField = yggdryl.currency("currency", nullable=False)
 currency_default_scalar: Scalar = currency.default_scalar()
-version: VersionField = types.version("version", nullable=False)
+version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
-location: UrlField = types.url("url")
+location: UrlField = yggdryl.url("url")
 location_dtype: DataType = location.dtype
-name: UrnField = types.urn("urn")
+name: UrnField = yggdryl.urn("urn")
 name_dtype: DataType = name.dtype
-zone: TimezoneField = types.timezone("zone")
-mime: MimeTypeField = types.mimetype("mime")
-media: MediaTypeField = types.mediatype("media")
+zone: TimezoneField = yggdryl.timezone("zone")
+mime: MimeTypeField = yggdryl.mimetype("mime")
+media: MediaTypeField = yggdryl.mediatype("media")
 canonical_text_dtypes: tuple[DataType, ...] = (zone.dtype, mime.dtype, media.dtype)
 python_view: ProtocolField = root.python
 declared: PythonMetadata | None = python_view.class_metadata

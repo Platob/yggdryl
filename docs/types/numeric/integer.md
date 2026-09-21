@@ -119,10 +119,11 @@ A width has no parameter, so the leaf is named and nothing is passed: `Int8Field
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    sequence = types.int64("seqnum", nullable=False)
-    counter = types.uint32("count", metadata={"unit": "rows"})
+    sequence = yggdryl.int64("seqnum", nullable=False)
+    counter = yggdryl.uint32("count", metadata={"unit": "rows"})
 
     assert isinstance(sequence, Field)
     assert str(sequence.dtype) == "int64"

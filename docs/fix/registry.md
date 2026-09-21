@@ -78,7 +78,8 @@
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
     from yggdryl.fix import FixRegistry
 
     counter = Field("NoPartyIDs", "int32")
@@ -93,7 +94,7 @@
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
     registry.insert(party)
-    parties = types.list("Parties", party)
+    parties = yggdryl.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
     registry.insert(parties)

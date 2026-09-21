@@ -40,7 +40,7 @@ The smallest write: one record in, one document out. Nothing in the call names a
 === "Python"
 
     ```python
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     value = {"count": 3, "title": "yggdryl"}
 
@@ -83,7 +83,7 @@ Rust writes to any `Write`; Python and JavaScript take a path or a writable dest
     import pathlib
     import tempfile
 
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     target = pathlib.Path(tempfile.mkdtemp()) / "quote.toml"
     toml.dump({"id": 1}, target)
@@ -200,7 +200,7 @@ Rust writes to any `Write`; Python and JavaScript take a path or a writable dest
 === "Python"
 
     ```python
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     for value in (None, 42, [1, 2], {1: "one"}):
         try:

@@ -71,9 +71,10 @@ The stored values are the crate's own explicit spellings - `BUY`, `SELL`, `SSHOR
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    side = types.side("side", nullable=False)
+    side = yggdryl.side("side", nullable=False)
     assert isinstance(side, Field)
     assert str(side.dtype) == "side"
     assert not side.nullable

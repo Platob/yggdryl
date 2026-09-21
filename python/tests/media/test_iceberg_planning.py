@@ -15,7 +15,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import IOBase
-from yggdryl.media.iceberg import ScanPlan, Table, assign_field_ids
+from yggdryl.iceberg import ScanPlan, Table, assign_field_ids
 
 SCHEMA = pa.schema(
     [

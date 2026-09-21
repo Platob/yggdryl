@@ -66,9 +66,10 @@ spell.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    levels = types.list("levels", types.float64("item")).dtype
+    levels = yggdryl.list("levels", yggdryl.float64("item")).dtype
     assert levels.id == "list"
     assert levels.kind == "nested"
     assert levels.is_nested
@@ -76,12 +77,12 @@ spell.
     assert levels[0].name == "item"
 
     # One factory per leaf, each taking the item field it repeats.
-    item = types.int32("item")
-    assert types.list_view("value", item).dtype.id == "list_view"
-    assert types.large_list("value", item).dtype.id == "large_list"
-    assert types.large_list_view("value", item).dtype.id == "large_list_view"
-    assert types.fixed_size_list("value", item, 3).dtype.id == "fixed_size_list"
-    assert str(types.fixed_size_list("value", item, 3).dtype).endswith(",3)")
+    item = yggdryl.int32("item")
+    assert yggdryl.list_view("value", item).dtype.id == "list_view"
+    assert yggdryl.large_list("value", item).dtype.id == "large_list"
+    assert yggdryl.large_list_view("value", item).dtype.id == "large_list_view"
+    assert yggdryl.fixed_size_list("value", item, 3).dtype.id == "fixed_size_list"
+    assert str(yggdryl.fixed_size_list("value", item, 3).dtype).endswith(",3)")
 
     # Every dialect's spelling parses into the same leaf.
     assert DataType("array<int64>") == DataType("list<int64>")
@@ -156,9 +157,10 @@ own nullability is the item field's.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    levels = types.list("levels", types.float64("item"), nullable=False)
+    levels = yggdryl.list("levels", yggdryl.float64("item"), nullable=False)
     assert isinstance(levels, Field)
     assert levels.name == "levels"
     assert levels.nullable is False
@@ -166,11 +168,11 @@ own nullability is the item field's.
     assert levels.dtype[0].nullable is True
 
     # The item is a whole field, so it carries its own name and nullability.
-    required = types.list("levels", types.float64("item", nullable=False))
+    required = yggdryl.list("levels", yggdryl.float64("item", nullable=False))
     assert required.dtype[0].nullable is False
 
     # Metadata rides beside the datatype, and a child keeps its own.
-    annotated = types.list("levels", types.float64("item"), metadata={"owner": "book"})
+    annotated = yggdryl.list("levels", yggdryl.float64("item"), metadata={"owner": "book"})
     assert annotated.metadata["owner"] == "book"
     ```
 
@@ -233,9 +235,9 @@ out of any of the five layouts is the same sequence, and its datatype is the
     ```python
     import pytest
 
-    from yggdryl import types
+    import yggdryl
 
-    levels = types.list("levels", types.float64("item"))
+    levels = yggdryl.list("levels", yggdryl.float64("item"))
     value = levels.scalar([1.5, 2.5, None])
 
     assert value.as_py() == [1.5, 2.5, None]
@@ -313,16 +315,18 @@ datatype is built rather than where a batch is written.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    levels = types.list("levels", types.float64("item"))
+    from yggdryl import DataType, Field
+
+    levels = yggdryl.list("levels", yggdryl.float64("item"))
     arrow = levels.into_arrow()
     assert arrow.type == pa.list_(pa.field("item", pa.float64(), nullable=True))
     assert arrow.metadata is None
     assert Field.from_arrow(arrow) == levels
 
     # The length is part of the storage, so it crosses with it.
-    fixed = types.fixed_size_list("items", types.int32("item"), 3)
+    fixed = yggdryl.fixed_size_list("items", yggdryl.int32("item"), 3)
     assert fixed.into_arrow().type == pa.list_(pa.field("item", pa.int32()), 3)
     assert DataType.from_arrow(pa.large_list(pa.int32())).id == "large_list"
     ```

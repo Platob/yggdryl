@@ -231,7 +231,7 @@ and metadata-mapping protocols, inferred string and PyArrow conversion, and
 cached native fields for ordinary dataclasses through `@scalar` and the static
 `Class.into_field()` accessor; `field(value, name=None)` remains a pure builder.
 It also provides precise `Annotated` Arrow and Field overrides and byte-first
-`yggdryl.text.json`, `yggdryl.text.toml`, and `yggdryl.text.yaml` modules. JavaScript provides
+`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` modules. JavaScript provides
 the equivalent value protocols plus Buffer-first codecs and safe, explicit
 class registries. The URI family wrappers expose the same canonical components
 and resource-path views in both languages.

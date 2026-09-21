@@ -11,7 +11,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType
-from yggdryl.media.iceberg import (
+from yggdryl.iceberg import (
     Catalog,
     Compaction,
     DataFile,

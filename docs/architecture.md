@@ -40,7 +40,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `DIGEST:time` holder |
 | [FIX](fix/index.md) | `fix/`: FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
-Tests, benchmarks, Python modules, JavaScript source groups, and documentation are grouped by these tab names - `rust/tests/<tab>.rs`, `python/tests/<tab>/`, and `docs/<tab>/` for a tab of several pages or `docs/<tab>.md` for a single-page tab such as Graph and Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it.
+Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Graph and Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
 
 ## Rules the layers share
 
@@ -64,7 +64,7 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation a
 The native core narrates its work through Rust's `log` facade, so a Rust caller
 installs any `log` implementation. Python bridges it into `logging` under the
 package's own logger: a record's name is the Rust module path it came from, so
-`yggdryl.media.iceberg.table` and its siblings all hang off `yggdryl` and one
+`yggdryl.iceberg.table` and its siblings all hang off `yggdryl` and one
 `setLevel` is the whole switch. JavaScript has no bridge.
 
 Debug is an operation starting; info is one done, carrying the counts a monitor
@@ -83,7 +83,7 @@ this project and nothing else.
     import pyarrow as pa
 
     from yggdryl import IOBase, refresh_logging
-    from yggdryl.media.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import Table, assign_field_ids
 
     said: list[str] = []
 

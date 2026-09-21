@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, ClassVar, Generic, TypeVar
@@ -11,7 +12,7 @@ import pytest
 
 import yggdryl
 from yggdryl import DataType, Field, field, scalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 @scalar(frozen=True, slots=True)
@@ -81,9 +82,11 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
 
 
 def test_scalar_decorator_is_colocated_with_the_native_scalar_boundary() -> None:
-    assert inspect.ismodule(yggdryl.types.scalar)
+    # The module defines it and the package root binds it, the way the crate
+    # root re-exports what each of its files owns.
     assert callable(yggdryl.scalar)
-    assert scalar.__module__ == "yggdryl.types.scalar"
+    assert scalar.__module__ == "yggdryl.scalar"
+    assert sys.modules["yggdryl.scalar"].scalar is scalar
 
 
 def test_field_accessor_signatures_are_uniform_and_class_metadata_is_argument_free() -> None:

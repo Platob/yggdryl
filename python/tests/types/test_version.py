@@ -9,9 +9,10 @@ import typing
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, Version, enums, field, scalar, types
+import yggdryl
+from yggdryl import DataType, Field, Scalar, Version, enums, field, scalar
 from yggdryl.arrow import ArrowScalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 @pytest.mark.parametrize(
@@ -27,7 +28,7 @@ from yggdryl.text import json
 def test_native_parts_and_canonical_numeric_text(text, parts, canonical):
     parsed = Version.from_str(text)
     assert type(parsed) is Version
-    assert types.Version is Version
+    assert yggdryl.Version is Version
     assert (parsed.major, parsed.minor, parsed.patch) == parts
     assert parsed == Version(*parts)
     assert str(parsed) == canonical
@@ -130,7 +131,7 @@ def test_order_hash_copy_pickle_and_readonly_parts():
 
 def test_scalar_fields_and_annotations_preserve_native_version_identity():
     value = Version(5, 0, 300)
-    field = types.version("release", nullable=False)
+    field = yggdryl.version("release", nullable=False)
     native = Scalar.from_(value)
     assert native.id == "version"
     assert type(native.as_py()) is Version
@@ -148,7 +149,7 @@ def test_scalar_fields_and_annotations_preserve_native_version_identity():
 
 
 def test_arrow_keeps_string_storage_and_declared_field_restores_version():
-    field = types.version("release", nullable=False)
+    field = yggdryl.version("release", nullable=False)
     arrow_field = field.into_arrow()
     assert arrow_field.type == pa.string()
     assert Field.from_arrow(arrow_field) == field
@@ -162,8 +163,8 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
 
 
 def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
-    assert not hasattr(types, "msgtype")
-    assert not hasattr(types, "MsgTypeField")
+    assert not hasattr(yggdryl, "msgtype")
+    assert not hasattr(yggdryl, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
     # Eighty-four, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and

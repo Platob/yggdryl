@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import IOBase, refresh_logging
-from yggdryl.media.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import Table, assign_field_ids
 
 SCHEMA = pa.schema(
     [

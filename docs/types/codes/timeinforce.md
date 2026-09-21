@@ -73,9 +73,10 @@ The standard's values are one character; eight leaves room for a venue's own cod
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    tif = types.timeinforce("timeinforce")
+    tif = yggdryl.timeinforce("timeinforce")
     assert isinstance(tif, Field)
     assert str(tif.dtype) == "timeinforce"
     ```

@@ -7,7 +7,7 @@
 | | |
 | --- | --- |
 | Owns | `avro::Avro` (stateful handle form), `avro::AvroOptions`, `Schema`, `Resolution`, `read_container`/`write_container`, `read_blocks`, single-object framing |
-| Bindings | Python `yggdryl.media.avro`: `Schema`, `loads`/`dumps`, `loads_single`/`dumps_single`, `blocks`; JavaScript `avro`: `Schema`, `loads`/`dumps`, `loadsSingle`/`dumpsSingle`, `blocks` |
+| Bindings | Python `yggdryl.avro`: `Schema`, `loads`/`dumps`, `loads_single`/`dumps_single`, `blocks`; JavaScript `avro`: `Schema`, `loads`/`dumps`, `loadsSingle`/`dumpsSingle`, `blocks` |
 | Rust only | `Resolution`; a binding `reader_schema` option compiles and reuses it internally |
 | Selects | A name whose media type says `avro`, on any handle, with no format argument |
 | Reads | [Read](read.md): a container whole, block by block, or resolved onto a reader schema, as native scalars or as Arrow batches |

@@ -98,7 +98,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     ```python
     import pathlib
     import tempfile
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
     from yggdryl.fix import FixRegistry
 
     count = Field("NoPartyIDs", "int32")
@@ -112,7 +113,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     party = Field("Party", DataType.from_fields([member]), nullable=False)
     party.fix.identifiers = ["448"]
     registry.insert(party)
-    group = types.list("Parties", party)
+    group = yggdryl.list("Parties", party)
     group.fix.counter = 453
     group.fix.component = "Party"
     registry.insert(group)

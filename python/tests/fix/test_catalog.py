@@ -18,7 +18,8 @@ from typing import Any, Iterable
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, TextLine, types
+import yggdryl
+from yggdryl import DataType, Field, Scalar, TextLine
 from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, MsgType, fix_crate_fields
 
 
@@ -41,7 +42,7 @@ def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
     member.fix.field_ref = "PartyID"
     registry.insert(Field("Party", DataType.from_fields([member, *members]), nullable=False))
     component = registry.field_by_name("Party")
-    group = types.list("Parties", component)
+    group = yggdryl.list("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
     registry.insert(group)
@@ -394,7 +395,7 @@ def _numeric_group_registry(scoped: bool) -> FixRegistry:
     component = Field("AlphaRowsEntry", DataType.from_fields([member]), nullable=False)
     component.fix.branches = ["alpha"]
     registry.insert(component)
-    held = types.list("AlphaRows", component)
+    held = yggdryl.list("AlphaRows", component)
     held.fix.branches = ["alpha"]
     held.fix.counter = 6000
     held.fix.component = component.name

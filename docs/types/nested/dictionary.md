@@ -61,9 +61,11 @@ the value is whatever the column decodes to, a nested datatype included.
     ```python
     import pytest
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    codes = types.dictionary("codes", "int16", "utf8").dtype
+    from yggdryl import DataType
+
+    codes = yggdryl.dictionary("codes", "int16", "utf8").dtype
     assert str(codes) == "dictionary(int16,utf8)"
     assert codes.id == "dictionary"
     assert codes.kind == "nested"
@@ -79,9 +81,9 @@ the value is whatever the column decodes to, a nested datatype included.
     assert DataType("int64").dictionary_key is None
 
     # The key must be an integer; a Python or pyarrow type names one too.
-    assert str(types.dictionary("status", int, str).dtype) == "dictionary(int64,utf8)"
+    assert str(yggdryl.dictionary("status", int, str).dtype) == "dictionary(int64,utf8)"
     with pytest.raises(ValueError, match="integer key datatype"):
-        types.dictionary("bad", "utf8", "utf8")
+        yggdryl.dictionary("bad", "utf8", "utf8")
     assert DataType("dict<int16,string>") == codes
     ```
 
@@ -147,9 +149,9 @@ answers `None` and refuses to be given them.
     ```python
     import pytest
 
-    from yggdryl import types
+    import yggdryl
 
-    codes = types.dictionary("codes", "int16", "utf8", metadata={"logical": "status"})
+    codes = yggdryl.dictionary("codes", "int16", "utf8", metadata={"logical": "status"})
     assert codes.dictionary_id == 0
     assert codes.dictionary_is_ordered is False
 
@@ -159,7 +161,7 @@ answers `None` and refuses to be given them.
     assert codes.metadata["logical"] == "status"
 
     # Every other field carries none, and refuses to be given one.
-    plain = types.int64("id")
+    plain = yggdryl.int64("id")
     assert plain.dictionary_id is None
     with pytest.raises(ValueError, match="dictionary datatype"):
         plain.set_dictionary_options(1, True)
@@ -216,9 +218,10 @@ was dictionary-encoded to read it.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    codes = types.dictionary("codes", "int16", "utf8")
+    codes = yggdryl.dictionary("codes", "int16", "utf8")
     value = codes.scalar("AAPL")
 
     assert value.as_py() == "AAPL"
@@ -292,9 +295,11 @@ node writes the extension entries and the values node does not.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    codes = types.dictionary("codes", "int16", "utf8")
+    from yggdryl import DataType, Field
+
+    codes = yggdryl.dictionary("codes", "int16", "utf8")
     codes.set_dictionary_options(42, True)
     arrow = codes.into_arrow()
 
@@ -359,11 +364,12 @@ the column's name and its metadata.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
     row = DataType.from_fields([
-        types.int64("id", nullable=False),
-        types.dictionary("codes", "int16", "utf8", nullable=False),
+        yggdryl.int64("id", nullable=False),
+        yggdryl.dictionary("codes", "int16", "utf8", nullable=False),
     ])
 
     exploded = row.explode_fields()

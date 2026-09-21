@@ -20,7 +20,7 @@ import pyarrow as pa
 
 from yggdryl import DataType, Field, Scalar, Term, Url
 from yggdryl.arrow import ArrowScalar
-from yggdryl.media.iceberg import IcebergOptions, PartitionSpec, ScanPlan
+from yggdryl.iceberg import IcebergOptions, PartitionSpec, ScanPlan
 
 
 @dataclass

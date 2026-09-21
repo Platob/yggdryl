@@ -146,15 +146,16 @@ because a field has to name the width it stores.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    assert types.duration32("elapsed", "ms").dtype == DataType("duration32(ms)")
-    assert types.duration64("elapsed", "us").dtype == DataType("duration64(us)")
+    assert yggdryl.duration32("elapsed", "ms").dtype == DataType("duration32(ms)")
+    assert yggdryl.duration64("elapsed", "us").dtype == DataType("duration64(us)")
 
     # Defaults: `duration32` is milliseconds, `duration64` microseconds.
-    assert types.duration32("elapsed").dtype == DataType("duration32(ms)")
-    assert types.duration64("elapsed").dtype == DataType("duration64(us)")
-    assert types.duration64("elapsed", "ns", nullable=False).nullable is False
+    assert yggdryl.duration32("elapsed").dtype == DataType("duration32(ms)")
+    assert yggdryl.duration64("elapsed").dtype == DataType("duration64(us)")
+    assert yggdryl.duration64("elapsed", "ns", nullable=False).nullable is False
     ```
 
 === "JavaScript"

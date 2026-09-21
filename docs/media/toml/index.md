@@ -48,7 +48,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     natural = toml.loads(source)

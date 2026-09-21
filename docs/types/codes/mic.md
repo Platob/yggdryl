@@ -80,9 +80,10 @@ ISO 10383's four-character market identifier code, and `XXXX`, the market that s
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    venue = types.mic("venue", nullable=False)
+    venue = yggdryl.mic("venue", nullable=False)
     assert isinstance(venue, Field)
     assert str(venue.dtype) == "mic"
     assert not venue.nullable

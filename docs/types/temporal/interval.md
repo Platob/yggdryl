@@ -146,17 +146,19 @@ defaulting to `month_day_nano`.
     ```python
     import pytest
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    assert types.interval("tenor", "month_day_nano").dtype == DataType("interval(month_day_nano)")
-    assert types.interval("months", "year_month").dtype == DataType("interval(year_month)")
+    from yggdryl import DataType
+
+    assert yggdryl.interval("tenor", "month_day_nano").dtype == DataType("interval(month_day_nano)")
+    assert yggdryl.interval("months", "year_month").dtype == DataType("interval(year_month)")
 
     # The layout defaults to the widest one.
-    assert types.interval("tenor").dtype == DataType("interval")
-    assert types.interval("tenor", nullable=False).nullable is False
+    assert yggdryl.interval("tenor").dtype == DataType("interval")
+    assert yggdryl.interval("tenor", nullable=False).nullable is False
 
     with pytest.raises(ValueError, match="interval layout"):
-        types.interval("window", "us")
+        yggdryl.interval("window", "us")
     ```
 
 === "JavaScript"
@@ -212,7 +214,7 @@ the value door.
 
     ```python
     from yggdryl import Field, Scalar
-    from yggdryl.text import json
+    from yggdryl import json
 
     def typed(document: str, dtype: str) -> Scalar:
         return json.loads(document, field=Field("span", dtype, False), cls=Scalar)

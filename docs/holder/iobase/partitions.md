@@ -292,7 +292,7 @@ Addressing the folder restores the columns its directories spell and routes each
     leaf = lake / "year=2024" / "month=01" / "part-0.arrows"
     assert len(leaf.read_arrow_field().dtype) == 1
 
-    # Reading the folder restores them with their declared types.
+    # Reading the folder restores them with their declared yggdryl.
     restored = lake.read_arrow_reader(options=options).read_all()
     assert restored.column_names == ["price", "year", "month"]
     assert restored.schema.field("year").type == pa.int32()

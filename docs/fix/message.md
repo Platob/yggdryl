@@ -124,7 +124,9 @@
 
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
     from yggdryl.fix import FixMsg, FixRegistry
 
     msgtype = Field("MsgType", "utf8")
@@ -141,7 +143,7 @@
     count = Field("NoPartyIDs", "int32", nullable=False)
     count.fix.tag = 453
     party = Field("Party", DataType.from_fields([party_id]), nullable=False)
-    parties = types.list("Parties", party)
+    parties = yggdryl.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
     registry = FixRegistry.from_fields([msgtype, side, symbol, qty, count, party_id])

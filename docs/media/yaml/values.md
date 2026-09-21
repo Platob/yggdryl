@@ -35,7 +35,7 @@ A schemaless read keeps only what the syntax proves: `~` is null, `true` a boole
 === "Python"
 
     ```python
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     value = yaml.loads("flag: true\nname: ~\nratio: 1.5\ntags: [a, b]\n")
 
@@ -82,7 +82,7 @@ Schemaless reads keep only syntax-proven types; a value with no native YAML synt
     from decimal import Decimal
 
     from yggdryl import Field
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     amount = Field("amount", "decimal128(8, 2)", nullable=False)
 
@@ -119,7 +119,7 @@ Schemaless reads keep only syntax-proven types; a value with no native YAML synt
 === "Python"
 
     ```python
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     value = yaml.loads("payload: !!binary AP8=\n")
 
@@ -163,7 +163,7 @@ A Struct `Field` resolves record names into its child order, whatever order the 
 
     ```python
     from yggdryl import Field, Scalar
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     row = Field.from_str("row: struct<symbol: utf8 not null, quantity: int32 not null> not null")
     document = "quantity: 2\nsymbol: AAPL\n"

@@ -41,7 +41,7 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     document = {
         "type": "record",
@@ -127,7 +127,7 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
     from datetime import date, datetime, timezone
     from decimal import Decimal
 
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     schema = {
         "type": "record",

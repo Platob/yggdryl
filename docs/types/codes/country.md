@@ -74,9 +74,10 @@ ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the twelve, an
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    iso = types.country("iso")
+    iso = yggdryl.country("iso")
     assert isinstance(iso, Field)
     assert str(iso.dtype) == "country"
     assert iso.nullable

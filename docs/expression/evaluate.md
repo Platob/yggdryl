@@ -228,7 +228,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     table = Table("/lake/trades")
 

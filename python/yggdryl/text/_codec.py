@@ -564,7 +564,7 @@ def _materialize_decoded(
             raise TypeError(
                 f"decoded data for {cls.__module__}.{cls.__qualname__} must be a mapping"
             )
-        from ..types._classes import from_dict
+        from .._classes import from_dict
 
         return from_dict(cls, decoded, safe=safe, errors=errors)
     return cast(Callable[[Any], _T], cls)(decoded)

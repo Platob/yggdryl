@@ -91,7 +91,7 @@ def test_dtype_accepts_only_arrow_type_and_only_real_pyarrow_types() -> None:
 def test_ordinary_inference_does_not_touch_pyarrow_override_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from yggdryl.types import _hints
+    from yggdryl import _hints
 
     def unavailable() -> typing.NoReturn:
         raise AssertionError("ordinary inference imported PyArrow")

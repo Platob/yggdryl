@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from yggdryl import scalar
-from yggdryl.text import yaml
+from yggdryl import yaml
 
 
 @scalar

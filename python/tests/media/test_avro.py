@@ -6,7 +6,7 @@ import pickle
 import pytest
 
 from yggdryl import RecordOptions, Scalar
-from yggdryl.media import avro
+from yggdryl import avro
 
 
 SCHEMA = {

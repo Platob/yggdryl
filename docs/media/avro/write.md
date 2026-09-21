@@ -56,7 +56,7 @@ The schema JSON is written into the header as it was given, so an attribute this
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     schema = {
         "type": "record",
@@ -135,7 +135,7 @@ Each datum frames as `C3 01`, the writer schema's Rabin fingerprint in little-en
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     schema = avro.Schema({
         "type": "record",
@@ -322,12 +322,14 @@ Avro's `string` is UTF-8, so every [string](../../types/index.md) on text storag
 
     import pyarrow as pa
 
-    from yggdryl import IOBase, types
+    import yggdryl
 
-    row = types.struct("row", [
-        types.fixed_ascii("code", 4),
-        types.fixed_size_binary("key", 2),
-        types.bytes("blob", max=8),
+    from yggdryl import IOBase
+
+    row = yggdryl.struct("row", [
+        yggdryl.fixed_ascii("code", 4),
+        yggdryl.fixed_size_binary("key", 2),
+        yggdryl.bytes("blob", max=8),
     ], nullable=False)
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "codes.avro")
@@ -344,7 +346,7 @@ Avro's `string` is UTF-8, so every [string](../../types/index.md) on text storag
     assert list(handle.read_records()) == [{"code": "AB", "key": b"\x00\x01", "blob": b"xyz"}]
 
     legacy = handle.record_options()
-    legacy.field = types.struct("row", [types.cp1252("note")], nullable=False)
+    legacy.field = yggdryl.struct("row", [yggdryl.cp1252("note")], nullable=False)
     try:
         IOBase(pathlib.Path(tempfile.mkdtemp()) / "notes.avro").overwrite_arrow_batch(
             pa.record_batch({"note": ["hi"]}), options=legacy

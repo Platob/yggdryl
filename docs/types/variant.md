@@ -115,15 +115,16 @@ the column admits one, the encoded null where it does not.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    payload = types.variant("payload", nullable=False)
+    payload = yggdryl.variant("payload", nullable=False)
     assert isinstance(payload, Field)
     assert str(payload.dtype) == "variant"
     assert payload.nullable is False
 
     # Nullable unless the call says otherwise; metadata rides beside it.
-    tagged = types.variant("payload", metadata={"source": "feed"})
+    tagged = yggdryl.variant("payload", metadata={"source": "feed"})
     assert tagged.nullable is True
     assert tagged.metadata["source"] == "feed"
     ```

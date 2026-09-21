@@ -127,7 +127,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.coding import gzip
+    from yggdryl import gzip
     from yggdryl.holder import Buffer, Path
 
     # `Path` skips the composition, so the coding is the only layer retained.

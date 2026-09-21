@@ -97,7 +97,9 @@ underscores, hyphens and spaces, so `large_utf8`, `largeutf8` and
     ```python
     import pytest
 
-    from yggdryl import DataType, StringParameters, types
+    import yggdryl
+
+    from yggdryl import DataType, StringParameters
 
     # Every spelling of a leaf is one datatype, rendered under the leaf's
     # canonical name.
@@ -117,12 +119,12 @@ underscores, hyphens and spaces, so `large_utf8`, `largeutf8` and
     assert latin.string_parameters.charset == "windows-1252"
     assert latin.string_parameters.max == 32
     assert latin.charset == "windows-1252"
-    assert types.string("name", charset="windows-1252", max=32).dtype == latin
-    assert types.sized_cp1252("name", 32).dtype == latin
+    assert yggdryl.string("name", charset="windows-1252", max=32).dtype == latin
+    assert yggdryl.sized_cp1252("name", 32).dtype == latin
 
     # The leaf is the identifier.
     assert DataType("utf8").id == "utf8"
-    assert types.sized_cp1252("name", 32).dtype.id == "sized_cp1252"
+    assert yggdryl.sized_cp1252("name", 32).dtype.id == "sized_cp1252"
 
     # The number is the leaf: a maximum on a sized leaf, a width on a fixed one.
     assert DataType("ascii(4)") == DataType("sized_ascii(4)")
@@ -218,20 +220,21 @@ field carries are on [Protocol](../protocol.md).
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    name = types.sized_cp1252("name", 32, nullable=False)
+    name = yggdryl.sized_cp1252("name", 32, nullable=False)
     assert isinstance(name, Field)
     assert name.name == "name"
     assert str(name.dtype) == "sized_cp1252(32)"
     assert name.nullable is False
 
     # One factory per leaf, and one that takes the whole declaration.
-    assert types.string("name", charset="windows-1252", max=32).dtype == name.dtype
-    assert types.fixed_ascii("ccy", 4).dtype == types.string("ccy", layout="fixed_ascii", fixed=4).dtype
+    assert yggdryl.string("name", charset="windows-1252", max=32).dtype == name.dtype
+    assert yggdryl.fixed_ascii("ccy", 4).dtype == yggdryl.string("ccy", layout="fixed_ascii", fixed=4).dtype
 
     # Metadata rides beside the datatype, never inside it.
-    note = types.utf8("note", metadata={"source": "feed"})
+    note = yggdryl.utf8("note", metadata={"source": "feed"})
     assert note.metadata["source"] == "feed"
     assert note.nullable is True
     ```
@@ -412,13 +415,15 @@ name, and it imports as its storage. A code rides its own extension name
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
+
+    from yggdryl import Field
 
     # Plain UTF-8 is Arrow's own datatype and crosses bare.
-    assert types.utf8("text").into_arrow().metadata is None
+    assert yggdryl.utf8("text").into_arrow().metadata is None
 
     # US-ASCII is UTF-8, so it rides the text layout; the leaf rides the document.
-    note = types.ascii("note", nullable=False)
+    note = yggdryl.ascii("note", nullable=False)
     arrow = note.into_arrow()
     assert arrow.type == pa.string()
     assert arrow.metadata == {
@@ -428,7 +433,7 @@ name, and it imports as its storage. A code rides its own extension name
     assert Field.from_arrow(arrow) == note
 
     # A fixed width is Arrow's fixed binary, whatever the charset.
-    ccy = types.fixed_ascii("ccy", 4, nullable=False)
+    ccy = yggdryl.fixed_ascii("ccy", 4, nullable=False)
     arrow = ccy.into_arrow()
     assert arrow.type == pa.binary(4)
     assert arrow.metadata[b"ARROW:extension:metadata"] == (
@@ -438,7 +443,7 @@ name, and it imports as its storage. A code rides its own extension name
     assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field("ccy", "fixed_binary(4)")
 
     # A windows-1252 leaf rides binary storage, because its bytes are not UTF-8.
-    latin = types.sized_cp1252("name", 32)
+    latin = yggdryl.sized_cp1252("name", 32)
     arrow = latin.into_arrow()
     assert arrow.type == pa.binary()
     assert arrow.metadata[b"ARROW:extension:metadata"] == (
@@ -638,9 +643,11 @@ trims.
     import pyarrow as pa
     import pytest
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    ccy = types.fixed_ascii("ccy", 4)
+    from yggdryl import DataType
+
+    ccy = yggdryl.fixed_ascii("ccy", 4)
 
     # A cast into the width pads.
     padded = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
@@ -648,7 +655,7 @@ trims.
 
     # A stored column carrying the document reads back under `utf8` trimmed.
     stored = pa.record_batch([padded], schema=pa.schema([ccy.into_arrow()]))
-    text = DataType.from_fields([types.utf8("ccy")])
+    text = DataType.from_fields([yggdryl.utf8("ccy")])
     assert text.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", "EU"]
 
     # Under `safe` a failing cell is null; strict names the row and the column.

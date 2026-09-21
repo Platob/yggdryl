@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 
 from yggdryl import DataType, Field, scalar
-from yggdryl.text import toml
+from yggdryl import toml
 
 
 @scalar(frozen=True, slots=True)

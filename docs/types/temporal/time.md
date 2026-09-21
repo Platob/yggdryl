@@ -159,18 +159,19 @@ does.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
     # A factory per leaf, and one that picks the width from the unit.
-    assert types.time32("open", "s").dtype == DataType("time32(s)")
-    assert types.time64("precise", "ns").dtype == DataType("time64(ns)")
-    assert types.time("coarse", "ms").dtype == DataType("time32(ms)")
-    assert types.time("precise", "us").dtype == DataType("time64(us)")
+    assert yggdryl.time32("open", "s").dtype == DataType("time32(s)")
+    assert yggdryl.time64("precise", "ns").dtype == DataType("time64(ns)")
+    assert yggdryl.time("coarse", "ms").dtype == DataType("time32(ms)")
+    assert yggdryl.time("precise", "us").dtype == DataType("time64(us)")
 
     # Defaults: `time32` is milliseconds, `time64` microseconds.
-    assert types.time32("clock").dtype == DataType("time32(ms)")
-    assert types.time64("clock").dtype == DataType("time64(us)")
-    assert types.time32("clock", nullable=False).nullable is False
+    assert yggdryl.time32("clock").dtype == DataType("time32(ms)")
+    assert yggdryl.time64("clock").dtype == DataType("time64(us)")
+    assert yggdryl.time32("clock", nullable=False).nullable is False
     ```
 
 === "JavaScript"

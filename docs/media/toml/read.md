@@ -43,7 +43,7 @@ The smallest read: content in, one record out. `cls=Scalar` / `{ scalar: true }`
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     source = 'title = "yggdryl"\ncount = 3\n'
     natural = toml.loads(source)
@@ -93,7 +93,7 @@ Rust reads any `Read`; Python takes a `PathLike` where a `str` would have been c
     import pathlib
     import tempfile
 
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     source = pathlib.Path(tempfile.mkdtemp()) / "quote.toml"
     source.write_bytes(b'symbol = "AAPL"\nquantity = 100\n')
@@ -196,7 +196,7 @@ TOML carries one document, so the `_all` family exists only to answer the same s
 === "Python"
 
     ```python
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     # A single-document format binds no collection reader.
     for name in ("load_all", "loads_all"):

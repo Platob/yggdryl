@@ -70,12 +70,14 @@ refusal names the one that fired so a caller fixes the right half.
     ```python
     import pytest
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    runs = types.run_end_encoded(
+    from yggdryl import DataType
+
+    runs = yggdryl.run_end_encoded(
         "runs",
-        types.int32("run_ends", nullable=False),
-        types.utf8("values"),
+        yggdryl.int32("run_ends", nullable=False),
+        yggdryl.utf8("values"),
     ).dtype
 
     assert runs.id == "run_end_encoded"
@@ -90,9 +92,9 @@ refusal names the one that fired so a caller fixes the right half.
 
     # Two independent rules, each reported on its own.
     with pytest.raises(ValueError, match="int16, int32, or int64"):
-        types.run_end_encoded("bad", types.uint32("run_ends", nullable=False), types.utf8("values"))
+        yggdryl.run_end_encoded("bad", yggdryl.uint32("run_ends", nullable=False), yggdryl.utf8("values"))
     with pytest.raises(ValueError, match="non-null run_ends field"):
-        types.run_end_encoded("bad", types.int16("run_ends"), types.utf8("values"))
+        yggdryl.run_end_encoded("bad", yggdryl.int16("run_ends"), yggdryl.utf8("values"))
 
     assert DataType("ree<int32,utf8>") == runs
     assert DataType("runend<int32,utf8>").id == "run_end_encoded"
@@ -170,12 +172,13 @@ so the field is a name, a nullability and metadata, exactly like every other.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    runs = types.run_end_encoded(
+    runs = yggdryl.run_end_encoded(
         "runs",
-        types.int32("run_ends", nullable=False),
-        types.utf8("values"),
+        yggdryl.int32("run_ends", nullable=False),
+        yggdryl.utf8("values"),
         nullable=False,
         metadata={"owner": "events"},
     )
@@ -189,10 +192,10 @@ so the field is a name, a nullability and metadata, exactly like every other.
     assert runs.dictionary_id is None
 
     # The values child keeps its own name, nullability and metadata.
-    encoded = types.run_end_encoded(
+    encoded = yggdryl.run_end_encoded(
         "runs",
-        types.int16("run_ends", nullable=False),
-        types.utf8("values", nullable=False, metadata={"logical": "status"}),
+        yggdryl.int16("run_ends", nullable=False),
+        yggdryl.utf8("values", nullable=False, metadata={"logical": "status"}),
     )
     assert encoded.dtype["values"].nullable is False
     assert encoded.dtype["values"].metadata["logical"] == "status"
@@ -253,12 +256,13 @@ has to know a column was run-end encoded to read it.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    runs = types.run_end_encoded(
+    runs = yggdryl.run_end_encoded(
         "runs",
-        types.int32("run_ends", nullable=False),
-        types.utf8("values"),
+        yggdryl.int32("run_ends", nullable=False),
+        yggdryl.utf8("values"),
         nullable=False,
     )
 
@@ -331,12 +335,14 @@ encoding survives the boundary exactly as declared.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    runs = types.run_end_encoded(
+    from yggdryl import DataType, Field
+
+    runs = yggdryl.run_end_encoded(
         "runs",
-        types.int32("run_ends", nullable=False),
-        types.utf8("values"),
+        yggdryl.int32("run_ends", nullable=False),
+        yggdryl.utf8("values"),
     )
     arrow = runs.into_arrow()
 
@@ -400,14 +406,15 @@ leaf, because it is one column.
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
     row = DataType.from_fields([
-        types.int64("id", nullable=False),
-        types.run_end_encoded(
+        yggdryl.int64("id", nullable=False),
+        yggdryl.run_end_encoded(
             "state",
-            types.int32("run_ends", nullable=False),
-            types.utf8("values"),
+            yggdryl.int32("run_ends", nullable=False),
+            yggdryl.utf8("values"),
             nullable=False,
         ),
     ])

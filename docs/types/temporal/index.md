@@ -106,7 +106,9 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     import pyarrow as pa
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
 
     # Five families; the spelling is the leaf's, and `time` picks the width.
     assert DataType("time32(ms)") == DataType.time("ms")
@@ -117,7 +119,7 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     assert DataType("interval") == DataType("interval(month_day_nano)")
 
     # One factory per leaf; a datetime states its unit and its zone.
-    at = types.datetime64("at", "us", "UTC")
+    at = yggdryl.datetime64("at", "us", "UTC")
     assert str(at.dtype) == 'datetime64(us,"UTC")'
     assert str(at.dtype.timezone) == "UTC"
     assert at.dtype.kind == "temporal"

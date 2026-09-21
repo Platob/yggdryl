@@ -117,10 +117,11 @@ it twice. The bindings spell it `types.timezone` and `fields.timezone`.
 === "Python"
 
     ```python
-    from yggdryl import DataType, Scalar, types
-    from yggdryl.text import json
+    import yggdryl
+    from yggdryl import DataType, Scalar
+    from yggdryl import json
 
-    field = types.timezone("zone", nullable=False)
+    field = yggdryl.timezone("zone", nullable=False)
     assert str(field.dtype) == "timezone"
     assert field.nullable is False
     assert field.dtype == DataType("timezone")

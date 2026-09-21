@@ -297,11 +297,12 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
 === "Python"
 
     ```python
-    from yggdryl import DataType, Scalar, types
-    from yggdryl.text import json
+    import yggdryl
+    from yggdryl import DataType, Scalar
+    from yggdryl import json
 
-    location = types.url("location", nullable=False)
-    name = types.urn("name", nullable=False)
+    location = yggdryl.url("location", nullable=False)
+    name = yggdryl.urn("name", nullable=False)
     assert DataType("urn").kind == "text"
     located = json.loads('"HTTPS://example.com/a"', field=location, cls=Scalar)
     assert located.as_py() == "https://example.com/a"

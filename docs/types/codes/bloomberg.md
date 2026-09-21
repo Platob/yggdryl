@@ -73,9 +73,10 @@ Thirty-two is a bound rather than a shape: a ticker, a market and a yellow key h
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    sid = types.bloomberg("sid")
+    sid = yggdryl.bloomberg("sid")
     assert isinstance(sid, Field)
     assert str(sid.dtype) == "bloomberg"
     ```

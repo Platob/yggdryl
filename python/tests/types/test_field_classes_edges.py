@@ -6,7 +6,7 @@ from typing import Annotated, TypedDict
 import pytest
 
 from yggdryl import DataType, Field, field, scalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 class CountPayload(TypedDict):

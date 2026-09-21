@@ -18,7 +18,7 @@ import pytest
 import yggdryl
 from yggdryl import DataType, Field, Scalar
 from yggdryl.enums import DIGEST_ALGORITHMS
-from yggdryl.hashing import txhash, xxhash
+from yggdryl import txhash, xxhash
 
 INSTANT = 1_700_000_000_000_000
 PAYLOAD = b'{"symbol": "AAPL", "price": 187.23}\n' * 64

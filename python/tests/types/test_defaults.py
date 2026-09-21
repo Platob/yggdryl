@@ -8,7 +8,8 @@ from decimal import Decimal
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, Version, types
+import yggdryl
+from yggdryl import DataType, Field, Scalar, Version
 
 # Every Arrow datatype variant the core distinguishes. It is asserted as a
 # constant so that adding a variant to the core without adding it here fails,
@@ -162,7 +163,7 @@ def test_a_default_is_one_scalar_that_materializes_the_same_value() -> None:
 
 
 def test_default_pyhint_is_cached_nullable_and_arrow_free() -> None:
-    import yggdryl.types._arrow as field_arrow
+    import yggdryl._arrow as field_arrow
 
     assert not hasattr(field_arrow, "_pyarrow")
     nested = DataType.from_fields(
@@ -238,23 +239,23 @@ def test_default_pyhint_cache_ignores_nested_metadata_recursively(
 
 
 def test_typed_factory_defaults_cover_field_and_nested_child_nullability() -> None:
-    nullable_item = types.int32("item")
-    required_item = types.int32("item", nullable=False)
+    nullable_item = yggdryl.int32("item")
+    required_item = yggdryl.int32("item", nullable=False)
 
     assert nullable_item.default_scalar().as_py() is None
     assert required_item.default_scalar().as_py() == 0
     assert required_item.dtype.default_scalar().as_py() == 0
 
-    fixed = types.fixed_size_list(
+    fixed = yggdryl.fixed_size_list(
         "values", nullable_item, 2, nullable=False
     )
     assert fixed.default_scalar().as_py() == [None, None]
     assert fixed.dtype.default_scalar().as_py() == [None, None]
 
-    valid_struct = types.struct(
+    valid_struct = yggdryl.struct(
         "row", (required_item,), nullable=False
     )
-    invalid_struct = types.struct(
+    invalid_struct = yggdryl.struct(
         "row", (Field("not-valid", "int32", nullable=False),), nullable=False
     )
     # A record default is positional, so both spell the same value; only the

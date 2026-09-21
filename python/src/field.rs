@@ -66,7 +66,7 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
 fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     let field = value
         .py()
-        .import("yggdryl.types._classes")?
+        .import("yggdryl._classes")?
         .getattr("field")?
         .call1((value,))?;
     {
@@ -291,7 +291,7 @@ impl PyField {
         hint: &Bound<'_, PyAny>,
         metadata: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let module = hint.py().import("yggdryl.types._hints")?;
+        let module = hint.py().import("yggdryl._hints")?;
         let inferred = if let Some(metadata) = metadata {
             module
                 .getattr("field_from_pyhint")?
@@ -365,7 +365,7 @@ impl PyField {
         if let Some(module) = module {
             kwargs.set_item("module", module)?;
         }
-        py.import("yggdryl.types._classes")?
+        py.import("yggdryl._classes")?
             .getattr("_dataclass_from_field")?
             .call((slf,), Some(&kwargs))
     }
@@ -404,7 +404,7 @@ impl PyField {
     /// Returns the cached Python annotation corresponding to this Field.
     fn default_pyhint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let field = Py::new(py, self.clone())?;
-        py.import("yggdryl.types._defaults")?
+        py.import("yggdryl._defaults")?
             .getattr("_default_pyhint_from_field")?
             .call1((field,))
     }

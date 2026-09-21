@@ -17,7 +17,7 @@ import pytest
 
 from yggdryl import DataType, Field, Scalar
 from yggdryl.arrow import ArrowScalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 @dataclass

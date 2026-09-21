@@ -6,7 +6,7 @@ YAML documents and document streams as one scheme over the shared [`Scalar`](../
 
 | Aspect | Contract |
 | --- | --- |
-| Owns | `yggdryl::yaml`; `yggdryl.text.yaml`; `yaml` from `yggdryl` |
+| Owns | `yggdryl::yaml`; `yggdryl.yaml`; `yaml` from `yggdryl` |
 | Proves | null, boolean, integer, float, string, sequence, mapping, the standard `!!binary` tag; anything else needs a [`Field`](values.md) |
 | Records | string keys: sorted `Record`; other keys: insertion-ordered `Mapping` |
 | Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return it, else natural objects |
@@ -49,7 +49,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
     value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)

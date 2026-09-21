@@ -41,7 +41,7 @@ The smallest read: content in, one value out. `cls=Scalar` / `{ scalar: true }` 
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import json
+    from yggdryl import json
 
     natural = json.loads('{"symbol":"AAPL","quantity":100}')
     value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
@@ -89,7 +89,7 @@ Rust reads any `Read`; Python takes a `PathLike` where a `str` would have been c
     import pathlib
     import tempfile
 
-    from yggdryl.text import json
+    from yggdryl import json
 
     source = pathlib.Path(tempfile.mkdtemp()) / "quote.json"
     source.write_bytes(b'{"symbol":"AAPL","quantity":100}')
@@ -192,7 +192,7 @@ Rust reads any `Read`; Python takes a `PathLike` where a `str` would have been c
 === "Python"
 
     ```python
-    from yggdryl.text import json
+    from yggdryl import json
 
     rows = list(json.loads_all('{"id":1}\n{"id":2}\n'))
 

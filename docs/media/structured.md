@@ -163,7 +163,7 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 === "Python"
 
     ```python
-    from yggdryl.text import json, toml, yaml
+    from yggdryl import json, toml, yaml
 
     value = {"child": {"id": 1}}
 

@@ -6,7 +6,7 @@ Run after ``maturin develop`` with::
 
 Named for the topic rather than the layer, as ``coding.py`` and ``digest.py``
 are: a script's own directory comes first on ``sys.path``, so a benchmark named
-``types.py`` shadows the standard library's ``types`` for every sibling script
+``yggdryl.py`` shadows the standard library's ``types`` for every sibling script
 too - ``enum`` imports it, which is most of them.
 
 The wide metadata cases guard the bulk accumulator against accidental
@@ -33,11 +33,11 @@ from yggdryl import (
     MimeType,
     PythonMetadata,
     StringEnum,
-    scalar,
-    types,
     field,
+    scalar,
 )
-from yggdryl.text import json
+from yggdryl import json
+import yggdryl
 
 WIDE_METADATA = tuple(
     (f"key_{index:04d}", str(index)) for index in range(1_024)
@@ -140,7 +140,7 @@ def _infer_nested_datatype() -> DataType:
 
 
 def _build_nested_typed_field() -> Field:
-    return types.map_of("counts", str, int, nullable=False)
+    return yggdryl.map_of("counts", str, int, nullable=False)
 
 
 def _build_generic_time_datatype() -> DataType:
@@ -148,7 +148,7 @@ def _build_generic_time_datatype() -> DataType:
 
 
 def _build_generic_time_field() -> Field:
-    return types.time("at", "us", nullable=False)
+    return yggdryl.time("at", "us", nullable=False)
 
 
 def _build_fixed_ascii_datatype() -> DataType:
@@ -156,7 +156,7 @@ def _build_fixed_ascii_datatype() -> DataType:
 
 
 def _build_fixed_ascii_field() -> Field:
-    return types.fixed_ascii("ccy", 4, nullable=False)
+    return yggdryl.fixed_ascii("ccy", 4, nullable=False)
 
 
 def _build_string_datatype() -> DataType:
@@ -166,7 +166,7 @@ def _build_string_datatype() -> DataType:
 
 
 def _build_string_field() -> Field:
-    return types.string("name", charset="windows-1252", max=32, nullable=False)
+    return yggdryl.string("name", charset="windows-1252", max=32, nullable=False)
 
 
 def _read_string_parameters() -> object:
@@ -178,7 +178,7 @@ def _build_bytes_datatype() -> DataType:
 
 
 def _build_bytes_field() -> Field:
-    return types.bytes("blob", layout="fixed_size_binary", fixed=16, nullable=False)
+    return yggdryl.bytes("blob", layout="fixed_size_binary", fixed=16, nullable=False)
 
 
 def _read_bytes_parameters() -> object:
@@ -190,7 +190,7 @@ def _build_code_datatype() -> DataType:
 
 
 def _build_code_field() -> Field:
-    return types.currency("ccy", nullable=False)
+    return yggdryl.currency("ccy", nullable=False)
 
 
 def _build_figi_scalar() -> object:
@@ -202,7 +202,7 @@ def _build_variant_datatype() -> DataType:
 
 
 def _build_variant_field() -> Field:
-    return types.dense_union("payload", VARIANT_MEMBERS, nullable=False)
+    return yggdryl.dense_union("payload", VARIANT_MEMBERS, nullable=False)
 
 
 def _infer_variant_datatype() -> DataType:

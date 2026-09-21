@@ -13,7 +13,7 @@ import pathlib
 
 import pytest
 
-from yggdryl.text import json, toml, yaml
+from yggdryl import json, toml, yaml
 
 # The same document, written the way each format spells it. YAML *requires* the
 # quotes: a bare `{{ X }}` is a flow mapping, not a scalar.

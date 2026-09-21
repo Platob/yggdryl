@@ -549,7 +549,7 @@ class TestCustomFilesystems:
         assert not pathlib.Path("bucket/lake").exists()
 
     def test_a_table_hands_back_a_root_on_its_own_filesystem(self) -> None:
-        from yggdryl.media import iceberg
+        from yggdryl import iceberg
 
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
@@ -630,7 +630,7 @@ class TestTables:
     """A table is a folder, and a foreign filesystem is where it can live."""
 
     def test_an_iceberg_table_lives_on_a_foreign_filesystem(self, root: str) -> None:
-        from yggdryl.media import iceberg
+        from yggdryl import iceberg
 
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")

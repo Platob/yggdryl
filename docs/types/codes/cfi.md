@@ -78,9 +78,10 @@ Six bytes is what the code is, not the eight some other width would pad it to. T
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    classification = types.cfi("classification")
+    classification = yggdryl.cfi("classification")
     assert isinstance(classification, Field)
     assert str(classification.dtype) == "cfi"
     ```

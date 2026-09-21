@@ -74,9 +74,10 @@ A spelling whose check digit does not close it is not that identifier - it is a 
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    sid = types.isin("sid")
+    sid = yggdryl.isin("sid")
     assert isinstance(sid, Field)
     assert str(sid.dtype) == "isin"
     ```

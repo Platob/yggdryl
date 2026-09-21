@@ -6,7 +6,7 @@
 
 | Key | Value |
 | --- | --- |
-| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
+| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.xxhash` / `yggdryl.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
 | `xxhash` owns | `xxh32`, `xxh64`, `xxh3`, `xxh128` and their `_with_seed` forms (the XXH3 pair also `_with_secret` and `_with_seed_and_secret`), `digest`, `SECRET_MINIMUM_LENGTH`, the `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states, `reader` / `writer`, `Hashed<H>`, `arrow::row_digests` / `column_digests`, and the value methods `as_value_bytes`, `write_bytes`, `digest`, `stable_hash` |
 | `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `DIGEST:time` / `DIGEST:unit` on a holder |
 | Algorithms | `DigestAlgorithm::ALL`: `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`; `width()` 4, 8, 8, 16 bytes; XXH3-64 is the default and what every `stable_hash` answers |
@@ -72,7 +72,7 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 === "Python"
 
     ```python
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     assert xxhash.xxh32(b"abc") == 0x32D153FF
     assert xxhash.xxh64(b"abc") == 0x44BC2CF5AD770999
@@ -158,7 +158,7 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 === "Python"
 
     ```python
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     payload = b"AAPL,187.23"
     for split in (1, 4, len(payload)):
@@ -236,7 +236,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
     ```python
     import pytest
 
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     assert not xxhash.is_secretable("xxh64")
     assert xxhash.is_secretable("xxh3-64")
@@ -309,7 +309,7 @@ Digest an `IOBase` handle's bytes without reading them whole.
     from pathlib import Path
 
     from yggdryl import IOBase
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     with tempfile.TemporaryDirectory() as root:
         path = Path(root) / "trades.csv"
@@ -445,7 +445,7 @@ assert_eq!(
 
     ```python
     from yggdryl import DataType, Scalar
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     symbol = Scalar.from_("AAPL")
     assert symbol.as_value_bytes() == b"AAPL"
@@ -578,7 +578,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     import pyarrow as pa
 
     from yggdryl import DataType, Field, Scalar
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     holder = Field("row_digest", "uint64", nullable=False)
     holder.digest.set_holder()
@@ -712,7 +712,7 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
     ```python
     import datetime as dt
 
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     instant = 1_700_000_000_000_000  # 2023-11-14T22:13:20Z in microseconds
     value = txhash.txh3(b"AAPL", instant)
@@ -823,7 +823,7 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     ```python
     import pytest
 
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     one = xxhash.Digest.from_int("xxh64", 1)
     epoch = txhash.TxHash.from_parts(0, one, unit="ns")
@@ -920,7 +920,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
     ```python
     import datetime as dt
 
-    from yggdryl.hashing import txhash
+    from yggdryl import txhash
 
     aware = dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc)
     kolkata = aware.astimezone(dt.timezone(dt.timedelta(hours=5, minutes=30)))
@@ -992,7 +992,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     seconds = txhash.TxHasher("xxh64", unit="s", seed=7)
     value = seconds.digest(b"AAPL", 1_700_000_000)
@@ -1095,7 +1095,7 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
 
     import pyarrow as pa
 
-    from yggdryl.hashing import txhash, xxhash
+    from yggdryl import txhash, xxhash
 
     batch = pa.record_batch({"symbol": pa.array(["AAPL", "AAPL"])})
     instants = pa.array([1_700_000_000_000_000, 1_700_000_000_000_001], pa.timestamp("us", tz="UTC"))
@@ -1178,7 +1178,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     import pyarrow as pa
 
     from yggdryl import DataType, Field, Scalar
-    from yggdryl.hashing import txhash
+    from yggdryl import txhash
 
     key = Field("key", "fixed_size_binary[16]", nullable=False)
     key.digest.set_holder()

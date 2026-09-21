@@ -101,7 +101,7 @@ Both answer a `Digest` rather than the bytes, and every backend and every wrappe
 
     ```python
     from yggdryl import IOBase
-    from yggdryl.hashing import xxhash
+    from yggdryl import xxhash
 
     handle = IOBase.from_bytes()
     handle.write_bytes(b"symbol,price\nAAPL,1\n")

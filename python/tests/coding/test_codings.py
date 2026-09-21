@@ -10,7 +10,7 @@ import zlib as std_zlib
 import pytest
 
 import yggdryl
-from yggdryl.coding import gzip, zlib, zstd
+from yggdryl import gzip, zlib, zstd
 
 PAYLOAD = b'{"id": 1, "venue": "XNAS"}\n' * 512
 
@@ -81,21 +81,24 @@ class TestModuleReach:
     def test_a_bare_import_reaches_all_three_by_attribute(self) -> None:
         module = importlib.import_module("yggdryl")
 
-        # ``import yggdryl`` alone reaches the layer that owns each format.
-        assert module.coding.gzip.loads(module.coding.gzip.dumps(PAYLOAD)) == PAYLOAD
-        assert module.coding.zlib.loads(module.coding.zlib.dumps(PAYLOAD)) == PAYLOAD
-        assert module.coding.zstd.loads(module.coding.zstd.dumps(PAYLOAD)) == PAYLOAD
+        # ``import yggdryl`` alone reaches each codec, which is a root module
+        # of its own name as `gzip.rs`, `zlib.rs` and `zstd.rs` are root files.
+        assert module.gzip.loads(module.gzip.dumps(PAYLOAD)) == PAYLOAD
+        assert module.zlib.loads(module.zlib.dumps(PAYLOAD)) == PAYLOAD
+        assert module.zstd.loads(module.zstd.dumps(PAYLOAD)) == PAYLOAD
 
     def test_the_from_import_names_the_same_three_modules(self) -> None:
-        assert yggdryl.coding.gzip is gzip
-        assert yggdryl.coding.zlib is zlib
-        assert yggdryl.coding.zstd is zstd
-        assert sys.modules["yggdryl.coding.gzip"] is gzip
-        assert sys.modules["yggdryl.coding.zlib"] is zlib
-        assert sys.modules["yggdryl.coding.zstd"] is zstd
+        assert yggdryl.gzip is gzip
+        assert yggdryl.zlib is zlib
+        assert yggdryl.zstd is zstd
+        assert sys.modules["yggdryl.gzip"] is gzip
+        assert sys.modules["yggdryl.zlib"] is zlib
+        assert sys.modules["yggdryl.zstd"] is zstd
 
     def test_they_are_exported_rather_than_merely_imported(self) -> None:
-        assert {"gzip", "zlib", "zstd"} <= set(yggdryl.coding.__all__)
+        assert {"gzip", "zlib", "zstd"} <= set(yggdryl.__all__)
+        # `coding/` keeps only what every codec shares: the transparent handle.
+        assert set(yggdryl.coding.__all__) == {"Coded", "Gzip", "Identity", "Zlib", "Zstd"}
         assert set(zlib.__all__) == {"dumps", "dumps_raw", "loads", "loads_raw"}
         assert set(gzip.__all__) == {"dumps", "loads"}
 

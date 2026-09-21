@@ -100,13 +100,15 @@ A table's columns are the children of a struct field with `nullable` false, the 
     ```python
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
 
     schema = Field(
         "trade",
         DataType.from_fields([
-            types.int64("id", nullable=False),
-            types.utf8("symbol"),
+            yggdryl.int64("id", nullable=False),
+            yggdryl.utf8("symbol"),
         ]),
         nullable=False,
     )
@@ -592,11 +594,12 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    id_field = types.int64("id", nullable=False)
-    symbol = types.utf8("symbol", metadata={"source": "feed"})
-    at = types.datetime64("at", "us", nullable=False)
+    id_field = yggdryl.int64("id", nullable=False)
+    symbol = yggdryl.utf8("symbol", metadata={"source": "feed"})
+    at = yggdryl.datetime64("at", "us", nullable=False)
 
     assert isinstance(id_field, Field)
     assert str(id_field.dtype) == "int64"

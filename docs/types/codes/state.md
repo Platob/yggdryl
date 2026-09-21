@@ -71,9 +71,10 @@ One vocabulary over two worlds. FIX names an order's state twice - `OrdStatus(39
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    state = types.state("state", nullable=False)
+    state = yggdryl.state("state", nullable=False)
     assert isinstance(state, Field)
     assert str(state.dtype) == "state"
     ```

@@ -14,7 +14,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](../../holder/index.m
 | Open | `metadata/version-hint.text`, else the highest-numbered `*.metadata.json`; a foreign filename is kept for the next `metadata-log` entry |
 | Commit | A new `v{version}.metadata.json` plus the hint; nothing is mutated in place, so earlier snapshots stay readable |
 | Versions | v1: singular `schema` and `partition-spec`, no sequence numbers. v2: plural keys, `last-sequence-number`. v3: `next-row-id`, row lineage |
-| Bindings | Python `yggdryl.media.iceberg` and the JavaScript `iceberg` namespace own the table; `TableMetadata`, `read_manifest`, and transform application are Rust only |
+| Bindings | Python `yggdryl.iceberg` and the JavaScript `iceberg` namespace own the table; `TableMetadata`, `read_manifest`, and transform application are Rust only |
 
 ## Use
 
@@ -76,7 +76,7 @@ Create in a folder, append, and reopen with no catalog in between.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),

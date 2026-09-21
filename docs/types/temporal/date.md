@@ -140,9 +140,10 @@ unless the call says otherwise.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    settlement = types.date64("settlement", nullable=False)
+    settlement = yggdryl.date64("settlement", nullable=False)
     assert settlement.name == "settlement"
     assert str(settlement.dtype) == "date64"
     assert settlement.nullable is False
@@ -152,7 +153,7 @@ unless the call says otherwise.
     assert settlement.dtype == Field("settlement", "date64", nullable=False).dtype
 
     # Metadata rides beside the datatype, never inside it.
-    day = types.date32("day", metadata={"source": "feed"})
+    day = yggdryl.date32("day", metadata={"source": "feed"})
     assert day.metadata["source"] == "feed"
     assert day.nullable is True
     ```

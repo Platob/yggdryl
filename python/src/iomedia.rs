@@ -772,7 +772,7 @@ impl Rows {
         }
         if is_dataclass_instance(row)? {
             return py
-                .import("yggdryl.types._classes")?
+                .import("yggdryl._classes")?
                 .getattr("into_dict")?
                 .call1((row,));
         }

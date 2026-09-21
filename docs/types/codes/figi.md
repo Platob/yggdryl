@@ -72,9 +72,10 @@ A FIGI is a checked identity of its own, never a [Bloomberg](bloomberg.md) fallb
 === "Python"
 
     ```python
-    from yggdryl import DataType, types
+    import yggdryl
+    from yggdryl import DataType
 
-    assert types.figi("figi", nullable=False).dtype == DataType("figi")
+    assert yggdryl.figi("figi", nullable=False).dtype == DataType("figi")
     ```
 
 === "JavaScript"

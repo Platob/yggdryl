@@ -17,6 +17,8 @@ from yggdryl.holder import Buffer, Buffered, File, Folder, FsFile, FsFolder, FsP
 from yggdryl.holder import Path as Path_
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
+import yggdryl
+
 from yggdryl import (
     Bound,
     BoundSelector,
@@ -43,13 +45,12 @@ from yggdryl import (
     Urn,
     Version,
     Scalar,
-    types,
     fix,
 )
-from yggdryl.coding import gzip, zlib, zstd
-from yggdryl.hashing import txhash, xxhash
-from yggdryl.media import avro, iceberg
-from yggdryl.text import json, toml, yaml
+from yggdryl import gzip, zlib, zstd
+from yggdryl import txhash, xxhash
+from yggdryl import avro, iceberg
+from yggdryl import json, toml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
@@ -67,8 +68,8 @@ from yggdryl._native import (
     BytesParameters,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
-from yggdryl.types import temporal
-from yggdryl.types import (
+from yggdryl import temporal
+from yggdryl import (
     BloombergCodeField,
     BytesField,
     StringField,
@@ -98,7 +99,7 @@ version_hash: int = numeric_version.stable_hash()
 version_compared: bool = numeric_version <= parsed_version
 version_copied: Version = numeric_version.__copy__()
 version_pickled: tuple[object, tuple[int, int, int]] = numeric_version.__reduce__()
-typed_version: VersionField = types.version("fixversion")
+typed_version: VersionField = yggdryl.version("fixversion")
 typed_version_kind: Literal["version"] = typed_version.dtype.id
 
 file_uri: Uri = Uri.from_path(Path("data/events.parquet"))
@@ -285,7 +286,7 @@ spark_compatible: Field = field.into_scheme_compat("spark")
 polars_compatible: Field = field.into_scheme_compat("polars")
 pandas_compatible: Field = field.into_scheme_compat("pandas")
 iceberg_compatible: Field = field.into_scheme_compat("iceberg")
-typed_id: Int32Field = types.int32("id", nullable=False)
+typed_id: Int32Field = yggdryl.int32("id", nullable=False)
 typed_id_kind: Literal["int32"] = typed_id.dtype.id
 typed_id_default_scalar: Scalar = typed_id.default_scalar()
 typed_id_dtype_default_scalar: Scalar = typed_id.dtype.default_scalar()
@@ -294,15 +295,15 @@ typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
 typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array(
     pa.array([2**32 - 1], type=pa.uint32()), representation="bits"
 )
-typed_clock: TimeField = types.time("clock", "microseconds", nullable=False)
-typed_ids: ListField[int] = types.list("ids", typed_id)
-nullable_item: Int32Field = types.int32("item")
-typed_fixed: FixedSizeListField[int] = types.fixed_size_list(
+typed_clock: TimeField = yggdryl.time("clock", "microseconds", nullable=False)
+typed_ids: ListField[int] = yggdryl.list("ids", typed_id)
+nullable_item: Int32Field = yggdryl.int32("item")
+typed_fixed: FixedSizeListField[int] = yggdryl.fixed_size_list(
     "fixed", nullable_item, 2, nullable=False
 )
 typed_fixed_default_scalar: Scalar = typed_fixed.default_scalar()
 typed_fixed_dtype_default_scalar: Scalar = typed_fixed.dtype.default_scalar()
-typed_struct = types.struct("row", [typed_id], nullable=False)
+typed_struct = yggdryl.struct("row", [typed_id], nullable=False)
 typed_struct_default_scalar: Scalar = typed_struct.default_scalar()
 
 avro_schema: avro.Schema = avro.Schema(
@@ -366,11 +367,11 @@ decimal_coefficient: int | None = native_decimal.unscaled
 decimal_scale: int | None = native_decimal.scale
 dense_union_dtype: DataType = DataType.variant(
     [
-        types.int64("integer", nullable=False),
-        types.utf8("text", nullable=False),
+        yggdryl.int64("integer", nullable=False),
+        yggdryl.utf8("text", nullable=False),
     ]
 )
-typed_dense_union: DenseUnionField = types.dense_union(
+typed_dense_union: DenseUnionField = yggdryl.dense_union(
     "payload",
     tuple(dense_union_dtype),
     nullable=False,
@@ -381,14 +382,14 @@ typed_dense_union_default_scalar: Scalar = typed_dense_union.default_scalar()
 # The parenthesis disambiguates: a bare DataType.variant() is the Variant
 # datatype, and the three geospatial-era factories carry their own literals.
 bare_variant_dtype: DataType = DataType.variant()
-typed_variant: VariantField = types.variant("payload", nullable=False)
+typed_variant: VariantField = yggdryl.variant("payload", nullable=False)
 typed_variant_kind: Literal["variant"] = typed_variant.dtype.id
 geometry_dtype: DataType = DataType.geometry("EPSG:3857")
-typed_geometry: GeometryField = types.geometry("shape", nullable=False)
+typed_geometry: GeometryField = yggdryl.geometry("shape", nullable=False)
 typed_geometry_kind: Literal["geometry"] = typed_geometry.dtype.id
 typed_geometry_default_scalar: Scalar = typed_geometry.dtype.default_scalar()
 geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
-typed_geography: GeographyField = types.geography("region", "OGC:CRS84", "vincenty")
+typed_geography: GeographyField = yggdryl.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_default_scalar: Scalar = typed_geography.default_scalar()
 ascii_dtype: DataType = DataType.fixed_ascii(3)
@@ -422,39 +423,39 @@ currency_width: int | None = currency_dtype.fixed_byte_width
 logical_names: dict[str, DataType] = DataType.logical_names()
 prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
 prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
-typed_ascii: StringField = types.ascii("note", nullable=False)
+typed_ascii: StringField = yggdryl.ascii("note", nullable=False)
 typed_ascii_kind: Literal[
     "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
     "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
     "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
     "sized_cp1252",
 ] = typed_ascii.dtype.id
-typed_ascii_fixed: StringField = types.fixed_ascii("ccy", 3, nullable=False)
+typed_ascii_fixed: StringField = yggdryl.fixed_ascii("ccy", 3, nullable=False)
 typed_ascii_fixed_kind: Literal[
     "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
     "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
     "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
     "sized_cp1252",
 ] = typed_ascii_fixed.dtype.id
-typed_string: StringField = types.string(
+typed_string: StringField = yggdryl.string(
     "name", layout="string", charset="windows-1252", max=32, nullable=False
 )
-typed_fixed_utf8: StringField = types.fixed_utf8("name", 8)
-typed_large_utf8_view: StringField = types.large_utf8_view("name")
-typed_sized_utf8: StringField = types.sized_utf8("name", 32)
-typed_large_ascii: StringField = types.large_ascii("name")
-typed_ascii_view: StringField = types.ascii_view("name")
-typed_large_ascii_view: StringField = types.large_ascii_view("name")
-typed_sized_ascii: StringField = types.sized_ascii("name", 4)
-typed_cp1252: StringField = types.cp1252("name")
-typed_large_cp1252: StringField = types.large_cp1252("name")
-typed_cp1252_view: StringField = types.cp1252_view("name")
-typed_large_cp1252_view: StringField = types.large_cp1252_view("name")
-typed_fixed_cp1252: StringField = types.fixed_cp1252("name", 8)
-typed_sized_cp1252: StringField = types.sized_cp1252("name", 32)
-typed_bytes: BytesField = types.bytes("blob", layout="binary_view", max=64)
-typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_binary", fixed=16)
-typed_binary: BytesField = types.binary("payload", nullable=False)
+typed_fixed_utf8: StringField = yggdryl.fixed_utf8("name", 8)
+typed_large_utf8_view: StringField = yggdryl.large_utf8_view("name")
+typed_sized_utf8: StringField = yggdryl.sized_utf8("name", 32)
+typed_large_ascii: StringField = yggdryl.large_ascii("name")
+typed_ascii_view: StringField = yggdryl.ascii_view("name")
+typed_large_ascii_view: StringField = yggdryl.large_ascii_view("name")
+typed_sized_ascii: StringField = yggdryl.sized_ascii("name", 4)
+typed_cp1252: StringField = yggdryl.cp1252("name")
+typed_large_cp1252: StringField = yggdryl.large_cp1252("name")
+typed_cp1252_view: StringField = yggdryl.cp1252_view("name")
+typed_large_cp1252_view: StringField = yggdryl.large_cp1252_view("name")
+typed_fixed_cp1252: StringField = yggdryl.fixed_cp1252("name", 8)
+typed_sized_cp1252: StringField = yggdryl.sized_cp1252("name", 32)
+typed_bytes: BytesField = yggdryl.bytes("blob", layout="binary_view", max=64)
+typed_fixed_bytes: BytesField = yggdryl.bytes("digest", layout="fixed_binary", fixed=16)
+typed_binary: BytesField = yggdryl.binary("payload", nullable=False)
 typed_binary_kind: Literal[
     "binary",
     "large_binary",
@@ -463,27 +464,27 @@ typed_binary_kind: Literal[
     "fixed_binary",
     "sized_binary",
 ] = typed_binary.dtype.id
-typed_country: CountryField = types.country("iso", nullable=False)
+typed_country: CountryField = yggdryl.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
-typed_currency: CurrencyField = types.currency("ccy", nullable=False)
+typed_currency: CurrencyField = yggdryl.currency("ccy", nullable=False)
 typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
-typed_mic: MicCodeField = types.mic("venue")
+typed_mic: MicCodeField = yggdryl.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
-typed_cfi: CfiCodeField = types.cfi("classification")
+typed_cfi: CfiCodeField = yggdryl.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
-typed_isin: IsinCodeField = types.isin("instrument")
+typed_isin: IsinCodeField = yggdryl.isin("instrument")
 typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
-typed_cusip: CusipCodeField = types.cusip("cusip")
+typed_cusip: CusipCodeField = yggdryl.cusip("cusip")
 typed_cusip_kind: Literal["cusip"] = typed_cusip.dtype.id
-typed_sedol: SedolCodeField = types.sedol("sedol")
+typed_sedol: SedolCodeField = yggdryl.sedol("sedol")
 typed_sedol_kind: Literal["sedol"] = typed_sedol.dtype.id
-typed_bloomberg: BloombergCodeField = types.bloomberg("bloomberg")
+typed_bloomberg: BloombergCodeField = yggdryl.bloomberg("bloomberg")
 typed_bloomberg_kind: Literal["bloomberg"] = typed_bloomberg.dtype.id
-typed_uuid: UuidField = types.uuid("id", nullable=False)
+typed_uuid: UuidField = yggdryl.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
-typed_ascii_sedol: StringField = types.fixed_ascii("sedol", 7)
+typed_ascii_sedol: StringField = yggdryl.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
 typed_ascii_sedol_value: object = typed_ascii_sedol.default_scalar().as_py()
 ascii_member_name: str = StringEnum.member_name("n/a")
@@ -575,8 +576,8 @@ hint_is_a_runtime_typing_object: type[int] = (
 invalid_time_unit = DataType.time(1)  # type: ignore[arg-type]
 # ``mysql`` is a metadata namespace, not one of the five compatibility targets.
 invalid_compatibility_target = field.into_scheme_compat("mysql")  # type: ignore[arg-type]
-inferred_dictionary: Field = types.dictionary("labels", int, str)
-inferred_mapping: Field = types.map_of("counts", str, pa.int32())
+inferred_dictionary: Field = yggdryl.dictionary("labels", int, str)
+inferred_mapping: Field = yggdryl.map_of("counts", str, pa.int32())
 field_differences: list[str] = list(field.show_diffs(typed_id, False))
 json_source: json.Source = io.BytesIO(b'{"value":42}')
 yaml_source: yaml.Source = io.StringIO("value: 42\n")
@@ -632,7 +633,7 @@ iceberg_properties.clear()
 
 digest_root: Field = Field(
     "row",
-    DataType.from_fields([types.int32("id", nullable=False)]),
+    DataType.from_fields([yggdryl.int32("id", nullable=False)]),
     nullable=False,
 )
 digest_children: list[Field] = digest_root.digest_fields
@@ -642,7 +643,7 @@ digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(
     "row",
-    DataType.from_fields([types.int32("year", nullable=False)]),
+    DataType.from_fields([yggdryl.int32("year", nullable=False)]),
     nullable=False,
 ).with_partition_fields(["year"])
 partition_children: list[Field] = partitioned.partition_fields
@@ -1582,7 +1583,7 @@ fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 fix_counter: Field = Field("nopartyids", "int32")
 fix_counter.fix.tag = 453
 fix_component: Field = Field("party", DataType.from_fields([fix_field]), nullable=False)
-fix_group: Field = types.list("parties", fix_component)
+fix_group: Field = yggdryl.list("parties", fix_component)
 fix_group.fix.counter = 453
 fix_group.fix.component = "party"
 fix_reference: Field = Field("partyid", "null")

@@ -80,7 +80,7 @@ Native rows first: the folder *is* the table, so the ordinary record surface rea
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -187,7 +187,7 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -311,7 +311,7 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -463,7 +463,7 @@ One predicate crosses every level. Four rows are committed one at a time, so eac
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -608,7 +608,7 @@ Nothing a commit writes is mutated in place, so a retained snapshot is read by a
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
@@ -796,7 +796,7 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),

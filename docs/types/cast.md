@@ -328,13 +328,14 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
     ```python
     import pyarrow as pa
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
 
     schema = Field(
         "trade",
         DataType.from_fields([
-            types.int64("id", nullable=False),
-            types.utf8("symbol"),
+            yggdryl.int64("id", nullable=False),
+            yggdryl.utf8("symbol"),
         ]),
         nullable=False,
     )

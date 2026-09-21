@@ -40,7 +40,7 @@ The smallest write: one value in, compact bytes out. Nothing in the call names a
 === "Python"
 
     ```python
-    from yggdryl.text import json
+    from yggdryl import json
 
     value = {"symbol": "AAPL", "quantity": 100}
 
@@ -87,7 +87,7 @@ Rust writes to any `Write`; Python and JavaScript take a path or a writable dest
     import pathlib
     import tempfile
 
-    from yggdryl.text import json
+    from yggdryl import json
 
     target = pathlib.Path(tempfile.mkdtemp()) / "quote.json"
     json.dump({"quantity": 100, "symbol": "AAPL"}, target)
@@ -204,7 +204,7 @@ One compact document per line, in the order the values arrive. Rust streams to a
     ```python
     import io
 
-    from yggdryl.text import json
+    from yggdryl import json
 
     destination = io.BytesIO()
     json.dump_all([{"id": 1}, {"id": 2}], destination)

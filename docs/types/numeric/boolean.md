@@ -87,10 +87,11 @@ Two parameterless variants, so the enum is the constructor. `bool` and `void` ar
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    flag = types.boolean("ok", nullable=False)
-    gap = types.null("gap")
+    flag = yggdryl.boolean("ok", nullable=False)
+    gap = yggdryl.null("gap")
 
     assert isinstance(flag, Field)
     assert str(flag.dtype) == "boolean"

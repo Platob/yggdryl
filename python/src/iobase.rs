@@ -2578,7 +2578,7 @@ impl PyIOBase {
             yggdryl::Field::from_arrow_schema("row", &reader.schema()).map_err(value_error)?;
         let from_dict = cls
             .map(|cls| {
-                let from_dict = py.import("yggdryl.types._classes")?.getattr("from_dict")?;
+                let from_dict = py.import("yggdryl._classes")?.getattr("from_dict")?;
                 Ok::<_, PyErr>((from_dict.unbind(), cls.clone().unbind()))
             })
             .transpose()?;
@@ -3131,7 +3131,7 @@ impl PyIOBaseIterator {
 /// value crosses under its datatype - an ASCII width reads back trimmed, a
 /// nested struct crosses as a mapping - and nothing binding-side reinterprets
 /// storage. A requested dataclass is built from that mapping by
-/// `yggdryl.types._classes.from_dict`, one row at a time.
+/// `yggdryl._classes.from_dict`, one row at a time.
 #[pyclass(name = "RecordIterator", module = "yggdryl._native", unsendable)]
 pub(crate) struct PyRecordIterator {
     reader: yggdryl::arrow::BatchReader,

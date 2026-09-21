@@ -73,11 +73,12 @@ all - it carries two datatypes, not two fields.
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
 
     quote = DataType.from_fields([
         Field("symbol", "utf8", nullable=False),
-        types.list("levels", types.float64("item")),
+        yggdryl.list("levels", yggdryl.float64("item")),
     ])
 
     assert len(quote) == 2
@@ -87,12 +88,12 @@ all - it carries two datatypes, not two fields.
     assert len(quote["levels"].dtype) == 1
     assert "levels" in quote and "missing" not in quote
 
-    lookup = types.map_of("lookup", "utf8", "int64", keys_sorted=True).dtype
+    lookup = yggdryl.map_of("lookup", "utf8", "int64", keys_sorted=True).dtype
     assert len(lookup) == 1
     assert lookup[0].name == "entries"
 
     # A dictionary carries datatypes rather than fields, so it has no child.
-    assert len(types.dictionary("codes", "int16", "utf8").dtype) == 0
+    assert len(yggdryl.dictionary("codes", "int16", "utf8").dtype) == 0
     ```
 
 === "JavaScript"
@@ -160,10 +161,10 @@ record's values in sorted name order.
 === "Python"
 
     ```python
-    from yggdryl import types
+    import yggdryl
 
-    levels = types.list("levels", types.float64("item")).scalar([1.5, 2.5])
-    lookup = types.map_of("lookup", "utf8", "int64").scalar({"a": 1})
+    levels = yggdryl.list("levels", yggdryl.float64("item")).scalar([1.5, 2.5])
+    lookup = yggdryl.map_of("lookup", "utf8", "int64").scalar({"a": 1})
 
     # The family is one word, and the length counts direct children.
     assert levels.family == "nested"

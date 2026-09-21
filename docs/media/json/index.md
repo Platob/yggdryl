@@ -47,7 +47,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import json
+    from yggdryl import json
 
     natural = json.loads('{"symbol":"AAPL","quantity":100}')
     value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)

@@ -10,7 +10,7 @@ import pytest
 
 import yggdryl
 from yggdryl import DataType, Expression, Field, Filter, Plan, Selector, Term
-from yggdryl.media.iceberg import ScanPlan, Table
+from yggdryl.iceberg import ScanPlan, Table
 
 
 def trades_schema() -> Field:

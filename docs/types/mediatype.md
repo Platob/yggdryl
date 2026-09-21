@@ -117,13 +117,15 @@ declare the same two columns with `types.mimetype` / `types.mediatype` and
     ```python
     import pytest
 
-    from yggdryl import Field, types
+    import yggdryl
 
-    held = types.mimetype("held", nullable=False)
+    from yggdryl import Field
+
+    held = yggdryl.mimetype("held", nullable=False)
     assert isinstance(held, Field)
     assert str(held.dtype) == "mimetype"
     assert held.nullable is False
-    assert str(types.mediatype("held").dtype) == "mediatype"
+    assert str(yggdryl.mediatype("held").dtype) == "mediatype"
 
     # The field is where a caller's text becomes a stored value.
     assert held.scalar("APPLICATION/JSON").as_py() == "application/json"
@@ -263,11 +265,13 @@ cell on the way in.
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field, types
+    import yggdryl
+
+    from yggdryl import Field
 
     for field, extension in (
-        (types.mimetype("held"), b"yggdryl.mimetype"),
-        (types.mediatype("held"), b"yggdryl.mediatype"),
+        (yggdryl.mimetype("held"), b"yggdryl.mimetype"),
+        (yggdryl.mediatype("held"), b"yggdryl.mediatype"),
     ):
         arrow = field.into_arrow()
         assert arrow.type == pa.string()
@@ -275,7 +279,7 @@ cell on the way in.
         assert Field.from_arrow(arrow) == field
 
     # A cast into the column canonicalizes every cell on the way in.
-    assert types.mimetype("held").cast_arrow_array(
+    assert yggdryl.mimetype("held").cast_arrow_array(
         pa.array(["APPLICATION/JSON"])
     ).to_pylist() == ["application/json"]
     ```

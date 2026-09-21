@@ -76,7 +76,7 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
@@ -284,7 +284,7 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
     import pyarrow as pa
 
     from yggdryl import IOBase, MimeType
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),

@@ -28,7 +28,8 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import DataType, Field, MimeType, TextLine, types
+import yggdryl
+from yggdryl import DataType, Field, MimeType, TextLine
 from yggdryl.fix import FixCodec, FixMsg, FixRegistry, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -225,7 +226,7 @@ def _catalog() -> FixRegistry:
     # component, a List of Structs a group.
     registry.insert(Field("Party", DataType.from_fields([member]), nullable=False))
     component = registry.field_by_name("Party")
-    group = types.list("Parties", component)
+    group = yggdryl.list("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
     registry.insert(group)

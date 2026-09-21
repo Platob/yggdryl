@@ -361,7 +361,7 @@ fn refresh_logging() {
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // Records travel under the Rust module path, so a core record from
     // `yggdryl::iceberg::table` reaches `logging` as
-    // `yggdryl.media.iceberg.table` and the package's own logger is its root.
+    // `yggdryl.iceberg.table` and the package's own logger is its root.
     //
     // The bridge is global, so every crate in the build would otherwise reach
     // Python: the Avro reader alone narrates a schema parse per manifest, and

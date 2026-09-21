@@ -62,9 +62,11 @@ nullable. The canonical display is always the entries form.
     ```python
     import pytest
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    lookup = types.map_of("lookup", "utf8", "int64").dtype
+    from yggdryl import DataType
+
+    lookup = yggdryl.map_of("lookup", "utf8", "int64").dtype
     assert lookup.id == "map"
     assert lookup.kind == "nested"
     assert lookup.keys_sorted is False
@@ -78,14 +80,14 @@ nullable. The canonical display is always the entries form.
     assert entries["value"].nullable is True
 
     # The promise is the leaf, and `keys_sorted` reads it.
-    sorted_map = types.map_of("lookup", "utf8", "int64", keys_sorted=True).dtype
+    sorted_map = yggdryl.map_of("lookup", "utf8", "int64", keys_sorted=True).dtype
     assert sorted_map.id == "sorted_map"
     assert sorted_map.keys_sorted is True
     assert DataType("map<string,int64,keys_sorted=true>") == sorted_map
     assert DataType("int64").keys_sorted is None
 
     with pytest.raises(ValueError, match="key and a value"):
-        types.map("bad", types.int64("entries", nullable=False))
+        yggdryl.map("bad", yggdryl.int64("entries", nullable=False))
     ```
 
 === "JavaScript"
@@ -152,24 +154,25 @@ value - and `keys_sorted` picks the leaf in both.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    lookup = types.map_of("lookup", "utf8", "int64", keys_sorted=True, nullable=False)
+    lookup = yggdryl.map_of("lookup", "utf8", "int64", keys_sorted=True, nullable=False)
     assert isinstance(lookup, Field)
     assert lookup.name == "lookup"
     assert lookup.nullable is False
     assert lookup.dtype.id == "sorted_map"
 
     # `map` takes the entries field itself, which `map_of` builds for you.
-    entries = types.struct(
+    entries = yggdryl.struct(
         "entries",
         [Field("key", "utf8", nullable=False), Field("value", "int64")],
         nullable=False,
     )
-    assert types.map("lookup", entries, keys_sorted=True).dtype == lookup.dtype
+    assert yggdryl.map("lookup", entries, keys_sorted=True).dtype == lookup.dtype
 
     # A key or a value may be named by a Python or a pyarrow type.
-    assert types.map_of("labels", str, int).dtype[0].dtype["value"].dtype.id == "int64"
+    assert yggdryl.map_of("labels", str, int).dtype[0].dtype["value"].dtype.id == "int64"
     ```
 
 === "JavaScript"
@@ -233,9 +236,9 @@ column.
 === "Python"
 
     ```python
-    from yggdryl import types
+    import yggdryl
 
-    lookup = types.map_of("lookup", "utf8", "int64")
+    lookup = yggdryl.map_of("lookup", "utf8", "int64")
     value = lookup.scalar({"a": 1, "b": 2})
 
     assert value.as_py() == {"a": 1, "b": 2}
@@ -298,9 +301,11 @@ Arrow's own field conversion, which drops it.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    sorted_map = types.map_of("lookup", "utf8", "int32", keys_sorted=True, nullable=False)
+    from yggdryl import DataType, Field
+
+    sorted_map = yggdryl.map_of("lookup", "utf8", "int32", keys_sorted=True, nullable=False)
     arrow = sorted_map.into_arrow()
 
     assert arrow.type.equals(pa.map_(pa.string(), pa.int32(), keys_sorted=True))

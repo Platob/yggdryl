@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from yggdryl import Field, scalar
-from yggdryl.text import json, toml, yaml
+from yggdryl import json, toml, yaml
 
 
 @scalar

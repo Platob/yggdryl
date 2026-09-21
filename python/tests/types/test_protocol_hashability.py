@@ -28,7 +28,7 @@ from yggdryl import (
     Scalar,
     _native,
 )
-from yggdryl.media.iceberg import Catalog, PartitionSpec, Table
+from yggdryl.iceberg import Catalog, PartitionSpec, Table
 
 
 def assert_unhashable(value: object) -> None:

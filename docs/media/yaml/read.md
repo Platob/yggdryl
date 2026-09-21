@@ -41,7 +41,7 @@ The smallest read: content in, one value out. `cls=Scalar` / `{ scalar: true }` 
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
     value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
@@ -89,7 +89,7 @@ Rust reads any `Read`; Python takes a `PathLike` where a `str` would have been c
     import pathlib
     import tempfile
 
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     source = pathlib.Path(tempfile.mkdtemp()) / "quote.yaml"
     source.write_bytes(b"symbol: AAPL\nquantity: 2\n")
@@ -138,7 +138,7 @@ Rust reads any `Read`; Python takes a `PathLike` where a `str` would have been c
     ```python
     import io
 
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     # `load_all` pulls the readable lazily; `loads_all` decodes held content.
     documents = list(yaml.load_all(io.BytesIO(b"id: 1\n---\nid: 2\n")))

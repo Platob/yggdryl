@@ -36,7 +36,7 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
     ```python
     import gzip as standard
 
-    from yggdryl.coding import gzip
+    from yggdryl import gzip
 
     encoded = gzip.dumps(b"symbol,price\nAAPL,1\n")
     assert gzip.loads(encoded) == b"symbol,price\nAAPL,1\n"
@@ -93,7 +93,7 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 === "Python"
 
     ```python
-    from yggdryl.coding import gzip
+    from yggdryl import gzip
 
     payload = b"AAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\nAAPL,7\nAAPL,8\n"
 
@@ -188,7 +188,8 @@ Downstream encodings and codecs never see the coding. A level set on the handle 
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.coding import Gzip, gzip
+    from yggdryl import gzip
+    from yggdryl.coding import Gzip
     from yggdryl.holder import Path
 
     root = pathlib.Path(tempfile.mkdtemp())
@@ -241,7 +242,7 @@ A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](i
     from yggdryl import IOBase
     from yggdryl.coding import Gzip
     from yggdryl.holder import Path
-    from yggdryl.media import MediaType
+    from yggdryl import MediaType
 
     root = pathlib.Path(tempfile.mkdtemp())
 

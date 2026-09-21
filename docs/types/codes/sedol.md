@@ -73,9 +73,10 @@ The London Stock Exchange's seven-character securities identifier: six alphanume
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    sid = types.sedol("sid")
+    sid = yggdryl.sedol("sid")
     assert isinstance(sid, Field)
     assert str(sid.dtype) == "sedol"
     ```

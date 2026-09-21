@@ -56,7 +56,7 @@ A quoted placeholder becomes the variable's own typed value, a default fills a n
 === "Python"
 
     ```python
-    from yggdryl.text import toml, yaml
+    from yggdryl import toml, yaml
 
     placeholders = {"HOST": "db.internal", "PORT": 5432}
 

@@ -350,26 +350,26 @@ layout the bytes can be re-read under.
     import pyarrow as pa
     import pytest
 
-    from yggdryl import types
+    import yggdryl
 
     # A little-endian XY point: order byte, type code 1, then x and y.
     point = b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 1.0, 2.0)
 
     # Bytes entering the column are read as WKB; a truncated payload names
     # the field and the row.
-    shape = types.geometry("shape")
+    shape = yggdryl.geometry("shape")
     stored = shape.cast_arrow_array(pa.array([point, None], pa.binary()))
     assert stored.to_pylist() == [point, None]
     with pytest.raises(ValueError, match="row 0"):
         shape.cast_arrow_array(pa.array([b"\x01\x01\x00"], pa.binary()), safe=False)
 
     # The column renders as WKT through the same reader.
-    declared = types.struct("row", [shape], nullable=False)
+    declared = yggdryl.struct("row", [shape], nullable=False)
     batch = pa.record_batch(
         {"shape": pa.array([point, None], pa.binary())},
         schema=declared.into_arrow_schema(),
     )
-    text = types.struct("row", [types.utf8("shape")], nullable=False)
+    text = yggdryl.struct("row", [yggdryl.utf8("shape")], nullable=False)
     assert text.cast_arrow_batch(batch, safe=False).column(0).to_pylist() == [
         "POINT (1 2)",
         None,

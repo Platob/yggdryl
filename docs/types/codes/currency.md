@@ -83,9 +83,10 @@ ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    ccy = types.currency("ccy", nullable=False)
+    ccy = yggdryl.currency("ccy", nullable=False)
     assert isinstance(ccy, Field)
     assert ccy.name == "ccy"
     assert str(ccy.dtype) == "currency"

@@ -167,9 +167,11 @@ bindings have one factory taking both parameters, the zone defaulting to
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    at = types.datetime64("at", "us", "UTC", nullable=False)
+    from yggdryl import DataType
+
+    at = yggdryl.datetime64("at", "us", "UTC", nullable=False)
     assert at.name == "at"
     assert str(at.dtype) == 'datetime64(us,"UTC")'
     assert str(at.dtype.timezone) == "UTC"
@@ -177,7 +179,7 @@ bindings have one factory taking both parameters, the zone defaulting to
     assert at.into_arrow().type == pa.timestamp("us", tz="UTC")
 
     # Both parameters default: microseconds, and the zone-free marker.
-    assert types.datetime64("at").dtype == DataType("datetime64(us)")
+    assert yggdryl.datetime64("at").dtype == DataType("datetime64(us)")
     ```
 
 === "JavaScript"

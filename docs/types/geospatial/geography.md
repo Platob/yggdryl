@@ -159,19 +159,20 @@ otherwise.
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
 
-    region = types.geography("region", "OGC:CRS84", "vincenty", nullable=False)
+    region = yggdryl.geography("region", "OGC:CRS84", "vincenty", nullable=False)
     assert isinstance(region, Field)
     assert region.name == "region"
     assert region.dtype == DataType.geography("OGC:CRS84", "vincenty")
     assert region.nullable is False
 
     # A bare geography fills both defaults.
-    assert types.geography("region").dtype == DataType.geography()
+    assert yggdryl.geography("region").dtype == DataType.geography()
 
     # Metadata rides beside the datatype, never inside it.
-    tagged = types.geography("region", metadata={"source": "feed"})
+    tagged = yggdryl.geography("region", metadata={"source": "feed"})
     assert tagged.metadata["source"] == "feed"
     ```
 
@@ -324,18 +325,20 @@ defaults included, so the projection never depends on what a reader would fill.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    projected = types.geography("region", "EPSG:4326", "vincenty").into_arrow()
+    from yggdryl import DataType, Field
+
+    projected = yggdryl.geography("region", "EPSG:4326", "vincenty").into_arrow()
     assert projected.type == pa.binary()
     assert projected.metadata == {
         b"ARROW:extension:name": b"geoarrow.wkb",
         b"ARROW:extension:metadata": b'{"crs":"EPSG:4326","edges":"vincenty"}',
     }
-    assert Field.from_arrow(projected) == types.geography("region", "EPSG:4326", "vincenty")
+    assert Field.from_arrow(projected) == yggdryl.geography("region", "EPSG:4326", "vincenty")
 
     # The defaults are written too, so `"edges"` is always the distinction.
-    bare = types.geography("region").into_arrow()
+    bare = yggdryl.geography("region").into_arrow()
     assert bare.metadata[b"ARROW:extension:metadata"] == b'{"crs":"OGC:CRS84","edges":"spherical"}'
     assert Field.from_arrow(bare).dtype == DataType.geography()
     ```

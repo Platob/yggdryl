@@ -13,7 +13,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, IOBase, RecordOptions, TextOptions, Timezone
-from yggdryl.coding import gzip, zstd
+from yggdryl import gzip, zstd
 from yggdryl.media import Text
 
 ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"

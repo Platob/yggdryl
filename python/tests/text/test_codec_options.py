@@ -8,7 +8,8 @@ from collections.abc import Callable
 import pytest
 
 from yggdryl import Field, Scalar
-from yggdryl.text import _codec, json, toml, yaml
+from yggdryl import json, toml, yaml
+from yggdryl.text import _codec
 
 
 @pytest.mark.parametrize("codec", [json, yaml, toml])

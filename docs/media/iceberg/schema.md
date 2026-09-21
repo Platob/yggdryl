@@ -78,7 +78,7 @@ Add a column, then read the earlier file back with the new column null.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     schema = columns
@@ -180,7 +180,7 @@ Add a column, then read the earlier file back with the new column null.
     ```python
     import pyarrow as pa
 
-    from yggdryl.media.iceberg import assign_field_ids
+    from yggdryl.iceberg import assign_field_ids
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -290,7 +290,7 @@ Add a column, then read the earlier file back with the new column null.
     import pytest
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table, can_promote
+    from yggdryl.iceberg import Table, can_promote
 
     # Legal promotions pass; anything else is refused naming both sides.
     assert can_promote("int32", "int64") is None
@@ -407,7 +407,7 @@ Add a column, then read the earlier file back with the new column null.
     ```python
     import json
 
-    from yggdryl.media.iceberg import schema_from_json, schema_into_json
+    from yggdryl.iceberg import schema_from_json, schema_into_json
 
     document = json.loads("""{"type":"struct","schema-id":0,"fields":[
         {"id":1,"name":"id","required":true,"type":"long"},

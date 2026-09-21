@@ -12,7 +12,8 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import BytesParameters, DataType, Field, StringEnum, StringParameters, Version, types
+import yggdryl
+from yggdryl import BytesParameters, DataType, Field, StringEnum, StringParameters, Version
 
 
 def test_dtype_infers_native_string_and_arrow_scalars() -> None:
@@ -449,12 +450,12 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
 
     # A column of locations is nullable by default, because a handle that is
     # nowhere has no location to state.
-    located = types.url("location", metadata={"role": "source"})
+    located = yggdryl.url("location", metadata={"role": "source"})
     assert type(located) is Field
     assert located.dtype == dtype
     assert located.nullable is True
     assert located.metadata["role"] == "source"
-    assert types.url("location", nullable=False).nullable is False
+    assert yggdryl.url("location", nullable=False).nullable is False
     assert located.cast_arrow_array(
         pa.array(["HTTPS://example.com/a%2fb", None])
     ).to_pylist() == ["https://example.com/a%2Fb", None]

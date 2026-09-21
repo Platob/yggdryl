@@ -85,7 +85,7 @@ Native rows first - a tuple, a mapping, a plain object - typed against the schem
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -211,7 +211,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -462,7 +462,7 @@ A merge joins on the identity partition columns first and the caller's key after
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -678,7 +678,7 @@ The partition groups of one commit are independent - each writes its own files u
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -816,7 +816,7 @@ The option resolves like every other: the explicit value, then the table propert
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -943,7 +943,7 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
 
     import pyarrow as pa
 
-    from yggdryl.media.iceberg import Catalog
+    from yggdryl.iceberg import Catalog
 
     warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
     catalog = Catalog(warehouse)
@@ -1072,7 +1072,7 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
 
     import pyarrow as pa
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import IcebergOptions, Table
+    from yggdryl.iceberg import IcebergOptions, Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"
@@ -1210,7 +1210,7 @@ The JavaScript constructor takes an object naming any of the eleven fields, and 
     import pyarrow as pa
 
     from yggdryl import IOBase, MimeType
-    from yggdryl.media.iceberg import IcebergOptions, Table, assign_field_ids
+    from yggdryl.iceberg import IcebergOptions, Table, assign_field_ids
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     table = Table.create(
@@ -1430,7 +1430,7 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     import pytest
 
     from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
+    from yggdryl.iceberg import Table
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "trades"

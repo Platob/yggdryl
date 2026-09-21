@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from yggdryl import DataType, Scalar
-from yggdryl.text import json
+from yggdryl import json
 
 
 def crosses(value: object) -> Any:

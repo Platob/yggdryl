@@ -47,7 +47,7 @@ The smallest write: one value in, block-style bytes out. Nothing in the call nam
 === "Python"
 
     ```python
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     value = {"quantity": 2, "symbol": "AAPL"}
 
@@ -102,7 +102,7 @@ Rust writes to any `Write`; Python and JavaScript take a path or a writable dest
     import pathlib
     import tempfile
 
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     target = pathlib.Path(tempfile.mkdtemp()) / "quote.yaml"
     yaml.dump({"quantity": 2, "symbol": "AAPL"}, target)
@@ -154,7 +154,7 @@ The `_all` family writes a document set, `---` between documents, in the order t
     ```python
     import io
 
-    from yggdryl.text import yaml
+    from yggdryl import yaml
 
     documents = [{"id": 1}, {"id": 2}]
     destination = io.BytesIO()

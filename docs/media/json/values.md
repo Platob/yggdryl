@@ -37,7 +37,7 @@ A schemaless read answers only what the grammar proves, so an exact decimal spel
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import json
+    from yggdryl import json
 
     value = json.loads('{"amount":"12.50","quantity":100}', cls=Scalar)
 
@@ -108,7 +108,7 @@ A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) 
     from decimal import Decimal
 
     from yggdryl import DataType, Field, Scalar
-    from yggdryl.text import json
+    from yggdryl import json
 
     amount = Field("amount", "decimal128(8, 2)", nullable=False)
     exact = json.loads('"12.50"', field=amount, cls=Scalar)

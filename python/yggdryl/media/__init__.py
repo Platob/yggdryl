@@ -1,51 +1,34 @@
-"""Record media, encoding options, and table formats.
+"""What every record medium shares: the handle it composes, and its settings.
 
 The capitalized handle classes are the record implementation a composed handle
-retains, so ``type(handle)`` names the encoding its rows are read through.
+retains, so ``type(handle)`` names the encoding its rows are read through. Each
+medium itself is a module of its own beside this one - :mod:`yggdryl.avro` and
+:mod:`yggdryl.iceberg` - as the crate gives every implementation a root file.
 """
 
 from .._native import (
-    AVRO_MAX_SCHEMA_DEPTH,
-    Avro,
     DEFAULT_RECORD_BATCH_ROW_SIZE,
+    NULL_PARTITION,
+    Avro,
     Ipc,
     Media,
-    MediaType,
-    MimeType,
-    NULL_PARTITION,
     Parquet,
     RecordOptions,
     Text,
-    TextEntries,
-    TextEntry,
-    TextLine,
-    TextLines,
-    TextOptions,
     partition_text,
     with_partitions,
     without_partitions,
 )
-from . import avro, iceberg
 
 __all__ = [
-    "AVRO_MAX_SCHEMA_DEPTH",
-    "Avro",
     "DEFAULT_RECORD_BATCH_ROW_SIZE",
+    "NULL_PARTITION",
+    "Avro",
     "Ipc",
     "Media",
-    "MediaType",
-    "MimeType",
-    "NULL_PARTITION",
     "Parquet",
     "RecordOptions",
     "Text",
-    "TextEntries",
-    "TextEntry",
-    "TextLine",
-    "TextLines",
-    "TextOptions",
-    "avro",
-    "iceberg",
     "partition_text",
     "with_partitions",
     "without_partitions",

@@ -74,7 +74,9 @@ disambiguates the two spellings.
     ```python
     import pytest
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
+
+    from yggdryl import DataType, Field
 
     variant = DataType.variant([
         Field("number", "int64", nullable=False),
@@ -91,15 +93,15 @@ disambiguates the two spellings.
     assert DataType("variant") != variant
 
     # An explicit union picks its own mode and its own non-negative ids.
-    sparse = types.union("choice", [(0, types.int64("number", nullable=False)), (7, types.utf8("text"))], "sparse")
+    sparse = yggdryl.union("choice", [(0, yggdryl.int64("number", nullable=False)), (7, yggdryl.utf8("text"))], "sparse")
     assert sparse.dtype.union_mode == "sparse"
     assert sparse.dtype.union_type_ids == (0, 7)
     assert DataType("int64").union_mode is None
 
     with pytest.raises(ValueError, match="duplicate type id"):
-        types.union("bad", [(0, types.int64("a")), (0, types.utf8("b"))], "dense")
+        yggdryl.union("bad", [(0, yggdryl.int64("a")), (0, yggdryl.utf8("b"))], "dense")
     with pytest.raises(ValueError, match="non-negative"):
-        types.union("bad", [(-1, types.int64("a"))], "dense")
+        yggdryl.union("bad", [(-1, yggdryl.int64("a"))], "dense")
     with pytest.raises(ValueError, match="duplicate field name"):
         DataType.variant([Field("same", "int64"), Field("same", "utf8")])
     ```
@@ -172,11 +174,12 @@ around it.
 === "Python"
 
     ```python
-    from yggdryl import Field, types
+    import yggdryl
+    from yggdryl import Field
 
-    payload = types.dense_union(
+    payload = yggdryl.dense_union(
         "payload",
-        [types.int64("number", nullable=False), types.utf8("text")],
+        [yggdryl.int64("number", nullable=False), yggdryl.utf8("text")],
         nullable=False,
         metadata={"logical": "variant"},
     )
@@ -185,11 +188,11 @@ around it.
     assert payload.nullable is False
     assert payload.dtype.union_mode == "dense"
     assert payload.metadata["logical"] == "variant"
-    assert types.DenseUnionField is Field
+    assert yggdryl.DenseUnionField is Field
 
     # A member keeps its own name, nullability and metadata.
     assert payload.dtype["number"].nullable is False
-    assert types.union("choice", [(3, types.int32("member"))], "dense").dtype.union_type_ids == (3,)
+    assert yggdryl.union("choice", [(3, yggdryl.int32("member"))], "dense").dtype.union_type_ids == (3,)
     ```
 
 === "JavaScript"
@@ -256,9 +259,9 @@ a narrower spelling of the same number reads back the same value.
     ```python
     import pytest
 
-    from yggdryl import types
+    import yggdryl
 
-    payload = types.dense_union("p", [types.int64("number", nullable=False), types.utf8("text")])
+    payload = yggdryl.dense_union("p", [yggdryl.int64("number", nullable=False), yggdryl.utf8("text")])
 
     # The type id names the branch; the payload is read under that member.
     assert payload.scalar([0, 7]).as_py() == [0, 7]
@@ -332,9 +335,11 @@ being renumbered.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, types
+    import yggdryl
 
-    payload = types.dense_union("payload", [types.int64("number", nullable=False), types.utf8("text")])
+    from yggdryl import DataType
+
+    payload = yggdryl.dense_union("payload", [yggdryl.int64("number", nullable=False), yggdryl.utf8("text")])
     arrow = payload.into_arrow()
 
     assert arrow.type.mode == "dense"

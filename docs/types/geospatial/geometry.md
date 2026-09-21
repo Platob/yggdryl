@@ -152,19 +152,20 @@ call says otherwise, with metadata riding beside the datatype as on every field.
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
+    import yggdryl
+    from yggdryl import DataType, Field
 
-    shape = types.geometry("shape", nullable=False)
+    shape = yggdryl.geometry("shape", nullable=False)
     assert isinstance(shape, Field)
     assert shape.name == "shape"
     assert shape.dtype == DataType.geometry()
     assert shape.nullable is False
 
     # The CRS is the factory's second argument.
-    assert types.geometry("shape", "EPSG:3857").dtype == DataType.geometry("EPSG:3857")
+    assert yggdryl.geometry("shape", "EPSG:3857").dtype == DataType.geometry("EPSG:3857")
 
     # Metadata rides beside the datatype, never inside it.
-    tagged = types.geometry("shape", metadata={"source": "feed"})
+    tagged = yggdryl.geometry("shape", metadata={"source": "feed"})
     assert tagged.metadata["source"] == "feed"
     assert tagged.nullable is True
     ```
@@ -345,9 +346,11 @@ exactly what makes the column import back as a geometry rather than as
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field, types
+    import yggdryl
 
-    projected = types.geometry("shape").into_arrow()
+    from yggdryl import DataType, Field
+
+    projected = yggdryl.geometry("shape").into_arrow()
     assert projected.type == pa.binary()
     assert projected.metadata == {
         b"ARROW:extension:name": b"geoarrow.wkb",
@@ -356,12 +359,12 @@ exactly what makes the column import back as a geometry rather than as
 
     # The document is transport: it reimports as the datatype, not as metadata.
     imported = Field.from_arrow(projected)
-    assert imported == types.geometry("shape")
+    assert imported == yggdryl.geometry("shape")
     assert imported.dtype == DataType.geometry()
     assert dict(imported.metadata) == {}
 
     # A stated CRS travels in the document.
-    assert types.geometry("shape", "EPSG:3857").into_arrow().metadata[
+    assert yggdryl.geometry("shape", "EPSG:3857").into_arrow().metadata[
         b"ARROW:extension:metadata"
     ] == b'{"crs":"EPSG:3857"}'
     ```

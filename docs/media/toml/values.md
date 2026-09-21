@@ -40,7 +40,7 @@ A schemaless read answers only what the grammar proves, so an exact decimal spel
 
     ```python
     from yggdryl import Scalar
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     source = "amount = '12.50'\nquantity = 100\n"
     value = toml.loads(source, cls=Scalar)
@@ -106,10 +106,12 @@ A Struct Field yields a row `Sequence` in Rust; the bindings restore field names
     ```python
     from decimal import Decimal
 
-    from yggdryl import Field, types
-    from yggdryl.text import toml
+    import yggdryl
 
-    row = types.struct(
+    from yggdryl import Field
+    from yggdryl import toml
+
+    row = yggdryl.struct(
         "row",
         [Field("amount", "decimal128(8, 2)", nullable=False)],
         nullable=False,
@@ -172,7 +174,7 @@ TOML is the one structured format whose grammar proves temporals, so the four fo
     ```python
     import datetime as dt
 
-    from yggdryl.text import toml
+    from yggdryl import toml
 
     decoded = toml.loads(
         b"offset = 1979-05-27T07:32:00Z\n"

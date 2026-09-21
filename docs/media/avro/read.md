@@ -55,7 +55,7 @@ An object container is self-describing: the header names the writer schema and c
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     schema = {
         "type": "record",
@@ -144,7 +144,7 @@ An object container is self-describing: the header names the writer schema and c
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     writer = {
         "type": "record",
@@ -244,7 +244,7 @@ An object container is self-describing: the header names the writer schema and c
 === "Python"
 
     ```python
-    from yggdryl.media import avro
+    from yggdryl import avro
 
     schema = {
         "type": "record",
