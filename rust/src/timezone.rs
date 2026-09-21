@@ -1315,7 +1315,7 @@ pub mod internals {
     //! What `rust/tests/root/timezone.rs` pins and a caller cannot reach.
     //!
     //! The bundled zone registry is private: lookup is a binary search over
-    //! [`ZONES`](super::ZONES), so the ordering and the rules each row
+    //! the private `ZONES` table, so the ordering and the rules each row
     //! carries have to be read from inside or an unsorted insertion ships.
     //! The rows come back as their own public shape rather than as the
     //! crate's `Zone`, and `days_from_civil` - what every civil-time answer

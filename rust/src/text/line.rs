@@ -1497,7 +1497,9 @@ pub mod internals {
     //! What `rust/tests/text/line.rs` pins and a caller cannot reach.
     //!
     //! A line's text is decoded once, on the page it was read into, and what
-    //! that decode counted is what [`TextLine::decoded_byte_size`] answers.
+    //! that decode counted is what
+    //! [`TextLine::decoded_byte_size`](crate::text::TextLine::decoded_byte_size)
+    //! answers.
     //! The step itself is private, so this forwards to it over the public
     //! [`TextBytes`] a caller already holds.
 

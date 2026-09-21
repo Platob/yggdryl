@@ -212,7 +212,8 @@ impl Input {
 
 /// The `FIX:derivation` plan a registry carries, selected once.
 ///
-/// Built by [`FixRegistry::derivations`] and kept on the registry until a
+/// Built by `FixRegistry::derivations`, which is private, and kept on the
+/// registry until a
 /// field changes; every codec and every message reading that registry
 /// evaluates through the same instance, the line door, the batch door and
 /// the row fill alike.

@@ -768,7 +768,7 @@ pub struct PairSpan {
     /// is what destroys the fact: afterwards `#ORDERID=123` and `ORDERID=123`
     /// are the same bytes, and telling a bridge's restatement of a pair from a
     /// second arrival of it is a judgment with nothing left to read. One bool
-    /// beside the ranges keeps it, and it is the same fact [`LineEntry`]
+    /// beside the ranges keeps it, and it is the same fact `LineEntry`
     /// already carries on the classification walk.
     pub marked: bool,
 }
