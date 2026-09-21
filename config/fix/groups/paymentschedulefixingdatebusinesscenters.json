@@ -1,0 +1,24 @@
+{
+  "name": "paymentschedulefixingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentschedulefixingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentschedulefixingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentschedulefixingdatebusinesscentercomponent",
+    "FIX:counter": "40977",
+    "FIX:tag": "715406",
+    "description": "Required if NoPaymentScheduleFixingDateBusinessCenters(40944) > 0.",
+    "display": "PaymentScheduleFixingDateBusinessCenters"
+  }
+}

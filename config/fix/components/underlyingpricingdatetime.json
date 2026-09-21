@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingpricingdatebusinesscentergrp",
+        "name": "underlyingpricingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpricingdatebusinesscentergrp"
+          "FIX:group": "underlyingpricingdatebusinesscenters"
         }
       },
       {

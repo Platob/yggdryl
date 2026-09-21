@@ -598,13 +598,13 @@
         }
       },
       {
-        "name": "legpaymentstreampricingbusinesscentergrp",
+        "name": "legpaymentstreampricingbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreampricingbusinesscentergrp"
+          "FIX:group": "legpaymentstreampricingbusinesscenters"
         }
       },
       {
@@ -619,13 +619,13 @@
         }
       },
       {
-        "name": "legpaymentstreampricingdaygrp",
+        "name": "legpaymentstreampricingdays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreampricingdaygrp"
+          "FIX:group": "legpaymentstreampricingdays"
         }
       },
       {
@@ -640,13 +640,13 @@
         }
       },
       {
-        "name": "legpaymentstreampricingdategrp",
+        "name": "legpaymentstreampricingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreampricingdategrp"
+          "FIX:group": "legpaymentstreampricingdates"
         }
       },
       {
@@ -802,13 +802,13 @@
         }
       },
       {
-        "name": "legreturnrategrp",
+        "name": "legreturnrates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legreturnrategrp"
+          "FIX:group": "legreturnrates"
         }
       },
       {

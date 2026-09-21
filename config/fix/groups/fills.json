@@ -1,0 +1,24 @@
+{
+  "name": "fills",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "fill",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "fill"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "fill",
+    "FIX:counter": "1362",
+    "FIX:tag": "400983",
+    "description": "Specifies the number of partial fills included in this Execution Report",
+    "display": "Fills"
+  }
+}

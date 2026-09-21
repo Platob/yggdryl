@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "underlyingstreamcalculationperiodbusinesscentergrp",
+        "name": "underlyingstreamcalculationperiodbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamcalculationperiodbusinesscentergrp"
+          "FIX:group": "underlyingstreamcalculationperiodbusinesscenters"
         }
       },
       {
@@ -112,13 +112,13 @@
         }
       },
       {
-        "name": "underlyingstreamfirstperiodstartdatebusinesscentergrp",
+        "name": "underlyingstreamfirstperiodstartdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingstreamfirstperiodstartdatebusinesscentergrp"
+          "FIX:group": "underlyingstreamfirstperiodstartdatebusinesscenters"
         }
       },
       {

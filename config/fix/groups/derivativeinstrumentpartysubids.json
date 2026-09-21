@@ -1,0 +1,23 @@
+{
+  "name": "derivativeinstrumentpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativeinstrumentpartysubidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "derivativeinstrumentpartysubidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "derivativeinstrumentpartysubidcomponent",
+    "FIX:counter": "1296",
+    "FIX:tag": "997497",
+    "display": "DerivativeInstrumentPartySubIDs"
+  }
+}

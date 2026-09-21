@@ -1,0 +1,24 @@
+{
+  "name": "paycollects",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paycollect",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paycollect"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paycollect",
+    "FIX:counter": "1707",
+    "FIX:tag": "1050474",
+    "description": "Required if NoPayCollects > 0.",
+    "display": "PayCollects"
+  }
+}

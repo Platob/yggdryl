@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "paymentsettlptyssubgrp",
+        "name": "paymentsettlpartysubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentsettlptyssubgrp"
+          "FIX:group": "paymentsettlpartysubids"
         }
       }
     ]

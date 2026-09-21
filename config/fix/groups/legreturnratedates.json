@@ -1,0 +1,24 @@
+{
+  "name": "legreturnratedates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnratedate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legreturnratedate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legreturnratedate",
+    "FIX:counter": "42508",
+    "FIX:tag": "223992",
+    "description": "Required if NoLegReturnRateDates(42508) > 0.",
+    "display": "LegReturnRateDates"
+  }
+}

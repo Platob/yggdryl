@@ -1,0 +1,24 @@
+{
+  "name": "legdeliveryschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdeliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdeliveryschedule",
+    "FIX:counter": "41408",
+    "FIX:tag": "830365",
+    "description": "Required if NoLegDeliverySchedules(41408) > 0.",
+    "display": "LegDeliverySchedules"
+  }
+}

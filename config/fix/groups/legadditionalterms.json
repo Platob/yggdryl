@@ -1,0 +1,24 @@
+{
+  "name": "legadditionalterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legadditionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legadditionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legadditionalterm",
+    "FIX:counter": "41335",
+    "FIX:tag": "483056",
+    "description": "Required if NoLegAdditionalTerms(41335) > 0.",
+    "display": "LegAdditionalTerms"
+  }
+}

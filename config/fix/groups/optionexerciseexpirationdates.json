@@ -1,0 +1,24 @@
+{
+  "name": "optionexerciseexpirationdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexerciseexpirationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "optionexerciseexpirationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "optionexerciseexpirationdatecomponent",
+    "FIX:counter": "41152",
+    "FIX:tag": "504927",
+    "description": "Required if NoOptionExpirationDates(41152) > 0.",
+    "display": "OptionExerciseExpirationDates"
+  }
+}

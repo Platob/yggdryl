@@ -1,0 +1,24 @@
+{
+  "name": "paymentsettls",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentsettl",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentsettl"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentsettl",
+    "FIX:counter": "40230",
+    "FIX:tag": "715871",
+    "description": "Required if NoPaymentSettls(40230) > 0.",
+    "display": "PaymentSettls"
+  }
+}

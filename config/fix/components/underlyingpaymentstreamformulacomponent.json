@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamformulamathgrp",
+        "name": "underlyingpaymentstreamformulas",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamformulamathgrp"
+          "FIX:group": "underlyingpaymentstreamformulas"
         }
       },
       {

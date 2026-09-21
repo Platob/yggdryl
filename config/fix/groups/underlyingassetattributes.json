@@ -1,0 +1,24 @@
+{
+  "name": "underlyingassetattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingassetattribute",
+    "FIX:counter": "2312",
+    "FIX:tag": "839580",
+    "description": "Required if NoUnderlyingAssetAttributes(2312) > 0.",
+    "display": "UnderlyingAssetAttributes"
+  }
+}

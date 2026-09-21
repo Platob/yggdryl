@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "legcomplexeventdatebusinesscentergrp",
+        "name": "legcomplexeventdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legcomplexeventdatebusinesscentergrp"
+          "FIX:group": "legcomplexeventdatebusinesscenters"
         }
       },
       {

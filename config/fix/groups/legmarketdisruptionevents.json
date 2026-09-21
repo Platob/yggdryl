@@ -1,0 +1,24 @@
+{
+  "name": "legmarketdisruptionevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legmarketdisruptioneventcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legmarketdisruptioneventcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legmarketdisruptioneventcomponent",
+    "FIX:counter": "41467",
+    "FIX:tag": "150970",
+    "description": "Required if NoLegMarketDisruptionEvents(41467) > 0.",
+    "display": "LegMarketDisruptionEvents"
+  }
+}

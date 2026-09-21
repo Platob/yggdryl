@@ -1,0 +1,24 @@
+{
+  "name": "returnrateinformationsources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnrateinformationsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "returnrateinformationsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "returnrateinformationsourcecomponent",
+    "FIX:counter": "42761",
+    "FIX:tag": "145303",
+    "description": "Required if NoReturnRateInformationSources(42761) > 0.",
+    "display": "ReturnRateInformationSources"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "miscfees",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "miscfee",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "miscfee"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "miscfee",
+    "FIX:counter": "136",
+    "FIX:tag": "872296",
+    "description": "Required if any miscellaneous fees are reported. Indicates number of repeating entries.",
+    "display": "MiscFees"
+  }
+}

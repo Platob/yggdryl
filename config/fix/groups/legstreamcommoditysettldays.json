@@ -1,0 +1,24 @@
+{
+  "name": "legstreamcommoditysettldays",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcommoditysettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legstreamcommoditysettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legstreamcommoditysettldaycomponent",
+    "FIX:counter": "41680",
+    "FIX:tag": "811925",
+    "description": "Required if NoLegStreamCommoditySettlementDays(41680) > 0.",
+    "display": "LegStreamCommoditySettlDays"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdividendperiods",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdividendperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingdividendperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingdividendperiod",
+    "FIX:counter": "42862",
+    "FIX:tag": "806155",
+    "description": "Required if NoUnderlyingDividendPeriods(42862) > 0.",
+    "display": "UnderlyingDividendPeriods"
+  }
+}

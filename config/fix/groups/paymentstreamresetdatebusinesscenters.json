@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreamresetdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamresetdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstreamresetdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstreamresetdatebusinesscentercomponent",
+    "FIX:counter": "40948",
+    "FIX:tag": "647533",
+    "description": "Required if NoPaymentStreamResetDateBusinessCenters(40948) > 0.",
+    "display": "PaymentStreamResetDateBusinessCenters"
+  }
+}

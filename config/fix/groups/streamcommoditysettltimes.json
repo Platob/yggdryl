@@ -1,0 +1,24 @@
+{
+  "name": "streamcommoditysettltimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommoditysettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamcommoditysettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamcommoditysettltime",
+    "FIX:counter": "41286",
+    "FIX:tag": "449836",
+    "description": "Required if NoStreamCommoditySettlTimes(41286) > 0.",
+    "display": "StreamCommoditySettlTimes"
+  }
+}

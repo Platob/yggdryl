@@ -169,13 +169,13 @@
         }
       },
       {
-        "name": "sidecollateralreinvestmentgrp",
+        "name": "sidecollateralreinvestments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "sidecollateralreinvestmentgrp"
+          "FIX:group": "sidecollateralreinvestments"
         }
       },
       {

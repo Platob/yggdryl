@@ -1,0 +1,24 @@
+{
+  "name": "pricingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "pricingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "pricingdatebusinesscentercomponent",
+    "FIX:counter": "41230",
+    "FIX:tag": "101542",
+    "description": "Required if NoPricingDateBusinessCenters(41230) > 0.",
+    "display": "PricingDateBusinessCenters"
+  }
+}

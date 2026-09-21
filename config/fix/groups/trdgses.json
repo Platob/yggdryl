@@ -1,0 +1,24 @@
+{
+  "name": "trdgses",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdgse",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdgse"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdgse",
+    "FIX:counter": "386",
+    "FIX:tag": "861772",
+    "description": "Specifies the number of repeating TradingSessionIDs",
+    "display": "TrdgSes"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "quoteattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quoteattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "quoteattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "quoteattribute",
+    "FIX:counter": "2706",
+    "FIX:tag": "754403",
+    "description": "Required if NoQuoteAttributes(2706) > 0.",
+    "display": "QuoteAttributes"
+  }
+}

@@ -200,13 +200,13 @@
         }
       },
       {
-        "name": "tradetypegrp",
+        "name": "tradetypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradetypegrp"
+          "FIX:group": "tradetypes"
         }
       },
       {
@@ -254,13 +254,13 @@
         }
       },
       {
-        "name": "tradepriceconditiongrp",
+        "name": "tradepriceconditions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradepriceconditiongrp"
+          "FIX:group": "tradepriceconditions"
         }
       },
       {
@@ -560,13 +560,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -731,13 +731,13 @@
         }
       },
       {
-        "name": "paymentgrp",
+        "name": "payments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentgrp"
+          "FIX:group": "payments"
         }
       },
       {
@@ -794,13 +794,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -815,13 +815,13 @@
         }
       },
       {
-        "name": "collateralamountgrp",
+        "name": "collateralamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "collateralamountgrp"
+          "FIX:group": "collateralamounts"
         }
       },
       {
@@ -847,13 +847,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {
@@ -868,13 +868,13 @@
         }
       },
       {
-        "name": "transactionattributegrp",
+        "name": "transactionattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "transactionattributegrp"
+          "FIX:group": "transactionattributes"
         }
       },
       {
@@ -1489,13 +1489,13 @@
         }
       },
       {
-        "name": "tradeqtygrp",
+        "name": "tradeqtys",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradeqtygrp"
+          "FIX:group": "tradeqtys"
         }
       },
       {
@@ -1608,13 +1608,13 @@
         }
       },
       {
-        "name": "trdrepindicatorsgrp",
+        "name": "trdrepindicators",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdrepindicatorsgrp"
+          "FIX:group": "trdrepindicators"
         }
       },
       {
@@ -1662,13 +1662,13 @@
         }
       },
       {
-        "name": "trdregpublicationgrp",
+        "name": "trdregpublications",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdregpublicationgrp"
+          "FIX:group": "trdregpublications"
         }
       },
       {
@@ -1903,13 +1903,13 @@
         }
       },
       {
-        "name": "mandatoryclearingjurisdictiongrp",
+        "name": "mandatoryclearingjurisdictions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "mandatoryclearingjurisdictiongrp"
+          "FIX:group": "mandatoryclearingjurisdictions"
         }
       },
       {
@@ -2166,13 +2166,13 @@
         }
       },
       {
-        "name": "attachmentgrp",
+        "name": "attachments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "attachmentgrp"
+          "FIX:group": "attachments"
         }
       },
       {

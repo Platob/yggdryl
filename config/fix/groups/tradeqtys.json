@@ -1,0 +1,24 @@
+{
+  "name": "tradeqtys",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradeqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "tradeqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "tradeqtycomponent",
+    "FIX:counter": "1841",
+    "FIX:tag": "935335",
+    "description": "Required if NoTradeQty(1841) > 0.",
+    "display": "TradeQtys"
+  }
+}

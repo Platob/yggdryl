@@ -1,0 +1,24 @@
+{
+  "name": "events",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "evnt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "evnt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "evnt",
+    "FIX:counter": "864",
+    "FIX:tag": "819120",
+    "description": "Required if NoEvents(864) > 0.",
+    "display": "Events"
+  }
+}

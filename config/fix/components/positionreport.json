@@ -189,13 +189,13 @@
         }
       },
       {
-        "name": "transactionattributegrp",
+        "name": "transactionattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "transactionattributegrp"
+          "FIX:group": "transactionattributes"
         }
       },
       {
@@ -744,13 +744,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -765,13 +765,13 @@
         }
       },
       {
-        "name": "collateralamountgrp",
+        "name": "collateralamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "collateralamountgrp"
+          "FIX:group": "collateralamounts"
         }
       },
       {
@@ -892,13 +892,13 @@
         }
       },
       {
-        "name": "paymentgrp",
+        "name": "payments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentgrp"
+          "FIX:group": "payments"
         }
       },
       {
@@ -957,13 +957,13 @@
         }
       },
       {
-        "name": "relatedtradegrp",
+        "name": "relatedtrades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedtradegrp"
+          "FIX:group": "relatedtrades"
         }
       },
       {

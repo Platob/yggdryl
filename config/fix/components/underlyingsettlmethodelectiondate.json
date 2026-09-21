@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingsettlmethodelectiondatebusinesscentergrp",
+        "name": "underlyingsettlmethodelectiondatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingsettlmethodelectiondatebusinesscentergrp"
+          "FIX:group": "underlyingsettlmethodelectiondatebusinesscenters"
         }
       },
       {

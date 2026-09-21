@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcomplexeventdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcomplexeventdatebusinesscentercomponent",
+    "FIX:counter": "41737",
+    "FIX:tag": "707767",
+    "description": "Required if NoUnderlyingComplexEventDateBusinessCenters(41737) > 0.",
+    "display": "UnderlyingComplexEventDateBusinessCenters"
+  }
+}

@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreampaymentdatebusinesscentergrp",
+        "name": "underlyingpaymentstreampaymentdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreampaymentdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreampaymentdatebusinesscenters"
         }
       },
       {

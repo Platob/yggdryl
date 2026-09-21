@@ -1,0 +1,24 @@
+{
+  "name": "paymentscheduleinterimexchangedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentscheduleinterimexchangedatebusinesscenter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentscheduleinterimexchangedatebusinesscenter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentscheduleinterimexchangedatebusinesscenter",
+    "FIX:counter": "40945",
+    "FIX:tag": "1054799",
+    "description": "Required if NoPaymentScheduleInterimExchangeDateBusinessCenters(40945) > 0.",
+    "display": "PaymentScheduleInterimExchangeDateBusinessCenters"
+  }
+}

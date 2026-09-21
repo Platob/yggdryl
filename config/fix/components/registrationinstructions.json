@@ -156,13 +156,13 @@
         }
       },
       {
-        "name": "rgstdtlsgrp",
+        "name": "rgstdtls",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "rgstdtlsgrp"
+          "FIX:group": "rgstdtls"
         }
       },
       {
@@ -177,13 +177,13 @@
         }
       },
       {
-        "name": "rgstdistinstgrp",
+        "name": "distribinsts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "rgstdistinstgrp"
+          "FIX:group": "distribinsts"
         }
       },
       {

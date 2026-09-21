@@ -356,13 +356,13 @@
         }
       },
       {
-        "name": "underlyingpaymentscheduleratesourcegrp",
+        "name": "underlyingpaymentscheduleratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentscheduleratesourcegrp"
+          "FIX:group": "underlyingpaymentscheduleratesources"
         }
       },
       {
@@ -421,13 +421,13 @@
         }
       },
       {
-        "name": "underlyingpaymentschedulefixingdatebusinesscentergrp",
+        "name": "underlyingpaymentschedulefixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentschedulefixingdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentschedulefixingdatebusinesscenters"
         }
       },
       {
@@ -508,13 +508,13 @@
         }
       },
       {
-        "name": "underlyingpaymentschedulefixingdaygrp",
+        "name": "underlyingpaymentschedulefixingdays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentschedulefixingdaygrp"
+          "FIX:group": "underlyingpaymentschedulefixingdays"
         }
       },
       {
@@ -617,13 +617,13 @@
         }
       },
       {
-        "name": "underlyingpaymentscheduleinterimexchangedatebusinesscentergrp",
+        "name": "underlyingpaymentscheduleinterimexchangedatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentscheduleinterimexchangedatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentscheduleinterimexchangedatebusinesscenters"
         }
       },
       {

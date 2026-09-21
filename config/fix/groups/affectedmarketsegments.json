@@ -1,0 +1,24 @@
+{
+  "name": "affectedmarketsegments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "affectedmarketsegment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "affectedmarketsegment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "affectedmarketsegment",
+    "FIX:counter": "1791",
+    "FIX:tag": "111737",
+    "description": "Required when NoAffectedMarketSegments(1791) > 0.",
+    "display": "AffectedMarketSegments"
+  }
+}

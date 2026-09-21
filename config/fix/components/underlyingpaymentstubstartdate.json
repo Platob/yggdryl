@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstubstartdatebusinesscentergrp",
+        "name": "underlyingpaymentstubstartdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstubstartdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentstubstartdatebusinesscenters"
         }
       },
       {

@@ -103,13 +103,13 @@
         }
       },
       {
-        "name": "attachmentkeywordgrp",
+        "name": "attachmentkeywords",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "attachmentkeywordgrp"
+          "FIX:group": "attachmentkeywords"
         }
       }
     ]

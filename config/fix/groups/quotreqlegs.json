@@ -1,0 +1,24 @@
+{
+  "name": "quotreqlegs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotreqleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "quotreqleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "quotreqleg",
+    "FIX:counter": "555",
+    "FIX:tag": "130066",
+    "description": "Required if NoLegs(555) > 0.",
+    "display": "QuotReqLegs"
+  }
+}

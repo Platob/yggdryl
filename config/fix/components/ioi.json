@@ -140,13 +140,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -279,13 +279,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -344,13 +344,13 @@
         }
       },
       {
-        "name": "ioiqualgrp",
+        "name": "ioiqualifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ioiqualgrp"
+          "FIX:group": "ioiqualifiers"
         }
       },
       {
@@ -420,13 +420,13 @@
         }
       },
       {
-        "name": "routinggrp",
+        "name": "routingids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "routinggrp"
+          "FIX:group": "routingids"
         }
       },
       {
@@ -451,13 +451,13 @@
         }
       },
       {
-        "name": "relativevaluegrp",
+        "name": "relativevalues",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relativevaluegrp"
+          "FIX:group": "relativevalues"
         }
       },
       {

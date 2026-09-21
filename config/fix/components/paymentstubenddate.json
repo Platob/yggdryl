@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "paymentstubenddatebusinesscentergrp",
+        "name": "paymentstubenddatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentstubenddatebusinesscentergrp"
+          "FIX:group": "paymentstubenddatebusinesscenters"
         }
       },
       {

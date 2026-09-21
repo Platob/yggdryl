@@ -1,0 +1,24 @@
+{
+  "name": "securityriskmetrics",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "securityriskmetric",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "securityriskmetric"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "securityriskmetric",
+    "FIX:counter": "2995",
+    "FIX:tag": "926523",
+    "description": "Required when NoSecurityRiskMetrics(2995) > 0.",
+    "display": "SecurityRiskMetrics"
+  }
+}

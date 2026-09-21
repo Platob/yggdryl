@@ -1,0 +1,24 @@
+{
+  "name": "relatedpartydetailsubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedpartydetailsub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedpartydetailsub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedpartydetailsub",
+    "FIX:counter": "1566",
+    "FIX:tag": "520911",
+    "description": "Required when NoRelatedPartyDetailSubIDs > 0.",
+    "display": "RelatedPartyDetailSubIDs"
+  }
+}

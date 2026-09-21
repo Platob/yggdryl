@@ -1,0 +1,24 @@
+{
+  "name": "usernames",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "usernamecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "usernamecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "usernamecomponent",
+    "FIX:counter": "809",
+    "FIX:tag": "500966",
+    "description": "Number of usernames",
+    "display": "Usernames"
+  }
+}

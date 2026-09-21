@@ -1,0 +1,24 @@
+{
+  "name": "collateralreinvestments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "collateralreinvestment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "collateralreinvestment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "collateralreinvestment",
+    "FIX:counter": "2845",
+    "FIX:tag": "566478",
+    "description": "Required if NoCollateralReinvestments(2845) > 0.",
+    "display": "CollateralReinvestments"
+  }
+}

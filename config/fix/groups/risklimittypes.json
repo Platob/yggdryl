@@ -1,0 +1,24 @@
+{
+  "name": "risklimittypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "risklimittypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "risklimittypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "risklimittypecomponent",
+    "FIX:counter": "1529",
+    "FIX:tag": "109773",
+    "description": "Required if NoRiskLimitTypes(1529) > 0.",
+    "display": "RiskLimitTypes"
+  }
+}

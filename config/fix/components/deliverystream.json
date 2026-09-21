@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "deliverystreamcommoditysourcegrp",
+        "name": "deliverystreamcommoditysources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "deliverystreamcommoditysourcegrp"
+          "FIX:group": "deliverystreamcommoditysources"
         }
       },
       {
@@ -179,13 +179,13 @@
         }
       },
       {
-        "name": "deliverystreamcyclegrp",
+        "name": "deliverystreamcycles",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "deliverystreamcyclegrp"
+          "FIX:group": "deliverystreamcycles"
         }
       },
       {

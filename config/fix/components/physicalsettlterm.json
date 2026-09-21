@@ -15,13 +15,13 @@
         }
       },
       {
-        "name": "physicalsettldeliverableobligationgrp",
+        "name": "physicalsettldeliverableobligations",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "physicalsettldeliverableobligationgrp"
+          "FIX:group": "physicalsettldeliverableobligations"
         }
       },
       {

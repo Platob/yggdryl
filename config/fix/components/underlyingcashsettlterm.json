@@ -136,13 +136,13 @@
         }
       },
       {
-        "name": "underlyingcashsettldealergrp",
+        "name": "underlyingcashsettldealers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingcashsettldealergrp"
+          "FIX:group": "underlyingcashsettldealers"
         }
       },
       {

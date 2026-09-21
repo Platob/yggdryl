@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingprovisioncashsettlpaymentdatebusinesscentergrp",
+        "name": "underlyingprovisioncashsettlpaymentdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingprovisioncashsettlpaymentdatebusinesscentergrp"
+          "FIX:group": "underlyingprovisioncashsettlpaymentdatebusinesscenters"
         }
       },
       {

@@ -221,13 +221,13 @@
         }
       },
       {
-        "name": "trdcollgrp",
+        "name": "trades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdcollgrp"
+          "FIX:group": "trades"
         }
       },
       {
@@ -392,13 +392,13 @@
         }
       },
       {
-        "name": "collateralamountgrp",
+        "name": "collateralamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "collateralamountgrp"
+          "FIX:group": "collateralamounts"
         }
       },
       {
@@ -488,13 +488,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {
@@ -737,13 +737,13 @@
         }
       },
       {
-        "name": "fundingsourcegrp",
+        "name": "fundingsources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "fundingsourcegrp"
+          "FIX:group": "fundingsources"
         }
       },
       {
@@ -758,13 +758,13 @@
         }
       },
       {
-        "name": "transactionattributegrp",
+        "name": "transactionattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "transactionattributegrp"
+          "FIX:group": "transactionattributes"
         }
       },
       {

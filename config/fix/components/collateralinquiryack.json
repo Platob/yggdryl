@@ -198,13 +198,13 @@
         }
       },
       {
-        "name": "trdcollgrp",
+        "name": "trades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdcollgrp"
+          "FIX:group": "trades"
         }
       },
       {

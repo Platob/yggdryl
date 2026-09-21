@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "sidecrossleggrp",
+        "name": "crosslegs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "sidecrossleggrp"
+          "FIX:group": "crosslegs"
         }
       },
       {
@@ -296,13 +296,13 @@
         }
       },
       {
-        "name": "commissiondatagrp",
+        "name": "commissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "commissiondatagrp"
+          "FIX:group": "commissions"
         }
       },
       {

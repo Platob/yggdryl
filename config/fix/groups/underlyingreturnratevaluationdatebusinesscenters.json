@@ -1,0 +1,24 @@
+{
+  "name": "underlyingreturnratevaluationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnratevaluationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingreturnratevaluationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingreturnratevaluationdatebusinesscentercomponent",
+    "FIX:counter": "43069",
+    "FIX:tag": "486586",
+    "description": "Required if NoUnderlyingReturnRateValuationDateBusinessCenters(43069) > 0.",
+    "display": "UnderlyingReturnRateValuationDateBusinessCenters"
+  }
+}

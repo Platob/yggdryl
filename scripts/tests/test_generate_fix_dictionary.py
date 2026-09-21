@@ -18,13 +18,16 @@ GENERATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GENERATOR)
 
 
-def wire_field(name: str, tag: int, dtype: str = "string") -> dict:
-    return {
+def wire_field(name: str, tag: int, dtype: str = "string", display: str | None = None) -> dict:
+    field = {
         "name": name,
         "dtype": {"type": dtype},
         "nullable": True,
         "metadata": {"FIX:tag": str(tag)},
     }
+    if display is not None:
+        field["metadata"]["display"] = display
+    return field
 
 
 def member(kind: str, identifier: int, required: bool = False) -> dict:
@@ -56,9 +59,9 @@ def built(document: bytes) -> tuple[dict, dict]:
 class FixCatalogGeneration(unittest.TestCase):
     def setUp(self) -> None:
         self.fields = [
-            wire_field("nopartyids", 453, "int32"),
+            wire_field("nopartyids", 453, "int32", "NoPartyIDs"),
             wire_field("partyid", 448),
-            wire_field("nopartysubids", 802, "int32"),
+            wire_field("nopartysubids", 802, "int32", "NoPartySubIDs"),
             wire_field("partysubid", 523),
         ]
         self.latest = {
@@ -83,9 +86,13 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertFalse(item["nullable"])
         self.assertEqual({"FIX:component": "party"}, item["metadata"])
         children = components["party"]["dtype"]["fields"]
-        self.assertEqual(["partyid", "nopartysubids", "ptyssubgrp"], [field["name"] for field in children])
+        self.assertEqual(["partyid", "nopartysubids", "partysubids"], [field["name"] for field in children])
         self.assertEqual({"FIX:field": "nopartysubids", "FIX:tag": "802"}, children[1]["metadata"])
-        self.assertEqual({"FIX:group": "ptyssubgrp"}, children[2]["metadata"])
+        self.assertEqual({"FIX:group": "partysubids"}, children[2]["metadata"])
+        subgroup = groups["partysubids"]
+        self.assertEqual("PartySubIDs", subgroup["metadata"]["display"])
+        self.assertEqual("ptyssub", subgroup["metadata"]["FIX:component"])
+        self.assertEqual("PtysSub", components["ptyssub"]["metadata"]["display"])
         message = catalog["messages"][0]
         self.assertEqual("D", message["metadata"]["FIX:msgtype"])
         self.assertEqual("ORDR", message["metadata"]["FIX:msgcat"])
@@ -98,23 +105,62 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual(["parties", "requestedparties"], matching)
 
     def test_global_names_do_not_collide_with_wire_fields(self) -> None:
-        self.fields.extend([wire_field("party", 9001), wire_field("ratesource", 1446), wire_field("securityxml", 1185), wire_field("securitystatus", 965)])
-        self.latest["groups"]["RateSource"] = {"id": 1062, "tag": 453, "members": [member("field", 1446)]}
+        self.fields.extend([
+            wire_field("party", 9001),
+            wire_field("ratesource", 1446),
+            wire_field("noratesources", 9002, "int32", "NoRateSources"),
+            wire_field("securityxml", 1185),
+            wire_field("securitystatus", 965),
+        ])
+        self.latest["groups"]["RateSource"] = {"id": 1062, "tag": 9002, "members": [member("field", 1446)]}
         self.latest["components"]["SecurityXML"] = {"id": 1060, "members": [member("field", 1185)]}
         self.latest["messages"]["f"] = {"id": 2, "name": "SecurityStatus", "members": [member("field", 965)]}
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
         names = [field["name"] for entries in catalog.values() for field in entries]
         self.assertEqual(len(names), len(set(names)))
-        self.assertTrue({"partycomponent", "ratesourcegrp", "ratesourcecomponent", "securityxmlcomponent", "securitystatusmessage"}.issubset(names))
+        self.assertTrue({"partycomponent", "ratesources", "ratesourcecomponent", "securityxmlcomponent", "securitystatusmessage"}.issubset(names))
 
     def test_numbered_party_collections_singularize_before_the_number(self) -> None:
         self.assertEqual("Party", GENERATOR.entry_name("Parties"))
         self.assertEqual("NestedParty2", GENERATOR.entry_name("NestedParties2"))
         self.assertEqual("SecAltID", GENERATOR.entry_name("SecAltIDGrp"))
 
+    def test_group_names_prefer_source_then_counter_plurals_and_keep_ambiguous_grp(self) -> None:
+        fields = [
+            wire_field("nosourceitems", 9001, "int32", "NoSourceItems"),
+            wire_field("nocounteritems", 9002, "int32", "NoCounterItems"),
+            wire_field("nothingsa", 9003, "int32", "NoThings"),
+            wire_field("nothingsb", 9004, "int32", "NoThings"),
+            wire_field("nolinesoftext", 9005, "int32", "NoLinesOfText"),
+        ]
+        latest = {
+            "groups": {
+                "SourceEntriesGrp": {"id": 1, "tag": 9001, "members": []},
+                "CounterItemGrp": {"id": 2, "tag": 9002, "members": []},
+                "FirstThingGrp": {"id": 3, "tag": 9003, "members": []},
+                "SecondThingGrp": {"id": 4, "tag": 9004, "members": []},
+                "LinesOfTextGrp": {"id": 5, "tag": 9005, "members": []},
+            },
+            "components": {},
+            "messages": {},
+            "code_sets": {},
+        }
+
+        catalog = GENERATOR.build_catalog(latest, fields)
+        groups = {field["name"]: field for field in catalog["groups"]}
+        self.assertEqual(
+            {"sourceentries", "counteritems", "firstthinggrp", "secondthinggrp", "linesoftext"},
+            set(groups),
+        )
+        self.assertEqual("SourceEntries", groups["sourceentries"]["metadata"]["display"])
+        self.assertEqual("CounterItems", groups["counteritems"]["metadata"]["display"])
+        self.assertEqual("FirstThingGrp", groups["firstthinggrp"]["metadata"]["display"])
+        self.assertEqual("SecondThingGrp", groups["secondthinggrp"]["metadata"]["display"])
+        self.assertEqual("LinesOfText", groups["linesoftext"]["metadata"]["display"])
+
     def test_security_alternate_ids_have_the_semantic_collection_name(self) -> None:
         self.fields.extend([
-            wire_field("nosecurityaltid", 454, "int32"),
+            wire_field("nosecurityaltid", 454, "int32", "NoSecurityAltID"),
             wire_field("securityaltid", 455),
             wire_field("securityaltidsource", 456),
         ])
@@ -128,7 +174,7 @@ class FixCatalogGeneration(unittest.TestCase):
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
         group = next(
             field for field in catalog["groups"]
-            if field["metadata"]["display"] == "SecAltIDGrp"
+            if field["metadata"]["display"] == "SecAltIDs"
         )
         self.assertEqual("secaltids", group["name"])
         message = catalog["messages"][0]
@@ -140,7 +186,7 @@ class FixCatalogGeneration(unittest.TestCase):
 
     def test_regulatory_trade_ids_have_the_semantic_collection_name(self) -> None:
         self.fields.extend([
-            wire_field("noregulatorytradeids", 1907, "int32"),
+            wire_field("noregulatorytradeids", 1907, "int32", "NoRegulatoryTradeIDs"),
             wire_field("regulatorytradeid", 1903),
         ])
         self.latest["groups"]["RegulatoryTradeIDGrp"] = {
@@ -153,7 +199,7 @@ class FixCatalogGeneration(unittest.TestCase):
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
         group = next(
             field for field in catalog["groups"]
-            if field["metadata"]["display"] == "RegulatoryTradeIDGrp"
+            if field["metadata"]["display"] == "RegulatoryTradeIDs"
         )
         self.assertEqual("regulatorytradeids", group["name"])
         message = catalog["messages"][0]
@@ -166,7 +212,7 @@ class FixCatalogGeneration(unittest.TestCase):
     def test_catalog_names_do_not_shadow_scalar_names(self) -> None:
         self.fields[0]["metadata"]["FIX:names"] = ["parties", "party"]
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
-        self.assertIn("partiesgrp", [field["name"] for field in catalog["groups"]])
+        self.assertIn("partyids", [field["name"] for field in catalog["groups"]])
         self.assertIn("partycomponent", [field["name"] for field in catalog["components"]])
 
     def test_fix_service_packs_resolve_to_bounded_numeric_versions(self) -> None:
@@ -289,7 +335,7 @@ class FixCatalogGeneration(unittest.TestCase):
         GENERATOR.assign_definition_tags(catalog)
         tags = definition_tags(catalog)
         self.assertEqual(
-            {"party": 780527, "ptyssub": 1003725, "parties": 209321, "ptyssubgrp": 605533, "newordersingle": 244936},
+            {"party": 780527, "ptyssub": 1003725, "parties": 209321, "partysubids": 486736, "newordersingle": 244936},
             tags,
         )
         for name, tag in tags.items():

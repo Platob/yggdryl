@@ -1747,30 +1747,39 @@ impl<'doc> Parse<'doc> {
                 return None;
             }
         }
-        let mut name = declared.filter(|name| !name.is_empty()).map_or_else(
-            || super::component::group_name(&counter).to_string(),
-            |name| super::component::canonical_group_name(name).to_string(),
-        );
+        let (group_name, group_display, occurrence_name, occurrence_display) =
+            super::component::group_names(&counter, declared);
+        let mut name = group_name.to_string();
+        let mut display = group_display.to_string();
         if self
             .vocabulary
             .iter()
             .any(|field| field.field.name().eq_ignore_ascii_case(&name))
         {
             name.push_str("grp");
+            if !display.ends_with("Grp") {
+                display.push_str("Grp");
+            }
         }
-        let mut entry = super::component::entry_name(&name).to_string();
+        let mut entry = occurrence_name.to_string();
+        let mut entry_display = occurrence_display.to_string();
         if self
             .vocabulary
             .iter()
             .any(|field| field.field.name().eq_ignore_ascii_case(&entry))
         {
             entry.push_str("component");
+            if !entry_display.ends_with("Component") {
+                entry_display.push_str("Component");
+            }
         }
         let built = || -> Result<(Field, Field)> {
             let mut item =
                 DataType::from(StructType::from_fields(children)?).required_field(entry.clone());
+            item.set_display(&entry_display)?;
             self.stamp(&mut item)?;
             let mut group = DataType::list(item).nullable_field(name);
+            group.set_display(&display)?;
             group.set_nullable(counter.is_nullable());
             self.stamp(&mut group)?;
             group.as_fix_mut().set_counter(tag)?;

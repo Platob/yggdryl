@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisioncashsettlvaluedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+    "FIX:counter": "42182",
+    "FIX:tag": "136050",
+    "description": "Required if NoUnderlyingProvisionCashSettlValueDateBusinessCenters(42182) > 0.",
+    "display": "UnderlyingProvisionCashSettlValueDateBusinessCenters"
+  }
+}

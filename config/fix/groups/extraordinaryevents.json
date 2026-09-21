@@ -1,0 +1,24 @@
+{
+  "name": "extraordinaryevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "extraordinaryevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "extraordinaryevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "extraordinaryevent",
+    "FIX:counter": "42296",
+    "FIX:tag": "537487",
+    "description": "Required if NoExtraordinaryEvents(42296) > 0.",
+    "display": "ExtraordinaryEvents"
+  }
+}

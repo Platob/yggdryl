@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcomplexeventschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcomplexeventschedule",
+    "FIX:counter": "41400",
+    "FIX:tag": "451875",
+    "description": "Required if NoLegComplexEventScedules(41400) > 0.",
+    "display": "LegComplexEventSchedules"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legnondeliverablefixingdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamnondeliverablefixingdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentstreamnondeliverablefixingdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentstreamnondeliverablefixingdate",
+    "FIX:counter": "40367",
+    "FIX:tag": "629998",
+    "description": "Required if NoLegNonDeliverableFixingDates(40367) > 0.",
+    "display": "LegNonDeliverableFixingDates"
+  }
+}

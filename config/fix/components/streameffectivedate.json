@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "streameffectivedatebusinesscentergrp",
+        "name": "streameffectivedatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streameffectivedatebusinesscentergrp"
+          "FIX:group": "streameffectivedatebusinesscenters"
         }
       },
       {

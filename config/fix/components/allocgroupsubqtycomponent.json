@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "allocgroupsubqtyattributegrp",
+        "name": "allocgroupsubqtyattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "allocgroupsubqtyattributegrp"
+          "FIX:group": "allocgroupsubqtyattributes"
         }
       }
     ]

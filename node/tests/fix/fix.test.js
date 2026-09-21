@@ -1525,13 +1525,13 @@ test('bridge capture context is an identifier but never the crosscode or content
   const registry = seed()
   const message = fixedCodec(registry).parseUllinkLine(Buffer.from(
     'MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|' +
-    '#MSGCTXID=CONTEXT-1|#SYMBOL=n/A|#VENUEOWNTHING=n/A|',
+    '#MSGCTXID=CONTEXT-1|#MSGSEQNUM=7|#SYMBOL=n/A|#VENUEOWNTHING=n/A|',
   ))
 
   assert.equal(message.crosscode, 'ORDER-1')
   assert.deepEqual(message.identifiers, {
     clordid: 'CLIENT-1',
-    msgsectxid: 'SESSION-1:CONTEXT-1',
+    msgsesseventid: '1:8|9:SESSION-1|9:CONTEXT-1|7',
     orderid: 'ORDER-1',
   })
   assert.equal(message.getByTag(55), null)
@@ -1543,7 +1543,7 @@ test('bridge capture context is an identifier but never the crosscode or content
   assert.equal(message.capture().msgsessionid, 'SESSION-2')
   assert.deepEqual(message.identifiers, {
     clordid: 'CLIENT-1',
-    msgsectxid: 'SESSION-2:CONTEXT-1',
+    msgsesseventid: '1:8|9:SESSION-2|9:CONTEXT-1|7',
     orderid: 'ORDER-1',
   })
   assert.equal(message.currhashcode, contentHash)
@@ -1558,7 +1558,7 @@ test('bridge capture context is an identifier but never the crosscode or content
   assert.equal(message.currhashcode, contentHash)
 
   message.set('msgctxid', 'CONTEXT-2')
-  assert.equal(message.identifiers.msgsectxid, 'SESSION-2:CONTEXT-2')
+  assert.equal(message.identifiers.msgsesseventid, '1:8|9:SESSION-2|9:CONTEXT-2|7')
   assert.equal(message.currhashcode, contentHash)
 })
 

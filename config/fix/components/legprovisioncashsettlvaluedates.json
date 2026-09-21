@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "legprovisioncashsettlvaluedatebusinesscentergrp",
+        "name": "legprovisioncashsettlvaluedatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprovisioncashsettlvaluedatebusinesscentergrp"
+          "FIX:group": "legprovisioncashsettlvaluedatebusinesscenters"
         }
       },
       {

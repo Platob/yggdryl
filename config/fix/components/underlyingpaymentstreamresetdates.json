@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamresetdatebusinesscentergrp",
+        "name": "underlyingpaymentstreamresetdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamresetdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreamresetdatebusinesscenters"
         }
       },
       {
@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreaminitialfixingdatebusinesscentergrp",
+        "name": "underlyingpaymentstreaminitialfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreaminitialfixingdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreaminitialfixingdatebusinesscenters"
         }
       },
       {
@@ -200,13 +200,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamfixingdatebusinesscentergrp",
+        "name": "underlyingpaymentstreamfixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamfixingdatebusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreamfixingdatebusinesscenters"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreamfixingdategrp",
+        "name": "underlyingpaymentstreamfixingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreamfixingdategrp"
+          "FIX:group": "underlyingpaymentstreamfixingdates"
         }
       }
     ]

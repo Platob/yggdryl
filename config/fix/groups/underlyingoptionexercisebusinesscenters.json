@@ -1,0 +1,24 @@
+{
+  "name": "underlyingoptionexercisebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingoptionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingoptionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingoptionexercisebusinesscentercomponent",
+    "FIX:counter": "41820",
+    "FIX:tag": "614172",
+    "description": "Required if NoUnderlyingOptionExerciseBusinessCenters(41820) > 0.",
+    "display": "UnderlyingOptionExerciseBusinessCenters"
+  }
+}

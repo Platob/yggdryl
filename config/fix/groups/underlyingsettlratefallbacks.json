@@ -1,0 +1,24 @@
+{
+  "name": "underlyingsettlratefallbacks",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingsettlratedisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingsettlratedisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingsettlratedisruptionfallback",
+    "FIX:counter": "40659",
+    "FIX:tag": "706263",
+    "description": "Required if NoUnderlyingSettlRateFallbacks(40659) > 0.",
+    "display": "UnderlyingSettlRateFallbacks"
+  }
+}

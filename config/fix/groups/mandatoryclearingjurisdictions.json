@@ -1,0 +1,24 @@
+{
+  "name": "mandatoryclearingjurisdictions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mandatoryclearingjurisdictioncomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "mandatoryclearingjurisdictioncomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "mandatoryclearingjurisdictioncomponent",
+    "FIX:counter": "41312",
+    "FIX:tag": "944075",
+    "description": "Required if NoNoMandatoryClearingJurisdictions(41312) > 0.",
+    "display": "MandatoryClearingJurisdictions"
+  }
+}

@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "dividendperiodbusinesscentergrp",
+        "name": "dividendperiodbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "dividendperiodbusinesscentergrp"
+          "FIX:group": "dividendperiodbusinesscenters"
         }
       },
       {

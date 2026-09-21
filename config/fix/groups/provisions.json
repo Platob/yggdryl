@@ -1,0 +1,24 @@
+{
+  "name": "provisions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provision",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "provision"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "provision",
+    "FIX:counter": "40090",
+    "FIX:tag": "1092769",
+    "description": "Required if NoProvisions(40090) > 0.",
+    "display": "Provisions"
+  }
+}

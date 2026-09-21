@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "legstreameffectivedatebusinesscentergrp",
+        "name": "legstreameffectivedatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legstreameffectivedatebusinesscentergrp"
+          "FIX:group": "legstreameffectivedatebusinesscenters"
         }
       },
       {

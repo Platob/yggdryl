@@ -1176,13 +1176,13 @@ def test_bridge_capture_context_is_an_identifier_but_never_the_crosscode_or_cont
     codec = _fixed(seed)
     message = codec.parse_ullink_line(
         b"MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|"
-        b"#MSGCTXID=CONTEXT-1|#SYMBOL=n/A|#VENUEOWNTHING=n/A|"
+        b"#MSGCTXID=CONTEXT-1|#MSGSEQNUM=7|#SYMBOL=n/A|#VENUEOWNTHING=n/A|"
     )
 
     assert message.crosscode == "ORDER-1"
     assert message.identifiers == {
         "clordid": "CLIENT-1",
-        "msgsectxid": "SESSION-1:CONTEXT-1",
+        "msgsesseventid": "1:8|9:SESSION-1|9:CONTEXT-1|7",
         "orderid": "ORDER-1",
     }
     assert message.get_by_tag(55) is None
@@ -1194,7 +1194,7 @@ def test_bridge_capture_context_is_an_identifier_but_never_the_crosscode_or_cont
     assert message.capture().msgsessionid == "SESSION-2"
     assert message.identifiers == {
         "clordid": "CLIENT-1",
-        "msgsectxid": "SESSION-2:CONTEXT-1",
+        "msgsesseventid": "1:8|9:SESSION-2|9:CONTEXT-1|7",
         "orderid": "ORDER-1",
     }
     assert message.currhashcode == content_hash
@@ -1209,7 +1209,7 @@ def test_bridge_capture_context_is_an_identifier_but_never_the_crosscode_or_cont
     assert message.currhashcode == content_hash
 
     message.set("msgctxid", "CONTEXT-2")
-    assert message.identifiers["msgsectxid"] == "SESSION-2:CONTEXT-2"
+    assert message.identifiers["msgsesseventid"] == "1:8|9:SESSION-2|9:CONTEXT-2|7"
     assert message.currhashcode == content_hash
 
     schema = fix_schema(seed)

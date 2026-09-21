@@ -1,0 +1,24 @@
+{
+  "name": "streamfirstperiodstartdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamfirstperiodstartdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamfirstperiodstartdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamfirstperiodstartdatebusinesscentercomponent",
+    "FIX:counter": "40959",
+    "FIX:tag": "896102",
+    "description": "Required if NoStreamFirstPeriodStartDateBusinessCenters(40959) > 0.",
+    "display": "StreamFirstPeriodStartDateBusinessCenters"
+  }
+}

@@ -69,13 +69,13 @@
         }
       },
       {
-        "name": "indexrollmonthgrp",
+        "name": "indexrollmonths",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "indexrollmonthgrp"
+          "FIX:group": "indexrollmonths"
         }
       },
       {
@@ -111,13 +111,13 @@
         }
       },
       {
-        "name": "referencedatadategrp",
+        "name": "referencedatadates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "referencedatadategrp"
+          "FIX:group": "referencedatadates"
         }
       }
     ]

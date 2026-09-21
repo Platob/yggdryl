@@ -175,13 +175,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -240,13 +240,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -347,13 +347,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {
@@ -379,13 +379,13 @@
         }
       },
       {
-        "name": "secsizesgrp",
+        "name": "secsizes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "secsizesgrp"
+          "FIX:group": "secsizes"
         }
       },
       {
@@ -543,13 +543,13 @@
         }
       },
       {
-        "name": "tradepriceconditiongrp",
+        "name": "tradepriceconditions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradepriceconditiongrp"
+          "FIX:group": "tradepriceconditions"
         }
       },
       {
@@ -652,13 +652,13 @@
         }
       },
       {
-        "name": "tradetypegrp",
+        "name": "tradetypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradetypegrp"
+          "FIX:group": "tradetypes"
         }
       },
       {
@@ -717,13 +717,13 @@
         }
       },
       {
-        "name": "trdregpublicationgrp",
+        "name": "trdregpublications",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdregpublicationgrp"
+          "FIX:group": "trdregpublications"
         }
       },
       {
@@ -760,13 +760,13 @@
         }
       },
       {
-        "name": "relatedtradegrp",
+        "name": "relatedtrades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedtradegrp"
+          "FIX:group": "relatedtrades"
         }
       },
       {
@@ -1438,13 +1438,13 @@
         }
       },
       {
-        "name": "statsindgrp",
+        "name": "statsindicators",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "statsindgrp"
+          "FIX:group": "statsindicators"
         }
       },
       {

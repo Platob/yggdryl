@@ -1,0 +1,24 @@
+{
+  "name": "transactionattributes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "transactionattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "transactionattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "transactionattribute",
+    "FIX:counter": "2871",
+    "FIX:tag": "414641",
+    "description": "Required if NoTransactionAttributes(2871) > 0.",
+    "display": "TransactionAttributes"
+  }
+}

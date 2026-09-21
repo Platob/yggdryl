@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreampricingbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreampricingbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstreampricingbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstreampricingbusinesscentercomponent",
+    "FIX:counter": "41192",
+    "FIX:tag": "792592",
+    "description": "Required if NoPaymentStreamPricingBusinessCenters(41192) > 0.",
+    "display": "PaymentStreamPricingBusinessCenters"
+  }
+}

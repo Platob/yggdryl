@@ -1,0 +1,24 @@
+{
+  "name": "paymentstubstartdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstubstartdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstubstartdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstubstartdatebusinesscentercomponent",
+    "FIX:counter": "42705",
+    "FIX:tag": "646525",
+    "description": "Required if NoPaymentStubStartDateBusinessCenters(42705) > 0.",
+    "display": "PaymentStubStartDateBusinessCenters"
+  }
+}

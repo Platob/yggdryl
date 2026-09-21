@@ -1,0 +1,24 @@
+{
+  "name": "legfinancingcontractualdefinitions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legfinancingcontractualdefinition",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legfinancingcontractualdefinition"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legfinancingcontractualdefinition",
+    "FIX:counter": "42198",
+    "FIX:tag": "959005",
+    "description": "Required if NoLegContractualDefinitions(42198) > 0.",
+    "display": "LegFinancingContractualDefinitions"
+  }
+}

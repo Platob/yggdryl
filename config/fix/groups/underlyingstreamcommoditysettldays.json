@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcommoditysettldays",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcommoditysettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcommoditysettldaycomponent",
+    "FIX:counter": "41996",
+    "FIX:tag": "202576",
+    "description": "Required if NoUnderlyingStreamCommoditySettlDays(41996) > 0.",
+    "display": "UnderlyingStreamCommoditySettlDays"
+  }
+}

@@ -125,13 +125,13 @@
         }
       },
       {
-        "name": "riskwarninglevelgrp",
+        "name": "riskwarninglevels",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "riskwarninglevelgrp"
+          "FIX:group": "riskwarninglevels"
         }
       }
     ]

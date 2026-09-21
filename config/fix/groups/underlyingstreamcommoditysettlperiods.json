@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcommoditysettlperiods",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettlperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcommoditysettlperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcommoditysettlperiod",
+    "FIX:counter": "42002",
+    "FIX:tag": "528360",
+    "description": "Required if NoUnderlyingStreamCommoditySettlPeriods(42002) > 0.",
+    "display": "UnderlyingStreamCommoditySettlPeriods"
+  }
+}

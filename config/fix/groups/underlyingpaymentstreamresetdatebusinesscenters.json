@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreamresetdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamresetdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentstreamresetdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentstreamresetdatebusinesscentercomponent",
+    "FIX:counter": "40970",
+    "FIX:tag": "397529",
+    "description": "Required if NoUnderlyingPaymentStreamResetDateBusinessCenters(40970) > 0.",
+    "display": "UnderlyingPaymentStreamResetDateBusinessCenters"
+  }
+}

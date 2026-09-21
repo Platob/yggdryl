@@ -1,0 +1,24 @@
+{
+  "name": "targetmarketsegments",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "targetmarketsegment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "targetmarketsegment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "targetmarketsegment",
+    "FIX:counter": "1789",
+    "FIX:tag": "161929",
+    "description": "Required when NoTargetMarketSegments(1789) > 0.",
+    "display": "TargetMarketSegments"
+  }
+}

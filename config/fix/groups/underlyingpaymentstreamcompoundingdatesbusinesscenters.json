@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreamcompoundingdatesbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamcompoundingdatesbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentstreamcompoundingdatesbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentstreamcompoundingdatesbusinesscentercomponent",
+    "FIX:counter": "42915",
+    "FIX:tag": "588246",
+    "description": "Required if NoUnderlyingPaymentStreamCompoundingDatesBusinessCenters(42915) > 0.",
+    "display": "UnderlyingPaymentStreamCompoundingDatesBusinessCenters"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "partydetails",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "partydetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "partydetail",
+    "FIX:counter": "1671",
+    "FIX:tag": "749593",
+    "description": "The identification of the party. Required when NoPartyDetails(1671) > 0.",
+    "display": "PartyDetails"
+  }
+}

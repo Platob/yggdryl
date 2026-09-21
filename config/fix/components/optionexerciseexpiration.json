@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "optionexerciseexpirationdatebusinesscentergrp",
+        "name": "optionexerciseexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "optionexerciseexpirationdatebusinesscentergrp"
+          "FIX:group": "optionexerciseexpirationdatebusinesscenters"
         }
       },
       {
@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "optionexerciseexpirationdategrp",
+        "name": "optionexerciseexpirationdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "optionexerciseexpirationdategrp"
+          "FIX:group": "optionexerciseexpirationdates"
         }
       },
       {

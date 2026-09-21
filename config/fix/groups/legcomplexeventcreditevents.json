@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventcreditevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventcreditevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcomplexeventcreditevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcomplexeventcreditevent",
+    "FIX:counter": "41366",
+    "FIX:tag": "390522",
+    "description": "Required if NoLegComplexEventCreditEvents(41366) > 0.",
+    "display": "LegComplexEventCreditEvents"
+  }
+}

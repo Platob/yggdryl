@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisionoptionexercisefixeddates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionoptionexercisefixeddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingprovisionoptionexercisefixeddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingprovisionoptionexercisefixeddatecomponent",
+    "FIX:counter": "42112",
+    "FIX:tag": "379363",
+    "description": "Required if NoUnderlyingProvisionOptionExerciseFixedDates(42112) > 0.",
+    "display": "UnderlyingProvisionOptionExerciseFixedDates"
+  }
+}

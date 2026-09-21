@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdeliveryschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingdeliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingdeliveryschedule",
+    "FIX:counter": "41756",
+    "FIX:tag": "185941",
+    "description": "Required if NoUnderlyingDeliverySchedules(41756) > 0.",
+    "display": "UnderlyingDeliverySchedules"
+  }
+}

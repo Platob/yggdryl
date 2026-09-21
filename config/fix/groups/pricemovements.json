@@ -1,0 +1,24 @@
+{
+  "name": "pricemovements",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricemovement",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "pricemovement"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "pricemovement",
+    "FIX:counter": "1919",
+    "FIX:tag": "401941",
+    "description": "Required if NoPriceMovements(1919) > 0.",
+    "display": "PriceMovements"
+  }
+}

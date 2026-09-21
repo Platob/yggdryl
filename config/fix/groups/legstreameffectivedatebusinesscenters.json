@@ -1,0 +1,24 @@
+{
+  "name": "legstreameffectivedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreameffectivedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legstreameffectivedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legstreameffectivedatebusinesscentercomponent",
+    "FIX:counter": "40942",
+    "FIX:tag": "414634",
+    "description": "Required if NoLegStreamEffectiveDateBusinessCenters(40942) > 0.",
+    "display": "LegStreamEffectiveDateBusinessCenters"
+  }
+}

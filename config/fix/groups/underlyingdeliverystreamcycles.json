@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdeliverystreamcycles",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliverystreamcycle",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingdeliverystreamcycle"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingdeliverystreamcycle",
+    "FIX:counter": "41804",
+    "FIX:tag": "694049",
+    "description": "Required if NoUnderlyingDeliveryStreamCycles(41804) > 0.",
+    "display": "UnderlyingDeliveryStreamCycles"
+  }
+}

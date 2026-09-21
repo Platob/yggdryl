@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcommoditydatasources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditydatasource",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcommoditydatasource"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcommoditydatasource",
+    "FIX:counter": "41993",
+    "FIX:tag": "1071787",
+    "description": "Required if NoUnderlyingStreamCommodityDataSources(41993) > 0.",
+    "display": "UnderlyingStreamCommodityDataSources"
+  }
+}

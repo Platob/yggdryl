@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcalculationperiodbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcalculationperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcalculationperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcalculationperiodbusinesscentercomponent",
+    "FIX:counter": "40973",
+    "FIX:tag": "889246",
+    "description": "Required if NoUnderlyingStreamCalculationPeriodBusinessCenters(40973) > 0.",
+    "display": "UnderlyingStreamCalculationPeriodBusinessCenters"
+  }
+}

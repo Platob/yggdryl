@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreameffectivedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreameffectivedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreameffectivedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreameffectivedatebusinesscentercomponent",
+    "FIX:counter": "40975",
+    "FIX:tag": "1025935",
+    "description": "Required if NoUnderlyingStreamEffectiveDateBusinessCenters(40975) > 0.",
+    "display": "UnderlyingStreamEffectiveDateBusinessCenters"
+  }
+}

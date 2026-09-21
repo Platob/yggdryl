@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingoptionexerciseexpirationdatebusinesscentergrp",
+        "name": "underlyingoptionexerciseexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingoptionexerciseexpirationdatebusinesscentergrp"
+          "FIX:group": "underlyingoptionexerciseexpirationdatebusinesscenters"
         }
       },
       {
@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "underlyingoptionexerciseexpirationdategrp",
+        "name": "underlyingoptionexerciseexpirationdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingoptionexerciseexpirationdategrp"
+          "FIX:group": "underlyingoptionexerciseexpirationdates"
         }
       },
       {

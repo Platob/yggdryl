@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "legcashsettldatebusinesscentergrp",
+        "name": "legcashsettldatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legcashsettldatebusinesscentergrp"
+          "FIX:group": "legcashsettldatebusinesscenters"
         }
       },
       {

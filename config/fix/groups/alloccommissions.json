@@ -1,0 +1,24 @@
+{
+  "name": "alloccommissions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "alloccommissiondata",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "alloccommissiondata"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "alloccommissiondata",
+    "FIX:counter": "2653",
+    "FIX:tag": "375489",
+    "description": "Required if NoAllocCommissions(2653) > 0.",
+    "display": "AllocCommissions"
+  }
+}

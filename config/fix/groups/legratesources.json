@@ -1,0 +1,24 @@
+{
+  "name": "legratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legratesourcecomponent",
+    "FIX:counter": "3116",
+    "FIX:tag": "987866",
+    "description": "Required if NoLegRateSources(3116) > 0.",
+    "display": "LegRateSources"
+  }
+}

@@ -268,13 +268,13 @@
         }
       },
       {
-        "name": "paymentbusinesscentergrp",
+        "name": "paymentbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentbusinesscentergrp"
+          "FIX:group": "paymentbusinesscenters"
         }
       },
       {
@@ -410,13 +410,13 @@
         }
       },
       {
-        "name": "paymentsettlgrp",
+        "name": "paymentsettls",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentsettlgrp"
+          "FIX:group": "paymentsettls"
         }
       },
       {

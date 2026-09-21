@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamfirstperiodstartdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamfirstperiodstartdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamfirstperiodstartdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamfirstperiodstartdatebusinesscentercomponent",
+    "FIX:counter": "40974",
+    "FIX:tag": "359855",
+    "description": "Required if NoUnderlyginstreamFirstPeriodStartDateBusinessCenters(40974) > 0.",
+    "display": "UnderlyingStreamFirstPeriodStartDateBusinessCenters"
+  }
+}

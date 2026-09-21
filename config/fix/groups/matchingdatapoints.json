@@ -1,0 +1,24 @@
+{
+  "name": "matchingdatapoints",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "matchingdatapoint",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "matchingdatapoint"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "matchingdatapoint",
+    "FIX:counter": "2781",
+    "FIX:tag": "142552",
+    "description": "Required if NoMatchingDataPoints(2781) > 0.",
+    "display": "MatchingDataPoints"
+  }
+}

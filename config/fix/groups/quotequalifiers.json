@@ -1,0 +1,24 @@
+{
+  "name": "quotequalifiers",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotqual",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "quotqual"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "quotqual",
+    "FIX:counter": "735",
+    "FIX:tag": "498012",
+    "description": "Required if NoQuoteQualifiers > 1",
+    "display": "QuoteQualifiers"
+  }
+}

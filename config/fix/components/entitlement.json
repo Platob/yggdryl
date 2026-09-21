@@ -91,13 +91,13 @@
         }
       },
       {
-        "name": "instrumentscopegrp",
+        "name": "instrumentscopes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopes"
         }
       },
       {

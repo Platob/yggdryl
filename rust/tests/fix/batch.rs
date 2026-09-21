@@ -883,7 +883,7 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
 }
 
 #[test]
-fn lifecycle_fully_merges_one_capture_delivery_on_the_latest_recording_base() {
+fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
     let captured = |context: &[u8], body: &[u8], recdunix: i64, execunix: i64| {
         let line = TextLine::from_bytes(
@@ -924,6 +924,26 @@ fn lifecycle_fully_merges_one_capture_delivery_on_the_latest_recording_base() {
     assert_ne!(older.get_curruuid(), newer.get_curruuid());
     let older_source = older.get_srcuuids()[0];
     let newer_source = newer.get_srcuuids()[0];
+    assert_eq!(
+        older
+            .get_identifiers()
+            .get("msgsesseventid")
+            .map(String::as_str),
+        Some("1:D|9:SESSION-A|9:CONTEXT-A|7")
+    );
+
+    let directly_merged = newer
+        .clone()
+        .with_previous(&older)
+        .expect("one session event forces a full merge");
+    assert!(directly_merged.get_prevuuid().is_none());
+    assert_eq!(directly_merged.get_by_tag(55), Some(Scalar::from("MSFT")));
+    assert_eq!(
+        directly_merged.get_isincode().map(|code| code.as_str()),
+        Some("US0378331005")
+    );
+    assert_eq!(directly_merged.get_recdunix(), Some(100));
+    assert_eq!(directly_merged.get_refrecdunix(), Some(200));
 
     for source in [
         vec![older.clone(), newer.clone()],
@@ -1081,6 +1101,20 @@ fn lifecycle_fully_merges_one_capture_delivery_on_the_latest_recording_base() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(walked.len(), 2, "the deadline emits one expiry");
+    let live = &walked[0];
+    let expired = &walked[1];
+    assert_eq!(expired.get_currunix(), live.get_exprtime().unwrap());
+    assert_eq!(expired.get_prevuuid(), Some(live.get_curruuid()));
+    assert_eq!(expired.get_seqnum(), live.get_seqnum() + 1);
+    assert_eq!(expired.get_state().as_str(), "95EXPIRED");
+    assert_eq!(
+        expired.get_identifiers().get("msgsesseventid"),
+        live.get_identifiers().get("msgsesseventid")
+    );
+    assert!(
+        expired.clone().with_previous(live).is_none(),
+        "a keyed synthetic expiry replays as its existing successor"
+    );
 }
 
 #[test]

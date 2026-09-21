@@ -1,0 +1,24 @@
+{
+  "name": "trades",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdcoll",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdcoll"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdcoll",
+    "FIX:counter": "897",
+    "FIX:tag": "783204",
+    "description": "Trades for which collateral is required",
+    "display": "Trades"
+  }
+}

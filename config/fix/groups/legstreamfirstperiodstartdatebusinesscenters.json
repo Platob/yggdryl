@@ -1,0 +1,24 @@
+{
+  "name": "legstreamfirstperiodstartdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamfirstperiodstartdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legstreamfirstperiodstartdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legstreamfirstperiodstartdatebusinesscentercomponent",
+    "FIX:counter": "40941",
+    "FIX:tag": "551151",
+    "description": "Required if NoLegStreamFirstPeriodStartDateBusinessCenters(40941) > 0.",
+    "display": "LegStreamFirstPeriodStartDateBusinessCenters"
+  }
+}

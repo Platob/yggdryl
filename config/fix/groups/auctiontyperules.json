@@ -1,0 +1,24 @@
+{
+  "name": "auctiontyperules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "auctiontyperule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "auctiontyperule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "auctiontyperule",
+    "FIX:counter": "2548",
+    "FIX:tag": "863124",
+    "description": "Required if NoAuctionTypeRules(2548) > 0.",
+    "display": "AuctionTypeRules"
+  }
+}

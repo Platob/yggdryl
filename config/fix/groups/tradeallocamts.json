@@ -1,0 +1,24 @@
+{
+  "name": "tradeallocamts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradeallocamtcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "tradeallocamtcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "tradeallocamtcomponent",
+    "FIX:counter": "1844",
+    "FIX:tag": "604986",
+    "description": "Required if NoTradeAllocAmts(1844) > 0.",
+    "display": "TradeAllocAmts"
+  }
+}

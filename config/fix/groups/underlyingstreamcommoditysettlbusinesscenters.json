@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcommoditysettlbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettlbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcommoditysettlbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcommoditysettlbusinesscentercomponent",
+    "FIX:counter": "41962",
+    "FIX:tag": "379170",
+    "description": "Required if NoUnderlyingStreamCommoditySettlBusinessCenters(41962) > 0.",
+    "display": "UnderlyingStreamCommoditySettlBusinessCenters"
+  }
+}

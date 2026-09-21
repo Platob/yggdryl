@@ -1,0 +1,24 @@
+{
+  "name": "complexeventschedules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "complexeventschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "complexeventschedule",
+    "FIX:counter": "41031",
+    "FIX:tag": "1004235",
+    "description": "Required if NoComplexEventSchedules(41031) > 0.",
+    "display": "ComplexEventSchedules"
+  }
+}

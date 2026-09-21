@@ -1,0 +1,24 @@
+{
+  "name": "throttleparams",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "throttleparam",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "throttleparam"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "throttleparam",
+    "FIX:counter": "1610",
+    "FIX:tag": "731995",
+    "description": "Indicates number of throttles to follow.",
+    "display": "ThrottleParams"
+  }
+}

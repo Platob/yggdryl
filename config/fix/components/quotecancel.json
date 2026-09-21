@@ -199,13 +199,13 @@
         }
       },
       {
-        "name": "quotcxlentriesgrp",
+        "name": "quotcxlentries",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotcxlentriesgrp"
+          "FIX:group": "quotcxlentries"
         }
       },
       {

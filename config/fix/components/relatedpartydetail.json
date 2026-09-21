@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "relatedpartydetailsubgrp",
+        "name": "relatedpartydetailsubids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedpartydetailsubgrp"
+          "FIX:group": "relatedpartydetailsubids"
         }
       },
       {
@@ -101,13 +101,13 @@
         }
       },
       {
-        "name": "partyrelationshipgrp",
+        "name": "partyrelationships",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "partyrelationshipgrp"
+          "FIX:group": "partyrelationships"
         }
       }
     ]

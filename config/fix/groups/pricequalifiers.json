@@ -1,0 +1,24 @@
+{
+  "name": "pricequalifiers",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricequalifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "pricequalifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "pricequalifiercomponent",
+    "FIX:counter": "2709",
+    "FIX:tag": "955007",
+    "description": "Required if NoPriceQualifiers(2709) > 0.",
+    "display": "PriceQualifiers"
+  }
+}

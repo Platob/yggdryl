@@ -1,0 +1,24 @@
+{
+  "name": "settlementamounts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlementamountcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "settlementamountcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "settlementamountcomponent",
+    "FIX:counter": "1700",
+    "FIX:tag": "322497",
+    "description": "Required if NoSettlementAmounts > 0.",
+    "display": "SettlementAmounts"
+  }
+}

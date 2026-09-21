@@ -1,0 +1,24 @@
+{
+  "name": "tradingsessions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdsesslst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdsesslst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdsesslst",
+    "FIX:counter": "386",
+    "FIX:tag": "792369",
+    "description": "Identifier for Trading Session",
+    "display": "TradingSessions"
+  }
+}

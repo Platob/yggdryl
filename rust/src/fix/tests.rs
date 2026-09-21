@@ -3806,7 +3806,7 @@ fn rule80a_rules() -> Vec<FixReplacement> {
             "select 'A' as ordercapacity where :msgtype in ('8', 'AE') and :group = 'allocgrp' and rule80a = 'A'",
         )),
         FixReplacement::new(plan(concat!(
-            "select [{partyid: rule80a, hopcompid: onbehalfofcompid, ptyssubgrp: [{partysubid: ",
+            "select [{partyid: rule80a, hopcompid: onbehalfofcompid, partysubids: [{partysubid: ",
             "concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2))}]}] as parties",
         ))),
     ]
@@ -3817,7 +3817,7 @@ const RULE80A_DOCUMENT: &str = concat!(
     r#"[{"plan":"select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'","#,
     r#""doc":"Program order, non-index arbitrage, for \"other\" agency"},"#,
     r#"{"plan":"select 'A' as ordercapacity where :msgtype in ('8', 'AE') and :group = 'allocgrp' and rule80a = 'A'"},"#,
-    r#"{"plan":"select [{partyid: rule80a, hopcompid: onbehalfofcompid, ptyssubgrp: [{partysubid: "#,
+    r#"{"plan":"select [{partyid: rule80a, hopcompid: onbehalfofcompid, partysubids: [{partysubid: "#,
     r#"concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2))}]}] as parties"}]"#,
 );
 
@@ -4032,7 +4032,7 @@ fn committed() -> Arc<FixRegistry> {
 
 #[test]
 fn group_entry_names_singularize_published_collections() {
-    use super::component::{canonical_group_name, entry_name, group_name};
+    use super::component::{canonical_group_name, entry_name, group_name, group_names};
     for (collection, entry) in [
         ("Parties", "party"),
         ("NestedParties2", "nestedparty2"),
@@ -4064,6 +4064,16 @@ fn group_entry_names_singularize_published_collections() {
         canonical_group_name("RegulatoryTradeIDGrp").as_str(),
         "regulatorytradeids"
     );
+    let mut count = counter("nopartysubids", 802);
+    count.set_display("NoPartySubIDs").unwrap();
+    assert_eq!(group_name(&count).as_str(), "partysubids");
+    assert_eq!(canonical_group_name("PtysSubGrp").as_str(), "partysubids");
+    assert_eq!(canonical_group_name("HopGrp").as_str(), "hops");
+    let names = group_names(&count, Some("PtysSubGrp"));
+    assert_eq!(names.0.as_str(), "partysubids");
+    assert_eq!(names.1.as_str(), "PartySubIDs");
+    assert_eq!(names.2.as_str(), "ptyssub");
+    assert_eq!(names.3.as_str(), "PtysSub");
 }
 
 #[test]
@@ -4091,6 +4101,11 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
         let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
             panic!("{}", field.dtype());
         };
+        let display = field
+            .display()
+            .unwrap_or_else(|| panic!("{} has no collection display", field.name()));
+        assert_eq!(display.to_ascii_lowercase(), field.name(), "{display}");
+        assert_eq!(field.name().ends_with("grp"), display.ends_with("Grp"));
         assert!(entries.insert(item.name()));
         assert!(!item.is_nullable());
         assert!(matches!(item.dtype(), DataType::Struct(_)));
@@ -4458,7 +4473,7 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         .expect("the party's members")
         .iter()
         .map(entry_members)
-        .find(|held| held[1].as_str() == Some("ptyssubgrp"))
+        .find(|held| held[1].as_str() == Some("partysubids"))
         .expect("the nested group entry");
     let leaf = level3[3].as_str().expect("the folded text leaf");
     assert!(!leaf.is_empty(), "two levels folded into it");

@@ -129,13 +129,13 @@
         }
       },
       {
-        "name": "relatedinstrumentgrp",
+        "name": "relatedinstruments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstruments"
         }
       },
       {
@@ -271,13 +271,13 @@
         }
       },
       {
-        "name": "tradingservicegrp",
+        "name": "tradingservices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradingservicegrp"
+          "FIX:group": "tradingservices"
         }
       },
       {
@@ -523,13 +523,13 @@
         }
       },
       {
-        "name": "clearingpriceparametersgrp",
+        "name": "clearingpriceparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "clearingpriceparametersgrp"
+          "FIX:group": "clearingpriceparameters"
         }
       },
       {

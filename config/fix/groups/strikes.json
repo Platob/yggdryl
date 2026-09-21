@@ -1,0 +1,24 @@
+{
+  "name": "strikes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtstrkpx",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "instrmtstrkpx"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "instrmtstrkpx",
+    "FIX:counter": "428",
+    "FIX:tag": "100591",
+    "description": "Number of strike price entries",
+    "display": "Strikes"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "complexeventperioddatetimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "complexeventperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "complexeventperioddatecomponent",
+    "FIX:counter": "41007",
+    "FIX:tag": "281782",
+    "description": "Required if NoComplexEventPeriodDateTimes(41007) > 0.",
+    "display": "ComplexEventPeriodDateTimes"
+  }
+}

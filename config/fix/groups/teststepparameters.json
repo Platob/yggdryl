@@ -1,0 +1,24 @@
+{
+  "name": "teststepparameters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "teststepparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "teststepparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "teststepparameter",
+    "FIX:counter": "3045",
+    "FIX:tag": "636804",
+    "description": "Required if NoTestStepParameters(3045) > 0.",
+    "display": "TestStepParameters"
+  }
+}

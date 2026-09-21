@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "returnratepricegrp",
+        "name": "returnrateprices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "returnratepricegrp"
+          "FIX:group": "returnrateprices"
         }
       },
       {
@@ -102,13 +102,13 @@
         }
       },
       {
-        "name": "returnratefxconversiongrp",
+        "name": "returnratefxconversions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "returnratefxconversiongrp"
+          "FIX:group": "returnratefxconversions"
         }
       },
       {
@@ -255,13 +255,13 @@
         }
       },
       {
-        "name": "returnrateinformationsourcegrp",
+        "name": "returnrateinformationsources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "returnrateinformationsourcegrp"
+          "FIX:group": "returnrateinformationsources"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "returnratedategrp",
+        "name": "returnratedates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "returnratedategrp"
+          "FIX:group": "returnratedates"
         }
       },
       {

@@ -308,13 +308,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {
@@ -383,13 +383,13 @@
         }
       },
       {
-        "name": "quotreqlegsgrp",
+        "name": "quotreqlegs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotreqlegsgrp"
+          "FIX:group": "quotreqlegs"
         }
       },
       {
@@ -404,13 +404,13 @@
         }
       },
       {
-        "name": "quotqualgrp",
+        "name": "quotequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "quotqualgrp"
+          "FIX:group": "quotequalifiers"
         }
       },
       {
@@ -490,13 +490,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {

@@ -103,13 +103,13 @@
         }
       },
       {
-        "name": "teststepparametergrp",
+        "name": "teststepparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "teststepparametergrp"
+          "FIX:group": "teststepparameters"
         }
       }
     ]

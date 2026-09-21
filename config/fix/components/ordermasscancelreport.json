@@ -124,13 +124,13 @@
         }
       },
       {
-        "name": "affectedordgrp",
+        "name": "affectedorders",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "affectedordgrp"
+          "FIX:group": "affectedorders"
         }
       },
       {
@@ -145,13 +145,13 @@
         }
       },
       {
-        "name": "notaffectedordgrp",
+        "name": "notaffectedorders",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "notaffectedordgrp"
+          "FIX:group": "notaffectedorders"
         }
       },
       {

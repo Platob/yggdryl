@@ -1,0 +1,24 @@
+{
+  "name": "relatedpositions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedposition",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedposition"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedposition",
+    "FIX:counter": "1861",
+    "FIX:tag": "590139",
+    "description": "Required if NoRelatedPositions(1861) > 0.",
+    "display": "RelatedPositions"
+  }
+}

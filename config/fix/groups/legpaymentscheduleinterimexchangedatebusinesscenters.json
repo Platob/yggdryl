@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentscheduleinterimexchangedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentscheduleinterimexchangedatebusinesscenter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentscheduleinterimexchangedatebusinesscenter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentscheduleinterimexchangedatebusinesscenter",
+    "FIX:counter": "40928",
+    "FIX:tag": "242309",
+    "description": "Required if NoLegPaymentScheduleInterimExchangeDateBusinessCenters(40928) > 0.",
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenters"
+  }
+}

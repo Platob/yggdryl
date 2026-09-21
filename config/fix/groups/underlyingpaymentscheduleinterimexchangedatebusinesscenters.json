@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentscheduleinterimexchangedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentscheduleinterimexchangedatebusinesscenter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentscheduleinterimexchangedatebusinesscenter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentscheduleinterimexchangedatebusinesscenter",
+    "FIX:counter": "40967",
+    "FIX:tag": "106292",
+    "description": "Required if NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters(40967) > 0.",
+    "display": "UnderlyingPaymentScheduleInterimExchangeDateBusinessCenters"
+  }
+}

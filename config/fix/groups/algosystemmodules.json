@@ -1,0 +1,24 @@
+{
+  "name": "algosystemmodules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "algosystemmodule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "algosystemmodule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "algosystemmodule",
+    "FIX:counter": "3025",
+    "FIX:tag": "182529",
+    "description": "Required if NoAlgoSystemModules(3025) > 0.",
+    "display": "AlgoSystemModules"
+  }
+}

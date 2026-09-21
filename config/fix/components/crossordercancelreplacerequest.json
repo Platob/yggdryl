@@ -338,13 +338,13 @@
         }
       },
       {
-        "name": "trdgsesgrp",
+        "name": "trdgses",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdgsesgrp"
+          "FIX:group": "trdgses"
         }
       },
       {
@@ -705,13 +705,13 @@
         }
       },
       {
-        "name": "strategyparametersgrp",
+        "name": "strategyparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "strategyparametersgrp"
+          "FIX:group": "strategyparameters"
         }
       },
       {

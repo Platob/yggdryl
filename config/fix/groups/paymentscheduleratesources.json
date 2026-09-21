@@ -1,0 +1,24 @@
+{
+  "name": "paymentscheduleratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentscheduleratesourcecomponent",
+    "FIX:counter": "40868",
+    "FIX:tag": "949919",
+    "description": "Required if NoPaymentScheduleRateSources(40868) > 0.",
+    "display": "PaymentScheduleRateSources"
+  }
+}

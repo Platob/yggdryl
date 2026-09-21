@@ -59,13 +59,13 @@
         }
       },
       {
-        "name": "streamcommodityaltidgrp",
+        "name": "streamcommodityaltids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streamcommodityaltidgrp"
+          "FIX:group": "streamcommodityaltids"
         }
       },
       {
@@ -124,13 +124,13 @@
         }
       },
       {
-        "name": "streamassetattributegrp",
+        "name": "streamassetattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streamassetattributegrp"
+          "FIX:group": "streamassetattributes"
         }
       },
       {
@@ -222,13 +222,13 @@
         }
       },
       {
-        "name": "streamcommoditydatasourcegrp",
+        "name": "streamcommoditydatasources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streamcommoditydatasourcegrp"
+          "FIX:group": "streamcommoditydatasources"
         }
       },
       {
@@ -298,13 +298,13 @@
         }
       },
       {
-        "name": "streamcommoditysettlbusinesscentergrp",
+        "name": "streamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streamcommoditysettlbusinesscentergrp"
+          "FIX:group": "streamcommoditysettlbusinesscenters"
         }
       },
       {
@@ -374,13 +374,13 @@
         }
       },
       {
-        "name": "streamcommoditysettlperiodgrp",
+        "name": "streamcommoditysettlperiods",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "streamcommoditysettlperiodgrp"
+          "FIX:group": "streamcommoditysettlperiods"
         }
       },
       {

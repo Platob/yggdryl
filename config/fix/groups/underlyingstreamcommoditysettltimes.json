@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcommoditysettltimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamcommoditysettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamcommoditysettltime",
+    "FIX:counter": "41999",
+    "FIX:tag": "166453",
+    "description": "Required if NoUnderlyingStreamCommoditySettlTimes(41999) > 0.",
+    "display": "UnderlyingStreamCommoditySettlTimes"
+  }
+}

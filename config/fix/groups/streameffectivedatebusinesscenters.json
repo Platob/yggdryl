@@ -1,0 +1,24 @@
+{
+  "name": "streameffectivedatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streameffectivedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streameffectivedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streameffectivedatebusinesscentercomponent",
+    "FIX:counter": "40960",
+    "FIX:tag": "523397",
+    "description": "Required if NoStreamEffectiveDateBusinessCenters(40960) > 0.",
+    "display": "StreamEffectiveDateBusinessCenters"
+  }
+}

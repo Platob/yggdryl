@@ -922,7 +922,7 @@
     "metadata": {
       "FIX:replacements": [
         {
-          "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hopgrp",
+          "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hops",
           "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)"
         }
       ],

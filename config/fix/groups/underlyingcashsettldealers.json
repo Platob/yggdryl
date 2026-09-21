@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcashsettldealers",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcashsettldealercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingcashsettldealercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingcashsettldealercomponent",
+    "FIX:counter": "42039",
+    "FIX:tag": "518556",
+    "description": "Required if NoUnderlyingCashSettlDealers(42039) > 0.",
+    "display": "UnderlyingCashSettlDealers"
+  }
+}

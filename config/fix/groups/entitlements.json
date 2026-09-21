@@ -1,0 +1,24 @@
+{
+  "name": "entitlements",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "entitlement",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "entitlement"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "entitlement",
+    "FIX:counter": "1773",
+    "FIX:tag": "180612",
+    "description": "Required if NoEntitlements(1773) > 0.",
+    "display": "Entitlements"
+  }
+}

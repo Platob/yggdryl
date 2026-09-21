@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "legprotectiontermeventnewssourcegrp",
+        "name": "legprotectiontermeventnewssources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprotectiontermeventnewssourcegrp"
+          "FIX:group": "legprotectiontermeventnewssources"
         }
       },
       {
@@ -113,13 +113,13 @@
         }
       },
       {
-        "name": "legprotectiontermeventgrp",
+        "name": "legprotectiontermevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprotectiontermeventgrp"
+          "FIX:group": "legprotectiontermevents"
         }
       },
       {
@@ -134,13 +134,13 @@
         }
       },
       {
-        "name": "legprotectiontermobligationgrp",
+        "name": "legprotectiontermobligations",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legprotectiontermobligationgrp"
+          "FIX:group": "legprotectiontermobligations"
         }
       },
       {

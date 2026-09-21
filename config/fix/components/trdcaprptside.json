@@ -267,13 +267,13 @@
         }
       },
       {
-        "name": "partydetailgrp",
+        "name": "partydetails",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "partydetailgrp"
+          "FIX:group": "partydetails"
         }
       },
       {
@@ -375,13 +375,13 @@
         }
       },
       {
-        "name": "clrinstgrp",
+        "name": "clearinginstructions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "clrinstgrp"
+          "FIX:group": "clearinginstructions"
         }
       },
       {
@@ -407,13 +407,13 @@
         }
       },
       {
-        "name": "sideregulatorytradeidgrp",
+        "name": "sideregulatorytradeids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "sideregulatorytradeidgrp"
+          "FIX:group": "sideregulatorytradeids"
         }
       },
       {
@@ -592,13 +592,13 @@
         }
       },
       {
-        "name": "commissiondatagrp",
+        "name": "commissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "commissiondatagrp"
+          "FIX:group": "commissions"
         }
       },
       {
@@ -822,13 +822,13 @@
         }
       },
       {
-        "name": "contamtgrp",
+        "name": "contamts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "contamtgrp"
+          "FIX:group": "contamts"
         }
       },
       {
@@ -864,13 +864,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {
@@ -1232,13 +1232,13 @@
         }
       },
       {
-        "name": "relatedtradegrp",
+        "name": "relatedtrades",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedtradegrp"
+          "FIX:group": "relatedtrades"
         }
       },
       {
@@ -1253,13 +1253,13 @@
         }
       },
       {
-        "name": "relatedpositiongrp",
+        "name": "relatedpositions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedpositiongrp"
+          "FIX:group": "relatedpositions"
         }
       },
       {
@@ -1340,13 +1340,13 @@
         }
       },
       {
-        "name": "sidecollateralamountgrp",
+        "name": "sidecollateralamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "sidecollateralamountgrp"
+          "FIX:group": "sidecollateralamounts"
         }
       }
     ]

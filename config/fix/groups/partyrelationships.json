@@ -1,0 +1,24 @@
+{
+  "name": "partyrelationships",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partyrelationshipcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "partyrelationshipcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "partyrelationshipcomponent",
+    "FIX:counter": "1514",
+    "FIX:tag": "145260",
+    "description": "Identifies the type of party relationship requested. Required if NoPartyRelationships > 0.",
+    "display": "PartyRelationships"
+  }
+}

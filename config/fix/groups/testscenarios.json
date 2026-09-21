@@ -1,0 +1,24 @@
+{
+  "name": "testscenarios",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testscenario",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "testscenario"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "testscenario",
+    "FIX:counter": "3028",
+    "FIX:tag": "757044",
+    "description": "Required if NoTestScenarios(3028) > 0.",
+    "display": "TestScenarios"
+  }
+}

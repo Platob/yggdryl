@@ -1,0 +1,24 @@
+{
+  "name": "deliveryschedulesettldays",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedulesettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "deliveryschedulesettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "deliveryschedulesettldaycomponent",
+    "FIX:counter": "41051",
+    "FIX:tag": "118772",
+    "description": "Required if NoDeliveryScheduleSettlDays(41051) > 0.",
+    "display": "DeliveryScheduleSettlDays"
+  }
+}

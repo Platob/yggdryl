@@ -123,13 +123,13 @@
         }
       },
       {
-        "name": "matchexceptiongrp",
+        "name": "matchexceptions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "matchexceptiongrp"
+          "FIX:group": "matchexceptions"
         }
       },
       {
@@ -144,13 +144,13 @@
         }
       },
       {
-        "name": "matchingdatapointgrp",
+        "name": "matchingdatapoints",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "matchingdatapointgrp"
+          "FIX:group": "matchingdatapoints"
         }
       },
       {

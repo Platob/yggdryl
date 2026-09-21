@@ -1,0 +1,24 @@
+{
+  "name": "legstreamterminationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamterminationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legstreamterminationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legstreamterminationdatebusinesscentercomponent",
+    "FIX:counter": "40943",
+    "FIX:tag": "157493",
+    "description": "Required if NoLegStreamTerminationDateBusinessCenters(40943) > 0.",
+    "display": "LegStreamTerminationDateBusinessCenters"
+  }
+}

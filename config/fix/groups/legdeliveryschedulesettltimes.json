@@ -1,0 +1,24 @@
+{
+  "name": "legdeliveryschedulesettltimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliveryschedulesettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdeliveryschedulesettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdeliveryschedulesettltime",
+    "FIX:counter": "41425",
+    "FIX:tag": "884671",
+    "description": "Required if NoLegDeliveryScheduleSettlTimes(41425) > 0.",
+    "display": "LegDeliveryScheduleSettlTimes"
+  }
+}

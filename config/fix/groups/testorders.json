@@ -1,0 +1,24 @@
+{
+  "name": "testorders",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testorder",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "testorder"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "testorder",
+    "FIX:counter": "3082",
+    "FIX:tag": "502268",
+    "description": "Required if NoTestOrders(3082) > 0.",
+    "display": "TestOrders"
+  }
+}

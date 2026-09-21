@@ -1,0 +1,24 @@
+{
+  "name": "protectiontermeventqualifiers",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectiontermeventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "protectiontermeventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "protectiontermeventqualifiercomponent",
+    "FIX:counter": "40199",
+    "FIX:tag": "259555",
+    "description": "Required if NoProtectionTermEventQualifiers(40199) > 0.",
+    "display": "ProtectionTermEventQualifiers"
+  }
+}

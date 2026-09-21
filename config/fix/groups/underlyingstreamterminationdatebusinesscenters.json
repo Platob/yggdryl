@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamterminationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamterminationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingstreamterminationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingstreamterminationdatebusinesscentercomponent",
+    "FIX:counter": "40976",
+    "FIX:tag": "641613",
+    "description": "Required if NoUnderlyingStreamTerminationDateBusinessCenters(40976) > 0.",
+    "display": "UnderlyingStreamTerminationDateBusinessCenters"
+  }
+}

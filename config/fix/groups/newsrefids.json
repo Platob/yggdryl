@@ -1,0 +1,24 @@
+{
+  "name": "newsrefids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "newsref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "newsref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "newsref",
+    "FIX:counter": "1475",
+    "FIX:tag": "198168",
+    "description": "Number of news item references",
+    "display": "NewsRefIDs"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "commissions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "commissiondatacomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "commissiondatacomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "commissiondatacomponent",
+    "FIX:counter": "2639",
+    "FIX:tag": "1029999",
+    "description": "Required if NoCommissions(2639) > 0.",
+    "display": "Commissions"
+  }
+}

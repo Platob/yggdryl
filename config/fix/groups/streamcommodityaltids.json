@@ -1,0 +1,24 @@
+{
+  "name": "streamcommodityaltids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommodityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamcommodityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamcommodityaltidcomponent",
+    "FIX:counter": "41277",
+    "FIX:tag": "1071727",
+    "description": "Required if NoStreamCommodityAltIDs(41277) > 0.",
+    "display": "StreamCommodityAltIDs"
+  }
+}

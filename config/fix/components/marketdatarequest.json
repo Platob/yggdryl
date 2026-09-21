@@ -134,13 +134,13 @@
         }
       },
       {
-        "name": "mdreqgrp",
+        "name": "mdentrytypes",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:group": "mdreqgrp"
+          "FIX:group": "mdentrytypes"
         }
       },
       {
@@ -197,13 +197,13 @@
         }
       },
       {
-        "name": "trdgsesgrp",
+        "name": "trdgses",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdgsesgrp"
+          "FIX:group": "trdgses"
         }
       },
       {

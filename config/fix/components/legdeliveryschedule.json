@@ -158,13 +158,13 @@
         }
       },
       {
-        "name": "legdeliveryschedulesettldaygrp",
+        "name": "legdeliveryschedulesettldays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legdeliveryschedulesettldaygrp"
+          "FIX:group": "legdeliveryschedulesettldays"
         }
       }
     ]

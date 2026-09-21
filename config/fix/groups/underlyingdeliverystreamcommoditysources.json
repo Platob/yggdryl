@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdeliverystreamcommoditysources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliverystreamcommoditysourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingdeliverystreamcommoditysourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingdeliverystreamcommoditysourcecomponent",
+    "FIX:counter": "41808",
+    "FIX:tag": "882523",
+    "description": "Required if NoUnderlyingDeliveryStreamCommoditySources(41808) > 0.",
+    "display": "UnderlyingDeliveryStreamCommoditySources"
+  }
+}

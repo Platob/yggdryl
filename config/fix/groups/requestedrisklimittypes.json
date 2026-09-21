@@ -1,0 +1,24 @@
+{
+  "name": "requestedrisklimittypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestedrisklimittype",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "requestedrisklimittype"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "requestedrisklimittype",
+    "FIX:counter": "1668",
+    "FIX:tag": "961192",
+    "description": "Required if NoRequestedRiskLimitType > 0.",
+    "display": "RequestedRiskLimitTypes"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingadditionalterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingadditionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingadditionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingadditionalterm",
+    "FIX:counter": "42036",
+    "FIX:tag": "559338",
+    "description": "Required if NoUnderlyingAdditionalTerms(42036) > 0.",
+    "display": "UnderlyingAdditionalTerms"
+  }
+}

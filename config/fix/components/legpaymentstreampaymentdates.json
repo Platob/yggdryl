@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "legpaymentstreampaymentdatebusinesscentergrp",
+        "name": "legpaymentstreampaymentdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentstreampaymentdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreampaymentdatebusinesscenters"
         }
       },
       {

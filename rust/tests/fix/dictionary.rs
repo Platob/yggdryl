@@ -518,9 +518,9 @@ fn a_member_reference_carries_the_field_and_its_tag() {
     assert_eq!(partyid.as_fix().field_ref(), Some("partyid"));
     assert_eq!(partyid.as_fix().tag().unwrap(), Some(448));
     let subgroup = party
-        .get_field_by_path("ptyssubgrp")
+        .get_field_by_path("partysubids")
         .expect("the sub-party group member");
-    assert_eq!(subgroup.as_fix().group(), Some("ptyssubgrp"));
+    assert_eq!(subgroup.as_fix().group(), Some("partysubids"));
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let document = std::fs::read_to_string(root.join("components/party.json")).unwrap();
     let stored = yggdryl::from_json_scalar(&document).unwrap();
@@ -654,7 +654,7 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// definition and one fixed-row member; `nofixentries` now describes the
 /// residual count rather than the complete in-memory content.
 /// It last moved when the identifiers group described the synthesized
-/// `msgsectxid` capture pair beside the message's ordinary identifiers.
+/// complete `msgsesseventid` delivery key beside the ordinary identifiers.
 /// It moved when FIX's `SecAltIDGrp` took the canonical group name
 /// `secaltids` and the crate added the `execunix` and `recdunix` fields; those
 /// definitions, references, derivations and generated tags are now part of the
@@ -665,10 +665,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// select a reference across repeated generic merges.
 /// It moved when `RegulatoryTradeIDGrp` took the canonical collection name
 /// `regulatorytradeids` and joined the fixed row under counter 1907.
+/// It moved when 421 unambiguous standard groups took semantic plural names
+/// and displays, while the other 103 retained an explicit `Grp` suffix.
+/// It moved when the crate identifier document replaced its partial two-part
+/// capture key with the complete length-prefixed `msgsesseventid` key.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 17_827_337_951_025_588_531);
+    assert_eq!(registry.stable_hash(), 3_303_944_819_954_890_747);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

@@ -214,9 +214,9 @@ impl FixHeader {
 /// line's own bytes like every other fact a message holds. None of it is
 /// FIX and none of it is content, so none of it is an entry or a byte on
 /// the wire, and none of it reaches the code the message's content digests
-/// to. Where the row header brackets both a session instance and a message
-/// context, the two are retained together under the message identifier
-/// `msgsectxid`; they remain capture provenance and do not become the
+/// to. Where message type, session instance, message context and sequence are
+/// all present, they are retained together under the message identifier
+/// `msgsesseventid`; they remain delivery provenance and do not become the
 /// message's content identity or its chain code.
 ///
 /// What the *reader* says about the line is not here: the object the line

@@ -1,0 +1,24 @@
+{
+  "name": "marketdisruptionevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketdisruptioneventcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "marketdisruptioneventcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "marketdisruptioneventcomponent",
+    "FIX:counter": "41092",
+    "FIX:tag": "262082",
+    "description": "Required if NoMarketDisruptionEvents(41092) > 0.",
+    "display": "MarketDisruptionEvents"
+  }
+}

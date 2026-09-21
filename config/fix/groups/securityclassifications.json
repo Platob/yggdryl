@@ -1,0 +1,24 @@
+{
+  "name": "securityclassifications",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "securityclassification",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "securityclassification"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "securityclassification",
+    "FIX:counter": "1582",
+    "FIX:tag": "732004",
+    "description": "Conditionally required if NoSecurityClassifications > 0.",
+    "display": "SecurityClassifications"
+  }
+}

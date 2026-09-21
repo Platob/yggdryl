@@ -1,0 +1,24 @@
+{
+  "name": "orderevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "orderevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "orderevent",
+    "FIX:counter": "1795",
+    "FIX:tag": "584305",
+    "description": "Required when NoOrderEvents(1795) > 0.",
+    "display": "OrderEvents"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "streams",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "stream",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "stream"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "stream",
+    "FIX:counter": "40049",
+    "FIX:tag": "103036",
+    "description": "Required if NoStreams(40049) > 0.",
+    "display": "Streams"
+  }
+}

@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "legoptionexerciseexpirationdatebusinesscentergrp",
+        "name": "legoptionexerciseexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legoptionexerciseexpirationdatebusinesscentergrp"
+          "FIX:group": "legoptionexerciseexpirationdatebusinesscenters"
         }
       },
       {
@@ -47,13 +47,13 @@
         }
       },
       {
-        "name": "legoptionexerciseexpirationdategrp",
+        "name": "legoptionexerciseexpirationdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legoptionexerciseexpirationdategrp"
+          "FIX:group": "legoptionexerciseexpirationdates"
         }
       },
       {

@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "underlyingreturnratevaluationdategrp",
+        "name": "underlyingreturnratevaluationdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingreturnratevaluationdategrp"
+          "FIX:group": "underlyingreturnratevaluationdates"
         }
       },
       {
@@ -267,13 +267,13 @@
         }
       },
       {
-        "name": "underlyingreturnratevaluationdatebusinesscentergrp",
+        "name": "underlyingreturnratevaluationdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingreturnratevaluationdatebusinesscentergrp"
+          "FIX:group": "underlyingreturnratevaluationdatebusinesscenters"
         }
       }
     ]

@@ -356,13 +356,13 @@
         }
       },
       {
-        "name": "legpaymentscheduleratesourcegrp",
+        "name": "legpaymentscheduleratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentscheduleratesourcegrp"
+          "FIX:group": "legpaymentscheduleratesources"
         }
       },
       {
@@ -421,13 +421,13 @@
         }
       },
       {
-        "name": "legpaymentschedulefixingdatebusinesscentergrp",
+        "name": "legpaymentschedulefixingdatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentschedulefixingdatebusinesscentergrp"
+          "FIX:group": "legpaymentschedulefixingdatebusinesscenters"
         }
       },
       {
@@ -508,13 +508,13 @@
         }
       },
       {
-        "name": "legpaymentschedulefixingdaygrp",
+        "name": "legpaymentschedulefixingdays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentschedulefixingdaygrp"
+          "FIX:group": "legpaymentschedulefixingdays"
         }
       },
       {
@@ -617,13 +617,13 @@
         }
       },
       {
-        "name": "legpaymentscheduleinterimexchangedatebusinesscentergrp",
+        "name": "legpaymentscheduleinterimexchangedatebusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legpaymentscheduleinterimexchangedatebusinesscentergrp"
+          "FIX:group": "legpaymentscheduleinterimexchangedatebusinesscenters"
         }
       },
       {

@@ -1,0 +1,23 @@
+{
+  "name": "nestedpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "nstdptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "nstdptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "nstdptyssub",
+    "FIX:counter": "804",
+    "FIX:tag": "684307",
+    "display": "NestedPartySubIDs"
+  }
+}

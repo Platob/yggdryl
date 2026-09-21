@@ -1,0 +1,23 @@
+{
+  "name": "hops",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "hop",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "hop"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "hop",
+    "FIX:counter": "627",
+    "FIX:tag": "586832",
+    "display": "Hops"
+  }
+}

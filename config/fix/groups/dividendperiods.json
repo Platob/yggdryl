@@ -1,0 +1,24 @@
+{
+  "name": "dividendperiods",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dividendperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "dividendperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "dividendperiod",
+    "FIX:counter": "42274",
+    "FIX:tag": "384930",
+    "description": "Required if NoDividendPeriods(42274) > 0.",
+    "display": "DividendPeriods"
+  }
+}

@@ -123,13 +123,13 @@
         }
       },
       {
-        "name": "settlementamountgrp",
+        "name": "settlementamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "settlementamountgrp"
+          "FIX:group": "settlementamounts"
         }
       },
       {
@@ -186,13 +186,13 @@
         }
       },
       {
-        "name": "collateralamountgrp",
+        "name": "collateralamounts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "collateralamountgrp"
+          "FIX:group": "collateralamounts"
         }
       },
       {
@@ -207,13 +207,13 @@
         }
       },
       {
-        "name": "paycollectgrp",
+        "name": "paycollects",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paycollectgrp"
+          "FIX:group": "paycollects"
         }
       },
       {

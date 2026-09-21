@@ -1,0 +1,24 @@
+{
+  "name": "deliveryschedulesettltimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedulesettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "deliveryschedulesettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "deliveryschedulesettltime",
+    "FIX:counter": "41054",
+    "FIX:tag": "1079475",
+    "description": "Required if NoDeliveryScheduleSettlTimes(41054) > 0.",
+    "display": "DeliveryScheduleSettlTimes"
+  }
+}

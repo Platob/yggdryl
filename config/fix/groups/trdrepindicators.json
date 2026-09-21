@@ -1,0 +1,24 @@
+{
+  "name": "trdrepindicators",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdrepindicatorcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdrepindicatorcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdrepindicatorcomponent",
+    "FIX:counter": "1387",
+    "FIX:tag": "596981",
+    "description": "Number of trade publication indicators following",
+    "display": "TrdRepIndicators"
+  }
+}

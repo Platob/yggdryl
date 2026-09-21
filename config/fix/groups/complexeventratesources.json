@@ -1,0 +1,24 @@
+{
+  "name": "complexeventratesources",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "complexeventratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "complexeventratesourcecomponent",
+    "FIX:counter": "41013",
+    "FIX:tag": "743067",
+    "description": "Required if NoComplexEventRateSources(41013) > 0.",
+    "display": "ComplexEventRateSources"
+  }
+}

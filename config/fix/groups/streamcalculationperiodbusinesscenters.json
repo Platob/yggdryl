@@ -1,0 +1,24 @@
+{
+  "name": "streamcalculationperiodbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcalculationperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "streamcalculationperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "streamcalculationperiodbusinesscentercomponent",
+    "FIX:counter": "40958",
+    "FIX:tag": "190714",
+    "description": "Required if NoStreamCalculationPeriodBusinessCenters(40958) > 0.",
+    "display": "StreamCalculationPeriodBusinessCenters"
+  }
+}

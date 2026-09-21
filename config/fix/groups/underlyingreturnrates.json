@@ -1,0 +1,24 @@
+{
+  "name": "underlyingreturnrates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnrate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingreturnrate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingreturnrate",
+    "FIX:counter": "43034",
+    "FIX:tag": "724083",
+    "description": "Required if NoUnderlyingReturnRates(43034) > 0.",
+    "display": "UnderlyingReturnRates"
+  }
+}

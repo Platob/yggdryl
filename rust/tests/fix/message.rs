@@ -104,11 +104,11 @@ fn instrument_identifier_setters_fill_secaltids() {
 }
 
 #[test]
-fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
+fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     let (registry, reader) = reader();
     let message = reader
         .sole_line(
-            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+            b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
         )
         .unwrap();
 
@@ -121,7 +121,7 @@ fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
             .collect::<Vec<_>>(),
         [
             ("clordid", "CLIENT-1"),
-            ("msgsectxid", "SESSION-1:CONTEXT-1"),
+            ("msgsesseventid", "1:8|9:SESSION-1|9:CONTEXT-1|7"),
             ("orderid", "ORDER-1"),
             ("origclordid", "CLIENT-0"),
         ],
@@ -136,7 +136,7 @@ fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
     assert_eq!(fallback.get_crosscode(), "CLIENT-0", "first stated FIX id");
 
     let capture_only = reader
-        .sole_line(b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1")
+        .sole_line(b"MSGTYPE=ZZ|MSGSEQNUM=7|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1")
         .unwrap();
     assert_eq!(
         capture_only.get_crosscode(),
@@ -146,23 +146,24 @@ fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
     assert_eq!(
         capture_only
             .get_identifiers()
-            .get("msgsectxid")
+            .get("msgsesseventid")
             .map(String::as_str),
-        Some("SESSION-1:CONTEXT-1")
+        Some("2:ZZ|9:SESSION-1|9:CONTEXT-1|7")
     );
 
     for partial in [
-        b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1".as_slice(),
-        b"MSGTYPE=ZZ|MSGCTXID=CONTEXT-1".as_slice(),
+        b"MSGTYPE=ZZ|MSGSEQNUM=7|MSGSESSIONID=SESSION-1".as_slice(),
+        b"MSGTYPE=ZZ|MSGSEQNUM=7|MSGCTXID=CONTEXT-1".as_slice(),
+        b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1".as_slice(),
     ] {
         let partial = reader.sole_line(partial).unwrap();
-        assert!(partial.get_identifiers().get("msgsectxid").is_none());
+        assert!(partial.get_identifiers().get("msgsesseventid").is_none());
         assert_eq!(partial.get_crosscode(), "");
     }
 
     let other_capture = reader
         .sole_line(
-            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-2|MSGCTXID=CONTEXT-2",
+            b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-2|MSGCTXID=CONTEXT-2",
         )
         .unwrap();
     assert_ne!(message.get_identifiers(), other_capture.get_identifiers());
@@ -182,11 +183,11 @@ fn crosscode_uses_fix_priority_while_capture_pairs_name_the_message_context() {
 }
 
 #[test]
-fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names() {
+fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_names() {
     let (_, reader) = reader();
     let mut message = reader
         .sole_line(
-            b"MSGTYPE=8|ORDERID=ORDER-1|CLORDID=CLIENT-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+            b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|CLORDID=CLIENT-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
         )
         .unwrap();
 
@@ -196,9 +197,9 @@ fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names
     assert_eq!(
         message
             .get_identifiers()
-            .get("msgsectxid")
+            .get("msgsesseventid")
             .map(String::as_str),
-        Some("SESSION-2:CONTEXT-1")
+        Some("1:8|9:SESSION-2|9:CONTEXT-1|7")
     );
     assert_eq!(
         message.get_identifiers().get("clordid").map(String::as_str),
@@ -212,7 +213,7 @@ fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names
     message
         .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::Null)
         .unwrap();
-    assert!(message.get_identifiers().get("msgsectxid").is_none());
+    assert!(message.get_identifiers().get("msgsesseventid").is_none());
     assert_eq!(
         message.get_identifiers().get("clordid").map(String::as_str),
         Some("CLIENT-1")
@@ -224,9 +225,20 @@ fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names
     assert_eq!(
         message
             .get_identifiers()
-            .get("msgsectxid")
+            .get("msgsesseventid")
             .map(String::as_str),
-        Some("SESSION-2:CONTEXT-2")
+        Some("1:8|9:SESSION-2|9:CONTEXT-2|7")
+    );
+
+    message.set(34, Scalar::from(8_u64)).unwrap();
+    message.set(35, Scalar::from("F")).unwrap();
+    assert_eq!(
+        message
+            .get_identifiers()
+            .get("msgsesseventid")
+            .map(String::as_str),
+        Some("1:F|9:SESSION-2|9:CONTEXT-2|8"),
+        "header mutations resettle the complete delivery key"
     );
 
     let implicit_uuid = message.get_curruuid();
@@ -248,9 +260,61 @@ fn capture_pair_identifier_tracks_typed_capture_edits_without_losing_other_names
     assert_eq!(
         message
             .get_identifiers()
-            .get("msgsectxid")
+            .get("msgsesseventid")
             .map(String::as_str),
-        Some("SESSION-3:CONTEXT-2")
+        Some("1:F|9:SESSION-3|9:CONTEXT-2|8")
+    );
+}
+
+#[test]
+fn session_event_identifier_is_canonical_and_separator_collision_safe() {
+    let (_, reader) = reader();
+    let base = reader
+        .sole_line(
+            b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+        )
+        .unwrap();
+    let mut left = base.clone();
+    left.set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("A:B"))
+        .unwrap();
+    left.set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("C|D"))
+        .unwrap();
+    let mut right = base;
+    right
+        .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("A"))
+        .unwrap();
+    right
+        .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("B:C|D"))
+        .unwrap();
+
+    assert_eq!(
+        left.get_identifiers()
+            .get("msgsesseventid")
+            .map(String::as_str),
+        Some("1:8|3:A:B|3:C|D|7")
+    );
+    assert_eq!(
+        right
+            .get_identifiers()
+            .get("msgsesseventid")
+            .map(String::as_str),
+        Some("1:8|1:A|5:B:C|D|7")
+    );
+    assert_ne!(left.get_identifiers(), right.get_identifiers());
+
+    let mut identifiers = left.get_identifiers().clone();
+    identifiers.insert(
+        "msgsesseventid".to_owned(),
+        "01:8|03:A:B|03:C|D|007".to_owned(),
+    );
+    left.set_identifiers(identifiers);
+    left.finalize();
+    assert_eq!(
+        left.get_identifiers()
+            .get("msgsesseventid")
+            .map(String::as_str),
+        Some("1:8|3:A:B|3:C|D|7"),
+        "settling rewrites an externally supplied equivalent to one spelling"
     );
 }
 

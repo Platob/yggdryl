@@ -1,0 +1,24 @@
+{
+  "name": "legprovisioncashsettlpaymentdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
+    "FIX:counter": "40934",
+    "FIX:tag": "314677",
+    "description": "Required if NoLegProvisionCashSettlPaymentDateBusinessCenters(40934) > 0.",
+    "display": "LegProvisionCashSettlPaymentDateBusinessCenters"
+  }
+}

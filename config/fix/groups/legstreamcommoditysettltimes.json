@@ -1,0 +1,24 @@
+{
+  "name": "legstreamcommoditysettltimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcommoditysettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legstreamcommoditysettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legstreamcommoditysettltime",
+    "FIX:counter": "41683",
+    "FIX:tag": "563862",
+    "description": "Required if NoLegStreamCommoditySettlTimes(41683) > 0.",
+    "display": "LegStreamCommoditySettlTimes"
+  }
+}

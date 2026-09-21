@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentschedulefixingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentschedulefixingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentschedulefixingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentschedulefixingdatebusinesscentercomponent",
+    "FIX:counter": "40927",
+    "FIX:tag": "838083",
+    "description": "Required if NoLegPaymentScheduleFixingDateBusinessCenters(40927) > 0.",
+    "display": "LegPaymentScheduleFixingDateBusinessCenters"
+  }
+}

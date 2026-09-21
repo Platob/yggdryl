@@ -1,0 +1,24 @@
+{
+  "name": "capacities",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "cpctyconf",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "cpctyconf"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "cpctyconf",
+    "FIX:counter": "862",
+    "FIX:tag": "932198",
+    "description": "Specifies the capacity of the firm executing the order(s)",
+    "display": "Capacities"
+  }
+}

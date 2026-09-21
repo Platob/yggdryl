@@ -1,0 +1,24 @@
+{
+  "name": "complexeventaveragingobservations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "complexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "complexeventaveragingobservation",
+    "FIX:counter": "40994",
+    "FIX:tag": "1087042",
+    "description": "Required if NoComplexEventAveragingObservations(40994) > 0.",
+    "display": "ComplexEventAveragingObservations"
+  }
+}

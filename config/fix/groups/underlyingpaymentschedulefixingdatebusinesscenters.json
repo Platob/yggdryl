@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentschedulefixingdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentschedulefixingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentschedulefixingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentschedulefixingdatebusinesscentercomponent",
+    "FIX:counter": "40966",
+    "FIX:tag": "721075",
+    "description": "Required if NoUnderlyingPaymentScheduleFixingDateBusinessCenters(40966) > 0.",
+    "display": "UnderlyingPaymentScheduleFixingDateBusinessCenters"
+  }
+}

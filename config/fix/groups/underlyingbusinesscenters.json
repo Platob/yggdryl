@@ -1,0 +1,24 @@
+{
+  "name": "underlyingbusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingbusinesscentercomponent",
+    "FIX:counter": "40962",
+    "FIX:tag": "580464",
+    "description": "Required if NoUnderlyingBusinessCenters(40962) > 0.",
+    "display": "UnderlyingBusinessCenters"
+  }
+}

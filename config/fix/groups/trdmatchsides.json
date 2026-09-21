@@ -1,0 +1,24 @@
+{
+  "name": "trdmatchsides",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdmatchside",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "trdmatchside"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "trdmatchside",
+    "FIX:counter": "1890",
+    "FIX:tag": "830223",
+    "description": "Required if NoTrdMatchSides(1890) > 0.",
+    "display": "TrdMatchSides"
+  }
+}

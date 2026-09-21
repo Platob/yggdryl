@@ -1,0 +1,24 @@
+{
+  "name": "legreturnratefxconversions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnratefxconversion",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legreturnratefxconversion"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legreturnratefxconversion",
+    "FIX:counter": "42530",
+    "FIX:tag": "377884",
+    "description": "Required if NoLegReturnRateFXConversions(42530) > 0.",
+    "display": "LegReturnRateFXConversions"
+  }
+}

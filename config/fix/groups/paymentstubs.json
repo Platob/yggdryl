@@ -1,0 +1,24 @@
+{
+  "name": "paymentstubs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "paymentstub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "paymentstub",
+    "FIX:counter": "40872",
+    "FIX:tag": "455904",
+    "description": "Required if NoPaymentStubs(40872) > 0.",
+    "display": "PaymentStubs"
+  }
+}

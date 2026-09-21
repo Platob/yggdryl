@@ -1,0 +1,24 @@
+{
+  "name": "financingtermsupplements",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "financingtermsupplement",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "financingtermsupplement"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "financingtermsupplement",
+    "FIX:counter": "40046",
+    "FIX:tag": "487961",
+    "description": "Required if NoFinancingTermSupplements(40046) > 0.",
+    "display": "FinancingTermSupplements"
+  }
+}

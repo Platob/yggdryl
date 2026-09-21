@@ -1,0 +1,24 @@
+{
+  "name": "underlyingmarketdisruptionfallbackreferenceprices",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingmarketdisruptionfallbackreferenceprice",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingmarketdisruptionfallbackreferenceprice"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingmarketdisruptionfallbackreferenceprice",
+    "FIX:counter": "41868",
+    "FIX:tag": "519671",
+    "description": "Required if NoUnderlyingMarketDisruptionFallbackReferencePrices (41868) > 0.",
+    "display": "UnderlyingMarketDisruptionFallbackReferencePrices"
+  }
+}

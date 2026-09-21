@@ -1,0 +1,24 @@
+{
+  "name": "allocgroupsubqtys",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "allocgroupsubqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "allocgroupsubqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "allocgroupsubqtycomponent",
+    "FIX:counter": "2975",
+    "FIX:tag": "204080",
+    "description": "Required if NoAllocGroupSubQtys(2975) > 0.",
+    "display": "AllocGroupSubQtys"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "mdentrytypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "mdreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "mdreq",
+    "FIX:counter": "267",
+    "FIX:tag": "796559",
+    "description": "Number of MDEntryType fields requested.",
+    "display": "MDEntryTypes"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "leginstrumentpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "leginstrumentptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "leginstrumentptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "leginstrumentptyssub",
+    "FIX:counter": "2258",
+    "FIX:tag": "973267",
+    "description": "Required if NoLegInstrumentPartySubIDs(2258) > 0.",
+    "display": "LegInstrumentPartySubIDs"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "returnratevaluationdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratevaluationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "returnratevaluationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "returnratevaluationdatecomponent",
+    "FIX:counter": "42772",
+    "FIX:tag": "761182",
+    "description": "Required if NoReturnRateValuationDates(42772) > 0.",
+    "display": "ReturnRateValuationDates"
+  }
+}

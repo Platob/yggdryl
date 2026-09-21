@@ -1,0 +1,24 @@
+{
+  "name": "legoptionexerciseexpirationdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legoptionexerciseexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legoptionexerciseexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legoptionexerciseexpirationdatebusinesscentercomponent",
+    "FIX:counter": "41515",
+    "FIX:tag": "477428",
+    "description": "Required if NoLegOptionExerciseExpirationDateBusinessCenters(41515) > 0.",
+    "display": "LegOptionExerciseExpirationDateBusinessCenters"
+  }
+}

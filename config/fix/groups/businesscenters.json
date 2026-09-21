@@ -1,0 +1,24 @@
+{
+  "name": "businesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "businesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "businesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "businesscentercomponent",
+    "FIX:counter": "40278",
+    "FIX:tag": "1018038",
+    "description": "Required if NoBusinessCenters(40278) > 0.",
+    "display": "BusinessCenters"
+  }
+}

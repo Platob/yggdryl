@@ -439,13 +439,13 @@
         }
       },
       {
-        "name": "tradecaplegunderlyingsgrp",
+        "name": "tradecaplegunderlyings",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradecaplegunderlyingsgrp"
+          "FIX:group": "tradecaplegunderlyings"
         }
       },
       {
@@ -471,13 +471,13 @@
         }
       },
       {
-        "name": "legratesourcegrp",
+        "name": "legratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legratesourcegrp"
+          "FIX:group": "legratesources"
         }
       }
     ]

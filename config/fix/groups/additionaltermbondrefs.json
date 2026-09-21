@@ -1,0 +1,24 @@
+{
+  "name": "additionaltermbondrefs",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "additionaltermbondref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "additionaltermbondref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "additionaltermbondref",
+    "FIX:counter": "40000",
+    "FIX:tag": "343899",
+    "description": "Required if NoAdditionalTermBondRefs(40000) > 0.",
+    "display": "AdditionalTermBondRefs"
+  }
+}

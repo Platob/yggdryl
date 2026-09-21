@@ -1,0 +1,24 @@
+{
+  "name": "requestingpartysubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestingpartysub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "requestingpartysub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "requestingpartysub",
+    "FIX:counter": "1661",
+    "FIX:tag": "346259",
+    "description": "Required when NoRequestingPartySubIDs > 0.",
+    "display": "RequestingPartySubIDs"
+  }
+}

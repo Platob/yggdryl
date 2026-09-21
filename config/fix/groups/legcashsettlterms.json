@@ -1,0 +1,24 @@
+{
+  "name": "legcashsettlterms",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcashsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legcashsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legcashsettlterm",
+    "FIX:counter": "41344",
+    "FIX:tag": "771324",
+    "description": "Required if NoLegCashSettlTerms(41344) > 0.",
+    "display": "LegCashSettlTerms"
+  }
+}

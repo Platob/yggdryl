@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreampricingdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreampricingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "underlyingpaymentstreampricingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "underlyingpaymentstreampricingdatecomponent",
+    "FIX:counter": "41941",
+    "FIX:tag": "184885",
+    "description": "Required if NoUnderlyingPaymentStreamPricingDates(41941) > 0.",
+    "display": "UnderlyingPaymentStreamPricingDates"
+  }
+}

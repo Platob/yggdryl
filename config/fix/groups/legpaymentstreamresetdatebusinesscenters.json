@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreamresetdatebusinesscenters",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamresetdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legpaymentstreamresetdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legpaymentstreamresetdatebusinesscentercomponent",
+    "FIX:counter": "40931",
+    "FIX:tag": "201319",
+    "description": "Required if NoLegPaymentStreamResetDateBusinessCenters(40931) > 0.",
+    "display": "LegPaymentStreamResetDateBusinessCenters"
+  }
+}

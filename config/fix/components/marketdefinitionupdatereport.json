@@ -167,13 +167,13 @@
         }
       },
       {
-        "name": "instrumentscopegrp",
+        "name": "instrumentscopes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopes"
         }
       },
       {
@@ -188,13 +188,13 @@
         }
       },
       {
-        "name": "relatedmarketsegmentgrp",
+        "name": "relatedmarketsegments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relatedmarketsegmentgrp"
+          "FIX:group": "relatedmarketsegments"
         }
       },
       {
@@ -304,13 +304,13 @@
         }
       },
       {
-        "name": "auctiontyperulegrp",
+        "name": "auctiontyperules",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "auctiontyperulegrp"
+          "FIX:group": "auctiontyperules"
         }
       },
       {
@@ -367,13 +367,13 @@
         }
       },
       {
-        "name": "flexproducteligibilitygrp",
+        "name": "flexproducteligibilities",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "flexproducteligibilitygrp"
+          "FIX:group": "flexproducteligibilities"
         }
       },
       {

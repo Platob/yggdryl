@@ -26,13 +26,13 @@
         }
       },
       {
-        "name": "legmarketdisruptioneventgrp",
+        "name": "legmarketdisruptionevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legmarketdisruptioneventgrp"
+          "FIX:group": "legmarketdisruptionevents"
         }
       },
       {
@@ -58,13 +58,13 @@
         }
       },
       {
-        "name": "legmarketdisruptionfallbackgrp",
+        "name": "legmarketdisruptionfallbacks",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legmarketdisruptionfallbackgrp"
+          "FIX:group": "legmarketdisruptionfallbacks"
         }
       },
       {
@@ -79,13 +79,13 @@
         }
       },
       {
-        "name": "legmarketdisruptionfallbackreferencepricegrp",
+        "name": "legmarketdisruptionfallbackreferenceprices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "legmarketdisruptionfallbackreferencepricegrp"
+          "FIX:group": "legmarketdisruptionfallbackreferenceprices"
         }
       },
       {

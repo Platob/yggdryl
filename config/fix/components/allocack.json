@@ -114,13 +114,13 @@
         }
       },
       {
-        "name": "allocregulatorytradeidgrp",
+        "name": "allocregulatorytradeids",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "allocregulatorytradeidgrp"
+          "FIX:group": "allocregulatorytradeids"
         }
       },
       {

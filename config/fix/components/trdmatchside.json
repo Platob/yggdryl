@@ -540,13 +540,13 @@
         }
       },
       {
-        "name": "trdinstrmtlegexecgrp",
+        "name": "legexecs",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdinstrmtlegexecgrp"
+          "FIX:group": "legexecs"
         }
       },
       {

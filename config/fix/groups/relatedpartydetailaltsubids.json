@@ -1,0 +1,24 @@
+{
+  "name": "relatedpartydetailaltsubids",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedpartydetailaltsub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "relatedpartydetailaltsub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "relatedpartydetailaltsub",
+    "FIX:counter": "1572",
+    "FIX:tag": "373229",
+    "description": "Required when NoRelatedPartyDetailAltSubIDs > 0.",
+    "display": "RelatedPartyDetailAltSubIDs"
+  }
+}

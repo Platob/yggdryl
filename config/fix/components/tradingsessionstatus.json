@@ -156,13 +156,13 @@
         }
       },
       {
-        "name": "tradingservicegrp",
+        "name": "tradingservices",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradingservicegrp"
+          "FIX:group": "tradingservices"
         }
       },
       {

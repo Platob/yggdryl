@@ -598,13 +598,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreampricingbusinesscentergrp",
+        "name": "underlyingpaymentstreampricingbusinesscenters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreampricingbusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreampricingbusinesscenters"
         }
       },
       {
@@ -619,13 +619,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreampricingdaygrp",
+        "name": "underlyingpaymentstreampricingdays",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreampricingdaygrp"
+          "FIX:group": "underlyingpaymentstreampricingdays"
         }
       },
       {
@@ -640,13 +640,13 @@
         }
       },
       {
-        "name": "underlyingpaymentstreampricingdategrp",
+        "name": "underlyingpaymentstreampricingdates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingpaymentstreampricingdategrp"
+          "FIX:group": "underlyingpaymentstreampricingdates"
         }
       },
       {
@@ -802,13 +802,13 @@
         }
       },
       {
-        "name": "underlyingreturnrategrp",
+        "name": "underlyingreturnrates",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "underlyingreturnrategrp"
+          "FIX:group": "underlyingreturnrates"
         }
       },
       {

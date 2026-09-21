@@ -188,13 +188,13 @@
         }
       },
       {
-        "name": "trdmatchsidegrp",
+        "name": "trdmatchsides",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdmatchsidegrp"
+          "FIX:group": "trdmatchsides"
         }
       }
     ]

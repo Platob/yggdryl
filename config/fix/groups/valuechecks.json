@@ -1,0 +1,24 @@
+{
+  "name": "valuechecks",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "valuecheck",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "valuecheck"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "valuecheck",
+    "FIX:counter": "1868",
+    "FIX:tag": "584681",
+    "description": "Required if NoValueChecks(1868) > 0.",
+    "display": "ValueChecks"
+  }
+}

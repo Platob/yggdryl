@@ -1323,7 +1323,7 @@ pub(super) static RULES: &[(i32, &[Rule])] = &[
                 msgtypes: &[],
                 within: None,
                 fills: &[Fill::Occurrence {
-                    group: "hopgrp",
+                    group: "hops",
                     members: &[
                         Fill::Source { tag: 629 },
                         Fill::From {
@@ -1372,7 +1372,7 @@ pub(super) static RULES: &[(i32, &[Rule])] = &[
                             text: "4",
                         },
                         Fill::Occurrence {
-                            group: "ptyssubgrp",
+                            group: "partysubids",
                             members: &[Fill::Source { tag: 523 }],
                         },
                     ],

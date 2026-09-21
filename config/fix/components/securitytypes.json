@@ -90,13 +90,13 @@
         }
       },
       {
-        "name": "sectypesgrp",
+        "name": "sectypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "sectypesgrp"
+          "FIX:group": "sectypes"
         }
       },
       {

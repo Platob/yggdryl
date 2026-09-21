@@ -275,13 +275,13 @@
         }
       },
       {
-        "name": "contragrp",
+        "name": "contrabrokers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "contragrp"
+          "FIX:group": "contrabrokers"
         }
       },
       {
@@ -615,13 +615,13 @@
         }
       },
       {
-        "name": "tradetypegrp",
+        "name": "tradetypes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradetypegrp"
+          "FIX:group": "tradetypes"
         }
       },
       {
@@ -916,13 +916,13 @@
         }
       },
       {
-        "name": "paymentgrp",
+        "name": "payments",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "paymentgrp"
+          "FIX:group": "payments"
         }
       },
       {
@@ -1045,13 +1045,13 @@
         }
       },
       {
-        "name": "pricequalifiergrp",
+        "name": "pricequalifiers",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiers"
         }
       },
       {
@@ -1217,13 +1217,13 @@
         }
       },
       {
-        "name": "strategyparametersgrp",
+        "name": "strategyparameters",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "strategyparametersgrp"
+          "FIX:group": "strategyparameters"
         }
       },
       {
@@ -1524,13 +1524,13 @@
         }
       },
       {
-        "name": "orderattributegrp",
+        "name": "orderattributes",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "orderattributegrp"
+          "FIX:group": "orderattributes"
         }
       },
       {
@@ -1929,13 +1929,13 @@
         }
       },
       {
-        "name": "fillsgrp",
+        "name": "fills",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "fillsgrp"
+          "FIX:group": "fills"
         }
       },
       {
@@ -1950,13 +1950,13 @@
         }
       },
       {
-        "name": "ordereventgrp",
+        "name": "orderevents",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ordereventgrp"
+          "FIX:group": "orderevents"
         }
       },
       {
@@ -2036,13 +2036,13 @@
         }
       },
       {
-        "name": "commissiondatagrp",
+        "name": "commissions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "commissiondatagrp"
+          "FIX:group": "commissions"
         }
       },
       {
@@ -2067,13 +2067,13 @@
         }
       },
       {
-        "name": "relativevaluegrp",
+        "name": "relativevalues",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "relativevaluegrp"
+          "FIX:group": "relativevalues"
         }
       },
       {
@@ -2296,13 +2296,13 @@
         }
       },
       {
-        "name": "ratesourcegrp",
+        "name": "ratesources",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "ratesourcegrp"
+          "FIX:group": "ratesources"
         }
       },
       {
@@ -2416,13 +2416,13 @@
         }
       },
       {
-        "name": "valuechecksgrp",
+        "name": "valuechecks",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "valuechecksgrp"
+          "FIX:group": "valuechecks"
         }
       },
       {
@@ -2501,13 +2501,13 @@
         }
       },
       {
-        "name": "disclosureinstructiongrp",
+        "name": "disclosureinstructions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "disclosureinstructiongrp"
+          "FIX:group": "disclosureinstructions"
         }
       },
       {
@@ -2786,13 +2786,13 @@
         }
       },
       {
-        "name": "contamtgrp",
+        "name": "contamts",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "contamtgrp"
+          "FIX:group": "contamts"
         }
       },
       {
@@ -2839,13 +2839,13 @@
         }
       },
       {
-        "name": "miscfeesgrp",
+        "name": "miscfees",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "miscfeesgrp"
+          "FIX:group": "miscfees"
         }
       },
       {
@@ -3046,13 +3046,13 @@
         }
       },
       {
-        "name": "trdregpublicationgrp",
+        "name": "trdregpublications",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "trdregpublicationgrp"
+          "FIX:group": "trdregpublications"
         }
       },
       {
@@ -3067,13 +3067,13 @@
         }
       },
       {
-        "name": "tradepriceconditiongrp",
+        "name": "tradepriceconditions",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:group": "tradepriceconditiongrp"
+          "FIX:group": "tradepriceconditions"
         }
       },
       {

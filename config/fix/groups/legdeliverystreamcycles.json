@@ -1,0 +1,24 @@
+{
+  "name": "legdeliverystreamcycles",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliverystreamcycle",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "FIX:component": "legdeliverystreamcycle"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "FIX:component": "legdeliverystreamcycle",
+    "FIX:counter": "41456",
+    "FIX:tag": "338861",
+    "description": "Required if NoLegDeliveryStreamCycles(41456) > 0.",
+    "display": "LegDeliveryStreamCycles"
+  }
+}
