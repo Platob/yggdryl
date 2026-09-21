@@ -17,7 +17,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, hashing } = require('yggdryl')
+const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, xxhash } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 

@@ -6,7 +6,7 @@
 
 | Key | Value |
 | --- | --- |
-| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.xxhash` / `yggdryl.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
+| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.xxhash` / `yggdryl.txhash` and JavaScript `xxhash` / `txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
 | `xxhash` owns | `xxh32`, `xxh64`, `xxh3`, `xxh128` and their `_with_seed` forms (the XXH3 pair also `_with_secret` and `_with_seed_and_secret`), `digest`, `SECRET_MINIMUM_LENGTH`, the `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states, `reader` / `writer`, `Hashed<H>`, `arrow::row_digests` / `column_digests`, and the value methods `as_value_bytes`, `write_bytes`, `digest`, `stable_hash` |
 | `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `DIGEST:time` / `DIGEST:unit` on a holder |
 | Algorithms | `DigestAlgorithm::ALL`: `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`; `width()` 4, 8, 8, 16 bytes; XXH3-64 is the default and what every `stable_hash` answers |
@@ -96,9 +96,8 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.from('abc')
     // XXH32 answers a number - 32 bits always fit one exactly - and the wider
     // algorithms answer bigints.
@@ -182,9 +181,8 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.from('AAPL,187.23')
     for (const split of [1, 4, payload.length]) {
       const state = new xxhash.Xxh3()
@@ -255,9 +253,8 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { xxhash } = require('yggdryl')
+    
     const payload = Buffer.alloc(241)
     const secret = new Uint8Array(xxhash.SECRET_MINIMUM_LENGTH)
     assert.notEqual(xxhash.xxh3(payload, { secret }), xxhash.xxh3(payload))
@@ -330,9 +327,8 @@ Digest an `IOBase` handle's bytes without reading them whole.
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { IOBase, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { IOBase, xxhash } = require('yggdryl')
+    
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-digest-'))
     try {
       const file = path.join(root, 'trades.csv')
@@ -468,9 +464,8 @@ assert_eq!(
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { Scalar, xxhash } = require('yggdryl')
+    
     const symbol = Scalar.from('AAPL')
     assert.ok(symbol.digest().equals(symbol.digest('xxh3-64')))
     assert.equal(symbol.digest().value(), symbol.stableHash())
@@ -614,9 +609,8 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, Field, Scalar, hashing } = require('yggdryl')
-    const { xxhash } = hashing
-
+    const { DataType, Field, Scalar, xxhash } = require('yggdryl')
+    
     const holder = new Field('row_digest', 'uint64', false, {
       'DIGEST:role': 'holder',
       'DIGEST:sources': '["symbol"]',
@@ -740,9 +734,8 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, Scalar, hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { DataType, Scalar, txhash, xxhash } = require('yggdryl')
+    
     const instant = 1_700_000_000_000_000n // 2023-11-14T22:13:20Z in microseconds
     const value = txhash.txh3('AAPL', instant)
     assert.deepEqual([value.unix, value.unit, value.width], [instant, 'us', 16])
@@ -854,9 +847,8 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { txhash, xxhash } = require('yggdryl')
+    
     const one = xxhash.Digest.from('xxh64:0000000000000001')
     const bytesOf = (value) => Buffer.from(value.bytes())
     const epoch = txhash.TxHash.fromParts(0n, one, 'ns')
@@ -942,9 +934,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { hashing } = require('yggdryl')
-    const { txhash } = hashing
-
+    const { txhash } = require('yggdryl')
+    
     const aware = new Date('2023-11-14T22:13:20Z')
     // A Date is its UTC instant; text with an offset already counts from the epoch.
     assert.equal(txhash.unixOf(aware), 1_700_000_000_000_000n)
@@ -1015,9 +1006,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
-    const { txhash, xxhash } = hashing
-
+    const { Scalar, txhash, xxhash } = require('yggdryl')
+    
     const seconds = new txhash.TxHasher('xxh64', 's', 7n)
     const value = seconds.digest('AAPL', 1_700_000_000n)
     assert.equal(value.unit, 's')
@@ -1212,9 +1202,8 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, Field, Scalar, hashing } = require('yggdryl')
-    const { txhash } = hashing
-
+    const { DataType, Field, Scalar, txhash } = require('yggdryl')
+    
     const key = new Field('key', 'fixed_size_binary[16]', false, {
       'DIGEST:role': 'holder',
       'DIGEST:time': 'event',

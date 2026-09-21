@@ -4,9 +4,8 @@ const assert = require('node:assert/strict')
 const { test } = require('node:test')
 const arrow = require('apache-arrow')
 
-const { DataType, Digest, Field, Scalar, TxHash, TxHasher, hashing } = require('yggdryl')
+const { DataType, Digest, Field, Scalar, TxHash, TxHasher, txhash, xxhash } = require('yggdryl')
 
-const { txhash, xxhash } = hashing
 
 const INSTANT = 1_700_000_000_000_000n
 const PAYLOAD = Buffer.from('{"symbol": "AAPL", "price": 187.23}\n'.repeat(64))

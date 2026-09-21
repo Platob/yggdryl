@@ -2555,10 +2555,11 @@ export interface DigestOptions {
 export type UnixLike = bigint | number | Date | string | Scalar
 
 /**
- * The digest owner: `hashing.xxhash` and `hashing.txhash`, the one public
- * path to both families. The classes they carry are also top-level exports.
+ * The two digest families, one top-level owner each - `xxhash` and `txhash` -
+ * as the core gives every implementation a root folder of its own. The classes
+ * they carry are also top-level exports.
  */
-export declare const hashing: {
+declare const digests: {
   /**
    * XXH32, XXH64, XXH3-64, and XXH3-128 over bytes, values, and handles.
    *
@@ -2598,7 +2599,7 @@ export declare const hashing: {
    * big-endian, so `bytes()` sorts by time and then by content; the digest
    * after it, at its algorithm's exact width. The instant is always UTC and
    * counted in microseconds unless a resolution is named, and the digest is
-   * what `hashing.xxhash` answers for the same bytes.
+   * what `xxhash` answers for the same bytes.
    *
    * Every `unix` argument reads the same way: a `bigint` or an integer
    * `number` is the count already; a `Date` is its UTC millisecond instant; a
@@ -2633,6 +2634,9 @@ export declare const hashing: {
     dtype(algorithm: DigestAlgorithm): DataType
   }
 }
+
+export declare const xxhash: typeof digests.xxhash
+export declare const txhash: typeof digests.txhash
 
 export interface ArrowStringCompatible {
   toString(): string

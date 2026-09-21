@@ -2,12 +2,12 @@ import { Buffer } from 'node:buffer'
 import type { RecordBatch as ArrowRecordBatch } from 'apache-arrow'
 
 import * as yggdryl from 'yggdryl'
-import { Digest, Field, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, hashing } from 'yggdryl'
+import { Digest, Field, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, xxhash } from 'yggdryl'
 
-// The one public path: the family lives under the hashing owner.
-const { xxhash } = hashing
-// @ts-expect-error there is no top-level xxhash export
+// The one public path: the family is a top-level owner of its own.
 void yggdryl.xxhash
+// @ts-expect-error the grouping namespace is gone
+void yggdryl.hashing
 
 const payload = Buffer.from('AAPL,187.23')
 

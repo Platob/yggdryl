@@ -115,10 +115,9 @@ Both answer a `Digest` rather than the bytes, and every backend and every wrappe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, hashing } = require('yggdryl')
+    const { IOBase, xxhash } = require('yggdryl')
 
-    const { xxhash } = hashing
-    const handle = IOBase.fromBytes()
+        const handle = IOBase.fromBytes()
     const payload = Buffer.from('symbol,price\nAAPL,1\n')
     handle.writeBytes(payload)
 

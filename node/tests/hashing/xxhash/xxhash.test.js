@@ -9,8 +9,7 @@ const arrow = require('apache-arrow')
 
 const yggdryl = require('yggdryl')
 
-const { DataType, Field, IOBase, Scalar, hashing } = yggdryl
-const { xxhash } = hashing
+const { DataType, Field, IOBase, Scalar, txhash, xxhash } = yggdryl
 
 const PAYLOAD = Buffer.from('{"symbol": "AAPL", "price": 187.23}\n'.repeat(512))
 
@@ -29,18 +28,18 @@ function secret(length) {
   return bytes
 }
 
-test('hashing is the one frozen owner of both digest families', () => {
-  assert.ok(Object.isFrozen(hashing))
-  assert.deepEqual(Object.keys(hashing), ['xxhash', 'txhash'])
-  assert.ok(Object.isFrozen(hashing.xxhash))
-  assert.ok(Object.isFrozen(hashing.txhash))
-  assert.equal('xxhash' in yggdryl, false, 'no top-level xxhash path remains')
-  assert.equal('txhash' in yggdryl, false, 'no top-level txhash path remains')
+test('each digest family is a frozen top-level owner', () => {
+  // The core gives `xxhash/` and `txhash/` a root folder each, so the package
+  // publishes one owner each rather than a namespace over the two.
+  assert.ok(Object.isFrozen(xxhash))
+  assert.ok(Object.isFrozen(txhash))
+  assert.equal('hashing' in yggdryl, false, 'no grouping namespace remains')
   for (const name of ['Digest', 'Xxh32', 'Xxh64', 'Xxh3', 'Xxh128']) {
     assert.equal(xxhash[name], yggdryl[name], name)
   }
   assert.throws(() => {
-    hashing.xxhash = null
+    'use strict'
+    xxhash.xxh32 = null
   }, TypeError)
 })
 
