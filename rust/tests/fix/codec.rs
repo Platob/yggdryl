@@ -2099,9 +2099,10 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let reader = super::fixed_codec(Arc::new(FixRegistry::new()));
     // A native ns/UTC datetime accepts time with an offset on the epoch day.
     // The seed has no stricter FIX UTCTimestamp metadata, pinned above.
-    // The parse dates the message by `SendingTime` alone - here the codec's
-    // clock, the line stating none - and `TransactTime` stays the typed
-    // field it is, for the lifecycle to read.
+    // The parse dates the message against `SendingTime` - here the codec's
+    // clock, the line stating none - and this `TransactTime`, a time on the
+    // epoch day, stands decades outside the delay that would let it date the
+    // message, so it stays the typed field it is.
     let dateless = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
         .unwrap();
@@ -2378,4 +2379,182 @@ fn the_default_refusals_are_the_session_traffic_and_the_typeless_row() {
             .with_exclude_msgtypes(["8"])
             .reads_msgtype("0")
     );
+}
+
+/// The sending clock is the reference and the message happened at the best
+/// official clock standing within the codec's delay of it.
+///
+/// `TrdRegTimestamp(769)` says nothing on its own - the same tag carries an
+/// execution's instant, a desk's receipt and the moment a report reached a
+/// repository - so the `TrdRegTimestampType(770)` beside it in the same
+/// occurrence is what decides, and only the stamps that are about the event
+/// or about a hop it crossed are clocks at all.
+#[test]
+fn the_regulatory_group_dates_a_message_by_type_before_nearness() {
+    /// `20260102-10:15:30` UTC, the sending clock every line below states.
+    const SENDING: i64 = 1_767_348_930_000_000_000;
+    let dated = |line: &str| {
+        reader()
+            .parse_fix_line(line.as_bytes())
+            .expect("the line parses")
+            .get_currunix()
+    };
+    // A publicly-reported stamp ten milliseconds off never dates a message,
+    // so the execution half a second off is the one that does: what the
+    // stamp is about decides before how near it stands.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=11|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_500_000_000
+    );
+    // A desk receipt is a hop the message crossed rather than the event, so
+    // the execution outranks it even standing further from the sending clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=6|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_500_000_000
+    );
+    // Two stamps of one rank - an execution time and a broker execution -
+    // and the nearer of them decides.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
+             769=20260102-10:15:29.990|770=5|769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        1_767_348_929_990_000_000
+    );
+    // Only stamps about the trade's afterlife: a submission to a repository
+    // is not when the trade happened, so the one clock every message carries
+    // keeps it.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:29.990|770=23|10=0|"
+        ),
+        SENDING
+    );
+    // A code no set names is silence rather than a clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:29.990|770=9999|10=0|"
+        ),
+        SENDING
+    );
+    // An execution a second and a half before the sending clock is a
+    // different event of the session's day, whatever its type says.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:28.500|770=1|10=0|"
+        ),
+        SENDING
+    );
+}
+
+/// What the message says about its own transaction outranks what another
+/// party stamped, and the group is read where the message filled no
+/// `TransactTime(60)` the delay admits.
+#[test]
+fn the_transaction_outranks_the_group_and_a_far_one_falls_through_to_it() {
+    let dated = |line: &str| {
+        reader()
+            .parse_fix_line(line.as_bytes())
+            .expect("the line parses")
+            .get_currunix()
+    };
+    // A stated transaction inside the delay is the message's own statement
+    // of when its event happened; a nearer regulatory stamp does not displace
+    // it.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:15:29.100|768=1|\
+             769=20260102-10:15:29.990|770=1|10=0|"
+        ),
+        1_767_348_929_100_000_000
+    );
+    // A transaction the delay refuses leaves the question open, and the
+    // group answers it: the parse falls through to the best stamp inside the
+    // delay rather than back to the sending clock.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:14:00|768=1|\
+             769=20260102-10:15:29.990|770=1|10=0|"
+        ),
+        1_767_348_929_990_000_000
+    );
+    // Neither inside the delay: the sending clock keeps the message.
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:14:00|768=1|\
+             769=20260102-10:14:30|770=1|10=0|"
+        ),
+        1_767_348_930_000_000_000
+    );
+}
+
+/// The group is read as a group: a dictionary that declares none leaves two
+/// flat children whose pairing is a guess, and a guess about which
+/// regulatory clock this is would date the message by a stamp that belongs
+/// to a different question.
+#[test]
+fn a_dictionary_declaring_no_group_reads_no_regulatory_clock() {
+    let message = super::fixed_codec(Arc::new(FixRegistry::new()))
+        .parse_fix_line(
+            b"8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|769=20260102-10:15:29.990|770=1|10=0|",
+        )
+        .expect("the line parses");
+    assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
+}
+
+/// The delay is the codec's own and bounds which official clock may date a
+/// message.
+#[test]
+fn the_official_time_delay_is_the_codecs_own_and_bounds_the_transaction() {
+    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new()));
+    assert_eq!(
+        codec.official_time_delay_ms(),
+        FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS
+    );
+    let line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:29.500|10=0|";
+    let sending = 1_767_348_930_000_000_000;
+    let transaction = 1_767_348_929_500_000_000;
+    // Half a second of hop: inside the default delay, inside one stated at
+    // exactly that distance, outside one nanosecond tighter, and outside
+    // every nonpositive one - a delay of zero admits only a transaction
+    // equal to the sending clock, which is the reading that dates nothing
+    // the sending clock did not already date.
+    for (delay, expected) in [
+        (FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, transaction),
+        (500, transaction),
+        (499, sending),
+        (0, sending),
+        (-1, sending),
+    ] {
+        let dated = codec
+            .clone()
+            .with_official_time_delay_ms(delay)
+            .parse_fix_line(line)
+            .expect("the line parses");
+        assert_eq!(dated.get_currunix(), expected, "a {delay} ms delay");
+        assert_eq!(dated.get_creaunix(), Some(dated.get_currunix()));
+    }
+}
+
+/// `60=20260102` states a day, which the parse restates as that day's
+/// midnight. Midnight to the nanosecond is that statement and no other a
+/// venue makes, so the sending clock keeps the message even where the two
+/// stand well inside the delay.
+#[test]
+fn a_day_only_transaction_dates_nothing() {
+    let message = super::fixed_codec(Arc::new(FixRegistry::new()))
+        .with_official_time_delay_ms(i64::MAX)
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-00:00:00.100|60=20260102|10=0|")
+        .expect("the line parses");
+    assert_eq!(message.get_currunix(), 1_767_312_000_100_000_000);
 }

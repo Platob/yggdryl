@@ -390,7 +390,7 @@ The order is nine bands, and each answers one question a reader has, so a row re
 | which order | `Account`, `ClOrdID`, `OrigClOrdID`, `SecondaryClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `TradeID`, `QuoteReqID`, `QuoteID`, `MDReqID`, `QuoteRespID` |
 | what values it states | `Side`, `Price`, `PrevClosePx`, `LastPx`, `AvgPx`, `OrderQty`, `Quantity`, `LastQty`, `CumQty`, `LeavesQty`, `UnitOfMeasure`, `Currency`, `SettlCurrency`, `QtyType`, `OrdType`, `TimeInForce`, then the bid lane, then the ask lane |
 | how it went | `state`, then `OrdStatus`, `ExecType`, `QuoteStatus`, `QuoteResponseLevel`, `QuoteEntryRejectReason`, `OrdRejReason`, `CxlRejReason`, `Text` |
-| what it carried whole | the three repeating groups, each beside its counter: `Parties`, `SecAltIDGrp`, `TrdRegTimestamps` |
+| what it carried whole | the three repeating groups, each beside its counter: `Parties`, `SecAltIDGrp`, `TrdRegTimestamps` - the last of which is read rather than merely carried, since its `TrdRegTimestamp` / `TrdRegTimestampType` pair can [date the message](#the-official-clock-dates-the-message) |
 | everything else | the standard header, body and trailer fields no band above claims, then `metadata`, then the arrival record under the `nofixentries` that counts it |
 
 `cargo run --example fix_schema --features arrow` prints that row as the Arrow batch schema a consumer reads, one column a line: its tag, its name, its Arrow type, and whether it is required.
@@ -513,7 +513,7 @@ Twenty-seven scalar definitions and two Map groups carry the facts no dictionary
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
-| `currunix` | `CurrUnix` | 65003 | when the message happened, a nanosecond UTC clock: a stated `currunix`, else `SendingTime(52)`; non-null |
+| `currunix` | `CurrUnix` | 65003 | when the message happened, a nanosecond UTC clock: a stated `currunix`, else the official transaction clock standing within the codec's `official_time_delay_ms` of `SendingTime(52)`, else that `SendingTime`; non-null |
 | `msgctxid` | `MsgCtxId` | 65008 | the message context a bridge handled the message in, from its log's bracket; a capture fact |
 | `msgpluginid` | `MsgPluginId` | 65009 | the plugin that logged the line, as a bridge names it: a row's own `msgpluginid` capture or column fills it, and it selects nothing - no dictionary, no version; a capture fact |
 | `currhashcode` | `CurrHashCode` | 65017 | the code the message's content digests to, `uint64`: the XXH3-64 of what the message states but the standard header and trailer, less `MsgType(35)` - the event's own facts, the text, the metadata, `MsgType`, the FIX fields it lifted, then the [entry tree](#nothing-is-lost-at-the-end) - never the frame a hop carried it in, never the chain it is in and never the row's columns; non-null |
@@ -557,7 +557,7 @@ These facts are settled when a message is built, whatever its line carried, and 
 
 `beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.4.4`, the crate's own, filled by the builder so that every row states one: a bridge row, and the row a JSON document is, say which FIX they were read as exactly as a frame does. A codec pins none - a version is what a line said, never a caller's statement about a whole run - and the dictionary states none to lend: it holds every tag ever defined and filters by none.
 
-Six values close every message and are never null: `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid`; `state` is written on every one of them too, `00UNKNOWN` where nothing states one, and stays a nullable column because a state has no neutral member for an empty cell to read as. Initial intake settles the clocks once. `SendingTime(52)` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message - and only a stated one is a fact of the message, so only a stated one goes back on the wire and into the row's tag-52 column, which `FixHeader::stated_sendingtime` answers; `currunix` is a stated `currunix`, else that `SendingTime`, and `creaunix` a stated one, else `currunix`: a parse dates a message by the one clock every message carries, and what a transaction's own `TransactTime(60)` or a resend's `OrigSendingTime(122)` says is the [lifecycle](lifecycle.md)'s to read off the structured message. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - writes, row exchange, the lifecycle and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `header().sendingtime()` and the event's `get_currunix()` and `get_creaunix()` answer them without a lookup, in nanoseconds since the epoch, and `by_tag(52)`, `by_tag(CURRUNIX_TAG_NAME.0)` and `by_tag(CREAUNIX_TAG_NAME.0)` as the clocks their columns are.
+Six values close every message and are never null: `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid`; `state` is written on every one of them too, `00UNKNOWN` where nothing states one, and stays a nullable column because a state has no neutral member for an empty cell to read as. Initial intake settles the clocks once. `SendingTime(52)` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message - and only a stated one is a fact of the message, so only a stated one goes back on the wire and into the row's tag-52 column, which `FixHeader::stated_sendingtime` answers. That clock is the **reference** every parse dates against, and `currunix` is a stated `currunix`, else [the official clock](#the-official-clock-dates-the-message) standing within the codec's `official_time_delay_ms` of it, else the sending clock itself; `creaunix` is a stated one, else `currunix`. What a resend's `OrigSendingTime(122)` says stays the [lifecycle](lifecycle.md)'s to read off the structured message. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - writes, row exchange, the lifecycle and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `header().sendingtime()` and the event's `get_currunix()` and `get_creaunix()` answer them without a lookup, in nanoseconds since the epoch, and `by_tag(52)`, `by_tag(CURRUNIX_TAG_NAME.0)` and `by_tag(CREAUNIX_TAG_NAME.0)` as the clocks their columns are.
 
 === "Rust"
 
@@ -599,9 +599,10 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     // version, and the content what the frame stated, a day order derived.
     assert_eq!(bare.into_text('|')?, "8=FIX.4.4|35=D|55=AAPL|59=0|10=0|");
 
-    // A frame stating its clocks keeps them: the stated SendingTime dates
-    // the event and goes back on the wire, and TransactTime stays the
-    // transaction's own field, the lifecycle's to read.
+    // A frame stating its clocks keeps them: the stated SendingTime goes
+    // back on the wire, and the transaction half a second in front of it is
+    // inside the default one-second delay, so it is the same event said
+    // twice and the more exact saying of it dates the message.
     let sent = reader
         .parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|")?
         .next()
@@ -609,7 +610,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     assert_eq!(sent.header().beginstring(), "FIX.4.2");
     assert!(sent.header().stated_sendingtime());
     assert_eq!(sent.by_tag(52)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
-    assert_eq!(sent.get_currunix(), 1_787_308_200_415_000_000);
+    assert_eq!(sent.get_currunix(), 1_787_308_199_900_000_000);
     assert_eq!(sent.get_creaunix(), Some(sent.get_currunix()));
     assert_eq!(sent.by_tag(60)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_199_900));
     assert!(sent.get_snapunix().is_none(), "a read is not a snapshot");
@@ -655,14 +656,15 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     # the content what the frame stated, a day order derived.
     assert bare.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|59=0|10=0|"
 
-    # A frame stating its clocks keeps them: the stated SendingTime dates the
-    # event and goes back on the wire, and TransactTime stays the transaction's
-    # own field, the lifecycle's to read.
+    # A frame stating its clocks keeps them: the stated SendingTime goes back on
+    # the wire, and the transaction half a second in front of it is inside the
+    # default one-second delay, so it is the same event said twice and the more
+    # exact saying of it dates the message.
     sent = next(reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|"))
     assert sent.header().beginstring == "FIX.4.2"
     assert sent.header().stated_sendingtime
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
-    assert sent.currunix == 1_787_308_200_415_000_000
+    assert sent.currunix == 1_787_308_199_900_000_000
     assert sent.event().creaunix == sent.currunix
     assert sent.by_tag(60).as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
     assert sent.event().snapunix is None, "a read is not a snapshot"
@@ -707,18 +709,158 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     // what the frame stated, a day order derived.
     assert.equal(bare.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|59=0|10=0|')
 
-    // A frame stating its clocks keeps them: the stated SendingTime dates the
-    // event and goes back on the wire, and TransactTime stays the transaction's
-    // own field, the lifecycle's to read.
+    // A frame stating its clocks keeps them: the stated SendingTime goes back on
+    // the wire, and the transaction half a second in front of it is inside the
+    // default one-second delay, so it is the same event said twice and the more
+    // exact saying of it dates the message.
     const sent = reader
       .parseLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|'))
       .next().value
     assert.equal(sent.header().beginstring, 'FIX.4.2')
-    assert.equal(sent.currunix, 1_787_308_200_415_000_000n)
+    assert.equal(sent.currunix, 1_787_308_199_900_000_000n)
     assert.equal(sent.event().creaunix, sent.currunix)
     assert.equal(sent.byTag(60).asJs().getTime(), Date.UTC(2026, 7, 21, 10, 29, 59, 900))
     assert.equal(sent.event().snapunix, null, 'a read is not a snapshot')
     assert.ok(sent.intoText('|').startsWith('8=FIX.4.2|35=D|52=20260821-10:30:00.415|'))
+    ```
+
+### The official clock dates the message
+
+`SendingTime(52)` is when a session put the message on the wire, which is not when the thing it reports happened. A venue that stamps its own clock says that more exactly, and the distance between the two is the only evidence a parse has that the two clocks are saying the same thing: inside a hop they are one event said twice and the venue's saying is the better one; a whole second apart they are two events - a resend of an older order, a report batched behind the trades it covers, a clock nobody disciplined - and dating the message by the far one would move it out of the order it was sent in. `official_time_delay_ms` / `officialTimeDelayMs` is that distance, one second by default, and it is a pin on the codec for the whole run.
+
+The parse ranks what the message says about its own event and takes the best clock standing inside the delay, on either side of the sending clock:
+
+| Rank | Clock | Read as |
+| --- | --- | --- |
+| 1 | `TransactTime(60)` | the message's own statement of when its transaction happened. A day-only value - `60=20260821`, which the parse restates as that day's midnight - dates nothing: what it says is the day |
+| 2 | `TrdRegTimestamp(769)` whose `TrdRegTimestampType(770)` is `ExecutionTime(1)`, `BrokerExecution(5)`, `TimePriority(8)`, `OrderbookEntryTime(9)`, `OrderSubmissionTime(10)`, `OrderCancellationTime(29)`, `OrderModificationTime(30)`, `TradeCancellationTime(32)` or `TradeModificationTime(33)` | the venue's own stamp of the event itself |
+| 3 | `TrdRegTimestamp(769)` whose type is `TimeIn(2)`, `TimeOut(3)`, `BrokerReceipt(4)`, `DeskReceipt(6)` or `OrderRoutingTime(31)` | a hop the message crossed on its way here: nearer the event than the sending clock, further from it than the stamps above |
+| - | every other `TrdRegTimestampType`, and a code no set names | never a clock. Submission to clearing, public and non-public reporting and their updates, confirmation, clearing, allocation, submission to a repository, continuation events, valuation, an identifier's assignment, affirmation and a bare update time all happen *after* the event; a previous time priority and a previous identifier describe the state this one replaced; a reference time for the BBO describes the market it was measured against. An unranked stamp is silence, never a guess |
+
+Two clocks of one rank are decided by the nearer of them, and the earlier instant closes the last tie, so one row reads one way. The `TrdRegTimestamps(768)` group is read **as a group**: `TrdRegTimestamp` says nothing on its own - the same tag carries an execution's instant, a desk's receipt and the moment a report reached a repository - and what tells them apart is the `TrdRegTimestampType` standing beside it in the same occurrence, which only a dictionary declaring the group pairs. Where nothing inside the delay qualifies, the sending clock dates the message, as it always did.
+
+This is parse behavior and depends on the one message being parsed, so it composes with everything downstream untouched. What a message whose sending clock was a *stand-in* does is the [lifecycle](lifecycle.md)'s separate reading: `FixMsg::dated_by_transaction` re-dates it by `TransactTime` with no delay at all, because a clock nobody stated is no reference to measure a distance from.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::graph::Event;
+    use yggdryl::local::Folder;
+    use yggdryl::{FixCodec, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let codec = FixCodec::new(registry);
+    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+    assert_eq!(codec.official_time_delay_ms(), 1_000);
+
+    // A report stating no TransactTime and two regulatory stamps. The nearer
+    // one is when the report reached a repository, which is not when the
+    // trade happened; the execution half a second earlier is.
+    let report = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|\
+          769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|",
+    )?;
+    assert_eq!(report.get_currunix(), 1_787_308_199_900_000_000);
+
+    // Five seconds out is a different event of the session's day, whatever
+    // its type says, so the one clock every message carries keeps it.
+    let apart = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|\
+          769=20260821-10:29:55|770=1|10=0|",
+    )?;
+    assert_eq!(apart.get_currunix(), 1_787_308_200_415_000_000);
+
+    // The delay is the caller's to widen, and a nonpositive one admits only a
+    // clock equal to the sending clock.
+    let wide = codec.clone().with_official_time_delay_ms(10_000);
+    assert_eq!(wide.official_time_delay_ms(), 10_000);
+    let widened = wide.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|\
+          769=20260821-10:29:55|770=1|10=0|",
+    )?;
+    assert_eq!(widened.get_currunix(), 1_787_308_195_000_000_000);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    codec = FixCodec(registry)
+    assert codec.official_time_delay_ms == 1_000
+
+    # A report stating no TransactTime and two regulatory stamps. The nearer one
+    # is when the report reached a repository, which is not when the trade
+    # happened; the execution half a second earlier is.
+    report = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|"
+        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|"
+    )
+    assert report.currunix == 1_787_308_199_900_000_000
+
+    # Five seconds out is a different event of the session's day, whatever its
+    # type says, so the one clock every message carries keeps it.
+    apart = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
+        b"769=20260821-10:29:55|770=1|10=0|"
+    )
+    assert apart.currunix == 1_787_308_200_415_000_000
+
+    # The delay is the caller's to widen.
+    wide = FixCodec(registry, official_time_delay_ms=10_000)
+    assert wide.official_time_delay_ms == 10_000
+    widened = wide.parse_fix_line(
+        b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
+        b"769=20260821-10:29:55|770=1|10=0|"
+    )
+    assert widened.currunix == 1_787_308_195_000_000_000
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const codec = new fix.FixCodec(registry)
+    assert.equal(codec.officialTimeDelayMs, 1_000)
+
+    // A report stating no TransactTime and two regulatory stamps. The nearer one
+    // is when the report reached a repository, which is not when the trade
+    // happened; the execution half a second earlier is.
+    const report = codec.parseFixLine(
+      Buffer.from(
+        '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|' +
+          '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|',
+      ),
+    )
+    assert.equal(report.currunix, 1_787_308_199_900_000_000n)
+
+    // Five seconds out is a different event of the session's day, whatever its
+    // type says, so the one clock every message carries keeps it.
+    const apart = codec.parseFixLine(
+      Buffer.from(
+        '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:29:55|770=1|10=0|',
+      ),
+    )
+    assert.equal(apart.currunix, 1_787_308_200_415_000_000n)
+
+    // The delay is the caller's to widen.
+    const wide = new fix.FixCodec(registry, { officialTimeDelayMs: 10_000 })
+    assert.equal(wide.officialTimeDelayMs, 10_000)
+    const widened = wide.parseFixLine(
+      Buffer.from(
+        '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:29:55|770=1|10=0|',
+      ),
+    )
+    assert.equal(widened.currunix, 1_787_308_195_000_000_000n)
     ```
 
 ## What a message implied is filled in
@@ -1155,9 +1297,9 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 - A tag the dictionary does not have is skipped rather than invented: a column with no field behind it could not be typed.
 - A column whose field carries neither a `FIX:tag` nor a `FIX:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture states it. `sourceurl` carries a `FIX:tag` and answers null just the same, because no holder answers it either.
 - A column whose name holds a `.` is a bridge's own statement rather than a capture's, so `from_row` carries it into the message's [metadata](message.md#typed-tags) as a parsed line's namespaced key goes there.
-- `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is refused at intake; a stated clock that does not read as an instant is a located error item, never a default.
+- `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is refused at intake; a stated clock that does not read as an instant is a located error item, never a default. `TrdRegTimestamp(769)` is seeded by nothing and is the dictionary's to type, so a registry that leaves it untyped reads no regulatory clock and the message is dated without one.
 - A column of the crate's own is typed by the crate's definition, on a tag from 65003 that no dictionary publishes: `currunix` is an instant, `currhashcode` a `uint64`, `curruuid` a `uuid`, `state` a `state`, `sourceurl` a `url`, whatever text a venue spelled them in - and a FIX column is typed by the dictionary, so `SecurityExchange(207)` is a `mic` and `Price(44)` a `decimal128(38, 18)`.
-- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's `SendingTime` reading of `currunix`.
+- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's own [reading](#the-official-clock-dates-the-message) of `currunix`.
 - `identifiers` and `metadata` are the message's own facts, filled as it is built: a message declaring no identifier, and one no message type explains, leave the column null. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.

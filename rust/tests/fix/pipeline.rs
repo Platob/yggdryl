@@ -580,10 +580,11 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     let read = read(&CAPTURE);
     let stage = text_stage(&CAPTURE);
 
-    // A capture instant is ordinary context. `SendingTime` dates the event
-    // independently of when the bridge logged it, and a row stating none -
-    // the routed fill, keyed by name - takes the codec's clock: what its
-    // `TransactTime` says is the lifecycle's to read.
+    // A capture instant is ordinary context. The message's own clocks date
+    // the event independently of when the bridge logged it, and a row
+    // stating no `SendingTime` - the routed fill, keyed by name - takes the
+    // codec's clock, its `TransactTime` standing far outside the delay that
+    // would let it date the message instead.
     let clock = column(&stage, "timestamp");
     let carried = column(&read, "timestamp");
     let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);

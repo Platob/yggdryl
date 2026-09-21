@@ -1798,9 +1798,10 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(pairs.event().creaunix, SENDING_NS)
   assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
   assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
-  // The stated clock is the one that goes back out and the one the event
-  // is dated by; the transaction time is a typed field the parse leaves
-  // for the lifecycle to read.
+  // The stated clock is the one that goes back out and the reference the
+  // event is dated against; this transaction stands two years in front of
+  // it, far outside the codec's default one-second delay, so the sending
+  // clock dates the event.
   const dated = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|60=20260102-10:15:31.5|11=A|10=0|'))
   assert.equal(dated.header().sendingtime, SENDING_NS)
   assert.equal(dated.currunix, SENDING_NS)
@@ -1894,6 +1895,61 @@ test('a parse derives what the dictionary derives and states it on the wire', ()
   const opaque = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|')).next().value
   assert.equal(opaque.getByTag(22), null)
   assert.equal(opaque.event().isincode, null)
+})
+
+test('the official time delay bounds which clock dates the message', () => {
+  const registry = seed()
+  assert.equal(new fix.FixCodec(registry).officialTimeDelayMs, 1_000)
+  assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: undefined }).officialTimeDelayMs, 1_000)
+  assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: 0 }).officialTimeDelayMs, 0)
+  assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: -1 }).officialTimeDelayMs, -1)
+  assert.throws(() => new fix.FixCodec(registry, { officialTimeDelayMs: 1.5 }), /whole number/i)
+
+  const codec = reading(registry)
+  const SENT = 1_787_308_200_415_000_000n
+  // A transaction half a second in front of the sending clock is the same
+  // event said twice, so the more exact saying of it dates the message.
+  const near = codec.parseFixLine(
+    Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
+  )
+  assert.equal(near.currunix, 1_787_308_199_900_000_000n)
+  assert.equal(near.event().creaunix, near.currunix)
+  // Five seconds out is a different event of the session's day.
+  const apart = codec.parseFixLine(
+    Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
+  )
+  assert.equal(apart.currunix, SENT)
+
+  // A message stating no transaction is dated by the regulatory stamp its
+  // `TrdRegTimestampType(770)` says is about the event; the nearer stamp is
+  // when the report reached a repository, which is not that.
+  const stamped = codec.parseFixLine(
+    Buffer.from(
+      '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|' +
+        '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|',
+    ),
+  )
+  assert.equal(stamped.currunix, 1_787_308_199_900_000_000n)
+  const unranked = codec.parseFixLine(
+    Buffer.from('8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:30:00.400|770=23|10=0|'),
+  )
+  assert.equal(unranked.currunix, SENT)
+
+  // The pin is the caller's to widen and to close.
+  const wide = reading(registry, { officialTimeDelayMs: 10_000 })
+  assert.equal(
+    wide.parseFixLine(
+      Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
+    ).currunix,
+    1_787_308_195_000_000_000n,
+  )
+  const shut = reading(registry, { officialTimeDelayMs: 0 })
+  assert.equal(
+    shut.parseFixLine(
+      Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
+    ).currunix,
+    SENT,
+  )
 })
 
 test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {

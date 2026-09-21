@@ -542,6 +542,9 @@ const snapshotCodec = new fix.FixCodec(loaded, { snapshotNs: 1_000_000_000n })
 const snapshotNs: bigint | null = snapshotCodec.snapshotNs
 const snapshotsDisabled: FixCodec = new fix.FixCodec(loaded, { snapshotNs: null })
 
+const officialDelayCodec = new fix.FixCodec(loaded, { officialTimeDelayMs: 250 })
+const officialTimeDelayMs: number = officialDelayCodec.officialTimeDelayMs
+
 field.fix.counter = 453
 const counterTag: number | null = field.fix.counter
 field.fix.component = 'party'

@@ -688,6 +688,7 @@ pub const DEFAULT_NULL_VALUES: [&str; 6] = ["", "null", "<null>", "none", "n/a",
 pub struct FixCodec
   pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;  (the raw bytes one Arrow batch targets; a target, not a ceiling, and a batch always holds one row)
   pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;  (the rows one Arrow batch targets; a batch closes on whichever of the two bounds it reaches first)
+  pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 1_000;  (how far from SendingTime(52) an official transaction clock may stand and still date the message, when the caller states none)
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn default_sending_time(&self) -> Option<&Scalar>
@@ -711,6 +712,8 @@ pub struct FixCodec
   pub const fn threads(&self) -> usize
   pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self  (the epoch-aligned lifecycle snapshot grid; zero or less disables it)
   pub const fn snapshot_ns(&self) -> Option<i64>  (the positive grid width, where enabled)
+  pub const fn with_official_time_delay_ms(mut self, official_time_delay_ms: i64) -> Self  (how far from SendingTime(52) an official transaction clock may stand and still date the message: the parse takes the TransactTime(60) it states, else the TrdRegTimestamp(769) of the TrdRegTimestamps(768) group whose TrdRegTimestampType(770) stamps the event or a hop, nearest the sending clock; a nonpositive delay admits only a clock equal to it)
+  pub const fn official_time_delay_ms(&self) -> i64  (the delay in milliseconds; DEFAULT_OFFICIAL_TIME_DELAY_MS when unstated)
   pub const PARALLEL_CHUNK: usize = 64  (the items in one lane chunk for the line, message-row and write doors; their lane depth is two)
   pub fn with_include_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (only these types are read; naming any clears the default refusals, since a caller saying what it wants has said what it does not; any spelling the dictionary resolves, a code it does not know kept as written, `unknown` naming a row that states no type)
   pub fn with_exclude_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (replaces DEFAULT_REFUSED_MSGTYPES; empty reads everything; a type named here is refused whether or not it is included)
@@ -759,7 +762,7 @@ pub struct FixMessages
 ### yggdryl::fix::crated  [rust/src/fix/crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the last; the retired slots below 65050 are never reused)
-pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else `SendingTime(52)`)
+pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else the official transaction clock standing within the codec's official_time_delay_ms of `SendingTime(52)`, else that `SendingTime`)
 pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");  (the message context a bridge handled the line in; a capture fact, held by `FixCapture`)
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_009, "msgpluginid");  (display `MsgPluginId`: the plugin that logged the line, stated by a row's own `msgpluginid` capture or column and never derived; selects nothing)
 pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the lifted FIX fields and the named content of the row - every field but the standard header and trailer)
