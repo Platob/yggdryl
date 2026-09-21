@@ -834,7 +834,7 @@ fn poisoned() -> Error {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/object/accounting.rs` pins and a caller cannot reach.
+    //! What `rust/tests/object/file.rs` pins and a caller cannot reach.
     //!
     //! A streaming upload is how a record writer reaches a store, so what it
     //! costs in round trips and how much of the source it holds at once are

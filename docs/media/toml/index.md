@@ -117,21 +117,21 @@ TOML substitutes opt-in Jinja-style `{{ }}` variables inside quoted strings, at 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
+    cargo test --features "parquet iceberg" -p yggdryl --test toml -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test toml -- wire
     cargo bench -p yggdryl --bench text -- codec/toml
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/toml
+    python/.venv/bin/python -m pytest python/tests/toml/test_init.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/text/toml.test.js
+    node --test node/tests/text/codec.test.js
     npm run --prefix node bench:text
     ```

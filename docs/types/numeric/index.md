@@ -336,15 +336,15 @@ One reading serves a row and a column: text into any of the four, any of the fou
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::floating field::integer field::floating field::decimal field::scalar
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- decimal::tests arithmetic::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean decimal::fields decimal::selection floating integer
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- decimal::internal::reading arithmetic
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^decimal/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
@@ -352,6 +352,6 @@ One reading serves a row and a column: text into any of the four, any of the fou
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

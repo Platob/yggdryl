@@ -65,14 +65,16 @@ rust/                    The core crate
                          txhash/ are one root folder each
   src/{uri,arrow,expression,graph,fix}/
                          The remaining core layers
-  tests/                 Edge tests, grouped by theme
+  tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension
   src/                   PyO3 views over the matching core domains
   yggdryl/               The Python package, including field classes and annotations
+  tests/                 The mirror of both, file for file
 node/                    The JavaScript extension
   src/                   Node-API views over the matching core domains
   *.js                   The loader and its convenience protocols
+  tests/                 The mirror of both, file for file
 docs/                    The MkDocs site sources
 scripts/                 Documentation and interoperability checkers
 ```

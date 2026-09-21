@@ -455,19 +455,19 @@ let _ = std::fs::remove_dir_all(&root);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::catalog::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- catalog
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^catalog_resolve/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```

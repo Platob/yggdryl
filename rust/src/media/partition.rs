@@ -1044,7 +1044,7 @@ fn retried<T>(mut step: impl FnMut() -> Result<T>) -> Result<T> {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/media/partition/mod.rs` pins and a caller cannot
+    //! What `rust/tests/media/partition.rs` pins and a caller cannot
     //! reach.
     //!
     //! `folder_reader` is the crate-private reader a partitioned tree is read

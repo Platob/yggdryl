@@ -351,7 +351,7 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test uri
-    cargo test --features "parquet iceberg" -p yggdryl --lib uri::
+    cargo test --features "parquet iceberg" -p yggdryl --test fs -- uri
     cargo test --features "parquet iceberg" -p yggdryl --test uri -- canonical_values core_components credentials s3_locations receive_file_scheme malformed structural_json scheme_less
     cargo bench -p yggdryl --bench uri -- "resource_parse/(uri_canonical|known_scheme|custom_scheme|display_parse_round_trip)"
     cargo bench -p yggdryl --bench uri -- "resource_value/(clone|stable_hash|component_access|credential_access|s3_location_access)"
@@ -360,14 +360,14 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/uri
-    python/.venv/bin/python -m pytest python/tests/uri -k "components_path_collection or credentials or hash_locks"
+    python/.venv/bin/python -m pytest python/tests/test_uri.py
+    python/.venv/bin/python -m pytest python/tests/test_uri.py -k "components_path_collection or credentials or hash_locks"
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/uri/uri.test.js
-    node --test --test-name-pattern="canonical components|credentials and object store|scheme-less|rejects malformed" node/tests/uri/uri.test.js
+    node --test node/tests/uri.test.js
+    node --test --test-name-pattern="canonical components|credentials and object store|scheme-less|rejects malformed" node/tests/uri.test.js
     ```

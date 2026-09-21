@@ -160,12 +160,12 @@ Shown in Rust; Python answers `default_port`, `is_local` and `local_mime_type` u
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/uri -k "url_converts or urn_components"
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py::TestUrlPathlibParity -k file_system_predicates
+    python/.venv/bin/python -m pytest python/tests/test_uri.py -k "url_converts or urn_components"
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py::TestUrlPathlibParity -k file_system_predicates
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="URL conversion|URN values|file system predicates" node/tests/uri/uri.test.js
+    node --test --test-name-pattern="URL conversion|URN values|file system predicates" node/tests/uri.test.js
     ```

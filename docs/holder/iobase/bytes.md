@@ -924,25 +924,25 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::conformance
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::laziness
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::lifecycle
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::shape
-    cargo test --features "parquet iceberg" -p yggdryl --lib iocursor::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iobase::backends
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iobase::backends::every_backend_reads_a_missing_resource_as_empty
+    cargo test --features "parquet iceberg" -p yggdryl --test iobase -- lifecycle
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iobase::positional
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iocursor::over_pages iocursor::retained
     cargo bench --bench coding -- io_pstream
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/holder/io.test.js"
+    node --test "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```
 

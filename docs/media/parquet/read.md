@@ -198,20 +198,20 @@ The same rows, without the value model in the middle: `read_arrow_reader` stream
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/parquet/read_rows
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py python/tests/media/test_io_records.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py python/tests/test_iomedia.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet read whole" --filter "parquet read records"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_parquet_into_ipc npm run --prefix node bench:media
     ```

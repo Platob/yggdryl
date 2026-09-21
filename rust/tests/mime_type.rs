@@ -8,3 +8,5 @@
 #[cfg(feature = "internals")]
 #[path = "mime_type/line.rs"]
 mod line;
+#[path = "mime_type/registry.rs"]
+mod registry;

@@ -476,14 +476,14 @@ python scripts/generate_fix_dictionary.py --check
 
     ```bash
     cargo test -p yggdryl --test fix store
-    cargo test -p yggdryl --lib fix::tests::shard_arithmetic
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal::shard_arithmetic
     cargo test -p yggdryl --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
     ```
 
 === "Python"
 
     ```bash
-    python -m pytest python/tests/fix/test_catalog.py
+    python -m pytest python/tests/test_fix.py
     ```
 
 === "JavaScript"

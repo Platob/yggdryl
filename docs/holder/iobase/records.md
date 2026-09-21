@@ -853,7 +853,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::records
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iomedia::rows iomedia::write
     cargo bench --bench media --features parquet -- io_dimensions
     cargo bench --bench media --features parquet -- io_write_mode_dispatch
     cargo bench --bench media --features parquet -- io_write_commit_rows
@@ -864,13 +864,13 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k "Scans or Partitions or PathlibParity"
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k "Scans or Partitions or PathlibParity"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/holder/io.test.js"
+    node --test "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```
 

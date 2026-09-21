@@ -229,7 +229,7 @@ Only a whole file is a Parquet file, so an append or a merge reads the stored ro
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/parquet
     ```
@@ -237,12 +237,12 @@ Only a whole file is a Parquet file, so an append or a merge reads the stored ro
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_io_records.py python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/test_iomedia.py python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "PyArrow parquet"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

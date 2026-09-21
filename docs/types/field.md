@@ -1002,9 +1002,11 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::generic field::nested field::serde field::comparison field::typed field::arrow field::integer field::floating field::decimal field::temporal field::binary field::scalar
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean bytes::fields decimal::fields diff::comparison field::arrow field::generic field::nested floating integer mapping::nested merge::nested metadata::generic parser::generic protocol::generic protocol::nested serde::generic serde::schemas temporal::fields typed
     cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc -- Field::apply_arrow
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- field:: typed:: diff:: merge::
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- diff::internal merge::internal
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_field_clone|field_stable_hash|metadata_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'
@@ -1015,7 +1017,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py python/tests/types/test_factories.py python/tests/types/test_field_classes.py python/tests/types/test_field_classes_arrow.py python/tests/types/test_field_classes_edges.py python/tests/types/test_field_classes_py314.py python/tests/types/test_protocol_hashability.py
+    python/.venv/bin/python -m pytest python/tests/test_field.py python/tests/test_datatype.py python/tests/test__classes.py python/tests/test_protocol.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     ```
@@ -1023,7 +1025,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/field.test.js node/tests/types/fields.test.js
+    node --test node/tests/field.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```
 

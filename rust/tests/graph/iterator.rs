@@ -1,7 +1,8 @@
-//! The one walk over events: each event chained to the live one under its
-//! cross identity - or, where that is alive under nothing, under a name a
-//! live event goes by - the alive set kept as the lifecycle moves, and the
-//! caller's word on the order taken or the order made.
+//! `rust/src/graph/iterator.rs`: the one walk over events: each event
+//! chained to the live one under its cross identity - or, where that is
+//! alive under nothing, under a name a live event goes by - the alive set
+//! kept as the lifecycle moves, and the caller's word on the order taken or
+//! the order made.
 
 use std::collections::BTreeMap;
 

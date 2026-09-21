@@ -177,7 +177,7 @@ Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib charset::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test charset -- reader::internal
     cargo test --features "parquet iceberg" -p yggdryl --test charset
     cargo test -p yggdryl --test iobase_calls a_random_read
     cargo test -p yggdryl --test allocations charset
@@ -196,5 +196,5 @@ Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/charset/*.test.js"
+    node --test node/tests/charset.test.js
     ```

@@ -201,17 +201,17 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

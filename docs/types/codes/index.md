@@ -515,22 +515,22 @@ crate 65056 exists. `SecurityIDSource(22)=S` and
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii string_enum:: vocabulary::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves cfi_code::coded code::datatypes code::securities cusip_code::securities figi_code::securities sedol_code::securities state::coded string::enumerated string::listings timeinforce::coded
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- string::codes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "registered_code or prebuilt_vocabulary or enum_member or code_datatype"
-    python/.venv/bin/python -m pytest python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code or prebuilt_vocabulary or enum_member or code_datatype"
+    python/.venv/bin/python -m pytest python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="registered code|vocabulary|enum|packs" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="registered code|vocabulary|enum|packs" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

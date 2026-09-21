@@ -390,20 +390,20 @@ assert!(TimeType::Time32(TimeUnit::Nanosecond).validate().is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal::every_time_leaf datatype::temporal::time_ field::temporal::a_time_field temporal::time_of_day
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- temporal::fields temporal::scalars time::temporal
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^time/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "time_infers"
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k "zoned_times_are_refused or finer_than_python"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "time_infers"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "zoned_times_are_refused or finer_than_python"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="generic time" node/tests/types/datatype.test.js
-    node --test --test-name-pattern="typed factory parameters" node/tests/types/fields.test.js
+    node --test --test-name-pattern="generic time" node/tests/datatype.test.js
+    node --test --test-name-pattern="typed factory parameters" node/tests/fields.test.js
     ```

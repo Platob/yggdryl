@@ -1,4 +1,5 @@
-//! One Ullink CBlock configuration, read into a dictionary and message roots.
+//! `rust/src/fix/cfb.rs`: one Ullink CBlock configuration, read into a
+//! dictionary and message roots.
 
 use super::path;
 

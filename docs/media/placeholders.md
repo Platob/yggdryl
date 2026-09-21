@@ -101,20 +101,20 @@ A quoted placeholder becomes the variable's own typed value, a default fills a n
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test text placeholder::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::loading::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test text -- loading
     cargo bench -p yggdryl --bench text -- codec/placeholder
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/test_placeholders.py
+    python/.venv/bin/python -m pytest python/tests/text/test__codec.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/text/placeholder.test.js
+    node --test node/tests/text/codec.test.js
     ```
 
 ## Performance

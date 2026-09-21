@@ -178,14 +178,14 @@ A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text json::
+    cargo test --features "parquet iceberg" -p yggdryl --test json
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/json
-    python/.venv/bin/python -m pytest python/tests/text/test_codec_fields.py
+    python/.venv/bin/python -m pytest python/tests/json/test_init.py
+    python/.venv/bin/python -m pytest python/tests/text/test_codec.py
     ```
 
 === "JavaScript"

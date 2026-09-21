@@ -598,7 +598,7 @@ A carried column returns to its place because the message carries it: a message 
 
     ```bash
     cargo test -p yggdryl --test fix batch::
-    cargo test -p yggdryl --test fix batch::the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix
+    cargo test -p yggdryl --test fix batch::a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix
     cargo test -p yggdryl --test fix dataset::
     cargo test -p yggdryl --test fix dataset::ulbridge_dataset_allocation_profile_is_sequential_and_staged -- --exact --nocapture --test-threads=1
     ```
@@ -606,7 +606,7 @@ A carried column returns to its place because the message carries it: a message 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix
+    python/.venv/bin/python -m pytest python/tests/test_fix.py
     python scripts/check_docs_examples.py --lang python
     ```
 

@@ -270,7 +270,7 @@ A declared [`Field`](values.md) names the root the rows land under and types the
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text json::
+    cargo test --features "parquet iceberg" -p yggdryl --test json
     cargo test --features "parquet iceberg" -p yggdryl --test media -- structured::
     cargo bench -p yggdryl --bench text -- codec/json
     ```
@@ -278,8 +278,8 @@ A declared [`Field`](values.md) names the root the rows land under and types the
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/json
-    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_scalar.py
+    python/.venv/bin/python -m pytest python/tests/json/test_init.py
+    python/.venv/bin/python -m pytest python/tests/test_arrow.py
     ```
 
 === "JavaScript"

@@ -935,22 +935,22 @@ stays `utf8`.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::string datatype::ascii field::ascii strings:: regex:: string_enum::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves cast::typed::strings regex::captures regex::fractions string::enumerated string::leaves string::widths
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- string::codes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^string/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "string or ascii"
-    python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py -k regex
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "string or ascii"
+    python/.venv/bin/python -m pytest python/tests/text/test_init.py -k regex
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="string|ASCII|ascii|regex captures" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="string|ASCII|ascii|regex captures" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

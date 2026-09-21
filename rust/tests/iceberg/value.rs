@@ -1,4 +1,4 @@
-//! `rust/src/iceberg/value.rs`: Iceberg's portable single-value bytes.
+//! `rust/src/iceberg/value.rs`: iceberg's portable single-value bytes.
 //!
 //! The encoding a bound is written in and read back under is what every
 //! manifest summary and every pruning decision stands on, and no caller can

@@ -1,4 +1,5 @@
-//! `rust/src/object/aws/profile.rs`: the shared-file reading no caller can name.
+//! `rust/src/object/aws/profile.rs`: the shared-file reading no caller can
+//! name.
 //!
 //! `~/.aws/config` spells every profile but `default` as `[profile name]` while
 //! `~/.aws/credentials` uses the bare name, and an indented `s3 =` block

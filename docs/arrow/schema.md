@@ -104,7 +104,7 @@ Each column of a root projects through its own field, so a [string or bytes](../
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test types field::arrow::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- field::arrow
     cargo bench -p yggdryl --bench types -- arrow/struct_field
     # Wider context: per-field and per-datatype projections of the same group.
     cargo bench -p yggdryl --bench types -- arrow/
@@ -113,7 +113,7 @@ Each column of a root projects through its own field, so a [string or bytes](../
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field_classes_arrow.py
+    python/.venv/bin/python -m pytest python/tests/test__classes.py
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     ```
 

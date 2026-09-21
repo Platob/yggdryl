@@ -416,20 +416,22 @@ the column's name and its metadata.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::nested datatype::arrow field::nested field::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype::arrow datatype_kind::nested field::generic field::nested mapping::nested merge::nested metadata::generic parser::generic parser::nested protocol::generic protocol::nested serde::generic structure::nested union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_datatype_clone|nested_validate)'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_field.py python/tests/types/test_annotation_options.py -k "dictionary"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_field.py python/tests/test__hints.py -k "dictionary"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="dictionary|nested" node/tests/types/field.test.js node/tests/types/fields.test.js node/tests/types/defaults.test.js
+    node --test --test-name-pattern="dictionary|nested" node/tests/field.test.js node/tests/fields.test.js node/tests/defaults.test.js
     npm run --prefix node bench:types
     ```

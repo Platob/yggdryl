@@ -111,14 +111,14 @@ Substitution is opt-in, runs after parsing, and touches string values only, neve
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text yaml::
+    cargo test --features "parquet iceberg" -p yggdryl --test yaml
     cargo bench -p yggdryl --bench text -- codec/yaml
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/yaml
+    python/.venv/bin/python -m pytest python/tests/yaml/test_init.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 

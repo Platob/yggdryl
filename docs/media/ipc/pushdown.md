@@ -227,18 +227,18 @@ Arrow names the columns and not the record, so the root name is the one thing in
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test ipc -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_pushdown/ipc
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_ipc.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

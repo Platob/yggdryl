@@ -1,3 +1,6 @@
+//! `rust/src/iobase/lifecycle.rs`: clearing and removing a resource: what
+//! each costs the handle beneath, and what a pending write cannot survive.
+
 use yggdryl::IOBase;
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;

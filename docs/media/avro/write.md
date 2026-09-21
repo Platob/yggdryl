@@ -425,7 +425,7 @@ Avro's `string` is UTF-8, so every [string](../../types/index.md) on text storag
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test media avro::
+    cargo test --features "parquet iceberg" -p yggdryl --test avro -- arrow::avro::logical batch::avro::limits batch::avro::records container::avro::containers container::avro::hardening container::avro::snappy container::avro::snapshots container::avro::streaming datum::avro::hardening datum::avro::matrix mod_::fuzz_lite resolve::avro::resolution schema::avro::schemas single::avro::single_object single::avro::snapshots
     cargo test --features "parquet iceberg" -p yggdryl --test interop avro::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/avro
     ```
@@ -433,13 +433,13 @@ Avro's `string` is UTF-8, so every [string](../../types/index.md) on text storag
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_avro.py
+    python/.venv/bin/python -m pytest python/tests/test_avro.py
     python/.venv/bin/python python/benchmarks/media.py --filter avro
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/avro.test.js
+    node --test node/tests/avro.test.js
     YGGDRYL_BENCH_FILTER=records/avro npm run --prefix node bench:media
     ```

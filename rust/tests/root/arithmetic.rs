@@ -1,10 +1,10 @@
-//! `rust/src/arithmetic.rs`: the scalar arithmetic dispatcher no caller can name.
-//!
-//! The arithmetic dispatcher an integration test cannot reach.
+//! `rust/src/arithmetic.rs`: the scalar arithmetic dispatcher no caller can
+//! name.
 //!
 //! `Arithmetic` is crate-private: it names which operation a binary walk is
 //! performing, and a caller reaches it only through the operator traits.
-//! What a caller can observe lives in `tests/types/scalar.rs`.
+//! What a caller can observe is beside it here; the scalar surface it rides
+//! on is in `rust/tests/root/scalar.rs`.
 
 use yggdryl::internals::arithmetic::{Arithmetic, checked_arithmetic};
 use yggdryl::{Error, Float16, Float32, Float64, Scalar, TimeUnit, Timezone, i256};

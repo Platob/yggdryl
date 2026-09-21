@@ -200,11 +200,11 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::tables
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::table_metadata
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::partition_specs
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::snapshot::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::interop_regressions
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::tables
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::table_metadata
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::partition_specs
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- snapshot::references snapshot::branches snapshot::expiration snapshot::validation
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::interop_regressions
     cargo test --features "parquet iceberg" -p yggdryl --test interop iceberg::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
@@ -215,14 +215,14 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
-    python/.venv/bin/python -m pytest python/tests/media/test_spark_interop.py -m spark_interop
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py -m spark_interop
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```
 
 ## Performance
@@ -253,7 +253,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 ### Iceberg over S3
 
-The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/object/accounting.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/object/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
 
 | operation | requests before | requests after | median before | median after |
 | --- | ---: | ---: | ---: | ---: |

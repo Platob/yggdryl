@@ -213,20 +213,21 @@ record's values in sorted name order.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::nested field::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype_kind::nested field::generic field::nested mapping::nested merge::nested parser::nested protocol::nested structure::nested union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_datatype_clone|datatype_stable_hash|nested_validate|struct_from_fields_1024|variant_from_fields_128)'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py -k "nested or variant or union or map or dictionary or from_fields or read_only"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "nested or variant or union or map or dictionary or from_fields or read_only"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="variant|recursive|fromFields|nested|Union" node/tests/types/datatype.test.js node/tests/types/fields.test.js node/tests/types/defaults.test.js
+    node --test --test-name-pattern="variant|recursive|fromFields|nested|Union" node/tests/datatype.test.js node/tests/fields.test.js node/tests/defaults.test.js
     npm run --prefix node bench:types
     ```

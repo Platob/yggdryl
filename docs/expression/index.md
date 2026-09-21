@@ -246,8 +246,8 @@ for text in [
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib expression::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib expression::plan::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test expression
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan
     cargo bench -p yggdryl --bench expression -- expression_parse
     cargo bench -p yggdryl --bench expression -- expression_bind
     cargo bench -p yggdryl --bench expression -- expression_display
@@ -257,13 +257,13 @@ for text in [
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression
-    python/.venv/bin/python -m pytest python/tests/expression -k "round_trips or document or binding_resolves or rows_answer or parameters"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "round_trips or document or binding_resolves or rows_answer or parameters"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/expression
-    node --test --test-name-pattern="round-trips|binding resolves|a row answers" node/tests/expression
+    node --test node/tests/expression.test.js
+    node --test --test-name-pattern="round-trips|binding resolves|a row answers" node/tests/expression.test.js
     ```

@@ -7,9 +7,17 @@
 //! `internals` feature, and the file that reaches it is declared behind that
 //! feature here.
 
-#[cfg(feature = "internals")]
 #[path = "txhash/arrow.rs"]
 mod arrow;
-#[cfg(feature = "internals")]
+#[path = "txhash/field.rs"]
+mod field;
+#[path = "txhash/hasher.rs"]
+mod hasher;
 #[path = "txhash/mod_.rs"]
 mod mod_;
+#[path = "txhash/scalar.rs"]
+mod scalar;
+#[path = "txhash/time.rs"]
+mod time;
+#[path = "txhash/value.rs"]
+mod value;

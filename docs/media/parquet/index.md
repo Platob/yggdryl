@@ -284,7 +284,7 @@ cargo add yggdryl --features parquet
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/parquet/read_rows
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/(row_size|column_size|read_arrow_field)'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/parquet
@@ -294,14 +294,14 @@ cargo add yggdryl --features parquet
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "parquet read whole" --filter "parquet read subset" --filter "parquet read records" --filter "parquet row size" --filter "parquet column size" --filter "PyArrow parquet"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_parquet_into_ipc npm run --prefix node bench:media
     YGGDRYL_BENCH_FILTER=records/read_parquet_pushdown npm run --prefix node bench:media
     ```

@@ -1,3 +1,6 @@
+//! `rust/src/uri/parser.rs`: what a validated identifier is made of, and
+//! which host a location's scheme reads a container out of.
+
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use yggdryl::{Authority, MediaType, MimeType, Scheme, Uri, UriPath, Url, Urn};
@@ -1308,4 +1311,653 @@ fn a_rootless_path_reaches_a_url_through_the_working_directory() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("host"), "{error}");
+}
+
+mod escapes {
+    use std::path::PathBuf;
+    use yggdryl::{Authority, Error, Uri, UriPath, Url};
+
+    /// Return the target, byte offset, and reason a parse failure reports.
+    fn parse_failure(error: &Error) -> (&str, usize, &str) {
+        match error {
+            Error::Parse {
+                target,
+                position,
+                reason,
+            } => (target, *position, reason.as_str()),
+            other => panic!("expected a parse error, got {other}"),
+        }
+    }
+
+    /// Assert one input fails at one byte of the *original* text.
+    fn fails_at(input: &str, position: usize, reason: &str) {
+        let error = Uri::from_str(input).expect_err(&format!("{input:?} must not parse"));
+        let (_, reported, actual) = parse_failure(&error);
+        assert_eq!(reported, position, "{input:?} reported the wrong byte");
+        assert_eq!(actual, reason, "{input:?} reported the wrong reason");
+        assert!(
+            input.is_char_boundary(reported),
+            "{input:?} reported byte {reported}, which splits a character"
+        );
+    }
+
+    /// RFC 3986 s2.1: `pct-encoded = "%" HEXDIG HEXDIG`, exactly two digits.
+    ///
+    /// WHATWG keeps a short escape as literal text instead; this crate validates,
+    /// so the escape is refused and the offset names the `%` that opened it, in the
+    /// original string rather than in the component the parser sliced out.
+    #[test]
+    fn a_short_percent_escape_is_refused_at_the_percent_that_opened_it() {
+        const REASON: &str = "percent escape must contain exactly two hexadecimal digits";
+
+        fails_at("https://example.test/a%", 22, REASON);
+        fails_at("https://example.test/a%2", 22, REASON);
+        fails_at("https://example.test/a%zz", 22, REASON);
+        fails_at("https://example.test/a%2zb", 22, REASON);
+        // The doubled percent is the failure: `%%` opens an escape whose first
+        // digit is `%`, so it is refused where a lenient parser keeps `%%41`.
+        fails_at("https://example.test/a%%41", 22, REASON);
+        fails_at("https://example.test/%", 21, REASON);
+        fails_at("https://example.test/?q=%", 24, REASON);
+        fails_at("https://example.test/?q=a%2", 25, REASON);
+        fails_at("https://example.test/#%", 22, REASON);
+        fails_at("https://example.test/#a%2", 23, REASON);
+        fails_at("https://a%/", 9, REASON);
+        fails_at("https://a%2/", 9, REASON);
+        fails_at("https://[fe80::1%eth0]/", 16, REASON);
+
+        // The same rule on every component that takes text of its own.
+        assert!(UriPath::from_str("/a%").is_err());
+        assert!(Authority::from_str("a%").is_err());
+        assert!(
+            Uri::from_str("https://example.test/")
+                .unwrap()
+                .set_query(Some("a=%2"))
+                .is_err()
+        );
+    }
+
+    /// RFC 3986 s6.2.2.1: only the two hex digits case-normalize, and they go up.
+    ///
+    /// WHATWG preserves the case an escape was written with; this crate follows the
+    /// RFC so that two spellings of one URI are one value, which is what lets `Eq`
+    /// and `stable_hash` answer equivalence.
+    #[test]
+    fn only_the_hex_digits_of_an_escape_change_case_and_they_uppercase() {
+        let uri = Uri::from_str("HTTPS://example.test/%2fAbC%2Fdef?q=%c3%a9#%7bx%7D").unwrap();
+
+        assert_eq!(
+            uri.to_string(),
+            "https://example.test/%2FAbC%2Fdef?q=%C3%A9#%7Bx%7D"
+        );
+        // Literal path text keeps its case; only the escapes moved.
+        assert_eq!(uri.path().as_str(), "/%2FAbC%2Fdef");
+        assert_eq!(
+            Uri::from_str("https://example.test/%3A%3a%3C%3c")
+                .unwrap()
+                .path()
+                .as_str(),
+            "/%3A%3A%3C%3C"
+        );
+        // Two spellings of one URI are one value.
+        assert_eq!(
+            Uri::from_str("https://example.test/a%3ab").unwrap(),
+            Uri::from_str("https://example.test/a%3Ab").unwrap()
+        );
+        assert_eq!(
+            Uri::from_str("https://example.test/a%3ab")
+                .unwrap()
+                .stable_hash(),
+            Uri::from_str("https://example.test/a%3Ab")
+                .unwrap()
+                .stable_hash()
+        );
+    }
+
+    /// RFC 3986 s2.2 and s6.2.2.2: an escaped reserved octet is data, not syntax.
+    ///
+    /// Components are split before anything is decoded, so `%2F` stays inside the
+    /// segment that carried it. Decoding first is the path-traversal bug class
+    /// Tomcat, Spring, and IIS have each shipped.
+    #[test]
+    fn an_escaped_reserved_octet_is_data_and_never_becomes_structure() {
+        let uri = Uri::from_str("https://example.test/a%2Fb/c").unwrap();
+        assert_eq!(uri.path_segments().collect::<Vec<_>>(), ["a%2Fb", "c"]);
+        assert_eq!(uri.path().segment_len(), 2);
+        assert_eq!(uri.file_name(), Some("c"));
+
+        // An escaped separator standing alone is one ordinary segment.
+        assert_eq!(
+            Uri::from_str("https://example.test/a/%2F/c")
+                .unwrap()
+                .path_segments()
+                .collect::<Vec<_>>(),
+            ["a", "%2F", "c"]
+        );
+        // A backslash is a separator on no host once it is escaped.
+        assert_eq!(
+            Uri::from_str("https://example.test/a%5Cb")
+                .unwrap()
+                .path_segments()
+                .collect::<Vec<_>>(),
+            ["a%5Cb"]
+        );
+        // Text decoding is not structure: `%2F` reads back as a slash inside the
+        // segment, which is why segments read the encoded form instead.
+        assert_eq!(uri.path_text(true).unwrap(), "/a/b/c");
+        assert_eq!(uri.path_text(false).unwrap(), "/a%2Fb/c");
+
+        // `..%2Fetc` is one name, not a traversal, in every structural view.
+        let traversal = Uri::from_str("https://example.test/lake/..%2Fetc/passwd").unwrap();
+        assert_eq!(traversal.parts(), ["lake", "..%2Fetc", "passwd"]);
+        assert_eq!(
+            traversal.path().normalize().unwrap().as_str(),
+            "/lake/..%2Fetc/passwd"
+        );
+    }
+
+    /// RFC 3986 s2.4: never encode or decode the same string twice.
+    ///
+    /// `%2525` is a URI carrying the text `%25`, which is a URI carrying `%`. Each
+    /// direction moves exactly one level; the double-decode is the IIS
+    /// CVE-2001-0333 bug class and the double-encode its mirror.
+    #[test]
+    fn encoding_and_decoding_each_move_exactly_one_level() {
+        let uri = Uri::from_str("https://example.test/%2525").unwrap();
+        assert_eq!(uri.path().as_str(), "/%2525");
+        assert_eq!(uri.path_text(true).unwrap(), "/%25");
+        assert_eq!(uri.to_string(), "https://example.test/%2525");
+
+        // A file name is data, so encoding it once is what a path conversion does.
+        let path = Uri::from_path("/lake/50%25off").unwrap();
+        assert_eq!(path.to_string(), "file:///lake/50%2525off");
+        assert_eq!(
+            path.clone().into_path().unwrap(),
+            PathBuf::from("/lake/50%25off")
+        );
+        // And encoding the encoded form again is a different, equally exact URI.
+        assert_eq!(
+            Uri::from_path("/lake/50%2525off").unwrap().to_string(),
+            "file:///lake/50%252525off"
+        );
+    }
+
+    /// A literal `%` is an ordinary file name byte, on every operating system.
+    ///
+    /// `100%.csv` is the name that breaks .NET's `System.Uri`, Node's
+    /// `new URL(path, 'file:')`, and a long tail of tooling. RFC 3986 s2.4 says the
+    /// data byte `%` is spelled `%25`, and the conversion is exact in both
+    /// directions.
+    #[test]
+    fn a_file_name_carrying_a_literal_percent_round_trips_exactly() {
+        for name in [
+            "100%.csv",
+            "%20.txt",
+            "a%b",
+            "report %2F final.pdf",
+            "50%25discount",
+            "%",
+            "%%",
+            "% 20",
+            "%zz",
+            "e:%41foo%20bar%25.baz",
+            "caf\u{e9} 100%.csv",
+        ] {
+            let source = format!("/lake/{name}");
+            let uri = Uri::from_path(&source).unwrap();
+            assert!(
+                !uri.path().as_str().contains("%2525") || name.contains("%25"),
+                "{name:?} encoded more than once: {uri}"
+            );
+            assert_eq!(
+                uri.clone().into_path().unwrap(),
+                PathBuf::from(&source),
+                "{name:?} did not survive the round trip through {uri}"
+            );
+            // The URI it spells is itself parseable and canonical.
+            assert_eq!(Uri::from_str(&uri.to_string()).unwrap(), uri);
+        }
+
+        assert_eq!(
+            Uri::from_path("/lake/100%.csv").unwrap().to_string(),
+            "file:///lake/100%25.csv"
+        );
+        // The bare `%` never reaches the URI, so nothing downstream can read it as
+        // an escape that lost its digits.
+        assert!(
+            !Uri::from_path("/lake/a%b")
+                .unwrap()
+                .to_string()
+                .contains("%b")
+        );
+    }
+
+    /// An escape must not create a dot segment the URI does not show.
+    ///
+    /// WHATWG treats `.`, `%2e`, `%2E` as the same segment and pops on
+    /// `..`, `.%2e`, `%2e.`, `%2e%2e`. This crate reads structure from the encoded
+    /// text, so those spellings stay opaque segments - `parts`, `normalize`, and
+    /// `segments_under` all see a name. That is safe only while the escape cannot
+    /// become a real dot segment later, so the platform-path conversion refuses it,
+    /// the same way it refuses an escaped separator. Node's `fileURLToPath` decodes
+    /// them instead and walks straight out of the directory it was given.
+    #[test]
+    fn percent_escapes_cannot_smuggle_a_dot_segment_into_a_platform_path() {
+        const REASON: &str = "percent escapes cannot create a dot segment";
+
+        for spelling in ["%2E%2E", "%2e%2e", ".%2E", "%2E.", "%2E", "%2e"] {
+            let uri = Uri::from_str(&format!("file:///lake/{spelling}/etc/passwd")).unwrap();
+            // Every structural view reads it as one ordinary name.
+            assert!(
+                uri.parts().contains(&uri.path().get_segment(1).unwrap()),
+                "{spelling:?} lost its segment"
+            );
+            assert_eq!(uri.path().normalize().unwrap(), *uri.path());
+
+            let error = uri
+                .clone()
+                .into_path()
+                .expect_err(&format!("{spelling:?} must not reach a platform path"));
+            let (target, position, reason) = parse_failure(&error);
+            assert_eq!(target, "file URI path");
+            assert_eq!(reason, REASON);
+            assert_eq!(position, 6, "{spelling:?} named the wrong byte");
+        }
+
+        // A trailing escaped dot segment is refused too, and so is one under a UNC
+        // authority, where the parent it names is the share root.
+        assert!(
+            Uri::from_str("file:///lake/%2E%2E")
+                .unwrap()
+                .into_path()
+                .is_err()
+        );
+        assert!(
+            Uri::from_str("file://server/share/%2E%2E/x")
+                .unwrap()
+                .into_path()
+                .is_err()
+        );
+
+        // Only a whole segment is a dot segment: an escaped dot inside a longer
+        // name is an ordinary byte and converts.
+        for kept in ["%2Ehtml", "%2e.bar", "a%2Eb", "%2E%2Ebar", "..%2E"] {
+            let uri = Uri::from_str(&format!("file:///lake/{kept}")).unwrap();
+            assert!(
+                uri.clone().into_path().is_ok(),
+                "{kept:?} is a name, not a dot segment"
+            );
+        }
+
+        // A dot segment the path spells outright is not an escape and is kept: the
+        // caller's own resolution owns it.
+        assert_eq!(
+            Uri::from_str("file:///lake/../etc")
+                .unwrap()
+                .into_path()
+                .unwrap(),
+            PathBuf::from("/lake/../etc")
+        );
+    }
+
+    /// An escaped separator or NUL cannot become a platform path either.
+    ///
+    /// The escape is data in the URI - one segment, exactly as RFC 3986 s2.2 says -
+    /// so turning it into a path would either invent a separator or truncate the
+    /// name at the NUL. Node accepts the same input on one API and refuses it on
+    /// another; here both directions agree.
+    #[test]
+    fn escaped_separators_and_nul_stay_inside_the_uri() {
+        for (input, reason) in [
+            (
+                "file:///lake/a%2Fb",
+                "encoded path separators cannot be converted safely",
+            ),
+            (
+                "file:///lake/a%5Cb",
+                "encoded path separators cannot be converted safely",
+            ),
+            ("file:///lake/a%00b", "file path must not contain NUL"),
+            (
+                "file:///lake/a%252F%2Fb",
+                "encoded path separators cannot be converted safely",
+            ),
+        ] {
+            let uri = Uri::from_str(input).unwrap();
+            assert_eq!(uri.path().segment_len(), 2, "{input:?} split a segment");
+            let error = uri
+                .into_path()
+                .expect_err(&format!("{input:?} must not convert"));
+            assert_eq!(parse_failure(&error).2, reason, "{input:?}");
+        }
+
+        // `%00` is legal URI data everywhere the generic syntax allows a byte, and
+        // nothing truncates at it.
+        let nul = Uri::from_str("https://example.test/a%00b?q=%00#%00").unwrap();
+        assert_eq!(nul.path().as_str(), "/a%00b");
+        assert_eq!(nul.path_text(true).unwrap().len(), 4);
+        assert_eq!(nul.to_string(), "https://example.test/a%00b?q=%00#%00");
+    }
+
+    /// Escapes that are not UTF-8 stay bytes in the URI and refuse to be text.
+    ///
+    /// `%C0%AF` is the overlong slash of IIS CVE-2000-0884 and `%ED%A0%80` a lone
+    /// surrogate: neither may decode to the character it imitates, and neither may
+    /// be silently replaced. Both survive as URI syntax and both refuse decoding.
+    #[test]
+    fn escapes_that_are_not_utf8_are_kept_as_bytes_and_never_decode() {
+        for escape in ["%C0%AF", "%ED%A0%80", "%FF", "%EF", "%C0%80"] {
+            let uri = Uri::from_str(&format!("https://example.test/{escape}?q={escape}")).unwrap();
+            assert_eq!(uri.path().as_str(), format!("/{escape}"));
+            assert_eq!(
+                uri.to_string(),
+                format!("https://example.test/{escape}?q={escape}")
+            );
+
+            let error = uri.path_text(true).expect_err("must not decode");
+            assert_eq!(
+                parse_failure(&error).2,
+                "percent escapes must decode to UTF-8"
+            );
+            assert!(uri.query(true).is_err());
+
+            let file = Uri::from_str(&format!("file:///lake/{escape}")).unwrap();
+            assert_eq!(
+                parse_failure(&file.into_path().expect_err("must not convert")).2,
+                "file path percent escapes must decode to UTF-8"
+            );
+        }
+
+        // The offset names the escape the decode stopped at, not the byte the
+        // decoded buffer stopped at.
+        let error = Uri::from_str("file:///lake/%41%FF.arrow")
+            .unwrap()
+            .into_path()
+            .expect_err("must not convert");
+        assert_eq!(parse_failure(&error).1, 9);
+    }
+
+    /// RFC 3987 s3.1: non-ASCII is UTF-8 first, then one escape per octet.
+    #[test]
+    fn non_ascii_names_become_uppercase_utf8_escapes_and_come_back() {
+        let uri = Uri::from_path("/lake/r\u{e9}sum\u{e9}/\u{30a2}.csv").unwrap();
+
+        assert_eq!(
+            uri.to_string(),
+            "file:///lake/r%C3%A9sum%C3%A9/%E3%82%A2.csv"
+        );
+        assert_eq!(
+            uri.path_text(true).unwrap(),
+            "/lake/r\u{e9}sum\u{e9}/\u{30a2}.csv"
+        );
+        assert_eq!(
+            uri.clone().into_path().unwrap(),
+            PathBuf::from("/lake/r\u{e9}sum\u{e9}/\u{30a2}.csv")
+        );
+        // A raw non-ASCII byte is not URI syntax: the text door encodes it, the
+        // syntax door refuses it.
+        assert!(Uri::from_str("https://example.test/r\u{e9}sum\u{e9}").is_err());
+    }
+
+    /// RFC 8089 s2: a rooted path is one path, whichever separator roots it.
+    ///
+    /// `\data` is how Windows spells the root of the current drive. It has to land
+    /// on the same canonical absolute URI as `/data`, or the value it produces is
+    /// not the one a second pass through the same conversion produces.
+    #[test]
+    fn either_separator_roots_a_path_onto_the_same_absolute_file_uri() {
+        for rooted in [r"\lake\100%.csv", r"/lake/100%.csv", r"\lake/100%.csv"] {
+            let uri = Uri::from_path(rooted).unwrap();
+            assert_eq!(uri.to_string(), "file:///lake/100%25.csv", "{rooted:?}");
+            assert!(uri.has_authority(), "{rooted:?} lost its authority marker");
+            assert_eq!(
+                uri.clone().into_path().unwrap(),
+                PathBuf::from("/lake/100%.csv")
+            );
+            // The conversion is its own fixed point.
+            assert_eq!(
+                Uri::from_path(uri.clone().into_path().unwrap()).unwrap(),
+                uri
+            );
+            assert!(Url::from_uri(uri).is_ok());
+        }
+
+        // A relative path keeps no root and stays the relative `file:` form.
+        assert_eq!(
+            Uri::from_path(r"lake\100%.csv").unwrap().to_string(),
+            "file:lake/100%25.csv"
+        );
+        assert_eq!(Uri::from_path(r"\").unwrap().to_string(), "file:///");
+    }
+
+    /// A path opening on two slashes names a UNC server, so it needs an authority.
+    ///
+    /// RFC 8089 App. E.3.2 reads `file:////host/share` as a UNC string written into
+    /// the path. This crate spells UNC with the authority it has - `file://host/share` -
+    /// so the four-slash form has no host to give a platform path, and converting it
+    /// would invent one. Python's `url2pathname` guesses; this refuses.
+    #[test]
+    fn a_two_slash_path_without_an_authority_is_not_a_unc_server() {
+        for input in ["file:////host/share/x", "file://///host/share/x"] {
+            let uri = Uri::from_str(input).unwrap();
+            assert_eq!(uri.to_string(), input);
+            assert!(uri.authority().is_empty());
+
+            let error = uri
+                .into_path()
+                .expect_err(&format!("{input:?} must not convert"));
+            let (target, position, reason) = parse_failure(&error);
+            assert_eq!(target, "file URI path");
+            assert_eq!(position, 0);
+            assert_eq!(
+                reason,
+                "a path opening on two slashes would name a UNC server this URI has no authority for"
+            );
+        }
+
+        // The authority form converts, and a UNC platform path spells it back.
+        let unc = Uri::from_path(r"\\server\share\100%.csv").unwrap();
+        assert_eq!(unc.to_string(), "file://server/share/100%25.csv");
+        assert_eq!(unc.authority().as_str(), "server");
+        assert_eq!(
+            unc.clone().into_path().unwrap(),
+            PathBuf::from("//server/share/100%.csv")
+        );
+        assert_eq!(
+            Uri::from_path(unc.clone().into_path().unwrap()).unwrap(),
+            unc
+        );
+    }
+
+    /// Escapes cannot spell a Windows drive designator into a platform path.
+    ///
+    /// `file:///C%3A/x` is a URI whose first segment is the three-character name
+    /// `C%3A`, not the drive `C:`; WHATWG agrees the escape means it is not a drive
+    /// letter. Converting it would silently promote the name to a drive, so the
+    /// conversion is refused and the drive form has to be spelled outright.
+    #[test]
+    fn escaped_drive_designators_cannot_become_a_drive() {
+        for input in [
+            "file:///C%3A/x",
+            "file:///%43%3A/x",
+            "file:///%43:/x",
+            "file:///c%3a/x",
+        ] {
+            let uri = Uri::from_str(input).unwrap();
+            assert!(uri.into_path().is_err(), "{input:?} must not convert");
+        }
+
+        let drive = Uri::from_str("file:///c:/lake/100%25.csv").unwrap();
+        assert_eq!(drive.to_string(), "file:///C:/lake/100%25.csv");
+        assert_eq!(
+            drive.into_path().unwrap(),
+            PathBuf::from("C:/lake/100%.csv")
+        );
+        // The vertical-bar spelling is not URI syntax at all.
+        assert!(Uri::from_str("file:///c|/x").is_err());
+    }
+
+    /// RFC 8089 s2: `file:/data` and `file:///data` name the same local path.
+    ///
+    /// Both are valid syntax, so a canonical value has to pick one, and the one it
+    /// picks is the one a platform path converts to. Otherwise two values of the
+    /// same file compare and hash apart - which is exactly the mismatch Spark and
+    /// this crate produce when they write the same Iceberg table location.
+    #[test]
+    fn an_absolute_file_path_always_carries_its_authority_marker() {
+        for spelled in ["file:/lake/100%25.csv", "file:///lake/100%25.csv"] {
+            let uri = Uri::from_str(spelled).unwrap();
+            assert_eq!(uri.to_string(), "file:///lake/100%25.csv", "{spelled:?}");
+            assert!(uri.has_authority(), "{spelled:?}");
+            assert_eq!(uri, Uri::from_path("/lake/100%.csv").unwrap());
+            // The hierarchical form is what a URL requires, so both reach one.
+            assert!(Url::from_str(spelled).is_ok(), "{spelled:?}");
+        }
+
+        // A relative `file:` path has no root, so it gains no marker.
+        let relative = Uri::from_str("file:lake/100%25.csv").unwrap();
+        assert!(!relative.has_authority());
+        assert_eq!(relative.to_string(), "file:lake/100%25.csv");
+        assert_eq!(relative, Uri::from_path("lake/100%.csv").unwrap());
+    }
+
+    /// A component after a UNC server is a share name, not a drive designator.
+    ///
+    /// There is no drive at `\\server\c:`, and RFC 8089 s2 requires a file path's
+    /// case to be kept as given, so the drive rule only applies where no authority
+    /// names a host.
+    #[test]
+    fn a_share_name_shaped_like_a_drive_keeps_its_case() {
+        for spelled in ["//server/c:/x", r"\\server\c:\x"] {
+            let uri = Uri::from_path(spelled).unwrap();
+            assert_eq!(uri.to_string(), "file://server/c:/x", "{spelled:?}");
+            assert_eq!(uri.authority().as_str(), "server");
+            assert_eq!(
+                uri.clone().into_path().unwrap(),
+                PathBuf::from("//server/c:/x")
+            );
+            assert_eq!(
+                Uri::from_path(uri.clone().into_path().unwrap()).unwrap(),
+                uri
+            );
+        }
+        assert_eq!(
+            Uri::from_str("file://server/c:/x").unwrap().to_string(),
+            "file://server/c:/x"
+        );
+
+        // With no authority the first segment is a drive, and it uppercases.
+        assert_eq!(Uri::from_path("/c:/x").unwrap().to_string(), "file:///C:/x");
+    }
+
+    /// A one-letter scheme is not a drive letter once it carries an authority.
+    ///
+    /// `a://host/p` is what `from_parts` builds from the scheme `a`, so parsing its
+    /// own spelling has to give it back. `C:/x` and `C:\x` stay the drive reading:
+    /// nothing distinguishes them from a one-letter scheme with an absolute path,
+    /// and a platform path is what that spelling means in this crate.
+    #[test]
+    fn a_one_letter_scheme_with_an_authority_is_not_a_windows_drive() {
+        for input in ["a://host/p", "c://bucket/key%25", "z://h"] {
+            let uri = Uri::from_str(input).unwrap();
+            assert_eq!(uri.to_string(), input, "{input:?}");
+            assert_eq!(Uri::from_str(&uri.to_string()).unwrap(), uri);
+            assert_ne!(uri.scheme(), &yggdryl::Scheme::FILE, "{input:?}");
+        }
+
+        // The drive reading, which the crate keeps for the separator-less spelling.
+        assert_eq!(Uri::from_str("C:/x").unwrap().to_string(), "file:///C:/x");
+        assert_eq!(Uri::from_str(r"C:\x").unwrap().to_string(), "file:///C:/x");
+    }
+
+    /// A refused conversion names the byte of the URI it refused.
+    #[test]
+    fn a_refused_path_conversion_points_at_the_offending_byte() {
+        for (input, position) in [
+            ("file:///x?q=1", 9),
+            ("file:///x#rows", 9),
+            ("file://host/x?q=1", 13),
+            ("file://host/x#rows", 13),
+        ] {
+            let error = Uri::from_str(input)
+                .unwrap()
+                .into_path()
+                .expect_err(&format!("{input:?} must not convert"));
+            let (_, reported, reason) = parse_failure(&error);
+            assert_eq!(reported, position, "{input:?}");
+            assert_eq!(
+                reason,
+                "file URI query and fragment components cannot be represented by a path"
+            );
+            assert_eq!(
+                &input[reported..reported + 1],
+                if input.contains('?') { "?" } else { "#" }
+            );
+        }
+    }
+
+    /// A backslash settles the drive reading outright, because URI syntax has none.
+    ///
+    /// `C:\x` and `C:\\x` can only be platform paths; `C:/x` is read as one too,
+    /// which is the ambiguity a one-letter scheme with an absolute path shares with
+    /// a drive. Only the authority marker separates them, and that case is covered
+    /// by [`a_one_letter_scheme_with_an_authority_is_not_a_windows_drive`].
+    #[test]
+    fn a_backslash_after_a_drive_letter_is_always_a_platform_path() {
+        for input in [r"C:\x", r"C:\\x", r"D:\srv\100%.csv", r"c:\a%b"] {
+            let uri = Uri::from_str(input).unwrap_or_else(|error| panic!("{input:?}: {error}"));
+            assert_eq!(uri.scheme(), &yggdryl::Scheme::FILE, "{input:?}");
+            assert!(
+                uri.to_string().starts_with("file:///"),
+                "{input:?} -> {uri}"
+            );
+            assert_eq!(uri, Uri::from_path(input).unwrap(), "{input:?}");
+        }
+
+        assert_eq!(
+            Uri::from_str(r"D:\srv\100%.csv").unwrap().to_string(),
+            "file:///D:/srv/100%25.csv"
+        );
+    }
+
+    /// A drive letter and a one-letter scheme are told apart by what follows.
+    ///
+    /// A backslash is not URI syntax, so it settles the reading outright. After a
+    /// slash, syntax only a URI carries decides it: the `//` authority marker, a
+    /// `?`, or a `#`. Otherwise the drive reading stands, because a Windows path is
+    /// what that spelling means here.
+    #[test]
+    fn uri_only_syntax_after_a_drive_letter_makes_the_value_a_uri() {
+        // The components survive as components rather than being escaped into the
+        // path, which is what `from_parts` spells and has to parse back.
+        let built = Uri::from_parts(
+            yggdryl::Scheme::from_str("a").unwrap(),
+            Authority::from_str("").unwrap(),
+            UriPath::from_str("/b").unwrap(),
+            Some("q=1".into()),
+            Some("f".into()),
+        )
+        .unwrap();
+        assert_eq!(built.to_string(), "a:/b?q=1#f");
+        assert_eq!(Uri::from_str("a:/b?q=1#f").unwrap(), built);
+        assert_eq!(
+            Uri::from_str("a:/b?q=1#f")
+                .unwrap()
+                .query(false)
+                .unwrap()
+                .as_deref(),
+            Some("q=1")
+        );
+
+        // A backslash keeps the drive reading whatever follows it, so a Windows
+        // name carrying a `#` still becomes an escaped path segment.
+        assert_eq!(
+            Uri::from_str(r"C:\Users\a#b.txt").unwrap().to_string(),
+            "file:///C:/Users/a%23b.txt"
+        );
+        assert_eq!(
+            Uri::from_str("C:/Users/x").unwrap().to_string(),
+            "file:///C:/Users/x"
+        );
+    }
 }

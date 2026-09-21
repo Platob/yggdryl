@@ -384,9 +384,9 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::table_metadata
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::snapshot::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::interop_regressions
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::table_metadata
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- snapshot::references snapshot::branches snapshot::expiration snapshot::validation
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::interop_regressions
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
     ```
@@ -394,13 +394,13 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```
 
 The measured numbers for both are on the [overview](index.md#performance).

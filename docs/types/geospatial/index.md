@@ -513,7 +513,7 @@ geospatial cell crosses a binding as.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- geospatial:: cast::a_matching_geospatial_pair cast::text_into_a_geospatial_target field::comparison::geospatial
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::typed diff::comparison geospatial wkb::bounds wkb::empties wkb::ewkb wkb::exactness wkb::identity wkb::nesting wkb::reading wkb::refusals wkb::type_ids
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^geospatial/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/geospatial_'
     ```
@@ -521,11 +521,11 @@ geospatial cell crosses a binding as.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "geometry or geography"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "geometry or geography"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="geometry|geography" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="geometry|geography" node/tests/datatype.test.js node/tests/fields.test.js
     ```

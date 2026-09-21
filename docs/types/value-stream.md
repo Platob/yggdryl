@@ -146,13 +146,13 @@ A `DataTypeId` is one byte, and the bytes are laid out by family: every `DataTyp
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test types valuestream
+    cargo test -p yggdryl --test root -- valuestream::stream
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k value_bytes
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k value_bytes
     ```
 
 === "JavaScript"

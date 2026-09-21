@@ -309,20 +309,20 @@ assert_eq!(
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal::the_interval_leaf field::temporal::an_interval_field temporal::constructors_reject
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- interval::temporal temporal::fields temporal::scalars
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^interval/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py -k "exact_intervals"
-    python/.venv/bin/python -m pytest python/tests/types/test_factories.py -k "typed_factory_parameters"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "exact_intervals"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "typed_factory_parameters"
     ```
 
 === "JavaScript"
 
     ```bash
     node --test --test-name-pattern="exact intervals" node/tests/text/codec.test.js
-    node --test --test-name-pattern="typed factory parameters" node/tests/types/fields.test.js
+    node --test --test-name-pattern="typed factory parameters" node/tests/fields.test.js
     ```

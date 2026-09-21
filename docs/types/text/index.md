@@ -179,22 +179,22 @@ something narrower.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::string datatype::bytes datatype::ascii field::ascii field::binary strings:: bytes::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ascii::fields ascii::leaves bytes::fields bytes::leaves bytes::values cast::typed::bytes cast::typed::strings string::leaves string::widths
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- string::codes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(string|bytes)/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "string or bytes or ascii or byte_column"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "string or bytes or ascii or byte_column"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="string|byte|ASCII|ascii" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="string|byte|ASCII|ascii" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```
 

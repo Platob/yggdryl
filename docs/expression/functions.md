@@ -163,18 +163,18 @@ A parameter with a Python default, or a Rust field carrying `FUNCTION:default`, 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::user::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- user
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression/test_user_functions.py
+    python/.venv/bin/python -m pytest python/tests/test_expression.py
     python/.venv/bin/python python/benchmarks/udf.py --rows 100000 --repeat 3
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="user function" node/tests/expression
+    node --test --test-name-pattern="user function" node/tests/expression.test.js
     ```

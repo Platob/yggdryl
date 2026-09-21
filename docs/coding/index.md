@@ -213,7 +213,7 @@ The scan answers *candidates*: the pattern a coding restarts after can also occu
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_io_codings.py
+    python/.venv/bin/python -m pytest python/tests/coding/test_handles.py
     python/.venv/bin/python -m pytest python/tests/coding
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```

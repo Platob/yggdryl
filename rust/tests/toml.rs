@@ -7,6 +7,8 @@
 //! only under the `internals` feature, and the file that reaches it is
 //! declared behind that feature here.
 
+#[path = "toml/mod_.rs"]
+mod mod_;
 #[cfg(feature = "internals")]
 #[path = "toml/wire.rs"]
 mod wire;

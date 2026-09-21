@@ -497,20 +497,20 @@ number). A scalar crosses as `{"type":"bytes","value":...}`.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::bytes field::binary bytes::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- bytes::fields bytes::leaves bytes::values cast::typed::bytes
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^bytes/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "bytes or binary or byte_column"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "bytes or binary or byte_column"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="byte|binary" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="byte|binary" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

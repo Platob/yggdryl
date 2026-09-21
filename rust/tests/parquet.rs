@@ -11,6 +11,6 @@
 #[cfg(feature = "parquet")]
 #[path = "parquet/metadata.rs"]
 mod metadata;
-#[cfg(all(feature = "parquet", feature = "internals"))]
+#[cfg(feature = "parquet")]
 #[path = "parquet/mod_.rs"]
 mod mod_;

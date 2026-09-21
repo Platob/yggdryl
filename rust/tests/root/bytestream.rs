@@ -1,4 +1,5 @@
-//! `rust/src/bytestream.rs`: the chunked byte reader every stream door answers with.
+//! `rust/src/bytestream.rs`: the chunked byte reader every stream door
+//! answers with.
 
 use std::io::Read;
 use std::sync::Arc;

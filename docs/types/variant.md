@@ -405,7 +405,8 @@ The encoding happens once at the value boundary, and the media layers move the b
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test types variant
+    cargo test -p yggdryl --test root -- cast::typed code::datatypes datatype::arrow datatype::families default::datatypes diff::comparison field::arrow geospatial parser::grammar scalar temporal::scalars union::variants uuid variant::encoding variant::internal variant::value
+    cargo test -p yggdryl --test value -- canonical::value::readings
     cargo test -p yggdryl --test interop variant
     cargo test -p yggdryl --test allocations variant_
     cargo bench -p yggdryl --bench types -- variant --quick
@@ -414,13 +415,13 @@ The encoding happens once at the value boundary, and the media layers move the b
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types -k variant
+    python/.venv/bin/python -m pytest python/tests/test__classes.py python/tests/test__defaults.py python/tests/test__hints.py python/tests/test_datatype.py python/tests/test_protocol.py python/tests/test_scalar.py -k variant
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="variant" node/tests/types/datatype.test.js
+    node --test --test-name-pattern="variant" node/tests/datatype.test.js
     ```
 
 ## Performance

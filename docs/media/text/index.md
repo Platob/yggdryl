@@ -235,8 +235,8 @@ the IPC copy; Python adds an `re` plus PyArrow baseline.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::
-    cargo test --features "parquet iceberg" -p yggdryl --test media text::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test text -- batch display io line::internal loading reader::internal
+    cargo test --features "parquet iceberg" -p yggdryl --test text -- arrow::text batch::text bytes::text::values entry::text::values handle::text leading::text limits::text line::text options::text plan::columns reader::text sep::text
     cargo bench -p yggdryl --bench text -- text_records
     cargo bench -p yggdryl --bench text -- text_record_framing
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/text
@@ -246,13 +246,13 @@ the IPC copy; Python adds an `re` plus PyArrow baseline.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py
+    python/.venv/bin/python -m pytest python/tests/text/test_init.py
     python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.05 --repeat 3
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     npm run --prefix node bench:media:text -- --records 5000 --iterations 3
     ```

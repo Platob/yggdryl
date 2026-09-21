@@ -422,8 +422,10 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- scalar::tests arithmetic::tests decimal::tests
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums:: scalar:: temporal::
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- scalar::internal arithmetic decimal::internal::reading
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test mime_type -- registry::mime
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean datatype_id datatype_kind::names date::temporal datetime::temporal default::scalars duration::temporal edge_algorithm enumeration interval::temporal iokind::enums iomode::enums lib::enums media_type::vocabulary mime_type::mime parser::aliases protocol::enums scalar scheme::vocabulary temporal::datatypes temporal::fields temporal::scalars time::temporal time_unit::enums
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test text -- format::mime
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(enum_accessors|mime_parse|media_infer)/'
     ```
@@ -431,14 +433,14 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py python/tests/types/test_scalar.py python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/native-scalar-returns.test.js node/tests/enums.test.js
+    node --test node/tests/value.test.js node/tests/enums/vocabulary.test.js
     ```
 
 ## Performance

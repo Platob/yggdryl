@@ -466,20 +466,21 @@ leaf, because it is one column.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::nested datatype::arrow field::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype::arrow datatype_kind::nested field::generic field::nested mapping::nested merge::nested parser::nested protocol::nested structure::nested union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_datatype_clone|nested_validate)'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_factories.py python/tests/types/test_defaults.py -k "run_end or nested"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test__defaults.py -k "run_end or nested"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="runEnd|run_end|nested" node/tests/types/fields.test.js node/tests/types/defaults.test.js
+    node --test --test-name-pattern="runEnd|run_end|nested" node/tests/fields.test.js node/tests/defaults.test.js
     npm run --prefix node bench:types
     ```

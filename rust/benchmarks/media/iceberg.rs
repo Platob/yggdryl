@@ -31,9 +31,9 @@ use crate::bench_profile;
 
 /// The in-process S3 the object backend's own suites run on, shared with the
 /// `holder` benchmark: one fixture, so the counts printed here are the counts
-/// pinned in `rust/tests/object/accounting.rs`.
+/// pinned in `rust/tests/object/mod_.rs`.
 #[cfg(feature = "object")]
-#[path = "../../tests/object/server.rs"]
+#[path = "../../tests/support/server.rs"]
 mod server;
 
 /// Distinct venue values the planning tables partition on.
@@ -1287,7 +1287,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
 /// request count is printed once, by shape, beside Criterion's wall time:
 /// on a real store the round trips *are* the cost, and the loopback timing
 /// only shows that nothing else is hiding in them. The counts are the ones
-/// `rust/tests/object/accounting.rs` pins.
+/// `rust/tests/object/mod_.rs` pins.
 #[cfg(feature = "object")]
 mod s3 {
 

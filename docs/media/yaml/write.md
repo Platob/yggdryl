@@ -298,7 +298,7 @@ Rust and Python only.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text yaml::
+    cargo test --features "parquet iceberg" -p yggdryl --test yaml
     cargo test --features "parquet iceberg" -p yggdryl --test media -- structured::
     cargo bench -p yggdryl --bench text -- codec/yaml
     ```
@@ -306,8 +306,8 @@ Rust and Python only.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/yaml
-    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_scalar.py
+    python/.venv/bin/python -m pytest python/tests/yaml/test_init.py
+    python/.venv/bin/python -m pytest python/tests/test_arrow.py
     ```
 
 === "JavaScript"

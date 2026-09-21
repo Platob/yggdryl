@@ -77,15 +77,16 @@ answered them.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests decimal::tests diff::tests merge::tests metadata::tests path::tests protocol::tests scalar::tests string::tests timezone::tests version::tests
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test parquet -- metadata
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- arithmetic decimal::internal::reading diff::internal merge::internal metadata::internal path protocol::internal::tests scalar::internal string::codes timezone::internal version::internal
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression --test media_type --test metadata --test mime_type --test root --test text --test uri --test value
     cargo bench --manifest-path rust/Cargo.toml --bench types
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test__classes.py python/tests/test__defaults.py python/tests/test__hints.py python/tests/test_cast.py python/tests/test_datatype.py python/tests/test_field.py python/tests/test_protocol.py python/tests/test_scalar.py python/tests/test_timezone.py python/tests/test_version.py python/tests/enums/test_init.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
@@ -94,7 +95,7 @@ answered them.
 === "JavaScript"
 
     ```bash
-    node --test "node/tests/types/*.test.js" node/tests/enums.test.js
+    node --test node/tests/datatype.test.js node/tests/defaults.test.js node/tests/field.test.js node/tests/fields.test.js node/tests/timezone.test.js node/tests/value.test.js node/tests/version.test.js node/tests/enums/vocabulary.test.js
     npm run --prefix node bench:types
     npm run --prefix node bench:types:defaults
     ```

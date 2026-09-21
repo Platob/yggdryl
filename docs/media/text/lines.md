@@ -522,7 +522,7 @@ or read into Arrow, which copies each value into its column.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test text -- batch display io line::internal loading reader::internal
     cargo bench -p yggdryl --bench text -- text_lines
     cargo bench -p yggdryl --bench text -- text_scan
     ```
@@ -530,11 +530,11 @@ or read into Arrow, which copies each value into its column.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py
+    python/.venv/bin/python -m pytest python/tests/text/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/text_line.test.js
+    node --test node/tests/text/line.test.js
     ```

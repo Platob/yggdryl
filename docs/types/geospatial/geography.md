@@ -491,18 +491,18 @@ JavaScript has no listing of the five names; Rust reads them off
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- geospatial:: enums::edge_algorithm cast::geometry_and_geography_refuse_each_other field::arrow::a_geography_projection field::arrow::a_malformed_geoarrow_document
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::typed edge_algorithm field::arrow geospatial wkb::bounds wkb::empties wkb::ewkb wkb::exactness wkb::identity wkb::nesting wkb::reading wkb::refusals wkb::type_ids
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/geospatial_'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py -k "geography"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "geography"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="geography" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="geography" node/tests/datatype.test.js node/tests/fields.test.js
     ```

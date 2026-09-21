@@ -9,8 +9,8 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import Field, RecordOptions, Selector, TextOptions
-from yggdryl.enums import LEADING_FRAGMENTS
 from yggdryl.avro import MAX_SCHEMA_DEPTH as AVRO_MAX_SCHEMA_DEPTH
+from yggdryl.enums import LEADING_FRAGMENTS
 from yggdryl.media import (
     DEFAULT_RECORD_BATCH_ROW_SIZE,
     NULL_PARTITION,

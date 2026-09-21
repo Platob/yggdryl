@@ -74,3 +74,59 @@ fn iso8601_utc_instants_parse_and_the_rest_does_not() {
     assert_eq!(days_from_civil(2000, 3, 1), 11_017);
     assert_eq!(days_from_civil(1969, 12, 31), -1);
 }
+
+mod protocol {
+    use yggdryl::IOBase;
+    use yggdryl::object::ObjectOptions;
+
+    use crate::mod_::{BUCKET, file_with, store};
+
+    #[test]
+    fn an_anonymous_client_signs_nothing() {
+        let store = store();
+        store.allow_anonymous(true);
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let handle = file_with(
+            "lake/part.parquet",
+            ObjectOptions::default()
+                .with_environment(false)
+                .with_endpoint(store.endpoint())
+                .with_path_style(true)
+                .with_anonymous(true),
+        );
+
+        assert_eq!(handle.read_all_bytes().expect("a public object"), b"PAR1");
+        let recorded = store.requests();
+        assert!(
+            !recorded
+                .last()
+                .expect("the read")
+                .headers
+                .iter()
+                .any(|(name, _)| name == "authorization"),
+            "an anonymous request carries no authorization"
+        );
+    }
+
+    #[test]
+    fn credentials_written_into_a_location_are_used_and_then_never_rendered() {
+        let store = store();
+        store.require_access_key(Some("AKIAINURL"));
+        let mut handle = yggdryl::object::file_with(
+            &format!("s3://AKIAINURL:s3cr3t@{BUCKET}/lake/part.parquet"),
+            ObjectOptions::default()
+                .with_environment(false)
+                .with_endpoint(store.endpoint())
+                .with_region("us-east-1")
+                .with_path_style(true),
+        )
+        .expect("a handle");
+        handle.write_all_bytes(b"PAR1").expect("a signed write");
+
+        // The keys signed the request, and the handle's own location has none.
+        let rendered = handle.url().to_string();
+        assert_eq!(rendered, "s3://trades/lake/part.parquet");
+        assert!(!rendered.contains("s3cr3t"));
+        assert!(!format!("{handle:?}").contains("s3cr3t"));
+    }
+}

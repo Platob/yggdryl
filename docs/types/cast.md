@@ -748,8 +748,9 @@ no behavior of its own.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- cast:: value:: batch_cast:: strict_cast::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test arrow -- cast_plan::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::batches cast::strict cast::typed uuid::value variant::value
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test value
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::plans
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations
     cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan
     ```
@@ -757,13 +758,13 @@ no behavior of its own.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "cast or strict or nullability"
+    python/.venv/bin/python -m pytest python/tests/test_field.py -k "cast or strict or nullability"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```
 
 ## Performance

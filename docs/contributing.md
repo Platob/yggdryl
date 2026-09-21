@@ -5,7 +5,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test <theme> <filter>   # the loop, while you write
+    cargo test -p yggdryl --test <entry> <filter>   # the loop, while you write
     cargo fmt --all
     cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
     cargo test -p yggdryl --all-targets
@@ -18,7 +18,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     cd python
     .venv/bin/python -m maturin develop
     .venv/bin/python -m pytest
-    .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/types/typing_fields.py
+    .venv/bin/python -m mypy --strict yggdryl tests/typing_bindings.py tests/typing_fields.py
     ```
 
 === "JavaScript"
@@ -26,7 +26,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     ```bash
     npm ci --prefix node
     npm run --prefix node build:debug
-    node --test node/tests/<area>/<file>.test.js   # the loop, while you write
+    node --test node/tests/<file>.test.js          # the loop, while you write
     npm run --prefix node test:package:debug
     npm test --prefix node
     ```
@@ -35,20 +35,25 @@ CI runs the rest on the pushed branch: both feature lanes, the 1.85 and 1.94 MSR
 
 ## Where things go
 
-| Source | Tests | Docs tab |
-| --- | --- | --- |
-| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the twelve codes including `figi_code.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | `rust/tests/types/`, `rust/src/metadata/tests.rs` | [Types](types/index.md) |
-| `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `object/` | `rust/tests/holder/`, `rust/tests/iobase/`, `rust/src/holder/buffered/tests.rs`, `rust/src/{local,zip}/tests.rs`, `rust/tests/object/` | [Holder](holder/index.md) |
-| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | `rust/tests/coding/` | [Coding](coding/index.md) |
-| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | `rust/tests/charset/`, `rust/src/charset/reader/tests.rs`, `rust/src/utf8/tests.rs`, `rust/tests/interop/charset.rs` | [Charset](charset/index.md) |
-| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` | `rust/tests/media/`, `rust/tests/interop/`, `rust/src/{ipc,parquet,avro,iceberg}/tests.rs`, `rust/src/media/*/tests.rs` | [Media](media/index.md) |
-| `rust/src/json/`, `toml/`, `yaml/` over the codec machinery in `rust/src/text/` | `rust/tests/text/`, `rust/src/toml/wire/tests.rs` | [Structured documents](media/structured.md) |
-| `rust/src/uri/` | `rust/tests/uri/`, `rust/src/uri/pattern/tests.rs` | [URI](uri/index.md) |
-| `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
-| `rust/src/expression/` | `rust/tests/expression/`, `rust/src/expression/eval/tests.rs` | [Expression](expression/index.md) |
-| `rust/src/graph/` | `rust/tests/graph/` | [Graph](graph.md) |
-| `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | `rust/tests/hashing/`, `rust/tests/txhash/`, `rust/tests/xxhash/` | [Hashing](hashing.md) |
-| `rust/src/fix/` | `rust/tests/fix/`, `rust/src/fix/tests.rs` | [FIX](fix/index.md) |
+A test's home is not a choice: `rust/tests/` mirrors `rust/src/` file for file,
+`python/tests/` mirrors `python/yggdryl/` and `python/src/`, and `node/tests/`
+mirrors `node/src/` and the JavaScript beside it. Adding a source file adds its
+test file at the matching path.
+
+| Source | Docs tab |
+| --- | --- |
+| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the twelve codes including `figi_code.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
+| `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `object/` | [Holder](holder/index.md) |
+| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Coding](coding/index.md) |
+| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Charset](charset/index.md) |
+| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` | [Media](media/index.md) |
+| `rust/src/json/`, `toml/`, `yaml/` over the codec machinery in `rust/src/text/` | [Structured documents](media/structured.md) |
+| `rust/src/uri/` | [URI](uri/index.md) |
+| `rust/src/arrow/` | [Arrow](arrow/index.md) |
+| `rust/src/expression/` | [Expression](expression/index.md) |
+| `rust/src/graph/` | [Graph](graph.md) |
+| `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
+| `rust/src/fix/` | [FIX](fix/index.md) |
 
 Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. The Python package is laid out the same way and reimplements nothing: one module per type at the package root, one module or package per implementation - `yggdryl.avro`, `yggdryl.iceberg`, `yggdryl.json`, `yggdryl.gzip`, `yggdryl.xxhash`, `yggdryl.txhash` - and a package only where its implementations share something, `media/`, `text/`, `coding/`, `holder/`, `charset/`, `enums/`. Every type is re-exported from `yggdryl` itself, as the crate re-exports each of its root files. JavaScript keeps `xxhash` and `txhash` over the same root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.
 

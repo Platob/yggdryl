@@ -201,14 +201,14 @@ A Struct `Field` resolves record names into its child order, whatever order the 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text yaml::
-    cargo test --features "parquet iceberg" -p yggdryl --test text value::
+    cargo test --features "parquet iceberg" -p yggdryl --test yaml
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- scalar::values serde::value
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/yaml
+    python/.venv/bin/python -m pytest python/tests/yaml/test_init.py
     ```
 
 === "JavaScript"

@@ -1,4 +1,5 @@
-//! User-defined functions: registered outside the grammar, typed and called through their signature.
+//! `rust/src/expression/user.rs`: user-defined functions: registered
+//! outside the grammar, typed and called through their signature.
 
 use std::sync::Arc;
 

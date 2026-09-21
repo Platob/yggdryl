@@ -201,20 +201,20 @@ consumes the media and answers it.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test media -- magic options partition::lazy_folder
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/media_ipc
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_media.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/media.test.js
+    node --test node/tests/media/index.test.js
     ```
 
 ## Performance

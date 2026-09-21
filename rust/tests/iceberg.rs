@@ -9,7 +9,7 @@
 //! `yggdryl::` like any other caller.
 
 #[cfg(feature = "iceberg")]
-#[path = "iceberg/catalog.rs"]
+#[path = "iceberg/catalog/mod_.rs"]
 mod catalog;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/evolve.rs"]
@@ -26,18 +26,24 @@ mod mod_;
 #[cfg(feature = "iceberg")]
 #[path = "iceberg/partition.rs"]
 mod partition;
-#[cfg(all(feature = "iceberg", feature = "internals"))]
+#[cfg(feature = "iceberg")]
 #[path = "iceberg/scan.rs"]
 mod scan;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/snapshot.rs"]
 mod snapshot;
+#[cfg(feature = "iceberg")]
+#[path = "iceberg/staging.rs"]
+mod staging;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/statistics.rs"]
 mod statistics;
-#[cfg(all(feature = "iceberg", feature = "internals"))]
+#[cfg(feature = "iceberg")]
 #[path = "iceberg/table.rs"]
 mod table;
+#[cfg(feature = "iceberg")]
+#[path = "iceberg/types.rs"]
+mod types;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/value.rs"]
 mod value;

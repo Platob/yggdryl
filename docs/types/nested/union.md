@@ -452,20 +452,21 @@ union of declared members and a value that declares itself.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::nested datatype::parser::variant datatype::parser::union field::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype_kind::nested field::generic field::nested mapping::nested merge::nested parser::grammar parser::nested protocol::nested structure::nested union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/variant_from_fields_128'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py -k "union or variant"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "union or variant"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="variant|Union|union" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="variant|Union|union" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

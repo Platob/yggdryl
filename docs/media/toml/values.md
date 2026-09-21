@@ -237,19 +237,19 @@ TOML is the one structured format whose grammar proves temporals, so the four fo
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
+    cargo test --features "parquet iceberg" -p yggdryl --test toml -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test toml -- wire
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/toml
-    python/.venv/bin/python -m pytest python/tests/text/test_codec_fields.py
+    python/.venv/bin/python -m pytest python/tests/toml/test_init.py
+    python/.venv/bin/python -m pytest python/tests/text/test_codec.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/text/toml.test.js
+    node --test node/tests/text/codec.test.js
     ```

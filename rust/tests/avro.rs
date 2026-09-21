@@ -7,12 +7,19 @@
 //! only under the `internals` feature, and the file that reaches it is
 //! declared behind that feature here.
 
-#[cfg(feature = "internals")]
 #[path = "avro/arrow.rs"]
 mod arrow;
-#[cfg(feature = "internals")]
 #[path = "avro/batch.rs"]
 mod batch;
-#[cfg(feature = "internals")]
+#[path = "avro/container.rs"]
+mod container;
+#[path = "avro/datum.rs"]
+mod datum;
 #[path = "avro/mod_.rs"]
 mod mod_;
+#[path = "avro/resolve.rs"]
+mod resolve;
+#[path = "avro/schema.rs"]
+mod schema;
+#[path = "avro/single.rs"]
+mod single;

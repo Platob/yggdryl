@@ -245,17 +245,17 @@ An identifier has no neutral member, so the empty text is refused at the value d
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::coded datatype::securities
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes code::securities cusip_code::securities figi_code::securities sedol_code::securities state::coded timeinforce::coded
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "registered_code"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="registered code" node/tests/types/datatype.test.js
+    node --test --test-name-pattern="registered code" node/tests/datatype.test.js
     ```

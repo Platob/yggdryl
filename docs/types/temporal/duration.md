@@ -429,21 +429,21 @@ count of days.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal::every_duration_leaf field::temporal::a_duration_field temporal::family_constructors
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests::temporal_arithmetic arithmetic::tests::durations_scale
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- duration::temporal temporal::fields temporal::scalars
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- arithmetic::temporal_arithmetic arithmetic::durations_scale
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^duration/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py -k "width_unit_scale_and_zone or exact_width_factories"
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k "temporals_cross"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "width_unit_scale_and_zone or exact_width_factories"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "temporals_cross"
     ```
 
 === "JavaScript"
 
     ```bash
     node --test --test-name-pattern="temporal families|Scalar family factories" node/tests/text/codec.test.js
-    node --test --test-name-pattern="typed field factories" node/tests/types/fields.test.js
+    node --test --test-name-pattern="typed field factories" node/tests/fields.test.js
     ```

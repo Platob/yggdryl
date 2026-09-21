@@ -350,20 +350,20 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::unit default_scalar
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::default
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- default::scalars field::declared string::unit
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- default::datatypes
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_defaults.py python/tests/types/test_factories.py
+    python/.venv/bin/python -m pytest python/tests/test__defaults.py python/tests/test_datatype.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/defaults.test.js
+    node --test node/tests/defaults.test.js
     npm run --prefix node bench:types:defaults
     ```

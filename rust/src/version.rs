@@ -439,7 +439,7 @@ pub mod internals {
     //! writes before a version's canonical text, so it has to agree with what
     //! `Display` actually renders for every reachable value. The forwarder
     //! changes no visibility; everything a caller can observe lives in
-    //! `rust/tests/types/version.rs`.
+    //! `rust/tests/root/version.rs`.
 
     use crate::Version;
 

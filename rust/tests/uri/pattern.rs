@@ -1,4 +1,5 @@
-//! Edge cases for glob detection, decomposition, matching, and Hive parsing.
+//! `rust/src/uri/pattern.rs`: edge cases for glob detection, decomposition,
+//! matching, and Hive parsing.
 
 use yggdryl::Url;
 

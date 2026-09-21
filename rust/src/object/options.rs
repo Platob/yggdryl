@@ -523,7 +523,7 @@ impl std::fmt::Debug for ObjectOptions {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/object/protocol.rs` pins and a caller cannot reach.
+    //! What `rust/tests/object/client.rs` pins and a caller cannot reach.
     //!
     //! Whether a request hashes its payload or sends `UNSIGNED-PAYLOAD` is a
     //! policy the endpoint's scheme settles when the caller leaves it unset,

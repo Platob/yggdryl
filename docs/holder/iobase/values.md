@@ -220,20 +220,20 @@ assert_eq!(text, "AAPL,1\n");
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::conformance
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- iomedia::positional
     cargo bench --bench media --features parquet -- io_scalar
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k StructuredValues
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k StructuredValues
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern "structured values" "node/tests/holder/io.test.js"
+    node --test --test-name-pattern "structured values" "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```
 

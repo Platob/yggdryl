@@ -408,7 +408,7 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix -k lifecycle
+    python/.venv/bin/python -m pytest python/tests/test_fix.py -k lifecycle
     ```
 
 === "JavaScript"

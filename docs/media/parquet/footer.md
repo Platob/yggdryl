@@ -534,22 +534,22 @@ assert!(!media.opened());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests::geospatial
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal::a_geometry mod_::internal::a_geography mod_::internal::a_malformed_geoarrow
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/.*statistics'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet read statistics" --filter "parquet read geospatial stats" --filter "parquet read arrow field"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_parquet_statistics npm run --prefix node bench:media
     YGGDRYL_BENCH_FILTER=records/read_parquet_geospatial_statistics npm run --prefix node bench:media
     ```

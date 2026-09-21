@@ -1,5 +1,5 @@
-//! The fixed row: columns spelled by name and filled by tag, derived facts,
-//! and the one closing arrival record.
+//! `rust/src/fix/schema.rs`: the fixed row: columns spelled by name and
+//! filled by tag, derived facts, and the one closing arrival record.
 
 use super::SoleMessage;
 

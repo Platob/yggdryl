@@ -486,20 +486,22 @@ where it is owned rather than restated here:
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::nested field::nested field::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype_kind::nested field::generic field::nested mapping::nested merge::nested metadata::generic parser::generic parser::nested protocol::generic protocol::nested serde::generic structure::nested union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(struct_from_fields_1024|nested_datatype_clone|nested_validate)'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_field.py -k "struct or from_fields or nested"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_field.py -k "struct or from_fields or nested"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="struct|fromFields|nested" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="struct|fromFields|nested" node/tests/datatype.test.js node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

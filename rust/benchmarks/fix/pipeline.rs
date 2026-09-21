@@ -55,7 +55,7 @@ const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 /// Every codec below refuses nothing, so this is the whole capture and not
 /// the 79 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
 /// keepalives and the rows that state no type, and those are shapes this
-/// corpus exists to measure. `rust/tests/fix/dataset.rs` pins both numbers
+/// corpus exists to measure. `rust/tests/fix/ulbridge.rs` pins both numbers
 /// against each other; every other reader of this capture - the integration
 /// suite, the pages, the two bindings' suites - reads it the same way.
 const MESSAGES: usize = 94;

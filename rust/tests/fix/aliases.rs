@@ -1,4 +1,5 @@
-//! Generated FIX aliases retain the registry's one-name ownership rules.
+//! `rust/src/fix/aliases.rs`: generated FIX aliases retain the registry's
+//! one-name ownership rules.
 
 use std::sync::Arc;
 

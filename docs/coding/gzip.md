@@ -294,14 +294,14 @@ assert!(handle.read_all_bytes()?.is_empty());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test coding -- gzip::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- gzip
     cargo bench -p yggdryl --bench coding -- gzip
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_codings.py -k gzip
+    python/.venv/bin/python -m pytest python/tests/coding/test_init.py -k gzip
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```
 

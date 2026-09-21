@@ -66,5 +66,5 @@ assert_eq!(Charset::Cp1252.byte_of('\u{20AC}'), Some(0x80));
 python scripts/generate_charset_tables.py
 python scripts/generate_charset_tables.py --check
 python scripts/check_charset_interop.py
-cargo test --features "parquet iceberg" -p yggdryl --test charset vocabulary::
+cargo test --features "parquet iceberg" -p yggdryl --test root -- charset::vocabulary
 ```

@@ -432,8 +432,8 @@ Two integers meet at a width that holds both - mixed signs promote only where th
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::integer datatype::scalar
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- integer parser::aliases
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- arithmetic
     cargo bench --manifest-path rust/Cargo.toml --bench types -- 'typed/integer'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow_integer_bits/'
     ```
@@ -441,14 +441,14 @@ Two integers meet at a width that holds both - mixed signs promote only where th
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_factories.py python/tests/types/test_native_scalar.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_scalar.py
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="the bits reading crosses every same-width pair" node/tests/types/fields.test.js
-    node --test --test-name-pattern="typed field factories cover every native datatype variant" node/tests/types/fields.test.js
+    node --test --test-name-pattern="the bits reading crosses every same-width pair" node/tests/fields.test.js
+    node --test --test-name-pattern="typed field factories cover every native datatype variant" node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

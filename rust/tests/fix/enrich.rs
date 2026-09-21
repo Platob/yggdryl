@@ -1,6 +1,7 @@
-//! The specification's tables read as implications: each carried by the
-//! field it fills as a `FIX:derivation`, answered once from a hand-written
-//! line, refused where the answer is not certain, and settled in one pass.
+//! `rust/src/fix/enrich.rs`: the specification's tables read as
+//! implications: each carried by the field it fills as a `FIX:derivation`,
+//! answered once from a hand-written line, refused where the answer is not
+//! certain, and settled in one pass.
 
 use super::SoleMessage;
 

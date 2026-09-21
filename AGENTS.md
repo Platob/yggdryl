@@ -161,24 +161,25 @@ passes.
 | Loop | Command | Answers |
 | --- | --- | --- |
 | it builds | `cargo check -p yggdryl --all-targets`, plus `--keep-going --message-format=short` when a change reaches every caller | types and borrows, and every test and benchmark still compiling against the changed signature; with the two flags, one line per diagnostic across every target rather than a stop at the first failing one, re-run because the compiler reports the errors of the phase it reached |
-| it behaves | `cargo test -p yggdryl --test <theme> <filter>` | the `rust/tests/<theme>.rs` suite mirroring the `src/` subtree touched |
-| a private pin holds | `cargo test -p yggdryl --lib <module>::` | the `#[cfg(test)]` module beside code no integration test can reach |
+| it behaves | `cargo test -p yggdryl --test <entry> <filter>` | the `rust/tests/<entry>.rs` harness over the source entry touched - the folder's own name, or `root` for a file the crate root holds ([Where a test lives](#where-a-test-lives)) |
+| a private pin holds | the same loop plus `--features internals` | the `internal` module of the mirrored file, which is where what no caller can name is pinned |
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
-| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
-| the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
+| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
+| the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
-The measured costs that shape the loop: an already-built theme suite is under a
-second (`--test types` is 603 tests in 0.45s), the first build of a target is
-about a minute and a half, re-checking the crate after an edit is about thirty
-seconds, `--all-targets` costs roughly ten seconds more than `--lib` and is
-worth it because it catches a test or benchmark left behind by a changed
-signature, and `--test iobase_calls` unfiltered is half a minute - so filter it
-to the surface touched.
+The measured costs that shape the loop: an already-built harness is under a
+second (`--test root` is 946 tests in 0.6s), the first build of a
+target is about a minute and a half, re-checking the crate after an edit is
+about thirty seconds, `--all-targets` costs roughly ten seconds more than
+`--lib` and is worth it because it is the only build with any test in it at
+all - and it catches a test or benchmark left behind by a changed signature -
+and `--test iobase_calls` unfiltered is half a minute, so filter it to the
+surface touched.
 
 Three habits are what make the loop pay:
 
@@ -297,10 +298,13 @@ reason: `python/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs` and the
 rest hold one type each at the crate root, `avro.rs` and `iceberg.rs` are
 implementations of their own name, and `media/` keeps only the handle classes
 and the partition renderer every medium shares - there is no `types/` or
-`media/` facade over vocabulary the root owns. Tests, benchmarks, the
-caller-facing packages (`python/yggdryl/`, the Node JavaScript files) and docs
-are grouped by theme - `types`, `holder`, `media` and the rest - which is a
-caller's vocabulary, not a source path.
+`media/` facade over vocabulary the root owns. The caller-facing packages -
+`python/yggdryl/` and the Node JavaScript files - are laid out the same way,
+and so are the tests: `rust/tests/` mirrors `rust/src/` file for file
+([Where a test lives](#where-a-test-lives)), and `python/tests/` and
+`node/tests/` mirror their own sources the same way. Benchmarks and docs are
+grouped by theme - `types`, `holder`, `media` and the rest - which is a
+caller's vocabulary rather than a source path.
 
 Paths below are under `rust/src/` unless stated otherwise.
 
@@ -365,7 +369,16 @@ pinned by `rust/tests/avro/schema.rs`, and a file the crate root holds -
 harness target per top-level source entry declares those files as `#[path]`
 modules: `rust/tests/<folder>.rs` per source folder, and `rust/tests/root.rs`
 for the root files. The mirror is the rule, so a new source file gets its test
-file at the matching path and nothing has to be decided.
+file at the matching path and nothing has to be decided. A file that pins no
+source file is not a suite: a fixture several targets share lives in
+`rust/tests/support/` and is declared by each of them, and what is pinned as a
+cost or an exchange rather than as a file - `allocations.rs`,
+`iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` - is its
+own target.
+
+A test file opens with a `//!` line naming the source file it pins, and holds
+no module named after itself: `avro::schema::schema::x` says the name twice, so
+what would carry it sits at the file's top level instead.
 
 A test reaches the crate through `yggdryl::` and nothing else, so what it
 proves is what a caller can rely on, and a fixture builds its own inputs rather
@@ -399,6 +412,22 @@ a feature's name.
 declarations, so no two changes edit one file to add theirs; `--check` fails a
 stale one. `--all-features` turns the feature on, which is how CI's second lane
 runs these tests; a default build compiles `yggdryl::internals` out entirely.
+
+One source file has one test file, so a file that pins both kinds keeps the
+reaching half in its own `#[cfg(feature = "internals")] mod internal`. What a
+caller can observe then stays at the file's top level and runs in a default
+build, and only the module naming `yggdryl::internals` drops out; gating the
+whole file would take the caller-facing tests out of the default lane with it.
+
+The bindings hold to the same rule against their own sources, which carry the
+crate's layout: `python/tests/` mirrors `python/yggdryl/` and `python/src/` -
+one shape, so `charset/__init__.py` and `src/charset.rs` are pinned by the one
+`python/tests/charset/test_init.py` - and `node/tests/` mirrors `node/src/` and
+the JavaScript files beside it, `node/src/text/line.rs` by
+`node/tests/text/line.test.js` and `node/records.js` by
+`node/tests/records.test.js`. A folder's `__init__.py` or `mod.rs` is pinned by
+`test_init.py` or `index.test.js`, the way a Rust folder's `mod.rs` is pinned by
+`mod_.rs`.
 
 ## Ownership
 
@@ -1347,7 +1376,7 @@ dictionary:
 | `rust/src/charset/tables.rs` | `python scripts/generate_charset_tables.py` | a charset row changes |
 | `config/fix/`, `provenance.json` and `rust/src/fix/constants.rs` | `python scripts/generate_fix_dictionary.py`, which fetches the FIX standard | a pinned source commit, `StringEnum::COUNTRIES` in `rust/src/string.rs` or the generator changes, the `FIX:` keys it writes included; never a crate field alone, which the generator neither writes nor checks |
 | the crate's own documents under `config/fix/` - the crate's field shard, the fixed row and its two groups | `YGGDRYL_FIX_DUMP_WRITE=1 cargo test --locked -p yggdryl --test fix the_committed_store_carries_the_crate_dump` | a crate field, the fixed row or one of its two groups changes (`rust/src/fix/crated.rs`), or the dictionary is regenerated |
-| the dictionary hash in `rust/tests/fix/dictionary.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
+| the dictionary hash in `rust/tests/fix/store.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
 | `node/index.js`, `node/index.d.ts` | `npm run --prefix node build:debug` | any Node binding or its doc comments change |
 | `docs/assets/fix.json`, `docs/assets/playground.json` | `node scripts/build_docs_fix.js`, `node scripts/build_docs_playground.js` | the dictionary, the crate dump or the addon changes, the addon rebuilt first: `build_docs_fix.js` runs the addon over `config/fix` |
 | `.api-inventory.txt`, `.api-bindings.txt` | by hand, in the same change; the inventories row of the [smoke loop](#smoke-loop) proves it | a public name is added or retired |
@@ -1475,10 +1504,10 @@ the same over the whole tree plus the type checker:
 ```bash
 V=python/.venv/bin/python
 $V -m maturin develop -m python/Cargo.toml     # in place, debug, no wheel
-$V -m pytest python/tests/<area> -x -q         # the loop
+$V -m pytest python/tests/<file> -x -q         # the loop
 $V -m pytest python/tests                      # before pushing
 $V -m mypy --strict --config-file python/pyproject.toml \
-  python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
+  python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py
 ```
 
 - `python/.venv` is where the extension is installed and where
@@ -1496,8 +1525,8 @@ $V -m mypy --strict --config-file python/pyproject.toml \
   and only pin a second interpreter when a failure names the version.
 - Iceberg-with-Spark has its own CI job and is opt-in locally - `python
   scripts/setup_spark_interop.py`, then `python -m pytest
-  python/tests/media/test_spark_interop.py -m spark_interop` - so run it only
-  when changing that boundary.
+  python/tests/test_iceberg.py -m spark_interop` - so run it only when
+  changing that boundary.
 
 # 4. Node
 
@@ -1529,7 +1558,7 @@ The loop is the debug addon and one test file:
 ```bash
 npm ci --prefix node                                     # once
 npm run --prefix node build:debug                        # after a Rust or binding edit
-node --test node/tests/<area>/<file>.test.js
+node --test node/tests/<file>.test.js
 ```
 
 Before pushing a Node change, the audit and the files the build generates:

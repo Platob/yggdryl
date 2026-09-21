@@ -435,17 +435,17 @@ as any other `uuid` value.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- uuid::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- uuid
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k uuid
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k uuid
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="uuid" node/tests/types/datatype.test.js
+    node --test --test-name-pattern="uuid" node/tests/datatype.test.js
     ```

@@ -1563,12 +1563,12 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::handles
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::concurrency_and_compaction
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::data_mime_type
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::line_projection
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
-    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::handles
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::concurrency_and_compaction
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::data_mime_type
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::line_projection
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- partition::iceberg scan::iceberg staging::iceberg table::iceberg types::iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^compact/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^merge/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^commit/'
@@ -1577,13 +1577,13 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py python/tests/media/test_iceberg_planning.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     YGGDRYL_BENCH_FILTER=iceberg/append npm run --prefix node bench:media
     ```

@@ -1243,7 +1243,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - Python `bytearray` / `memoryview` -> a bounded window, never borrowed; 1.7x slower than `bytes`.
 - JavaScript string -> UTF-8 encoded on the way in; 7.5x slower than `Buffer`.
 - One-byte call -> 166 ns Python, 496 ns Node of binding overhead; gone by 64 KiB.
-- No `xxhash` C package in `python/.venv` -> `(C libxxhash)` rows skipped; `python/tests/hashing/xxhash` skipped by `pytest.importorskip`.
+- No `xxhash` C package in `python/.venv` -> `(C libxxhash)` rows skipped; `python/tests/test_xxhash.py` skipped by `pytest.importorskip`.
 - An empty chunk -> contributes nothing, wherever it sits.
 - A secret with a payload of 240 bytes or fewer -> never consulted; the derived secret and the seed answer.
 - A secret below `SECRET_MINIMUM_LENGTH` -> refused whatever the payload: `Error::InvalidSecret { actual: 135, .. }`, `ValueError`, or `at least 136 bytes, got 135`.
@@ -1310,14 +1310,14 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     ```bash
     cargo test --features "parquet iceberg internals" -p yggdryl --test hashing --test txhash --test xxhash
     cargo test --features "parquet iceberg" -p yggdryl --test allocations -- the_canonical_value_feed_allocates_nothing borrowed_value_bytes_allocate_nothing coupled_value_bytes_allocate_nothing reading_an_instant_out_of_a_value_allocates_nothing txhash_uuid_projection_allocates_nothing_at_any_corpus_size
-    cargo test --features "parquet iceberg" -p yggdryl --test types -- stable_hash
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- stable_hash
     cargo bench -p yggdryl --bench hashing
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/hashing
+    python/.venv/bin/python -m pytest python/tests/test_init.py python/tests/test_txhash.py python/tests/test_xxhash.py
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
     ```
@@ -1325,7 +1325,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 === "JavaScript"
 
     ```bash
-    node --test node/tests/hashing/xxhash/xxhash.test.js node/tests/hashing/txhash/txhash.test.js
+    node --test node/tests/hashing/xxhash.test.js node/tests/hashing/txhash.test.js
     npm run --prefix node bench:hashing:xxhash
     npm run --prefix node bench:hashing:txhash
     ```

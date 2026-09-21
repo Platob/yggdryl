@@ -3,13 +3,7 @@
 #[path = "support/counting.rs"]
 mod counting;
 
-#[path = "coding/codec.rs"]
-mod codec;
-#[path = "coding/gzip.rs"]
-mod gzip;
-#[path = "coding/handles.rs"]
-mod handles;
-#[path = "coding/zlib.rs"]
-mod zlib;
-#[path = "coding/zstd.rs"]
-mod zstd;
+#[path = "coding/coded.rs"]
+mod coded;
+#[path = "coding/mod_.rs"]
+mod mod_;

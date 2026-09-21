@@ -216,9 +216,6 @@ path = "benchmarks/holder.rs"
 harness = false
 
 [[test]]
-name = "types"
-
-[[test]]
 name = "arrow"
 
 # The landing-page example materializes Arrow values, so it does not compile

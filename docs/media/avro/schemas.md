@@ -185,19 +185,19 @@ A date is `Date32`, a timestamp is `DateTime64` with `UTC`, and a decimal keeps 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib avro::tests
-    cargo test --features "parquet iceberg" -p yggdryl --test media avro::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test avro -- mod_::internal
+    cargo test --features "parquet iceberg" -p yggdryl --test avro -- arrow::avro::logical batch::avro::limits batch::avro::records container::avro::containers container::avro::hardening container::avro::snappy container::avro::snapshots container::avro::streaming datum::avro::hardening datum::avro::matrix mod_::fuzz_lite resolve::avro::resolution schema::avro::schemas single::avro::single_object single::avro::snapshots
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro_types
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_avro.py
+    python/.venv/bin/python -m pytest python/tests/test_avro.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/avro.test.js
+    node --test node/tests/avro.test.js
     ```

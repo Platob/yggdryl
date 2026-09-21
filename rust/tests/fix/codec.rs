@@ -1,4 +1,8 @@
-//! The codec's readers, over the committed dictionary and a real capture.
+//! `rust/src/fix/codec.rs`: the codec's readers, over the committed
+//! dictionary and a real capture.
+
+use super::committed_registry;
+use super::fixed_codec;
 
 use super::SoleMessage;
 use super::path;
@@ -2798,5 +2802,1025 @@ mod clock_intake_tests {
             .parse_fix_line(b"8=FIX.4.4|35=D|90001=bad\0value|")
             .unwrap();
         assert_eq!(ordinary.by_tag(90001).unwrap().as_str(), Some("badvalue"));
+    }
+}
+
+mod equivalence {
+    use std::collections::BTreeMap;
+    use std::fmt::Write as _;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use yggdryl::fix::FIXENTRIES_COLUMN;
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::text::{TextLine, TextOptions, read_text_lines};
+    use yggdryl::{Field, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar};
+
+    /// The environment variable that turns the comparison into a write.
+    const WRITE: &str = "YGGDRYL_FIX_EQUIVALENCE_WRITE";
+
+    /// How many differences a failure spells out before it counts the rest.
+    const REPORTED: usize = 24;
+
+    /// The capture, exactly as the bridge wrote it - the same bytes the dataset
+    /// suite reads, and the only fixture here that is a file rather than a line.
+    const LOG: &[u8] = include_bytes!("ulbridge.log");
+
+    /// Where the committed answer lives.
+    fn snapshot_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fix")
+            .join("equivalence.snapshot")
+    }
+
+    /// One byte string as one snapshot line: printable ASCII as itself, and
+    /// everything else spelled, so a control separator or a UTF-8 byte survives a
+    /// diff and a terminal without either being guessed at.
+    fn escaped(bytes: &[u8]) -> String {
+        let mut out = String::with_capacity(bytes.len());
+        for &byte in bytes {
+            match byte {
+                b'\\' => out.push_str("\\\\"),
+                b'\t' => out.push_str("\\t"),
+                b'\n' => out.push_str("\\n"),
+                b'\r' => out.push_str("\\r"),
+                0x20..=0x7e => out.push(char::from(byte)),
+                _ => {
+                    let _ = write!(out, "\\x{byte:02x}");
+                }
+            }
+        }
+        out
+    }
+
+    /// Everything one reading answered, in the order it was read.
+    #[derive(Default)]
+    struct Pinned {
+        records: Vec<(String, String)>,
+        /// The messages whose row cannot be exported or read back, and why.
+        ///
+        /// Reconstruction failures are asserted separately from the snapshot;
+        /// regenerating source observations cannot accept lost row content.
+        unread: Vec<String>,
+    }
+
+    impl Pinned {
+        fn push(&mut self, key: String, value: String) {
+            self.records.push((key, value));
+        }
+
+        /// Every pair one level of entries carries, keyed by its place in the
+        /// tree: `1.0` is the first child of the second entry, so a child that
+        /// moved up a level is a key that went and a key that appeared rather
+        /// than a value that changed under a stable name.
+        fn entries(&mut self, at: &str, path: &str, entries: &[FixEntry]) {
+            for (index, entry) in entries.iter().enumerate() {
+                let here = if path.is_empty() {
+                    index.to_string()
+                } else {
+                    format!("{path}.{index}")
+                };
+                // An entry that only heads others - an occurrence, a component
+                // - states no value, and is pinned without one.
+                self.push(
+                    format!("{at}.entry[{here}]"),
+                    match entry.value() {
+                        Some(value) => format!(
+                            "t{} {}={}",
+                            entry.tag(),
+                            escaped(entry.name().as_bytes()),
+                            escaped(value.as_bytes())
+                        ),
+                        None => format!("t{} {}", entry.tag(), escaped(entry.name().as_bytes())),
+                    },
+                );
+                self.entries(at, &here, entry.entries());
+            }
+        }
+
+        /// One message, whole: what it is, what arrived, what the dictionary made
+        /// of it, and what it re-emits.
+        ///
+        /// The row round trip is asserted here rather than pinned, because it is
+        /// an identity and not an answer: a message that fills a row and is read
+        /// back out of it is the same message. Asserting it over every capture is
+        /// what says the entries column carries the whole arrival record - and it
+        /// is the check the `branch` column's deletion rests on, since a column
+        /// that was copied back verbatim can only be missed on the way back.
+        fn message(&mut self, at: &str, codec: &FixCodec, message: &FixMsg, schema: &Field) {
+            self.push(format!("{at}.type"), message.as_field().name().to_owned());
+            self.push(format!("{at}.digest"), format!("{:032x}", message.digest()));
+            self.push(format!("{at}.wire"), escaped(&message.into_bytes(b'|')));
+            self.entries(at, "", message.entries());
+            let row = match message.into_row(schema) {
+                Ok(row) => row,
+                Err(refused) => {
+                    self.unread.push(format!("{at}: export: {refused}"));
+                    return;
+                }
+            };
+            // Every semantic row must be a fixed point, including the event
+            // identity it recorded and the residual content it retained.
+            match FixMsg::from_row(Arc::clone(codec.registry()), schema, &row) {
+                Ok(held) => match held.into_row(schema) {
+                    Ok(back) if back == row => {}
+                    Ok(back) => {
+                        for ((column, before), after) in schema
+                            .fields()
+                            .iter()
+                            .zip(row.as_sequence().expect("a row"))
+                            .zip(back.as_sequence().expect("a row"))
+                        {
+                            if before != after {
+                                self.unread
+                                    .push(format!("{at}: reconstructed {} differs", column.name()));
+                                eprintln!(
+                                    "{at} {} before={} after={}",
+                                    column.name(),
+                                    into_json_scalar(before).expect("a scalar"),
+                                    into_json_scalar(after).expect("a scalar")
+                                );
+                            }
+                        }
+                    }
+                    Err(refused) => self.unread.push(format!("{at}: re-export: {refused}")),
+                },
+                Err(refused) => self.unread.push(format!("{at}: {refused}")),
+            }
+            let values = row.as_sequence().expect("a row is a sequence");
+            for (column, value) in schema.fields().iter().zip(values) {
+                let name = column.name();
+                if name == FIXENTRIES_COLUMN || value.is_null() {
+                    continue;
+                }
+                self.push(
+                    format!("{at}.field.{name}"),
+                    escaped(
+                        into_json_scalar(value)
+                            .expect("a column value renders")
+                            .as_bytes(),
+                    ),
+                );
+            }
+        }
+
+        /// One line read through the door every caller uses, which fills what
+        /// the message implies as it reads.
+        ///
+        /// A line the codec refuses is pinned too: a refusal that turns into a
+        /// message, or a message that turns into a refusal, is exactly the kind
+        /// of movement this file exists to catch.
+        fn line(&mut self, at: &str, codec: &FixCodec, schema: &Field, line: &[u8]) {
+            self.push(format!("{at}.line"), escaped(line));
+            let held = match codec.parse_line(line) {
+                Ok(held) => held,
+                Err(refused) => {
+                    self.push(format!("{at}.refused"), refused.to_string());
+                    return;
+                }
+            };
+            let mut answered = 0;
+            for (index, message) in held.enumerate() {
+                answered += 1;
+                let at = format!("{at}:{index}");
+                match message {
+                    Ok(message) => self.message(&at, codec, &message, schema),
+                    Err(refused) => self.push(format!("{at}.refused"), refused.to_string()),
+                }
+            }
+            self.push(format!("{at}.messages"), answered.to_string());
+        }
+
+        /// Every line of one corpus, under one codec.
+        fn lines(&mut self, group: &str, codec: &FixCodec, lines: &[Vec<u8>]) {
+            let schema = fix_schema(codec.registry(), "fix").expect("the fixed schema");
+            for (index, line) in lines.iter().enumerate() {
+                self.line(&format!("{group}[{index:03}]"), codec, &schema, line);
+            }
+        }
+
+        /// The snapshot as the committed file spells it.
+        fn rendered(&self) -> String {
+            let mut out = String::new();
+            out.push_str(
+                "# What the FIX codec answers over this branch's captures. Generated; do not edit.\n\
+             # Regenerate deliberately, and only beside the decision that changed the reading:\n\
+             #   YGGDRYL_FIX_EQUIVALENCE_WRITE=1 cargo test --locked -p yggdryl --test fix equivalence\n",
+            );
+            for (key, value) in &self.records {
+                let _ = writeln!(out, "{key}\t{value}");
+            }
+            out
+        }
+    }
+
+    /// The committed answer, keyed the way the reading is.
+    fn committed(text: &str) -> BTreeMap<&str, &str> {
+        text.lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                line.split_once('\t')
+                    .unwrap_or_else(|| panic!("a snapshot line is a key and a value: {line}"))
+            })
+            .collect()
+    }
+
+    /// The committed dictionary, and the codec every generic frame is read under.
+    ///
+    /// Nothing is refused. `DEFAULT_REFUSED_MSGTYPES` is a filter over which
+    /// rows a live session reads, and what it keeps out - a heartbeat, a test
+    /// request, a row that states no type at all - is a third of what this
+    /// corpus exists to pin. A golden file of the *reading* asks for every
+    /// shape; that the filter keeps three of them out is pinned by
+    /// `codec::the_default_refusals_are_the_session_traffic_and_the_typeless_row`.
+    fn committed_codec() -> FixCodec {
+        super::fixed_codec(super::committed_registry()).with_exclude_msgtypes::<[&str; 0], &str>([])
+    }
+
+    /// The committed dictionary again, exactly as the dataset and pipeline
+    /// suites hold it: the bridge's lines resolve in the one namespace, so
+    /// nothing is pinned - and nothing is refused, for the reason above.
+    fn bridge_codec() -> FixCodec {
+        committed_codec()
+    }
+
+    fn owned(lines: &[&str]) -> Vec<Vec<u8>> {
+        lines.iter().map(|line| line.as_bytes().to_vec()).collect()
+    }
+
+    /// Every shape a real capture holds - the catalogue the batch and codec
+    /// suites are written against, prose and framing and marks alike.
+    fn shapes() -> Vec<Vec<u8>> {
+        owned(&[
+            "sending >> 8=FIX.4.2|9=176|35=D|11=ORDER-1|55=AAPL|54=1|10=203| << queued seq=1092",
+            "raw 8=FIX.4.4|9=224|35=8|17=E1|37=O9|31=12.75|32=50|10=118|",
+            "8=FIX.4.4|35=8|58=quoting #A=1 and #B=2|10=1|",
+            "sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|",
+            "8=FIX.4.4|35=D|11=ORDER-1|SYMBOL=AAPL|SIDE=1|10=000",
+            "toBridge #ISINCODE=XX|#SYMBOL=TTF|#SIDE=1",
+            "ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1",
+            "After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR",
+            "Referential(dbi|equity|dbi;GB00BN7SWP63_XLON_GBX|[quantity-type=])",
+            "<Order ClOrdID='XML-1'>body</Order>",
+            "Receiving XmlApi: <Execution ExecID='E1'></Execution>",
+            "Message rejected because : ignoring OMSSales expiry message",
+            "no level printed by this plugin",
+            "heartbeat emitted seq=7",
+        ])
+    }
+
+    /// The frames whose reading the four disagreements turn on: a value holding
+    /// a byte the generic scanner ends on, a printed SOH in each of its
+    /// spellings, a length-prefixed data field carrying the frame separator, a
+    /// pair after the checksum, a mark beside its bare twin, and the packed
+    /// occurrences a bridge writes.
+    fn frames() -> Vec<Vec<u8>> {
+        let nested = "MSGTYPE=D|ORDERID=9|#ORDERID=9|#SIDE=1";
+        let document = concat!(
+            r#"<FIXML v="5.0 SP2"><ExecRpt ExecID="E1" ClOrdID="ORDER-1" LastQty="21" "#,
+            r#"LastPx="83.08"><Instrmt Symbol="HOLN" /></ExecRpt></FIXML>"#
+        );
+        let mut lines = owned(&[
+            // Repeating groups by tag, nested, and the same group by name.
+            "8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|",
+            "MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE",
+            "MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE|NOPARTYIDS[1]=PARTYID=VENUE",
+            "MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
+            "8=FIX.4.4|35=J|70=A1|78=1|79=ACC|80=5|10=0|",
+            "8=FIX.4.4|35=AE|571=T1|552=1|54=1|453=1|448=P1|452=1|802=1|523=S1|803=1|10=0|",
+            // Keys by name, by unknown name, and by a tag no dictionary holds.
+            "8=FIX.4.4|MsgType=D|Symbol=AAPL|Side=1|10=0|",
+            "8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|",
+            "8=FIX.4.4|55=AAPL|35=D|9=100|10=000|",
+            "MSGTYPE=D|SYMBOL=AAPL",
+            "MSGTYPE=D|PartyID[2]=third|PartyID[0]=first",
+            // A stated absence, under a spelling and under a word.
+            "8=FIX.4.4|35=D|58=nullable|10=0|",
+            "8=FIX.4.4|35=D|58=null|10=0|",
+            // A mark beside its bare twin, and every row of the truth table.
+            "MSGTYPE=D|ORDERID=123|#ORDERID=345",
+            "MSGTYPE=D|#ORDERID=345|ORDERID=123",
+            "MSGTYPE=D|#ORDERID=345",
+            "MSGTYPE=D|ORDERID=123|#ORDERID=123",
+            "MSGTYPE=D|OrderId=123|#ORDERID=123",
+            "MSGTYPE=D|ORDERID=123 |#ORDERID= 123",
+            "MSGTYPE=D|ORDERID=abc|#ORDERID=ABC",
+            "MSGTYPE=D|#ORDERID=123|##ORDERID=123",
+            "MSGTYPE=D|#ORDERID=123|##ORDERID=345",
+            "MSGTYPE=D|##ORDERID=345",
+            "8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|",
+            "8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|",
+            // A frame a space separates, which is the separator inference the
+            // codec and the generic scanner disagree about.
+            "MSGTYPE=D ORDERID=123 #ORDERID=345",
+            "MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
+            "toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE",
+        ]);
+        // The packed occurrences a bridge writes, whose members a control byte
+        // separates and whose runs close on an empty segment.
+        lines.push(
+            b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1".to_vec(),
+        );
+        lines.push(
+            b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3"
+                .to_vec(),
+        );
+        lines.push(
+            b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1"
+                .to_vec(),
+        );
+        lines.push(
+            b"MSGTYPE=D|NOPARTYIDS=2\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03\
+|NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03"
+                .to_vec(),
+        );
+        lines.push(
+            b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03"
+                .to_vec(),
+        );
+        lines.push(
+            b"MSGTYPE=AE|NOSIDES=1\
+|NOSIDES[0]=NOPARTYIDS=2\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03"
+                .to_vec(),
+        );
+        // A frame written with the byte, and the four spellings a log prints for
+        // it, each carrying prose after the checksum.
+        lines.push(b"recv 8=FIX.4.4\x019=61\x0135=0\x0149=XPAR\x0110=017\x01".to_vec());
+        for spelling in ["^A", "\\x01", "<SOH>", "{SOH}"] {
+            lines.push(
+                format!(
+                    "recv 8=FIX.4.4{spelling}9=61{spelling}35=0{spelling}49=XPAR{spelling}10=017{spelling} on session 3"
+                )
+                .into_bytes(),
+            );
+        }
+        // A length-prefixed data field whose value carries the frame separator,
+        // one that states no length the trailer cannot correct, and one holding
+        // a whole document.
+        lines.push(
+            format!(
+                "8=FIX.4.2|35=UL|#SYMBOL=TTF|212={}|213={nested}|10=0|",
+                nested.len()
+            )
+            .into_bytes(),
+        );
+        lines.push(b"8=FIX.4.2|9=0|35=UL|212=17|213=EXECTYPE=Restated|10=0|".to_vec());
+        lines.push(
+            format!(
+                "8=FIX.4.2|9=0|35=n|212={}|213={document}|10=0|",
+                document.len()
+            )
+            .into_bytes(),
+        );
+        // A row is read for every message it carries. Keep fixture indices stable:
+        // two frames on one line, a checksum-less frame the next one closes, a
+        // bridge row the bridge marked in front of a frame, and a marked `#8=`
+        // and `#10=` inside a bridge row, which are the bridge's own spelling
+        // and so open and close nothing.
+        lines.push(b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O|10=002|".to_vec());
+        lines.push(b"8=FIX.4.4|35=D|11=A|8=FIX.4.4|35=8|37=O|10=002|".to_vec());
+        lines.push(b"#MSGTYPE=D|#CLORDID=A1|8=FIX.4.4|35=D|11=A1|10=000|".to_vec());
+        lines.push(b"MSGTYPE=D|#8=FIX.4.4|#10=000".to_vec());
+        lines
+    }
+
+    /// The bridge's own lines: a frame behind the prose its process printed, a
+    /// row keyed by name with a group packed into it, a document, and the row
+    /// header a real capture writes in front of all of them.
+    ///
+    /// The last line is appended rather than filed beside the document, because
+    /// the indices above are what the records are keyed by: a JSON body that is
+    /// not a Jolokia answer. Both documents are one entry-less `unknown` each,
+    /// and it is here so that a body this reader does not read turning into
+    /// more than that - or into a refusal - shows in the golden file.
+    fn bridge() -> Vec<Vec<u8>> {
+        owned(&[
+            "sending >> 8=FIX.4.4|9=176|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|44=10.5|59=0|60=20240102-10:15:30.000|10=203| << queued seq=1092",
+            "8=FIX.4.4|9=224|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|64=20240104|10=118|",
+            "8=FIX.4.4|9=224|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-2|39=2|150=F|55=AAPL|54=1|38=100|14=100|32=60|31=10.5|15=EUR|155=1.1|10=119|",
+            "recv |MSGTYPE=D|SYMBOL=TTF|SIDE=1|ORDERQTY=1200|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|",
+            r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" OrdQty="50"/></FIXML>"#,
+            concat!(
+                r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
+                r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","#,
+                r#""TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","State":"logged"},"status":200}"#,
+            ),
+            "no level printed by this plugin, and no pairs either",
+            "2026-08-14 06:46:30.416 [15261] [OMS_X1_TradeCapture] (DEBUG) Sending : 8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|",
+            "2026-08-14 06:46:36.887 [653] [Spot_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=VENUEADC|56=CLIENTFIS|52=20260814-04:46:36|1=client|6=547.771791547861|11=20260814_TP1_CLIENT_1003|14=982|15=INR|17=E-20260814-4507|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=XX0000000001|54=1|55=EXAMPLECO|58=Filled|59=0|60=20260814-04:46:36|75=20260814|150=2|151=0|10=197|",
+            "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=client|AVGPX=547.771791547861|CLORDID=20260814_TP1_CLIENT_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=BRKR|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=EXAMPLECO|TRANSACTTIME=20260814-04:46:36|",
+            "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_CLIENT_1003) without any route so using not persisted route: [UNDEFINED] --> [Broker_DarkPool_TradeCapture]",
+            r#"{"a":1}"#,
+        ])
+    }
+
+    /// The lines the facet table is written against: what an order, a fill and a
+    /// quote answer for who, what, how much and when.
+    fn lifts() -> Vec<Vec<u8>> {
+        owned(&[
+            "8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|60=20240102-10:15:30.000|10=0|",
+            "8=FIX.4.4|35=8|17=EXEC-1|37=ORD-9|31=12.75|44=12.5|32=50|38=100|10=0|",
+            "8=FIX.4.4|35=8|17=E|54=1|31=12.75|44=12.5|32=50|10=0|",
+            "8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|",
+            "8=FIX.4.4|35=D|11=A|54=2|44=12.5|38=100|10=0|",
+            "8=FIX.4.4|35=D|11=A|54=8|44=12.5|38=100|10=0|",
+            "8=FIX.4.4|35=D|11=A|53=1000000|10=0|",
+            "8=FIX.4.4|35=D|11=A|53=1000000|854=5|15=USD|10=0|",
+            "8=FIX.4.4|35=D|11=A|38=100|465=1|854=2|10=0|",
+            "8=FIX.4.4|35=D|11=A|132=12.4|10=0|",
+            "8=FIX.4.4|35=S|117=Q1|132=12.4|133=12.6|10=0|",
+            "8=FIX.4.4|35=D|11=A|60=20240102-09:00:00.000|52=20240102-10:15:30.000|10=0|",
+            "8=FIX.4.4|35=D|11=A|Symbol[0]=AAPL|Symbol[1]=MSFT|10=0|",
+            "8=FIX.4.4|35=D|9=abc|11=A|10=0|",
+            "49=SENDER|56=TARGET|34=1092|43=Y|52=20240102-10:15:30.000",
+            "MSGTYPE=D|#NOPARTYIDS=3|#NOPARTYIDS[0]=PARTYID=ONE",
+        ])
+    }
+
+    /// The lines the specification's tables are read against: a parse fills
+    /// what each message implies, so what is pinned is the composition.
+    fn enrichments() -> Vec<Vec<u8>> {
+        owned(&[
+            "8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|",
+            "8=FIX.4.4|35=8|150=F|151=60|14=40|10=0|",
+            "8=FIX.4.4|35=8|150=F|151=0|14=100|10=0|",
+            "8=FIX.4.4|35=8|150=G|151=0|10=0|",
+            "8=FIX.4.4|35=8|39=1|150=F|10=0|",
+            "8=FIX.4.4|35=8|39=2|150=F|151=60|14=40|10=0|",
+            "8=FIX.4.4|35=8|150=A|10=0|",
+            "8=FIX.4.4|35=8|150=D|10=0|",
+            "8=FIX.4.4|35=8|15=EUR|120=USD|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=CH0012221716|22=4|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=037833100|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|",
+            "8=FIX.4.4|35=D|11=A|48=ABBN SW|22=A|10=0|",
+            "8=FIX.4.4|35=D|11=A|55=NOVN|48=ABBN|22=8|10=0|",
+            "8=FIX.4.4|35=D|11=A|461=DBFUFR|10=0|",
+            "8=FIX.4.4|35=D|11=A|461=OPEICS|10=0|",
+            "8=FIX.4.4|35=D|11=A|461=esvtfr|10=0|",
+            "8=FIX.4.4|35=D|11=A|167=OPT|10=0|",
+            "8=FIX.4.4|35=D|11=A|167=NOSUCH|10=0|",
+            "8=FIX.4.4|35=F|11=B|41=A|10=0|",
+            "MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946",
+            "8=FIX.4.4|35=8|11=ORDER-1|37=VENUE-1|17=EXEC-1|198=SECONDARY-1|10=0|",
+            "8=FIX.4.4|35=AE|571=REPORT-1|1003=TRADE-1|10=0|",
+        ])
+    }
+
+    /// The execution report a 4.2 session sends, which the newest dictionary
+    /// restates, and an order carrying a retired date.
+    fn restatements() -> Vec<Vec<u8>> {
+        owned(&[
+            "8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|",
+            "8=FIX.4.4|35=D|11=A|541=20240605|10=0|",
+        ])
+    }
+
+    /// The text options the bridge's own log is read under, exactly as the
+    /// dataset suite reads it: its own row header, in UTC, every line numbered
+    /// and classified.
+    fn reading() -> RecordOptions {
+        let mut options = TextOptions::new()
+            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .expect("the bridge's row header compiles")
+            .with_timezone(Timezone::UTC);
+        options.start_rownum = Some(1);
+        options.parse_mimetype = true;
+        options.into()
+    }
+
+    /// The capture as the lines a text reader hands the codec, one line a row.
+    ///
+    /// The one decode entry point, which is the door the codec now takes: the
+    /// same read the batch path is built from, handed over rather than made
+    /// again.
+    fn capture_lines() -> Vec<TextLine> {
+        let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+        let RecordOptions::Text(options) = reading() else {
+            panic!("a text read")
+        };
+        read_text_lines(&source, &options)
+            .expect("a line reader")
+            .map(|line| line.expect("a line"))
+            .collect()
+    }
+
+    /// What the bridge's row header captures, in the order a line answers them.
+    fn capture_names() -> Vec<String> {
+        let RecordOptions::Text(options) = reading() else {
+            panic!("a text read")
+        };
+        options.capture_names().map(ToOwned::to_owned).collect()
+    }
+
+    /// The bridge's own capture, read the way a dataset read reads it: framed by
+    /// the text reader, then each line through the codec's line door - and then
+    /// the whole capture walked as one lifecycle, which is the reading a
+    /// consumer of chains gets: each message stating the one it follows, in
+    /// the walk's own order.
+    fn capture(pinned: &mut Pinned) {
+        let codec = bridge_codec().with_capture_names(capture_names());
+        let schema = fix_schema(codec.registry(), "fix").expect("the fixed schema");
+        let mut messages = Vec::new();
+        for (index, line) in capture_lines().iter().enumerate() {
+            let at = format!("ulbridge[{index:03}]");
+            let held = match codec.parse_text_line(line) {
+                Ok(held) => held,
+                Err(refused) => {
+                    pinned.push(format!("{at}.refused"), refused.to_string());
+                    continue;
+                }
+            };
+            let mut answered = 0;
+            for (ordinal, message) in held.enumerate() {
+                answered += 1;
+                let at = format!("{at}:{ordinal}");
+                match message {
+                    Ok(message) => {
+                        pinned.message(&at, &codec, &message, &schema);
+                        messages.push(message);
+                    }
+                    Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
+                }
+            }
+            pinned.push(format!("{at}.messages"), answered.to_string());
+        }
+        for (index, message) in codec.lifecycle(messages).enumerate() {
+            let at = format!("lifecycle[{index:03}]");
+            match message {
+                Ok(message) => pinned.message(&at, &codec, &message, &schema),
+                Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
+            }
+        }
+    }
+
+    /// Everything this branch answers, in one reading.
+    fn read() -> Pinned {
+        let mut pinned = Pinned::default();
+        capture(&mut pinned);
+        pinned.lines("shapes", &committed_codec(), &shapes());
+        pinned.lines("frames", &committed_codec(), &frames());
+        pinned.lines("bridge", &bridge_codec(), &bridge());
+        pinned.lines("lift", &committed_codec(), &lifts());
+        pinned.lines("enrich", &committed_codec(), &enrichments());
+        pinned.lines("latest", &committed_codec(), &restatements());
+        // The absence convention is deliberately not byte-preserving, so the same
+        // marked and null-spelled lines are read once more with it turned off: a
+        // difference the convention would have swallowed shows here instead.
+        let verbatim = committed_codec().with_null_values::<[&str; 0], _>([]);
+        pinned.lines("verbatim", &verbatim, &frames());
+        pinned
+    }
+
+    /// The codec's answer over every capture this branch holds, byte for byte.
+    ///
+    /// This is the equivalence gate the adaptation is judged against: it asserts
+    /// no rule of its own, and a difference here means the reading moved. Where
+    /// that was the point, the snapshot is regenerated in the commit that moved
+    /// it; where it was not, it is a defect.
+    #[test]
+    fn the_codec_answers_what_it_answered() {
+        let pinned = read();
+        // Every source message also checks column/residual reconstruction. Write
+        // the source snapshot before reporting failures so intentional changes
+        // can be reviewed even when a reconstructed row still needs a fix.
+        let path = snapshot_path();
+        let writing = std::env::var(WRITE).as_deref() == Ok("1");
+        if writing {
+            std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
+        }
+        assert!(
+            pinned.unread.is_empty(),
+            "every row must reconstruct without losing content: {:#?}",
+            pinned.unread
+        );
+        if writing {
+            return;
+        }
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|absent| {
+            panic!(
+                "{}: {absent}. Write it with {WRITE}=1 cargo test --locked -p yggdryl --test fix equivalence",
+                path.display()
+            )
+        });
+        let expected = committed(&text);
+        let answered: BTreeMap<&str, &str> = pinned
+            .records
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        assert_eq!(
+            answered.len(),
+            pinned.records.len(),
+            "the reading keyed two records the same way"
+        );
+
+        let mut moved = Vec::new();
+        for (key, value) in &expected {
+            match answered.get(key) {
+                Some(held) if held == value => {}
+                Some(held) => moved.push(format!("{key}\n    was {value}\n    now {held}")),
+                None => moved.push(format!("{key}\n    was {value}\n    now nothing")),
+            }
+        }
+        for (key, value) in &answered {
+            if !expected.contains_key(key) {
+                moved.push(format!("{key}\n    was nothing\n    now {value}"));
+            }
+        }
+        assert!(
+            moved.is_empty(),
+            "the codec's answer moved over {} of the committed captures:\n  {}{}\n\
+         Regenerate only beside the decision that changed the reading:\n  \
+         {WRITE}=1 cargo test --locked -p yggdryl --test fix equivalence",
+            moved.len(),
+            moved
+                .iter()
+                .take(REPORTED)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n  "),
+            if moved.len() > REPORTED {
+                format!("\n  ... and {} more", moved.len() - REPORTED)
+            } else {
+                String::new()
+            }
+        );
+    }
+}
+
+mod threads {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use arrow_array::RecordBatch;
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::text::{TextLine, TextOptions, read_text_lines};
+    use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
+
+    /// The bridge capture as the bytes a `.log` file holds, and the options
+    /// its rows are read under.
+    fn capture() -> (Buffer, TextOptions) {
+        let source = Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec()).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+        let mut options = TextOptions::new()
+            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .expect("the bridge's row header compiles")
+            .with_timezone(Timezone::UTC);
+        options.start_rownum = Some(1);
+        options.parse_mimetype = true;
+        (source, options)
+    }
+
+    fn lines(source: &Buffer, options: &TextOptions) -> Vec<TextLine> {
+        read_text_lines(source, options)
+            .expect("a line reader")
+            .map(|line| line.expect("a line"))
+            .collect()
+    }
+
+    fn messages(
+        read: impl Iterator<Item = yggdryl::Result<FixMsg>>,
+    ) -> Vec<Result<FixMsg, String>> {
+        read.map(|held| held.map_err(|error| error.to_string()))
+            .collect()
+    }
+
+    fn batches(reader: BatchReader) -> Vec<Result<RecordBatch, String>> {
+        reader
+            .map(|held| held.map_err(|error| error.to_string()))
+            .collect()
+    }
+
+    /// Two readings of one capture, message for message.
+    fn same_messages(one: &[Result<FixMsg, String>], four: &[Result<FixMsg, String>]) {
+        assert_eq!(one.len(), four.len(), "the same count of messages");
+        for (at, (one, four)) in one.iter().zip(four).enumerate() {
+            assert!(one == four, "message {at} differs: {one:?} vs {four:?}");
+        }
+    }
+
+    /// Two readings of one set of rows, by what each row stated: its identity,
+    /// its instant and the wire it re-emits.
+    fn same_read(one: &[Result<FixMsg, String>], four: &[Result<FixMsg, String>]) {
+        assert_eq!(one.len(), four.len(), "the same count of messages");
+        let stated = |held: &Result<FixMsg, String>| {
+            held.as_ref()
+                .map(|message| {
+                    (
+                        message.get_curruuid(),
+                        message.get_currunix(),
+                        message.into_bytes(b'|'),
+                    )
+                })
+                .map_err(Clone::clone)
+        };
+        for (at, (one, four)) in one.iter().zip(four).enumerate() {
+            assert!(stated(one) == stated(four), "message {at} differs");
+        }
+    }
+
+    /// Two readings of one capture, batch for batch.
+    fn same_batches(one: &[Result<RecordBatch, String>], four: &[Result<RecordBatch, String>]) {
+        assert_eq!(one.len(), four.len(), "the same count of batches");
+        for (at, (one, four)) in one.iter().zip(four).enumerate() {
+            assert!(one == four, "batch {at} differs");
+        }
+    }
+
+    /// Zero threads read as one, and the count is the codec's to state.
+    #[test]
+    fn the_threads_default_to_available_cpus_and_never_zero() {
+        let codec = FixCodec::new(super::committed_registry());
+        assert_eq!(
+            codec.threads(),
+            std::thread::available_parallelism().map_or(1, usize::from)
+        );
+        assert_eq!(codec.clone().with_threads(0).threads(), 1);
+        assert_eq!(codec.clone().with_threads(4).threads(), 4);
+        let mut codec = codec;
+        codec.set_threads(3);
+        assert_eq!(codec.threads(), 3);
+        assert_eq!(FixCodec::PARALLEL_CHUNK, 64);
+    }
+
+    /// Every door answers on four threads what it answers on one: the same
+    /// messages in the same order, and the same batches closing at the same
+    /// rows.
+    #[test]
+    fn every_door_answers_on_four_threads_what_it_answers_on_one() {
+        let registry = super::committed_registry();
+        let one =
+            super::fixed_codec(Arc::clone(&registry)).with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let four = one.clone().with_threads(4);
+        let (source, options) = capture();
+        let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
+
+        // The line doors: text lines, and their bodies as bytes.
+        let held = lines(&source, &options);
+        let text_one = messages(composed(&one).parse_text_lines(held.iter()));
+        let text_four = messages(composed(&four).parse_text_lines(held.iter()));
+        assert!(
+            text_one.len() > 50,
+            "the capture carries messages: {}",
+            text_one.len()
+        );
+        same_messages(&text_one, &text_four);
+        let bodies: Vec<Vec<u8>> = held.iter().map(|line| line.body_bytes().to_vec()).collect();
+        let bytes_one = messages(one.parse_lines(&bodies));
+        let bytes_four = messages(four.parse_lines(&bodies));
+        same_messages(&bytes_one, &bytes_four);
+        assert!(text_four.iter().filter(|held| held.is_ok()).count() > 50);
+
+        // The Arrow doors: rows parsed, rows read back as messages, and rows
+        // written; the batches close on the same rows because the charging
+        // reads the rows and never the threads.
+        let record: RecordOptions = options.clone().into();
+        let reader = || source.read_arrow_reader(&record).expect("a text reader");
+        let parsed_one = batches(one.parse_text_arrow_reader(reader()).expect("a reader"));
+        let parsed_four = batches(four.parse_text_arrow_reader(reader()).expect("a reader"));
+        same_batches(&parsed_one, &parsed_four);
+        let parsed: Vec<RecordBatch> = parsed_one
+            .into_iter()
+            .map(|held| held.expect("a batch"))
+            .collect();
+        let schema = parsed[0].schema();
+        let rows = || yggdryl::arrow::batch_reader(schema.clone(), parsed.clone());
+        // A row stating no `SendingTime` is dated by the clock the read
+        // settles, so the header's clock is left out of the comparison and
+        // everything the row stated is in it.
+        same_read(
+            &messages(one.messages(rows())),
+            &messages(four.messages(rows())),
+        );
+        // The row door reads a batch's rows as the array reader answers them,
+        // which is what `from_row` answers for the same row canonicalized: one
+        // message, whichever way the row was read.
+        let target = fix_schema(&registry, "fix").expect("the fixed schema");
+        let held: Vec<FixMsg> = one
+            .messages(rows())
+            .map(|message| message.expect("a message"))
+            .collect();
+        let canonical: Vec<Result<FixMsg, String>> = held
+            .iter()
+            .map(|message| {
+                let row = message.into_row(&target).expect("a row");
+                FixMsg::from_row(Arc::clone(&registry), &target, &row)
+                    .map_err(|error| error.to_string())
+            })
+            .collect();
+        let via_arrow = messages(
+            one.messages(
+                one.arrow_reader(target.clone(), held.clone())
+                    .expect("a reader"),
+            ),
+        );
+        same_read(&via_arrow, &canonical);
+        same_batches(
+            &batches(one.lifecycle_arrow_reader(rows()).expect("a reader")),
+            &batches(four.lifecycle_arrow_reader(rows()).expect("a reader")),
+        );
+        let written = |codec: &FixCodec| {
+            batches(
+                codec
+                    .arrow_reader(
+                        target.clone(),
+                        messages(one.messages(rows()))
+                            .into_iter()
+                            .map(|held| held.expect("a message")),
+                    )
+                    .expect("a reader"),
+            )
+        };
+        same_batches(&written(&one), &written(&four));
+    }
+
+    fn batch_source(rows: &[&str]) -> RecordBatch {
+        let field = yggdryl::DataType::from(
+            yggdryl::StructType::from_fields([yggdryl::DataType::utf8().required_field("body")])
+                .unwrap(),
+        )
+        .required_field("capture");
+        let values = yggdryl::Scalar::from_sequence(
+            rows.iter()
+                .map(|row| yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(*row)])),
+        );
+        yggdryl::arrow::batch_from_value(&field, &values).unwrap()
+    }
+
+    const TWO_FRAMES: &str = "8=FIX.4.4|35=D|11=FIRST|10=0| 8=FIX.4.4|35=D|11=SECOND|10=0|";
+
+    fn counted_batches(pulls: &Arc<AtomicUsize>) -> BatchReader {
+        let batch = batch_source(&[TWO_FRAMES, "8=FIX.4.4|35=D|11=THIRD|10=0|"]);
+        let schema = batch.schema();
+        let pulls = Arc::clone(pulls);
+        let source = std::iter::repeat_n(batch, 12).inspect(move |_| {
+            pulls.fetch_add(1, Ordering::Relaxed);
+        });
+        yggdryl::arrow::batch_reader(schema, source)
+    }
+
+    #[test]
+    fn arrow_parse_pool_refills_only_after_the_next_batch_is_consumed() {
+        for threads in [1, 3] {
+            let codec = super::fixed_codec(super::committed_registry())
+                .with_threads(threads)
+                .with_batch_row_size(1);
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut messages = codec.parse_arrow_messages(counted_batches(&pulls)).unwrap();
+            assert_eq!(pulls.load(Ordering::Relaxed), 0, "construction is lazy");
+            for id in ["FIRST", "SECOND", "THIRD"] {
+                let message = messages.next().unwrap().unwrap();
+                assert_eq!(message.get_by_tag(11).unwrap().as_str(), Some(id));
+                assert_eq!(pulls.load(Ordering::Relaxed), threads);
+            }
+            assert!(messages.next().unwrap().is_ok());
+            assert_eq!(pulls.load(Ordering::Relaxed), threads + 1);
+            drop(messages);
+            assert_eq!(
+                pulls.load(Ordering::Relaxed),
+                threads + 1,
+                "drop reads no more input"
+            );
+
+            pulls.store(0, Ordering::Relaxed);
+            let mut output = codec
+                .parse_text_arrow_reader(counted_batches(&pulls))
+                .unwrap();
+            assert_eq!(pulls.load(Ordering::Relaxed), 0);
+            for _ in 0..3 {
+                assert_eq!(output.next().unwrap().unwrap().num_rows(), 1);
+                assert_eq!(pulls.load(Ordering::Relaxed), threads);
+            }
+            assert_eq!(output.next().unwrap().unwrap().num_rows(), 1);
+            assert_eq!(pulls.load(Ordering::Relaxed), threads + 1);
+            drop(output);
+        }
+    }
+
+    #[test]
+    fn arrow_parse_pool_preserves_uneven_batches_and_output_boundaries() {
+        let one = super::fixed_codec(super::committed_registry())
+            .with_batch_row_size(3)
+            .with_batch_byte_size(8_000);
+        let four = one.clone().with_threads(4);
+        let inputs = vec![
+            batch_source(&[TWO_FRAMES]),
+            batch_source(&[]),
+            batch_source(&["unclassified prose", TWO_FRAMES, TWO_FRAMES]),
+            batch_source(&["8=FIX.4.4|35=D|11=LAST|10=0|"]),
+        ];
+        let source = || yggdryl::arrow::batch_reader(inputs[0].schema(), inputs.clone());
+        same_messages(
+            &messages(one.parse_arrow_messages(source()).unwrap()),
+            &messages(four.parse_arrow_messages(source()).unwrap()),
+        );
+        let expected = batches(one.parse_text_arrow_reader(source()).unwrap());
+        assert_eq!(
+            expected
+                .iter()
+                .map(|batch| batch.as_ref().unwrap().num_rows())
+                .sum::<usize>(),
+            7
+        );
+        same_batches(
+            &expected,
+            &batches(four.parse_text_arrow_reader(source()).unwrap()),
+        );
+    }
+
+    #[test]
+    fn arrow_parse_pool_keeps_source_errors_at_their_input_position() {
+        let codec = super::fixed_codec(super::committed_registry()).with_threads(3);
+        let batch = batch_source(&["8=FIX.4.4|35=D|11=BEFORE|10=0|"]);
+        let source = || -> BatchReader {
+            Box::new(arrow_array::RecordBatchIterator::new(
+                [
+                    Ok(batch.clone()),
+                    Err(arrow_schema::ArrowError::ParseError(
+                        "ordered source failure".into(),
+                    )),
+                    Ok(batch_source(&["8=FIX.4.4|35=D|11=AFTER|10=0|"])),
+                    Ok(RecordBatch::new_empty(Arc::new(
+                        arrow_schema::Schema::empty(),
+                    ))),
+                    Ok(batch.clone()),
+                ],
+                batch.schema(),
+            ))
+        };
+        let mut read = codec.parse_arrow_messages(source()).unwrap();
+        assert_eq!(
+            read.next()
+                .unwrap()
+                .unwrap()
+                .get_by_tag(11)
+                .unwrap()
+                .as_str(),
+            Some("BEFORE")
+        );
+        assert!(
+            read.next()
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("ordered source failure")
+        );
+        assert_eq!(
+            read.next()
+                .unwrap()
+                .unwrap()
+                .get_by_tag(11)
+                .unwrap()
+                .as_str(),
+            Some("AFTER")
+        );
+        assert!(
+            read.next()
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("different batch schema")
+        );
+        assert!(read.next().unwrap().is_ok());
+        assert!(read.next().is_none());
+        assert!(read.next().is_none());
+
+        let mut output = codec.parse_text_arrow_reader(source()).unwrap();
+        assert_eq!(
+            output.next().unwrap().unwrap().num_rows(),
+            1,
+            "completed prefix"
+        );
+        assert!(
+            output
+                .next()
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("ordered source failure")
+        );
+        assert!(
+            output.next().is_none(),
+            "Arrow output fuses at the first error"
+        );
     }
 }

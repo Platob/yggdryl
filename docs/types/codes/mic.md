@@ -266,18 +266,18 @@ assert_eq!(MicCode::new("XPAR")?.merge_with(&MicCode::new("XLON")?).as_str(), "X
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::coded vocabulary::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "registered_code"
-    python/.venv/bin/python -m pytest python/tests/test_enums.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code"
+    python/.venv/bin/python -m pytest python/tests/enums/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="registered code" node/tests/types/datatype.test.js
+    node --test --test-name-pattern="registered code" node/tests/datatype.test.js
     ```

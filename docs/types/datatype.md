@@ -658,7 +658,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds:: logical:: vocabulary:: enums::datatype_id enums::datatype_kind
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings vocabulary::logical vocabulary::rows
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'
@@ -667,13 +667,13 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_defaults.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test__defaults.py
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/datatype.test.js node/tests/types/defaults.test.js
+    node --test node/tests/datatype.test.js node/tests/defaults.test.js
     npm run --prefix node bench:types:defaults
     ```

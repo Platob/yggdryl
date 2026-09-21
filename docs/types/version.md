@@ -410,22 +410,22 @@ native Version example corpus.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- version::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- version::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- version::ordered
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- version::internal
     cargo bench --manifest-path rust/Cargo.toml --bench types -- version
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_version.py
+    python/.venv/bin/python -m pytest python/tests/test_version.py
     python/.venv/bin/python python/benchmarks/types/version.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/version.test.js
+    node --test node/tests/version.test.js
     npm run --prefix node bench:types
     ```
 

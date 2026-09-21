@@ -452,18 +452,18 @@ assert!(Geometry::new(doubled).is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- geospatial:: cast::binary_bytes_entering_a_geometry_field cast::a_geometry_column cast::a_crs_change_between_geospatial_columns field::arrow::a_geometry_field field::arrow::a_bare_geoarrow_document scalar::a_geospatial_value
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::typed field::arrow geospatial scalar wkb::bounds wkb::empties wkb::ewkb wkb::exactness wkb::identity wkb::nesting wkb::reading wkb::refusals wkb::type_ids
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^geospatial/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py -k "geometry"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "geometry"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="geometry" node/tests/types/datatype.test.js node/tests/types/fields.test.js
+    node --test --test-name-pattern="geometry" node/tests/datatype.test.js node/tests/fields.test.js
     ```

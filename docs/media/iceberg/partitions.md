@@ -296,18 +296,18 @@ A table marks its stored schema on create and on open, so `Table::schema` report
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::partition_specs
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::partition_specs
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^partition/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```

@@ -358,14 +358,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test holder -- buffered::internal
+    cargo test --features "parquet iceberg" -p yggdryl --test iobase
     cargo bench --bench holder --features parquet
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_roles.py
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py
+    python/.venv/bin/python -m pytest python/tests/holder/test_init.py
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py
     ```

@@ -319,7 +319,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test ipc -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
     ```
@@ -327,11 +327,11 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_ipc.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

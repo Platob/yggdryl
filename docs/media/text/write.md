@@ -187,18 +187,18 @@ bytes no reader of the file could read back as the rows they were.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test media text::
+    cargo test --features "parquet iceberg" -p yggdryl --test text -- arrow::text batch::text bytes::text::values entry::text::values handle::text leading::text limits::text line::text options::text plan::columns reader::text sep::text
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/text
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py
+    python/.venv/bin/python -m pytest python/tests/text/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

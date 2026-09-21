@@ -259,7 +259,7 @@ Row conversion is bounded by the smaller of `batch_row_size` and `commit_row_siz
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test ipc -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
@@ -268,12 +268,12 @@ Row conversion is bounded by the smaller of `batch_row_size` and `commit_row_siz
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_io_records.py
-    python/.venv/bin/python -m pytest python/tests/media/test_ipc.py
+    python/.venv/bin/python -m pytest python/tests/test_iomedia.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

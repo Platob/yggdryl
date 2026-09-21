@@ -106,14 +106,14 @@ Every scheme answers the same two surfaces. JSON answers native scalars in all t
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text json::
+    cargo test --features "parquet iceberg" -p yggdryl --test json
     cargo bench -p yggdryl --bench text -- codec/json
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/json
+    python/.venv/bin/python -m pytest python/tests/json/test_init.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 

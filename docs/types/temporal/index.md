@@ -323,21 +323,21 @@ leaf's parameter. The zone vocabulary is one value, documented on
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal field::temporal temporal:: timezone::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- date::temporal datetime::temporal duration::temporal interval::temporal temporal::datatypes temporal::fields temporal::scalars time::temporal timezone::zones
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(date|time|datetime|duration|interval|time_unit|temporal_text)/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "time_infers"
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py -k "width_unit_scale_and_zone or exact_intervals"
-    python/.venv/bin/python -m pytest python/tests/types/test_timezone.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "time_infers"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "width_unit_scale_and_zone or exact_intervals"
+    python/.venv/bin/python -m pytest python/tests/test_timezone.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="generic time|temporal families" node/tests/types/datatype.test.js node/tests/text/codec.test.js
-    node --test node/tests/types/timezone.test.js
+    node --test --test-name-pattern="generic time|temporal families" node/tests/datatype.test.js node/tests/text/codec.test.js
+    node --test node/tests/timezone.test.js
     ```

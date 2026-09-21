@@ -1,4 +1,5 @@
-//! `rust/src/object/azure/sign.rs`: the Shared Key signature no caller can name.
+//! `rust/src/object/azure/sign.rs`: the Shared Key signature no caller can
+//! name.
 //!
 //! Azure signs a fixed list of headers in a fixed, non-alphabetical order, then
 //! every `x-ms-` header sorted, then the resource the request addresses. The

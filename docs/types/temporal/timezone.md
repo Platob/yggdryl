@@ -364,18 +364,18 @@ guessing, which is recoverable where a plausible wrong offset is not.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- timezone::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- timezone::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- timezone::zones
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- timezone::internal
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_timezone.py
+    python/.venv/bin/python -m pytest python/tests/test_timezone.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/timezone.test.js
+    node --test node/tests/timezone.test.js
     ```

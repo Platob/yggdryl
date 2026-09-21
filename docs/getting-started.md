@@ -137,4 +137,4 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 
 ## Repository checks
 
-The full pass, per layer and per language, is on [Testing](testing.md); what a change must satisfy before handoff is on [Contributing](contributing.md).
+The full pass, per entry and per language, is on [Testing](testing.md); what a change must satisfy before handoff is on [Contributing](contributing.md).

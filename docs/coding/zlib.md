@@ -300,14 +300,14 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test coding -- zlib::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- zlib
     cargo bench -p yggdryl --bench coding -- zlib
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/coding/test_codings.py -k "zlib or RawDeflate"
+    python/.venv/bin/python -m pytest python/tests/coding/test_init.py -k "zlib or RawDeflate"
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     ```
 

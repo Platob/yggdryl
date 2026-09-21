@@ -17,39 +17,42 @@
 //! one fixture, and [`mod_`] is the handle-building that goes with it.
 
 #[cfg(feature = "object")]
-#[path = "object/mod_.rs"]
-mod mod_;
-#[cfg(feature = "object")]
-#[path = "object/server.rs"]
+#[path = "support/server.rs"]
 mod server;
 
-#[cfg(all(feature = "object", feature = "internals"))]
-#[path = "object/accounting.rs"]
-mod accounting;
-#[cfg(all(feature = "object", feature = "internals"))]
-#[path = "object/aws.rs"]
+#[cfg(feature = "object")]
+#[path = "object/aws/mod_.rs"]
 mod aws;
-#[cfg(all(feature = "object", feature = "internals"))]
-#[path = "object/azure.rs"]
+#[cfg(feature = "object")]
+#[path = "object/azure/mod_.rs"]
 mod azure;
 #[cfg(all(feature = "object", feature = "internals"))]
 #[path = "object/client.rs"]
 mod client;
 #[cfg(feature = "object")]
-#[path = "object/dialects.rs"]
-mod dialects;
-#[cfg(feature = "object")]
 #[path = "object/encryption.rs"]
 mod encryption;
 #[cfg(all(feature = "object", feature = "internals"))]
+#[path = "object/file.rs"]
+mod file;
+#[cfg(feature = "object")]
+#[path = "object/folder.rs"]
+mod folder;
+#[cfg(feature = "object")]
+#[path = "object/mod_.rs"]
+mod mod_;
+#[cfg(feature = "object")]
+#[path = "object/options.rs"]
+mod options;
+#[cfg(feature = "object")]
+#[path = "object/path.rs"]
+mod path;
+#[cfg(all(feature = "object", feature = "internals"))]
 #[path = "object/properties.rs"]
 mod properties;
-#[cfg(all(feature = "object", feature = "internals"))]
-#[path = "object/protocol.rs"]
-mod protocol;
 #[cfg(feature = "object")]
-#[path = "object/roles.rs"]
-mod roles;
+#[path = "object/provider.rs"]
+mod provider;
 #[cfg(all(feature = "object", feature = "internals"))]
 #[path = "object/sigv4.rs"]
 mod sigv4;

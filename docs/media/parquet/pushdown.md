@@ -189,20 +189,20 @@ A non-null struct root naming a subset of the stored columns reads only those ch
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test parquet -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_pushdown/parquet
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_parquet.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter "parquet read subset"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_parquet_pushdown npm run --prefix node bench:media
     ```

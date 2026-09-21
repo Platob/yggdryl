@@ -275,19 +275,19 @@ The same rows without the crossing: a read returns a reader, and stepping it dec
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test ipc -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_pushdown/ipc
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_ipc.py
-    python/.venv/bin/python -m pytest python/tests/media/test_io_records.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
+    python/.venv/bin/python -m pytest python/tests/test_iomedia.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

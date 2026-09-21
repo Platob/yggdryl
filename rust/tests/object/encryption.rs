@@ -1,4 +1,5 @@
-//! Encryption at rest, and what each kind puts on the wire.
+//! `rust/src/object/encryption.rs`: encryption at rest, and what each kind
+//! puts on the wire.
 //!
 //! The three kinds differ in who holds the key, which is the same thing as
 //! differing in what a request has to say - and the last of them, `SSE-C`, is

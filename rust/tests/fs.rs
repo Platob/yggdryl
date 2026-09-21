@@ -6,12 +6,24 @@
 //! volume root is two private helpers every destructive operation goes
 //! through, so that one carries the `internals` cfg and reaches the crate
 //! through `yggdryl::internals`. What the backends do over a whole tree is in
-//! `rust/tests/holder/fs.rs`.
+//! `system.rs`, beside the reference contract itself.
 
+#[path = "fs/file.rs"]
+mod file;
+#[path = "fs/folder.rs"]
+mod folder;
 #[cfg(feature = "internals")]
 #[path = "fs/local.rs"]
 mod local;
 #[path = "fs/location.rs"]
 mod location;
+#[path = "fs/memory.rs"]
+mod memory;
+#[path = "fs/stream.rs"]
+mod stream;
+#[path = "fs/system.rs"]
+mod system;
+#[path = "fs/transfer.rs"]
+mod transfer;
 #[path = "fs/uri.rs"]
 mod uri;

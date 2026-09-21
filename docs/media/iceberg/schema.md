@@ -694,22 +694,22 @@ assert!(!written.fields()[0].is_nullable());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::evolve::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::schema_documents
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::types
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::datatype_coverage
-    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
-    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- evolve::promotions evolve::schema_updates evolve::metadata_updates
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::schema_documents
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::types
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::datatype_coverage
+    cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test iceberg -- partition::iceberg scan::iceberg staging::iceberg table::iceberg types::iceberg
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_iceberg.py
+    python/.venv/bin/python -m pytest python/tests/test_iceberg.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/iceberg.test.js
+    node --test node/tests/iceberg.test.js
     ```

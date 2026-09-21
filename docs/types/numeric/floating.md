@@ -343,21 +343,21 @@ A `float64` and an `int64` are the same eight bytes under two readings, so `repr
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::floating field::floating
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::scalar default_scalar
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- decimal::selection floating
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- default::scalars parser::aliases
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- arithmetic
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_factories.py python/tests/types/test_native_scalar.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_scalar.py
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="typed field factories cover every native datatype variant" node/tests/types/fields.test.js
+    node --test --test-name-pattern="typed field factories cover every native datatype variant" node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

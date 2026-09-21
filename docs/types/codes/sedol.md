@@ -268,17 +268,17 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::securities
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip_code::securities figi_code::securities sedol_code::securities
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "registered_code"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py -k "registered_code"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="registered code" node/tests/types/datatype.test.js
+    node --test --test-name-pattern="registered code" node/tests/datatype.test.js
     ```

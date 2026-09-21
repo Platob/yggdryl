@@ -4,7 +4,7 @@
 //! to know it is right is to reproduce AWS's own published example vectors -
 //! the canonical request, the string to sign, and the headers that come out -
 //! for the four requests their reference page documents. Everything a caller
-//! can observe of a signed request is pinned in `rust/tests/object/protocol.rs`.
+//! can observe of a signed request is pinned in `rust/tests/object/client.rs`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -411,4 +411,97 @@ fn accessors_answer_the_bound_credentials() {
     let signer = Signer::new("id", "secret", None, "eu-west-3");
     assert_eq!(signer.access_key_id(), "id");
     assert_eq!(signer.region(), "eu-west-3");
+}
+
+mod protocol {
+    use crate::mod_::{BUCKET, file, file_with, options, store};
+    use yggdryl::IOBase;
+    use yggdryl::internals::object_options::signs_payload;
+    use yggdryl::internals::object_sigv4::sha256_hex;
+    use yggdryl::object::{AwsOptions, ObjectOptions};
+
+    #[test]
+    fn every_request_carries_a_signature_over_the_headers_it_names() {
+        let store = store();
+        store.require_access_key(Some("AKIAIOSFODNN7EXAMPLE"));
+        let mut handle = file(&store, "lake/part.parquet");
+        handle.write_all_bytes(b"PAR1").expect("a signed write");
+
+        let recorded = store.requests();
+        let put = recorded.last().expect("the write");
+        let authorization = put
+            .headers
+            .iter()
+            .find(|(name, _)| name == "authorization")
+            .map(|(_, value)| value.clone())
+            .expect("an authorization header");
+        assert!(
+            authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/"),
+            "{authorization}"
+        );
+        assert!(
+            authorization.contains("/us-east-1/s3/aws4_request"),
+            "{authorization}"
+        );
+        assert!(authorization.contains("SignedHeaders="), "{authorization}");
+        // The payload is signed by its real hash, so the store can verify it.
+        let payload_hash = put
+            .headers
+            .iter()
+            .find(|(name, _)| name == "x-amz-content-sha256")
+            .map(|(_, value)| value.clone())
+            .expect("a payload hash");
+        assert_eq!(payload_hash, sha256_hex(b"PAR1"));
+    }
+
+    #[test]
+    fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
+        let store = store();
+        // The fixture endpoint is plain HTTP, where nothing but the hash would
+        // establish that the body arrived as it was sent.
+        let mut handle = file(&store, "lake/part.bin");
+        handle.write_all_bytes(b"AAPL,187.23").expect("a write");
+        let recorded = store.requests();
+        let put = recorded.last().expect("the write");
+        assert_eq!(
+            put.headers
+                .iter()
+                .find(|(name, _)| name == "x-amz-content-sha256")
+                .map(|(_, value)| value.as_str()),
+            Some(sha256_hex(b"AAPL,187.23").as_str()),
+        );
+
+        // Asking for the other policy sends the literal S3 accepts instead, which
+        // is what an HTTPS endpoint selects on its own: hashing a large value
+        // costs more than the rest of the request, and TLS already covers it.
+        store.clear_requests();
+        let mut unsigned = file_with(
+            "lake/unsigned.bin",
+            options(&store).with_aws(AwsOptions::default().with_payload_signing(false)),
+        );
+        unsigned.write_all_bytes(b"AAPL,187.23").expect("a write");
+        let recorded = store.requests();
+        let put = recorded.last().expect("the write");
+        assert_eq!(
+            put.headers
+                .iter()
+                .find(|(name, _)| name == "x-amz-content-sha256")
+                .map(|(_, value)| value.as_str()),
+            Some("UNSIGNED-PAYLOAD"),
+        );
+        // Either way the store received the bytes it was sent.
+        assert_eq!(
+            store.get(BUCKET, "lake/unsigned.bin").expect("the object"),
+            b"AAPL,187.23"
+        );
+
+        // The policy an unset value picks follows the endpoint's scheme.
+        let over_tls = ObjectOptions::default().with_endpoint("https://s3.example.io");
+        assert!(!signs_payload(&over_tls, "https"));
+        assert!(signs_payload(&ObjectOptions::default(), "http"));
+        assert!(signs_payload(
+            &over_tls.with_aws(AwsOptions::default().with_payload_signing(true)),
+            "https"
+        ));
+    }
 }

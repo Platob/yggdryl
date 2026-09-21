@@ -172,7 +172,7 @@ a record by it would answer a line with no body on every row; under a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test media text::
+    cargo test --features "parquet iceberg" -p yggdryl --test text -- arrow::text batch::text bytes::text::values entry::text::values handle::text leading::text limits::text line::text options::text plan::columns reader::text sep::text
     cargo bench -p yggdryl --bench text -- text_options
     cargo bench -p yggdryl --bench text -- text_record_framing
     ```
@@ -180,11 +180,11 @@ a record by it would answer a line with no body on every row; under a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py
+    python/.venv/bin/python -m pytest python/tests/text/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     ```

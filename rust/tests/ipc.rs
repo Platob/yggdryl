@@ -7,6 +7,5 @@
 //! exists only under the `internals` feature, and the file that reaches it is
 //! declared behind that feature here.
 
-#[cfg(feature = "internals")]
 #[path = "ipc/mod_.rs"]
 mod mod_;

@@ -3,7 +3,7 @@
 //! The volume-root guard and the non-root resolution are private helpers the
 //! destructive operations go through, so a caller has no name for either;
 //! they are reached through `yggdryl::internals`. Everything the backend does
-//! that a caller can observe is in `rust/tests/holder/fs.rs`.
+//! that a caller can observe is in `rust/tests/fs/system.rs`.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

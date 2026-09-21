@@ -395,22 +395,21 @@ let _ = std::fs::remove_file(&path);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::buffered::
-    cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::buffered_handle
+    cargo test --features "iceberg internals parquet" -p yggdryl --test holder -- buffered::internal
     cargo bench --bench holder --features parquet -- io_buffered
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k buffered
+    python/.venv/bin/python -m pytest python/tests/test_iobase.py -k buffered
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern buffered "node/tests/holder/io.test.js"
+    node --test --test-name-pattern buffered "node/tests/iobase.test.js"
     npm run --prefix node bench:holder:io
     ```
 

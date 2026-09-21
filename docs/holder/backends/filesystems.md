@@ -371,7 +371,7 @@ Handler calls stay synchronous and on the JavaScript isolate that supplied the h
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib fs::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test fs -- local location uri
     cargo bench --bench holder --features parquet -- fs_bytes
     cargo bench --bench holder --features parquet -- fs_record
     cargo bench --bench holder --features parquet -- fs_listing

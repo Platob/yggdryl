@@ -352,20 +352,20 @@ intake is total by construction.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- media::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- routing::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media_type
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- mod_
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_factories.py
-    python/.venv/bin/python -m pytest python/tests/media/test_media.py
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/types/fields.test.js
-    node --test node/tests/media/media.test.js
+    node --test node/tests/fields.test.js
+    node --test node/tests/media/index.test.js
     ```

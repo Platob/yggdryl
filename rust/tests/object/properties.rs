@@ -1,4 +1,5 @@
-//! Reading a property map written in somebody else's vocabulary.
+//! `rust/src/object/properties.rs`: reading a property map written in
+//! somebody else's vocabulary.
 //!
 //! A caller reaching a store through this crate starts from a PyIceberg
 //! catalog's properties, from PyArrow's `S3FileSystem` arguments, or from each

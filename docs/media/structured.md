@@ -226,10 +226,10 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test text
-    cargo test --features "parquet iceberg" -p yggdryl --test text value::
+    cargo test --features "parquet iceberg" -p yggdryl --test root -- scalar::values serde::value
     cargo test --features "parquet iceberg" -p yggdryl --test text format::
-    cargo test --features "parquet iceberg" -p yggdryl --test text structured::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::
+    cargo test --features "parquet iceberg" -p yggdryl --test text -- mod_
+    cargo test --features "iceberg internals parquet" -p yggdryl --test text -- batch display io line::internal loading reader::internal
     cargo bench -p yggdryl --bench text -- codec/value
     ```
 
@@ -237,7 +237,7 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/text
-    python/.venv/bin/python -m pytest python/tests/text/test_codec_facade.py python/tests/text/test_codec_fields.py python/tests/text/test_codec_native_returns.py python/tests/text/test_codec_options.py
+    python/.venv/bin/python -m pytest python/tests/text/test_codec.py
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     ```
 

@@ -1181,8 +1181,8 @@ What one line of each shape costs the codec - a framed tag stream, a bare one, a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/fix -k "reader or row or crate"
+    python/.venv/bin/python -m pytest python/tests/test_fix.py
+    python/.venv/bin/python -m pytest python/tests/test_fix.py -k "reader or row or crate"
     ```
 
 === "JavaScript"

@@ -431,15 +431,16 @@ assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- decimal i256 field::decimal
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- decimal::tests arithmetic::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- compatibility decimal::exact::comparison decimal::exact::family decimal::exact::fixed decimal::exact::representation decimal::exact::restating decimal::fields decimal::selection int256 merge::lattice parser::families regex::fractions temporal::datatypes variant::encoding wkb::exactness
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test value -- canonical::value::readings
+    cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- decimal::internal::reading arithmetic
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^decimal/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_scalar.py -k "decimal"
+    python/.venv/bin/python -m pytest python/tests/test_datatype.py python/tests/test_scalar.py -k "decimal"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
@@ -447,6 +448,6 @@ assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="defaulted temporal and decimal overloads share exact option handling" node/tests/types/fields.test.js
+    node --test --test-name-pattern="defaulted temporal and decimal overloads share exact option handling" node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

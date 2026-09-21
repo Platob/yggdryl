@@ -77,3 +77,31 @@ fn raw_object_path_characters_and_secrets_never_change_or_leak() {
     assert!(!resolved.masked_uri().contains("never-show-this"));
     assert!(!resolved.masked_uri().contains("hidden"));
 }
+
+mod fs {
+
+    use std::collections::BTreeMap;
+
+    use yggdryl::fs::*;
+
+    #[test]
+    fn explicit_uri_options_override_query_without_exposing_secrets() {
+        let mut options = BTreeMap::new();
+        options.insert("region".to_owned(), "us-east-2".to_owned());
+        options.insert("anonymous".to_owned(), "true".to_owned());
+        options.insert("force_path_style".to_owned(), "true".to_owned());
+        let resolved = ResolvedFileSystemUri::from_uri(
+            "s3://access:never-show-this@bucket/v=a%2Fb?region=eu-west-1",
+            Some(&options),
+        )
+        .unwrap();
+        let ResolvedFileSystem::S3(configuration) = resolved.filesystem() else {
+            panic!("expected S3")
+        };
+        assert_eq!(resolved.path(), "bucket/v=a%2Fb");
+        assert_eq!(configuration.region(), Some("us-east-2"));
+        assert!(configuration.anonymous());
+        assert_eq!(configuration.addressing_style(), S3AddressingStyle::Path);
+        assert!(!format!("{resolved:?}").contains("never-show-this"));
+    }
+}

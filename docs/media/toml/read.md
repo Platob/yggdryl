@@ -281,20 +281,20 @@ A declared [`Field`](values.md) names the root the rows are stored under and typ
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test text toml::
+    cargo test --features "parquet iceberg" -p yggdryl --test toml -- mod_
     cargo test --features "parquet iceberg" -p yggdryl --test media -- structured::
-    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
+    cargo test --features "iceberg internals parquet" -p yggdryl --test toml -- wire
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/text/toml
-    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_scalar.py
+    python/.venv/bin/python -m pytest python/tests/toml/test_init.py
+    python/.venv/bin/python -m pytest python/tests/test_arrow.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/text/toml.test.js
+    node --test node/tests/text/codec.test.js
     ```

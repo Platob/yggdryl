@@ -301,3 +301,65 @@ fn capture_holes_keep_indices_and_typed_values_have_canonical_text() {
     let rows = from_arrow_batch(&batch, &options).expect("rows");
     assert_eq!(rows[0].capture(1), Some("7"));
 }
+
+mod text {
+    use arrow_array::{Array as _, StringArray};
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions as _;
+    use yggdryl::text::TextOptions;
+
+    use yggdryl::IOMedia as _;
+
+    fn named(name: &str, bytes: &[u8]) -> Buffer {
+        Buffer::from_bytes(bytes.to_vec()).with_media_type(
+            yggdryl::Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type(),
+        )
+    }
+
+    fn options(rowheader: &str) -> TextOptions {
+        TextOptions::new().try_with_rowheader(rowheader).unwrap()
+    }
+
+    fn framed(rowheader: &str) -> TextOptions {
+        options(rowheader).with_framing(true)
+    }
+
+    fn bodies(batches: &[arrow_array::RecordBatch]) -> Vec<Vec<u8>> {
+        batches
+            .iter()
+            .flat_map(|batch| {
+                let index = batch.schema().index_of("body").unwrap();
+                batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap()
+                    .iter()
+                    .map(|value| value.unwrap().as_bytes().to_vec())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_unconvertible_next_record_follows_the_completed_record_batch_prefix() {
+        // The second record's number cannot be represented, and the refusal
+        // arrives after the batch the first record completed - never inside it.
+        let source = named("invalid-next-header.log", b"A first\nB second\n");
+        let mut options = framed(r"^(?<kind>(?-u:.)) ");
+        options.start_rownum = Some(i64::MAX);
+        options.set_batch_row_size(Some(8));
+        let mut reader = source.read_arrow_reader(&options.into()).unwrap();
+
+        let prefix = reader.next().unwrap().unwrap();
+        assert_eq!(bodies(&[prefix]), [b"A first".to_vec()]);
+        let error = reader.next().unwrap().unwrap_err().to_string();
+        assert!(
+            error.contains("text row number exceeds i64::MAX"),
+            "{error}"
+        );
+        assert!(reader.next().is_none());
+    }
+}

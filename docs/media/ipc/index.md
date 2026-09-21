@@ -114,7 +114,7 @@ A name that says Arrow IPC is the whole configuration: the stream carries its ow
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
+    cargo test --features "iceberg internals parquet" -p yggdryl --test ipc -- mod_::internal
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record
@@ -124,14 +124,14 @@ A name that says Arrow IPC is the whole configuration: the stream carries its ow
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/media/test_ipc.py
+    python/.venv/bin/python -m pytest python/tests/media/test_init.py
     python/.venv/bin/python python/benchmarks/media.py --filter ipc --filter "PyArrow IPC"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/media/records.test.js
+    node --test node/tests/records.test.js
     YGGDRYL_BENCH_FILTER=records/read_ipc npm run --prefix node bench:media
     ```
 

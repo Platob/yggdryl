@@ -491,8 +491,8 @@ names are folded; `display` keeps the specification's spelling.
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::name_indexes_fold_ascii fix::tests::three_spellings_of_one_name fix::tests::an_identifier_is_one_integer fix::tests::membership_folds_once fix::tests::membership_round_trips fix::tests::properties_round_trip fix::tests::a_property_write fix::tests::the_fold_table_holds fix::tests::iteration_and_the_cursor_are_tag_major fix::tests::a_corrupt_stored fix::tests::a_path_reaches
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal
+    cargo test --features internals -p yggdryl --test fix -- mod_::internal::name_indexes_fold_ascii mod_::internal::three_spellings_of_one_name mod_::internal::an_identifier_is_one_integer mod_::internal::membership_folds_once mod_::internal::membership_round_trips mod_::internal::properties_round_trip mod_::internal::a_property_write mod_::internal::the_fold_table_holds mod_::internal::iteration_and_the_cursor_are_tag_major mod_::internal::a_corrupt_stored mod_::internal::a_path_reaches
     cargo bench -p yggdryl --bench fix -- fix/mutate/set_
     cargo bench -p yggdryl --bench fix -- fix/mutate/add_branch
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_
@@ -501,15 +501,15 @@ names are folded; `display` keeps the specification's spelling.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/fix -k "vocabulary or tag_rejects or id_is_the_tag or membership"
+    python/.venv/bin/python -m pytest python/tests/test_fix.py
+    python/.venv/bin/python -m pytest python/tests/test_fix.py -k "vocabulary or tag_rejects or id_is_the_tag or membership"
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/fix/fix.test.js
-    node --test --test-name-pattern="typed fix vocabulary|answers only on the fix view|never narrowed|identifier is a number|membership is a sorted list" node/tests/fix/fix.test.js
+    node --test node/tests/fix.test.js
+    node --test --test-name-pattern="typed fix vocabulary|answers only on the fix view|never narrowed|identifier is a number|membership is a sorted list" node/tests/fix.test.js
     npm run --prefix node bench:fix
     ```

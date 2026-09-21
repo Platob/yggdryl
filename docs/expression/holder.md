@@ -174,18 +174,18 @@ assert!(!residual.is_complete());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_free_attribute_answers_without_a_single_stat expression::tests::a_row_predicate_rules_no_holder_out expression::tests::every_attribute_declares_a_cost_and_a_type expression::tests::pruning_never_loses_a_row expression::tests::pruning_actually_prunes_what_it_can_prove expression::tests::a_partition_path_is_the_tightest_statistic_there_is expression::tests::a_split_conjoins_back_to_what_it_split
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- attribute::grammar filter::grammar pushdown::grammar
     cargo bench -p yggdryl --bench expression -- expression_prune
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "holder_attributes or lake"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "holder_attributes or lake"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="holder attribute|a lake is filtered" node/tests/expression
+    node --test --test-name-pattern="holder attribute|a lake is filtered" node/tests/expression.test.js
     ```

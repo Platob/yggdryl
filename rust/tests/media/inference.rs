@@ -1,4 +1,5 @@
-//! The datatype a value names, and what it refuses to name.
+//! `rust/src/media/inference.rs`: the datatype a value names, and what it
+//! refuses to name.
 
 mod scalars {
     use yggdryl::{

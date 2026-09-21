@@ -336,20 +336,20 @@ it; [the datetime page](datetime.md#a-date-under-a-datetime-column) shows both.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal::every_date_leaf field::temporal::a_date_field field::temporal::a_date_fields_array
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- date::temporal temporal::fields
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^date/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py -k "width_unit_scale_and_zone"
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k "temporals_cross"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "width_unit_scale_and_zone"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "temporals_cross"
     ```
 
 === "JavaScript"
 
     ```bash
     node --test --test-name-pattern="temporal families" node/tests/text/codec.test.js
-    node --test --test-name-pattern="typed field factories" node/tests/types/fields.test.js
+    node --test --test-name-pattern="typed field factories" node/tests/fields.test.js
     ```

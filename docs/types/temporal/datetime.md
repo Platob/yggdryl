@@ -412,20 +412,20 @@ assert!(naive.scalar(Scalar::from("20240102Z")).is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal::the_datetime_leaf datatype::temporal::a_temporal_reads datatype::temporal::either_decimal_sign field::temporal::a_datetime_field
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datetime::temporal temporal::datatypes temporal::fields
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(datetime|temporal_text)/'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k "aware_datetime or ambiguous_zoned or finer_than_python or coarser_unit or zone_with_no_rules"
-    python/.venv/bin/python -m pytest python/tests/types/test_native_scalar.py -k "width_unit_scale_and_zone"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "aware_datetime or ambiguous_zoned or finer_than_python or coarser_unit or zone_with_no_rules"
+    python/.venv/bin/python -m pytest python/tests/test_scalar.py -k "width_unit_scale_and_zone"
     ```
 
 === "JavaScript"
 
     ```bash
     node --test --test-name-pattern="temporal families|a Date is the JavaScript spelling" node/tests/text/codec.test.js
-    node --test --test-name-pattern="defaulted temporal" node/tests/types/fields.test.js
+    node --test --test-name-pattern="defaulted temporal" node/tests/fields.test.js
     ```
