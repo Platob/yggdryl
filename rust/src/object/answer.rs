@@ -20,51 +20,64 @@ pub(crate) struct ObjectMeta {
 
 /// One object a listing page named, with what the page said about it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ObjectSummary {
+pub struct ObjectSummary {
     /// The object key, percent-decoded when the page says
     /// `<EncodingType>url</EncodingType>`.
-    pub(crate) key: String,
+    pub key: String,
     /// The object size in bytes.
-    pub(crate) size: u64,
+    pub size: u64,
     /// The `ETag` as given, quotes included.
-    pub(crate) etag: Option<String>,
+    pub etag: Option<String>,
     /// The `LastModified` timestamp as given.
-    pub(crate) last_modified: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 /// One page of a listing.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ListPage {
+pub struct ListPage {
     /// The objects in document order, which is key order.
-    pub(crate) objects: Vec<ObjectSummary>,
+    pub objects: Vec<ObjectSummary>,
     /// The `CommonPrefixes`, decoded like keys.
-    pub(crate) prefixes: Vec<String>,
+    pub prefixes: Vec<String>,
     /// Whether another page follows.
-    pub(crate) is_truncated: bool,
+    pub is_truncated: bool,
     /// The token that fetches the next page; absent on the last one.
-    pub(crate) next_continuation_token: Option<String>,
+    pub next_continuation_token: Option<String>,
 }
 
 /// What a store's refusal said.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ErrorBody {
+pub struct ErrorBody {
     /// The error code (`NoSuchKey`, `AccessDenied`, ...); empty when absent.
-    pub(crate) code: String,
+    pub code: String,
     /// The human-readable message; empty when absent.
-    pub(crate) message: String,
+    pub message: String,
     /// The `RequestId` S3 stamps for support.
-    pub(crate) request_id: Option<String>,
+    pub request_id: Option<String>,
     /// The `Resource` the failure names, when it names one.
-    pub(crate) resource: Option<String>,
+    pub resource: Option<String>,
 }
 
 /// One key a bulk delete did not remove, and why.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DeleteFailure {
+pub struct DeleteFailure {
     /// The key that was not deleted.
-    pub(crate) key: String,
+    pub key: String,
     /// The error code.
-    pub(crate) code: String,
+    pub code: String,
     /// The human-readable message.
-    pub(crate) message: String,
+    pub message: String,
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/xml.rs`, `rust/tests/object/aws/xml.rs` and
+    //! `rust/tests/object/azure/xml.rs` pin and a caller cannot reach.
+    //!
+    //! A dialect's reader is checked by the shape it parses into, so a test
+    //! spells one out and compares. `object::answer` is a private module of a
+    //! published one, so these being `pub` reaches nobody: this door is the
+    //! only path to them, and it exists under the `internals` feature alone.
+    pub use super::{DeleteFailure, ErrorBody, ListPage, ObjectSummary};
 }

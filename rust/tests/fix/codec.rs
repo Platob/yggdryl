@@ -2379,3 +2379,424 @@ fn the_default_refusals_are_the_session_traffic_and_the_typeless_row() {
             .reads_msgtype("0")
     );
 }
+
+// ---------------------------------------------------------------------------
+// Moved out of `rust/src/fix/codec.rs`, which is the file this one mirrors:
+// which message types a codec reads, and which clock a row settles on. The
+// second reaches `CLOCK_DATATYPE` through `yggdryl::internals`; the first is a
+// caller's own door throughout.
+// ---------------------------------------------------------------------------
+
+mod msgtype_filter_tests {
+    use std::sync::Arc;
+
+    use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+
+    fn codec() -> FixCodec {
+        FixCodec::new(Arc::new(FixRegistry::new()))
+    }
+
+    #[test]
+    fn the_default_refuses_the_keepalives_and_the_untyped_row() {
+        let codec = codec();
+        assert_eq!(codec.exclude_msgtypes(), DEFAULT_REFUSED_MSGTYPES);
+        assert!(codec.include_msgtypes().is_empty());
+        // A keepalive by its code and by its name, an untyped row by the
+        // word that names one, and everything else read.
+        assert!(!codec.reads_msgtype("0"));
+        assert!(!codec.reads_msgtype("1"));
+        assert!(!codec.reads_msgtype("unknown"));
+        assert!(!codec.reads_msgtype(""));
+        assert!(codec.reads_msgtype("D"));
+        assert!(codec.reads_msgtype("8"));
+
+        let lines = [
+            "8=FIX.4.4|35=0|112=TEST|10=0|",
+            "8=FIX.4.4|35=1|112=TEST|10=0|",
+            "8=FIX.4.4|35=D|11=A|10=0|",
+            "key=value|other=thing|",
+        ];
+        let read: Vec<_> = codec
+            .parse_lines(lines)
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].header().msgtype(), "D");
+    }
+
+    #[test]
+    fn a_refused_type_is_dropped_wherever_a_row_states_it() {
+        // Two frames on one row: the refused one is passed over and the row
+        // still answers the other, which is what filtering per frame is for.
+        let read: Vec<_> = codec()
+            .parse_line(b"8=FIX.4.4|35=0|10=0|8=FIX.4.4|35=D|11=A|10=0|")
+            .unwrap()
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].by_tag(11).unwrap().as_str(), Some("A"));
+        // And a walk refuses what the parse would have: a keepalive handed
+        // in from elsewhere never enters a chain.
+        let keepalive = codec()
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+            .parse_fix_line(b"8=FIX.4.4|35=0|10=0|")
+            .unwrap();
+        assert_eq!(codec().lifecycle([keepalive]).count(), 0);
+    }
+
+    #[test]
+    fn naming_what_to_read_replaces_the_default_refusal() {
+        // Inclusion alone: only what it names, and the keepalive the default
+        // refused is read again where it is named.
+        let orders = codec().with_include_msgtypes(["D"]);
+        assert!(orders.exclude_msgtypes().is_empty());
+        assert!(orders.reads_msgtype("D"));
+        assert!(!orders.reads_msgtype("8"));
+        let keepalives = codec().with_include_msgtypes(["0"]);
+        assert!(keepalives.reads_msgtype("0"));
+        // Both stated: the refusal wins where they disagree, whichever
+        // order the two were named in.
+        let held = codec()
+            .with_include_msgtypes(["D", "8"])
+            .with_exclude_msgtypes(["8"]);
+        assert!(held.reads_msgtype("D"));
+        assert!(!held.reads_msgtype("8"));
+        assert!(!held.reads_msgtype("0"));
+    }
+
+    #[test]
+    fn a_spelling_is_resolved_once_and_an_unknown_code_is_kept() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+        let registry =
+            FixRegistry::from_handle(&yggdryl::local::Folder::new(root).unwrap()).unwrap();
+        let codec = FixCodec::new(Arc::new(registry)).with_include_msgtypes([
+            "NewOrderSingle",
+            "EXECUTIONREPORT",
+            "ZZ",
+        ]);
+        // Two spellings of two shipped types, resolved to their codes, and a
+        // code no dictionary knows kept as the venue wrote it.
+        assert_eq!(codec.include_msgtypes(), ["D", "8", "ZZ"]);
+        assert!(codec.reads_msgtype("D"));
+        assert!(codec.reads_msgtype("ExecutionReport"));
+        assert!(codec.reads_msgtype("ZZ"));
+        assert!(!codec.reads_msgtype("A"));
+    }
+}
+
+#[cfg(feature = "internals")]
+mod clock_intake_tests {
+    use std::sync::Arc;
+
+    use yggdryl::graph::Event;
+    use yggdryl::internals::fix_schema::clock_datatype;
+    use yggdryl::text::{TextBytes, TextLine};
+    use yggdryl::{DataType, Error, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone};
+
+    fn clock(value: i64) -> Scalar {
+        Scalar::datetime64(value, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    }
+
+    /// A codec that reads every type, because these tests are about the
+    /// clocks a row settles and several of their rows state no type at all,
+    /// which the default refusals would drop before any clock was read.
+    fn codec() -> FixCodec {
+        FixCodec::new(Arc::new(FixRegistry::new()))
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap()
+    }
+
+    fn text_line(body: &[u8]) -> TextLine {
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn fallback_clock_is_exact_optional_and_atomic() {
+        let mut codec = codec();
+        for value in [
+            Scalar::Null,
+            Scalar::from(17_i64),
+            Scalar::from("20260102-10:15:30"),
+            Scalar::datetime64(17, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+            Scalar::datetime64(17, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+        ] {
+            assert!(codec.set_default_sending_time(Some(value)).is_err());
+            assert_eq!(codec.default_sending_time(), Some(&clock(17)));
+        }
+        codec.set_default_sending_time(None).unwrap();
+        assert_eq!(codec.default_sending_time(), None);
+    }
+
+    #[test]
+    fn seeded_clocks_type_once_and_sending_dates_the_event() {
+        let codec = codec();
+        for tag in [52, 60] {
+            assert_eq!(
+                codec.registry().field_by_tag(tag).unwrap().dtype(),
+                &clock_datatype()
+            );
+        }
+        let message = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31|")
+            .unwrap();
+        assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
+        assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
+        // `SendingTime` dates the event and `TransactTime` stays the typed
+        // field the lifecycle reads; neither fills `snapunix`, which says
+        // this row is a reading a walk took.
+        assert_eq!(
+            Some(message.get_currunix()),
+            message
+                .by_tag(52)
+                .unwrap()
+                .temporal_count_at(TimeUnit::Nanosecond)
+        );
+        assert_eq!(
+            message
+                .by_tag(60)
+                .unwrap()
+                .temporal_count_at(TimeUnit::Nanosecond),
+            Some(1_767_348_931_000_000_000)
+        );
+        assert_eq!(message.get_snapunix(), None);
+        let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(absent.get_by_tag(60).is_none());
+    }
+
+    #[test]
+    fn capture_context_clock_is_not_a_fix_clock() {
+        let codec = codec().with_capture_names(["timestamp"]);
+        let line = text_line(b"8=FIX.4.4|35=D|")
+            .with_handle_mtime(99)
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"not-a-FIX-clock").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), clock(17));
+        // `snapunix` says this row is a reading a walk took. An intake that
+        // took none leaves it unstated rather than copying a clock into it,
+        // which is what makes the question answerable from the row.
+        assert_eq!(message.get_snapunix(), None);
+    }
+
+    #[test]
+    fn namespace_sending_precedes_carrier_and_default() {
+        let codec = codec().with_capture_names(["SendingTime"]);
+        let line = text_line(b"#scope.SendingTime=20260102-10:15:30|")
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"invalid-lower-priority-clock").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let direct = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|")
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), direct.by_tag(52).unwrap());
+        assert!(message.entries().is_empty());
+        assert_eq!(
+            message
+                .metadata()
+                .get("scope.sendingtime")
+                .map(|held| held.as_str()),
+            Some("20260102-10:15:30")
+        );
+        let carried = text_line(b"8=FIX.4.4|35=D|")
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"20260102-10:15:30").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&carried)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), direct.by_tag(52).unwrap());
+        assert!(!message.entries().iter().any(|entry| entry.tag() == 52));
+    }
+
+    #[test]
+    fn critical_namespace_winners_preserve_invalid_input_but_losers_do_not_refuse() {
+        let codec = codec().with_null_values::<[&str; 0], &str>([]);
+        // An empty pair alone discovers no frame under the shared scanner's
+        // existing grammar. The strict conversion below needs a stated frame.
+        assert!(
+            codec
+                .parse_line(b"#scope.SendingTime=|")
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        let source_free = codec.parse_ullink_line(b"#scope.SendingTime=|").unwrap();
+        assert!(source_free.entries().is_empty());
+        assert_eq!(source_free.by_tag(52).unwrap(), clock(17));
+        for body in [
+            &b"#scope.SendingTime=20260102-10:15:30\0|"[..],
+            &b"#scope.SendingTime=20260102-10:15:30\xff|"[..],
+            &b"MSGTYPE=D|#scope.SendingTime=|"[..],
+        ] {
+            assert!(codec.parse_ullink_line(body).is_err(), "{body:?}");
+        }
+        let stated = codec
+            .parse_ullink_line(b"#SendingTime=20260102-10:15:30|#scope.SendingTime=bad\xff|")
+            .unwrap();
+        assert!(stated.by_tag(52).unwrap().as_datetime64().is_some());
+        let absent = self::codec()
+            .parse_ullink_line(b"MSGTYPE=D|#scope.SendingTime=|")
+            .unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(
+            !absent
+                .entries()
+                .iter()
+                .any(|entry| entry.name() == "scope.SendingTime")
+        );
+        let disagreed = codec
+            .parse_ullink_line(
+                b"#one.SendingTime=20260102-10:15:30\0|#two.SendingTime=20260102-10:15:30|",
+            )
+            .unwrap();
+        assert_eq!(disagreed.by_tag(52).unwrap(), clock(17));
+        // A namespace's spelling of a field no dictionary names is the
+        // bridge's own statement: metadata, cleaned as every value is.
+        let ordinary = codec
+            .parse_ullink_line(b"#scope.unregistered=bad\0value|")
+            .unwrap();
+        assert_eq!(
+            ordinary
+                .metadata()
+                .get("scope.unregistered")
+                .map(|held| held.as_str()),
+            Some("badvalue")
+        );
+    }
+
+    #[test]
+    fn malformed_root_invariants_are_items_not_recovered_messages() {
+        let codec = codec();
+        // The two clocks: a crate column a spelling will not type is
+        // silence, the way every other typed fact is.
+        for tag in [52, 60] {
+            let body = format!("8=FIX.4.4|35=D|{tag}=invalid|10=0|");
+            assert!(
+                matches!(
+                    codec.parse_fix_line(body.as_bytes()),
+                    Err(Error::InvalidRecord { .. })
+                ),
+                "tag {tag}"
+            );
+            let mut messages = codec.parse_line(body.as_bytes()).unwrap();
+            assert!(
+                matches!(messages.next(), Some(Err(Error::InvalidRecord { .. }))),
+                "tag {tag}"
+            );
+            assert!(messages.next().is_none());
+            let mut captured = codec.parse_text_line(&text_line(body.as_bytes())).unwrap();
+            assert!(
+                matches!(captured.next(), Some(Err(Error::InvalidRecord { .. }))),
+                "tag {tag}"
+            );
+            assert!(captured.next().is_none());
+        }
+        let mut multiple = codec
+            .parse_line(b"8=FIX.4.4|35=D|52=bad|10=0|8=FIX.4.4|35=D|10=0|")
+            .unwrap();
+        assert!(multiple.next().unwrap().is_err());
+        assert!(multiple.next().is_none());
+        let xml = text_line(br#"<FIXML><Order SendingTime="bad"/></FIXML>"#);
+        let mut messages = codec.parse_text_line(&xml).unwrap();
+        assert!(messages.next().unwrap().is_err());
+        assert!(messages.next().is_none());
+    }
+
+    #[test]
+    fn syntax_fallback_is_fallible_and_never_masks_registry_layouts() {
+        let codec = codec();
+        let broken = text_line(b"<FIXML><Order");
+        let message = codec
+            .parse_text_line(&broken)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), clock(17));
+        assert!(message.entries().is_empty());
+        // There is no empty line to ask the codec about: a line is the line
+        // it holds, and the door that makes one refuses a body carrying
+        // nothing.
+        assert!(
+            TextLine::from_bytes(
+                0,
+                TextBytes::from_bytes(b"").unwrap(),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .is_err()
+        );
+        // The header owns the clock a message leaves unstated; one it states
+        // is typed by the registry's field, so a registry without that field
+        // refuses the statement.
+        let mut registry = FixRegistry::new();
+        assert!(registry.remove(52).is_some());
+        let codec = FixCodec::new(Arc::new(registry));
+        assert!(
+            codec
+                .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|")
+                .is_err()
+        );
+        let mut registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending.set_dtype(DataType::utf8()).unwrap();
+        registry.insert(sending).unwrap();
+        let codec = FixCodec::new(Arc::new(registry));
+        assert!(codec.parse_fix_line(b"8=FIX.4.4|35=D|52=bad|").is_err());
+    }
+
+    #[test]
+    fn declared_absence_differs_from_failed_conversion_and_cleaning() {
+        let mut registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending.as_fix_mut().set_nulls(["not-sent"]).unwrap();
+        registry.insert(sending).unwrap();
+        let codec = FixCodec::new(Arc::new(registry))
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap();
+        let absent = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=not-sent|")
+            .unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(!absent.header().stated_sendingtime());
+        let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=|").unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(!absent.header().stated_sendingtime());
+        let literal = codec.with_null_values::<[&str; 0], &str>([]);
+        assert!(literal.parse_fix_line(b"8=FIX.4.4|35=D|52=|").is_err());
+        for body in [
+            &b"8=FIX.4.4|35=D|52=20260102-10:15:30\xff|"[..],
+            &b"8=FIX.4.4|35=D|52=20260102-10:15:30\0|"[..],
+        ] {
+            assert!(literal.parse_fix_line(body).is_err());
+        }
+        let ordinary = literal
+            .parse_fix_line(b"8=FIX.4.4|35=D|90001=bad\0value|")
+            .unwrap();
+        assert_eq!(ordinary.by_tag(90001).unwrap().as_str(), Some("badvalue"));
+    }
+}

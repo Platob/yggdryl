@@ -230,6 +230,18 @@ pub fn writer<W: std::io::Write>(target: W, algorithm: DigestAlgorithm) -> Diges
     DigestWriter::new(target, algorithm)
 }
 
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/xxhash/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! `low_64` is the crate-private narrowing every 64-bit digest takes from
+    //! its 128-bit sibling, and where the two widths agree is the contract. It
+    //! is behind a forwarder, so nothing here is more public than it was.
+
+    /// The low half of a 128-bit digest.
+    #[must_use]
+    pub fn low_64(value: u128) -> u64 {
+        super::low_64(value)
+    }
+}

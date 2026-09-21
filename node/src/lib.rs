@@ -46,12 +46,18 @@ use napi::bindgen_prelude::{Env, Error, Generator};
 use napi_derive::napi;
 use yggdryl::OwnedDifferences;
 
+pub use avro::{
+    AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
+    avro_dumps_native, avro_loads_native,
+};
+pub use datatype::JsDataType;
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{
     ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsRecords,
     JsSelector, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
     expression_vocabularies,
 };
+pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
     FixCaptureView, FixCodecOptions, FixEntryView, FixEventView, FixHeaderView, JsFixCodec,
     JsFixFieldIterator, JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields,
@@ -59,12 +65,6 @@ pub use fix::{
     fix_schema_tags,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
-pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
-pub use iomedia::JsBatchReader;
-pub use avro::{
-    AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
-    avro_dumps_native, avro_loads_native,
-};
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
     JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
@@ -72,8 +72,9 @@ pub use iceberg::{
     iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
     iceberg_schema_into_json,
 };
+pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
+pub use iomedia::JsBatchReader;
 pub use media::options::JsRecordOptions;
-pub use text::options::JsTextOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
@@ -83,11 +84,10 @@ pub use text::codec::{
     yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
     yaml_loads_all_native, yaml_loads_native,
 };
-pub use datatype::JsDataType;
-pub use field::{JsField, JsProtocolField, MetadataEntry};
+pub use text::options::JsTextOptions;
 pub use timezone::{JsTimezone, TimezoneAlias};
-pub use version::JsVersion;
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
+pub use version::JsVersion;
 
 /// Read a structural JSON document from the object or the text a caller holds.
 ///

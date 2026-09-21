@@ -926,3 +926,46 @@ fn a_group_keeps_the_members_that_read() {
     assert_eq!(members[0].as_str(), Some("BUYSIDE"));
     assert_eq!(members[2].as_i128(), Some(1));
 }
+
+// ---------------------------------------------------------------------------
+// Moved out of `rust/src/fix/schema.rs`, which is the file this one mirrors:
+// the member order every stated occurrence of a group agrees with. It is a
+// step inside the fixed row rather than a door of its own, so it is reached
+// through `yggdryl::internals`.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "internals")]
+mod group_member_order {
+    use yggdryl::internals::fix_schema::ordered_group_union;
+    use yggdryl::{DataType, Error, Field, Scalar};
+
+    fn occurrence(names: &[&str]) -> Vec<(String, Scalar)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), Scalar::Null))
+            .collect()
+    }
+
+    #[test]
+    fn group_member_order_respects_every_occurrence() {
+        let union: Vec<Field> = ["a", "c", "b", "d"]
+            .map(|name| DataType::utf8().nullable_field(name))
+            .into();
+        let stated = [
+            occurrence(&["a", "c"]),
+            occurrence(&["b", "d"]),
+            occurrence(&["a", "b", "c"]),
+        ];
+        let ordered = ordered_group_union(union, &stated, "example").expect("consistent order");
+        assert_eq!(
+            ordered.iter().map(Field::name).collect::<Vec<_>>(),
+            ["a", "b", "c", "d"]
+        );
+
+        let contradictory = [occurrence(&["a", "b"]), occurrence(&["b", "a"])];
+        assert!(matches!(
+            ordered_group_union(ordered, &contradictory, "example"),
+            Err(Error::InvalidRecord { .. })
+        ));
+    }
+}

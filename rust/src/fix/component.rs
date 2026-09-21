@@ -90,3 +90,24 @@ pub(crate) fn occurrence_name(group: &crate::Field) -> SmolStr {
     }
     entry_name(&group_name(group))
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A published collection is named once, and its occurrence's singular
+    //! with it; both spellings reach a caller only as the names on a row.
+
+    /// The group name a counter field's own name implies.
+    #[must_use]
+    pub fn group_name(counter: &crate::Field) -> String {
+        super::group_name(counter).to_string()
+    }
+
+    /// The singular an occurrence of `group` is named by.
+    #[must_use]
+    pub fn entry_name(group: &str) -> String {
+        super::entry_name(group).to_string()
+    }
+}

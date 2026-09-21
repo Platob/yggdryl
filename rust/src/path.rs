@@ -19,7 +19,7 @@ const PATH_NAME_LIMIT: usize = 32;
 
 /// One step from a parent value to a child value.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Segment<'a> {
+pub enum Segment<'a> {
     /// A named struct child.
     Field(&'a str),
     /// A positional element of a sequence.
@@ -43,7 +43,7 @@ pub(crate) enum Segment<'a> {
 /// Renders as `$`-rooted dot/bracket text, such as
 /// `$.users[3].address["zip code"]`.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Path<'a> {
+pub enum Path<'a> {
     /// The value the walk started from.
     Root,
     /// A child reached from `parent` through `segment`.
@@ -57,12 +57,12 @@ pub(crate) enum Path<'a> {
 
 impl<'a> Path<'a> {
     /// The path of the value a walk starts from.
-    pub(crate) const fn root() -> Self {
+    pub const fn root() -> Self {
         Self::Root
     }
 
     /// Borrow this path as the parent of one further step.
-    pub(crate) const fn child(&'a self, segment: Segment<'a>) -> Self {
+    pub const fn child(&'a self, segment: Segment<'a>) -> Self {
         Self::Child {
             parent: self,
             segment,
@@ -70,17 +70,17 @@ impl<'a> Path<'a> {
     }
 
     /// Borrow this path as the parent of a named struct child.
-    pub(crate) const fn field(&'a self, name: &'a str) -> Self {
+    pub const fn field(&'a self, name: &'a str) -> Self {
         self.child(Segment::Field(name))
     }
 
     /// Render the canonical `$`-rooted text.
-    pub(crate) fn render(&self) -> String {
+    pub fn render(&self) -> String {
         self.render_from("$")
     }
 
     /// Render the canonical text under an explicit root token.
-    pub(crate) fn render_from(&self, root: &str) -> String {
+    pub fn render_from(&self, root: &str) -> String {
         let mut rendered = String::from(root);
         self.push_into(&mut rendered);
         rendered
@@ -157,71 +157,14 @@ fn push_i8(path: &mut String, value: i8) {
     debug_assert!(result.is_ok(), "writing into a String is infallible");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{Path, Segment};
-
-    #[test]
-    fn root_renders_as_the_root_token() {
-        assert_eq!(Path::root().render(), "$");
-    }
-
-    #[test]
-    fn identifiers_use_dots_and_other_names_use_quoted_brackets() {
-        let root = Path::root();
-        let plain = root.field("users");
-        assert_eq!(plain.render(), "$.users");
-
-        let dotted = root.field("a.b");
-        assert_eq!(dotted.render(), "$[\"a.b\"]");
-
-        let empty = root.field("");
-        assert_eq!(empty.render(), "$[\"\"]");
-    }
-
-    #[test]
-    fn nested_segments_render_outermost_first() {
-        let root = Path::root();
-        let users = root.field("users");
-        let third = users.child(Segment::Index(3));
-        let address = third.field("address");
-        let zip = address.field("zip code");
-        assert_eq!(zip.render(), "$.users[3].address[\"zip code\"]");
-    }
-
-    #[test]
-    fn container_segments_have_stable_spellings() {
-        let root = Path::root();
-        assert_eq!(root.child(Segment::Item).render(), "$[]");
-        assert_eq!(root.child(Segment::MapEntries).render(), "$.entries");
-        let entry = root.child(Segment::Index(2));
-        assert_eq!(entry.field("key").render(), "$[2].key");
-        assert_eq!(entry.field("value").render(), "$[2].value");
-        assert_eq!(
-            root.child(Segment::DictionaryValue).render(),
-            "$.dictionary_value"
-        );
-        assert_eq!(root.child(Segment::RunEnds).render(), "$.run_ends");
-        assert_eq!(
-            root.child(Segment::RunEndValues).render(),
-            "$.run_end_values"
-        );
-        assert_eq!(root.child(Segment::UnionType(1)).render(), "$<union:1>");
-    }
-
-    #[test]
-    fn a_long_field_name_is_bounded() {
-        let long = "n".repeat(512);
-        let root = Path::root();
-        let rendered = root.field(&long).render();
-        assert!(rendered.len() < 64, "{}", rendered.len());
-        assert!(rendered.contains('\u{2026}'), "{rendered}");
-    }
-
-    #[test]
-    fn an_explicit_root_token_replaces_the_dollar() {
-        let root = Path::root();
-        let child = root.field("value");
-        assert_eq!(child.render_from("record"), "record.value");
-    }
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/path.rs` pins and a caller cannot reach.
+    //!
+    //! A value path is the spelling every recursive walk names its place
+    //! with, and a caller only ever sees it inside a rendered failure. The
+    //! crate root declares `path` privately, so these reach nobody without
+    //! the feature.
+    pub use super::{Path, Segment};
 }

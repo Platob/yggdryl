@@ -134,7 +134,7 @@ fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Fiel
         .find(|held| folds_equal(held.name(), name))
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(super) fn control_byte(id: FixId) -> u8 {
     let mut state = Mix::default();
     std::hash::Hash::hash(&id, &mut state);
@@ -2102,145 +2102,91 @@ impl DoubleEndedIterator for FixFieldIter<'_> {
 impl ExactSizeIterator for FixFieldIter<'_> {}
 impl FusedIterator for FixFieldIter<'_> {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::DataType;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/registry.rs` and `rust/tests/fix/mod_.rs` pin and
+    //! a caller cannot reach.
+    //!
+    //! A registry answers a tag, an identity and a name, and that is the whole
+    //! of what a caller sees. What it is *made of* - the seeded digests, the
+    //! five position indexes, the compiled derivations and the lifted-name
+    //! cache - is reached here, because a collision and a warm cache cannot be
+    //! staged from outside.
+    use std::sync::Arc;
 
-    fn tagged(name: &str, tag: i32) -> Field {
-        let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
-        field
+    use super::FixRegistry;
+    use crate::{Field, FixId, Result};
+
+    /// The seed canonical names are digested under.
+    pub const NAME_SEED: u64 = super::NAME_SEED;
+
+    /// The seed aliases are digested under.
+    pub const ALIAS_SEED: u64 = super::ALIAS_SEED;
+
+    /// The seeded XXH64 of a name under the crate's one fold.
+    #[must_use]
+    pub fn name_digest(name: &str, domain: u64) -> u64 {
+        super::name_digest(name, domain)
     }
 
-    #[test]
-    fn a_forced_name_digest_collision_is_a_miss_then_a_conflict() {
-        let held = tagged("Held", 1);
-        let incoming = tagged("Incoming", 2);
-        let mut registry = FixRegistry::from_fields([held.clone()]).unwrap();
-        // The crate's own fields sit in front of it, so its position is
-        // found rather than assumed to be the first.
-        let at = registry
-            .fields
-            .iter()
-            .position(|field| field.name() == held.name())
-            .expect("the held field");
-        let collided = name_digest(incoming.name(), NAME_SEED);
-        registry.names.insert(collided, at);
-
-        assert!(
-            registry.get_field_by_name(incoming.name()).is_none(),
-            "a digest hit is rechecked against the canonical name"
-        );
-        let before = registry.fields.clone();
-        let error = registry.insert(incoming).unwrap_err();
-        assert!(
-            matches!(
-                &error,
-                Error::Conflict { path, .. }
-                    if path.contains("Incoming") && path.contains("Held")
-            ),
-            "{error}"
-        );
-        assert_eq!(registry.fields, before);
+    /// The identity a field's canonical tag and name make.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming `FIX:tag` where the field states none
+    /// or states a nonpositive one.
+    pub fn canonical_id(field: &Field) -> Result<FixId> {
+        super::canonical_id(field)
     }
 
-    #[test]
-    fn a_forced_identity_collision_is_a_conflict_and_a_hit_is_rechecked() {
-        let held = tagged("Held", 1);
-        let incoming = tagged("Incoming", 2);
-        let mut registry = FixRegistry::from_fields([held.clone()]).unwrap();
-        let at = registry
-            .fields
-            .iter()
-            .position(|field| field.name() == held.name())
-            .expect("the held field");
-        // The incoming identity is forced onto the held field's position, as
-        // a 32-bit digest collision would land it.
-        let collided = canonical_id(&incoming).unwrap();
-        registry.ids.insert(collided, at);
-
-        let hit = registry
-            .get_field_by_id(collided)
-            .expect("the position answers");
-        assert_eq!(
-            hit.name(),
-            "Held",
-            "an identity hit answers the field indexed under it"
-        );
-        let before = registry.fields.clone();
-        let error = registry.insert(incoming).unwrap_err();
-        assert!(
-            matches!(
-                &error,
-                Error::Conflict { path, .. }
-                    if path.contains("Incoming") && path.contains("Held")
-            ),
-            "{error}"
-        );
-        assert_eq!(registry.fields, before);
+    /// The byte an identity spreads over the shards of a store.
+    #[must_use]
+    pub fn control_byte(id: FixId) -> u8 {
+        super::control_byte(id)
     }
 
-    #[test]
-    fn default_aliases_refuse_a_digest_collision_without_mutating_the_source() {
-        let offer = tagged("offerpx", 1);
-        let unrelated = tagged("Unrelated", 2);
-        let mut registry = FixRegistry::from_fields([offer, unrelated]).unwrap();
-        let unrelated_at = registry
-            .fields
-            .iter()
-            .position(|field| field.name() == "Unrelated")
-            .expect("the unrelated holder");
-        registry
-            .aliases
-            .insert(name_digest("askpx", ALIAS_SEED), unrelated_at);
-
-        assert!(
-            registry.get_field_by_name("askpx").is_none(),
-            "a colliding alias digest is rechecked before lookup answers"
-        );
-        let before = registry.clone();
-        let error = registry.clone().with_default_aliases().unwrap_err();
-        assert!(
-            matches!(&error, Error::Conflict { path, .. } if path.contains("askpx")),
-            "{error}"
-        );
-        assert_eq!(
-            registry, before,
-            "the consumed attempt leaves its source intact"
-        );
+    /// The fields a registry holds, in insertion order.
+    #[must_use]
+    pub fn fields(registry: &FixRegistry) -> &[Field] {
+        &registry.fields
     }
 
-    #[test]
-    fn default_aliases_do_not_reindex_an_unchanged_second_pass() {
-        let registry = FixRegistry::from_fields([tagged("offerpx", 1)])
-            .unwrap()
-            .with_default_aliases()
-            .unwrap();
-        let before = registry
-            .get_field_by_name("offerpx")
-            .expect("the lender")
-            .as_metadata()
-            .storage_address();
-        let derivations = registry.derivations().unwrap();
-        registry.lifted_names();
-        let registry = registry.with_default_aliases().unwrap();
-        let after = registry
-            .get_field_by_name("offerpx")
-            .expect("the lender")
-            .as_metadata()
-            .storage_address();
-        assert_eq!(
-            after, before,
-            "an unchanged field keeps its metadata storage"
-        );
-        assert!(
-            Arc::ptr_eq(&derivations, &registry.derivations().unwrap()),
-            "an unchanged pass keeps the compiled derivations"
-        );
-        assert!(
-            registry.lifted_names.get().is_some(),
-            "an unchanged pass keeps the lifted-name cache"
-        );
+    /// File `at` under `digest` in the canonical-name index, as a 64-bit
+    /// digest collision would land it.
+    pub fn force_name_index(registry: &mut FixRegistry, digest: u64, at: usize) {
+        registry.names.insert(digest, at);
+    }
+
+    /// File `at` under `digest` in the alias index, as a 64-bit digest
+    /// collision would land it.
+    pub fn force_alias_index(registry: &mut FixRegistry, digest: u64, at: usize) {
+        registry.aliases.insert(digest, at);
+    }
+
+    /// File `at` under `id` in the identity index, as a 32-bit digest
+    /// collision would land it.
+    pub fn force_id_index(registry: &mut FixRegistry, id: FixId, at: usize) {
+        registry.ids.insert(id, at);
+    }
+
+    /// The `FIX:derivation` of every field, compiled once and shared.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed failure the one compile answered, for every ask.
+    pub fn derivations(registry: &FixRegistry) -> Result<Arc<super::super::enrich::Derivations>> {
+        registry.derivations()
+    }
+
+    /// Read the lifted names, which fills the cache that holds them.
+    pub fn warm_lifted_names(registry: &FixRegistry) {
+        let _ = registry.lifted_names();
+    }
+
+    /// Whether the lifted-name cache has been filled.
+    #[must_use]
+    pub fn lifted_names_cached(registry: &FixRegistry) -> bool {
+        registry.lifted_names.get().is_some()
     }
 }

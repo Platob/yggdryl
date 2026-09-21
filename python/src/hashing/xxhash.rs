@@ -21,10 +21,10 @@ use pyo3::types::{PyBytes, PyString, PyType};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
-use crate::text::codec::PythonReader;
 use crate::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::core_field_from_value;
 use crate::scalar::PyScalar;
+use crate::text::codec::PythonReader;
 use crate::value_error;
 
 /// Register this module's classes and functions on the native module.

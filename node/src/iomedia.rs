@@ -22,8 +22,8 @@ use yggdryl::arrow::{BatchReader, from_reader_error};
 use crate::iceberg::{FieldInput, field_from_input};
 use yggdryl::media::DEFAULT_ROOT_NAME;
 
-use crate::napi_error;
 use crate::field::JsField;
+use crate::napi_error;
 
 /// Report a stream someone else has already read.
 fn consumed() -> napi::Error {

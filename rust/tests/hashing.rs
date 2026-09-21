@@ -2,6 +2,9 @@
 
 #[path = "hashing/digest.rs"]
 mod digest;
+#[cfg(feature = "internals")]
+#[path = "hashing/stable.rs"]
+mod stable;
 #[path = "hashing/txhash.rs"]
 mod txhash;
 #[path = "hashing/txhash_arrow.rs"]

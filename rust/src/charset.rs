@@ -54,7 +54,7 @@ use smol_str::format_smolstr;
 
 mod bom;
 mod decoder;
-mod reader;
+pub(crate) mod reader;
 mod single_byte;
 pub(crate) mod sink;
 pub(crate) mod tables;

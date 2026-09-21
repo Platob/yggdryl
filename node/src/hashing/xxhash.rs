@@ -16,9 +16,9 @@ use napi_derive::napi;
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
+use crate::field::JsField;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::field::JsField;
 
 /// Decode exactly one Arrow batch, transform it, and return one IPC batch.
 pub(crate) fn apply_arrow_batch_ipc(

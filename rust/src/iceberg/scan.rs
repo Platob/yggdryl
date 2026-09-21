@@ -1105,283 +1105,80 @@ fn invalid(reason: SmolStr) -> Error {
     }
 }
 
-#[cfg(test)]
-mod delete_tests {
-    use super::*;
-    use crate::iceberg::PartitionField;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/scan.rs` pins and a caller cannot reach.
+    //!
+    //! Planning is what a scan does before it reads a byte, and a caller only
+    //! ever sees the plan that came out. The steps below are each a refusal or
+    //! a pruning decision that is worth pinning on its own, so they are
+    //! forwarded here rather than reconstructed from a whole table.
 
-    fn manifest(content: ManifestContent) -> ManifestFile {
-        ManifestFile {
-            manifest_path: "metadata/delete-manifest.avro".into(),
-            manifest_length: 128,
-            partition_spec_id: 0,
-            content,
-            sequence_number: 2,
-            min_sequence_number: 1,
-            added_snapshot_id: 7,
-            added_files_count: Some(1),
-            existing_files_count: Some(0),
-            deleted_files_count: Some(0),
-            added_rows_count: Some(1),
-            existing_rows_count: Some(0),
-            deleted_rows_count: Some(0),
-            partitions: Vec::new(),
-            key_metadata: None,
-            first_row_id: None,
-        }
+    use crate::expression::{Bound, Bounds};
+    use crate::holder::Holder;
+    use crate::iceberg::{DataFile, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan};
+    use crate::{Field, Filter, Result};
+
+    /// Split a filter into the conjuncts every level of metadata prunes on.
+    pub fn conjuncts(schema: &Field, filter: &Filter) -> Result<Vec<Bound>> {
+        super::conjuncts(schema, filter)
     }
 
-    fn schema() -> Field {
-        StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row")
+    /// The statistics a manifest entry states about one data file.
+    pub fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
+        super::file_bounds(file, spec, schema)
     }
 
-    fn entry(content: i32) -> ManifestEntry {
-        ManifestEntry::added(
-            7,
-            DataFile {
-                content,
-                file_path: "data/part.parquet".into(),
-                mime_type: crate::MimeType::PARQUET,
-                record_count: 1,
-                file_size_in_bytes: 128,
-                ..DataFile::default()
-            },
-        )
+    /// Which conjuncts a file's statistics leave for its rows to answer.
+    pub fn file_residual(bounds: &Bounds, conjuncts: &[Bound]) -> Option<Vec<usize>> {
+        super::file_residual(bounds, conjuncts)
     }
 
-    fn assert_unsupported(error: Error, kind: &str) {
-        let Error::Iceberg { reason, source } = error else {
-            panic!("expected a typed Iceberg unsupported error, got {error}");
-        };
-        assert!(source.is_none());
-        assert!(reason.contains(kind), "{reason}");
+    /// The column a partition field is the identity of, with its datatype.
+    pub fn identity_column<'schema>(
+        spec: &PartitionSpec,
+        position: usize,
+        schema: &'schema Field,
+    ) -> Option<&'schema Field> {
+        super::identity_column(spec, position, schema)
     }
 
-    #[test]
-    fn live_delete_manifests_fail_before_any_file_is_read() {
-        let error = plan(
-            &[manifest(ManifestContent::Deletes)],
-            &|_| Ok(PartitionSpec::unpartitioned()),
-            &|_| panic!("delete manifest must not be opened as row data"),
-            &[],
-            &schema(),
-            true,
-        )
-        .unwrap_err();
-        assert_unsupported(error, "delete manifest");
+    /// Fill one null data-file row id from its v3 manifest range.
+    pub fn inherit_first_row_id(
+        entry: &mut ManifestEntry,
+        next_row_id: &mut Option<i64>,
+    ) -> Result<()> {
+        super::inherit_first_row_id(entry, next_row_id)
     }
 
-    #[test]
-    fn delete_manifests_with_unknown_counts_are_not_assumed_empty() {
-        let mut unknown = manifest(ManifestContent::Deletes);
-        unknown.added_files_count = None;
-        unknown.existing_files_count = None;
-        let error = plan(
-            &[unknown],
-            &|_| Ok(PartitionSpec::unpartitioned()),
-            &|_| panic!("unknown delete counts must fail before the manifest is opened"),
-            &[],
-            &schema(),
-            true,
-        )
-        .unwrap_err();
-        assert_unsupported(error, "delete manifest");
+    /// Plan a scan over manifests without a table to hold them.
+    pub fn plan(
+        manifests: &[ManifestFile],
+        spec_of: &dyn Fn(i32) -> Result<PartitionSpec>,
+        manifest_at: &dyn Fn(&str) -> Result<Holder>,
+        conjuncts: &[Bound],
+        schema: &Field,
+        for_read: bool,
+    ) -> Result<ScanPlan> {
+        super::plan(manifests, spec_of, manifest_at, conjuncts, schema, for_read)
     }
 
-    #[test]
-    fn delete_manifests_without_live_files_are_inert() {
-        let mut deleted = manifest(ManifestContent::Deletes);
-        deleted.added_files_count = Some(0);
-        deleted.deleted_files_count = Some(1);
-        deleted.added_rows_count = Some(0);
-        deleted.deleted_rows_count = Some(1);
-        let planned = plan(
-            &[deleted],
-            &|_| panic!("an inert delete manifest has no spec to resolve"),
-            &|_| panic!("an inert delete manifest has no entries to read"),
-            &[],
-            &schema(),
-            true,
-        )
-        .unwrap();
-        assert_eq!(planned, ScanPlan::default());
+    /// Reject a manifest row a data scan cannot interpret.
+    pub fn validate_data_entry(
+        entry: &ManifestEntry,
+        manifest: &ManifestFile,
+        spec: &PartitionSpec,
+    ) -> Result<()> {
+        super::validate_data_entry(entry, manifest, spec)
     }
 
-    #[test]
-    fn missing_partition_specs_fail_before_pruning() {
-        let error = plan(
-            &[manifest(ManifestContent::Data)],
-            &|spec_id| {
-                Err(invalid(format_smolstr!(
-                    "expected partition spec id {spec_id}, got none"
-                )))
-            },
-            &|_| panic!("a manifest with an unresolved spec must not be opened"),
-            &[],
-            &schema(),
-            true,
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(
-            error.contains("expected partition spec id 0, got none"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn delete_files_hidden_in_data_manifests_are_rejected() {
-        let manifest = manifest(ManifestContent::Data);
-        for (content, kind) in [(1, "position-delete"), (2, "equality-delete")] {
-            let error =
-                validate_data_entry(&entry(content), &manifest, &PartitionSpec::unpartitioned())
-                    .unwrap_err();
-            assert_unsupported(error, kind);
-        }
-    }
-
-    #[test]
-    fn partition_tuples_must_match_the_referenced_spec() {
-        let spec = PartitionSpec {
-            spec_id: 3,
-            fields: vec![PartitionField::identity(1, 1_000, "id")],
-        };
-        let error = validate_data_entry(&entry(0), &manifest(ManifestContent::Data), &spec)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains("expected 1 partition values for spec 3, got 0"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn unknown_transforms_never_supply_pruning_bounds() {
-        let mut schema = schema();
-        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-        let spec = PartitionSpec {
-            spec_id: 3,
-            fields: vec![PartitionField {
-                source_id: 1,
-                field_id: 1_000,
-                name: "id_opaque".into(),
-                transform: Transform::Unknown,
-            }],
-        };
-        assert!(identity_column(&spec, 0, &schema).is_none());
-    }
-
-    #[test]
-    fn data_files_inherit_contiguous_row_ids_without_moving_explicit_ids() {
-        let mut cursor = Some(10);
-        let mut first = entry(0);
-        first.data_file.record_count = 3;
-        inherit_first_row_id(&mut first, &mut cursor).unwrap();
-        assert_eq!(first.data_file.first_row_id, Some(10));
-        assert_eq!(cursor, Some(13));
-
-        let mut explicit = entry(0);
-        explicit.data_file.first_row_id = Some(100);
-        explicit.data_file.record_count = 7;
-        inherit_first_row_id(&mut explicit, &mut cursor).unwrap();
-        assert_eq!(explicit.data_file.first_row_id, Some(100));
-        assert_eq!(cursor, Some(13));
-
-        let mut last = entry(0);
-        last.data_file.record_count = 2;
-        inherit_first_row_id(&mut last, &mut cursor).unwrap();
-        assert_eq!(last.data_file.first_row_id, Some(13));
-        assert_eq!(cursor, Some(15));
-    }
-
-    #[test]
-    fn data_files_keep_null_row_ids_without_a_manifest_range() {
-        let mut entry = entry(0);
-        let mut cursor = None;
-        inherit_first_row_id(&mut entry, &mut cursor).unwrap();
-        assert_eq!(entry.data_file.first_row_id, None);
-        assert_eq!(cursor, None);
-    }
-
-    #[test]
-    fn row_id_overflow_fails_without_mutating_the_file_or_cursor() {
-        let mut entry = entry(0);
-        entry.data_file.record_count = 2;
-        let mut cursor = Some(i64::MAX);
-        let error = inherit_first_row_id(&mut entry, &mut cursor)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("row id overflow"), "{error}");
-        assert_eq!(entry.data_file.first_row_id, None);
-        assert_eq!(cursor, Some(i64::MAX));
-    }
-}
-
-#[cfg(test)]
-mod bound_tests {
-    use super::*;
-
-    fn schema(dtype: DataType) -> Field {
-        let mut schema = StructType::from_fields([dtype.required_field("value")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-        schema
-    }
-
-    fn residual(
-        dtype: DataType,
-        lower: Vec<u8>,
-        upper: Vec<u8>,
-        value: Scalar,
-    ) -> Option<Vec<usize>> {
-        let schema = schema(dtype);
-        let file = DataFile {
-            record_count: 1,
-            lower_bounds: vec![(1, lower)],
-            upper_bounds: vec![(1, upper)],
-            ..DataFile::default()
-        };
-        let filter = Filter::new(crate::Term::column("value").eq(crate::Term::literal(value)));
-        let conjuncts = conjuncts(&schema, &filter).unwrap();
-        file_residual(
-            &file_bounds(&file, &PartitionSpec::unpartitioned(), &schema),
-            &conjuncts,
-        )
-    }
-
-    #[test]
-    fn promoted_bounds_prune_under_the_current_schema_type() {
-        let int = 37_i32.to_le_bytes().to_vec();
-        assert_eq!(
-            residual(DataType::Int64, int.clone(), int, Scalar::from(37)),
-            Some(Vec::new()),
-            "an Int bound evolved to Long proves the matching value"
-        );
-
-        let float = 1.5_f32.to_le_bytes().to_vec();
-        assert_eq!(
-            residual(
-                DataType::Float64,
-                float.clone(),
-                float,
-                Scalar::from(1.5_f64)
-            ),
-            Some(Vec::new()),
-            "a Float bound evolved to Double proves the matching value"
-        );
-    }
-
-    #[test]
-    fn malformed_bounds_leave_the_filter_for_rows() {
-        assert_eq!(
-            residual(DataType::Int64, vec![0; 3], vec![0; 9], Scalar::from(37)),
-            Some(vec![0]),
-            "malformed statistics cannot exclude or settle a file"
-        );
+    /// The schema columns a file's partition tuple restores, identity only.
+    pub fn partition_columns(
+        spec: &PartitionSpec,
+        schema: &Field,
+        file: &DataFile,
+    ) -> Result<Vec<(Field, crate::Scalar)>> {
+        super::partition_columns(spec, schema, file)
     }
 }

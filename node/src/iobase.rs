@@ -19,6 +19,7 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
     JsByteWriter as HandlerByteWriter, JsFileSystem,
@@ -26,11 +27,10 @@ use crate::holder::fs::{
 };
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
-use crate::text::options::JsTextOptions;
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
-use crate::field::JsField;
+use crate::text::options::JsTextOptions;
 use crate::uri::{JsUrl, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 

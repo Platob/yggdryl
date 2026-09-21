@@ -2263,3 +2263,55 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
 
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// Moved out of `rust/src/fix/store.rs`, which is the file this one mirrors:
+// the seeded clocks a stored dictionary replaces. `CLOCK_DATATYPE` is the one
+// thing here a caller cannot name, so it is reached through
+// `yggdryl::internals`.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "internals")]
+mod clock_seed_tests {
+    use yggdryl::internals::fix_schema::clock_datatype;
+    use yggdryl::{Error, FixRegistry};
+
+    #[test]
+    fn stored_clocks_replace_seeds_but_duplicate_documents_refuse() {
+        let registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending
+            .set_description("store owns this declaration")
+            .unwrap();
+        let field = sending.clone().into_json().unwrap();
+        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
+        let loaded = FixRegistry::from_json(&document).unwrap();
+        assert_eq!(loaded.field_by_tag(52).unwrap(), &sending);
+        assert_eq!(loaded.field_by_tag(60).unwrap().dtype(), &clock_datatype());
+        assert_eq!(
+            FixRegistry::from_json(&loaded.into_json().unwrap()).unwrap(),
+            loaded
+        );
+        let duplicate = format!(r#"{{"fields":[{field},{field}],"components":[],"groups":[]}}"#);
+        assert!(matches!(
+            FixRegistry::from_json(&duplicate),
+            Err(Error::Conflict { .. })
+        ));
+    }
+
+    #[test]
+    fn renamed_loaded_clock_keeps_its_canonical_identity() {
+        let registry = FixRegistry::new();
+        let sending = registry
+            .field_by_tag(52)
+            .unwrap()
+            .clone()
+            .with_name("VenueSendingClock");
+        let field = sending.into_json().unwrap();
+        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
+        let loaded = FixRegistry::from_json(&document).unwrap();
+        assert_eq!(loaded.field_by_tag(52).unwrap().name(), "VenueSendingClock");
+        assert!(loaded.get_field_by_name("SendingTime").is_none());
+        assert_eq!(loaded.field_by_tag(60).unwrap().name(), "transacttime");
+    }
+}

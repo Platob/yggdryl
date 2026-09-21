@@ -41,5 +41,24 @@ pub use file::File;
 pub use folder::Folder;
 pub use path::Path;
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/local/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! The home container resolves from `HOME` and `USERPROFILE`. Taking the
+    //! two values as arguments is the only way to name a home without
+    //! touching the developer's real one, so the resolution is reached here
+    //! rather than made API; everything a caller can observe is pinned
+    //! through `yggdryl::` like any other test.
+    use std::ffi::OsString;
+
+    use crate::Result;
+    use crate::local::Folder;
+
+    /// Resolve the home container from the two environment values, `HOME`
+    /// first, an empty value counting as unset.
+    pub fn home_from(home: Option<OsString>, profile: Option<OsString>) -> Result<Folder> {
+        Folder::home_from(home, profile)
+    }
+}

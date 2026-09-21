@@ -31,13 +31,13 @@ use yggdryl::{
     MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
 };
 
+use crate::field::{PyField, core_field_from_value};
+use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::iceberg::folder_holder_from_value;
+use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
-use crate::field::{PyField, core_field_from_value};
-use crate::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 

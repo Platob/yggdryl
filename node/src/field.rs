@@ -14,15 +14,15 @@ use yggdryl::{
 
 use crate::{
     JsDifferenceIterator,
+    datatype::{JsDataType, JsStringEnum, dtype_from_input},
     enums::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
         mime_type_from_input,
     },
     exact_i32, napi_error, napi_type_error, ordering_value,
-    datatype::{JsDataType, JsStringEnum, dtype_from_input},
+    uri::{JsUri, JsUrl, JsUrn, url_from_input},
     value::arrow_scalar_to_ipc,
     value::field_value_to_js,
-    uri::{JsUri, JsUrl, JsUrn, url_from_input},
 };
 
 /// One field-metadata key/value pair.

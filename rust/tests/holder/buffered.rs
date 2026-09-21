@@ -3,6 +3,13 @@
 //! Caching is only observable through the inner handle's traffic, so every
 //! claim here is asserted against [`Counting`], a handle that mirrors a
 //! [`Buffer`] and counts the `pread` and `pwrite` calls that reach it.
+//!
+//! [`mod_`] is the rest of `rust/src/holder/buffered/mod.rs`: the reads
+//! that take the instant to age a page from, which no caller can set.
+
+#[cfg(feature = "internals")]
+#[path = "buffered/mod_.rs"]
+mod mod_;
 
 use super::counting::Counting;
 use yggdryl::holder::buffered::{Buffered, BufferedOptions};

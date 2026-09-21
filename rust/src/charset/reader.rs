@@ -86,6 +86,21 @@ impl<R: Read> Read for Reader<R> {
     }
 }
 
-#[cfg(test)]
-#[path = "reader/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/charset/reader.rs` pins and a caller cannot reach.
+    //!
+    //! The public door hands a reader a whole handle's declared charset;
+    //! laying one over a [`Decoder`](crate::charset::Decoder) directly is how a
+    //! transcription is driven at an arbitrary chunk boundary, which is the
+    //! one thing a chunked reading and a whole one could disagree about.
+    use std::io::Read;
+
+    use crate::charset::Decoder;
+
+    /// Decode `source` through `decoder`, chunk by chunk.
+    pub fn reader<R: Read>(decoder: Decoder, source: R) -> super::Reader<R> {
+        super::Reader::new(decoder, source)
+    }
+}

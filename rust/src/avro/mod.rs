@@ -25,8 +25,8 @@
 //! fields fill from defaults. [`Schema::fingerprint`] names a schema for
 //! caches and for the single-object framing in [`into_single_object_vec`].
 
-mod arrow;
-mod batch;
+pub(crate) mod arrow;
+pub(crate) mod batch;
 pub(crate) mod container;
 pub(crate) mod datum;
 pub(crate) mod resolve;
@@ -45,7 +45,3 @@ pub use schema::{MAX_SCHEMA_DEPTH, Schema};
 pub use single::{
     from_single_object_slice, from_single_object_slice_with_limits, into_single_object_vec,
 };
-
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;

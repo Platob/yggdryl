@@ -18,11 +18,11 @@ use yggdryl::txhash::{self, TxHash, TxHasher};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digester, Scalar, TimeUnit, Timezone};
 
+use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::field::core_field_from_value;
 use crate::hashing::xxhash::{
     PyDigest, PyDigester, PyXxh3, PyXxh32, PyXxh64, PyXxh128, algorithm_from_str, feed_content,
 };
-use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::field::core_field_from_value;
 use crate::scalar::{PyScalar, date_epoch_days, datetime_utc_microseconds};
 use crate::value_error;
 

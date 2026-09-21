@@ -1695,48 +1695,6 @@ impl Scalar {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    mod reading {
-        use crate::{DataType, Scalar};
-
-        fn money() -> DataType {
-            "decimal128(10, 2)".parse().unwrap()
-        }
-
-        /// The empty text is no spelling: the empty-cell rule sits above this
-        /// reader, on the doors, and the reader itself keeps refusing it.
-        #[test]
-        fn the_empty_text_is_no_decimal_spelling() {
-            assert!(Scalar::from_decimal_text(&money(), "").is_err());
-        }
-
-        #[test]
-        fn text_is_restated_exactly_at_the_declared_scale() {
-            assert_eq!(
-                Scalar::from_decimal_text(&money(), "10.50").unwrap(),
-                Scalar::d128(1_050, 2)
-            );
-            assert_eq!(
-                Scalar::from_decimal_text(&money(), "1.05e1").unwrap(),
-                Scalar::d128(1_050, 2)
-            );
-            // A digit the scale cannot hold is refused rather than rounded away,
-            // and that refusal is a reading rather than a parse failure, so no
-            // other reader is allowed to round it either.
-            let refused = Scalar::from_decimal_text(&money(), "1.005").unwrap_err();
-            assert!(
-                matches!(refused, crate::Error::InvalidRecord { .. }),
-                "{refused:?}"
-            );
-            // Text that is not a decimal at all did not read, so it may be tried
-            // by a wider reader.
-            let unread = Scalar::from_decimal_text(&money(), "ten").unwrap_err();
-            assert!(matches!(unread, crate::Error::Parse { .. }), "{unread:?}");
-        }
-    }
-}
-
 // ------------------------------------------------------------------------
 // Arrow projection: the four exact-decimal widths.
 // ------------------------------------------------------------------------
@@ -1806,3 +1764,22 @@ mod arrow {
 }
 
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/decimal.rs` pins and a caller cannot reach.
+    //!
+    //! `Scalar::from_decimal_text` is crate-private: it is the one reader
+    //! every decimal spelling goes through, and whether a digit the declared
+    //! scale cannot hold is refused as a reading or as a parse failure is
+    //! what decides whether a wider reader may try the same text. The
+    //! forwarder changes no visibility.
+
+    use crate::{DataType, Result, Scalar};
+
+    /// Read `text` as a decimal at the scale `dtype` declares.
+    pub fn from_decimal_text(dtype: &DataType, text: &str) -> Result<Scalar> {
+        Scalar::from_decimal_text(dtype, text)
+    }
+}

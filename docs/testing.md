@@ -63,8 +63,9 @@ Integration targets are one file per theme under `rust/tests/`; unit tests sit b
     cargo test --features "parquet iceberg" -p yggdryl --lib text::
     cargo test --features "parquet iceberg" -p yggdryl --lib toml::
     cargo test --features "parquet iceberg" -p yggdryl --lib expression::
-    cargo test --features "parquet iceberg" -p yggdryl --lib xxhash::
-    cargo test --features "parquet iceberg" -p yggdryl --lib txhash::
+    cargo test --features "parquet iceberg internals" -p yggdryl --test hashing
+    cargo test --features "parquet iceberg internals" -p yggdryl --test txhash
+    cargo test --features "parquet iceberg internals" -p yggdryl --test xxhash
     ```
 
 === "Python"

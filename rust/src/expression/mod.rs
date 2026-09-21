@@ -52,7 +52,7 @@
 mod attribute;
 mod bind;
 mod display;
-mod eval;
+pub(crate) mod eval;
 mod explain;
 mod filter;
 mod literal;

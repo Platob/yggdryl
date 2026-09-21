@@ -20,12 +20,12 @@ use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyList};
 use yggdryl::{ArrowCastOptions, ArrowScalar, ArrowShape, Field as CoreField};
 
+use crate::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, batch_reader_from_value, batch_reader_to_pyarrow, core_root_field_from_value,
     declared_by, frame_from_reader, frame_to_arrow, type_name,
 };
-use crate::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
-use crate::field::{PyField, core_field_from_value};
 use crate::scalar::{PyScalar, arrow_scalar_into_array, as_py_with_field};
 use crate::{cast_options, value_error};
 

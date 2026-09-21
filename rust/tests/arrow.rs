@@ -23,6 +23,9 @@ mod cast_plan;
 mod combined;
 #[path = "arrow/row_value.rs"]
 mod row_value;
+#[cfg(feature = "internals")]
+#[path = "arrow/rows.rs"]
+mod rows;
 #[path = "arrow/scalars.rs"]
 mod scalars;
 #[path = "arrow/value.rs"]

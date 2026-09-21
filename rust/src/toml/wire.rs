@@ -651,5 +651,40 @@ fn codec_error(reason: &'static str) -> Error {
     }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/toml/wire.rs` pins and a caller cannot reach.
+    //!
+    //! The natural projection decides per value whether TOML has a native
+    //! date-time for it at all, and the calendar arithmetic it is built on has
+    //! to be exact across the whole range TOML spells. Both are file-private
+    //! steps of one public codec, so each item here forwards to the real one
+    //! and nothing changes visibility.
+
+    use crate::{Scalar, TimeUnit};
+
+    /// The number of days from the Unix epoch to a civil date.
+    #[must_use]
+    pub const fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+        super::days_from_civil(year, month, day)
+    }
+
+    /// The civil `(year, month, day)` a day count from the epoch names.
+    #[must_use]
+    pub const fn civil_from_days(days: i64) -> (i32, u32, u32) {
+        super::civil_from_days(days)
+    }
+
+    /// Split a count of `unit` into whole seconds and a positive fraction.
+    #[must_use]
+    pub const fn split_count(count: i64, unit: TimeUnit) -> Option<(i64, u32)> {
+        super::split_count(count, unit)
+    }
+
+    /// The native TOML date-time a temporal value spells, where one exists.
+    #[must_use]
+    pub fn native_datetime(value: &Scalar) -> Option<toml::value::Datetime> {
+        super::native_datetime(value)
+    }
+}

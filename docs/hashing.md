@@ -1308,7 +1308,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- xxhash:: txhash:: hashing::
+    cargo test --features "parquet iceberg internals" -p yggdryl --test hashing --test txhash --test xxhash
     cargo test --features "parquet iceberg" -p yggdryl --test allocations -- the_canonical_value_feed_allocates_nothing borrowed_value_bytes_allocate_nothing coupled_value_bytes_allocate_nothing reading_an_instant_out_of_a_value_allocates_nothing txhash_uuid_projection_allocates_nothing_at_any_corpus_size
     cargo test --features "parquet iceberg" -p yggdryl --test types -- stable_hash
     cargo bench -p yggdryl --bench hashing

@@ -33,9 +33,9 @@ use yggdryl::{
     Scalar, TimeUnit, Timezone, Vocabulary, i256,
 };
 
-use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
+use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
 use crate::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};

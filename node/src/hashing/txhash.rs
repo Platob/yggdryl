@@ -21,10 +21,10 @@ use super::xxhash::{
     JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
     content_bytes, seed_from_bigint,
 };
-use crate::napi_error;
-use crate::text::codec::JsScalar;
 use crate::datatype::JsDataType;
 use crate::field::JsField;
+use crate::napi_error;
+use crate::text::codec::JsScalar;
 
 /// Anything the loader hands a native entry point as an instant.
 ///

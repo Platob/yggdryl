@@ -11,9 +11,9 @@ use crate::exact_u8;
 use crate::expression::{
     JsFilter, JsPlan, JsSelector, filter_from_input, plan_from_input, selector_from_input,
 };
+use crate::field::JsField;
 use crate::media::options::JsRecordOptions;
 use crate::napi_error;
-use crate::field::JsField;
 use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// Flat settings for physical-line or framed `text/plain` records.

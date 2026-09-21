@@ -22,15 +22,15 @@ use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::arrow::PyArrowScalar;
+use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
     core_record_options_from_value, core_root_field_from_value, frame_batch_reader,
     frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
-use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::field::{PyField, core_field_from_value};
 use crate::scalar::{PyScalar, from_py};
+use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::value_error;
 

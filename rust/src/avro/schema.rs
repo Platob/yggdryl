@@ -1141,3 +1141,22 @@ pub(crate) fn rabin(bytes: &[u8]) -> u64 {
     }
     fingerprint
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/avro/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A record names itself, and a later field may name that record instead
+    //! of restating it. The table resolving the second to the first is
+    //! crate-private state of a public schema, so it is read here through a
+    //! forwarding accessor rather than published as a field.
+
+    use super::Schema;
+
+    /// Every named type the schema resolved, by fullname.
+    #[must_use]
+    pub fn names(schema: &Schema) -> Vec<&str> {
+        schema.names.keys().map(smol_str::SmolStr::as_str).collect()
+    }
+}

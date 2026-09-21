@@ -1088,6 +1088,22 @@ impl<H: IOBase> IOBase for Ipc<H> {
     }
 }
 
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/ipc/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! The handle a stream wraps is private, and every public door to it
+    //! invalidates the schema cache on the way through. Telling a closed
+    //! stream's fresh read from an open one's retained answer needs the bytes
+    //! to change *without* that invalidation, which models a second storage
+    //! client - so this forwards the field itself, and changes no visibility.
+
+    use super::Ipc;
+    use crate::IOBase;
+
+    /// The handle underneath, reached past the wrapper's own invalidation.
+    pub fn handle_behind_the_cache<H: IOBase>(media: &mut Ipc<H>) -> &mut H {
+        &mut media.handle
+    }
+}

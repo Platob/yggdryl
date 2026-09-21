@@ -639,6 +639,21 @@ fn timestamps(counts: ScalarBuffer<i64>, nulls: Option<NullBuffer>, unit: TimeUn
     }
 }
 
-#[cfg(test)]
-#[path = "arrow/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/txhash/arrow.rs` pins and a caller cannot reach.
+    //!
+    //! `accepts_time` is the crate-private rule the column reader branches
+    //! on, so the two agreeing is the contract. It is behind a forwarder, so
+    //! nothing here is more public than it was; [`unix_array`](super::unix_array),
+    //! the reader it must agree with, is already public API.
+
+    use crate::DataType;
+
+    /// Whether a datatype can be read as an instant column.
+    #[must_use]
+    pub fn accepts_time(dtype: &DataType) -> bool {
+        super::accepts_time(dtype)
+    }
+}

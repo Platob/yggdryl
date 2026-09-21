@@ -830,3 +830,26 @@ fn poisoned() -> Error {
         "the S3 object lock was poisoned by a panicking writer",
     ))
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/accounting.rs` pins and a caller cannot reach.
+    //!
+    //! A streaming upload is how a record writer reaches a store, so what it
+    //! costs in round trips and how much of the source it holds at once are
+    //! pinned counts; no caller spells it, because a caller writes through
+    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`File`] keeps the
+    //! surface it publishes.
+    use crate::Result;
+    use crate::object::File;
+
+    /// Upload `length` bytes read from `source` as the object's whole value.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the upload refuses, a source that ends early included.
+    pub fn upload_from(file: &mut File, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        file.upload_from(source, length)
+    }
+}

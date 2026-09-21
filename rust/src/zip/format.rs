@@ -893,3 +893,152 @@ pub(super) const fn external_attributes(directory: bool) -> u32 {
         UNIX_FILE_MODE << 16
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/zip/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! The format records are the archive: a caller writes members and reads
+    //! them back, and never sees a local header, a central record or either
+    //! end-of-directory trailer. The refusal cases - an encrypted member, a
+    //! compression method no build decodes, a saturated 32-bit trailer -
+    //! cannot be produced by the writer at all, so they are assembled here
+    //! record by record. Each item forwards to the real one, and the two
+    //! private record types stay private: the trailer travels as its three
+    //! numbers, and reading one central record scans it from the bytes.
+
+    use super::{End, Scan};
+    use crate::zip::Entry;
+    use crate::{Codec, Result};
+
+    /// The signature every central-directory record starts with.
+    pub const CENTRAL_SIGNATURE: u32 = super::CENTRAL_SIGNATURE;
+
+    /// Bytes of a local header before the name and the extra fields.
+    pub const LOCAL_LEN: usize = super::LOCAL_LEN;
+
+    /// Bytes of a 32-bit end-of-central-directory record.
+    pub const END_LEN: usize = super::END_LEN;
+
+    /// Bytes of a ZIP64 end-of-central-directory record.
+    pub const ZIP64_END_LEN: usize = super::ZIP64_END_LEN;
+
+    /// The 32-bit value that says "read the ZIP64 record instead".
+    pub const ZIP64_MARK_32: u32 = super::ZIP64_MARK_32;
+
+    /// The 16-bit value that says the same.
+    pub const ZIP64_MARK_16: u16 = super::ZIP64_MARK_16;
+
+    /// The general-purpose bit an encrypted member sets.
+    pub const FLAG_ENCRYPTED: u16 = super::FLAG_ENCRYPTED;
+
+    /// The general-purpose bit a streamed member sets.
+    pub const FLAG_DATA_DESCRIPTOR: u16 = super::FLAG_DATA_DESCRIPTOR;
+
+    /// The general-purpose bit a UTF-8 name sets.
+    pub const FLAG_UTF8: u16 = super::FLAG_UTF8;
+
+    /// The most restart points one member's map may carry.
+    pub const MAX_RESTARTS: usize = super::MAX_RESTARTS;
+
+    /// The ZIP method number a codec is stored as.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the format has no method for the codec.
+    pub fn method_of(codec: Codec) -> Result<u16> {
+        super::method_of(codec)
+    }
+
+    /// The codec a ZIP method number names.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming a method this build does not decode.
+    pub fn codec_of(method: u16) -> Result<Codec> {
+        super::codec_of(method)
+    }
+
+    /// The MS-DOS `(date, time)` pair an instant is recorded as.
+    #[must_use]
+    pub fn dos_datetime(nanos: i64) -> (u16, u16) {
+        super::dos_datetime(nanos)
+    }
+
+    /// The UTC nanoseconds an MS-DOS `(date, time)` pair names.
+    #[must_use]
+    pub fn dos_nanos(date: u16, time: u16) -> i64 {
+        super::dos_nanos(date, time)
+    }
+
+    /// Write one member's local header.
+    pub fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8>) {
+        super::write_local_with(entry, reserve, target);
+    }
+
+    /// Write one member's central-directory record.
+    pub fn write_central(entry: &Entry, target: &mut Vec<u8>) {
+        super::write_central(entry, target);
+    }
+
+    /// Write the end-of-directory trailer for a directory of `entries`.
+    pub fn write_end(
+        directory_offset: u64,
+        directory_size: u64,
+        entries: u64,
+        comment: &[u8],
+        target: &mut Vec<u8>,
+    ) {
+        super::write_end(
+            End {
+                directory_offset,
+                directory_size,
+                entries,
+            },
+            comment,
+            target,
+        );
+    }
+
+    /// Read the 32-bit trailer as `((offset, size, entries), comment)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming the offset of a truncated record.
+    pub fn read_end(bytes: &[u8], base: usize) -> Result<((u64, u64, u64), Vec<u8>)> {
+        let (end, comment) = super::read_end(bytes, base)?;
+        Ok((
+            (end.directory_offset, end.directory_size, end.entries),
+            comment,
+        ))
+    }
+
+    /// Read the ZIP64 trailer as `(offset, size, entries)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming the offset of a truncated record.
+    pub fn read_zip64_end(bytes: &[u8], base: usize) -> Result<(u64, u64, u64)> {
+        let end = super::read_zip64_end(bytes, base)?;
+        Ok((end.directory_offset, end.directory_size, end.entries))
+    }
+
+    /// Read the ZIP64 locator, which says where that trailer starts.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming the offset of a truncated record.
+    pub fn read_zip64_locator(bytes: &[u8], base: usize) -> Result<Option<u64>> {
+        super::read_zip64_locator(bytes, base)
+    }
+
+    /// Read the one central-directory record that starts at `base`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming the offset of a malformed record.
+    pub fn read_central(bytes: &[u8], base: usize) -> Result<Entry> {
+        super::read_central(&mut Scan::new(bytes, base))
+    }
+}

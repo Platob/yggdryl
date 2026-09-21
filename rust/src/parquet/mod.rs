@@ -99,7 +99,7 @@ use crate::arrow::{
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{Error as CoreError, Field};
 
-mod geospatial;
+pub(crate) mod geospatial;
 mod metadata;
 
 pub use geospatial::{GeospatialStatistics, read_geospatial_statistics};
@@ -1145,6 +1145,32 @@ impl From<parquet::errors::ParquetError> for Error {
     }
 }
 
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/parquet/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! `open_builder` is the file-private reader builder every Parquet read
+    //! opens through, and the logical type a column publishes - what a reader
+    //! outside this crate sees - is visible only on it. Forwarding it changes
+    //! no visibility: the builder itself is the `parquet` crate's own public
+    //! type.
+
+    use bytes::Bytes;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+    use crate::IOBase;
+    use crate::arrow::Result;
+
+    /// Open the reader builder a Parquet read goes through.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the handle declares an outer content
+    /// coding, or where the footer does not read.
+    pub fn open_builder<H: IOBase + ?Sized>(
+        handle: &H,
+    ) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
+        super::open_builder(handle)
+    }
+}

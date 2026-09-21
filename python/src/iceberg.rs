@@ -27,14 +27,14 @@ use yggdryl::iceberg::{
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructType};
 
+use crate::datatype::core_dtype_from_value;
 use crate::enums::{PyMimeType, core_mime_type_from_value};
+use crate::field::{PyField, core_field_from_value};
 use crate::iobase::PyIOBase;
 use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
     core_root_field_from_value, string_pairs_from_value,
 };
-use crate::datatype::core_dtype_from_value;
-use crate::field::{PyField, core_field_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 

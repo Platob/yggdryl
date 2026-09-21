@@ -439,6 +439,34 @@ fn oversized_row(_: std::num::TryFromIntError) -> Error {
     }
 }
 
-#[cfg(test)]
-#[path = "merge/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/media/merge.rs` pins and a caller cannot reach.
+    //!
+    //! `merged` is the crate-private reader every `IOMode::Merge` write pulls
+    //! through, and that it releases each incoming batch before pulling the
+    //! next is what keeps a merge bounded - a claim only a reader handed
+    //! straight to it can make. Everything a caller can observe is pinned
+    //! through `yggdryl::` like any other test.
+
+    use crate::arrow::BatchReader;
+    use crate::{Field, Result, Selector};
+
+    /// Merge an incoming stream into a stored one on the declared key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where `merge_by` is empty or does not bind
+    /// against `field`, where a key column has no row encoding, or on the
+    /// first read or cast failure from either side.
+    pub fn merged(
+        stored: BatchReader,
+        incoming: BatchReader,
+        field: &Field,
+        merge_by: &Selector,
+        safe: bool,
+    ) -> Result<BatchReader> {
+        super::merged(stored, incoming, field, merge_by, safe)
+    }
+}

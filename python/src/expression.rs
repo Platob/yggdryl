@@ -38,14 +38,14 @@ use yggdryl::{
     Selector as CoreSelector,
 };
 
-use crate::iomedia::{
-    batch_reader_from_arrow_reader, batch_reader_from_arrow_table, batch_reader_to_pyarrow,
-    batch_to_pyarrow, record_batch_from_value,
-};
 use crate::datatype::{
     PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow, core_dtype_from_value,
 };
 use crate::field::{PyField, core_field_from_value};
+use crate::iomedia::{
+    batch_reader_from_arrow_reader, batch_reader_from_arrow_table, batch_reader_to_pyarrow,
+    batch_to_pyarrow, record_batch_from_value,
+};
 use crate::scalar::PyScalar;
 use crate::value_error;
 
@@ -58,12 +58,7 @@ fn supplied_parameters(parameters: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(
     match parameters {
         Some(parameters) => parameters
             .iter()
-            .map(|(name, value)| {
-                Ok((
-                    name.extract::<String>()?,
-                    crate::scalar::from_py(&value)?,
-                ))
-            })
+            .map(|(name, value)| Ok((name.extract::<String>()?, crate::scalar::from_py(&value)?)))
             .collect(),
         None => Ok(Vec::new()),
     }
@@ -322,10 +317,7 @@ fn rows_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
         if let Ok(mapping) = row.cast::<PyDict>() {
             let mut entries = Vec::with_capacity(mapping.len());
             for (name, value) in mapping.iter() {
-                entries.push((
-                    name.extract::<String>()?,
-                    crate::scalar::from_py(&value)?,
-                ));
+                entries.push((name.extract::<String>()?, crate::scalar::from_py(&value)?));
             }
             rows.push(Scalar::from_struct(entries).map_err(value_error)?);
         } else {
@@ -449,9 +441,9 @@ impl PyTerm {
     /// Hold one constant.
     #[staticmethod]
     fn literal(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self::from_core(CoreTerm::literal(
-            crate::scalar::from_py(value)?,
-        )))
+        Ok(Self::from_core(CoreTerm::literal(crate::scalar::from_py(
+            value,
+        )?)))
     }
 
     /// Hold a constant in an explicitly named datatype.
@@ -2920,9 +2912,7 @@ impl PyUserFunction {
     fn call_py(&self, py: Python<'_>, arguments: &[yggdryl::Scalar]) -> PyResult<yggdryl::Scalar> {
         let mut values = Vec::with_capacity(arguments.len());
         for (argument, parameter) in arguments.iter().zip(self.signature.parameters()) {
-            values.push(crate::scalar::as_py_with_field(
-                py, argument, parameter,
-            )?);
+            values.push(crate::scalar::as_py_with_field(py, argument, parameter)?);
         }
         let answer = self.callable.call1(py, PyTuple::new(py, values)?)?;
         crate::scalar::from_py(&answer.into_bound(py))

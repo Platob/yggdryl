@@ -366,3 +366,32 @@ mod arrow {
 }
 
 pub(crate) use arrow::arrow_storage as code_arrow_storage;
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/string.rs` pins and a caller cannot reach.
+    //!
+    //! `code_for_extension`, `code_text` and `code_cell_text` are the three
+    //! doors every registered code goes through, and a caller sees only the
+    //! datatype they answer for. Each is behind a forwarder, so nothing here
+    //! is more public than it was.
+
+    use crate::{DataType, Result};
+
+    /// The code a registered Arrow extension name answers for.
+    #[must_use]
+    pub fn code_for_extension(name: &str) -> Option<DataType> {
+        super::code_for_extension(name)
+    }
+
+    /// Read a code's ASCII text out of at most `WIDTH` bytes.
+    pub fn code_text<const WIDTH: usize>(bytes: &[u8]) -> Result<&str> {
+        super::code_text::<WIDTH>(bytes)
+    }
+
+    /// Read one cell's text at the width `dtype`'s standard fixes.
+    pub fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'a str> {
+        super::code_cell_text(dtype, bytes)
+    }
+}

@@ -682,3 +682,77 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
         "EOF stops the grid at the greatest finite deadline"
     );
 }
+
+/// The name index a caller only ever sees the result of.
+///
+/// An event arriving under no live identity finds its chain through a name a
+/// live event goes by, and the two maps that make that lookup are the walk's
+/// own; settling and retiring an identity directly is what pins that retiring
+/// a name forgets exactly the records it opened.
+#[cfg(feature = "internals")]
+mod naming {
+    use std::collections::BTreeMap;
+
+    use yggdryl::graph::{Element, EventIterator, MarketEventData};
+    use yggdryl::internals::graph_iterator::{
+        name_records, named_identities, named_identity, named_schemes, retire, settle,
+    };
+
+    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> MarketEventData {
+        let mut event = MarketEventData::at(unix);
+        event.set_crosscode(cross.to_owned());
+        event.set_identifiers(BTreeMap::from([(scheme.to_owned(), name.to_owned())]));
+        event.finalize();
+        event
+    }
+
+    #[test]
+    fn retiring_the_last_name_removes_its_whole_index() {
+        let event = named("A", 1, "venue-order", "A-1");
+        let identity = event.get_crossuuid();
+        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
+        settle(&mut walk, identity, &event, event.get_curruuid());
+        assert_eq!(named_schemes(&walk), 1);
+        assert_eq!(named_identities(&walk), 1);
+
+        assert!(retire(&mut walk, identity), "the live identity retires");
+        assert_eq!(named_schemes(&walk), 0);
+        assert_eq!(named_identities(&walk), 0);
+    }
+
+    #[test]
+    fn alternating_name_ownership_keeps_one_reverse_record() {
+        let first = named("A", 1, "venue-order", "SHARED");
+        let second = named("B", 2, "venue-order", "SHARED");
+        let first_identity = first.get_crossuuid();
+        let second_identity = second.get_crossuuid();
+        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
+
+        for turn in 0..64 {
+            let (identity, event) = if turn % 2 == 0 {
+                (first_identity, &first)
+            } else {
+                (second_identity, &second)
+            };
+            settle(&mut walk, identity, event, event.get_curruuid());
+            assert_eq!(
+                named_identity(&walk, "venue-order", "SHARED"),
+                Some(identity),
+                "the latest owner remains the lookup target"
+            );
+            assert_eq!(
+                name_records(&walk),
+                1,
+                "one current lookup retains one reverse ownership record"
+            );
+        }
+
+        assert!(retire(&mut walk, first_identity), "the first owner retires");
+        assert!(
+            retire(&mut walk, second_identity),
+            "the second owner retires"
+        );
+        assert_eq!(named_schemes(&walk), 0);
+        assert_eq!(named_identities(&walk), 0);
+    }
+}

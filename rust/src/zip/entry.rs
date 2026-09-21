@@ -253,24 +253,12 @@ impl Entry {
         self
     }
 
-    /// The host byte a record was made by, for a test that asserts it.
-    #[cfg(test)]
-    pub(super) const fn made_by_for_test(&self) -> u16 {
-        self.made_by
-    }
-
-    /// The external attributes a record carries, for a test that asserts them.
-    #[cfg(test)]
-    pub(super) const fn external_attributes_for_test(&self) -> u32 {
-        self.external_attributes
-    }
-
     /// Restate this entry with the general purpose bit flags a record has.
     ///
     /// The writer only ever sets the UTF-8 bit, so this exists for the records
     /// it does not produce - an encrypted member, a streamed one - which the
     /// refusal and compatibility cases have to assemble themselves.
-    #[cfg(test)]
+    #[cfg(feature = "internals")]
     pub(super) const fn with_flags(mut self, flags: u16) -> Self {
         self.flags = flags;
         self
@@ -298,5 +286,82 @@ impl Entry {
     pub(super) const fn with_header_offset(mut self, header_offset: u64) -> Self {
         self.header_offset = header_offset;
         self
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/zip/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! An [`Entry`] is something the archive writer makes; a caller reads one
+    //! back off the index and never states one. The records this crate does
+    //! not write - an encrypted member, a streamed one, a ZIP64 member four
+    //! gigabytes wide - have to be stated to be refused or read at all, so
+    //! [`Draft`] states one and hands back the ordinary public entry. It
+    //! changes no visibility: every step forwards to the real one.
+
+    use smol_str::SmolStr;
+
+    use super::Entry;
+    use crate::Restarts;
+
+    /// One entry under construction, which only the archive writer can make.
+    pub struct Draft(Entry);
+
+    impl Draft {
+        /// Start one entry for `name`, stored as `method` at `modified`.
+        #[must_use]
+        pub fn new(name: &str, method: u16, modified: i64) -> Self {
+            Self(Entry::new(SmolStr::new(name), method, modified))
+        }
+
+        /// Continue from an entry that already exists.
+        #[must_use]
+        pub fn of(entry: Entry) -> Self {
+            Self(entry)
+        }
+
+        /// Restate it with the general-purpose bit flags a record has.
+        #[must_use]
+        pub fn with_flags(self, flags: u16) -> Self {
+            Self(self.0.with_flags(flags))
+        }
+
+        /// Restate it with the digest and the two sizes a record declares.
+        #[must_use]
+        pub fn with_content(self, crc32: u32, compressed_size: u64, size: u64) -> Self {
+            Self(self.0.with_content(crc32, compressed_size, size))
+        }
+
+        /// Restate it with the restart map its record carries.
+        #[must_use]
+        pub fn with_restarts(self, restarts: Restarts) -> Self {
+            Self(self.0.with_restarts(restarts))
+        }
+
+        /// Restate it at the local header offset it was written to.
+        #[must_use]
+        pub fn with_header_offset(self, header_offset: u64) -> Self {
+            Self(self.0.with_header_offset(header_offset))
+        }
+
+        /// The entry itself.
+        #[must_use]
+        pub fn entry(self) -> Entry {
+            self.0
+        }
+    }
+
+    /// The host byte the record was made by.
+    #[must_use]
+    pub const fn made_by(entry: &Entry) -> u16 {
+        entry.made_by()
+    }
+
+    /// The external attributes the record carries.
+    #[must_use]
+    pub const fn external_attributes(entry: &Entry) -> u32 {
+        entry.external_attributes()
     }
 }

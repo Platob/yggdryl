@@ -19,8 +19,8 @@ use crate::exact_u8;
 use crate::expression::{
     JsFilter, JsPlan, JsSelector, filter_from_input, plan_from_input, selector_from_input,
 };
-use crate::napi_error;
 use crate::field::{JsField, MetadataEntry};
+use crate::napi_error;
 use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// The settings one record read or write takes.

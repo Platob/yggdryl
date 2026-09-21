@@ -519,3 +519,20 @@ impl std::fmt::Debug for ObjectOptions {
             .finish()
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/protocol.rs` pins and a caller cannot reach.
+    //!
+    //! Whether a request hashes its payload or sends `UNSIGNED-PAYLOAD` is a
+    //! policy the endpoint's scheme settles when the caller leaves it unset,
+    //! and only the request that goes out otherwise says which was picked.
+    //! This forwards, so [`ObjectOptions`] keeps the surface it publishes.
+    use crate::object::ObjectOptions;
+
+    /// Whether a request over `scheme` signs the real payload hash.
+    pub fn signs_payload(options: &ObjectOptions, scheme: &str) -> bool {
+        options.signs_payload(scheme)
+    }
+}

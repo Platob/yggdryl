@@ -1041,6 +1041,29 @@ fn retried<T>(mut step: impl FnMut() -> Result<T>) -> Result<T> {
     Err(last.expect("three attempts ran"))
 }
 
-#[cfg(test)]
-#[path = "partition/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/media/partition/mod.rs` pins and a caller cannot
+    //! reach.
+    //!
+    //! `folder_reader` is the crate-private reader a partitioned tree is read
+    //! through, and that it neither pulls the listing nor opens a leaf before
+    //! the batch that needs it is the whole claim - which only a folder
+    //! counting its own pulls, handed straight to it, can make.
+
+    use super::{IOBase, RecordOptions, Result};
+    use crate::arrow::BatchReader;
+
+    /// Read every leaf beneath a folder as one reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing, read, schema, or cast failure.
+    pub fn folder_reader(
+        folder: &(impl IOBase + ?Sized),
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        super::folder_reader(folder, options)
+    }
+}

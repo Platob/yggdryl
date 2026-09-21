@@ -54,9 +54,9 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level};
 
+use crate::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
-use crate::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;

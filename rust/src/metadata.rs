@@ -936,6 +936,29 @@ pub(crate) use validation::{
 // is gated the same way.
 pub(crate) use validation::is_all_sources;
 
-#[cfg(test)]
-#[path = "metadata/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/metadata.rs` pins and a caller cannot reach.
+    //!
+    //! A metadata map is one shared pointer, and that it is shared - by an
+    //! empty map, by a clone - is the whole reason a field clone costs
+    //! nothing; the pointer is private. `remove` takes a folded protocol key,
+    //! which is what a field's own `without_*` reaches through. Both are
+    //! behind forwarders, so nothing here is more public than it was.
+
+    use std::sync::Arc;
+
+    use super::Metadata;
+
+    /// Whether two maps are one and the same shared map.
+    #[must_use]
+    pub fn shares_storage_with(left: &Metadata, right: &Metadata) -> bool {
+        Arc::ptr_eq(&left.0, &right.0)
+    }
+
+    /// Take the one entry `key` folds to, whatever its spelling.
+    pub fn remove(metadata: &mut Metadata, key: &str) -> Option<String> {
+        metadata.remove(key)
+    }
+}

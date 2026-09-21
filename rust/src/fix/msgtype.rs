@@ -392,3 +392,33 @@ impl fmt::Display for MsgType {
         formatter.write_str(self.as_str())
     }
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/group_plan.rs` pins and a caller cannot reach.
+    //!
+    //! [`MsgType`] is published, and a caller builds one through the registry
+    //! that holds it; the door that types one field on its own, and the
+    //! compiled plans it shares with every clone, are steps inside that.
+    use super::super::group_plan::GroupPlan;
+    use super::MsgType;
+    use crate::{Field, Result};
+
+    /// Type one component field carrying `FIX:msgtype` as the message it
+    /// declares.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the field declares no message type or
+    /// holds a member the layout refuses.
+    pub fn from_field(field: Field) -> Result<MsgType> {
+        MsgType::from_field(field)
+    }
+
+    /// The compiled plan a counter tag's group carries within this message.
+    #[must_use]
+    pub fn get_group_plan_by_tag(message: &MsgType, tag: i32) -> Option<&GroupPlan> {
+        message.get_group_plan_by_tag(tag)
+    }
+}

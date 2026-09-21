@@ -536,22 +536,10 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
-    module.add_function(wrap_pyfunction!(
-        iceberg::iceberg_assign_field_ids,
-        module
-    )?)?;
-    module.add_function(wrap_pyfunction!(
-        iceberg::iceberg_can_promote,
-        module
-    )?)?;
-    module.add_function(wrap_pyfunction!(
-        iceberg::iceberg_schema_from_json,
-        module
-    )?)?;
-    module.add_function(wrap_pyfunction!(
-        iceberg::iceberg_schema_into_json,
-        module
-    )?)?;
+    module.add_function(wrap_pyfunction!(iceberg::iceberg_assign_field_ids, module)?)?;
+    module.add_function(wrap_pyfunction!(iceberg::iceberg_can_promote, module)?)?;
+    module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_from_json, module)?)?;
+    module.add_function(wrap_pyfunction!(iceberg::iceberg_schema_into_json, module)?)?;
     module.add_function(wrap_pyfunction!(codec_encode, module)?)?;
     module.add_function(wrap_pyfunction!(codec_decode, module)?)?;
     module.add_function(wrap_pyfunction!(codec_decode_inferred, module)?)?;

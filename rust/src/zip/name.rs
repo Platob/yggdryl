@@ -91,3 +91,25 @@ pub(super) fn is_private(name: &str) -> bool {
 pub(super) fn directory_name(base: &str) -> SmolStr {
     format_smolstr!("{base}/")
 }
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/zip/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A member path is resolved before it ever becomes a node, so a caller
+    //! who asks for `../escape.txt` sees a refusal rather than the resolution
+    //! that refused it - and the dot segments that *do* resolve are only
+    //! visible here.
+
+    use crate::Result;
+
+    /// Resolve `path` against the member directory `base`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the path climbs above the archive root.
+    pub fn resolve(base: &str, path: &str) -> Result<smol_str::SmolStr> {
+        super::resolve(base, path)
+    }
+}

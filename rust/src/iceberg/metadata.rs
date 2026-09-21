@@ -2988,176 +2988,228 @@ fn invalid(reason: SmolStr) -> Error {
     }
 }
 
-#[cfg(test)]
-mod strict_metadata_tests {
-    use super::{FormatVersion, SortOrder, TableMetadata};
-    use crate::iceberg::{PartitionSpec, Snapshot, SnapshotRef};
-    use crate::{DataType, Scalar, StructType};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iceberg/mod_.rs` and `rust/tests/iceberg/evolve.rs`
+    //! pin and a caller cannot reach.
+    //!
+    //! [`TableMetadata`] is read-only to a caller: every field has a public
+    //! accessor and none is writable. Two things follow that only this module
+    //! can serve. One suite proves that accessor set is *complete*, which
+    //! means naming each field beside the accessor that answers it. Others
+    //! build a document no operation would produce - a duplicate field id, a
+    //! stale column counter, an exhausted identifier, a backdated commit - and
+    //! ask for the refusal, which means writing a field directly. Every item
+    //! here forwards to the real field, so nothing changes visibility.
+
     use smol_str::SmolStr;
 
-    fn document(version: FormatVersion) -> Scalar {
-        let schema = StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        TableMetadata::new(
-            version,
-            "file:///tmp/strict-metadata",
-            schema,
-            PartitionSpec::unpartitioned(),
-        )
-        .unwrap()
-        .into_json()
-        .unwrap()
+    use super::{FormatVersion, PartitionSpec, Snapshot, SnapshotRef, SortOrder, TableMetadata};
+    use crate::{Field, Result, Scalar};
+
+    /// The specification revision this document is written to.
+    pub fn format_version(metadata: &TableMetadata) -> FormatVersion {
+        metadata.format_version
     }
 
-    #[test]
-    fn normalization_cannot_hide_duplicate_statistics_or_key_ids() {
-        for collection in ["statistics", "partition-statistics"] {
-            let duplicates =
-                crate::json::from_utf8(r#"[{"snapshot-id":7},{"snapshot-id":7}]"#).unwrap();
-            let candidate = document(FormatVersion::V2)
-                .with_key(collection, duplicates)
-                .unwrap();
-            let message = TableMetadata::from_json(&candidate)
-                .unwrap_err()
-                .to_string();
-            assert!(message.contains(collection), "{message}");
-            assert!(message.contains("more than once"), "{message}");
-        }
-
-        let duplicates = crate::json::from_utf8(r#"[{"key-id":"k"},{"key-id":"k"}]"#).unwrap();
-        let candidate = document(FormatVersion::V3)
-            .with_key("encryption-keys", duplicates)
-            .unwrap();
-        let message = TableMetadata::from_json(&candidate)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("encryption-keys"), "{message}");
-        assert!(message.contains("more than once"), "{message}");
+    /// The stable identifier of the table itself.
+    pub fn table_uuid(metadata: &TableMetadata) -> &SmolStr {
+        &metadata.table_uuid
     }
 
-    #[test]
-    fn sequence_counters_must_be_non_negative() {
-        let candidate = document(FormatVersion::V2)
-            .with_key("last-sequence-number", -1_i64)
-            .unwrap();
-        let message = TableMetadata::from_json(&candidate)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            message.contains("non-negative last-sequence-number"),
-            "{message}"
-        );
+    /// The table's base location, as a URI.
+    pub fn location(metadata: &TableMetadata) -> &SmolStr {
+        &metadata.location
     }
 
-    #[test]
-    fn v1_accepts_only_the_derived_main_ref_emitted_by_pyiceberg() {
-        let mut metadata = TableMetadata::from_json(&document(FormatVersion::V1)).unwrap();
-        metadata
-            .set_current_snapshot(Snapshot {
-                snapshot_id: 7,
-                parent_snapshot_id: None,
-                sequence_number: None,
-                timestamp_ms: metadata.last_updated_ms + 1,
-                manifest_list: SmolStr::new_static("file:///tmp/manifest-list.avro"),
-                manifests: None,
-                summary: vec![(
-                    SmolStr::new_static("operation"),
-                    SmolStr::new_static("append"),
-                )],
-                schema_id: Some(metadata.current_schema_id),
-                encryption_key_id: None,
-                first_row_id: None,
-                added_rows: None,
-            })
-            .unwrap();
-        let document = metadata.into_json().unwrap();
-        assert!(document.get_key_str("refs").is_none());
-
-        let empty = document
-            .clone()
-            .with_key("refs", crate::json::from_utf8("{}").unwrap())
-            .unwrap();
-        assert!(TableMetadata::from_json(&empty).is_ok());
-
-        let refs = Scalar::from_mapping([(
-            Scalar::from("main"),
-            SnapshotRef::branch(7).into_json().unwrap(),
-        )])
-        .unwrap();
-        let candidate = document.clone().with_key("refs", refs).unwrap();
-        let loaded = TableMetadata::from_json(&candidate).unwrap();
-        assert!(loaded.refs.is_empty());
-
-        let wrong_refs = Scalar::from_mapping([(
-            Scalar::from("main"),
-            SnapshotRef::branch(8).into_json().unwrap(),
-        )])
-        .unwrap();
-        let message = TableMetadata::from_json(&document.with_key("refs", wrong_refs).unwrap())
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("current-snapshot-id"), "{message}");
+    /// The highest sequence number the table has assigned.
+    pub fn last_sequence_number(metadata: &TableMetadata) -> i64 {
+        metadata.last_sequence_number
     }
 
-    #[test]
-    fn sort_order_json_has_no_implicit_fields_or_options() {
-        for text in [
-            r#"{"order-id":0}"#,
-            r#"{"order-id":1,"fields":[{"source-id":1,"transform":"identity","direction":"asc"}]}"#,
-            r#"{"order-id":1,"fields":[{"source-id":2147483648,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
-            r#"{"order-id":0,"fields":[{"source-id":1,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
-        ] {
-            let value = crate::json::from_utf8(text).unwrap();
-            assert!(SortOrder::from_json(&value).is_err(), "{text}");
-        }
+    /// When this document was written, in milliseconds since the Unix epoch.
+    pub fn last_updated_ms(metadata: &TableMetadata) -> i64 {
+        metadata.last_updated_ms
     }
 
-    #[test]
-    fn every_historical_layout_must_bind_to_a_retained_schema() {
-        let mut partition_document = document(FormatVersion::V2);
-        let mut specs: Vec<Scalar> = partition_document
-            .get_key_str("partition-specs")
-            .unwrap()
-            .sequence_iter()
-            .cloned()
-            .collect();
-        specs.push(
-            crate::json::from_utf8(
-                r#"{"spec-id":1,"fields":[{"source-id":999,"field-id":1000,"name":"missing","transform":"identity"}]}"#,
-            )
-            .unwrap(),
-        );
-        partition_document = partition_document
-            .with_key("partition-specs", Scalar::from_sequence(specs))
-            .unwrap();
-        let message = TableMetadata::from_json(&partition_document)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("partition spec 1"), "{message}");
-        assert!(message.contains("retained schema"), "{message}");
+    /// The highest column identifier the table has assigned.
+    pub fn last_column_id(metadata: &TableMetadata) -> i32 {
+        metadata.last_column_id
+    }
 
-        let mut sort_document = document(FormatVersion::V2);
-        let mut orders: Vec<Scalar> = sort_document
-            .get_key_str("sort-orders")
-            .unwrap()
-            .sequence_iter()
-            .cloned()
-            .collect();
-        orders.push(
-            crate::json::from_utf8(
-                r#"{"order-id":1,"fields":[{"source-id":999,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}"#,
-            )
-            .unwrap(),
-        );
-        sort_document = sort_document
-            .with_key("sort-orders", Scalar::from_sequence(orders))
-            .unwrap();
-        let message = TableMetadata::from_json(&sort_document)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("sort order 1"), "{message}");
-        assert!(message.contains("retained schema"), "{message}");
+    /// Every schema the table has had, by identifier.
+    pub fn schemas(metadata: &TableMetadata) -> &[Field] {
+        &metadata.schemas
+    }
+
+    /// The identifier of the schema new data is written against.
+    pub fn current_schema_id(metadata: &TableMetadata) -> i32 {
+        metadata.current_schema_id
+    }
+
+    /// Every partition spec the table has had.
+    pub fn partition_specs(metadata: &TableMetadata) -> &[PartitionSpec] {
+        &metadata.partition_specs
+    }
+
+    /// The identifier of the spec new data is written against.
+    pub fn default_spec_id(metadata: &TableMetadata) -> i32 {
+        metadata.default_spec_id
+    }
+
+    /// The highest partition field identifier the table has assigned.
+    pub fn last_partition_id(metadata: &TableMetadata) -> i32 {
+        metadata.last_partition_id
+    }
+
+    /// Every sort order the table has had.
+    pub fn sort_orders(metadata: &TableMetadata) -> &[SortOrder] {
+        &metadata.sort_orders
+    }
+
+    /// The identifier of the order new data is written in.
+    pub fn default_sort_order_id(metadata: &TableMetadata) -> i64 {
+        metadata.default_sort_order_id
+    }
+
+    /// The free-form table properties.
+    pub fn properties(metadata: &TableMetadata) -> &[(SmolStr, SmolStr)] {
+        &metadata.properties
+    }
+
+    /// The snapshot a reader sees, when the table has one.
+    pub fn current_snapshot_id(metadata: &TableMetadata) -> Option<i64> {
+        metadata.current_snapshot_id
+    }
+
+    /// Every retained snapshot, oldest first.
+    pub fn snapshots(metadata: &TableMetadata) -> &[Snapshot] {
+        &metadata.snapshots
+    }
+
+    /// When each snapshot became current, oldest first.
+    pub fn snapshot_log(metadata: &TableMetadata) -> &[(i64, i64)] {
+        &metadata.snapshot_log
+    }
+
+    /// Every previous metadata document, oldest first.
+    pub fn metadata_log(metadata: &TableMetadata) -> &[(i64, SmolStr)] {
+        &metadata.metadata_log
+    }
+
+    /// The named branches and tags.
+    pub fn refs(metadata: &TableMetadata) -> &[(SmolStr, SnapshotRef)] {
+        &metadata.refs
+    }
+
+    /// The Puffin statistics descriptors the table retains.
+    pub fn statistics(metadata: &TableMetadata) -> &[Scalar] {
+        &metadata.statistics
+    }
+
+    /// The partition statistics descriptors the table retains.
+    pub fn partition_statistics(metadata: &TableMetadata) -> &[Scalar] {
+        &metadata.partition_statistics
+    }
+
+    /// The v3 encryption keys the table retains.
+    pub fn encryption_keys(metadata: &TableMetadata) -> &[Scalar] {
+        &metadata.encryption_keys
+    }
+
+    /// The next unassigned row identifier, required in v3.
+    pub fn next_row_id(metadata: &TableMetadata) -> Option<i64> {
+        metadata.next_row_id
+    }
+
+    /// The wall clock a commit stamps itself with.
+    pub fn now_ms() -> i64 {
+        super::now_ms()
+    }
+
+    /// Every retained snapshot, oldest first, to rewrite in place.
+    ///
+    /// Expiration is arithmetic over commit times, and a fixture cannot wait
+    /// hours for one, so it backdates the snapshots it built instead.
+    pub fn snapshots_mut(metadata: &mut TableMetadata) -> &mut Vec<Snapshot> {
+        &mut metadata.snapshots
+    }
+
+    /// When each snapshot became current, oldest first, to rewrite in place.
+    pub fn snapshot_log_mut(metadata: &mut TableMetadata) -> &mut Vec<(i64, i64)> {
+        &mut metadata.snapshot_log
+    }
+
+    /// The named branches and tags, to write one no method would produce.
+    pub fn refs_mut(metadata: &mut TableMetadata) -> &mut Vec<(SmolStr, SnapshotRef)> {
+        &mut metadata.refs
+    }
+
+    /// Every schema the table has had, to bend one past what a method allows.
+    pub fn schemas_mut(metadata: &mut TableMetadata) -> &mut Vec<Field> {
+        &mut metadata.schemas
+    }
+
+    /// Every partition spec the table has had, to bend one the same way.
+    pub fn partition_specs_mut(metadata: &mut TableMetadata) -> &mut Vec<PartitionSpec> {
+        &mut metadata.partition_specs
+    }
+
+    /// Every sort order the table has had, to bend one the same way.
+    pub fn sort_orders_mut(metadata: &mut TableMetadata) -> &mut Vec<SortOrder> {
+        &mut metadata.sort_orders
+    }
+
+    /// The highest assigned column identifier, to set it stale.
+    pub fn last_column_id_mut(metadata: &mut TableMetadata) -> &mut i32 {
+        &mut metadata.last_column_id
+    }
+
+    /// The current schema identifier, to exhaust it.
+    pub fn current_schema_id_mut(metadata: &mut TableMetadata) -> &mut i32 {
+        &mut metadata.current_schema_id
+    }
+
+    /// The default spec identifier, to exhaust it.
+    pub fn default_spec_id_mut(metadata: &mut TableMetadata) -> &mut i32 {
+        &mut metadata.default_spec_id
+    }
+
+    /// The next unassigned row identifier, to set it absent or negative.
+    pub fn next_row_id_mut(metadata: &mut TableMetadata) -> &mut Option<i64> {
+        &mut metadata.next_row_id
+    }
+
+    /// The order new data is written in, to name one no method would accept.
+    pub fn default_sort_order_id_mut(metadata: &mut TableMetadata) -> &mut i64 {
+        &mut metadata.default_sort_order_id
+    }
+
+    /// The free-form properties, to reorder them and prove order is not
+    /// identity.
+    pub fn properties_mut(metadata: &mut TableMetadata) -> &mut Vec<(SmolStr, SmolStr)> {
+        &mut metadata.properties
+    }
+
+    /// Every previous metadata document, to write a history no commit made.
+    pub fn metadata_log_mut(metadata: &mut TableMetadata) -> &mut Vec<(i64, SmolStr)> {
+        &mut metadata.metadata_log
+    }
+
+    /// When this document was written, to move a commit's clock.
+    pub fn last_updated_ms_mut(metadata: &mut TableMetadata) -> &mut i64 {
+        &mut metadata.last_updated_ms
+    }
+
+    /// Resolve metadata-file compression from the table's own properties.
+    ///
+    /// A caller never names the codec; a commit chooses it from the property
+    /// the table carries, so the precedence and the refusals are only
+    /// observable here.
+    pub fn metadata_compression_codec(
+        metadata: &TableMetadata,
+    ) -> Result<iceberg_official::compression::CompressionCodec> {
+        metadata.metadata_compression_codec()
     }
 }

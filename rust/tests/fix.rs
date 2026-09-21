@@ -17,6 +17,8 @@ mod cfb;
 mod classification;
 #[path = "fix/codec.rs"]
 mod codec;
+#[path = "fix/codes.rs"]
+mod codes;
 #[path = "fix/dataset.rs"]
 mod dataset;
 #[path = "fix/dictionary.rs"]
@@ -37,16 +39,26 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[cfg(feature = "internals")]
+#[path = "fix/group_plan.rs"]
+mod group_plan;
 #[path = "fix/identifiers.rs"]
 mod identifiers;
 #[path = "fix/latest.rs"]
 mod latest;
 #[path = "fix/map_groups.rs"]
 mod map_groups;
+#[cfg(feature = "internals")]
+#[path = "fix/memo.rs"]
+mod memo;
 #[path = "fix/merge.rs"]
 mod merge;
 #[path = "fix/message.rs"]
 mod message;
+/// The FIX module's own edge cases, driven with explicit inputs.
+#[cfg(feature = "internals")]
+#[path = "fix/mod_.rs"]
+mod mod_;
 /// The threads a codec reads on.
 #[path = "fix/parallel.rs"]
 mod parallel;
@@ -54,8 +66,14 @@ mod parallel;
 mod party_source;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
+#[cfg(feature = "internals")]
+#[path = "fix/registry.rs"]
+mod registry;
 #[path = "fix/residual.rs"]
 mod residual;
+#[cfg(feature = "internals")]
+#[path = "fix/retired.rs"]
+mod retired;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]

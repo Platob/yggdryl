@@ -381,6 +381,24 @@ fn locate(error: crate::Error, column: &str) -> crate::Error {
     }
 }
 
-#[cfg(test)]
-#[path = "arrow/tests.rs"]
-mod tests;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/avro/arrow.rs` pins and a caller cannot reach.
+    //!
+    //! Rendering a `Field` as an Avro schema document is the step every
+    //! container write goes through, and which datatypes it refuses is the
+    //! whole contract; a caller only ever sees the bytes that come out.
+
+    use crate::{Field, Result, Scalar};
+
+    /// Render a root `Field` as the Avro schema document a write carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where a column holds a datatype Avro cannot
+    /// spell.
+    pub fn schema_json_from_field(field: &Field) -> Result<Scalar> {
+        super::schema_json_from_field(field)
+    }
+}

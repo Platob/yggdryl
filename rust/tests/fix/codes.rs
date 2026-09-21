@@ -1,0 +1,209 @@
+//! `rust/src/fix/codes.rs`: one code set, named once, however many fields read
+//! by it.
+//!
+//! A vocabulary is registry-owned: a field names the set it reads by and the
+//! document lives once beside the fields. Every door here is one a caller has,
+//! so this reaches the crate through `yggdryl::` alone.
+
+use yggdryl::holder::Holder;
+use yggdryl::local::Folder;
+use yggdryl::{DataType, Error, Field, FixCategory, FixCode, FixRegistry};
+
+/// One field reading by one named set, and the set beside it.
+fn dictionary(name: &str, tag: i32, codes: &[FixCode]) -> (FixRegistry, Field) {
+    let mut registry = FixRegistry::new();
+    registry.set_codeset(name, codes).unwrap();
+    let mut field = DataType::utf8().nullable_field(format!("field{tag}"));
+    field.as_fix_mut().set_tag(tag).unwrap();
+    field.as_fix_mut().set_codeset(name).unwrap();
+    registry.insert(field.clone()).unwrap();
+    (registry, field)
+}
+
+#[test]
+fn a_field_may_not_read_by_a_set_the_dictionary_does_not_hold() {
+    let mut registry = FixRegistry::new();
+    let mut field = DataType::utf8().nullable_field("side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field.as_fix_mut().set_codeset("sidecodeset").unwrap();
+    let refused = registry.insert(field.clone()).unwrap_err();
+    assert!(
+        matches!(&refused, Error::Absent { expected, path }
+            if *expected == "codesets" && path == "sidecodeset"),
+        "{refused}"
+    );
+    // And the refusal left nothing behind.
+    assert!(registry.get_field_by_tag(54).is_none());
+
+    registry
+        .set_codeset("sidecodeset", &[FixCode::new("Buy", "1")])
+        .unwrap();
+    registry.insert(field).unwrap();
+    assert_eq!(
+        registry.codeset_of(registry.field_by_tag(54).unwrap()),
+        registry.get_codeset("sidecodeset"),
+    );
+}
+
+#[test]
+fn one_set_is_named_once_however_many_fields_read_by_it() {
+    let (mut registry, _) = dictionary("unitcodeset", 996, &[FixCode::new("Bbl", "Bbl")]);
+    let mut other = DataType::utf8().nullable_field("legunitofmeasure");
+    other.as_fix_mut().set_tag(999).unwrap();
+    other.as_fix_mut().set_codeset("unitcodeset").unwrap();
+    registry.insert(other).unwrap();
+
+    assert_eq!(registry.codesets().len(), 2);
+    for tag in [996, 999] {
+        let set = registry
+            .codeset_of(registry.field_by_tag(tag).unwrap())
+            .expect("the set");
+        assert_eq!(set.code_name("Bbl"), Some("Bbl"));
+    }
+    // Stating one more member is one edit, and both fields read it.
+    registry
+        .merge_codeset("unitcodeset", &[FixCode::new("Gal", "Gal")])
+        .unwrap();
+    for tag in [996, 999] {
+        let set = registry
+            .codeset_of(registry.field_by_tag(tag).unwrap())
+            .expect("the set");
+        assert_eq!(set.codes().count(), 2);
+    }
+}
+
+#[test]
+fn a_set_a_field_reads_by_is_not_one_a_removal_may_take_away() {
+    let (mut registry, mut field) = dictionary("sidecodeset", 54, &[FixCode::new("Buy", "1")]);
+    let refused = registry.remove_codeset("sidecodeset").unwrap_err();
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert!(registry.get_codeset("sidecodeset").is_some());
+
+    // `update` folds rather than replaces, so the reference it dropped
+    // would come back; the definition door is the one that replaces a
+    // field whole.
+    field.as_fix_mut().remove_codeset();
+    registry
+        .update_definition(FixCategory::Fields, field)
+        .unwrap();
+    let taken = registry.remove_codeset("sidecodeset").unwrap();
+    assert_eq!(taken, Some(vec![FixCode::new("Buy", "1")]));
+    assert!(registry.get_codeset("sidecodeset").is_none());
+}
+
+#[test]
+fn merging_two_dictionaries_folds_their_sets_and_keeps_every_enrichment() {
+    // What the specification says: the values, named and documented.
+    let (mut held, _) = dictionary(
+        "msgtypecodeset",
+        35,
+        &[
+            FixCode::new("Heartbeat", "0").with_description("Heartbeat"),
+            FixCode::new("6", "6"),
+        ],
+    );
+    // What a venue's own dictionary says about the same set: one value it
+    // alone declares, one spelling for a value both hold, and a real name
+    // for the one the specification left standing for itself.
+    let (venue, _) = dictionary(
+        "msgtypecodeset",
+        35,
+        &[
+            FixCode::new("HB", "0"),
+            FixCode::new("IOI", "6"),
+            FixCode::new("VenueOwn", "ZZ").with_description("A type only this venue sends"),
+        ],
+    );
+
+    held.merge_with(&venue).unwrap();
+    let set = held.codeset("msgtypecodeset").unwrap();
+    assert_eq!(set.codes().count(), 3);
+    // The held name leads and the incoming one reaches the same code.
+    assert_eq!(set.code_name("0"), Some("Heartbeat"));
+    assert_eq!(set.code_value("hb"), Some("0"));
+    // A code named after its own value takes the real name the venue gave
+    // it, which is the enrichment a fold exists for.
+    assert_eq!(set.code_name("6"), Some("IOI"));
+    // And what only the venue declared arrived whole, its wording with it.
+    assert_eq!(set.code_value("VenueOwn"), Some("ZZ"));
+    assert_eq!(
+        set.code("ZZ").and_then(|code| code.parse_doc().unwrap()),
+        Some("A type only this venue sends".to_owned())
+    );
+}
+
+#[test]
+fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
+    let (mut held, _) = dictionary("heldcodeset", 54, &[FixCode::new("Buy", "1")]);
+    let (venue, _) = dictionary("venuecodeset", 54, &[FixCode::new("Sell", "2")]);
+
+    held.merge_with(&venue).unwrap();
+    // The field keeps its own vocabulary's name, and what the other
+    // dictionary's set declared is in that vocabulary rather than in one
+    // no field reads by: a merge widens a set and never narrows one.
+    let field = held.field_by_tag(54).unwrap();
+    assert_eq!(field.as_fix().codeset(), Some("heldcodeset"));
+    let set = held.codeset_of(field).expect("the set");
+    assert_eq!(set.code_value("Buy"), Some("1"));
+    assert_eq!(set.code_value("Sell"), Some("2"));
+    // The incoming name is still a set of its own: a name is an identity,
+    // and folding its members into another does not retire it.
+    assert_eq!(held.codesets().len(), 3);
+    assert!(held.get_codeset("venuecodeset").is_some());
+}
+
+#[test]
+fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
+    // The crate's MsgCat vocabulary is registry-owned like every other
+    // set, so even a fresh dictionary persists that one intrinsic set.
+    let path = Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!("yggdryl-codesets-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    let mut root = Holder::local(path.clone()).unwrap();
+    let registry = FixRegistry::new();
+    assert_eq!(registry.codesets().len(), 1);
+    registry.write_into(root.as_io_mut()).unwrap();
+    assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
+
+    // And one that gains a set writes the folder, while one that loses it
+    // again takes the folder away rather than leaving a stale document.
+    let mut held = registry.clone();
+    held.set_codeset("sidecodeset", &[FixCode::new("Buy", "1")])
+        .unwrap();
+    held.write_into(root.as_io_mut()).unwrap();
+    let read = FixRegistry::from_handle(root.as_io()).unwrap();
+    assert_eq!(read, held);
+    assert_eq!(read.codeset("sidecodeset").unwrap().codes().count(), 1);
+
+    registry.write_into(root.as_io_mut()).unwrap();
+    assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
+    let _ = std::fs::remove_dir_all(&path);
+
+    // The other persistence door states the sets under a key of their
+    // own, read before the fields that name them.
+    let document = held.into_json().unwrap();
+    assert!(document.contains("\"codesets\""), "{document:.120}");
+    assert_eq!(FixRegistry::from_json(&document).unwrap(), held);
+    let refused = FixRegistry::from_json(
+        r#"{"codesets":[],"fields":[],"components":[],"groups":[],"messages":[]}"#,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&refused, Error::InvalidRecord { path, reason }
+            if path == "messages" && reason.contains("codesets")),
+        "{refused}"
+    );
+}
+
+#[test]
+fn a_name_no_store_can_file_is_refused_before_anything_is_written() {
+    let mut registry = FixRegistry::new();
+    for name in ["", "..", "one/two", "a b"] {
+        let refused = registry.set_codeset(name, &[FixCode::new("Buy", "1")]);
+        assert!(refused.is_err() || name.is_empty(), "{name:?}");
+    }
+    assert_eq!(registry.codesets().len(), 1);
+}

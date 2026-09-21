@@ -11,6 +11,8 @@ mod iceberg;
 mod inference;
 #[path = "media/ipc.rs"]
 mod ipc;
+#[path = "media/magic.rs"]
+mod magic;
 #[path = "media/merge.rs"]
 mod merge;
 #[path = "media/options.rs"]

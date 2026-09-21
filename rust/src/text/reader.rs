@@ -210,7 +210,7 @@ impl<R: Read> Lines<R> {
     }
 
     /// Yield the next complete line without its terminator.
-    #[cfg(test)]
+    #[cfg(feature = "internals")]
     fn next_line(&mut self, linesep: Option<&LineSep>) -> Option<Result<Vec<u8>>> {
         let mut line = Vec::new();
         loop {
@@ -229,93 +229,69 @@ impl<R: Read> Lines<R> {
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/text/reader.rs` pins and a caller cannot reach.
+    //!
+    //! The window is an allocation strategy, not a contract: a caller reads
+    //! [`TextLine`](crate::text::TextLine)s and never the page they are ranges
+    //! of. Both doors below wrap the real reader instead of publishing it, so
+    //! `Lines` and `LinePart` keep their `pub(crate)` visibility and a part is
+    //! answered as what a test measures - its size, and whether it ends the
+    //! physical line.
+
     use std::io::Read;
 
-    use super::{Lines, WINDOW_SIZE};
+    use crate::Result;
     use crate::text::LineSep;
 
-    struct Chunked {
-        bytes: std::io::Cursor<Vec<u8>>,
+    /// The fixed window one page of read bytes is bounded to.
+    pub const WINDOW_SIZE: usize = super::WINDOW_SIZE;
+
+    /// One piece of a physical line, measured rather than borrowed.
+    pub struct LinePart {
+        /// Whether this piece ends the physical line.
+        pub end: bool,
         size: usize,
     }
 
-    impl Read for Chunked {
-        fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
-            let size = target.len().min(self.size);
-            self.bytes.read(&mut target[..size])
+    impl LinePart {
+        /// How many bytes this piece carries.
+        #[must_use]
+        pub const fn len(&self) -> usize {
+            self.size
+        }
+
+        /// Whether this piece carries no bytes at all.
+        #[must_use]
+        pub const fn is_empty(&self) -> bool {
+            self.size == 0
         }
     }
 
-    fn read(input: &[u8], linesep: Option<&LineSep>) -> Vec<Vec<u8>> {
-        let mut lines = Lines::new(std::io::Cursor::new(input));
-        let mut values = Vec::new();
-        while let Some(line) = lines.next_line(linesep) {
-            values.push(line.unwrap());
-        }
-        values
-    }
+    /// A fixed-window streaming line splitter.
+    pub struct Lines<R>(super::Lines<R>);
 
-    #[test]
-    fn flexible_and_pinned_terminators_stream_lines() {
-        assert_eq!(
-            read(b"a\r\nb\nc\rd", None),
-            [b"a".to_vec(), b"b".to_vec(), b"c".to_vec(), b"d".to_vec()]
-        );
-        assert_eq!(
-            read(b"a\nb\r\nc", Some(&LineSep::CRLF)),
-            [b"a\nb".to_vec(), b"c".to_vec()]
-        );
-        assert_eq!(read(b"\xef\xbb\xbfa\n", None), [b"\xef\xbb\xbfa".to_vec()]);
-    }
-
-    #[test]
-    fn terminators_can_cross_short_source_reads() {
-        let mut flexible = Lines::new(Chunked {
-            bytes: std::io::Cursor::new(b"a\r\nb\rc\nlast".to_vec()),
-            size: 1,
-        });
-        let mut values = Vec::new();
-        while let Some(line) = flexible.next_line(None) {
-            values.push(line.unwrap());
+    impl<R: Read> Lines<R> {
+        /// Split `source` into physical lines through one shared window.
+        pub fn new(source: R) -> Self {
+            Self(super::Lines::new(source))
         }
-        assert_eq!(
-            values,
-            [
-                b"a".to_vec(),
-                b"b".to_vec(),
-                b"c".to_vec(),
-                b"last".to_vec()
-            ]
-        );
 
-        let mut pinned = Lines::new(Chunked {
-            bytes: std::io::Cursor::new(b"a\r\nb\r\nc".to_vec()),
-            size: 1,
-        });
-        let mut values = Vec::new();
-        while let Some(line) = pinned.next_line(Some(&LineSep::CRLF)) {
-            values.push(line.unwrap());
+        /// Yield the next bounded piece of a physical line.
+        pub fn next_part(&mut self, linesep: Option<&LineSep>) -> Option<Result<LinePart>> {
+            self.0.next_part(linesep).map(|part| {
+                part.map(|part| LinePart {
+                    end: part.end,
+                    size: part.len(),
+                })
+            })
         }
-        assert_eq!(values, [b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]);
-    }
 
-    #[test]
-    fn a_line_larger_than_the_window_is_returned_as_bounded_parts() {
-        let mut input = vec![b'x'; WINDOW_SIZE * 3 + 7];
-        input.extend_from_slice(b"\nnext");
-        let mut lines = Lines::new(std::io::Cursor::new(input));
-        let mut sizes = Vec::new();
-        loop {
-            let part = lines.next_part(None).unwrap().unwrap();
-            sizes.push(part.len());
-            if part.end {
-                break;
-            }
+        /// Yield the next complete line without its terminator.
+        pub fn next_line(&mut self, linesep: Option<&LineSep>) -> Option<Result<Vec<u8>>> {
+            self.0.next_line(linesep)
         }
-        assert!(sizes.len() >= 3);
-        assert!(sizes.iter().all(|size| *size <= WINDOW_SIZE));
-        assert_eq!(lines.next_line(None).unwrap().unwrap(), b"next");
     }
 }

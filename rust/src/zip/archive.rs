@@ -783,7 +783,7 @@ impl Archive {
     /// # Errors
     ///
     /// Returns the publish or read failure.
-    #[cfg(test)]
+    #[cfg(feature = "internals")]
     pub(super) fn image(&self) -> Result<Vec<u8>> {
         self.flush()?;
         let mut guard = self.locked();
@@ -1882,4 +1882,27 @@ fn find_end(tail: &[u8]) -> Option<usize> {
         }
     }
     candidate
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/zip/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! A caller reads members, never the archive's own bytes; but the record
+    //! layout is most of what a ZIP archive promises, so the pins that assert
+    //! one read the published image back byte for byte.
+
+    use super::Archive;
+    use crate::Result;
+
+    /// The exact bytes the archive holds, published first.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the pending writes do not publish or the
+    /// handle does not read back.
+    pub fn image(archive: &Archive) -> Result<Vec<u8>> {
+        archive.image()
+    }
 }

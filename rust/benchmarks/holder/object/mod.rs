@@ -5,7 +5,7 @@
 //! two implementations rather than two networks. That is also what makes the
 //! comparison a protocol check: a leg that measured faster by skipping a
 //! request would fail the accounting assertions in
-//! `holder::object::tests::accounting`, and one that spoke a dialect the store
+//! `rust/tests/object/accounting.rs`, and one that spoke a dialect the store
 //! does not would not complete at all.
 //!
 //! `object_store` is async, so its legs pay for a current-thread runtime to
@@ -17,7 +17,7 @@ pub(crate) mod bytes;
 pub(crate) mod listing;
 pub(crate) mod records;
 
-#[path = "../../../src/object/tests/server.rs"]
+#[path = "../../../tests/object/server.rs"]
 pub(crate) mod server;
 
 use object_store::aws::{AmazonS3, AmazonS3Builder};

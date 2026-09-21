@@ -131,63 +131,28 @@ fn credentials_of(section: &[(String, String)]) -> Option<Credentials> {
     Some(credentials)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{credentials_of, section, value};
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/object/aws/profile.rs` pins and a caller cannot reach.
+    //!
+    //! `load` reads two files off the machine running the test, which is not
+    //! a fixture anybody can build; what is worth pinning is the INI reading
+    //! underneath it, so that is what forwards here.
+    use crate::object::Credentials;
 
-    const CONFIG: &str = "\
-# the shared configuration file
-[default]
-region = us-east-1
-s3 =
-  payload_signing_enabled = false
-endpoint_url = https://s3.example.io
-
-[profile trading]
-region=eu-west-3
-aws_access_key_id = AKIATRADING
-aws_secret_access_key = secret
-";
-
-    const CREDENTIALS: &str = "\
-[default]
-aws_access_key_id = AKIADEFAULT
-aws_secret_access_key = default-secret
-aws_session_token = default-token
-; a comment
-[trading]
-aws_access_key_id = AKIATRADING
-aws_secret_access_key = trading-secret
-";
-
-    #[test]
-    fn the_configuration_file_prefixes_named_profiles_and_skips_nested_tables() {
-        let default = section(CONFIG, "default", true).unwrap();
-        assert_eq!(value(&default, "region").as_deref(), Some("us-east-1"));
-        assert_eq!(
-            value(&default, "endpoint_url").as_deref(),
-            Some("https://s3.example.io")
-        );
-        assert_eq!(value(&default, "payload_signing_enabled"), None);
-
-        let trading = section(CONFIG, "trading", true).unwrap();
-        assert_eq!(value(&trading, "region").as_deref(), Some("eu-west-3"));
-        let keys = credentials_of(&trading).unwrap();
-        assert_eq!(keys.access_key_id(), "AKIATRADING");
-        assert!(section(CONFIG, "missing", true).is_none());
+    /// The top-level `key = value` pairs of one section, or `None` when absent.
+    pub fn section(text: &str, name: &str, prefixed: bool) -> Option<Vec<(String, String)>> {
+        super::section(text, name, prefixed)
     }
 
-    #[test]
-    fn the_credentials_file_uses_bare_names_and_carries_session_tokens() {
-        let default = section(CREDENTIALS, "default", false).unwrap();
-        let keys = credentials_of(&default).unwrap();
-        assert_eq!(keys.access_key_id(), "AKIADEFAULT");
-        assert_eq!(keys.session_token(), Some("default-token"));
+    /// One value of a section.
+    pub fn value(section: &[(String, String)], key: &str) -> Option<String> {
+        super::value(section, key)
+    }
 
-        let trading = section(CREDENTIALS, "trading", false).unwrap();
-        assert_eq!(credentials_of(&trading).unwrap().session_token(), None);
-        // The bare spelling never matches a prefixed header, and vice versa.
-        assert!(section(CREDENTIALS, "trading", true).is_some());
-        assert!(section(CONFIG, "trading", false).is_none());
+    /// The key pair a section holds, when it holds one.
+    pub fn credentials_of(section: &[(String, String)]) -> Option<Credentials> {
+        super::credentials_of(section)
     }
 }

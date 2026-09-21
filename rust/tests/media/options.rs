@@ -1,4 +1,9 @@
-//! The row and byte limits, exercised through the one shaping seam.
+//! `rust/src/media/options.rs`: the row and byte limits, and the cadence.
+//!
+//! Everything a caller states and observes reaches the crate through
+//! `yggdryl::`. The slicer a declared commit cadence pulls through is
+//! crate-private, and that it cuts a stream without reading ahead is what
+//! bounds a streamed write, so those three reach `yggdryl::internals`.
 
 use std::sync::Arc;
 
@@ -560,4 +565,50 @@ fn a_reader_without_limits_is_returned_as_it_stands() {
     assert_eq!(options.max_row_size(), None);
     assert_eq!(options.max_byte_size(), None);
     assert_eq!(rows(options.limit_arrow_reader(reader(3, 2)).unwrap()), 6);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn commit_readers_slice_exact_cadences_across_batch_boundaries() {
+    let schema = schema().into_arrow_schema().unwrap();
+    let source =
+        yggdryl::arrow::batch_reader(Arc::clone(&schema), [batch(0..2), batch(2..6), batch(6..7)]);
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(3);
+    let commits = yggdryl::internals::media_options::commit_arrow_readers(&options, source)
+        .unwrap()
+        .map(|commit| rows(commit.unwrap()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(commits, [3, 3, 1]);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_commit_larger_than_the_stream_yields_one_final_remainder() {
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(20);
+    let commits = yggdryl::internals::media_options::commit_arrow_readers(&options, reader(3, 2))
+        .unwrap()
+        .map(|commit| rows(commit.unwrap()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(commits, [6]);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_full_commit_does_not_read_ahead() {
+    let pulls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Box::new(Counting {
+        inner: reader(2, 4),
+        pulls: Arc::clone(&pulls),
+    });
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(2);
+    let mut commits =
+        yggdryl::internals::media_options::commit_arrow_readers(&options, counted).unwrap();
+
+    assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
+    assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // The next cadence is the unconsumed slice of that same input batch.
+    assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
+    assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

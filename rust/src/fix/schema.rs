@@ -2507,37 +2507,53 @@ pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::Dat
     timezone: crate::Timezone::UTC,
 });
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/schema.rs`, `rust/tests/fix/codec.rs`,
+    //! `rust/tests/fix/store.rs` and `rust/tests/fix/mod_.rs` pin and a caller
+    //! cannot reach.
+    //!
+    //! The stable row is public; the clock layout every seeded FIX clock is
+    //! typed by, the member order a group settles on, and the shape digest two
+    //! readings are compared by are all steps inside it.
+    use smol_str::SmolStr;
 
-    fn occurrence(names: &[&str]) -> Vec<(SmolStr, crate::Scalar)> {
-        names
-            .iter()
-            .map(|name| (SmolStr::new(*name), crate::Scalar::Null))
-            .collect()
+    use crate::{DataType, Field, Result, Scalar};
+
+    /// The exact layout shared by the FIX event, creation, grid and previous
+    /// clocks.
+    #[must_use]
+    pub const fn clock_datatype() -> DataType {
+        super::CLOCK_DATATYPE
     }
 
-    #[test]
-    fn group_member_order_respects_every_occurrence() {
-        let union: Vec<Field> = ["a", "c", "b", "d"]
-            .map(|name| DataType::utf8().nullable_field(name))
-            .into();
-        let stated = [
-            occurrence(&["a", "c"]),
-            occurrence(&["b", "d"]),
-            occurrence(&["a", "b", "c"]),
-        ];
-        let ordered = ordered_group_union(union, &stated, "example").expect("consistent order");
-        assert_eq!(
-            ordered.iter().map(Field::name).collect::<Vec<_>>(),
-            ["a", "b", "c", "d"]
-        );
+    /// Settle the one member order every stated occurrence agrees with.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure naming the group where two occurrences state
+    /// contradictory orders.
+    pub fn ordered_group_union(
+        union: Vec<Field>,
+        stated: &[Vec<(String, Scalar)>],
+        group: &str,
+    ) -> Result<Vec<Field>> {
+        let stated: Vec<Vec<(SmolStr, Scalar)>> = stated
+            .iter()
+            .map(|occurrence| {
+                occurrence
+                    .iter()
+                    .map(|(name, value)| (SmolStr::new(name), value.clone()))
+                    .collect()
+            })
+            .collect();
+        super::ordered_group_union(union, &stated, group)
+    }
 
-        let contradictory = [occurrence(&["a", "b"]), occurrence(&["b", "a"])];
-        assert!(matches!(
-            ordered_group_union(ordered, &contradictory, "example"),
-            Err(crate::Error::InvalidRecord { .. })
-        ));
+    /// The digest of a row's shape, with or without the documents it carries.
+    #[must_use]
+    pub fn shape_digest(root: &Field, metadata: bool) -> u64 {
+        super::shape_digest(root, metadata)
     }
 }

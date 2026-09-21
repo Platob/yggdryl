@@ -222,7 +222,7 @@ impl Input {
 /// field changes; every codec and every message reading that registry
 /// evaluates through the same instance, the line door, the batch door and
 /// the row fill alike.
-pub(super) struct Derivations {
+pub struct Derivations {
     /// In tag order, which is the order one sweep evaluates them in.
     list: Vec<Derivation>,
     /// The working schema's columns in first-seen order - every column a
@@ -364,8 +364,8 @@ impl Derivations {
     /// The working schema: the Struct every term is bound against, one
     /// column per field or group any derivation reads or fills, as the
     /// first bound term holds it; `None` where no term bound.
-    #[cfg(test)]
-    pub(super) fn schema(&self) -> Option<&Field> {
+    #[cfg(feature = "internals")]
+    pub fn schema(&self) -> Option<&Field> {
         self.list
             .iter()
             .find_map(|derivation| derivation.bound.as_ref())
@@ -373,8 +373,8 @@ impl Derivations {
     }
 
     /// Each derived tag in sweep order, beside whether its term bound.
-    #[cfg(test)]
-    pub(super) fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
+    #[cfg(feature = "internals")]
+    pub fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
         self.list
             .iter()
             .map(|derivation| (derivation.tag, derivation.bound.is_some()))
@@ -740,3 +740,17 @@ impl Iterator for Walked {
 }
 
 impl FusedIterator for Walked {}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
+    //!
+    //! `fix::enrich` is a private module of a published one, so `Derivations`
+    //! being `pub` reaches nobody: this door is the only path to it, and it
+    //! exists under the `internals` feature alone. A registry's compiled
+    //! derivations are reached through
+    //! [`fix_registry::derivations`](crate::internals::fix_registry::derivations);
+    //! the type is named here so that signature is public.
+    pub use super::Derivations;
+}

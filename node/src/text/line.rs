@@ -18,8 +18,8 @@ use yggdryl::text::{
 };
 use yggdryl::{FieldPath as CoreFieldPath, FieldSegment};
 
-use crate::text::options::JsTextOptions;
 use crate::napi_error;
+use crate::text::options::JsTextOptions;
 
 /// Whatever spelling of a value the caller used, as the bytes the line holds.
 ///

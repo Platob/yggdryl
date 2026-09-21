@@ -101,21 +101,21 @@ use std::sync::Arc;
 use crate::holder::Holder;
 use crate::{Error, Result, Url};
 
-mod answer;
+pub(crate) mod answer;
 pub mod aws;
 pub mod azure;
-mod client;
+pub(crate) mod client;
 mod encryption;
-mod file;
+pub(crate) mod file;
 mod folder;
 pub mod google;
-mod options;
+pub(crate) mod options;
 mod path;
 mod properties;
 mod provider;
 mod request;
-mod sigv4;
-mod xml;
+pub(crate) mod sigv4;
+pub(crate) mod xml;
 
 pub use aws::{AssumedRole, AwsOptions, Checksum, Credentials};
 pub use azure::{AzureOptions, BlobType};
@@ -416,6 +416,3 @@ fn without_credentials(url: Url) -> Url {
     );
     Url::from_str(&rebuilt).unwrap_or(url)
 }
-
-#[cfg(test)]
-mod tests;
