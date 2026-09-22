@@ -66,9 +66,11 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     });
     let projected = value
         .into_uuid(7, 0)
-        .expect("the instant fits milliseconds");
-    // `into_uuid` projects a TxHash as a UUIDv7: milliseconds in front, then
-    // the sequence coupled with the digest, and the RFC variant.
+        .expect("the instant fits microseconds");
+    // `into_uuid` projects a TxHash as a UUIDv7: the microsecond instant in
+    // front - the millisecond, the version, then the microsecond within it -
+    // the RFC variant next, and under it the low sequence window over a
+    // fingerprint of the sequence and the digest.
     assert_eq!(projected.into_bytes()[6] >> 4, 7);
     assert_eq!(projected.into_bytes()[8] >> 6, 2);
     group.bench_function("into_uuid", |bencher| {

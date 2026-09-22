@@ -18,16 +18,17 @@ mod coupled {
             .map(|algorithm| (algorithm, digest(b"AAPL", INSTANT, algorithm)))
     }
 
-    fn expected_uuid(millis: i64, seqnum: u64, digest: u64, seed: u64) -> yggdryl::Uuid {
+    fn expected_uuid(micros: i64, seqnum: u64, digest: u64, seed: u64) -> yggdryl::Uuid {
         let mut identity = [0_u8; 16];
         identity[..8].copy_from_slice(&seqnum.to_be_bytes());
         identity[8..].copy_from_slice(&digest.to_be_bytes());
-        let fingerprint = u128::from(xxhash::xxh3_with_seed(&identity, seed) & ((1_u64 << 62) - 1));
+        let fingerprint = u128::from(xxhash::xxh3_with_seed(&identity, seed) & ((1_u64 << 50) - 1));
         yggdryl::Uuid::new(
-            (u128::from(millis.unsigned_abs()) << 80)
+            (u128::from((micros / 1_000).unsigned_abs()) << 80)
                 | (7_u128 << 76)
-                | (u128::from(seqnum & 0x0fff) << 64)
+                | (u128::from((micros % 1_000).unsigned_abs()) << 64)
                 | (2_u128 << 62)
+                | (u128::from(seqnum & 0x0fff) << 50)
                 | fingerprint,
         )
     }
@@ -61,7 +62,7 @@ mod coupled {
     }
 
     #[test]
-    fn uuid_projection_packs_milliseconds_sequence_and_content_as_uuidv7() {
+    fn uuid_projection_packs_microseconds_sequence_and_content_as_uuidv7() {
         let digest = Digest::new(DigestAlgorithm::Xxh64, 0x0123_4567_89ab_cdef);
         let content = 0x0123_4567_89ab_cdef_u64;
         for nanoseconds in [0, 999, 1_000, 999_999, 1_000_000, 1_000_000_000, i64::MAX] {
@@ -70,7 +71,7 @@ mod coupled {
             let projected = value.into_uuid(0, 0).unwrap();
             assert_eq!(
                 projected,
-                expected_uuid(nanoseconds.div_euclid(1_000_000), 0, content, 0),
+                expected_uuid(nanoseconds.div_euclid(1_000), 0, content, 0),
                 "{nanoseconds}"
             );
             let bytes = projected.into_bytes();
@@ -111,7 +112,7 @@ mod coupled {
         for seed in [0, 1, 0xfeed_face_cafe_beef, u64::MAX] {
             assert_eq!(
                 value.into_uuid(29, seed).unwrap(),
-                expected_uuid(1_645_557_742_000, 29, code, seed),
+                expected_uuid(1_645_557_742_000_000, 29, code, seed),
                 "seed {seed}"
             );
         }
@@ -122,7 +123,7 @@ mod coupled {
     }
 
     #[test]
-    fn uuid_projection_orders_milliseconds_before_sequence_and_digest() {
+    fn uuid_projection_orders_microseconds_before_sequence_and_digest() {
         let instants = [
             0,
             1_000_000,
@@ -155,8 +156,9 @@ mod coupled {
                 "{pair:?}"
             );
         }
-        // Within one millisecond the sequence orders before the digest while its
-        // low twelve bits do not wrap.
+        // Within one microsecond the sequence orders before the digest while its
+        // low twelve bits do not wrap: both nanosecond counts floor to the same
+        // microsecond, so only the sequence separates them.
         let low = TxHash::new_in(
             1_000,
             TimeUnit::Nanosecond,
@@ -171,6 +173,16 @@ mod coupled {
         .unwrap();
         assert!(high.into_uuid(0, 0).unwrap() < low.into_uuid(1, 0).unwrap());
         assert_ne!(low.into_uuid(7, 0).unwrap(), high.into_uuid(7, 0).unwrap());
+        // One microsecond later is a strictly greater identifier, whatever the
+        // sequence: these two instants shared one millisecond before the
+        // microsecond remainder moved into `rand_a`.
+        let next = TxHash::new_in(
+            2_000,
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh64, 0),
+        )
+        .unwrap();
+        assert!(low.into_uuid(u64::MAX, 0).unwrap() < next.into_uuid(0, 0).unwrap());
         // Before the epoch there is no UUIDv7: the projection is refused at `$`,
         // while the raw bytes still hold the two's-complement count.
         let before = TxHash::new_in(
@@ -208,25 +220,25 @@ mod coupled {
                 assert_eq!(value.into_uuid(0, 0).unwrap(), expected, "{unit}");
             }
         }
-        let largest = 281_474_976_710_655_i64;
+        let largest = 281_474_976_710_655_999_i64;
         assert!(
-            TxHash::new_in(largest, TimeUnit::Millisecond, digest)
+            TxHash::new_in(largest, TimeUnit::Microsecond, digest)
                 .unwrap()
                 .into_uuid(0, 0)
                 .is_ok()
         );
         for count in [-1, largest + 1] {
             assert!(matches!(
-                TxHash::new_in(count, TimeUnit::Millisecond, digest)
+                TxHash::new_in(count, TimeUnit::Microsecond, digest)
                     .unwrap()
                     .into_uuid(0, 0)
                     .unwrap_err(),
                 Error::InvalidRecord { ref path, .. } if path == "$"
             ));
         }
-        for count in [i64::MIN / 1_000 - 1, i64::MAX / 1_000 + 1] {
+        for count in [i64::MIN / 1_000_000 - 1, i64::MAX / 1_000_000 + 1] {
             let expected =
-                restate_unix(count, TimeUnit::Second, TimeUnit::Millisecond).unwrap_err();
+                restate_unix(count, TimeUnit::Second, TimeUnit::Microsecond).unwrap_err();
             let error = TxHash::new_in(count, TimeUnit::Second, digest)
                 .unwrap()
                 .into_uuid(0, 0)
@@ -503,32 +515,34 @@ mod coupled {
     /// two's-complement bytes of [`TxHash::into_bytes`] sort the other way.
     ///
     /// This is what a FIX identity column holds, so the ordering is
-    /// the column's ordering and the digest is not the lossy 58 bits
-    /// [`TxHash::into_uuid`] keeps.
+    /// the column's ordering and the digest is the whole 64 bits rather than
+    /// the 50 fingerprint bits [`TxHash::into_uuid`] keeps.
     #[test]
     fn ordered_bytes_lead_with_the_instant_and_keep_every_digest_bit() {
         let value = TxHash::new_in(
             1,
-            TimeUnit::Nanosecond,
+            TimeUnit::Microsecond,
             Digest::new(DigestAlgorithm::Xxh64, u64::MAX.into()),
         )
         .unwrap();
         let held = value.into_ordered_bytes().unwrap();
         // The instant leads, its sign bit flipped so that negatives sort first.
         assert_eq!(&held[..8], &[0x80, 0, 0, 0, 0, 0, 0, 1]);
-        // Every one of the digest's 64 bits survives, where a UUID keeps 58.
+        // Every one of the digest's 64 bits survives, where a UUID keeps 50
+        // fingerprint bits under the instant, the version, the variant and the
+        // twelve sequence bits above them.
         assert_eq!(&held[8..], &[0xff; 8]);
         assert_ne!(
             held,
             value.into_uuid(0, 0).unwrap().into_bytes(),
-            "the uuid spends six of those bits on its version and variant"
+            "the uuid holds a fingerprint under its version and variant"
         );
 
         // The bytes order as the instants do, across the epoch.
         let mut sorted: Vec<[u8; 16]> = [1_i64, -1, 0, i64::MIN, i64::MAX]
             .into_iter()
             .map(|unix| {
-                TxHash::new_in(unix, TimeUnit::Nanosecond, value.digest())
+                TxHash::new_in(unix, TimeUnit::Microsecond, value.digest())
                     .unwrap()
                     .into_ordered_bytes()
                     .unwrap()
@@ -559,7 +573,7 @@ mod coupled {
             "{refused}"
         );
 
-        // An instant no signed nanosecond count can hold refuses the same way
+        // An instant no signed microsecond count can hold refuses the same way
         // `into_uuid` refuses it.
         let far = TxHash::new_in(i64::MAX, TimeUnit::Second, value.digest()).unwrap();
         assert!(far.into_ordered_bytes().is_err());

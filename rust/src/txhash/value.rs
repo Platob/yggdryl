@@ -217,10 +217,11 @@ impl TxHash {
 
     /// Project this value to sixteen bytes that order as the instants do.
     ///
-    /// The instant is converted exactly to signed 64-bit nanoseconds; its
-    /// sign bit is flipped and the eight big-endian bytes take slots 0..8,
-    /// so a lexicographic comparison of the sixteen bytes is a chronological
-    /// one across the epoch. The digest's full 64 bits take slots 8..16.
+    /// The instant is restated to signed 64-bit microseconds - the unit a
+    /// coupled value counts in when none is named - and its sign bit is
+    /// flipped, so the eight big-endian bytes in slots 0..8 make a
+    /// lexicographic comparison of the sixteen a chronological one across the
+    /// epoch. The digest's full 64 bits take slots 8..16.
     /// There is no version or variant bit anywhere: these are plain bytes a
     /// lake engine reads as `fixed[16]`, not an RFC 9562 identifier. Neither
     /// the original unit nor the algorithm is encoded, so this is a
@@ -231,14 +232,14 @@ impl TxHash {
     /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, txhash::TxHash};
     /// # fn main() -> yggdryl::Result<()> {
     /// let epoch = TxHash::new_in(
-    ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
+    ///     0, TimeUnit::Microsecond, Digest::new(DigestAlgorithm::Xxh64, 1),
     /// )?;
     /// assert_eq!(
     ///     epoch.into_ordered_bytes()?,
     ///     [0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     /// );
-    /// let before = TxHash::new_in(-1, TimeUnit::Nanosecond, epoch.digest())?;
-    /// let after = TxHash::new_in(1, TimeUnit::Nanosecond, epoch.digest())?;
+    /// let before = TxHash::new_in(-1, TimeUnit::Microsecond, epoch.digest())?;
+    /// let after = TxHash::new_in(1, TimeUnit::Microsecond, epoch.digest())?;
     /// assert!(before.into_ordered_bytes()? < epoch.into_ordered_bytes()?);
     /// assert!(epoch.into_ordered_bytes()? < after.into_ordered_bytes()?);
     /// // The two's-complement bytes of `into_bytes` order the other way.
@@ -252,7 +253,7 @@ impl TxHash {
     /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
     /// 64 bits wide, and the existing [`Error::ArithmeticOverflow`] from
     /// [`restate_unix`] when the instant does not fit signed 64-bit
-    /// nanoseconds.
+    /// microseconds.
     pub fn into_ordered_bytes(self) -> Result<[u8; 16]> {
         let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
             path: "$.digest".into(),
@@ -265,8 +266,8 @@ impl TxHash {
                 ),
             ),
         })?;
-        let nanoseconds = restate_unix(self.unix, self.unit, TimeUnit::Nanosecond)?;
-        let ordered = u64::from_be_bytes(nanoseconds.to_be_bytes()) ^ (1 << 63);
+        let microseconds = restate_unix(self.unix, self.unit, TimeUnit::Microsecond)?;
+        let ordered = u64::from_be_bytes(microseconds.to_be_bytes()) ^ (1 << 63);
         let mut bytes = [0_u8; 16];
         bytes[..8].copy_from_slice(&ordered.to_be_bytes());
         bytes[8..].copy_from_slice(&digest.to_be_bytes());
@@ -276,30 +277,37 @@ impl TxHash {
     /// Project this value, `seqnum` and `seed` to RFC 9562 UUIDv7 without
     /// allocating.
     ///
-    /// The instant is restated and floored directly to Unix milliseconds.
+    /// The instant is restated and floored to Unix microseconds - the unit a
+    /// coupled value counts in when none is named - and the identifier spends
+    /// its fields on the instant, the sequence and the content in that order.
     /// The complete big-endian `(seqnum, digest)` pair is hashed once with
     /// XXH3-64 under `seed`; an event supplies its cross hash code, so sequence,
     /// content and cross chain all contribute to the fingerprint. The
-    /// millisecond count is packed first, the low 12 sequence bits occupy
-    /// UUIDv7's `rand_a`, and the fingerprint's low 62 bits occupy `rand_b`.
-    /// Neither the original unit nor algorithm is encoded; sub-millisecond
-    /// time and two fingerprint bits cannot be recovered. This is a lossy,
-    /// non-cryptographic 74-bit identity fingerprint, not an inverse of
-    /// [`Self::into_bytes`]. The raw bytes and ordering of `TxHash` itself are
-    /// unchanged.
+    /// millisecond the instant falls in is packed first, the microsecond
+    /// within it - `0..=999` - occupies UUIDv7's `rand_a`, and `rand_b` takes
+    /// the low 12 sequence bits and then the fingerprint's low 50. Neither
+    /// the original unit nor algorithm is encoded; sub-microsecond time, the
+    /// sequence above its low twelve bits and fourteen fingerprint bits
+    /// cannot be recovered. This is a lossy, non-cryptographic identity - a
+    /// twelve-bit sequence window over a fifty-bit content fingerprint - under
+    /// a whole microsecond instant, not an inverse of [`Self::into_bytes`]. The
+    /// raw bytes and ordering of `TxHash` itself are unchanged.
     ///
     /// ```
     /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, txhash::TxHash};
     /// # fn main() -> yggdryl::Result<()> {
     /// let value = TxHash::new_in(
-    ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
+    ///     0, TimeUnit::Microsecond, Digest::new(DigestAlgorithm::Xxh64, 1),
     /// )?;
     /// assert_ne!(value.into_uuid(0, 0)?, value.into_uuid(1, 0)?);
     /// assert_ne!(value.into_uuid(0, 0)?, value.into_uuid(0, 7)?);
+    /// // One microsecond apart is one identifier apart, inside one millisecond.
+    /// let micro = TxHash::new_in(1, TimeUnit::Microsecond, value.digest())?;
+    /// assert!(value.into_uuid(u64::MAX, 0)? < micro.into_uuid(0, 0)?);
     /// let later = TxHash::new_in(1, TimeUnit::Millisecond, value.digest())?;
-    /// assert!(value.into_uuid(u64::MAX, 0)? < later.into_uuid(0, 0)?);
+    /// assert!(micro.into_uuid(u64::MAX, 0)? < later.into_uuid(0, 0)?);
     /// // Before the epoch there is no UUIDv7, so the projection is refused.
-    /// let earlier = TxHash::new_in(-1, TimeUnit::Nanosecond, value.digest())?;
+    /// let earlier = TxHash::new_in(-1, TimeUnit::Microsecond, value.digest())?;
     /// assert!(earlier.into_uuid(0, 0).is_err());
     /// assert!(earlier.into_bytes() > value.into_bytes());
     /// # Ok(())
@@ -311,8 +319,9 @@ impl TxHash {
     /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
     /// 64 bits wide, the existing [`Error::ArithmeticOverflow`] from
     /// [`restate_unix`] when a coarser instant does not fit signed 64-bit
-    /// milliseconds, and [`Uuid::from_v7`]'s refusal at `$` for an instant
-    /// before the epoch or past the 48-bit timestamp count.
+    /// microseconds, and [`Uuid::from_v7`]'s refusal at `$` for an instant
+    /// before the epoch or past the microsecond count its 48-bit millisecond
+    /// timestamp reaches.
     pub fn into_uuid(self, seqnum: u64, seed: u64) -> Result<Uuid> {
         let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
             path: "$.digest".into(),
@@ -325,12 +334,12 @@ impl TxHash {
                 ),
             ),
         })?;
-        let milliseconds = restate_unix(self.unix, self.unit, TimeUnit::Millisecond)?;
+        let microseconds = restate_unix(self.unix, self.unit, TimeUnit::Microsecond)?;
         let mut identity = [0_u8; 16];
         identity[..8].copy_from_slice(&seqnum.to_be_bytes());
         identity[8..].copy_from_slice(&digest.to_be_bytes());
         let fingerprint = crate::xxhash::xxh3_with_seed(&identity, seed);
-        Uuid::from_v7_fingerprint(milliseconds, seqnum, fingerprint)
+        Uuid::from_v7_fingerprint(microseconds, seqnum, fingerprint)
     }
 
     /// Rebuild a value from its canonical bytes.

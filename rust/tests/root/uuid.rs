@@ -22,64 +22,89 @@ fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     );
 }
 
+/// What each version-7 field holds, pinned to the text it renders as.
+///
+/// The instant is a microsecond count: the leading 48 bits are the
+/// millisecond it falls in and `rand_a` is the microsecond within that
+/// millisecond, `0..=999`, so the version group moves with the remainder and
+/// no longer with the sequence. `rand_b` is the low twelve sequence bits over
+/// the low 50 bits of the fingerprint, which leaves its top two bits in the
+/// variant group and its low 48 in the last one.
 #[test]
-fn version_7_packs_milliseconds_sequence_and_payload_bits() {
+fn version_7_packs_microseconds_sequence_and_payload_bits() {
     let cases: &[(i64, u64, u64, &str)] = &[
-        (0, 0, 0, "00000000-0000-7000-90a6-6a65c7528968"),
-        (0, 1, 0, "00000000-0000-7001-afdb-403fc99f10cb"),
-        (0, 4_095, 0, "00000000-0000-7fff-9f70-2636269c2ced"),
-        (0, 4_096, 0, "00000000-0000-7000-b91e-9e78b12412a6"),
+        (0, 0, 0, "00000000-0000-7000-8002-6a65c7528968"),
+        // One microsecond is a different identifier, written in `rand_a`.
+        (1, 0, 0, "00000000-0000-7001-8002-6a65c7528968"),
+        (0, 1, 0, "00000000-0000-7000-8007-403fc99f10cb"),
+        (0, 4_095, 0, "00000000-0000-7000-bffc-2636269c2ced"),
+        // The sequence wraps at 4,096 and the fingerprint does not.
+        (0, 4_096, 0, "00000000-0000-7000-8002-9e78b12412a6"),
         (
-            1_645_557_742_000,
+            1_645_557_742_000_123,
             0x74b,
             0xfedc_ba98_7654_3210,
-            "017f22e2-79b0-774b-baaf-e6545098617d",
+            "017f22e2-79b0-707b-9d2f-e6545098617d",
         ),
         (
-            281_474_976_710_655,
+            281_474_976_710_655_999,
             4_095,
             0,
-            "ffffffff-ffff-7fff-9f70-2636269c2ced",
+            "ffffffff-ffff-73e7-bffc-2636269c2ced",
         ),
         (
-            281_474_976_710_655,
+            281_474_976_710_655_999,
             u64::MAX,
             u64::MAX,
-            "ffffffff-ffff-7fff-b22a-202f07a4b313",
+            "ffffffff-ffff-73e7-bffe-202f07a4b313",
         ),
     ];
-    for &(millis, seqnum, payload, text) in cases {
-        assert_round_trips(Uuid::from_v7(millis, seqnum, payload).unwrap(), 7, text);
+    for &(micros, seqnum, payload, text) in cases {
+        assert_round_trips(Uuid::from_v7(micros, seqnum, payload).unwrap(), 7, text);
     }
 }
 
 #[test]
-fn version_7_orders_milliseconds_then_the_low_twelve_sequence_bits() {
-    for millis in [0, 1_645_557_742_000, 281_474_976_710_654] {
-        let earlier = Uuid::from_v7(millis, u64::MAX, u64::MAX).unwrap();
-        let later = Uuid::from_v7(millis + 1, 0, 0).unwrap();
-        assert!(earlier < later, "{millis}: UUID value order");
+fn version_7_orders_microseconds_then_the_low_twelve_sequence_bits() {
+    for micros in [0, 1_645_557_742_000_123, 281_474_976_710_655_998] {
+        let earlier = Uuid::from_v7(micros, u64::MAX, u64::MAX).unwrap();
+        let later = Uuid::from_v7(micros + 1, 0, 0).unwrap();
+        assert!(earlier < later, "{micros}: UUID value order");
         assert!(
             earlier.into_bytes() < later.into_bytes(),
-            "{millis}: storage order"
+            "{micros}: storage order"
         );
         for seqnum in 0..4_095 {
             assert!(
-                Uuid::from_v7(millis, seqnum, u64::MAX).unwrap()
-                    < Uuid::from_v7(millis, seqnum + 1, 0).unwrap(),
-                "{millis}:{seqnum}"
+                Uuid::from_v7(micros, seqnum, u64::MAX).unwrap()
+                    < Uuid::from_v7(micros, seqnum + 1, 0).unwrap(),
+                "{micros}:{seqnum}"
             );
         }
         assert!(
-            Uuid::from_v7(millis, 4_096, 0).unwrap() < Uuid::from_v7(millis, 4_095, 0).unwrap(),
+            Uuid::from_v7(micros, 4_096, 0).unwrap() < Uuid::from_v7(micros, 4_095, 0).unwrap(),
             "the low-twelve sequence ordering wraps"
+        );
+    }
+    // The instant orders whole, so a microsecond later is a strictly greater
+    // identifier rather than a tie inside one millisecond that the sequence
+    // has to break. The last step of the walk crosses into the next
+    // millisecond, which is the same one-microsecond step and no new rule.
+    let base = 1_645_557_742_000_000;
+    for offset in 0..1_000 {
+        let earlier = Uuid::from_v7(base + offset, u64::MAX, u64::MAX).unwrap();
+        let later = Uuid::from_v7(base + offset + 1, 0, 0).unwrap();
+        assert!(earlier < later, "{offset}: one microsecond later");
+        assert!(
+            earlier.into_bytes() < later.into_bytes(),
+            "{offset}: storage order"
         );
     }
 }
 
 #[test]
 fn version_7_fingerprints_every_sequence_and_payload_bit() {
-    let instant = 1_645_557_742_000;
+    let instant = 1_645_557_742_000_123;
     let baseline = Uuid::from_v7(instant, 0, 0).unwrap();
     for bit in 0..64 {
         let value = Uuid::from_v7(instant, 1_u64 << bit, 0).unwrap();
@@ -98,8 +123,8 @@ fn version_7_fingerprints_every_sequence_and_payload_bit() {
 
 #[test]
 fn version_7_refuses_negative_and_overflow_instants_at_the_value_root() {
-    for millis in [i64::MIN, -1, 281_474_976_710_656, i64::MAX] {
-        let error = Uuid::from_v7(millis, 0, 0).unwrap_err();
+    for micros in [i64::MIN, -1, 281_474_976_710_656_000, i64::MAX] {
+        let error = Uuid::from_v7(micros, 0, 0).unwrap_err();
         let Error::InvalidRecord { path, reason } = error else {
             panic!("expected a located UUID value refusal, got {error}");
         };
@@ -107,7 +132,7 @@ fn version_7_refuses_negative_and_overflow_instants_at_the_value_root() {
         assert_eq!(
             reason.as_str(),
             format!(
-                "expected a UUIDv7 Unix millisecond instant in 0..=281474976710655, got {millis}"
+                "expected a UUIDv7 Unix microsecond instant in 0..=281474976710655999, got {micros}"
             )
         );
     }
@@ -418,7 +443,7 @@ mod parameters {
     #[test]
     fn every_version_stands_in_the_one_column_and_the_value_answers_which() {
         let v4 = Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8);
-        let v7 = Uuid::from_v7(1_645_557_742_000, 0x74b, 0xfedc_ba98_7654_3210).unwrap();
+        let v7 = Uuid::from_v7(1_645_557_742_000_123, 0x74b, 0xfedc_ba98_7654_3210).unwrap();
         let v8 = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
         for (value, version) in [(v4, 4), (v7, 7), (v8, 8)] {
             assert_eq!(value.version(), version);

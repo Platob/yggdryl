@@ -2990,10 +2990,14 @@ mod committed {
     /// and displays, while the other 103 retained an explicit `Grp` suffix.
     /// It moved when the crate identifier document replaced its partial two-part
     /// capture key with the complete length-prefixed `msgsesseventid` key.
+    /// It last moved when `curruuid` said its instant is a microsecond one: the
+    /// UUIDv7 a message derives now carries the microsecond within the
+    /// millisecond in `rand_a`, so that one definition's description hashes
+    /// differently and no other document in the store does.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 3_303_944_819_954_890_747);
+        assert_eq!(registry.stable_hash(), 9_480_616_605_027_786_429);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

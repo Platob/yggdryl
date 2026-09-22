@@ -866,9 +866,9 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// with the code the element's content digests to,
 /// [`Element::get_currhashcode`], it is the event's identity: [`Self::txhash`]
 /// is the crate's own [`TxHash`] of the two, and [`Self::time_uuid`] the
-/// UUID it answers - RFC 9562 UUIDv7 with the millisecond instant in front
-/// and the full sequence coupled with a 62-bit content fingerprint rehashed
-/// under the cross hash code as seed behind -
+/// UUID it answers - RFC 9562 UUIDv7 with the microsecond instant in front
+/// and the low twelve sequence bits over a 50-bit content fingerprint
+/// rehashed under the cross hash code as seed behind -
 /// which is what an implementor's [`Element::get_curruuid`]
 /// answers where the event's identity is when it happened and what it says.
 ///
@@ -1125,7 +1125,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// assert_eq!(held.get_currunix(), 20_000);
 /// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
-/// // The identity its millisecond instant, sequence and cross-seeded code derive.
+/// // The identity its microsecond instant, sequence and cross-seeded code derive.
 /// let earlier = first.time_uuid().expect("an instant a TxHash holds");
 /// let later = second.time_uuid().expect("an instant a TxHash holds");
 /// assert!(earlier < later);
@@ -1421,11 +1421,13 @@ pub trait Event: Element {
 
     /// The identity the instant, sequence, cross hash and code derive: the UUID
     /// [`TxHash::into_uuid`] answers for [`Self::txhash`], RFC 9562 UUIDv7
-    /// with the instant floored to milliseconds in front and the complete
-    /// big-endian sequence/content pair rehashed under
-    /// [`Element::get_crosshashcode`] as seed. Its low twelve sequence bits
-    /// lead the joint fingerprint, so identities sort by millisecond first
-    /// and by that low sequence window within each 4,096 values.
+    /// with the instant floored to microseconds in front - the millisecond it
+    /// falls in leads, and `rand_a` carries the microsecond within that
+    /// millisecond - and the complete big-endian sequence/content pair
+    /// rehashed under [`Element::get_crosshashcode`] as seed. Its low twelve
+    /// sequence bits lead the joint fingerprint, so identities sort by
+    /// microsecond first and, within one microsecond, by that low sequence
+    /// window, which wraps every 4,096 values.
     ///
     /// Provided: an implementor whose identity is when it happened and what
     /// it says answers this from [`Element::get_curruuid`], and one whose

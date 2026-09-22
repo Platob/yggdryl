@@ -1098,8 +1098,9 @@ impl Element for TextLine {
             return stated;
         }
         // The UUIDv7 the instant, row number and cross-seeded code derive; an instant a UUIDv7
-        // cannot hold - before the epoch, past its 48-bit millisecond count -
-        // is the nil identity, never a truncated one.
+        // cannot hold - before the epoch, past the microsecond count its
+        // 48-bit millisecond timestamp reaches - is the nil identity, never a
+        // truncated one.
         *self
             .resolved
             .curruuid

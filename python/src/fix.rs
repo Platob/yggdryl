@@ -1887,7 +1887,7 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The message's `UUIDv7` identity: its millisecond instant and full
+    /// The message's `UUIDv7` identity: its microsecond instant and full
     /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {
@@ -3229,7 +3229,7 @@ pub(crate) struct PyMarketEventData {
 
 #[pymethods]
 impl PyMarketEventData {
-    /// The event's `UUIDv7` identity: its millisecond instant and full
+    /// The event's `UUIDv7` identity: its microsecond instant and full
     /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
     #[getter]
     fn curruuid(&self) -> PyScalar {

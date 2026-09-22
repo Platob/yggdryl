@@ -9,7 +9,7 @@ const { DataType, Digest, Field, Scalar, TxHash, TxHasher, txhash, xxhash } = re
 
 const INSTANT = 1_700_000_000_000_000n
 const PAYLOAD = Buffer.from('{"symbol": "AAPL", "price": 187.23}\n'.repeat(64))
-const V7_PAYLOAD_MASK = (1n << 62n) - 1n
+const V7_FINGERPRINT_MASK = (1n << 50n) - 1n
 
 const uuidText = (packed) => {
   const hex = packed.toString(16).padStart(32, '0')
@@ -20,15 +20,16 @@ const projectedFingerprint = (digest, seqnum, seed) => {
   const content = Buffer.allocUnsafe(16)
   content.writeBigUInt64BE(seqnum, 0)
   Buffer.from(digest.bytes()).copy(content, 8)
-  return xxhash.xxh3(content, { seed }) & V7_PAYLOAD_MASK
+  return xxhash.xxh3(content, { seed }) & V7_FINGERPRINT_MASK
 }
 
-const projectedUuid = (unixMillis, digest, seqnum, seed) => {
+const projectedUuid = (unixMicros, digest, seqnum, seed) => {
   const packed =
-    (unixMillis << 80n) |
+    ((unixMicros / 1_000n) << 80n) |
     (7n << 76n) |
-    ((seqnum & 0xfffn) << 64n) |
+    ((unixMicros % 1_000n) << 64n) |
     (0b10n << 62n) |
+    ((seqnum & 0xfffn) << 50n) |
     projectedFingerprint(digest, seqnum, seed)
   return uuidText(packed)
 }
@@ -96,24 +97,24 @@ const I64_MIN = -(2n ** 63n)
 const I64_MAX = 2n ** 63n - 1n
 const hex = (payload, digits) => payload.toString(16).padStart(digits, '0')
 
-test('intoUuid packs milliseconds, sequence, and content as a UUIDv7', () => {
+test('intoUuid packs microseconds, sequence, and content as a UUIDv7', () => {
   const digest = Digest.from('xxh64:0123456789abcdef')
-  for (const [nanoseconds, unixMillis] of [
+  for (const [nanoseconds, unixMicros] of [
     [0n, 0n],
-    // Every sub-millisecond instant is floored away.
+    // Every sub-microsecond instant is floored away.
     [999n, 0n],
-    [1_000n, 0n],
-    [999_999n, 0n],
-    [1_000_000n, 1n],
-    [1_000_000_000n, 1_000n],
-    [I64_MAX, I64_MAX / 1_000_000n],
+    [1_000n, 1n],
+    [999_999n, 999n],
+    [1_000_000n, 1_000n],
+    [1_000_000_000n, 1_000_000n],
+    [I64_MAX, I64_MAX / 1_000n],
   ]) {
     const value = TxHash.fromParts(nanoseconds, digest, 'ns')
     const raw = Buffer.from(value.bytes())
     const projected = value.intoUuid(0n, 0n)
     assert.ok(projected instanceof Scalar, String(nanoseconds))
     assert.equal(projected.dtype.id, 'uuid', String(nanoseconds))
-    assert.equal(projected.asJs(), projectedUuid(unixMillis, digest, 0n, 0n), String(nanoseconds))
+    assert.equal(projected.asJs(), projectedUuid(unixMicros, digest, 0n, 0n), String(nanoseconds))
     assert.deepEqual(Buffer.from(value.bytes()), raw, 'projection does not mutate the value')
     assert.equal(raw.readBigInt64BE(0), nanoseconds)
   }
@@ -126,20 +127,25 @@ test('intoUuid packs milliseconds, sequence, and content as a UUIDv7', () => {
   }
   assert.ok(!value.intoUuid(29n, 0n).equals(value.intoUuid(29n, 1n)))
 
-  // The doc example: a UUIDv7 ordered first by Unix millisecond, and
+  // The doc example: a UUIDv7 ordered first by Unix microsecond, and
   // none to project before the epoch, where the raw bytes still hold the
   // two's-complement count.
   const one = Digest.from('xxh64:0000000000000001')
-  const epoch = TxHash.fromParts(0n, one, 'ns')
+  const epoch = TxHash.fromParts(0n, one, 'us')
+  const microsecond = TxHash.fromParts(1n, one, 'us')
   const millisecond = TxHash.fromParts(1n, one, 'ms')
-  const before = TxHash.fromParts(-1n, one, 'ns')
+  const before = TxHash.fromParts(-1n, one, 'us')
   assert.equal(epoch.intoUuid(0n, 0n).asJs(), projectedUuid(0n, one, 0n, 0n))
-  assert.ok(epoch.intoUuid(2n ** 64n - 1n, 0n).asJs() < millisecond.intoUuid(0n, 0n).asJs())
+  assert.ok(!epoch.intoUuid(0n, 0n).equals(epoch.intoUuid(1n, 0n)))
+  assert.ok(!epoch.intoUuid(0n, 0n).equals(epoch.intoUuid(0n, 7n)))
+  // One microsecond apart is one identifier apart, inside one millisecond.
+  assert.ok(epoch.intoUuid(2n ** 64n - 1n, 0n).asJs() < microsecond.intoUuid(0n, 0n).asJs())
+  assert.ok(microsecond.intoUuid(2n ** 64n - 1n, 0n).asJs() < millisecond.intoUuid(0n, 0n).asJs())
   assert.throws(() => before.intoUuid(0n, 0n), /UUIDv7/)
   assert.ok(Buffer.compare(Buffer.from(before.bytes()), Buffer.from(epoch.bytes())) > 0)
 })
 
-test('intoUuid orders milliseconds before sequence and digest', () => {
+test('intoUuid orders microseconds before sequence and digest', () => {
   const instants = [0n, 1_000_000n, 15_000_000n, 16_000_000n, 65_535_000_000n, 65_536_000_000n, 1_000_000_000_000n, I64_MAX]
   const highest = Digest.from('xxh64:ffffffffffffffff')
   const lowest = Digest.from('xxh64:0000000000000000')
@@ -149,15 +155,21 @@ test('intoUuid orders milliseconds before sequence and digest', () => {
     assert.equal(earlier.compare(later), -1, 'native ordering still compares the signed count')
     assert.ok(earlier.intoUuid(0n, 0n).asJs() < later.intoUuid(0n, 0n).asJs(), `${instants[index - 1]} < ${instants[index]}`)
   }
-  // Within one millisecond the sequence orders before the digest while its
-  // low twelve bits do not wrap.
+  // Within one microsecond the sequence orders before the digest while its
+  // low twelve bits do not wrap: both nanosecond counts floor to the same
+  // microsecond, so only the sequence separates them.
   const low = TxHash.fromParts(1_000n, Digest.from('xxh64:0000000000000001'), 'ns')
   const high = TxHash.fromParts(1_999n, Digest.from('xxh64:0000000000000002'), 'ns')
   assert.ok(high.intoUuid(0n, 0n).asJs() < low.intoUuid(1n, 0n).asJs())
   const lowFingerprint = projectedFingerprint(low.digest, 7n, 0n)
   const highFingerprint = projectedFingerprint(high.digest, 7n, 0n)
   assert.equal(low.intoUuid(7n, 0n).asJs() < high.intoUuid(7n, 0n).asJs(), lowFingerprint < highFingerprint)
-  // The UUID is not a full-sequence sort key: rand_a wraps every 4,096.
+  // One microsecond later is a strictly greater identifier, whatever the
+  // sequence: these two instants shared one millisecond before the
+  // microsecond remainder moved into `rand_a`.
+  const next = TxHash.fromParts(2_000n, Digest.from('xxh64:0000000000000000'), 'ns')
+  assert.ok(low.intoUuid(2n ** 64n - 1n, 0n).asJs() < next.intoUuid(0n, 0n).asJs())
+  // The UUID is not a full-sequence sort key: the sequence wraps every 4,096.
   assert.ok(low.intoUuid(4_096n, 0n).asJs() < low.intoUuid(4_095n, 0n).asJs())
 })
 
@@ -170,14 +182,14 @@ test('intoUuid normalizes units and keeps the restatement overflow', () => {
       assert.ok(projected.equals(expected), unit)
     }
   }
-  const largest = 281_474_976_710_655n
-  assert.equal(TxHash.fromParts(largest, digest, 'ms').intoUuid(0n, 0n).dtype.id, 'uuid')
+  const largest = 281_474_976_710_655_999n
+  assert.equal(TxHash.fromParts(largest, digest, 'us').intoUuid(0n, 0n).dtype.id, 'uuid')
   for (const count of [-1n, largest + 1n]) {
-    assert.throws(() => TxHash.fromParts(count, digest, 'ms').intoUuid(0n, 0n), /UUIDv7/)
+    assert.throws(() => TxHash.fromParts(count, digest, 'us').intoUuid(0n, 0n), /UUIDv7/)
   }
-  for (const count of [I64_MIN / 1_000n - 1n, I64_MAX / 1_000n + 1n]) {
+  for (const count of [I64_MIN / 1_000_000n - 1n, I64_MAX / 1_000_000n + 1n]) {
     let expected
-    assert.throws(() => txhash.restateUnix(count, 's', 'ms'), (error) => {
+    assert.throws(() => txhash.restateUnix(count, 's', 'us'), (error) => {
       expected = error.message
       return true
     })
@@ -190,7 +202,7 @@ test('intoUuid fingerprints the full sequence and digest and discards the algori
   const project = (algorithm, payload, seqnum = 0n, seed = 0n) => {
     const digest = Digest.from(`${algorithm}:${hex(payload, 16)}`)
     const projected = TxHash.fromParts(1n, digest, 'ms').intoUuid(seqnum, seed)
-    assert.equal(projected.asJs(), projectedUuid(1n, digest, seqnum, seed))
+    assert.equal(projected.asJs(), projectedUuid(1_000n, digest, seqnum, seed))
     return projected
   }
   const payload = 0x0123_4567_89ab_cdefn

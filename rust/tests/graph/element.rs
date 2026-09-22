@@ -256,8 +256,9 @@ impl Event for Report {
     }
 }
 
-/// One nanosecond count per millisecond: the instants below are spaced so
-/// two of them never share the millisecond a derived identity opens with.
+/// One nanosecond count per millisecond: a derived identity opens with the
+/// microsecond its instant falls in, and the instants below are spaced a
+/// whole millisecond apart, so no two of them ever share one.
 const MS: i64 = 1_000_000;
 
 /// An instant a derived identity holds: `ms` milliseconds after one
@@ -1225,8 +1226,8 @@ fn the_instant_sequence_seed_and_code_derive_one_time_ordered_identity() {
         held.into_uuid(0, 0).expect("the TxHash's own UUID")
     );
 
-    // A later millisecond sorts later whatever the sequence or code. Within
-    // one millisecond the low sequence bits lead the content fingerprint.
+    // A later microsecond sorts later whatever the sequence or code. Within
+    // one microsecond the low sequence bits lead the content fingerprint.
     let mut later = event.clone();
     later.set_currunix(at(0) + MS);
     later.set_currhashcode(0);

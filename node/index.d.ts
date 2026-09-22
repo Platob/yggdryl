@@ -1573,7 +1573,7 @@ export type JsFixMessages = FixMessages
  * bridge's `msgsessionid:msgctxid` where the row header stated both, else
  * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
  * over it, the `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid` from its millisecond instant
+ * standard header and trailer, the `curruuid` from its microsecond instant
  * and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
  * seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
  * when no cross code names a chain. Every write settles it again.
@@ -1656,7 +1656,7 @@ export declare class FixMsg {
   /** The fixed four-byte business category lifted from this message type. */
   get msgcat(): string | null
   /**
-   * This message's own `UUIDv7` identity, from its millisecond instant and
+   * This message's own `UUIDv7` identity, from its microsecond instant and
    * full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
    * seed, as hyphenated text.
    */
@@ -4960,7 +4960,7 @@ export declare class TextLine {
   get droppedByteSize(): number | null
   /**
    * The line's identity, as its hyphenated text: `UUIDv7` over its
-   * millisecond instant, row-derived sequence and body hash, with the
+   * microsecond instant, row-derived sequence and body hash, with the
    * source URL's cross hash as seed. A line is an event of the graph, and
    * a message parsed out of it states this among its `srcuuids`.
    */
@@ -5312,13 +5312,15 @@ export declare class TxHash {
    * Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
    * `uuid` `Scalar`.
    *
-   * The instant is floored directly to Unix milliseconds, and `rand_a`
-   * carries the low 12 sequence bits. XXH3-64 hashes the complete 16-byte
-   * big-endian `(seqnum, digest-u64)` tuple under `seed`; its low 62 bits
-   * fill `rand_b`. This is a lossy, collision-resistant, non-cryptographic
-   * 74-bit identity fingerprint, not a uniqueness guarantee: neither the
-   * unit nor the algorithm survives, and sequence ordering wraps with its
-   * low 12 bits.
+   * The instant is floored directly to Unix microseconds: the millisecond
+   * it falls in leads, and `rand_a` carries the microsecond within it,
+   * `0..=999`. XXH3-64 hashes the complete 16-byte big-endian
+   * `(seqnum, digest-u64)` tuple under `seed`; `rand_b` takes the low 12
+   * sequence bits and then that fingerprint's low 50. This is a lossy,
+   * non-cryptographic identity - a twelve-bit sequence window over a
+   * fifty-bit content fingerprint - not a uniqueness guarantee: neither
+   * the unit nor the algorithm survives, and sequence ordering wraps with
+   * its low 12 bits.
    * Throws for a digest that is not 64 bits wide, or an instant outside the
    * `UUIDv7` range.
    */

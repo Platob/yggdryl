@@ -309,7 +309,7 @@ fn version_parse_compare_and_render_allocate_nothing() {
 
 #[test]
 fn uuid_version_7_and_8_construction_allocate_nothing() {
-    let instants = [0, 1, 999, 281_474_976_710_655];
+    let instants = [0, 1, 999, 281_474_976_710_655_999];
     for count in [1, 32, 1_024] {
         free(&format!("constructing {count} UUIDv7 values"), || {
             for index in 0..count {
@@ -319,7 +319,7 @@ fn uuid_version_7_and_8_construction_allocate_nothing() {
                         black_box(index as u64),
                         black_box(u64::MAX - index as u64),
                     )
-                    .expect("an in-range millisecond instant"),
+                    .expect("an in-range microsecond instant"),
                 );
             }
         });
@@ -365,7 +365,7 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
                     black_box(
                         black_box(values[index % values.len()])
                             .into_uuid(black_box(index as u64), black_box(index as u64 + 1))
-                            .expect("an in-range millisecond instant and a 64-bit digest"),
+                            .expect("an in-range microsecond instant and a 64-bit digest"),
                     );
                 }
             },

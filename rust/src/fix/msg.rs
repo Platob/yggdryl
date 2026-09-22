@@ -99,7 +99,7 @@ fn row_stated_bit(tag: i32) -> Option<u16> {
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
 /// lifted and the named content of the row - everything but the standard
 /// header and trailer, less `MsgType`, and never the chain it is in - the
-/// identity the UUIDv7 the millisecond instant, sequence and cross-seeded code
+/// identity the UUIDv7 the microsecond instant, sequence and cross-seeded code
 /// derive, and the cross identity the UUIDv8 the cross code's digest derives - the first chain
 /// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
 /// bracketed `session:context` is retained among the message identifiers as

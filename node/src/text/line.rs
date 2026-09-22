@@ -412,7 +412,7 @@ impl JsTextLine {
     }
 
     /// The line's identity, as its hyphenated text: `UUIDv7` over its
-    /// millisecond instant, row-derived sequence and body hash, with the
+    /// microsecond instant, row-derived sequence and body hash, with the
     /// source URL's cross hash as seed. A line is an event of the graph, and
     /// a message parsed out of it states this among its `srcuuids`.
     #[napi(getter)]

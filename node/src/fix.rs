@@ -1261,7 +1261,7 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// bridge's `msgsessionid:msgctxid` where the row header stated both, else
 /// the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
 /// over it, the `currhashcode` over everything the message says but the
-/// standard header and trailer, the `curruuid` from its millisecond instant
+/// standard header and trailer, the `curruuid` from its microsecond instant
 /// and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
 /// seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
 /// when no cross code names a chain. Every write settles it again.
@@ -1413,7 +1413,7 @@ impl JsFixMsg {
         self.inner.lifted().msgcat().map(ToOwned::to_owned)
     }
 
-    /// This message's own `UUIDv7` identity, from its millisecond instant and
+    /// This message's own `UUIDv7` identity, from its microsecond instant and
     /// full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
     /// seed, as hyphenated text.
     #[napi(getter)]

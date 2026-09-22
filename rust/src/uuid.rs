@@ -399,9 +399,20 @@ pub struct Uuid(u128);
 
 const _: () = assert!(std::mem::size_of::<Uuid>() == 16);
 
+/// The largest Unix millisecond UUIDv7's own 48-bit timestamp counts.
 const MAX_V7_MILLIS: i64 = (1_i64 << 48) - 1;
-const V7_SEQUENCE_MASK: u64 = (1_u64 << 12) - 1;
-const V7_PAYLOAD_MASK: u64 = (1_u64 << 62) - 1;
+/// Microseconds in one millisecond: what `rand_a` counts, and the scale the
+/// 48-bit timestamp is read at.
+const MICROS_PER_MILLI: i64 = 1_000;
+/// The largest Unix microsecond whose millisecond fits the 48-bit timestamp.
+const MAX_V7_MICROS: i64 = MAX_V7_MILLIS * MICROS_PER_MILLI + (MICROS_PER_MILLI - 1);
+/// The bits the sequence takes at the top of `rand_b`.
+const V7_SEQUENCE_BITS: u32 = 12;
+const V7_SEQUENCE_MASK: u64 = (1_u64 << V7_SEQUENCE_BITS) - 1;
+/// The bits the fingerprint takes under the sequence, filling out `rand_b`'s
+/// sixty-two.
+const V7_FINGERPRINT_BITS: u32 = 62 - V7_SEQUENCE_BITS;
+const V7_FINGERPRINT_MASK: u64 = (1_u64 << V7_FINGERPRINT_BITS) - 1;
 const VARIANT_MASK: u128 = 3 << 62;
 const RFC_VARIANT: u128 = 2 << 62;
 
@@ -414,64 +425,75 @@ impl Uuid {
         Self(value)
     }
 
-    /// Pack a Unix millisecond, sequence number and 64-bit payload as UUIDv7.
+    /// Pack a Unix microsecond, sequence number and 64-bit payload as UUIDv7.
     ///
-    /// The first 48 bits hold `unix_millis`. The UUIDv7 `rand_a` field holds
-    /// the low 12 sequence bits, and `rand_b` holds the low 62 bits of an
-    /// XXH3-64 fingerprint over the complete big-endian `(seqnum, payload)`
-    /// pair. Every bit of both inputs therefore contributes instead of being
-    /// truncated or combined algebraically. Milliseconds sort first;
-    /// sequences sort within one 4,096-value low-bit window, not across its
-    /// wrap. The remaining 74 identity bits are a non-cryptographic
-    /// fingerprint, not an injective encoding of 128 input bits. This
-    /// allocates nothing on success, reads no clock, and supplies no
-    /// randomness of its own.
+    /// The instant is counted in microseconds, and the layout spends its
+    /// three fields on the three facts in that order. The first 48 bits hold
+    /// the millisecond `unix_micros` falls in; UUIDv7's `rand_a` holds the
+    /// microsecond within it, `0..=999`, which is RFC 9562's own way of
+    /// carrying sub-millisecond precision; and `rand_b` holds the low 12
+    /// sequence bits and then the low 50 bits of an XXH3-64 fingerprint over
+    /// the complete big-endian `(seqnum, payload)` pair. Every bit of both
+    /// inputs therefore contributes instead of being truncated or combined
+    /// algebraically. Microseconds sort first, whole; sequences sort within
+    /// one 4,096-value low-bit window, not across its wrap; content sorts
+    /// last. The 62 identity bits under the instant are a sequence window over
+    /// a non-cryptographic fingerprint, not an injective encoding of 128 input
+    /// bits. This allocates nothing on success, reads no clock, and supplies
+    /// no randomness of its own.
     ///
     /// ```
     /// use yggdryl::Uuid;
     /// # fn main() -> yggdryl::Result<()> {
-    /// let value = Uuid::from_v7(1_645_557_742_000, 0x74b, 0xfedc_ba98_7654_3210)?;
-    /// assert_eq!(value.to_string(), "017f22e2-79b0-774b-baaf-e6545098617d");
+    /// // The millisecond leads, and the 123rd microsecond within it follows.
+    /// let value = Uuid::from_v7(1_645_557_742_000_123, 0x74b, 0xfedc_ba98_7654_3210)?;
+    /// assert_eq!(value.to_string(), "017f22e2-79b0-707b-9d2f-e6545098617d");
     /// assert!(Uuid::from_v7(999, u64::MAX, u64::MAX)? < Uuid::from_v7(1_000, 0, 0)?);
+    /// // One microsecond apart is one identifier apart, not one shared one.
+    /// assert!(Uuid::from_v7(1, 0, 0)? < Uuid::from_v7(2, 0, 0)?);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] at `$` when `unix_millis` is outside
-    /// `0..=281474976710655`, the range the 48-bit timestamp holds.
-    pub fn from_v7(unix_millis: i64, seqnum: u64, payload: u64) -> Result<Self> {
+    /// Returns [`Error::InvalidRecord`] at `$` when `unix_micros` is outside
+    /// `0..=281474976710655999`, the range the 48-bit millisecond timestamp
+    /// and its microsecond remainder hold together.
+    pub fn from_v7(unix_micros: i64, seqnum: u64, payload: u64) -> Result<Self> {
         let mut identity = [0_u8; 16];
         identity[..8].copy_from_slice(&seqnum.to_be_bytes());
         identity[8..].copy_from_slice(&payload.to_be_bytes());
-        Self::from_v7_fingerprint(unix_millis, seqnum, crate::xxhash::xxh3(&identity))
+        Self::from_v7_fingerprint(unix_micros, seqnum, crate::xxhash::xxh3(&identity))
     }
 
     /// Pack an already resolved joint fingerprint into UUIDv7's random fields.
     pub(crate) fn from_v7_fingerprint(
-        unix_millis: i64,
+        unix_micros: i64,
         seqnum: u64,
         fingerprint: u64,
     ) -> Result<Self> {
-        if !(0..=MAX_V7_MILLIS).contains(&unix_millis) {
+        if !(0..=MAX_V7_MICROS).contains(&unix_micros) {
             return Err(Error::InvalidRecord {
                 path: "$".into(),
                 reason: crate::text::expected_got(
-                    format_args!("a UUIDv7 Unix millisecond instant in 0..={MAX_V7_MILLIS}"),
-                    format_args!("{unix_millis}"),
+                    format_args!("a UUIDv7 Unix microsecond instant in 0..={MAX_V7_MICROS}"),
+                    format_args!("{unix_micros}"),
                 ),
             });
         }
-        // The range check proves unsigned arithmetic and the 48-bit layout.
-        let milliseconds = u128::from(unix_millis.unsigned_abs());
+        // The range check proves unsigned arithmetic and the 48-bit layout,
+        // and a nonnegative count divides and remains without flooring.
+        let milliseconds = u128::from((unix_micros / MICROS_PER_MILLI).unsigned_abs());
+        let submilliseconds = u128::from((unix_micros % MICROS_PER_MILLI).unsigned_abs());
         let sequence = u128::from(seqnum & V7_SEQUENCE_MASK);
-        let coupled_payload = u128::from(fingerprint & V7_PAYLOAD_MASK);
+        let coupled_payload = u128::from(fingerprint & V7_FINGERPRINT_MASK);
         Ok(Self(
             (milliseconds << 80)
                 | (7_u128 << 76)
-                | (sequence << 64)
+                | (submilliseconds << 64)
                 | RFC_VARIANT
+                | (sequence << V7_FINGERPRINT_BITS)
                 | coupled_payload,
         ))
     }
@@ -513,7 +535,7 @@ impl Uuid {
     /// use yggdryl::Uuid;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(Uuid::from_v7(1_645_557_742_000, 0x74b, 0)?.version(), 7);
+    /// assert_eq!(Uuid::from_v7(1_645_557_742_000_000, 0x74b, 0)?.version(), 7);
     /// assert_eq!(Uuid::from_v8(0).version(), 8);
     /// # Ok(())
     /// # }
