@@ -43,7 +43,6 @@
   PythonMetadata: __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __le__, __lt__, __ne__, __reduce__, __repr__, __str__, class_name, from_type, import_path, is_importable, is_keyword_constructed, kind, module, properties, qualname, stable_hash
   RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, field, filter, for_media_type, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, partition_pairs, plan, remove_field, require_field, safe, select, stable_hash, sync_marker, timezone, write_batch_row_size
     sections: field, filter, select, merge_by and plan setters take any value Scalar.from_ reads - a native value, text, a list of projections or conditions, a dict of aliases, None - and the core reads it with from_scalar
-  Statement: all, bind, from_json, into_json, is_all, limit, ordering, predicate, projections, select, stable_hash, with_limit, with_ordering, with_predicate
   TextOptions: apply_arrow_batch, apply_arrow_reader, autotype, batch_row_size, capture_names, commit_row_size, field, filter, framing, leading_fragment, level, lift_names, limit_arrow_reader, linesep, lstrip, max_byte_size, max_record_byte_size, max_row_size, merge_by, mime_type, name, parse_mtime, partition_pairs, plan, remove_field, rename_columns, require_field, rowheader, rstrip, safe, select, source_field, stable_hash, start_rownum, timezone, write_batch_row_size
   Timezone: NAIVE, UTC, abbreviation_at, aliases, from_offset, from_value, into_local, into_utc, is_fixed, is_known, is_naive, is_saving_at, is_utc, key, observes_saving, offset_at, registered, stable_hash, standard_offset, utcoffset
   Uri: __contains__, __iter__, __len__, account, authority, bucket, clear_extensions, default_port, extension, extensions, file_name, fragment, from_json, from_parts, from_path, from_str, from_value, has_authority, host_port, hostname, into_arn, into_json, into_path, into_url, into_urn, is_storage, is_virtual_hosted, joinpath, key, locator, media_type, mime_type, parameters, parent, parents, parts, password, path, path_segments, path_text, port, query, region, remove_extension, scheme, set_extension, set_extensions, set_file_name, set_media_type, set_mime_type, set_query, set_stem, stable_hash, stem, store_endpoint, user, validate
@@ -273,9 +272,6 @@
   Records
     statics: fromArrowReader
     instance: collect, field, intoArrowReader, next, Symbol.iterator, toString
-  Bounds
-    statics: fromPartitions
-    instance: attribute, column, withAttribute, withColumn
     inputs: every Either-typed parameter is spelled out in the typings - a Term | string operand, a Filter | Term | string predicate, a Selector | Term | string | Array<Term | string> selector, a Plan | Selector | Filter | Field | string plan; the loader widens bind parameters and the Arrow holders (BatchReader, Table, RecordBatch) and applyRecords rows, and Records iterates as JavaScript does
     user functions: Term.call takes a qualified namespace.name and the parser reads it; nothing registers in JavaScript, so a bind refuses the function by name
   Urn

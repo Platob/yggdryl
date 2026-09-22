@@ -169,7 +169,7 @@ passes.
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features s3` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
-| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists; every name a Rust entry declares *and every type it names in a signature* still occurs somewhere in that crate's `src/`; every class and bare member in `.api-bindings.txt` still occurs in that binding's own surface - stubs and package for Python, generated declarations for JavaScript. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
 The measured costs that shape the loop: an already-built harness is under a
