@@ -202,7 +202,7 @@ record's values in sorted name order.
 - Duplicate child names -> `duplicate field name` error; a struct and a union both refuse them, and `from_fields` fails rather than keeping the first.
 - An unknown child name -> `None`; `in` / `contains` answers false. A path that names no child reports the names that do exist.
 - A layout keeps its arity: `with_fields` refuses a child count that is not the layout's, and a list refuses a second child rather than becoming a struct.
-- Python `types.*` and JavaScript `fields.*` factories answer a `Field`, not a bare datatype; `.dtype` reaches the type.
+- Python `yggdryl.*` and JavaScript `fields.*` factories answer a `Field`, not a bare datatype; `.dtype` reaches the type.
 - `as_fields` is a struct's alone: every other layout answers `None`, because its children are not a schema.
 - A wrapper is a storage decision: `kind()` is `nested`, and `is_nested()` follows the value it encodes.
 - Bare `variant` is [the semi-structured datatype](../variant.md), not a union; `variant(...)` with members is the dense-union sugar, and the parenthesis is what disambiguates them.

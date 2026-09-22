@@ -1477,11 +1477,11 @@ Python-only:
   schemas merely to import them again; the behavior is Python-only, while schema
   and scalar semantics stay native.
 - Public decorator `@scalar` (beside the Python `Scalar` boundary), pure field
-  builder `field(value, name=None)`, typed field factories below
-  `yggdryl/types/`. `@scalar` forwards every stdlib dataclass option, installs
-  one cached argument-free `staticmethod into_field()`, rejects a pre-existing
-  `into_field` member, leaves every other member name - `field` included - to the
-  caller, and reserves no static metadata constant.
+  builder `field(value, name=None)`, typed field factories at the package root,
+  one module per type. `@scalar` forwards every stdlib dataclass option,
+  installs one cached argument-free `staticmethod into_field()`, rejects a
+  pre-existing `into_field` member, leaves every other member name - `field`
+  included - to the caller, and reserves no static metadata constant.
 - `Class.into_field()` returns one frozen non-null Struct `Field`, preserving
   dataclass order and metadata, excluding `ClassVar`/`InitVar`/private working
   annotations, resolving forward and generic annotations once, detecting

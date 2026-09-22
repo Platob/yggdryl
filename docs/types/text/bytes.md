@@ -127,7 +127,7 @@ padded, so a fixed value is exactly its width.
 
 `BytesField` is the typed marker: one field carrying `BytesType` itself, so the
 leaf is read off the payload rather than matched out of a root datatype. The
-bindings have one factory per leaf plus `types.bytes` / `fields.bytes` for the
+bindings have one factory per leaf plus `yggdryl.bytes` / `fields.bytes` for the
 whole declaration, nullable unless the call says otherwise.
 
 === "Rust"
