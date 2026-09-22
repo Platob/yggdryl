@@ -6,7 +6,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 
 | Aspect | Rule |
 | --- | --- |
-| Owner | `FixRegistry::from_handle` and `commit`; bindings redirect to the native loader/writer |
+| Owner | `FixRegistry::from_handle` and `commit`, with `write_into` the same work for a caller that reads no report; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
 | Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `FIX:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
 | Code sets | `codesets/<name>.json`, one document per named [code set](registry.md#a-field-names-the-code-set-it-reads-by), stating the name it is filed under and its members in the set's own order; a scalar's `FIX:codeset` holds that name. Read first, because a field naming a set the dictionary does not hold is refused. Not a `FixCategory`: a set has no tag, no datatype and no reference, so nothing in it resolves against a field |

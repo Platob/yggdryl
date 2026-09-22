@@ -868,6 +868,18 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Commits the store and discards the report.
+    ///
+    /// The same work as [`Self::commit`] for a caller that does not read what
+    /// moved: one implementation, so the two can never answer differently.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::commit`] returns.
+    pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()> {
+        self.commit(root).map(|_| ())
+    }
+
     /// Writes the documents whose bytes moved and removes what is no longer held.
     ///
     /// Each document is written through the handle's byte-write contract.

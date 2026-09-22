@@ -426,6 +426,15 @@ impl JsFixRegistry {
     /// second commit of one registry writes nothing. The report is a plain
     /// object: `written` and `removed` name the documents, in the order a
     /// store lays them out, and `skipped` counts the ones a run left.
+    /// Commits the store and answers nothing.
+    ///
+    /// The same work as `commit` for a caller that does not read what moved.
+    #[napi]
+    pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
+        let mut holder = folder_from_input(location)?;
+        self.inner.write_into(&mut holder).map_err(napi_error)
+    }
+
     #[napi]
     pub fn commit(&self, location: LocationInput<'_>) -> Result<FixCommitReport> {
         let mut holder = folder_from_input(location)?;

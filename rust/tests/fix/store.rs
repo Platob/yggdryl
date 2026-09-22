@@ -3164,3 +3164,26 @@ fn a_store_read_back_commits_clean() {
     );
     std::fs::remove_dir_all(&scratch).ok();
 }
+
+/// The two doors do one thing, so neither can drift from the other.
+///
+/// `write_into` is `commit` with its report discarded, kept for a caller that
+/// reads no report. It is one implementation: what the store holds after each
+/// is the same store, and a commit after a write_into is clean.
+#[test]
+fn write_into_is_the_commit_a_caller_reads_nothing_from() {
+    let registry = committed_registry();
+    let scratch = scratch("write-into-door");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+
+    registry.write_into(&mut folder).unwrap();
+    let after = registry.commit(&mut folder).unwrap();
+    assert!(
+        after.is_clean(),
+        "write_into settled the store; a commit after it moved {:?}",
+        after.written,
+    );
+    assert!(after.skipped > 0, "the store is there to skip");
+    std::fs::remove_dir_all(&scratch).ok();
+}

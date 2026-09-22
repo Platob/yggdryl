@@ -743,6 +743,14 @@ impl PyFixRegistry {
     /// row rather than the half it declared itself; a reader takes the
     /// definition it holds from construction over the document it finds
     /// there.
+    /// Commits the store and answers nothing.
+    ///
+    /// The same work as `commit` for a caller that does not read what moved.
+    fn write_into(&self, location: &Bound<'_, PyAny>) -> PyResult<()> {
+        let mut holder = folder_holder_from_value(location)?;
+        self.inner.write_into(&mut holder).map_err(value_error)
+    }
+
     /// Each document is digested where it lies and left alone where it
     /// already states this registry, so a commit writes what moved and a
     /// second commit of one registry writes nothing. The report is an
