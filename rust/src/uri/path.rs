@@ -560,7 +560,7 @@ impl Iterator for UriParents<'_> {
         loop {
             let path = self.paths.next()?;
             let mut candidate = self.source.clone();
-            candidate.path = path;
+            candidate.state_path(path);
             if candidate.validate().is_ok() {
                 return Some(candidate);
             }

@@ -7,7 +7,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions
+from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions, Url
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
@@ -67,6 +67,25 @@ class TestTextLine:
         assert [line.index for line in lines] == [0, 1]
         assert lines[0].body == "8=FIX|55=AAPL|35=D"
         assert lines[0].sourceurl is not None
+
+    def test_a_line_is_crossed_by_the_identifier_it_was_read_under(self) -> None:
+        handle = source()
+        lines = list(handle.read_text_lines(options=TextOptions()))
+        # A line carries what its read was addressed by, which is not always a
+        # place. A located read - the common case - narrows that identifier to
+        # a URL, so both answer and both spell the same text; a read under a
+        # name answers the name here and nothing at `sourceurl`.
+        assert isinstance(lines[0].sourceuri, Url)
+        assert str(lines[0].sourceuri) == str(handle.uri)
+        assert str(lines[0].sourceurl) == str(lines[0].sourceuri)
+        # The code that names the chain is that identifier rather than the
+        # location it narrows to.
+        assert lines[0].crosscode == str(lines[0].sourceuri)
+        assert lines[0].crosshashcode != 0
+        # Every row of one read is addressed the same way, so they cross alike.
+        assert str(lines[1].sourceuri) == str(lines[0].sourceuri)
+        assert lines[1].crossuuid == lines[0].crossuuid
+        assert lines[1].curruuid != lines[0].curruuid
 
     def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))

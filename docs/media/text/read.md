@@ -145,12 +145,16 @@ The same records without the crossing: a read returns a reader, and stepping it 
 `start_rownum` numbers the first physical line of each record and adds the
 `rownum` column; unset, the column is absent. The event `seqnum` is the same
 row number, or the zero-based physical index when `start_rownum` is unset, and
-preserves gaps for blank lines the reader skipped. Likewise, `sourceurl` owns
-the event `crosscode`: a located line uses the URL's canonical text and an
-unlocated line has neither. The code's `crosshashcode` is what the cross
-identity is the UUIDv8 of, so changing the source refreshes that identity; the
-current one is the instant and the line's code, which digests that source
-text with the row number and the body, so a source URL reaches it too. A row header therefore cannot declare a `seqnum` or `crosscode`
+preserves gaps for blank lines the reader skipped. Likewise, the identifier the
+read was addressed by owns the event `crosscode`: the line is crossed with that
+identifier's canonical text, which on a located read - the common case - is the
+same text the `sourceurl` column holds, while a line read under a name is
+crossed with that name and holds no `sourceurl` at all. A line read under no
+identifier has neither. The code's `crosshashcode` is what the cross identity
+is the UUIDv8 of, so changing the source refreshes that identity; the current
+one is the instant and the line's code, which digests that identifier text with
+the row number and the body, so a source reaches it too - through a name as
+through a location. A row header therefore cannot declare a `seqnum` or `crosscode`
 capture, in any case. An explicit non-null Event column read back from Arrow
 remains an override of the corresponding base fact.
 
@@ -204,12 +208,15 @@ remain the single sources of those event facts.
   `seqnum` column remains an explicit override. Without a `rownum` column the
   index is the row's stream ordinal, continuous across batches, so physical
   gaps the read dropped are not recovered.
-- A persisted `sourceurl` restores the line's shared URL, whose canonical text
-  supplies the default event `crosscode`; a non-null event `crosscode` column
-  remains an explicit override. Its `crosshashcode` is what the derived
-  `crossuuid` is taken from, so either value is applied before an unstated
-  identity is resolved. With neither source column nor override, the URL and
-  code stay absent.
+- A persisted `sourceurl` restores the line's shared URL and the identifier it
+  was read under together - a row states its source as a location, so there the
+  two are one value - and that identifier's canonical text supplies the default
+  event `crosscode`; a non-null event `crosscode` column remains an explicit
+  override, which is how a line read under a name comes back crossed with that
+  name while its own `sourceurl` cell is null. Its `crosshashcode` is what the
+  derived `crossuuid` is taken from, so either value is applied before an
+  unstated identity is resolved. With neither source column nor override, the
+  identifier and code stay absent.
 - A null cell stays absent. A malformed present value - a `rownum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
   that does not parse, a null in the required `body` - is refused rather than

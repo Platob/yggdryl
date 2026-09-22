@@ -362,7 +362,17 @@ impl JsTextLine {
         i64::try_from(self.inner.index()).unwrap_or(i64::MAX)
     }
 
-    /// The object this line was read from.
+    /// The identifier this line was read under, as its canonical text.
+    ///
+    /// What the handle is addressed by, which is not always a place: a read
+    /// through a name answers that name here and nothing at `sourceurl`. This
+    /// is what the line's cross code spells.
+    #[napi(getter)]
+    pub fn sourceuri(&self) -> Option<String> {
+        self.inner.sourceuri().map(ToString::to_string)
+    }
+
+    /// The object this line was read from, where the identifier is a location.
     #[napi(getter)]
     pub fn sourceurl(&self) -> Option<String> {
         self.inner.sourceurl().map(ToString::to_string)
@@ -427,14 +437,14 @@ impl JsTextLine {
         self.inner.get_crossuuid().to_string()
     }
 
-    /// The code the chain is named by: the canonical source URL, and empty
-    /// where the line was read from no located source.
+    /// The code the chain is named by: the canonical text of the identifier
+    /// the line was read under, and empty where it was read under none.
     #[napi(getter)]
     pub fn crosscode(&self) -> String {
         self.inner.get_crosscode().to_owned()
     }
 
-    /// The XXH3-64 of the line's bytes.
+    /// The XXH3-64 of the cross code, the row number and the line's bytes.
     #[napi(getter)]
     pub fn currhashcode(&self) -> BigInt {
         BigInt::from(self.inner.get_currhashcode())

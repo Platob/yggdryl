@@ -412,7 +412,21 @@ impl PyTextLine {
         self.inner.index()
     }
 
-    /// The object this line was read from.
+    /// The identifier this line was read under, as the narrowing it is.
+    ///
+    /// What the handle is addressed by, which is not always a place: a read
+    /// through a name answers that name here and nothing at `sourceurl`. This
+    /// is what the line's cross code spells.
+    #[getter]
+    fn sourceuri(&self, py: Python<'_>) -> PyResult<Option<Py<pyo3::PyAny>>> {
+        self.inner
+            .sourceuri()
+            .cloned()
+            .map(|value| crate::uri::describe(py, value))
+            .transpose()
+    }
+
+    /// The object this line was read from, where the identifier is a location.
     #[getter]
     fn sourceurl(&self, py: Python<'_>) -> PyResult<Option<Py<crate::uri::PyUrl>>> {
         self.inner
@@ -475,14 +489,14 @@ impl PyTextLine {
         uuid_scalar(self.inner.get_crossuuid())
     }
 
-    /// The code the chain is named by: the canonical source URL, and empty
-    /// where the line was read from no located source.
+    /// The code the chain is named by: the canonical text of the identifier
+    /// the line was read under, and empty where it was read under none.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()
     }
 
-    /// The XXH3-64 of the line's bytes.
+    /// The XXH3-64 of the cross code, the row number and the line's bytes.
     #[getter]
     fn currhashcode(&self) -> u64 {
         self.inner.get_currhashcode()

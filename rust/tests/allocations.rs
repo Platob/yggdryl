@@ -2342,13 +2342,14 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let mut changed = held[0].clone();
         let original_uuid = changed.get_curruuid();
         let replacement = Arc::new(
-            yggdryl::Url::from_str("file:///replacement/location.log").expect("a replacement URL"),
+            yggdryl::Uri::from_str("file:///replacement/location.log")
+                .expect("a replacement identifier"),
         );
-        changed.set_sourceurl(Some(Arc::clone(&replacement)));
+        changed.set_sourceuri(Some(Arc::clone(&replacement)));
         assert_eq!(changed.get_crosscode(), replacement.to_string());
         assert_ne!(changed.get_curruuid(), original_uuid);
         assert_eq!(held[0].get_crosscode(), expected);
-        changed.set_sourceurl(None);
+        changed.set_sourceuri(None);
         assert_eq!(changed.get_crosscode(), "");
     }
 }
@@ -2382,6 +2383,11 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// Five of the fourteen are the nineteen event columns the plan compiles once
 /// per read: the two identity lists, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
+///
+/// A read now shares what it was addressed by rather than where that
+/// resolves to, and the count did not move: the location is a narrowing of
+/// the identifier rather than a second value beside it, so the read still
+/// holds one reference-counted source and a row still clones one handle.
 const TEXT_LINES_ONCE: usize = 14;
 
 /// What a reader that keeps its lines pays on top: two per window it had to

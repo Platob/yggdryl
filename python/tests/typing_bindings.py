@@ -1571,6 +1571,12 @@ assert text_line_crosshash >= 0 and text_line_unix == 0
 text_line_body: str = text_line_text.body
 text_line_decoded: int = text_line_text.decoded_byte_size
 text_line_captures: tuple[str | None, ...] = text_line_text.captures
+# A located read answers one identifier at both, narrowed to a `Url` at
+# `sourceuri`; a read under a name answers it at `sourceuri` alone, and a line
+# a caller holds itself was read under nothing and answers neither.
+text_line_sourceuri: Uri | None = text_line_text.sourceuri
+text_line_sourceurl: Url | None = text_line_text.sourceurl
+assert text_line_sourceuri is None and text_line_sourceurl is None
 text_line_text.set_entry_by_path("58", "text")
 text_line_text.set_entry_by_path("58", memoryview(b"bytes"))
 text_entry_value: str = text_line_text.entry_by_path("58").value

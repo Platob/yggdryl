@@ -3088,7 +3088,7 @@ mod equivalence {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-    use yggdryl::{Field, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar};
+    use yggdryl::{Field, FixCodec, FixEntry, FixMsg, Timezone, Uri, fix_schema, into_json_scalar};
 
     /// The environment variable that turns the comparison into a write.
     const WRITE: &str = "YGGDRYL_FIX_EQUIVALENCE_WRITE";
@@ -3576,8 +3576,8 @@ mod equivalence {
     /// same read the batch path is built from, handed over rather than made
     /// again.
     fn capture_lines() -> Vec<TextLine> {
-        let url = Arc::new(Url::from_str("file:///ulbridge.log").expect("a URL"));
-        let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(url.media_type());
+        let uri = Arc::new(Uri::from_str("file:///ulbridge.log").expect("an identifier"));
+        let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(uri.media_type());
         let RecordOptions::Text(options) = reading() else {
             panic!("a text read")
         };
@@ -3587,8 +3587,9 @@ mod equivalence {
                 let mut line = line.expect("a line");
                 // The bytes are the committed file above, not the temporary
                 // in-memory allocation used to exercise the reader. Text-line
-                // identity includes its source URL, so state that stable source.
-                line.set_sourceurl(Some(Arc::clone(&url)));
+                // identity includes the identifier it was read under, so
+                // state that stable source.
+                line.set_sourceuri(Some(Arc::clone(&uri)));
                 line
             })
             .collect()

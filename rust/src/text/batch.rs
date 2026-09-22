@@ -14,7 +14,7 @@ use crate::graph::Event as _;
 use crate::media::IORecordOptions as _;
 use crate::{DataType, Result, Scalar};
 
-use super::line::TextLine;
+use super::line::{LineSource, TextLine};
 use super::options::TextOptions;
 use super::plan::{TextColumn, TextPlan, TextSource};
 
@@ -593,7 +593,10 @@ fn apply(
         }
         TextSource::Url => {
             if let Scalar::Url(url) = value {
-                line.set_sourceurl(Some(Arc::clone(url)));
+                // A row states its source as a location, which is the whole
+                // identifier it was read under: the column's own value is the
+                // line's source, taken by reference count rather than rebuilt.
+                line.state_source(Some(LineSource::Located(Arc::clone(url))));
             }
         }
         TextSource::Rownum => {
