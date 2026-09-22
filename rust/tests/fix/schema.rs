@@ -664,7 +664,7 @@ fn a_datatype_is_named_the_same_by_both_documents() {
 #[test]
 fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_for() {
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME, Scheme};
 
     let (registry, codec) = reader();
@@ -751,7 +751,7 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
         "uuid",
     );
 
-    let path = Folder::temporary()
+    let path = LocalFolder::temporary()
         .unwrap()
         .path()
         .unwrap()
@@ -762,7 +762,7 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
     // How a layout is cut is the target's - an Iceberg table takes an `hour`
     // transform over `updatedat` - and no longer a column of this crate's.
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),

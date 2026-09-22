@@ -197,7 +197,7 @@ mod fs {
         let calls = Arc::clone(&instrumented.calls);
         let filesystem: Arc<dyn FileSystem> = instrumented;
         let mut file =
-            File::from_path(Arc::clone(&filesystem), "missing/deep/value.bin", None).unwrap();
+            FsFile::from_path(Arc::clone(&filesystem), "missing/deep/value.bin", None).unwrap();
 
         file.write_all_bytes(b"value").unwrap();
 

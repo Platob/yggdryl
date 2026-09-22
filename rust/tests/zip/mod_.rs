@@ -14,16 +14,16 @@ use smol_str::SmolStr;
 
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::internals::{zip_archive, zip_entry, zip_format as format, zip_name as name};
-use yggdryl::zip::{Archive, Entry, Node, Path};
+use yggdryl::zip::{ZipArchive, ZipEntry, ZipNode, ZipPath};
 use yggdryl::{Codec, Error, IOBase, IOFolder, IOKind, IOPath, Level, MimeType, StructType, Url};
 
 /// The archive root of a fresh in-memory archive.
-fn root() -> Node {
-    Archive::new(Holder::buffer(Buffer::new())).mount()
+fn root() -> ZipNode {
+    ZipArchive::new(Holder::buffer(Buffer::new())).mount()
 }
 
 /// The bytes an archive currently holds, published first.
-fn bytes(archive: &Arc<Archive>) -> Vec<u8> {
+fn bytes(archive: &Arc<ZipArchive>) -> Vec<u8> {
     zip_archive::image(archive).expect("the archive reads back")
 }
 
@@ -37,8 +37,8 @@ fn zip_mount(path: &std::path::Path) -> Holder {
 }
 
 /// Mount an archive over an exact byte image.
-fn mounted(image: Vec<u8>) -> Node {
-    Archive::new(Holder::buffer(Buffer::from_bytes(image))).mount()
+fn mounted(image: Vec<u8>) -> ZipNode {
+    ZipArchive::new(Holder::buffer(Buffer::from_bytes(image))).mount()
 }
 
 /// Assemble an archive image from records this crate would not write itself.
@@ -46,7 +46,7 @@ fn mounted(image: Vec<u8>) -> Node {
 /// The refusal cases - an encrypted member, a compression method no build
 /// decodes - cannot be produced by the writer, so they are assembled from the
 /// format layer directly.
-fn image(members: &[(Entry, Vec<u8>)], comment: &[u8]) -> Vec<u8> {
+fn image(members: &[(ZipEntry, Vec<u8>)], comment: &[u8]) -> Vec<u8> {
     let mut image = Vec::new();
     let mut placed = Vec::new();
     for (entry, encoded) in members {
@@ -134,7 +134,7 @@ fn a_member_round_trips_under_every_supported_coding() {
     let payload = b"symbol,price\nAAPL,187.23\nMSFT,412.10\n".repeat(8);
     for codec in [Codec::Identity, Codec::Deflate, Codec::Zstd] {
         let archive = Arc::new(
-            Archive::new(Holder::buffer(Buffer::new()))
+            ZipArchive::new(Holder::buffer(Buffer::new()))
                 .try_with_codec(codec)
                 .expect("a zip coding"),
         );
@@ -518,7 +518,7 @@ fn strided_payload(len: usize) -> Vec<u8> {
 fn a_compressed_member_reads_at_an_offset_from_the_point_before_it() {
     let payload = strided_payload(64 * 1024);
     for codec in [Codec::Deflate, Codec::Zstd] {
-        let root = Archive::new(Holder::buffer(Buffer::new()))
+        let root = ZipArchive::new(Holder::buffer(Buffer::new()))
             .with_restart_stride(4 * 1024)
             .mount();
         root.archive()
@@ -572,10 +572,10 @@ fn dense_payload(len: usize) -> Vec<u8> {
 #[test]
 fn a_read_past_a_restart_point_decodes_the_unit_and_not_the_prefix() {
     let payload = dense_payload(1024 * 1024);
-    let strided = Archive::new(Holder::buffer(Buffer::new()))
+    let strided = ZipArchive::new(Holder::buffer(Buffer::new()))
         .with_restart_stride(8 * 1024)
         .mount();
-    let solid = Archive::new(Holder::buffer(Buffer::new()))
+    let solid = ZipArchive::new(Holder::buffer(Buffer::new()))
         .with_restart_stride(0)
         .mount();
     for root in [&strided, &solid] {
@@ -595,7 +595,7 @@ fn a_read_past_a_restart_point_decodes_the_unit_and_not_the_prefix() {
 
     // The encoded bytes a read touches are what the handle counts, so a
     // member with restart points reads far fewer of them than a solid one.
-    let cost = |root: &Node| {
+    let cost = |root: &ZipNode| {
         let member = root.as_leaf("blob.bin").expect("a member");
         // The proof of the map is read once per member, not once per seek.
         let _ = member.read_range_bytes(0, 1).expect("a range");
@@ -675,7 +675,7 @@ fn a_member_another_writer_compressed_maps_nothing_and_still_reads() {
 #[test]
 fn a_restart_map_survives_a_remount_and_a_compaction() {
     let payload = strided_payload(64 * 1024);
-    let root = Archive::new(Holder::buffer(Buffer::new()))
+    let root = ZipArchive::new(Holder::buffer(Buffer::new()))
         .with_restart_stride(4 * 1024)
         .mount();
     root.archive()
@@ -712,7 +712,7 @@ fn a_restart_map_survives_a_remount_and_a_compaction() {
 #[test]
 fn a_large_member_widens_its_stride_rather_than_growing_its_map() {
     let payload = strided_payload(4 * 1024 * 1024);
-    let root = Archive::new(Holder::buffer(Buffer::new()))
+    let root = ZipArchive::new(Holder::buffer(Buffer::new()))
         .with_restart_stride(64)
         .mount();
     root.archive()
@@ -808,7 +808,7 @@ fn a_member_streams_in_from_a_reader_and_settles_its_own_header() {
 #[test]
 fn a_streamed_compressed_member_maps_the_points_it_wrote() {
     let payload = strided_payload(2 * 1024 * 1024);
-    let root = Archive::new(Holder::buffer(Buffer::new()))
+    let root = ZipArchive::new(Holder::buffer(Buffer::new()))
         .with_restart_stride(64 * 1024)
         .mount();
     root.archive()
@@ -1169,7 +1169,9 @@ fn clearing_a_directory_keeps_it_and_removes_what_is_under_it() {
 #[test]
 fn the_archive_root_is_a_container_and_its_parent_is_outside() {
     let path = std::env::temp_dir().join("yggdryl-zip-parent.zip");
-    let root = Archive::from_path(&path).expect("a local archive").mount();
+    let root = ZipArchive::from_path(&path)
+        .expect("a local archive")
+        .mount();
     assert_eq!(root.kind(), IOKind::Directory);
     assert!(root.is_container());
     assert_eq!(*root.media_type().base(), MimeType::DIRECTORY);
@@ -1182,7 +1184,7 @@ fn the_archive_root_is_a_container_and_its_parent_is_outside() {
 #[test]
 fn a_member_resolves_to_the_role_it_turns_out_to_be() {
     let root = root();
-    let undecided = Path::new(Arc::clone(root.archive()), SmolStr::new("a/b.txt"));
+    let undecided = ZipPath::new(Arc::clone(root.archive()), SmolStr::new("a/b.txt"));
     assert_eq!(undecided.kind(), IOKind::Unknown);
     assert!(!undecided.path_exists());
     assert!(
@@ -1199,14 +1201,14 @@ fn a_member_resolves_to_the_role_it_turns_out_to_be() {
 
     assert_eq!(undecided.kind(), IOKind::File);
     assert!(undecided.is_file());
-    let parent = Path::new(Arc::clone(root.archive()), SmolStr::new("a"));
+    let parent = ZipPath::new(Arc::clone(root.archive()), SmolStr::new("a"));
     assert_eq!(parent.kind(), IOKind::Directory);
     assert!(parent.is_folder());
 }
 
 #[test]
 fn a_member_url_carries_its_path_in_the_fragment() {
-    let root = Archive::new(Holder::file("/lake/day.zip").expect("a local archive")).mount();
+    let root = ZipArchive::new(Holder::file("/lake/day.zip").expect("a local archive")).mount();
     let member = root.child_by_path("trades/eu ndx.csv").expect("a member");
 
     assert_eq!(
@@ -1404,7 +1406,7 @@ fn a_member_url_from_a_scheme_this_backend_cannot_hold_is_refused() {
 
 #[test]
 fn a_members_representation_comes_from_its_own_name() {
-    let root = Archive::new(Holder::file("/lake/day.zip").expect("a local archive")).mount();
+    let root = ZipArchive::new(Holder::file("/lake/day.zip").expect("a local archive")).mount();
     let member = root.child_by_path("logs/app.log.gz").expect("a member");
 
     // The location's path names the archive, so the member's own name decides.
@@ -1415,7 +1417,7 @@ fn a_members_representation_comes_from_its_own_name() {
 #[test]
 fn a_member_carries_the_partitions_its_name_and_its_archive_spell() {
     let root =
-        Archive::new(Holder::file("/lake/region=eu/day.zip").expect("a local archive")).mount();
+        ZipArchive::new(Holder::file("/lake/region=eu/day.zip").expect("a local archive")).mount();
     let member = root
         .child_by_path("year=2024/month=01/part-0.parquet")
         .expect("a member");
@@ -1467,8 +1469,8 @@ fn an_explicit_member_coding_wins_over_every_default() {
 #[test]
 fn a_compression_level_reaches_the_member_writer() {
     let payload = b"symbol,price\n".repeat(256);
-    let loose = Arc::new(Archive::new(Holder::buffer(Buffer::new())).with_level(Level::new(1)));
-    let tight = Arc::new(Archive::new(Holder::buffer(Buffer::new())).with_level(Level::new(9)));
+    let loose = Arc::new(ZipArchive::new(Holder::buffer(Buffer::new())).with_level(Level::new(1)));
+    let tight = Arc::new(ZipArchive::new(Holder::buffer(Buffer::new())).with_level(Level::new(9)));
     for archive in [&loose, &tight] {
         archive.write_member("a.csv", &payload).expect("writes");
         archive.flush().expect("publishes");

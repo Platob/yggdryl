@@ -15,10 +15,10 @@ use super::format;
 ///
 /// ```
 /// use yggdryl::holder::{Buffer, Holder};
-/// use yggdryl::zip::Archive;
+/// use yggdryl::zip::ZipArchive;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+/// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 /// root.archive()
 ///     .write_member("trades/eu.csv", b"symbol,price\nAAPL,187.23\n")?;
 ///
@@ -30,7 +30,7 @@ use super::format;
 /// # }
 /// ```
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Entry {
+pub struct ZipEntry {
     name: SmolStr,
     made_by: u16,
     flags: u16,
@@ -46,7 +46,7 @@ pub struct Entry {
     spelling: Option<Box<[u8]>>,
 }
 
-impl Entry {
+impl ZipEntry {
     /// Assemble an entry from the exact fields a record carries.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn from_parts(
@@ -294,31 +294,31 @@ impl Entry {
 pub mod internals {
     //! What `rust/tests/zip/mod_.rs` pins and a caller cannot reach.
     //!
-    //! An [`Entry`] is something the archive writer makes; a caller reads one
-    //! back off the index and never states one. The records this crate does
-    //! not write - an encrypted member, a streamed one, a ZIP64 member four
-    //! gigabytes wide - have to be stated to be refused or read at all, so
-    //! [`Draft`] states one and hands back the ordinary public entry. It
+    //! A [`ZipEntry`] is something the archive writer makes; a caller reads
+    //! one back off the index and never states one. The records this crate
+    //! does not write - an encrypted member, a streamed one, a ZIP64 member
+    //! four gigabytes wide - have to be stated to be refused or read at all,
+    //! so [`Draft`] states one and hands back the ordinary public entry. It
     //! changes no visibility: every step forwards to the real one.
 
     use smol_str::SmolStr;
 
-    use super::Entry;
+    use super::ZipEntry;
     use crate::Restarts;
 
     /// One entry under construction, which only the archive writer can make.
-    pub struct Draft(Entry);
+    pub struct Draft(ZipEntry);
 
     impl Draft {
         /// Start one entry for `name`, stored as `method` at `modified`.
         #[must_use]
         pub fn new(name: &str, method: u16, modified: i64) -> Self {
-            Self(Entry::new(SmolStr::new(name), method, modified))
+            Self(ZipEntry::new(SmolStr::new(name), method, modified))
         }
 
         /// Continue from an entry that already exists.
         #[must_use]
-        pub fn of(entry: Entry) -> Self {
+        pub fn of(entry: ZipEntry) -> Self {
             Self(entry)
         }
 
@@ -348,20 +348,20 @@ pub mod internals {
 
         /// The entry itself.
         #[must_use]
-        pub fn entry(self) -> Entry {
+        pub fn entry(self) -> ZipEntry {
             self.0
         }
     }
 
     /// The host byte the record was made by.
     #[must_use]
-    pub const fn made_by(entry: &Entry) -> u16 {
+    pub const fn made_by(entry: &ZipEntry) -> u16 {
         entry.made_by()
     }
 
     /// The external attributes the record carries.
     #[must_use]
-    pub const fn external_attributes(entry: &Entry) -> u32 {
+    pub const fn external_attributes(entry: &ZipEntry) -> u32 {
         entry.external_attributes()
     }
 }

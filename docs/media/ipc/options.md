@@ -115,7 +115,7 @@ The encoding applies the content coding the name declares on write and strips it
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     batch = pa.record_batch({"id": list(range(512))}, schema=schema)
@@ -133,8 +133,8 @@ The encoding applies the content coding the name declares on write and strips it
         assert handle.read_arrow_reader().read_all().num_rows == 512, name
         # The handle presents the decoded stream, so its bytes are the stream.
         assert handle.read_bytes()[:4] == bytes.fromhex("ffffffff"), name
-        # Path addresses the stored bytes instead, coding and all.
-        stored.append(Path(root / name).read_bytes())
+        # LocalPath addresses the stored bytes instead, coding and all.
+        stored.append(LocalPath(root / name).read_bytes())
 
     # The bytes underneath are framed by the coding the name declared, and
     # each coded member is smaller than the stream it encodes.
@@ -307,7 +307,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
 - `IpcOptions::field` declared -> `read_field` answers it without touching the handle.
 - `field` accessor -> the declared root, cloned by [`IORecordOptions`](../options.md); declaring one sets `name`, and setting `name` renames it, so the two never disagree.
 - handle with no content coding -> `level` does nothing.
-- reading the bytes of a coded handle -> the decoded stream; `holder.Path` and `holder.File` address the stored, coded bytes.
+- reading the bytes of a coded handle -> the decoded stream; `holder.LocalPath` and `holder.LocalFile` address the stored, coded bytes.
 - missing resource -> zero batches, not a parse failure; the reader reports the declared schema, or an empty Arrow schema without one.
 - `open` on an absent stream -> succeeds and caches explicit zero dimensions.
 - zero batches written -> the schema is still written; the stream exists and answers its schema from the bytes.

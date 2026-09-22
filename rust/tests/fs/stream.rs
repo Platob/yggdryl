@@ -199,7 +199,7 @@ mod fs {
         let instrumented = Arc::new(InstrumentedFileSystem::new(inner));
         let calls = Arc::clone(&instrumented.calls);
         let filesystem: Arc<dyn FileSystem> = instrumented;
-        let file = File::from_path(Arc::clone(&filesystem), "ten.bin", None).unwrap();
+        let file = FsFile::from_path(Arc::clone(&filesystem), "ten.bin", None).unwrap();
         let chunks = file
             .pstream_bytes(0, 3)
             .unwrap()
@@ -233,7 +233,7 @@ mod fs {
         let instrumented = Arc::new(InstrumentedFileSystem::new(inner));
         let calls = Arc::clone(&instrumented.calls);
         let filesystem: Arc<dyn FileSystem> = instrumented;
-        let file = File::from_path(filesystem, "value.bin", None).unwrap();
+        let file = FsFile::from_path(filesystem, "value.bin", None).unwrap();
 
         assert_eq!(file.read_all_bytes().unwrap(), b"0123456789");
         assert_eq!(file.read_range_bytes(3, 4).unwrap(), b"3456");

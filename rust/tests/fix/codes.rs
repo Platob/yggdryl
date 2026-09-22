@@ -11,7 +11,7 @@ use super::fixed_codec;
 use super::path;
 
 use yggdryl::holder::Holder;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, Error, Field, FixCategory, FixCode, FixRegistry};
 
 /// One field reading by one named set, and the set beside it.
@@ -161,7 +161,7 @@ fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
 fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     // The crate's MsgCat vocabulary is registry-owned like every other
     // set, so even a fresh dictionary persists that one intrinsic set.
-    let path = Folder::temporary()
+    let path = LocalFolder::temporary()
         .unwrap()
         .path()
         .unwrap()

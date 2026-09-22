@@ -30,7 +30,7 @@ use yggdryl::{
 use yggdryl::{json, text, toml, yaml};
 
 use crate::timezone::{TimezoneInput, timezone_from_input};
-use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
+use crate::{JsArn, JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
 
 /// Preserve the core's typed arithmetic failures as JavaScript error classes.
 fn arithmetic_error(env: Env, error: yggdryl::Error) -> napi::Error {
@@ -1731,7 +1731,7 @@ struct JsEncoder<'env> {
     map_entries: Function<'env, (), Unknown<'env>>,
     map_is_map: Function<'env, Object<'env>, bool>,
     map_prototype: Object<'env>,
-    native_wrapper_prototypes: [Object<'env>; 7],
+    native_wrapper_prototypes: [Object<'env>; 8],
     regexp_constructor: Function<'env, (), Unknown<'env>>,
     regexp_flags_getter: Function<'env, Object<'env>, String>,
     regexp_is_regexp: Function<'env, Object<'env>, bool>,
@@ -2092,7 +2092,10 @@ impl<'env> JsEncoder<'env> {
         native_wrapper!(JsUrn, "Urn", 5, |inner| Scalar::from(ToString::to_string(
             inner
         )));
-        native_wrapper!(JsVersion, "Version", 6, |inner: &yggdryl::Version| {
+        native_wrapper!(JsArn, "Arn", 6, |inner| Scalar::from(ToString::to_string(
+            inner
+        )));
+        native_wrapper!(JsVersion, "Version", 7, |inner: &yggdryl::Version| {
             Scalar::from(*inner)
         });
         Ok(None)
@@ -2259,10 +2262,10 @@ fn constructor_prototype<'env>(global: &JsGlobal<'env>, name: &str) -> Result<Ob
     constructor.get_named_property("prototype")
 }
 
-fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 7]> {
-    if values.len() != 7 {
+fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 8]> {
+    if values.len() != 8 {
         return Err(napi_error(
-            "native wrapper prototype table must contain exactly seven entries",
+            "native wrapper prototype table must contain exactly eight entries",
         ));
     }
     Ok([
@@ -2272,7 +2275,8 @@ fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 7]> {
         required_array_object(values, 3, "Uri")?,
         required_array_object(values, 4, "Url")?,
         required_array_object(values, 5, "Urn")?,
-        required_array_object(values, 6, "Version")?,
+        required_array_object(values, 6, "Arn")?,
+        required_array_object(values, 7, "Version")?,
     ])
 }
 

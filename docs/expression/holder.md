@@ -20,10 +20,10 @@
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::Filter;
 
-    let lake = Folder::new(Folder::temporary()?.path()?.join("yggdryl-docs-lake"))?;
+    let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("yggdryl-docs-lake"))?;
     std::fs::create_dir_all(lake.path()?.join("year=2024"))?;
     std::fs::write(lake.path()?.join("year=2024").join("part-0.parquet"), b"")?;
     std::fs::create_dir_all(lake.path()?.join("year=2025"))?;

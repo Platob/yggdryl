@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::holder::Holder;
 use crate::{Codec, Error, IOBase, Level, Result, Url};
 
-use super::{Entry, Node, format, name};
+use super::{ZipEntry, ZipNode, format, name};
 
 /// What separates one archive's member from the archive inside it.
 ///
@@ -55,8 +55,8 @@ pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
 ///
 /// The archive owns two things and nothing else: the handle its bytes live in,
 /// and the central directory that says where each member is inside it. Every
-/// member view - [`Node`](super::Node), [`Leaf`](super::Leaf),
-/// [`Path`](super::Path) - is a name plus a shared reference to this, so
+/// member view - [`ZipNode`](super::ZipNode), [`ZipLeaf`](super::ZipLeaf),
+/// [`ZipPath`](super::ZipPath) - is a name plus a shared reference to this, so
 /// opening a member allocates nothing but its name, and two handles on one
 /// member always agree about what is there.
 ///
@@ -83,11 +83,11 @@ pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
 ///
 /// ```
 /// use yggdryl::holder::{Buffer, Holder};
-/// use yggdryl::zip::Archive;
+/// use yggdryl::zip::ZipArchive;
 /// use yggdryl::IOBase;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+/// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 /// let archive = root.archive();
 /// archive.write_member("trades/eu.csv", b"symbol,price\nAAPL,187.23\n")?;
 /// archive.write_member("trades/us.csv", b"symbol,price\nMSFT,412.10\n")?;
@@ -102,7 +102,7 @@ pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Archive {
+pub struct ZipArchive {
     inner: Mutex<Inner>,
     /// The archive's own location, which every member URL is built under.
     url: Url,
@@ -184,7 +184,7 @@ impl Inner {
 #[derive(Debug, Default)]
 struct Index {
     /// Members by their canonical name; a directory keeps its trailing `/`.
-    entries: BTreeMap<SmolStr, Entry>,
+    entries: BTreeMap<SmolStr, ZipEntry>,
     /// Where the central directory starts, which is where an append goes.
     directory_offset: u64,
     /// The archive comment, preserved across every rewrite.
@@ -219,7 +219,7 @@ struct Index {
     stored_end: u64,
 }
 
-impl Archive {
+impl ZipArchive {
     /// Mount `handle` as an archive without touching it.
     ///
     /// The archive's location is the handle's own, fragment included: an
@@ -292,10 +292,10 @@ impl Archive {
     ///
     /// ```
     /// use yggdryl::holder::{Buffer, Holder};
-    /// use yggdryl::zip::Archive;
+    /// use yggdryl::zip::ZipArchive;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let root = Archive::new(Holder::buffer(Buffer::new()))
+    /// let root = ZipArchive::new(Holder::buffer(Buffer::new()))
     ///     .with_restart_stride(4_096)
     ///     .mount();
     /// root.archive()
@@ -331,11 +331,11 @@ impl Archive {
     ///
     /// ```
     /// use yggdryl::holder::{Buffer, Holder};
-    /// use yggdryl::zip::Archive;
+    /// use yggdryl::zip::ZipArchive;
     /// use yggdryl::IOBase;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+    /// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
     ///
     /// let mut leaf = root.child_by_path("trades/eu.csv")?;
     /// leaf.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
@@ -346,8 +346,8 @@ impl Archive {
     /// # }
     /// ```
     #[must_use]
-    pub fn mount(self) -> Node {
-        Node::new(Arc::new(self), SmolStr::default())
+    pub fn mount(self) -> ZipNode {
+        ZipNode::new(Arc::new(self), SmolStr::default())
     }
 
     /// Consume the archive, publishing the index and answering its handle.
@@ -374,7 +374,7 @@ impl Archive {
     /// # Errors
     ///
     /// Returns the read or format failure the index parse hit.
-    pub fn entries(&self) -> Result<Vec<Entry>> {
+    pub fn entries(&self) -> Result<Vec<ZipEntry>> {
         let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.values().cloned().collect())
     }
@@ -384,7 +384,7 @@ impl Archive {
     /// # Errors
     ///
     /// Returns the read or format failure the index parse hit.
-    pub fn get_entry(&self, path: &str) -> Result<Option<Entry>> {
+    pub fn get_entry(&self, path: &str) -> Result<Option<ZipEntry>> {
         let name = name::resolve("", path)?;
         self.entry(&name)
     }
@@ -444,7 +444,7 @@ impl Archive {
     ///
     /// Returns the encode or write failure, or a refusal when `path` resolves
     /// to the archive root rather than to a member.
-    pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<Entry> {
+    pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<ZipEntry> {
         self.write_member_with(path, bytes, self.codec)
     }
 
@@ -455,7 +455,7 @@ impl Archive {
     /// Returns the encode or write failure, a refusal when `path` resolves to
     /// the archive root, or [`Error::Unsupported`] naming a coding no ZIP
     /// compression method spells.
-    pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<Entry> {
+    pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<ZipEntry> {
         self.write_member_from(path, bytes, codec)
     }
 
@@ -471,12 +471,12 @@ impl Archive {
     ///
     /// ```
     /// use yggdryl::holder::{Buffer, Holder};
-    /// use yggdryl::zip::Archive;
+    /// use yggdryl::zip::ZipArchive;
     /// use yggdryl::{Codec, IOBase};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let source = std::io::Cursor::new(b"symbol,price\nAAPL,187.23\n");
-    /// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+    /// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
     /// root.archive()
     ///     .write_member_from("trades/eu.csv", source, Codec::Deflate)?;
     /// root.archive().flush()?;
@@ -501,7 +501,12 @@ impl Archive {
     /// refusal when `path` resolves to the archive root, or
     /// [`Error::Unsupported`] naming a coding no ZIP compression method
     /// spells.
-    pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry> {
+    pub fn write_member_from(
+        &self,
+        path: &str,
+        source: impl Read,
+        codec: Codec,
+    ) -> Result<ZipEntry> {
         let name = name::resolve("", path)?;
         if name.is_empty() {
             return Err(Error::Io(std::io::Error::new(
@@ -528,7 +533,7 @@ impl Archive {
         let index = Self::index_of(inner)?;
         let offset = index.directory_offset;
         let previous = index.entries.get(name.as_str()).cloned();
-        let mut entry = Entry::new(name, method, now_nanos()).with_header_offset(offset);
+        let mut entry = ZipEntry::new(name, method, now_nanos()).with_header_offset(offset);
         // Replacing a member's bytes says nothing about the member: what the
         // record already stated about it is carried rather than reinvented.
         if let Some(previous) = &previous {
@@ -546,11 +551,11 @@ impl Archive {
     fn write_record(
         &self,
         inner: &mut Inner,
-        entry: Entry,
+        entry: ZipEntry,
         mut source: impl Read,
         codec: Codec,
         stride: u64,
-    ) -> Result<Entry> {
+    ) -> Result<ZipEntry> {
         let produced = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let mut batch = std::mem::take(&mut inner.scratch);
         batch.resize(crate::DEFAULT_STREAM_BATCH_SIZE, 0);
@@ -630,8 +635,9 @@ impl Archive {
                     return Ok(());
                 }
                 let offset = index.directory_offset;
-                let entry = Entry::new(directory, format::method_of(Codec::Identity)?, now_nanos())
-                    .with_header_offset(offset);
+                let entry =
+                    ZipEntry::new(directory, format::method_of(Codec::Identity)?, now_nanos())
+                        .with_header_offset(offset);
                 self.write_record(inner, entry, std::io::empty(), Codec::Identity, 0)?;
             }
         }
@@ -879,7 +885,7 @@ impl Archive {
     /// # Errors
     ///
     /// Returns the read or format failure the index parse hit.
-    pub(super) fn entry(&self, name: &str) -> Result<Option<Entry>> {
+    pub(super) fn entry(&self, name: &str) -> Result<Option<ZipEntry>> {
         let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.get(name).cloned())
     }
@@ -988,13 +994,13 @@ impl Archive {
     ///
     /// Returns the read failure, or [`Error::Codec`] when the local header is
     /// not one.
-    pub(super) fn data_offset(&self, entry: &Entry) -> Result<u64> {
+    pub(super) fn data_offset(&self, entry: &ZipEntry) -> Result<u64> {
         let mut guard = self.locked();
         Self::member_data(&mut guard, entry)
     }
 
     /// Where a member's bytes start, from state already borrowed.
-    fn member_data(inner: &mut Inner, entry: &Entry) -> Result<u64> {
+    fn member_data(inner: &mut Inner, entry: &ZipEntry) -> Result<u64> {
         if let Some(data) = Self::index_of(inner)?.data.get(entry.name()).copied() {
             return Ok(data);
         }
@@ -1016,7 +1022,7 @@ impl Archive {
         Self::index_of(&mut guard)
             .ok()
             .and_then(|index| index.entries.get(name))
-            .map_or(0, Entry::size)
+            .map_or(0, ZipEntry::size)
     }
 
     /// One member's stored modification time, in UTC nanoseconds.
@@ -1028,7 +1034,7 @@ impl Archive {
         Self::index_of(&mut guard)
             .ok()
             .and_then(|index| index.entries.get(name))
-            .map(Entry::modified)
+            .map(ZipEntry::modified)
     }
 
     /// Read from one member, when its bytes can pass straight through.
@@ -1093,7 +1099,7 @@ impl Archive {
     ///
     /// Returns the read or decode failure, or [`Error::Codec`] naming both
     /// digests when the decoded bytes do not match the record's.
-    pub(super) fn read_entry(self: &Arc<Self>, entry: &Entry) -> Result<Vec<u8>> {
+    pub(super) fn read_entry(self: &Arc<Self>, entry: &ZipEntry) -> Result<Vec<u8>> {
         // A stored member is already the bytes it decodes to, so reading one
         // whole is one ranged read of the archive rather than a stream over
         // it - and the offset it reads at comes from the same lock.
@@ -1135,7 +1141,7 @@ impl Archive {
     /// method this build cannot decode, or the local header read failure.
     pub(super) fn entry_reader(
         self: &Arc<Self>,
-        entry: &Entry,
+        entry: &ZipEntry,
         position: u64,
     ) -> Result<Box<dyn Read + Send>> {
         if entry.is_encrypted() {
@@ -1193,7 +1199,7 @@ impl Archive {
     /// it proves is the map rather than the point.
     fn restart_before(
         self: &Arc<Self>,
-        entry: &Entry,
+        entry: &ZipEntry,
         codec: Codec,
         position: u64,
     ) -> Result<(u64, u64)> {
@@ -1229,7 +1235,7 @@ impl Archive {
     /// The window spans both spellings a restart has - the four bytes a full
     /// flush ends with, and the four a frame begins with - so the scan the
     /// coding owns answers for either without this knowing which.
-    fn restart_proven(&self, entry: &Entry, codec: Codec, encoded_at: u64) -> Result<bool> {
+    fn restart_proven(&self, entry: &ZipEntry, codec: Codec, encoded_at: u64) -> Result<bool> {
         let start = self.data_offset(entry)?;
         let Some(before) = encoded_at.checked_sub(RESTART_EVIDENCE) else {
             return Ok(false);
@@ -1278,7 +1284,7 @@ impl Archive {
     ///
     /// The index only learns about a member once its bytes are in the handle,
     /// so a failed write leaves an archive that never claimed them.
-    fn index_record(inner: &mut Inner, entry: &Entry, data: u64) -> Result<()> {
+    fn index_record(inner: &mut Inner, entry: &ZipEntry, data: u64) -> Result<()> {
         let name = SmolStr::new(entry.name());
         let index = Self::index_of(inner)?;
         index.directory_offset = data + entry.compressed_size();
@@ -1349,9 +1355,9 @@ impl Archive {
     fn compact(guard: &mut MutexGuard<'_, Inner>) -> Result<()> {
         let inner = &mut **guard;
         let index = Self::index_of(inner)?;
-        let mut ordered: Vec<Entry> = index.entries.values().cloned().collect();
+        let mut ordered: Vec<ZipEntry> = index.entries.values().cloned().collect();
         let mut cursor = index.prologue;
-        ordered.sort_by_key(Entry::header_offset);
+        ordered.sort_by_key(ZipEntry::header_offset);
 
         let mut moved = Vec::with_capacity(ordered.len());
         let mut buffer = vec![0_u8; COMPACT_CHUNK];
@@ -1435,7 +1441,7 @@ struct MemberSink<'inner> {
     /// Where the record begins in the archive.
     offset: u64,
     /// The member being written, which the header spells.
-    entry: Entry,
+    entry: ZipEntry,
     /// The header's byte length, once one has been written.
     header: Option<u64>,
     /// Whether that header reserved room for 64-bit sizes.
@@ -1478,7 +1484,7 @@ impl MemberSink<'_> {
     }
 
     /// Write the tail, settle the header, and answer where the bytes start.
-    fn finish(&mut self, entry: &Entry) -> Result<u64> {
+    fn finish(&mut self, entry: &ZipEntry) -> Result<u64> {
         self.entry = entry.clone();
         self.spill(true)?;
         if self.reserved {
@@ -1567,7 +1573,7 @@ impl RestartLog {
 /// retained between calls beyond the caller's buffer, so a decoder wrapping
 /// this holds its own window and nothing else.
 struct RangeReader {
-    archive: Arc<Archive>,
+    archive: Arc<ZipArchive>,
     position: u64,
     remaining: u64,
 }
@@ -1597,13 +1603,13 @@ impl Read for RangeReader {
 struct Verified {
     reader: Box<dyn Read + Send>,
     crc: flate2::Crc,
-    entry: Entry,
+    entry: ZipEntry,
     done: bool,
 }
 
 impl Verified {
     /// Hash what `reader` hands out, against what `entry` states.
-    fn new(reader: Box<dyn Read + Send>, entry: &Entry) -> Self {
+    fn new(reader: Box<dyn Read + Send>, entry: &ZipEntry) -> Self {
         Self {
             reader,
             crc: flate2::Crc::new(),
@@ -1670,7 +1676,7 @@ impl Read for Skip {
 /// # Errors
 ///
 /// Returns [`Error::Codec`] naming both digests when they disagree.
-pub(super) fn verify_crc(entry: &Entry, bytes: &[u8]) -> Result<()> {
+pub(super) fn verify_crc(entry: &ZipEntry, bytes: &[u8]) -> Result<()> {
     let mut crc = flate2::Crc::new();
     crc.update(bytes);
     if crc.sum() == entry.crc32() {
@@ -1680,7 +1686,7 @@ pub(super) fn verify_crc(entry: &Entry, bytes: &[u8]) -> Result<()> {
 }
 
 /// Report a member whose bytes do not hash to what its record states.
-fn digest_failure(entry: &Entry, digest: u32) -> Error {
+fn digest_failure(entry: &ZipEntry, digest: u32) -> Error {
     Error::Codec {
         format: "zip",
         position: usize::try_from(entry.header_offset()).unwrap_or(usize::MAX),
@@ -1893,7 +1899,7 @@ pub mod internals {
     //! layout is most of what a ZIP archive promises, so the pins that assert
     //! one read the published image back byte for byte.
 
-    use super::Archive;
+    use super::ZipArchive;
     use crate::Result;
 
     /// The exact bytes the archive holds, published first.
@@ -1902,7 +1908,7 @@ pub mod internals {
     ///
     /// Returns a typed failure where the pending writes do not publish or the
     /// handle does not read back.
-    pub fn image(archive: &Archive) -> Result<Vec<u8>> {
+    pub fn image(archive: &ZipArchive) -> Result<Vec<u8>> {
         archive.image()
     }
 }

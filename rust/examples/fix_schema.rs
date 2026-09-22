@@ -15,12 +15,12 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType, Field};
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{FixRegistry, fix_schema};
 
 fn main() -> yggdryl::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let schema = fix_schema(&registry, "fixmsg")?;
     let arrow = schema.clone().into_arrow_schema()?;
     println!("fixmsg: {} columns", arrow.fields().len());

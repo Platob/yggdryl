@@ -11,7 +11,7 @@
 //! call unchanged, and tallies it, so the stack built on top of it is measured
 //! rather than argued about. The counts here are what a *layer* asks of
 //! storage; how many requests a backend then makes of the network is the object
-//! client's own `Stats`, asserted in `rust/tests/object/`.
+//! client's own `Stats`, asserted in `rust/tests/s3/`.
 
 use std::sync::Arc;
 
@@ -44,15 +44,15 @@ fn costs(what: &str, calls: &Arc<Calls>, expected: &str, operation: impl FnOnce(
 
 #[test]
 fn fix_catalog_storage_resolves_each_root_path_once() {
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixRegistry};
 
-    let path = Folder::temporary()
+    let path = LocalFolder::temporary()
         .unwrap()
         .path()
         .unwrap()
         .join(format!("yggdryl-fix-root-calls-{}", std::process::id()));
-    let mut folder = Counted::new(Folder::new(&path).unwrap());
+    let mut folder = Counted::new(LocalFolder::new(&path).unwrap());
     let calls = Arc::clone(folder.calls());
     let mut field = DataType::utf8().nullable_field("Symbol");
     field.as_fix_mut().set_tag(55).unwrap();
@@ -688,12 +688,12 @@ fn a_write_to_a_cold_cache_does_not_ask_for_a_length_first() {
 ///
 /// [`Counted`] cannot be the instrument here: an archive holds a `Holder`, and
 /// the enum has no variant for a counted handle to arrive as. The archive
-/// counts its own calls instead - `Archive::handle_reads` and `handle_writes`
+/// counts its own calls instead - `ZipArchive::handle_reads` and `handle_writes`
 /// tally every crossing it makes - which is the same measurement taken one
 /// layer in, and the one its docs publish.
 mod zip {
     use yggdryl::holder::{Buffer, Holder};
-    use yggdryl::zip::{Archive, Node};
+    use yggdryl::zip::{ZipArchive, ZipNode};
     use yggdryl::{Codec, IOBase};
 
     /// A payload long enough to hold several restart strides.
@@ -707,8 +707,8 @@ mod zip {
     }
 
     /// An archive of one member, published, under `codec` and `stride`.
-    fn archive(codec: Codec, stride: u64, size: usize) -> Node {
-        let root = Archive::new(Holder::buffer(Buffer::new()))
+    fn archive(codec: Codec, stride: u64, size: usize) -> ZipNode {
+        let root = ZipArchive::new(Holder::buffer(Buffer::new()))
             .with_restart_stride(stride)
             .mount();
         root.archive()
@@ -723,14 +723,14 @@ mod zip {
     /// A mount's cost is what parsing a directory this archive did not write
     /// asks of the handle, so it has to be a handle whose bytes are already
     /// there rather than one this process filled in.
-    fn stored(name: &str, codec: Codec, stride: u64, size: usize) -> (Node, std::path::PathBuf) {
+    fn stored(name: &str, codec: Codec, stride: u64, size: usize) -> (ZipNode, std::path::PathBuf) {
         let path = std::env::temp_dir().join(format!(
             "yggdryl-calls-zip-{name}-{}.zip",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
         {
-            let root = Archive::new(Holder::file(&path).expect("a local archive"))
+            let root = ZipArchive::new(Holder::file(&path).expect("a local archive"))
                 .with_restart_stride(stride)
                 .mount();
             root.archive()
@@ -738,7 +738,7 @@ mod zip {
                 .expect("the member writes");
             root.archive().flush().expect("the directory publishes");
         }
-        let root = Archive::new(Holder::file(&path).expect("a local archive")).mount();
+        let root = ZipArchive::new(Holder::file(&path).expect("a local archive")).mount();
         (root, path)
     }
 
@@ -801,7 +801,7 @@ mod zip {
 
     #[test]
     fn a_member_write_is_one_call_and_a_publish_is_two() {
-        let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+        let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
         let before = root.archive().handle_writes();
         root.archive()
             .write_member_with("a.bin", &payload(4_096), Codec::Identity)
@@ -824,7 +824,7 @@ mod zip {
 
     #[test]
     fn a_streamed_member_is_one_call_per_window_and_one_settle() {
-        let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+        let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
         let long = payload(3 * 1024 * 1024);
 
         let before = root.archive().handle_writes();

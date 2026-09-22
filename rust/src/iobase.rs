@@ -12,7 +12,7 @@
 //! naming what they are.
 //!
 //! The core ships [`Buffer`](crate::holder::Buffer), an auto-scaling in-memory implementation, and
-//! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
+//! [`crate::local`], whose [`LocalFile`](crate::local::LocalFile) is an auto-resizing
 //! memory-mapped local file. Two wrapping handles sit over any of them and are
 //! handles themselves: [`Coding`](crate::coding::Coding) presents the decoded bytes of a compressed
 //! resource, and [`crate::holder::buffered::Buffered`] serves reads from a page cache
@@ -39,7 +39,7 @@
 
 use std::io::{Read as _, Write as _};
 
-use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Url};
+use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 use crate::{Codec, Level};
 
 use crate::holder::Holder;
@@ -166,8 +166,24 @@ pub trait IOBase: Send + IOMedia {
     /// Returns the backing store's resize failure.
     fn truncate(&mut self, size: u64) -> Result<()>;
 
-    /// Return the canonical location, when the bytes have one.
-    fn url(&self) -> Option<&Url>;
+    /// Return the identifier the bytes are addressed by, when they have one.
+    ///
+    /// This is what a handle *is* - the one fact every backend owes - and it
+    /// is an identifier rather than a location because not every address is a
+    /// place: a name, or the ARN a service writes for one of its resources,
+    /// addresses a handle exactly as a URL does. [`Uri::locator`] is what
+    /// answers where such a handle opens.
+    fn uri(&self) -> Option<&Uri>;
+
+    /// Return the canonical location, when the identifier is one.
+    ///
+    /// A handle addressed by a location holds one and answers it here. A
+    /// handle addressed by a name has none to borrow - resolving one would
+    /// build a value this accessor cannot lend out - so it keeps the default
+    /// and a caller reads [`uri`](Self::uri) instead.
+    fn url(&self) -> Option<&Url> {
+        None
+    }
 
     /// Return the filesystem/path binding when this handle has one.
     fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
@@ -304,10 +320,10 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
+    /// let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("lake"))?;
     ///
     /// for entry in lake.ls(true, false).take(3) {
     ///     let _ = entry?;
@@ -331,10 +347,10 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
+    /// let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("lake"))?;
     ///
     /// for part in lake.glob("year=2024/**/*.parquet", false)? {
     ///     println!("{}", part?.url().expect("a located child"));
@@ -413,10 +429,10 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
+    /// let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("lake"))?;
     ///
     /// let filter = "&holder.partition['year'] = '2024' and &holder.extension = 'parquet'"
     ///     .parse()?;
@@ -482,10 +498,10 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
+    /// let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("lake"))?;
     ///
     /// for part in lake.children_where(&[("year", "2024")], false)? {
     ///     part?.clear()?;
@@ -833,7 +849,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// A whole-value write is a *complete* operation, so it ends with
     /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
-    /// [`local::File`](crate::local::File) grows geometrically so appending
+    /// [`local::LocalFile`](crate::local::LocalFile) grows geometrically so appending
     /// does not remap on every write - must not leave that slack visible to a
     /// second handle on the same location, which would read the padding as
     /// content. Positional [`Self::pwrite`] deliberately does not publish;
@@ -926,10 +942,10 @@ pub trait IOBase: Send + IOMedia {
     /// is a second round trip on the hot path, and a recursive delete over a
     /// large tree turns into a flood of them. Where a backend needs a different
     /// call for a leaf than for a container, the handle's own static role
-    /// answers which - [`local::File`](crate::local::File) is a file,
-    /// [`local::Folder`](crate::local::Folder) is a directory - so the dispatch
+    /// answers which - [`local::LocalFile`](crate::local::LocalFile) is a file,
+    /// [`local::LocalFolder`](crate::local::LocalFolder) is a directory - so the dispatch
     /// is on the type, not on a probe. The one documented exception is a
-    /// generic path handle such as [`local::Path`](crate::local::Path), whose
+    /// generic path handle such as [`local::LocalPath`](crate::local::LocalPath), whose
     /// whole job is to report [`IOKind`] from what is actually there: it routes
     /// on the kind it *already* resolves, and adds no second probe for the
     /// delete.

@@ -20,7 +20,7 @@ own - each is checked here by a server that did not read this crate's source.
    made;
 2. ``azure-storage-blob`` writes blobs under ``from-azure/``, including the
    names that a URL, a signature, and a raw name each spell differently;
-3. ``cargo test --features object --test interop object::azure::`` writes its
+3. ``cargo test --features s3 --test interop s3::azure::`` writes its
    own blobs under ``from-rust/`` and reads back what the reference client
    wrote. Its reading half prints ``SKIPPED`` when the external blobs are
    missing, and this driver fails on that word, so a skipped half can never
@@ -207,10 +207,10 @@ def run_cargo(endpoint: str) -> str:
         "--manifest-path",
         str(REPO / "rust" / "Cargo.toml"),
         "--features",
-        "object",
+        "s3",
         "--test",
         "interop",
-        "object::azure::",
+        "s3::azure::",
         "--",
         "--nocapture",
         "--test-threads=1",

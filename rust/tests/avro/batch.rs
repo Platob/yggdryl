@@ -217,6 +217,10 @@ mod avro {
                 self.handle.lock().unwrap().truncate(size)
             }
 
+            fn uri(&self) -> Option<&yggdryl::Uri> {
+                None
+            }
+
             fn url(&self) -> Option<&Url> {
                 None
             }
@@ -268,7 +272,7 @@ mod avro {
 
         impl IOBase for Counting {
             yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
-                truncate, url, media_type, set_media_type, flush, parent, child_by_path,
+                truncate, uri, url, media_type, set_media_type, flush, parent, child_by_path,
                 ls, kind, clear, remove, is_atomic, is_tabular);
 
             fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {

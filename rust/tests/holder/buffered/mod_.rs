@@ -610,7 +610,7 @@ mod counted {
         // A located leaf, because that is the case the projection gets wrong: it
         // reopens a handle's *location*, which for a coding view holds the
         // compressed form rather than the bytes the view presents.
-        let root = yggdryl::local::Folder::temporary()
+        let root = yggdryl::local::LocalFolder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -634,7 +634,7 @@ mod counted {
         };
         let coded = || {
             yggdryl::coding::Coding::new(
-                yggdryl::local::File::new(&path).unwrap(),
+                yggdryl::local::LocalFile::new(&path).unwrap(),
                 yggdryl::Codec::Gzip,
             )
         };
@@ -642,13 +642,13 @@ mod counted {
         // Four ways to the same two records. The last is the one that read the
         // gzip header as text before the cache learned to defer.
         let plain_file = rows(
-            yggdryl::local::File::new(&path)
+            yggdryl::local::LocalFile::new(&path)
                 .unwrap()
                 .read_arrow_reader(&options)
                 .unwrap(),
         );
         let cached_file = rows(
-            yggdryl::local::File::new(&path)
+            yggdryl::local::LocalFile::new(&path)
                 .unwrap()
                 .buffered(BufferedOptions::default())
                 .read_arrow_reader(&options)

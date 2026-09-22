@@ -3,8 +3,8 @@
 //! Every measurement here is a *wrapper overhead* measurement: the same
 //! payload, the same operation, once through an `fs` handle and once
 //! through the native handle the reader already trusts - `holder::Buffer` for the
-//! memory filesystem, `local::File` for the local one. The difference is what
-//! the vtable and stream-dispatch cost.
+//! memory filesystem, `local::LocalFile` for the local one. The difference is
+//! what the vtable and stream-dispatch cost.
 
 pub(crate) mod bytes;
 pub(crate) mod listing;
@@ -81,7 +81,7 @@ pub(crate) fn memory() -> Arc<MemoryFileSystem> {
 
 /// One local filesystem mapping, and the temporary root it works under.
 pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
-    let mut root = yggdryl::local::Folder::temporary()
+    let mut root = yggdryl::local::LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");

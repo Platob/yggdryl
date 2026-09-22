@@ -28,7 +28,7 @@ mod fs {
         memory.create_dir("root/foo/", true).unwrap();
         write(&memory, "root/foo//bar.txt", b"value").unwrap();
         let filesystem: Arc<dyn FileSystem> = Arc::new(memory);
-        let root = Folder::from_path(filesystem, "root", None).unwrap();
+        let root = FsFolder::from_path(filesystem, "root", None).unwrap();
 
         let paths = root
             .glob("foo//*.txt", true)
@@ -44,7 +44,7 @@ mod fs {
         write(&memory, "a.bin", b"a").unwrap();
         memory.create_dir("folder", false).unwrap();
         let bound_filesystem: Arc<dyn FileSystem> = Arc::new(memory.clone());
-        let non_root = Folder::new(
+        let non_root = FsFolder::new(
             BoundLocation::new(Arc::clone(&bound_filesystem), "folder", None::<String>).unwrap(),
         );
         assert!(
@@ -55,7 +55,7 @@ mod fs {
         );
         let error = memory.delete_dir_contents("", false).unwrap_err();
         assert!(error.is_unsupported());
-        let root = Folder::new(BoundLocation::new(bound_filesystem, "", None::<String>).unwrap());
+        let root = FsFolder::new(BoundLocation::new(bound_filesystem, "", None::<String>).unwrap());
         root.delete_root_dir_contents().unwrap();
         assert!(
             memory

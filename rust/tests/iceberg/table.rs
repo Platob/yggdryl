@@ -241,13 +241,13 @@ mod iceberg {
         FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, TableMetadata,
         Transform, assign_field_ids,
     };
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
     use yggdryl::{DataType, Field, StructType};
 
     /// A scratch directory unique to this test and this process.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = Folder::temporary().unwrap().path().unwrap();
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
         path.push(format!(
             "yggdryl-iceberg-contract-{label}-{}",
             std::process::id()
@@ -302,7 +302,7 @@ mod iceberg {
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -325,7 +325,7 @@ mod iceberg {
         // one row per file, so the bounds march with the sort.
         let by_symbol = root("sorted-by-symbol");
         let mut sorted = Table::create_sorted(
-            Folder::new(&by_symbol).unwrap(),
+            LocalFolder::new(&by_symbol).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
@@ -369,7 +369,7 @@ mod iceberg {
         // Explicitly unsorted: rows stay as they arrived, files carry no order.
         let plain = root("unsorted");
         let mut unsorted = Table::create_sorted(
-            Folder::new(&plain).unwrap(),
+            LocalFolder::new(&plain).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),

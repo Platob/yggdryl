@@ -397,7 +397,11 @@ test('bound facts keep the original handler, raw path, and safe URI', () => {
 
   assert.equal(handle.filesystem, handler)
   assert.equal(handle.path, path)
-  assert.equal(handle.uri, uri)
+  // `boundUri` is the binding spelling the caller handed in, credentials and
+  // all; `uri` is the identifier the handle answers to.
+  assert.equal(handle.boundUri, uri)
+  assert.ok(handle.uri.equals(handle.url.intoUri()))
+  assert.ok(!handle.uri.toString().includes('secret'))
   assert.ok(!handle.maskedUri.includes('secret'))
   assert.ok(!handle.maskedUri.includes('hidden'))
   assert.equal(

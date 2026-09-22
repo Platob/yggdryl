@@ -25,11 +25,11 @@ One line in, one row per message out, with the columns named as the dictionary n
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
 
     let schema = fix_schema(&registry, "FixMessage")?;
     let reader = FixCodec::new(Arc::clone(&registry));
@@ -144,13 +144,13 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A bridge row states its fields and not its type, so this reader is told
     // to read the untyped row the [default refusals](decode.md#a-type-nobody-asked-for-is-never-built) drop.
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?))
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?))
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
@@ -285,13 +285,13 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A document states no message type, so this reader reads the untyped row
     // the [default refusals](decode.md#a-type-nobody-asked-for-is-never-built) drop.
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?))
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?))
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     // A Jolokia answer as a bridge logs it: prose in front, a duration behind.
@@ -402,11 +402,11 @@ A proprietary group that reuses a standard counter but maps none of that standar
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixRegistry, fix_column_of, fix_schema, fix_schema_tags};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     let schema = fix_schema(&registry, "FixMessage")?;
 
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
@@ -569,7 +569,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     ```rust
     use std::sync::Arc;
     use yggdryl::graph::{Element, Event};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, CURRUNIX_TAG_NAME, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
@@ -585,7 +585,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     assert!(fields.iter().all(|field| field.name() != "px"));
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let default = Scalar::datetime64(1_704_190_530_000_000_000, TimeUnit::Nanosecond, Timezone::UTC)?;
     let reader = FixCodec::new(Arc::clone(&registry))
         .try_with_default_sending_time(Some(default.clone()))?;
@@ -751,11 +751,11 @@ This is parse behavior and depends on the one message being parsed, so it compos
     ```rust
     use std::sync::Arc;
     use yggdryl::graph::Event;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(registry);
     assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
     assert_eq!(codec.official_time_delay_ms(), 1_000);
@@ -930,11 +930,11 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
     ```rust
     use std::sync::Arc;
     use yggdryl::graph::{Event, MarketElement};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
@@ -1036,11 +1036,11 @@ A known message with no selected value states none; an unknown message selects n
     use std::sync::Arc;
 
     use yggdryl::graph::Element;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, IDENTIFIERS_TAG_NAME, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(Arc::clone(&registry));
     let wire = b"8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|";
     let filled = codec.parse_fix_line(wire)?;
@@ -1089,11 +1089,11 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
     let read = |row: &[u8]| -> yggdryl::Result<FixMsg> {
         reader.parse_line(row)?.next().expect("one row")
     };
@@ -1222,11 +1222,11 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixRegistry, StructType, fix_schema, fix_schema_carrying};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 
     let capture = DataType::from(StructType::from_fields([
         DataType::utf8().required_field("url"),

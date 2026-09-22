@@ -12,7 +12,7 @@ use smol_str::format_smolstr;
 
 use crate::{Charset, Codec, Error, Restarts, Result};
 
-use super::Entry;
+use super::ZipEntry;
 
 /// `PK\x03\x04`: the header one member's bytes follow.
 pub(super) const LOCAL_SIGNATURE: u32 = 0x0403_4b50;
@@ -402,7 +402,7 @@ fn unicode_path(name: &[u8], stated: Option<&(u32, Vec<u8>)>) -> Option<smol_str
 }
 
 /// Build the restart map extra field, or nothing when the member has none.
-fn restart_extra(entry: &Entry) -> Vec<u8> {
+fn restart_extra(entry: &ZipEntry) -> Vec<u8> {
     let restarts = entry.restarts();
     if restarts.is_empty() {
         return Vec::new();
@@ -423,7 +423,7 @@ fn restart_extra(entry: &Entry) -> Vec<u8> {
 /// APPNOTE 6.3.10 requires of it: a reader that takes the pair as one unit
 /// would otherwise read the field behind it as the second half. A central
 /// record has no such rule and carries only the fields its own slots marked.
-fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
+fn zip64_extra(entry: &ZipEntry, local: bool) -> Vec<u8> {
     let mut body = Vec::new();
     let both = local && settles_extra(entry);
     if both || entry.size() >= u64::from(ZIP64_MARK_32) {
@@ -453,7 +453,7 @@ fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
 /// and a header that grew to state them would move the bytes it introduces.
 /// So the room is taken up front and filled in afterwards, at the one length
 /// both spellings share.
-fn reserved_zip64_extra(entry: &Entry) -> Vec<u8> {
+fn reserved_zip64_extra(entry: &ZipEntry) -> Vec<u8> {
     let mut extra = Vec::with_capacity(20);
     put_u16(&mut extra, ZIP64_EXTRA_ID);
     put_u16(&mut extra, 16);
@@ -466,7 +466,7 @@ fn reserved_zip64_extra(entry: &Entry) -> Vec<u8> {
 ///
 /// The field states whole UTC seconds, which is what makes a round trip exact
 /// where the two-second DOS pair beside it cannot be.
-fn timestamp_extra(entry: &Entry) -> Vec<u8> {
+fn timestamp_extra(entry: &ZipEntry) -> Vec<u8> {
     let seconds = entry.modified().div_euclid(NANOS_PER_SECOND);
     let Ok(seconds) = i32::try_from(seconds) else {
         return Vec::new();
@@ -489,7 +489,7 @@ fn timestamp_extra(entry: &Entry) -> Vec<u8> {
 ///
 /// Returns [`Error::Codec`] naming the offset when the record is truncated or
 /// its name is not UTF-8.
-pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
+pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<ZipEntry> {
     let offset = scan.offset();
     let signature = scan.u32()?;
     if signature != CENTRAL_SIGNATURE {
@@ -539,7 +539,7 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
     let name = unicode_path(name, unicode_name.as_ref())
         .unwrap_or_else(|| decode_text(name, offset, "name"));
     let comment = decode_text(comment, offset, "comment");
-    Ok(Entry::from_parts(
+    Ok(ZipEntry::from_parts(
         name,
         made_by,
         flags,
@@ -575,7 +575,7 @@ fn decode_text(bytes: &[u8], _offset: usize, _field: &str) -> smol_str::SmolStr 
 }
 
 /// Encode one central directory record.
-pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
+pub(super) fn write_central(entry: &ZipEntry, target: &mut Vec<u8>) {
     let zip64 = zip64_extra(entry, false);
     let timestamp = timestamp_extra(entry);
     // The map rides the central record alone: the index is what reads it, and
@@ -614,7 +614,7 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
 /// room, writes the bytes, and states the sizes into the header it already
 /// placed - which is only possible because the reserved shape has the length
 /// the settled one will have.
-pub(super) fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8>) {
+pub(super) fn write_local_with(entry: &ZipEntry, reserve: bool, target: &mut Vec<u8>) {
     let zip64 = if reserve {
         reserved_zip64_extra(entry)
     } else {
@@ -829,7 +829,7 @@ pub(super) fn write_end(end: End, comment: &[u8], target: &mut Vec<u8>) {
 ///
 /// Only a size the 32-bit slot cannot hold is stated in the ZIP64 extra, so
 /// only that case makes compaction read the variable part of a local header.
-pub(super) fn settles_extra(entry: &Entry) -> bool {
+pub(super) fn settles_extra(entry: &ZipEntry) -> bool {
     entry.size() >= u64::from(ZIP64_MARK_32) || entry.compressed_size() >= u64::from(ZIP64_MARK_32)
 }
 
@@ -841,7 +841,7 @@ pub(super) fn settles_extra(entry: &Entry) -> bool {
 /// writes has to carry the values itself - which the central record already
 /// knows. The header keeps its exact length, because that is what lets a
 /// record only ever move earlier.
-pub(super) fn settle_local(header: &mut [u8], entry: &Entry) {
+pub(super) fn settle_local(header: &mut [u8], entry: &ZipEntry) {
     if header.len() < LOCAL_LEN {
         return;
     }
@@ -909,7 +909,7 @@ pub mod internals {
     //! numbers, and reading one central record scans it from the bytes.
 
     use super::{End, Scan};
-    use crate::zip::Entry;
+    use crate::zip::ZipEntry;
     use crate::{Codec, Result};
 
     /// The signature every central-directory record starts with.
@@ -973,12 +973,12 @@ pub mod internals {
     }
 
     /// Write one member's local header.
-    pub fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8>) {
+    pub fn write_local_with(entry: &ZipEntry, reserve: bool, target: &mut Vec<u8>) {
         super::write_local_with(entry, reserve, target);
     }
 
     /// Write one member's central-directory record.
-    pub fn write_central(entry: &Entry, target: &mut Vec<u8>) {
+    pub fn write_central(entry: &ZipEntry, target: &mut Vec<u8>) {
         super::write_central(entry, target);
     }
 
@@ -1038,7 +1038,7 @@ pub mod internals {
     /// # Errors
     ///
     /// Returns a typed failure naming the offset of a malformed record.
-    pub fn read_central(bytes: &[u8], base: usize) -> Result<Entry> {
+    pub fn read_central(bytes: &[u8], base: usize) -> Result<ZipEntry> {
         super::read_central(&mut Scan::new(bytes, base))
     }
 }

@@ -94,7 +94,7 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
         std::sync::OnceLock::new();
     std::sync::Arc::clone(REGISTRY.get_or_init(|| {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-        let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+        let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
         std::sync::Arc::new(
             yggdryl::FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
         )

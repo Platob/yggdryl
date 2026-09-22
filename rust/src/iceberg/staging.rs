@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::options::WriteStaging;
 use crate::holder::Holder;
-use crate::local::Folder;
+use crate::local::LocalFolder;
 use crate::{IOBase, MediaType, Result};
 
 /// The files one commit writes, staged locally and rolled back together.
@@ -61,7 +61,7 @@ impl Staging {
         let base = match staging {
             Some(WriteStaging::Off) => None,
             Some(WriteStaging::Folder(url)) => Some(url.clone().into_path()?),
-            None if remote => Some(Folder::temporary()?.path()?),
+            None if remote => Some(LocalFolder::temporary()?.path()?),
             None => None,
         };
         let directory = base.map(|base| {
@@ -226,16 +226,13 @@ impl Drop for Staging {
 /// costs one part of memory. Any other target - a local or a memory-backed
 /// one, where staging is off unless asked for - takes the file whole.
 // The length is what an object store's multipart upload plans against; with
-// no object backend compiled in there is nothing to plan and the file is
+// no S3 backend compiled in there is nothing to plan and the file is
 // read whole.
-#[cfg_attr(
-    not(feature = "object"),
-    expect(unused_variables, reason = "object-only")
-)]
+#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "s3-only"))]
 fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
     match target {
-        #[cfg(feature = "object")]
-        Holder::ObjectFile(file) => {
+        #[cfg(feature = "s3")]
+        Holder::S3File(file) => {
             let mut source = std::fs::File::open(path)?;
             file.upload_from(&mut source, size)
         }
@@ -255,8 +252,8 @@ fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
 /// leaf publishes what it holds when it is dropped, so it is removed first.
 fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
     match target {
-        #[cfg(feature = "object")]
-        Holder::ObjectFile(file) => {
+        #[cfg(feature = "s3")]
+        Holder::S3File(file) => {
             let _ = file.discard();
         }
         mut other => {
@@ -274,8 +271,8 @@ fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
 /// listing would ask. Every other handle is what it already was.
 pub(super) fn leaf(holder: Holder) -> Result<Holder> {
     match holder {
-        #[cfg(feature = "object")]
-        Holder::ObjectPath(path) => Ok(Holder::ObjectFile(path.as_file()?)),
+        #[cfg(feature = "s3")]
+        Holder::S3Path(path) => Ok(Holder::S3File(path.as_file()?)),
         other => Ok(other),
     }
 }
@@ -287,8 +284,8 @@ pub(super) fn leaf(holder: Holder) -> Result<Holder> {
 /// that would ask the store what the layout already says.
 pub(super) fn container(holder: Holder) -> Result<Holder> {
     match holder {
-        #[cfg(feature = "object")]
-        Holder::ObjectPath(path) => Ok(Holder::ObjectFolder(path.as_directory()?)),
+        #[cfg(feature = "s3")]
+        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
         other => Ok(other),
     }
 }
@@ -303,14 +300,11 @@ pub(super) fn container(holder: Holder) -> Result<Holder> {
 /// the handle is returned as it was and the file answers for its own length,
 /// which is one request more and the truth. A handle with no such memory is
 /// returned as it was.
-#[cfg_attr(
-    not(feature = "object"),
-    expect(unused_variables, reason = "object-only")
-)]
+#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "s3-only"))]
 pub(super) fn sized(holder: Holder, size: u64) -> Holder {
     match holder {
-        #[cfg(feature = "object")]
-        Holder::ObjectFile(file) if size > 0 => Holder::ObjectFile(file.with_known_size(size)),
+        #[cfg(feature = "s3")]
+        Holder::S3File(file) if size > 0 => Holder::S3File(file.with_known_size(size)),
         other => other,
     }
 }

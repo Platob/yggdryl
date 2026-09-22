@@ -39,10 +39,10 @@
 //! use yggdryl::DataType;
 //! use yggdryl::StructType;
 //! use yggdryl::iceberg::Catalog;
-//! use yggdryl::local::Folder;
+//! use yggdryl::local::LocalFolder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let catalog = Catalog::new(Folder::new(Folder::temporary()?.path()?.join("warehouse"))?);
+//! let catalog = Catalog::new(LocalFolder::new(LocalFolder::temporary()?.path()?.join("warehouse"))?);
 //!
 //! let schema = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
@@ -236,7 +236,7 @@ fn classify(folder: Holder) -> Result<Occupant> {
 /// here rather than pretending.
 fn folder_present(folder: &Holder) -> Result<bool> {
     match folder {
-        Holder::Folder(folder) => Ok(folder.exists()),
+        Holder::LocalFolder(folder) => Ok(folder.exists()),
         Holder::FsFolder(folder) => {
             Ok(folder.filesystem().file_info(folder.path())?.kind != IOKind::Unknown)
         }
@@ -274,20 +274,22 @@ fn resolve(warehouse: &(impl IOBase + ?Sized), name: &str) -> Result<Holder> {
 /// as the same backend's folder, keeping every bound-location fact.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
-        Holder::Folder(_) | Holder::FsFolder(_) => Ok(child),
-        Holder::Path(path) => Ok(Holder::Folder(crate::local::Folder::from_url(
+        Holder::LocalFolder(_) | Holder::FsFolder(_) => Ok(child),
+        Holder::LocalPath(path) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
             path.url().clone(),
         )?)),
-        Holder::File(file) => match file.url() {
-            Some(url) => Ok(Holder::Folder(crate::local::Folder::from_url(url.clone())?)),
+        Holder::LocalFile(file) => match file.url() {
+            Some(url) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
+                url.clone(),
+            )?)),
             None => Err(invalid(SmolStr::new_static(
                 "expected a located folder for a catalog name, got a handle with no URL",
             ))),
         },
-        Holder::FsPath(path) => Ok(Holder::FsFolder(crate::fs::Folder::new(
+        Holder::FsPath(path) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             path.bound().clone(),
         ))),
-        Holder::FsFile(file) => Ok(Holder::FsFolder(crate::fs::Folder::new(
+        Holder::FsFile(file) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             file.bound().clone(),
         ))),
         other => {

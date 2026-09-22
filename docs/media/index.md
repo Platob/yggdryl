@@ -173,18 +173,18 @@ consumes the media and answers it.
 
     from yggdryl import IOBase
     from yggdryl.coding import Gzip
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
     from yggdryl.media import Ipc
 
     root = pathlib.Path(tempfile.mkdtemp())
-    assert isinstance(IOBase(root / "trades.arrows").into_handle(), Path)
+    assert isinstance(IOBase(root / "trades.arrows").into_handle(), LocalPath)
 
     # A coded name composes one more layer: the coding goes under the encoding.
     coded = IOBase(root / "trades.arrows.gz")
     assert isinstance(coded, Ipc)
     gzip_handle = coded.into_handle()
     assert isinstance(gzip_handle, Gzip)
-    assert isinstance(gzip_handle.into_handle(), Path)
+    assert isinstance(gzip_handle.into_handle(), LocalPath)
     ```
 
 ## Edges
@@ -193,7 +193,7 @@ consumes the media and answers it.
 - Encoding already known -> `Media::ipc` and `Media::parquet` name a variant directly.
 - Handle name not trustworthy -> `Media::open_as` takes an explicit `MimeType`.
 - Plain text -> `Media::Text`; any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md).
-- Python name with no implementation (`trades.csv`) -> nothing is composed and the handle stays a `Path`; only `Media::open` reports it.
+- Python name with no implementation (`trades.csv`) -> nothing is composed and the handle stays a `LocalPath`; only `Media::open` reports it.
 - `--lib media::` -> the shared modules' own tests - magic, merge, options, partition; `ipc::tests`, `parquet::tests`, `avro::tests` and `iceberg::tests` each need their own filter.
 
 ## Commands

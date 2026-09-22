@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use super::IOBase;
 use crate::holder::Holder;
 use crate::media::RecordOptions;
-use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
+use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 
 /// Implement [`IOBase`] methods by forwarding them to an inner handle.
 ///
@@ -110,7 +110,7 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 ///
 /// impl IOBase for Counted {
 ///     yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve,
-///         truncate, url, media_type, set_media_type, flush, parent, child_by_path,
+///         truncate, uri, url, media_type, set_media_type, flush, parent, child_by_path,
 ///         ls, kind, clear, remove, is_atomic, is_tabular, is_io);
 ///
 ///     // `pread` takes `&self`, so the counter is atomic rather than a cell:
@@ -141,7 +141,7 @@ macro_rules! delegate_iobase {
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
             pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular, is_io);
     };
 
@@ -153,7 +153,7 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind);
     };
 
@@ -220,6 +220,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, truncate) => {
         fn truncate(&mut self, size: u64) -> $crate::Result<()> {
             $crate::IOBase::truncate(&mut self.$handle, size)
+        }
+    };
+
+    (@method $handle:ident, uri) => {
+        fn uri(&self) -> Option<&$crate::Uri> {
+            $crate::IOBase::uri(&self.$handle)
         }
     };
 
@@ -551,6 +557,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.as_mut().truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.as_ref().uri()
     }
 
     fn url(&self) -> Option<&Url> {
