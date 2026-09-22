@@ -29,7 +29,7 @@ use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType};
 
 use crate::bench_profile;
 
-/// The in-process S3 the object backend's own suites run on, shared with the
+/// The in-process S3 the S3 backend's own suites run on, shared with the
 /// `holder` benchmark: one fixture, so the counts printed here are the counts
 /// pinned in `rust/tests/s3/mod_.rs`.
 #[cfg(feature = "s3")]

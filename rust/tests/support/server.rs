@@ -7,7 +7,7 @@
 //! `SigV4` header checks - for the client to be exercised end to end over a
 //! real socket, and it records every request so a test can count and inspect
 //! what went on the wire. It is a leaf file included with `#[path]` from the
-//! `object` test harness and from two benchmarks, so it depends on `std` alone
+//! `s3` test harness and from two benchmarks, so it depends on `std` alone
 //! and names nothing of the crate.
 //!
 //! Every answer is deterministic: `ETag` is a quoted FNV-1a hash of the bytes

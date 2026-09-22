@@ -315,7 +315,7 @@ impl PyFsFolder {
 /// store uses passes the container and the key, and encoding belongs here
 /// rather than to them - `a b/c.txt` is an ordinary key and not a URL. A raw
 /// name does not say which store holds it, so `provider` does.
-fn object_holder(
+fn s3_holder(
     location: &Bound<'_, PyAny>,
     key: Option<&Bound<'_, PyAny>>,
     provider: Option<&str>,
@@ -395,7 +395,7 @@ impl PyS3Path {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,
@@ -422,7 +422,7 @@ impl PyS3File {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,
@@ -449,7 +449,7 @@ impl PyS3Folder {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,

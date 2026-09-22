@@ -191,7 +191,7 @@ jobs:
       # The driver builds the `interop` target with `--features s3`, and every
       # other cargo-building job restores a cache; this one compiled the crate
       # and the whole signed-HTTPS stack from scratch on every run. The full
-      # lane is the leg that has `object` compiled.
+      # lane is the leg that has `s3` compiled.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: stable-full

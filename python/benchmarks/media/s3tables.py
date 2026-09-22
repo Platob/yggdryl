@@ -4,7 +4,7 @@ S3 Tables addresses a table bucket only by ARN, and its catalog is the Iceberg
 REST endpoint the service runs. This crate speaks neither: what it speaks is
 the ``s3:`` warehouse location the catalog answers for a table, so a table is
 read here the way the ARN page says it is - the catalog says where the table
-is, and the object backend reads it there. This benchmark times that read
+is, and the S3 backend reads it there. This benchmark times that read
 beside PyIceberg's own, on one table both open.
 
 Run after ``maturin develop --release`` with a table bucket to write into::

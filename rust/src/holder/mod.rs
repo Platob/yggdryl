@@ -220,7 +220,7 @@ impl Holder {
             #[cfg(not(feature = "s3"))]
             {
                 return Err(crate::Error::unsupported(
-                    "holding an object store location without the object feature",
+                    "holding an object store location without the s3 feature",
                     url.scheme().as_str(),
                 ));
             }
