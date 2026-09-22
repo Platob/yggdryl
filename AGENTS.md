@@ -171,6 +171,7 @@ passes.
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
+| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
 
 The measured costs that shape the loop: an already-built harness is under a
 second (`--test root` is 946 tests in 0.6s), the first build of a
