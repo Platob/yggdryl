@@ -4977,21 +4977,15 @@ class FixRegistry:
     def add_field(self, field: FieldLike) -> bool: ...
     def add_fields(self, fields: Iterable[FieldLike]) -> tuple[int, int]: ...
     def merge_with(self, other: FixRegistry) -> tuple[int, int]: ...
-    def add_cfb_file(
+    def add_cfb(
         self,
         location: IOBase | Url | str | PathLike[str],
-        dialect: str | None = None,
-    ) -> tuple[int, int]: ...
-    def add_cfb_files(
-        self,
-        location: IOBase | Url | str | PathLike[str],
-        pattern: str,
         dialect: str | None = None,
     ) -> tuple[int, int, int]: ...
-    def add_json_file(
+    def add_json(
         self,
         location: IOBase | Url | str | PathLike[str],
-    ) -> tuple[int, int]: ...
+    ) -> tuple[int, int, int]: ...
     def register_msgtype(
         self,
         spelling: str,

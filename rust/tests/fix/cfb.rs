@@ -887,7 +887,7 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
         // Both doors read the same documents, and warn with the same sentence.
         let mut folded = FixRegistry::new();
         let (also, spelled) =
-            super::warned::during(|| folded.add_cfb_file(&handle(body), Some("bloomberg")));
+            super::warned::during(|| folded.add_cfb(&handle(body), "", Some("bloomberg")));
         also.expect("a readable CBlock");
         assert_eq!(spelled.first().map(String::as_str), Some(rendered.as_str()));
     }
@@ -904,10 +904,18 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
         assert!(rendered.contains(held), "{held} missing from {rendered}");
     }
     assert!(rendered.len() < 400, "{rendered}");
+    // The folding door reads a location that may name many files, so its
+    // refusal says which one it was reading; the sentence is otherwise the
+    // constructor's own.
     let also = FixRegistry::new()
-        .add_cfb_file(&handle(malformed), Some("bloomberg"))
-        .unwrap_err();
-    assert_eq!(also.to_string(), rendered);
+        .add_cfb(&handle(malformed), "", Some("bloomberg"))
+        .unwrap_err()
+        .to_string();
+    assert!(also.starts_with(&rendered), "{also}");
+    assert!(
+        also.ends_with(" in memory://bound/cblock/one.cfb"),
+        "{also}"
+    );
 
     // An element longer than the budget is quoted up to it and elided, so a
     // vocabulary tag carrying a paragraph of attributes still names itself.
@@ -1080,7 +1088,7 @@ fn a_description_keeps_its_words_and_loses_its_layout() {
     // The folding door reads the same file the same way.
     let mut folded = FixRegistry::new();
     folded
-        .add_cfb_file(&handle(&body), Some("bloomberg"))
+        .add_cfb(&handle(&body), "", Some("bloomberg"))
         .unwrap();
     assert_eq!(
         folded.field_by_tag(58).unwrap().as_fix().description(),
@@ -1270,7 +1278,7 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
     // The folding door reads the same file the same way.
     let mut folded = FixRegistry::new();
     folded
-        .add_cfb_file(&handle(CBLOCK), Some("bloomberg"))
+        .add_cfb(&handle(CBLOCK), "", Some("bloomberg"))
         .unwrap();
     let held = folded.field_by_tag(35).expect("MsgType");
     assert_eq!(
@@ -1327,7 +1335,7 @@ fn adding_a_cfb_code_set_forgets_warm_typed_parse_memos() {
     // Cached plans retain Weak references. `make_mut` dissociates those
     // without cloning while this remains the sole strong owner.
     Arc::make_mut(&mut registry)
-        .add_cfb_file(&handle(CODESET_OVERLAY), Some(DIALECT))
+        .add_cfb(&handle(CODESET_OVERLAY), "", Some(DIALECT))
         .unwrap();
     let codec = super::fixed_codec(Arc::clone(&registry));
     let message = codec
@@ -1524,7 +1532,7 @@ fn an_unnamed_file_takes_its_dialect_from_its_own_stem() {
     // membership is.
     let mut stemmed = FixRegistry::new();
     stemmed
-        .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), None)
+        .add_cfb(&named_handle(CBLOCK, "MSFIX44.cfb"), "", None)
         .expect("a readable CBlock");
     assert_eq!(
         branches(stemmed.field_by_name("exludeddealers").unwrap()),
@@ -1538,7 +1546,7 @@ fn an_unnamed_file_takes_its_dialect_from_its_own_stem() {
     // An explicit name still wins over the stem.
     let mut named = FixRegistry::new();
     named
-        .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some(DIALECT))
+        .add_cfb(&named_handle(CBLOCK, "MSFIX44.cfb"), "", Some(DIALECT))
         .expect("a readable CBlock");
     assert_eq!(
         branches(named.field_by_name("exludeddealers").unwrap()),
@@ -1552,7 +1560,7 @@ fn an_unnamed_file_takes_its_dialect_from_its_own_stem() {
     buffer.write_all_bytes(CBLOCK.as_bytes()).unwrap();
     let mut buffered = FixRegistry::new();
     buffered
-        .add_cfb_file(&buffer, Some(DIALECT))
+        .add_cfb(&buffer, "", Some(DIALECT))
         .expect("a readable CBlock");
     assert_eq!(
         branches(buffered.field_by_name("exludeddealers").unwrap()),
@@ -1586,20 +1594,21 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
     // before a byte of the file is read.
     let mut numbered = FixRegistry::new();
     numbered
-        .add_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), None)
+        .add_cfb(&named_handle(CBLOCK, "4.4-ms.cfb"), "", None)
         .expect("a stem that is not a name stands in for nothing");
     assert!(branches(numbered.field_by_name("exludeddealers").unwrap()).is_empty());
     let mut supplied = FixRegistry::new();
     supplied
-        .add_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), Some("4.4-ms"))
+        .add_cfb(&named_handle(CBLOCK, "4.4-ms.cfb"), "", Some("4.4-ms"))
         .expect("a supplied name beginning with a digit is a name");
     assert_eq!(
         branches(supplied.field_by_name("exludeddealers").unwrap()),
         ["4.4-ms"]
     );
     let mut long = FixRegistry::new();
-    long.add_cfb_file(
+    long.add_cfb(
         &named_handle(CBLOCK, "a-name-well-past-the-old-inline-cap.cfb"),
+        "",
         None,
     )
     .expect("a long stem is a name");
@@ -1610,7 +1619,7 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
     // A buffer is identified by an address, which is a stem and not a name.
     let mut buffered = FixRegistry::new();
     buffered
-        .add_cfb_file(&Buffer::from_bytes(CBLOCK.as_bytes().to_vec()), None)
+        .add_cfb(&Buffer::from_bytes(CBLOCK.as_bytes().to_vec()), "", None)
         .expect("bytes held in memory are named by the caller or not at all");
     assert!(branches(buffered.field_by_name("exludeddealers").unwrap()).is_empty());
 
@@ -1624,7 +1633,7 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
     assert!(error.to_string().contains("non-empty"), "{error}");
     let mut dictionary = FixRegistry::new();
     let error = dictionary
-        .add_cfb_file(&handle(CBLOCK), Some("ms,bloomberg"))
+        .add_cfb(&handle(CBLOCK), "", Some("ms,bloomberg"))
         .unwrap_err();
     assert!(refused(&error), "{error}");
     assert_eq!(
@@ -1642,17 +1651,17 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
     // is recorded on it - which is the case the fold exists for.
     let mut dictionary = FixRegistry::new();
     dictionary
-        .add_cfb_file(&handle(CBLOCK), Some(DIALECT))
+        .add_cfb(&handle(CBLOCK), "", Some(DIALECT))
         .expect("one file's vocabulary");
     let before = dictionary.len();
 
-    let (added, merged) = dictionary
-        .add_cfb_file(&handle(OVERLAY), Some("morgan"))
+    let (files, added, merged) = dictionary
+        .add_cfb(&handle(OVERLAY), "", Some("morgan"))
         .expect("the second file folds into the first");
     // One tag the second file alone declares, and three that fold: the one
     // both files declare, and the two standard clocks every parsed dictionary
     // carries from construction and so states back at whatever it folds into.
-    assert_eq!((added, merged), (1, 3));
+    assert_eq!((files, added, merged), (1, 1, 3));
     assert_eq!(dictionary.len(), before + added);
 
     // The fold keeps what only the stored definition declared, where the
@@ -1679,12 +1688,12 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
     // identifies a field on the wire and no dictionary owns a range of them.
     // Sixteen rather than fifteen: the parsed dictionary states the standard
     // clock this one already holds back at it, and a restated field merges.
-    let (added, merged) = dictionary
-        .add_cfb_file(&named_handle(CBLOCK, "morgan.cfb"), None)
+    let (files, added, merged) = dictionary
+        .add_cfb(&named_handle(CBLOCK, "morgan.cfb"), "", None)
         .expect("the same vocabulary under a second dialect");
     assert_eq!(
-        (added, merged),
-        (0, 16),
+        (files, added, merged),
+        (1, 0, 16),
         "one vocabulary, whichever file spoke it"
     );
     assert_eq!(
@@ -1787,7 +1796,7 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
     // The folding door reads the same file the same way.
     let mut folded = FixRegistry::new();
     folded
-        .add_cfb_file(&handle(clashing), Some("bloomberg"))
+        .add_cfb(&handle(clashing), "", Some("bloomberg"))
         .expect("a readable CBlock");
     for tag in [44, 3044] {
         assert_eq!(
@@ -1902,7 +1911,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
 </cplugin-configuration>"#;
     // The folding door keeps both, and warns about neither.
     let mut folded = FixRegistry::new();
-    let (read, warnings) = super::warned::during(|| folded.add_cfb_file(&handle(doubled), None));
+    let (read, warnings) = super::warned::during(|| folded.add_cfb(&handle(doubled), "", None));
     read.expect("a readable CBlock");
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(super::scalars(&folded), 2 + super::seeded_fields());
@@ -1969,7 +1978,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     assert_eq!(super::scalars(&registry), 1 + super::seeded_fields());
     let mut folded = FixRegistry::new();
     folded
-        .add_cfb_file(&handle(repeated), None)
+        .add_cfb(&handle(repeated), "", None)
         .expect("a readable CBlock");
     assert_eq!(super::scalars(&folded), 1 + super::seeded_fields());
 }
@@ -1977,13 +1986,13 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
 #[test]
 fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     let mut dictionary = FixRegistry::new();
-    let (added, merged) = dictionary
-        .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some("morgan"))
+    let (files, added, merged) = dictionary
+        .add_cfb(&named_handle(CBLOCK, "MSFIX44.cfb"), "", Some("morgan"))
         .expect("a readable CBlock");
     // Fourteen new fields; declared TransactTime merges into its seed, and
     // the parsed dictionary's SendingTime seed participates too. Crate fields
     // never count as folds.
-    assert_eq!((added, merged), (14, 2));
+    assert_eq!((files, added, merged), (1, 14, 2));
     assert_eq!(super::scalars(&dictionary), 14 + super::seeded_fields());
 
     // The dialect the caller named is what every field the file produced is
@@ -2010,12 +2019,12 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // Reading a second file is not a statement that the first one's names were
     // wrong: a field both speak is one field naming both dictionaries, and
     // with no dialect named the stem is the name.
-    let (added, merged) = dictionary
-        .add_cfb_file(&named_handle(SELLSIDE, "morgan-2024.cfb"), None)
+    let (files, added, merged) = dictionary
+        .add_cfb(&named_handle(SELLSIDE, "morgan-2024.cfb"), "", None)
         .expect("the same dialect, read again");
     assert_eq!(
-        (added, merged),
-        (0, 3),
+        (files, added, merged),
+        (1, 0, 3),
         "SELLSIDE declares tag 35 and carries both standard clock seeds"
     );
     assert_eq!(
@@ -2028,7 +2037,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // With no dialect named, the stem is the name, folded by case.
     let mut standalone = FixRegistry::new();
     standalone
-        .add_cfb_file(&handle(CBLOCK), None)
+        .add_cfb(&handle(CBLOCK), "", None)
         .expect("a readable CBlock");
     assert_eq!(standalone.dialects(), ["one"]);
     assert_eq!(branches(standalone.field_by_tag(6).unwrap()), ["one"]);
@@ -2072,12 +2081,12 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         </grammar>
       </grammar></grammar-binding>
     </cplugin-configuration>"#;
-    let (added, merged) = seeded
-        .add_cfb_file(&named_handle(body, "VENUE.cfb"), None)
+    let (files, added, merged) = seeded
+        .add_cfb(&named_handle(body, "VENUE.cfb"), "", None)
         .expect("a compatible vocabulary folds");
     assert_eq!(
-        (added, merged),
-        (2, 3),
+        (files, added, merged),
+        (1, 2, 3),
         "two venue tags added; Symbol and both standard clock seeds merged"
     );
     assert_eq!(seeded.dialects(), ["venue"]);
@@ -2127,12 +2136,12 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
 
     // The same file under a second name unions, and the list is sorted and
     // folded whichever order the dictionaries arrived in.
-    let (added, merged) = seeded
-        .add_cfb_file(&handle(body), Some("Other"))
+    let (files, added, merged) = seeded
+        .add_cfb(&handle(body), "", Some("Other"))
         .expect("the same vocabulary again");
     assert_eq!(
-        (added, merged),
-        (0, 5),
+        (files, added, merged),
+        (1, 0, 5),
         "three vocabulary fields and two standard clock seeds"
     );
     assert_eq!(
@@ -2163,7 +2172,7 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
     let before = seeded.clone();
 
     let error = seeded
-        .add_cfb_file(&handle(CBLOCK), Some(DIALECT))
+        .add_cfb(&handle(CBLOCK), "", Some(DIALECT))
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     assert!(error.to_string().contains("float32"), "{error}");
@@ -2343,7 +2352,7 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
 fn both_doors_carry_the_names_a_normalization_spelled() {
     let mut folded = FixRegistry::new();
     folded
-        .add_cfb_file(&handle(NORMALIZED), Some("bloomberg"))
+        .add_cfb(&handle(NORMALIZED), "", Some("bloomberg"))
         .expect("a readable CBlock");
     let held = folded.field_by_tag(22830).expect("the unnamed tag");
     assert_eq!(
@@ -2733,6 +2742,28 @@ fn cblock_tree(files: &[(&str, &str)]) -> yggdryl::holder::Holder {
     )
 }
 
+/// The same tree, with a nested folder of its own, for the folder case.
+fn nested_cblock_tree(flat: &[(&str, &str)], nested: &[(&str, &str)]) -> yggdryl::holder::Holder {
+    let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    for dir in ["cblocks", "cblocks/venue"] {
+        filesystem
+            .create_dir(dir, true)
+            .expect("a container to write into");
+    }
+    for (prefix, files) in [("cblocks", flat), ("cblocks/venue", nested)] {
+        for (name, body) in files {
+            let mut file =
+                FsFile::from_path(Arc::clone(&filesystem), format!("{prefix}/{name}"), None)
+                    .expect("a path under it");
+            file.write_all_bytes(body.as_bytes()).expect("the document");
+        }
+    }
+    yggdryl::holder::Holder::from(
+        yggdryl::fs::FsFolder::from_path(filesystem, "cblocks", None)
+            .expect("the folder holding them"),
+    )
+}
+
 /// One CBlock declaring one tag, for the ordering and membership cases.
 fn one_tag(tag: i32, name: &str) -> String {
     format!(
@@ -2752,11 +2783,11 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     ]);
     let mut registry = FixRegistry::new();
     let (files, added, merged) = registry
-        .add_cfb_files(tree.as_io(), "*.cfb", None)
+        .add_cfb(tree.as_io(), "*.cfb", None)
         .expect("two readable CBlocks");
 
     // The pattern is the filter: the text file is not selected, and the two
-    // seeded clocks merge once per file, as one `add_cfb_file` merges them.
+    // seeded clocks merge once per file, as one `add_cfb` merges them.
     assert_eq!((files, added), (2, 2));
     assert_eq!(merged, 4, "two clock seeds per file");
 
@@ -2768,7 +2799,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     // A name supplied here stamps every matched file with the one membership.
     let mut named = FixRegistry::new();
     named
-        .add_cfb_files(tree.as_io(), "*.cfb", Some("venues"))
+        .add_cfb(tree.as_io(), "*.cfb", Some("venues"))
         .expect("two readable CBlocks");
     assert_eq!(branches(named.field_by_tag(9001).unwrap()), ["venues"]);
     assert_eq!(branches(named.field_by_tag(9002).unwrap()), ["venues"]);
@@ -2776,7 +2807,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     // A pattern selecting nothing folds nothing rather than refusing.
     let mut empty = FixRegistry::new();
     assert_eq!(
-        empty.add_cfb_files(tree.as_io(), "*.xml", None).unwrap(),
+        empty.add_cfb(tree.as_io(), "*.xml", None).unwrap(),
         (0, 0, 0)
     );
     assert_eq!(empty, FixRegistry::new());
@@ -2791,7 +2822,7 @@ fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
     let mut registry = FixRegistry::new();
     let before = registry.stable_hash();
     let error = registry
-        .add_cfb_files(tree.as_io(), "*.cfb", None)
+        .add_cfb(tree.as_io(), "*.cfb", None)
         .expect_err("the second file stops inside an element");
 
     // The refusal names the file among the matched ones, and nothing the
@@ -2954,7 +2985,7 @@ fn a_second_cblock_adds_the_members_only_it_declares_to_a_held_message() {
         ["msgtype", "clordid"]
     );
     registry
-        .add_cfb_file(&handle(second), Some(DIALECT))
+        .add_cfb(&handle(second), "", Some(DIALECT))
         .expect("the second file folds");
     // The delta the second file declared is appended, in its own order, and
     // the members the first file declared keep theirs.
@@ -3055,4 +3086,73 @@ fn a_dialect_stating_both_cases_of_every_letter_reads_without_a_warning() {
         assert_eq!(registry.msgtype(lower).expect(lower).as_str(), lower);
         assert_eq!(registry.msgtype(upper).expect(upper).as_str(), upper);
     }
+}
+
+/// One location names a file, a folder or a glob, and the reader works out
+/// which rather than the caller splitting a root from a pattern.
+#[test]
+fn one_location_reads_a_file_a_folder_or_a_glob() {
+    let tree = nested_cblock_tree(
+        &[
+            ("msfix44.cfb", &one_tag(9001, "MsVenueRef")),
+            ("blpfix44.cfb", &one_tag(9002, "BlpVenueRef")),
+            ("notes.txt", "not a dictionary"),
+        ],
+        &[("axess.cfb", &one_tag(9003, "AxessVenueRef"))],
+    );
+
+    // A folder is every `.cfb` beneath it, at any depth, and never the text
+    // file beside them.
+    let mut folder = FixRegistry::new();
+    let (files, added, _) = folder
+        .add_cfb(tree.as_io(), "", None)
+        .expect("every CBlock beneath the folder");
+    assert_eq!((files, added), (3, 3));
+    for tag in [9001, 9002, 9003] {
+        assert!(folder.get_field_by_tag(tag).is_some(), "tag {tag}");
+    }
+
+    // A named folder beneath it is that folder, read the same way.
+    let mut nested = FixRegistry::new();
+    let (files, added, _) = nested
+        .add_cfb(tree.as_io(), "venue", None)
+        .expect("the nested folder alone");
+    assert_eq!((files, added), (1, 1));
+    assert_eq!(branches(nested.field_by_tag(9003).unwrap()), ["axess"]);
+    assert!(nested.get_field_by_tag(9001).is_none());
+
+    // One file is that file.
+    let mut one = FixRegistry::new();
+    let (files, added, _) = one
+        .add_cfb(tree.as_io(), "msfix44.cfb", None)
+        .expect("the one file named");
+    assert_eq!((files, added), (1, 1));
+    assert_eq!(branches(one.field_by_tag(9001).unwrap()), ["msfix44"]);
+    assert!(one.get_field_by_tag(9002).is_none());
+
+    // A glob is what it matches, and does not descend a folder it did not
+    // name: `*.cfb` is this level's two files, never the nested one.
+    let mut flat = FixRegistry::new();
+    let (files, added, _) = flat
+        .add_cfb(tree.as_io(), "*.cfb", None)
+        .expect("the two files at this level");
+    assert_eq!((files, added), (2, 2));
+    assert!(flat.get_field_by_tag(9003).is_none());
+
+    // And a recursive glob spans the levels a plain one does not.
+    let mut deep = FixRegistry::new();
+    let (files, added, _) = deep
+        .add_cfb(tree.as_io(), "**/*.cfb", None)
+        .expect("every CBlock the pattern spans");
+    assert_eq!((files, added), (3, 3));
+
+    // A location naming nothing is one file that is not there, so the refusal
+    // names what was asked for rather than folding nothing and reading as a
+    // success.
+    let mut missing = FixRegistry::new();
+    let error = missing
+        .add_cfb(tree.as_io(), "absent.cfb", None)
+        .expect_err("a location naming nothing");
+    assert!(error.to_string().contains("absent.cfb"), "{error}");
+    assert_eq!(missing, FixRegistry::new());
 }

@@ -2248,8 +2248,12 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
 
     let mut registry = FixRegistry::new();
     let file = yggdryl::local::LocalFile::new(&path).unwrap();
-    let (added, merged) = registry.add_json_file(&file).unwrap();
-    assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
+    let (files, added, merged) = registry.add_json(&file, "").unwrap();
+    assert_eq!(
+        (files, added, merged),
+        (1, 1, 2),
+        "one file, one field, the two clock seeds"
+    );
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
     assert!(
         registry
@@ -2266,7 +2270,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     let before = registry.stable_hash();
     std::fs::write(&path, br#"{"fields":[],"components":[],"groups":"no"}"#).unwrap();
     let error = registry
-        .add_json_file(&yggdryl::local::LocalFile::new(&path).unwrap())
+        .add_json(&yggdryl::local::LocalFile::new(&path).unwrap(), "")
         .expect_err("a category that is not an array");
     assert!(error.to_string().contains("venue.json"), "{error}");
     assert_eq!(registry.stable_hash(), before);

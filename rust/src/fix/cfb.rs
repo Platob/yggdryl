@@ -21,7 +21,7 @@
 //! the set its maps decode, so a bare `Vec<Field>` would hand a reader
 //! fields naming vocabularies nothing states. So folding one counterparty's
 //! file into a dictionary that exists is
-//! [`FixRegistry::add_cfb_file`] - one parse, one fold, the sets travelling
+//! [`FixRegistry::add_cfb`] - one parse, one fold, the sets travelling
 //! with the fields that read by them.
 //!
 //! # Two passes, and the second never invents a type
@@ -296,15 +296,15 @@ impl FixRegistry {
     /// metadata. Named definitions carry no `FIX:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
-    /// dictionary that already exists is [`FixRegistry::add_cfb_file`]'s job,
+    /// dictionary that already exists is [`FixRegistry::add_cfb`]'s job,
     /// which is this parse and [`FixRegistry::merge_with`] in one call, so
     /// the code sets the file declares travel with the fields naming them.
     ///
     /// `dialect` names the dictionary, and nothing stands in for it: this
     /// door answers what one file says, so a file read with no name stamps no
     /// membership. The stem stands in where a file is *folded* into a
-    /// dictionary - [`FixRegistry::add_cfb_file`] and
-    /// [`FixRegistry::add_cfb_files`] - because that is where a contribution
+    /// dictionary - [`FixRegistry::add_cfb`] - because that is where a
+    /// contribution
     /// has to be attributable and a `CBlock` never names itself.
     ///
     /// # Errors
@@ -332,6 +332,9 @@ impl FixRegistry {
         Parse::new(&bytes, dialect)?.run()
     }
 }
+
+/// The suffix a CBlock is written under, and what a folder of them is read by.
+pub(super) const EXTENSION: &str = "cfb";
 
 /// The dialect a handle's own stem names, where it names one.
 ///

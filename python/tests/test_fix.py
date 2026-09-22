@@ -1742,7 +1742,8 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
 
     # The vocabulary folds into a dictionary that already exists.
     dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
-    added, merged = dictionary.add_cfb_file(path, "bloomberg")
+    files, added, merged = dictionary.add_cfb(path, "bloomberg")
+    assert files == 1, "one location naming one file"
     assert added == 1, "excludeddealers is the one definition nothing held"
     assert merged >= 1, "symbol is the dictionary's own, stamped by the fold"
     assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]

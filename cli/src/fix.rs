@@ -410,7 +410,8 @@ fn sync(store: &mut registry::Store, source: &Path, dialect: Option<&str>) -> Re
                 .is_some_and(|held| held.eq_ignore_ascii_case("cfb")) =>
         {
             progress.tick();
-            store.registry_mut().add_cfb_file(held.as_io(), dialect)?
+            let (_, added, folded) = store.registry_mut().add_cfb(held.as_io(), "", dialect)?;
+            (added, folded)
         }
         kind => {
             return Err(yggdryl::Error::InvalidRecord {

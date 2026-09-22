@@ -41,6 +41,44 @@ use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
+/// Run `read` against the container one location anchors at and the location
+/// under it.
+///
+/// The core's fold takes a container plus a location so that one argument can
+/// be a glob, a folder or a file: a glob cannot be carried by a handle at all,
+/// because a `*` percent-encodes into the URL and stops being a pattern. This
+/// is the one place that split is made, and it is made from the text the
+/// caller wrote rather than from a resolved handle.
+///
+/// A handle is the location it addresses, so it anchors itself and the
+/// location under it is empty. A pattern anchors at the deepest fixed prefix
+/// above it. Anything else anchors at its parent and names itself, which lets
+/// the core's one resolution decide whether it is a folder or a file rather
+/// than this binding guessing which holder to build.
+fn with_anchor<T>(
+    location: &Bound<'_, PyAny>,
+    read: impl FnOnce(&dyn CoreIOBase, &str) -> yggdryl::Result<T>,
+) -> PyResult<T> {
+    if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
+        return read(handle.inner()?.as_io(), "").map_err(value_error);
+    }
+    let url = core_url_from_value(location)?;
+    let (root, pattern) = url.glob_parts().map_err(value_error)?;
+    if let Some(pattern) = pattern {
+        let held = crate::iobase::folder_holder_for(&root)?;
+        return read(held.as_io(), &pattern).map_err(value_error);
+    }
+    if let (Some(parent), Some(name)) = (root.parent(), root.file_name()) {
+        let name = name.to_owned();
+        let held = crate::iobase::folder_holder_for(&parent)?;
+        return read(held.as_io(), &name).map_err(value_error);
+    }
+    // A location with nothing above it is a root, and a root is a container:
+    // it anchors itself.
+    let held = crate::iobase::folder_holder_for(&root)?;
+    read(held.as_io(), "").map_err(value_error)
+}
+
 /// Read one dictionary file through whatever Python named it with.
 ///
 /// A `CBlock` and a JSON snapshot are both files, so the location is held as
@@ -449,82 +487,66 @@ impl PyFixRegistry {
         self.inner_mut()?.merge_with(&incoming).map_err(value_error)
     }
 
-    /// Read one Ullink `CBlock` into this dictionary, whole.
+    /// Read every Ullink `CBlock` one location names into this dictionary.
     ///
-    /// The one call an ingest takes: the file's vocabulary folds in the way
-    /// `add_fields` folds any source, every field it produces stamped with
-    /// the dialect in `FIX:branches` and that membership unioned onto
-    /// whatever it merges into.
+    /// The one call an ingest takes: each file's vocabulary folds in the way
+    /// `add_fields` folds any source, every field it produces stamped with the
+    /// dialect in `FIX:branches` and that membership unioned onto whatever it
+    /// merges into.
     ///
-    /// `dialect` names the dictionary, and the location's own stem stands in
-    /// when the caller does not; a name that is empty or carries a comma is
-    /// a `ValueError`.
-    ///
-    /// Answers the count added and the count merged. One mutation: a refusal
-    /// leaves the dictionary exactly as it was.
-    #[pyo3(signature = (location, dialect=None))]
-    fn add_cfb_file(
-        &mut self,
-        location: &Bound<'_, PyAny>,
-        dialect: Option<&str>,
-    ) -> PyResult<(usize, usize)> {
-        let registry = self.inner_mut()?;
-        read_located(location, |handle| registry.add_cfb_file(handle, dialect))
-    }
-
-    /// Read every Ullink `CBlock` a pattern selects into this dictionary.
-    ///
-    /// The plural of `add_cfb_file`, over the core's own glob walk: `pattern`
-    /// is anchored at `location` the way `IOBase.glob` anchors it - a fixed
-    /// prefix is descended rather than listed, `**` spans any number of
-    /// levels - and a pattern selecting nothing folds nothing rather than
-    /// raising. Private entries are never matched.
+    /// `location` says which files and the reader works out which kind it is.
+    /// A pattern - one holding `*`, `?` or `[` - selects what it matches,
+    /// `**` spanning any number of levels; a folder gives every `.cfb` beneath
+    /// it at any depth; anything else is one file. So `"cblocks"`,
+    /// `"cblocks/BLPFIX44.cfb"`, `"cblocks/*.cfb"` and `"**/venue-*.cfb"` are
+    /// four spellings of one door. A handle is the location it addresses. A
+    /// fixed location naming nothing is a `ValueError` rather than an empty
+    /// fold that reads as success.
     ///
     /// Files fold in ascending URL order whatever order the listing arrived
     /// in, so where two files disagree about one tag the last-sorting file
-    /// wins and every spelling of one pattern answers the same dictionary.
+    /// wins and every spelling of one selection answers the same dictionary.
     ///
-    /// `dialect` is resolved per file: a name supplied here stamps every
-    /// matched file with it, and `None` lets each file's own stem stand in,
-    /// which is what globbing a folder of counterparty files is for.
+    /// `dialect` is resolved per file: a name supplied here stamps every file
+    /// with it, and `None` lets each file's own stem stand in, which is what
+    /// pointing at a folder of counterparty files is for.
     ///
     /// Answers the count of files folded, the count of fields added and the
     /// count merged. One mutation, and one copy of the dictionary for the
     /// whole call: a file that will not parse leaves it exactly as it was and
     /// the `ValueError` names that file.
-    #[pyo3(signature = (location, pattern, dialect=None))]
-    fn add_cfb_files(
+    #[pyo3(signature = (location, dialect=None))]
+    fn add_cfb(
         &mut self,
         location: &Bound<'_, PyAny>,
-        pattern: &str,
         dialect: Option<&str>,
     ) -> PyResult<(usize, usize, usize)> {
-        // A glob is walked from a container, where a `CBlock` is a leaf.
-        let root = folder_holder_from_value(location)?;
-        self.inner_mut()?
-            .add_cfb_files(root.as_io(), pattern, dialect)
-            .map_err(value_error)
+        let registry = self.inner_mut()?;
+        with_anchor(location, |root, held| registry.add_cfb(root, held, dialect))
     }
 
-    /// Read one JSON registry snapshot into this dictionary, whole.
+    /// Read every JSON registry snapshot one location names into this
+    /// dictionary.
     ///
     /// The lenient door beside `from_json`, which builds a dictionary of its
     /// own: the file is read through exactly that parse and then folded in
     /// the way `merge_with` folds any dictionary.
     ///
-    /// No dialect is taken, and that is the point of the pair: a `CBlock`
-    /// states no membership, so `add_cfb_file` has to be told one or guess it
-    /// from the stem, while a snapshot is this package's own format and every
-    /// field and definition in it already carries the `FIX:branches` its
-    /// writer meant.
+    /// `location` reads exactly as `add_cfb` reads one - a glob, a folder of
+    /// `.json` snapshots, or one file - and no dialect is taken, which is the
+    /// point of the pair: a `CBlock` states no membership, so `add_cfb` has to
+    /// be told one or guess it from the stem, while a snapshot is this
+    /// package's own format and every field and definition in it already
+    /// carries the `FIX:branches` its writer meant.
     ///
-    /// Answers the count added and the count merged. One mutation: a document
-    /// that does not parse, a reference naming a definition nothing holds, or
-    /// a datatype disagreeing with a stored field leaves it as it was, and
-    /// the `ValueError` names the file.
-    fn add_json_file(&mut self, location: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
+    /// Answers the count of files folded, the count added and the count
+    /// merged. One mutation: a document that does not parse, a reference
+    /// naming a definition nothing holds, or a datatype disagreeing with a
+    /// stored field leaves it as it was, and the `ValueError` names the
+    /// file.
+    fn add_json(&mut self, location: &Bound<'_, PyAny>) -> PyResult<(usize, usize, usize)> {
         let registry = self.inner_mut()?;
-        read_located(location, |handle| registry.add_json_file(handle))
+        with_anchor(location, |root, held| registry.add_json(root, held))
     }
 
     /// Register a message definition and answer its immutable view.

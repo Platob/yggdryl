@@ -30,7 +30,7 @@ dictionary its vocabulary declares - every field keyed by its ``FIX:tag``,
 stamped with the dialect in ``FIX:branches`` and reading by the code set the
 file's maps decode for it, which the dictionary carries under a name of its
 own - and the message roots its grammar bindings describe.
-:meth:`FixRegistry.add_cfb_file` folds that same file into a dictionary that
+:meth:`FixRegistry.add_cfb` folds that same file into a dictionary that
 already exists, adding what is absent, merging what is stored, and writing
 nothing at all when it refuses.
 
@@ -137,7 +137,7 @@ entries. :func:`fix_crate_fields` lists what this crate itself adds beside
 the specification, in tag order.
 
 A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
-and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
+and :meth:`FixRegistry.add_cfb` take a ``dialect`` and stamp it on every
 field the file produces, and :meth:`FixRegistry.dialects` lists the names any
 field or definition carries.
 

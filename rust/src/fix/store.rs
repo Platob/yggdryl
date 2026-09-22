@@ -23,6 +23,10 @@ use crate::text::Formatting;
 use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url};
 
 const SHARD_WIDTH: i32 = 100;
+/// The suffix a registry snapshot is written under, and what a folder of
+/// them is read by.
+const JSON_EXTENSION: &str = "json";
+
 /// The folder the code sets live in, beside the three category folders.
 pub(super) const CODESETS: &str = "codesets";
 /// What one stored code set states: the name it is filed under, and its
@@ -52,6 +56,82 @@ fn shard_index(entry: &Holder) -> Option<i32> {
         return None;
     }
     stem.parse().ok()
+}
+
+/// Every file one location names, in the order a fold reads them.
+///
+/// **One argument says which files, and the crate reads which kind it is
+/// rather than being told.** A location is one of three things:
+///
+/// - a **glob** - it holds `*`, `?` or `[` - selects exactly what it matches,
+///   anchored at `root` the way [`IOBase::glob`] anchors it: a fixed prefix is
+///   descended rather than listed and filtered, and `**` spans any number of
+///   levels. What it matched is the answer, so a container it happens to name
+///   is not descended into.
+/// - a **container** - a folder, a bucket prefix, an archive node - gives every
+///   `.{extension}` file beneath it, at any depth. A folder of counterparty
+///   files nested by venue is one location rather than a pattern the caller has
+///   to spell.
+/// - anything else is **one file**, read as itself. A location naming nothing
+///   is read as a file too, so the refusal names what was asked for rather than
+///   answering an empty fold that reads as success.
+///
+/// An empty location is `root` itself, which is how a handle already addressing
+/// the folder or the file is passed straight through. Where that handle is the
+/// file, this answers `None` rather than a list: a borrowed `&dyn IOBase` is no
+/// [`Holder`], so the caller folds the handle it already has.
+///
+/// **Files come back in ascending URL order**, whatever order a listing arrived
+/// in, because a fold's precedence is its input order and a glob's sequence is
+/// not a caller's to see: it varies with how the pattern decomposed and with the
+/// backend beneath. So where two files disagree the last-sorting one wins, and
+/// every spelling of one selection answers the same dictionary.
+///
+/// # Errors
+///
+/// Returns what [`IOBase::glob`] returns for a pattern it cannot decompose or a
+/// fixed prefix it cannot resolve, what a failing listing entry carries, and
+/// what resolving a child of `root` refuses.
+pub(super) fn located_files(
+    root: &dyn IOBase,
+    location: &str,
+    extension: &str,
+) -> Result<Option<Vec<Holder>>> {
+    let location = location.trim_matches('/');
+    // `root` is the file itself, and a borrow is no `Holder`: the caller folds
+    // the handle it already has.
+    if location.is_empty() && !root.is_container() {
+        return Ok(None);
+    }
+    let beneath = format!("**/*.{extension}");
+    let mut files: Vec<Holder> = if Url::is_pattern(location) {
+        // A pattern states its own reach, so what it matched is the answer.
+        root.glob(location, false)?.collect::<Result<Vec<_>>>()?
+    } else if location.is_empty() {
+        root.glob(&beneath, false)?.collect::<Result<Vec<_>>>()?
+    } else {
+        // One resolution answers both remaining shapes, because a fixed
+        // location that names nothing lists nothing: a container is descended
+        // for every file of this format beneath it, and anything else is the
+        // file it named.
+        let found: Vec<Holder> = root.glob(location, false)?.collect::<Result<Vec<_>>>()?;
+        match found.as_slice() {
+            // A caller who spelled one name meant it. A read of an absent
+            // resource answers empty bytes, so without this a mistyped
+            // location would fold an empty dictionary and read as a success.
+            [] => return Err(Error::absent("fix dictionary", location)),
+            [held] if held.is_container() => held
+                .as_io()
+                .glob(&beneath, false)?
+                .collect::<Result<Vec<_>>>()?,
+            _ => found,
+        }
+    };
+    // A pattern may select a container and a listing may answer one; a
+    // dictionary is a file.
+    files.retain(|file| !file.is_container());
+    files.sort_by_key(|file| file.url().map(ToString::to_string));
+    Ok(Some(files))
 }
 
 /// The same refusal, naming the file it was read from.
@@ -438,45 +518,78 @@ impl FixRegistry {
         crate::into_json_scalar(&self.snapshot()?)
     }
 
-    /// Reads one JSON registry snapshot into this dictionary, whole.
+    /// Reads every JSON registry snapshot one location names into this
+    /// dictionary.
     ///
     /// The lenient door beside [`Self::from_json`], which builds a dictionary
-    /// of its own: the file is read through exactly that parse - the same
-    /// three categories, the same bounded reference graph, the same refusals,
-    /// now naming the file they came from - and then folded in the way
-    /// [`Self::merge_with`] folds any dictionary, so what only the file
-    /// declares arrives and what both declare merges with the file winning a
-    /// shared key.
+    /// of its own: each file is read through exactly that parse and then
+    /// folded in the way [`Self::merge_with`] folds any dictionary.
+    ///
+    /// **`location` says which files and the reader works out which kind it
+    /// is** - a glob, a folder, or one file - under the rules
+    /// [`located_files`] states, exactly as
+    /// [`FixRegistry::add_cfb`](Self::add_cfb) reads one: a pattern selects
+    /// what it matches, a folder gives every `.json` beneath it at any depth,
+    /// anything else is one file, and an empty location is `root` itself.
+    /// Files fold in ascending URL order, so where two disagree the
+    /// last-sorting one wins.
     ///
     /// No dialect is taken, and that is the point of the pair: a `CBlock`
-    /// states no membership, so [`Self::add_cfb_file`] has to be told one or
-    /// guess it from the file's stem, while a snapshot is this crate's own
-    /// format and every field and definition in it already carries the
-    /// `FIX:branches` its writer meant. Naming one here would overwrite that.
+    /// states no membership, so `add_cfb` has to be told one or guess it from
+    /// the stem, while a snapshot is this package's own format and every field
+    /// and definition in it already carries the `FIX:branches` its writer
+    /// meant.
     ///
-    /// A snapshot restating one of this crate's own fields is read past
-    /// rather than refused: every registry holds those from construction, so
-    /// the held definition stays and the counts do not move.
+    /// Answers the count of files folded, the count of fields added and the
+    /// count merged, over the fields; the two seeded clocks every parsed
+    /// snapshot carries always merge, so one file adding nothing else answers
+    /// `(1, 0, 2)`. Named definitions that arrive or merge are not counted,
+    /// exactly as [`Self::merge_with`] does not count them. The file count is
+    /// a fact only this call holds: without it a location that matched nothing
+    /// reads as a silent success.
     ///
-    /// Answers the count added and the count merged, over the fields; the
-    /// two seeded clocks every parsed snapshot carries always merge, so a
-    /// file adding nothing else answers `(0, 2)`. Named definitions that
-    /// arrive or merge are not counted, exactly as [`Self::merge_with`] does
-    /// not count them.
-    ///
-    /// One mutation: a document that does not parse, a reference naming a
-    /// definition nothing holds, a cycle, or a datatype disagreeing with a
-    /// stored field leaves this dictionary exactly as it was.
+    /// One mutation, and one copy of the dictionary for the whole call: a
+    /// document that does not parse, a reference naming a definition nothing
+    /// holds, a cycle, or a datatype disagreeing with a stored field leaves
+    /// this dictionary exactly as it was and the refusal names the file.
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::from_json`] returns, located at the handle's URL,
-    /// and what [`Self::merge_with`] returns for the fold.
-    pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)> {
+    /// Returns what [`located_files`] returns for a location it cannot
+    /// resolve, and what [`Self::from_json`] and [`Self::merge_with`] return
+    /// for each file, located at that file's URL.
+    pub fn add_json(&mut self, root: &dyn IOBase, location: &str) -> Result<(usize, usize, usize)> {
+        let files = located_files(root, location, JSON_EXTENSION)?;
+        let mut staged = self.clone();
+        let (mut added, mut merged, mut count) = (0_usize, 0_usize, 0_usize);
+        match &files {
+            Some(files) => {
+                for file in files {
+                    let (file_added, file_merged) = staged.fold_json_file(file.as_io())?;
+                    added += file_added;
+                    merged += file_merged;
+                    count += 1;
+                }
+            }
+            None => {
+                let (file_added, file_merged) = staged.fold_json_file(root)?;
+                added = file_added;
+                merged = file_merged;
+                count = 1;
+            }
+        }
+        *self = staged;
+        log::debug!("added {added} and merged {merged} fix fields from {count} snapshot files");
+        Ok((count, added, merged))
+    }
+
+    /// One snapshot parsed and folded, the way [`Self::add_json`] folds each.
+    fn fold_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)> {
         let parsed = crate::from_json_scalar(handle.read_all_bytes()?)
             .and_then(|document| Self::from_snapshot(&document))
             .map_err(|error| located(error, handle))?;
-        self.merge_with(&parsed)
+        self.fold_registry(&parsed)
+            .map_err(|error| located(error, handle))
     }
 
     fn snapshot(&self) -> Result<Scalar> {
