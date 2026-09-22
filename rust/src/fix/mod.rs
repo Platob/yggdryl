@@ -157,6 +157,7 @@ pub(crate) mod global;
 pub(crate) mod group_plan;
 pub(crate) mod identity;
 mod latest;
+mod market;
 pub(crate) mod memo;
 mod messages;
 mod msg;
