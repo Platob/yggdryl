@@ -263,7 +263,7 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
 
 A table bucket holds tables rather than objects, and AWS addresses one only by ARN. It is still a container and a name below it — the same two positions every store writes — so `bucket` reads the table bucket, `table` reads the table, and `locator` answers the `s3tables:` URL those two spell. The [store accessors](index.md) read that URL back the way they read an `s3:` one.
 
-No byte backend opens an `s3tables:` location: `is_object_store` stays false for it, so a reader speaks the S3 Tables catalog rather than fetching a key.
+No byte backend opens an `s3tables:` location: `is_object_store` stays false for it, so a reader speaks the S3 Tables catalog rather than fetching a key. `python/benchmarks/media/s3tables.py` is that reader end to end: it takes a table bucket ARN, has PyIceberg fill a table through the service's catalog, and reads the same table at the warehouse `s3:` location the catalog answers, timed beside PyIceberg's own scan.
 
 === "Rust"
 

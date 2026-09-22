@@ -1021,6 +1021,7 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/test_iceberg.py
+    YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"

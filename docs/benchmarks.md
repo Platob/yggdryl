@@ -66,6 +66,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/media.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.05 --repeat 3
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
+    YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
@@ -74,7 +75,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```
 
-    Build a release wheel with `maturin develop --release` before timing.
+    Build a release wheel with `maturin develop --release` before timing. The S3 Tables run needs `pyiceberg` and `boto3` installed and a table bucket of your own to write into; without either it reports `SKIPPED` and names what is missing.
 
 === "JavaScript"
 

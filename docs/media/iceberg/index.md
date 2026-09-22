@@ -183,12 +183,14 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 | --- | --- | --- |
 | [PyIceberg](https://py.iceberg.apache.org/) | `python scripts/check_iceberg_interop.py` (needs `pyiceberg`); the Rust half is the `iceberg::` module of the `interop` test | A partitioned v2 table read as a `StaticTable`; a PyIceberg table with other file names, manifest field order, and deflate Avro |
 | Apache Spark | `python scripts/setup_spark_interop.py`, then `pytest -m spark_interop` (deselected by default; needs Java) | Field ids, primitive and nested types with nulls, transforms, time travel and refs, evolution, properties, mixed Parquet and Avro, compaction, metadata tables, statistics |
+| Amazon S3 Tables | `python python/benchmarks/media/s3tables.py` (needs `pyiceberg`, `boto3`, and a table bucket ARN in `YGGDRYL_S3TABLES_ARN`; reports `SKIPPED` otherwise) | PyIceberg creates, partitions, fills and drops a table through the service's catalog; this crate opens the same table at the warehouse `s3:` location the catalog answers, signing with the credentials it vended, and the rows both read are compared before either is timed |
 
 ## Edges
 
 - Renamed column -> resolved by field id, so a pre-rename file's column is renamed on read and pushed down under its own name.
 - `uuid`, `fixed`, `time` in Spark -> no DDL spelling, so the exchange covers only the direction that exists.
 - Remote catalog -> none; `Catalog` is an `IOBase` warehouse view, and commits publish through the supplied handle.
+- Amazon S3 Tables -> no catalog client either; the table bucket ARN and the `s3tables:` locator are [identifiers](../../uri/arn.md), and a table is read at the warehouse `s3:` location its catalog answers, which is what `python/benchmarks/media/s3tables.py` times beside PyIceberg.
 - Writing delete files, and applying deletes on read -> not implemented.
 - Live position or equality delete manifests -> scans return a typed unsupported error, never undeleted rows; proven-inert manifests pass.
 - Branch other than `main` -> no writes, since a commit's parent is always the current snapshot; read it with `scan_ref` and move it with `fast_forward`.
@@ -269,4 +271,12 @@ Every request left is the metadata chain - the hint, the manifest list, one mani
 
 ```bash
 cargo bench --features "iceberg object" -p yggdryl --bench media -- 's3/' --quick
+```
+
+### Iceberg on Amazon S3 Tables
+
+`python/benchmarks/media/s3tables.py` is the same question against the real service, beside PyIceberg. It takes a table bucket ARN in `YGGDRYL_S3TABLES_ARN`, has PyIceberg create a table there partitioned by `symbol`, append 65,536 rows in four partitions through the service's catalog - the only door a commit to S3 Tables has - and then opens the same table both ways: PyIceberg through the catalog's REST load, this crate through the warehouse `s3:` location that load answers, with the region the ARN carries and the credentials the catalog vended. Opening the table, a full scan to Arrow, and a scan pruned to one partition of four are each timed on both sides, after the rows both read have been compared; the table is dropped afterwards. The ratio column is PyIceberg's median over this crate's, so above one is in this crate's favor. No table is published here: the run needs an account's own table bucket, and the numbers are those of a network round trip to it, which is why the request counts pinned above are the part that travels.
+
+```bash
+YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
 ```
