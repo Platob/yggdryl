@@ -131,7 +131,7 @@ Explicit offsets mean two readers never interfere and a footer-first container r
 
 ## Modification time
 
-`mtime()` answers when the bytes were last written, as UTC nanoseconds since the Unix epoch, for a handle whose store records one. A local file and a foreign-filesystem file read it from the same stat their `size` comes from; a ZIP member reads it from the index the archive already holds; every other handle keeps the default `None`, because an in-memory buffer records no such fact and inventing a clock reading would be worse than saying so. It is the fallback behind the [`mtime` column](../../media/text/index.md#row-schema) of a plain-text read, asked once per read rather than once per row.
+`mtime()` answers when the bytes were last written, as UTC nanoseconds since the Unix epoch, for a handle whose store records one. A local file and a foreign-filesystem file read it from the same stat their `size` comes from; a ZIP member reads it from the index the archive already holds; every other handle keeps the default `None`, because an in-memory buffer records no such fact and inventing a clock reading would be worse than saying so. It is the fallback behind the [`mtime` column](../../media/index.md#plain-text) of a plain-text read, asked once per read rather than once per row.
 
 Rust only: neither binding reaches the accessor today, though both reach the text column it fills through `parse_mtime` / `parseMtime`.
 
@@ -670,11 +670,11 @@ Both calls move every byte into another handle and add or remove a coding, recor
 | Rust `compress_into(target, codec)` | always the argument |
 | `level` | the shared 0-9 scale |
 
-Readers already decode through a name's codings; see [gzip](../../coding/gzip.md), [zlib](../../coding/zlib.md), and [zstd](../../coding/zstd.md).
+Readers already decode through a name's codings; see [gzip](../../media/index.md#gzip), [zlib](../../media/index.md#zlib), and [zstd](../../media/index.md#zstd).
 
 ## Reading a coding in place
 
-A name declaring a [coding](../../coding/index.md) is composed at construction, so `IOBase("app.log.gz")` already presents the decoded value. `into_coded` is what puts a coding on a handle that addresses stored bytes. Either way the coding reads nothing until a read asks for bytes, and every read streams in bounded windows.
+A name declaring a [coding](../../media/index.md#compression) is composed at construction, so `IOBase("app.log.gz")` already presents the decoded value. `into_coded` is what puts a coding on a handle that addresses stored bytes. Either way the coding reads nothing until a read asks for bytes, and every read streams in bounded windows.
 
 | Call | Presents |
 | --- | --- |
@@ -823,17 +823,17 @@ A closed handle re-derives metadata on every ask; an open one holds what `open` 
 | --- | --- |
 | [`Buffer`](../backends/buffer.md) | nothing; `opened` stays `false` |
 | [`local::LocalFile`](../backends/local.md) | descriptor and memory mapping |
-| [`Coded`](../../coding/index.md) | the decoded value |
-| [IPC](../../media/ipc/index.md) | schema and dimensions |
-| [Parquet](../../media/parquet/index.md) | the footer |
-| [Avro](../../media/avro/index.md) | header and block metadata |
-| [Text](../../media/text/index.md) | resolved field, coding plan, dimensions |
+| [`Coded`](../../media/index.md#compression) | the decoded value |
+| [IPC](../../media/index.md#arrow-ipc) | schema and dimensions |
+| [Parquet](../../media/index.md#parquet) | the footer |
+| [Avro](../../media/index.md#avro) | header and block metadata |
+| [Text](../../media/index.md#plain-text) | resolved field, coding plan, dimensions |
 
 ## Clearing and removing
 
 `clear` empties and keeps the resource; `remove` deletes it, issuing the delete without a probe and treating not-found as success.
 
-| Call | Leaf | Container | [Iceberg](../../media/iceberg/index.md) `Table` |
+| Call | Leaf | Container | [Iceberg](../../media/index.md#iceberg) `Table` |
 | --- | --- | --- | --- |
 | `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
 | `remove` | deleted | deleted; refused by name while children remain, unless `recursive` | the whole location, metadata and data files |

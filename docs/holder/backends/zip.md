@@ -212,7 +212,7 @@ There is one member writer and it streams: the source is read a batch at a time,
 
 The sizes and the digest are only known when the last byte is encoded, so a member that outgrows its first window has its header written with room reserved for them and settled afterwards. That is one extra write, and none at all for a member whose whole encoded form fit the window.
 
-A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../coding/index.md) has. A whole write does not: it never decodes the member it replaces.
+A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../media/index.md#compression) has. A whole write does not: it never decodes the member it replaces.
 
 ```rust
 use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};

@@ -465,7 +465,7 @@ A new backend supplies the same three roles as a sibling module; see [Filesystem
     assert head(leaf) == head(memory)
     ```
 
-[Arrow IPC](../../media/ipc/index.md) and [Parquet](../../media/parquet/index.md) take a handle, not a path, so one reader runs over a file, a `Buffer`, or a [coded](../../coding/index.md) handle.
+[Arrow IPC](../../media/index.md#arrow-ipc) and [Parquet](../../media/index.md#parquet) take a handle, not a path, so one reader runs over a file, a `Buffer`, or a [coded](../../media/index.md#compression) handle.
 
 ## Private entries
 

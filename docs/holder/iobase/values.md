@@ -127,7 +127,7 @@ Both answer a `Digest` rather than the bytes, and every backend and every wrappe
 
 ## Structured values
 
-Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. The codecs themselves are on the [structured text](../../media/structured.md) layer.
+Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. The codecs themselves are on the [structured text](../../media/index.md#json) layer.
 
 === "Rust"
 

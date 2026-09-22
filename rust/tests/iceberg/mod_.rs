@@ -7056,7 +7056,7 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
 }
 
 /// Partition isolation, default keys, sorted files, parallel writes, and the
-/// v3 types: the private half of the contract `docs/media/iceberg/write.md`
+/// v3 types: the private half of the contract `docs/media/index.md` (Iceberg)
 /// states, pinned where the plan, the grouping, and the data-file handles
 /// are visible.
 mod isolation {

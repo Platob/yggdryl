@@ -28,7 +28,7 @@ Canonical text values are not strings: each parses, canonicalizes and orders its
 ## The eighteen string leaves
 
 A string column is one of eighteen leaves: six shapes in each of the three
-[charsets](../../charset/index.md) that have a datatype - UTF-8, US-ASCII and
+[charsets](../../media/index.md#charsets) that have a datatype - UTF-8, US-ASCII and
 windows-1252. The leaf is the whole declaration. It says the charset its bytes
 are written in, the shape Arrow lays them out in, and - on the two numbered
 shapes - what its number means: `fixed_*(n)` is an exact width, NUL-padded,
@@ -223,7 +223,7 @@ the `read` rows are the value's cost.
 | `binary` read | 0 | 1 |
 
 A column's build cost is its buffers and not its rows: the payload is measured
-with [`Charset::encoded_len`](../../charset/index.md) before a byte of it is
+with [`Charset::encoded_len`](../../media/index.md#charsets) before a byte of it is
 built, so the count is equal at sixteen rows and at sixteen thousand. The
 `read` row past the inline buffer is one handle per cell out of a buffer Arrow
 already shares; removing it needs a storage handle that does not fit
