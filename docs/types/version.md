@@ -70,7 +70,7 @@ of version-looking text cannot do.
 ## Field
 
 `VersionField` is the typed marker, and there is nothing to pass:
-`unit(name, nullable)` is the whole constructor. `types.version` and
+`unit(name, nullable)` is the whole constructor. `yggdryl.version` and
 `fields.version` declare the same column, nullable unless the call says
 otherwise.
 
@@ -379,7 +379,7 @@ fold together, and the canonical text states the fold rather than the tail.
 | rule | behaviour |
 | --- | --- |
 | Layout | exactly four bytes: `u8` major, `u8` minor, `u16` patch; omitted parts are zero |
-| Kind | `text`; `VersionField`, `types.version`, and `fields.version` declare this datatype |
+| Kind | `text`; `VersionField`, `yggdryl.version`, and `fields.version` declare this datatype |
 | Bounds | major and minor `0..=255`; patch `0..=65535` |
 | Ordering | numeric tuple: `5 < 5.0.2 < 5.0.10 < 5.1` |
 | Text | one to three decimal components; `5.0.0` renders as `5` |

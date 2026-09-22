@@ -92,7 +92,7 @@ one.
 
 `TimezoneField` carries no parameters, so it is built with `unit(name,
 nullable)` - there is nothing to pass, and naming the datatype again would say
-it twice. The bindings spell it `types.timezone` and `fields.timezone`.
+it twice. The bindings spell it `yggdryl.timezone` and `fields.timezone`.
 
 === "Rust"
 

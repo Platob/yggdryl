@@ -331,7 +331,7 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
 
 | rule | `url` (`0x64`) | `urn` (`0x65`) |
 | --- | --- | --- |
-| Kind | `text`; `UriField` over `UriType::Url`, `types.url`, `fields.url` | `text`; `UriField` over `UriType::Urn`, `types.urn`, `fields.urn` |
+| Kind | `text`; `UriField` over `UriType::Url`, `yggdryl.url`, `fields.url` | `text`; `UriField` over `UriType::Urn`, `yggdryl.urn`, `fields.urn` |
 | Value | `Url` behind one shared pointer, so a row clone moves a reference count rather than an identifier | `Urn`, the same way |
 | Admits | a location: hierarchical, with a host unless `file:`; never a name | a name: `urn:<namespace>:<specific>`, its namespace folded to lower case; never a location |
 | Storage | `Utf8` holding the canonical text, extension name `yggdryl.url` | `Utf8`, extension name `yggdryl.urn` |

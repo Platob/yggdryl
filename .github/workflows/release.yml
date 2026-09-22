@@ -293,22 +293,7 @@ jobs:
         run: |
           python -m pip install "pyarrow>=18" --only-binary ":all:"
           python -m pip install --no-index --find-links dist yggdryl
-          python - <<'EOF'
-          import pathlib
-          import tempfile
-
-          import pyarrow as pa
-
-          from yggdryl import IOBase
-          from yggdryl.media.iceberg import Table
-
-          columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-          root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-release-")) / "smoke"
-          table = Table.create(IOBase(root), columns)
-          table.append(pa.record_batch({"id": [1, 2]}, schema=columns))
-          assert table.scan().read_all().column("id").to_pylist() == [1, 2]
-          print("wheel smoke: ok")
-          EOF
+          python scripts/check_wheel_smoke.py
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.label }}

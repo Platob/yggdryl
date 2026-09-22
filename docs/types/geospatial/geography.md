@@ -117,7 +117,7 @@ non-default reference system read with default edges.
 `GeographyField` is the typed marker - a field carrying `GeographyType`, whose
 payload is the shared `GeospatialParameters`, so the CRS and the algorithm are
 read off the marker rather than matched out of a root datatype. The bindings
-spell it `types.geography(name, crs, algorithm)` and
+spell it `yggdryl.geography(name, crs, algorithm)` and
 `fields.geography(name, crs, algorithm)`, nullable unless the call says
 otherwise.
 

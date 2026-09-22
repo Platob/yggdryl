@@ -16,36 +16,52 @@ Four guards, cheapest first:
    `DataTypeKind::is_wrapper`, `Scalar::as_enum` and twenty-seven `XField`
    aliases were all listed after they stopped existing, because an edit
    appended the new spelling instead of replacing the old one.
-3. A *type* an entry names in the signature it documents. Guard 2 reads the
-   name an entry declares and nothing else, so a wrapper's inner type, a
-   return type, or an alias's right-hand side could rot untouched: 135 lines
+3. A *type* a Rust entry names in the signature it documents. Guard 2 reads
+   the name an entry declares and nothing else, so a wrapper's inner type, a
+   return type, or an alias's right-hand side could rot untouched: 146 lines
    still said `MimeTypeValue`, `SchemeValue`, `TypedField` and `ValueIter`
    long after all four became `MimeTypeWire`, `SchemeWire`, `FieldOf` and
    `ScalarIter`. Only the code part of a line is read - the prose after two
-   spaces and an open parenthesis is prose - and only names that appear
-   nowhere in the crate are reported.
-4. `.api-bindings.txt`, which until now was read and then skipped in its
-   entirety: its two section headers name a language rather than a file, so
-   the crate under them resolved to nothing and all 477 lines passed without
-   being looked at. Its entries have their own shape - `ClassName: member,
-   member` - so they are checked against their own binding's surface: the
-   stubs and package for Python, the generated declarations for JavaScript,
-   each beside the binding crate that answers them.
+   spaces and an open parenthesis is prose - and only a name that appears
+   nowhere in the crate is reported.
 
 The reverse direction - a public item the inventory omits - is deliberately
 reported as a count rather than an error, and now actually is one. The
 inventories have never been complete, and failing CI on that would mean
 transcribing hundreds of signatures before any other work could land; a
 number says how far off they are without blocking the work that noticed.
+
+`.api-bindings.txt` was read by this script and checked by none of it. Its
+headers carried no `[path]`, so `SECTION` never matched, `crate` stayed `None`
+and every line fell through the guard; and even had one matched, `ENTRY` only
+knows the Rust item keywords, which a binding entry does not spell. The file
+went a release describing `yggdryl.types`, `yggdryl.hashing`,
+`yggdryl.media.iceberg` and `yggdryl.text.toml` - every one of them deleted -
+and stated outright that `yggdryl.xxhash` does not exist, which it does.
+
+So the bindings file names its tree too, and a fourth guard reads it: an entry
+key is a dotted path from that tree's root, and each segment must be a module
+beside its parent or a name that parent's namespace binds. Python is resolved
+through `ast` over the package's own sources - the names a module imports,
+assigns, defines, or lists in `__all__` - so a path that survives only in a
+docstring is still reported. JavaScript is resolved against the files
+`node/package.json` ships, which is what `yggdryl` the npm package answers.
 """
 
 from __future__ import annotations
 
+import ast
+import json
 import re
 import sys
 from pathlib import Path
 
-SECTION = re.compile(r"^###\s+\S+\s+\[([^\]]+)\]")
+# A header names what the section documents, then the tree to read it
+# against in brackets. The label may carry spaces - a Rust header
+# sometimes qualifies one file twice, `(additions)`, `(refs and
+# retention)` - and a parenthetical may follow the bracket, so the label
+# is taken lazily and nothing is anchored to the end of the line.
+SECTION = re.compile(r"^###\s+(.*?)\s*\[([^\]]+)\]")
 # An entry line: leading space, then an optional `pub`, then the item keyword
 # and the name. `fn`, `const fn`, `unsafe fn`, `type`, `const` and `static`
 # cover every shape the inventories use.
@@ -53,35 +69,17 @@ ENTRY = re.compile(
     r"^\s+(?:pub(?:\([^)]*\))?\s+)?(?:default\s+)?(?:const\s+)?(?:async\s+)?"
     r"(?:unsafe\s+)?(?:extern\s+\"[^\"]*\"\s+)?(fn|type|const|static)\s+([A-Za-z_][A-Za-z0-9_]*)"
 )
-ROOT = Path(__file__).resolve().parent.parent
-
-
-WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-# A type named in a signature. Only the code part of an entry is read, so this
-# never sees the prose a line ends with.
+# A type named in the signature an entry documents. Only the code part of a
+# line is read, so this never sees the prose a line ends with.
 TYPE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
 # The inventories end a line's code and begin its prose with two spaces and an
 # open parenthesis, which is also how a tuple struct would never be written.
 PROSE = "  ("
-# A binding entry: `  ClassName: member, member` at the top level of a section,
-# or a deeper line whose leading word only labels the group of names under it.
-BINDING_SECTION = re.compile(r"^###\s+(python|javascript):")
-BINDING_ENTRY = re.compile(r"^(\s+)([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
-# A member the check can be sure of: a bare name, not a signature, a sentence,
-# or a spelling with punctuation in it.
-BARE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-# Where each binding's public surface is written down. The stubs and the
-# generated declarations are what a caller reads; the binding crate beside them
-# is where a name that only reaches the caller through a macro still appears.
-# The package's own JavaScript belongs here too: `fields` and the other
-# hand-written helpers are declared in `node/fields.js` and reach the caller
-# without ever appearing in a `.d.ts` class.
-SURFACES = {
-    "python": ("python/yggdryl/**/*.pyi", "python/yggdryl/**/*.py", "python/src/**/*.rs"),
-    "javascript": ("node/*.d.ts", "node/*.js", "node/src/**/*.rs"),
-}
+ROOT = Path(__file__).resolve().parent.parent
+
+
+WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _TOKENS: dict[Path, set[str]] = {}
-_SURFACES: dict[str, set[str]] = {}
 
 
 def crate_of(named: str) -> Path | None:
@@ -121,74 +119,168 @@ def tokens(crate: Path) -> set[str]:
     return _TOKENS[crate]
 
 
-def surface(language: str) -> set[str]:
-    """Every identifier a binding's public surface spells.
+# A binding entry opens with the dotted path it documents: `Field`,
+# `iceberg.IcebergOptions`, `xxhash`. A key of two words is prose - `media
+# roles`, `fix functions`, `root constants` - and names nothing to resolve, so
+# it is skipped; `<name> namespace` is the JavaScript spelling of a bare key.
+BINDING_ENTRY = re.compile(
+    r"^  ([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)"
+    r"(?::|\s+namespace\b|\s*$)"
+)
+_NAMES: dict[Path, frozenset[str]] = {}
 
-    The same reasoning as `tokens`: an occurrence anywhere in the stubs, the
-    package, or the binding crate is enough, because a name can reach the
-    caller through a `#[pyclass]` attribute or a napi macro without ever being
-    written as a declaration.
+
+def module_beside(parent: Path, name: str) -> Path | None:
+    """The module `name` names beside `parent`, as a file or a package."""
+    for candidate in (parent / f"{name}.py", parent / f"{name}.pyi"):
+        if candidate.is_file():
+            return candidate
+    package = parent / name
+    if (package / "__init__.py").is_file() or (package / "__init__.pyi").is_file():
+        return package
+    return None
+
+
+def bound_names(module: Path) -> frozenset[str]:
+    """Every name a Python module binds at its top level.
+
+    Imports, assignments, `def`, `class`, and the strings `__all__` lists -
+    which is what another module can reach through it. Read with `ast` rather
+    than by importing, so the check stays static and needs no built extension;
+    read from the source rather than from every token in it, so a path that
+    survives only in a docstring is not mistaken for one that resolves.
     """
-    if language not in _SURFACES:
-        found: set[str] = set()
-        for pattern in SURFACES[language]:
-            for path in ROOT.glob(pattern):
-                if path.is_file():
-                    found.update(WORD.findall(path.read_text(errors="replace")))
-        _SURFACES[language] = found
-    return _SURFACES[language]
+    if module in _NAMES:
+        return _NAMES[module]
+    sources = (
+        [module / "__init__.py", module / "__init__.pyi"]
+        if module.is_dir()
+        else [module]
+    )
+    found: set[str] = set()
+    for source in sources:
+        if not source.is_file():
+            continue
+        try:
+            tree = ast.parse(source.read_text(errors="replace"))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    found.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                found.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        found.add(target.id)
+                        if target.id == "__all__":
+                            found.update(
+                                element.value
+                                for element in getattr(node.value, "elts", [])
+                                if isinstance(element, ast.Constant)
+                                and isinstance(element.value, str)
+                            )
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                found.add(node.target.id)
+    _NAMES[module] = frozenset(found)
+    return _NAMES[module]
 
 
-def check_bindings(inventory: Path) -> list[str]:
-    """Check `.api-bindings.txt` against the surface each section names.
+def resolves_in_python(package: Path, dotted: str) -> bool:
+    """Whether `dotted` names something reachable from a Python package.
 
-    A two-space entry declares a class, so its own name is checked too; a
-    deeper one only labels a group - `statics:`, `sections:`, `writable:` -
-    so only the names it lists are. Either way just the bare names in the
-    line's first clause are read, because everything past the first `;`, ` - `
-    or `(` is prose about them.
+    Each segment is a module beside its parent, or a name that parent binds.
+    The root also admits the extension module's own classes: `Xxh32` and
+    `TxHash` are `_native`'s, surfaced through the module that owns them.
     """
-    problems: list[str] = []
-    language = ""
-    for number, line in enumerate(inventory.read_text().splitlines(), start=1):
-        header = BINDING_SECTION.match(line)
-        if header:
-            language = header.group(1)
+    parent = package
+    for index, segment in enumerate(dotted.split(".")):
+        beside = module_beside(parent, segment)
+        if beside is not None:
+            parent = beside
             continue
-        entry = BINDING_ENTRY.match(line) if language else None
-        if not entry:
-            continue
-        indent, name, rest = len(entry.group(1)), entry.group(2), entry.group(3)
-        known = surface(language)
-        if indent == 2 and name not in known:
-            problems.append(
-                f"{inventory.name}:{number}: {language} class {name!r} "
-                f"appears nowhere in that binding's surface"
-            )
-        for member in re.split(r";| - |\(", rest)[0].split(","):
-            member = member.strip()
-            if BARE.match(member) and member not in known:
-                problems.append(
-                    f"{inventory.name}:{number}: {language} {name}.{member} "
-                    f"appears nowhere in that binding's surface"
-                )
-    return problems
+        names = bound_names(parent)
+        if parent == package:
+            native = module_beside(package, "_native")
+            if native is not None:
+                names = names | bound_names(native)
+        if segment in names:
+            # A member is where static resolution stops: what hangs off it is
+            # the extension's, which no source in this tree spells.
+            return index == len(dotted.split(".")) - 1
+        return False
+    return True
+
+
+def shipped_javascript(package: Path) -> set[str]:
+    """Every identifier in the files `node/package.json` ships.
+
+    The published surface is the honest scope for a section documenting it: a
+    name no shipped declaration or module spells is a name no caller can
+    reach, whatever `src/` still says.
+    """
+    if package in _TOKENS:
+        return _TOKENS[package]
+    manifest = json.loads((package / "package.json").read_text())
+    found: set[str] = set()
+    for entry in manifest.get("files", []):
+        for path in sorted(package.glob(entry)):
+            if path.is_file() and path.suffix in {".js", ".ts", ".mjs", ".cjs"}:
+                found.update(WORD.findall(path.read_text(errors="replace")))
+    _TOKENS[package] = found
+    return found
+
+
+def binding_problems(inventory: Path, number: int, line: str, scope: Path,
+                     language: str, section: str) -> list[str]:
+    """Report a binding entry whose key reaches nothing in its own tree."""
+    entry = BINDING_ENTRY.match(line)
+    if entry is None:
+        return []
+    dotted = entry.group(1)
+    if language == "python":
+        if resolves_in_python(scope, dotted):
+            return []
+    elif all(part in shipped_javascript(scope) for part in dotted.split(".")):
+        return []
+    return [
+        f"{inventory.name}:{number}: {dotted!r} (listed under {section}) "
+        f"reaches nothing in {scope.relative_to(ROOT)}"
+    ]
 
 
 def check(inventory: Path) -> list[str]:
     problems: list[str] = []
     crate: Path | None = None
+    scope: Path | None = None
+    language = ""
     section = ""
     for number, line in enumerate(inventory.read_text().splitlines(), start=1):
         match = SECTION.match(line)
         if match:
-            named = match.group(1)
+            label, named = match.group(1), match.group(2)
             if "\\" in named:
                 problems.append(f"{inventory.name}:{number}: backslash path {named!r}")
                 named = named.replace("\\", "/")
-            if not (ROOT / named).is_file():
-                problems.append(f"{inventory.name}:{number}: no such file {named!r}")
-            section, crate = named, crate_of(named)
+            target = ROOT / named
+            # A Rust section names the one file it documents; a binding
+            # section names the tree its whole surface is published from.
+            language = label.split(":")[0].strip() if ":" in label else ""
+            if language in ("python", "javascript"):
+                if not target.is_dir():
+                    problems.append(f"{inventory.name}:{number}: no such folder {named!r}")
+                section, scope, crate = named, target, None
+            else:
+                if not target.is_file():
+                    problems.append(f"{inventory.name}:{number}: no such file {named!r}")
+                section, crate, scope = named, crate_of(named), None
+            continue
+        if scope is not None and scope.is_dir():
+            problems.extend(
+                binding_problems(inventory, number, line, scope, language, section)
+            )
             continue
         if crate is None or not crate.is_dir():
             continue
@@ -216,12 +308,13 @@ def omitted(inventory: Path) -> tuple[int, int]:
     with a documented one counts as present - so they are reported as a
     direction of travel, not a target to reach.
     """
-    listed_paths = set()
-    for line in inventory.read_text().splitlines():
-        match = SECTION.match(line)
-        if match:
-            listed_paths.add(match.group(1).replace("\\", "/"))
-    spelled = set(WORD.findall(inventory.read_text()))
+    text = inventory.read_text()
+    listed = {
+        match.group(2).replace("\\", "/")
+        for match in (SECTION.match(line) for line in text.splitlines())
+        if match
+    }
+    spelled = set(WORD.findall(text))
     declaration = re.compile(
         r"^\s*pub\s+(?:unsafe\s+)?(?:const\s+)?(?:async\s+)?"
         r"(?:fn|struct|enum|trait|type|union)\s+([A-Za-z_][A-Za-z0-9_]*)"
@@ -229,7 +322,7 @@ def omitted(inventory: Path) -> tuple[int, int]:
     files = 0
     names: set[str] = set()
     for path in sorted((ROOT / "rust" / "src").rglob("*.rs")):
-        if path.relative_to(ROOT).as_posix() not in listed_paths:
+        if path.relative_to(ROOT).as_posix() not in listed:
             files += 1
         for line in path.read_text(errors="replace").splitlines():
             found = declaration.match(line)
@@ -240,18 +333,16 @@ def omitted(inventory: Path) -> tuple[int, int]:
 
 def main() -> int:
     problems: list[str] = []
-    rust = ROOT / ".api-inventory.txt"
-    bindings = ROOT / ".api-bindings.txt"
-    if rust.is_file():
-        problems.extend(check(rust))
-    if bindings.is_file():
-        problems.extend(check(bindings))
-        problems.extend(check_bindings(bindings))
+    for name in (".api-inventory.txt", ".api-bindings.txt"):
+        path = ROOT / name
+        if path.is_file():
+            problems.extend(check(path))
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:
         print(f"{len(problems)} stale inventory reference(s)", file=sys.stderr)
         return 1
+    rust = ROOT / ".api-inventory.txt"
     if rust.is_file():
         files, names = omitted(rust)
         print(

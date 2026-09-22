@@ -30,12 +30,13 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Book, BookIterator, Element, Event, MarketOperation};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    DataType, Field, FixCodec, FixMsg, IOMedia, State, StructType, Timezone, Url, fix_schema,
+    DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, State, StructType, Timezone, Url,
+    fix_schema,
 };
 
 use super::seed;
@@ -59,6 +60,12 @@ const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 /// against each other; every other reader of this capture - the integration
 /// suite, the pages, the two bindings' suites - reads it the same way.
 const MESSAGES: usize = 94;
+
+/// How many three-entry snapshots one market-book measurement consumes.
+const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);
+
+/// Resting entries behind the single-update book measurement.
+const MARKET_DEPTH: usize = crate::bench_profile::corpus(1_024, 16);
 
 /// The log, as the bytes a `.log` file holds.
 fn corpus() -> Vec<u8> {
@@ -512,6 +519,157 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
     snapshots.finish();
+
+    market_benchmarks(criterion, registry);
+}
+
+/// The sole message a compact FIX fixture carries.
+fn market_message(codec: &FixCodec, row: &[u8]) -> FixMsg {
+    let mut messages = codec.parse_line(row).expect("a FIX row");
+    let message = messages
+        .next()
+        .expect("the fixture carries one message")
+        .expect("the fixture is valid");
+    assert!(
+        messages.next().is_none(),
+        "the fixture carries exactly one message"
+    );
+    message
+}
+
+/// FIX's typed market boundary, the two book ingestion paths, and Arrow exchange.
+fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
+    let codec = FixCodec::new(registry)
+        .with_threads(1)
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let direct = market_message(
+        &codec,
+        b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
+    );
+    let snapshot = market_message(
+        &codec,
+        b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
+    );
+    let snapshot_operations = snapshot.market_operations().expect("the snapshot expands");
+    assert_eq!(snapshot_operations.len(), 3);
+    let operations: Vec<MarketOperation> = std::iter::repeat_n(snapshot_operations, MARKET_REPEATS)
+        .flatten()
+        .collect();
+    let mut dense_operations = Vec::with_capacity(MARKET_DEPTH);
+    for index in 0..MARKET_DEPTH {
+        let mut operation = operations[0].clone();
+        let identity = format!("DENSE-{index}");
+        operation.set_crosscode(identity.clone());
+        let mut identifiers = operation.get_identifiers().clone();
+        identifiers.insert("MDEntryID".to_owned(), identity);
+        identifiers.insert("MDUpdateAction".to_owned(), "0".to_owned());
+        operation.set_identifiers(identifiers);
+        operation.finalize();
+        dense_operations.push(operation);
+    }
+    let mut dense_book = Book::new(dense_operations[0].get_currunix(), "AAPL");
+    dense_book
+        .add_operations(dense_operations.clone())
+        .expect("the dense initial book");
+    let mut dense_update = dense_operations[0].clone();
+    let update_unix = dense_update.get_currunix() + 1;
+    dense_update.set_currunix(update_unix);
+    dense_update.set_state(State::read("Replaced").expect("the shipped replaced state"));
+    let mut identifiers = dense_update.get_identifiers().clone();
+    identifiers.insert("MDUpdateAction".to_owned(), "1".to_owned());
+    dense_update.set_identifiers(identifiers);
+    dense_update.finalize();
+
+    let mut group = criterion.benchmark_group("fix/pipeline/market");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("direct_fix_to_operation", |bencher| {
+        bencher.iter_batched(
+            || direct.clone(),
+            |message| {
+                black_box(message)
+                    .into_market_operations()
+                    .expect("an order operation")
+                    .len()
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.throughput(Throughput::Elements(3));
+    group.bench_function("snapshot_fix_to_operations", |bencher| {
+        bencher.iter_batched(
+            || snapshot.clone(),
+            |message| {
+                black_box(message)
+                    .into_market_operations()
+                    .expect("three book operations")
+                    .len()
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.throughput(Throughput::Elements(operations.len() as u64));
+    group.bench_function("book_add_operations", |bencher| {
+        bencher.iter_batched(
+            || (Book::new(0, "AAPL"), operations.clone()),
+            |(mut book, operations)| {
+                book.add_operations(black_box(operations))
+                    .expect("one atomic book update");
+                black_box(book.bid().len() + book.ask().len() + book.executions().len())
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("book_single_update_dense", |bencher| {
+        bencher.iter_batched(
+            || (dense_book.clone(), dense_update.clone()),
+            |(mut book, update)| {
+                book.add_operations([black_box(update)])
+                    .expect("one journaled book update");
+                black_box(book.bid().len())
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(operations.len() as u64));
+    group.bench_function("book_iterator", |bencher| {
+        bencher.iter_batched(
+            || operations.clone(),
+            |operations| {
+                BookIterator::new(black_box(operations).into_iter(), 0, false)
+                    .expect("a sorted book iterator")
+                    .try_fold(0_usize, |count, book| {
+                        let book = book?;
+                        Ok::<_, yggdryl::Error>(
+                            count + book.bid().len() + book.ask().len() + book.executions().len(),
+                        )
+                    })
+                    .expect("the operation stream builds books")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("operation_arrow_roundtrip", |bencher| {
+        bencher.iter_batched(
+            || operations.clone(),
+            |operations| {
+                let batches = MarketOperation::arrow_reader(
+                    black_box(operations),
+                    Some(crate::bench_profile::corpus(1_024, 4)),
+                    Some(4 * 1024 * 1024),
+                )
+                .expect("an operation Arrow reader");
+                MarketOperation::from_arrow_reader(batches)
+                    .expect("the canonical operation schema")
+                    .try_fold(0_usize, |count, operation| operation.map(|_| count + 1))
+                    .expect("the operations roundtrip")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.finish();
 }
 
 /// One line of the capture, stripped of its row header, checked to be the

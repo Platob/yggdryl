@@ -111,7 +111,7 @@ no second parameter, because an edge algorithm is [the geography's](geography.md
 `GeometryField` is the typed marker - a field carrying `GeometryType`, whose
 payload is the shared `GeospatialParameters`, so the CRS is read off the marker
 rather than matched out of a root datatype. The bindings spell it
-`types.geometry(name, crs)` and `fields.geometry(name, crs)`, nullable unless the
+`yggdryl.geometry(name, crs)` and `fields.geometry(name, crs)`, nullable unless the
 call says otherwise, with metadata riding beside the datatype as on every field.
 
 === "Rust"

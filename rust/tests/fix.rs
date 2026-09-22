@@ -332,6 +332,8 @@ mod group_plan;
 mod identity;
 #[path = "fix/latest.rs"]
 mod latest;
+#[path = "fix/market.rs"]
+mod market;
 #[cfg(feature = "internals")]
 #[path = "fix/memo.rs"]
 mod memo;
