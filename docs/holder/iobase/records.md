@@ -15,7 +15,7 @@ One Arrow batch read and three explicit write intents on every handle.
 | Commits | `commit_row_size` unset: once at end; `N`: every `N` rows plus remainder; `0`: rejected |
 | Lazy | reads stream batches; append chains stored then incoming; merge indexes only the stored side |
 | Feature flag | `arrow` (default): IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
-| Settings | one [RecordOptions](../../media/options.md) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
+| Settings | one [RecordOptions](../../media/index.md#options) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
 | Shape-free | `read_arrow` / `write_arrow` answer an [ArrowScalar](../../arrow/values.md) whatever the handle holds, structured text documents included |
 
 ## Use
@@ -253,7 +253,7 @@ The one streamed-write publication boundary, applied after shaping.
 | overwrite | first commit overwrites, later ones append; a completed prefix survives a later failure |
 | append, merge | same intent every commit; empty input is a no-op, while an empty overwrite still publishes its field |
 | plain folder | no cross-leaf transaction; each leaf publishes on its own |
-| Iceberg folder | its [snapshot commit](../../media/iceberg/write.md) instead |
+| Iceberg folder | its [snapshot commit](../../media/index.md#iceberg) instead |
 
 ### Absent resources and unknown encodings
 
@@ -550,7 +550,7 @@ The options field selects and casts in one pass; columns it omits are never read
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
-[Parquet](../../media/parquet/index.md) skips the column chunk bytes; [Arrow IPC](../../media/ipc/index.md) skips decode and allocation but still reads the message body.
+[Parquet](../../media/index.md#parquet) skips the column chunk bytes; [Arrow IPC](../../media/index.md#arrow-ipc) skips decode and allocation but still reads the message body.
 
 ## Limits
 
@@ -821,7 +821,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ## Text records
 
-`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method. Physical lines are records by default; [Plain-text records](../../media/text/index.md) defines the schema, parsing order, errors, and benchmarks.
+`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method. Physical lines are records by default; [Plain-text records](../../media/index.md#plain-text) defines the schema, parsing order, errors, and benchmarks.
 
 ## Edges
 

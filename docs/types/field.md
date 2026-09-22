@@ -789,7 +789,7 @@ protocol is done, so a required column its protocol did not write is still refus
 
 ## Serializing a schema
 
-One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../media/structured.md) option, `indent` in Python.
+One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../media/index.md#json) option, `indent` in Python.
 
 === "Rust"
 

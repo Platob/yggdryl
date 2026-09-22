@@ -8,7 +8,7 @@ Two datatypes over one payload - planar `geometry` and spherical `geography`, bo
 | --- | --- |
 | Owns | `DataType::Geometry` and `DataType::Geography`, each carrying a shared `GeospatialParameters`; the values `Geometry` and `Geography`, the `Geospatial` family enum over them, and the `wkb` reader beside them |
 | Constructors | `DataType::geometry(crs)` and `DataType::geography(crs, algorithm)`; `None` fills the defaults, so the bare spelling is the common column |
-| Defaults | CRS `OGC:CRS84`, edges `spherical` - the defaults [Parquet](../../media/parquet/index.md) and [Iceberg](../../media/iceberg/index.md) v3 share; the display omits them |
+| Defaults | CRS `OGC:CRS84`, edges `spherical` - the defaults [Parquet](../../media/index.md#parquet) and [Iceberg](../../media/index.md#iceberg) v3 share; the display omits them |
 | Validates | The CRS at construction - never empty; the payload at the value door, by reading it whole as WKB |
 | Lazy | Nothing - a payload is read once, on the way in, and never re-read to be compared or hashed |
 | Cached | The Arrow projection of a [`Field`](../field.md); the payload is one shared `Arc<[u8]>`, so restating a geometry as a geography clones a handle rather than copying bytes |
@@ -250,7 +250,7 @@ The dimensionality travels with the geometry rather than with its coordinates,
 which is what keeps `POINT ZM EMPTY` distinguishable from `POINT EMPTY` once the
 coordinates are gone. `geometry_type_ids` reports the distinct ISO codes a
 payload holds, sorted, which is the vocabulary
-[Parquet's footer](../../media/parquet/footer.md) records.
+[Parquet's footer](../../media/index.md#parquet) records.
 
 ```rust
 use yggdryl::wkb::{self, Dimensions, Geometry};

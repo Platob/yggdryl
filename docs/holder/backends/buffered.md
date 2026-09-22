@@ -247,7 +247,7 @@ A write goes straight to the wrapped handle and folds into the pages it overlapp
 
 ## Over a compressed handle
 
-A closed [`Coded`](../../coding/index.md) read decodes through the range and retains nothing; wrapping it retains decoded pages instead.
+A closed [`Coded`](../../media/index.md#compression) read decodes through the range and retains nothing; wrapping it retains decoded pages instead.
 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
@@ -357,7 +357,7 @@ assert_eq!(cursor.handle().cached_pages(), 3);
 
 ## A file, and what the cache is for
 
-Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so the wrapper costs a lock and a copy. It pays where a fetch is real: an [`fs`](filesystems.md) handle calls the vtable per read, and a [coded](../../coding/index.md) handle decodes.
+Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so the wrapper costs a lock and a copy. It pays where a fetch is real: an [`fs`](filesystems.md) handle calls the vtable per read, and a [coded](../../media/index.md#compression) handle decodes.
 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;

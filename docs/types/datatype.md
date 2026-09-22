@@ -454,7 +454,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
 | call | form |
 | --- | --- |
-| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/structured.md), `indent=` in Python |
+| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/index.md#json), `indent=` in Python |
 | `into_json_bytes`, `toJSONBytes` | the same JSON, encoded |
 | `from_json` | bytes, text, or a parsed object |
 
@@ -603,7 +603,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
-[Iceberg](../media/iceberg/index.md) is a closed primitive vocabulary, not an engine.
+[Iceberg](../media/index.md#iceberg) is a closed primitive vocabulary, not an engine.
 
 ## Building the enum directly
 
@@ -641,7 +641,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `TZTimeOnly` -> the same instant under the date it does not state: the epoch day supplies one, so `07:39+05:30` is `1970-01-01T02:09:00Z` and `00:30+05:30` is the evening of 1969-12-31. The date is not data and a reading is not confined to one day, so a day filter is the wrong tool on the column; two readings still subtract.
 - A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
-- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed. The converse holds too: a wire spelling is read by this crate's [shared ISO reader](../media/structured.md#edges), not a second parser of FIX's own, so `20240102-10:15:30,000` reads the instant its dotted twin reads where it was null before - FIX gains no spelling, the reader simply has one more. A bare `20240102` goes the same way now that a date is a reading of a datetime: a `LocalMktDate` is that day's midnight straight from the wire text, and the FIX layer states only what FIX leaves out, which for a `UTCDateOnly` column is the `Z` its name already says.
+- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed. The converse holds too: a wire spelling is read by this crate's [shared ISO reader](../media/index.md#json), not a second parser of FIX's own, so `20240102-10:15:30,000` reads the instant its dotted twin reads where it was null before - FIX gains no spelling, the reader simply has one more. A bare `20240102` goes the same way now that a date is a reading of a datetime: a `LocalMktDate` is that day's midnight straight from the wire text, and the FIX layer states only what FIX leaves out, which for a `UTCDateOnly` column is the `Z` its name already says.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - `DataType::from_arrow(currency.into_arrow())` -> `utf8`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.

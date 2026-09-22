@@ -445,7 +445,7 @@ assert!(Geometry::new(doubled).is_err());
 - A caller-set `ARROW:extension:name` on a geometry field -> refused naming both the caller's name and `geoarrow.wkb`.
 - A malformed GeoArrow document - `{"crs":7}` -> refused naming `ARROW:extension:metadata` and `crs`.
 - The default value is `POINT EMPTY`, twenty-one bytes ([the family](index.md#the-default-value)).
-- On a [Parquet](../../media/parquet/footer.md) path the column is `GEOMETRY` over `BYTE_ARRAY` WKB, and the defaults write as absent.
+- On a [Parquet](../../media/index.md#parquet) path the column is `GEOMETRY` over `BYTE_ARRAY` WKB, and the defaults write as absent.
 
 ## Commands
 

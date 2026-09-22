@@ -15,7 +15,7 @@
 | Bindings | Both cross as their canonical text; the `MimeType` and `MediaType` classes Python and JavaScript expose are the [media](../media/index.md) routing values, not a scalar wrapper |
 
 A column of media types declares what a reader would otherwise have to guess:
-a stored `text/csv;charset=utf-8` is the base, the [charset](../charset/index.md)
+a stored `text/csv;charset=utf-8` is the base, the [charset](../media/index.md#charsets)
 and the ordered content codings that a handle was read and written under, in
 one canonical rendering. The vocabulary itself - what each name means, how a
 scheme is picked, how a name is inferred from a path, from headers or from
@@ -345,7 +345,7 @@ intake is total by construction.
 - Hashing reads the canonical text, so `TEXT/CSV` and `text/csv` are one hash.
 - The canonical default of both is `application/octet-stream`.
 - A stored column under `yggdryl.mimetype` or `yggdryl.mediatype` over a storage that is not `Utf8` -> a foreign field wearing our name, imported as its storage.
-- A [charset](../charset/index.md) a media type declares is the charset vocabulary, not a [string](text/string.md) leaf: a column of media types stores names, never the bytes they describe.
+- A [charset](../media/index.md#charsets) a media type declares is the charset vocabulary, not a [string](text/string.md) leaf: a column of media types stores names, never the bytes they describe.
 
 ## Commands
 

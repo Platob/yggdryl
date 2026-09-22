@@ -13,7 +13,7 @@
 | Growth | the allocation doubles, so many small appends stay amortized constant; `reserve` pre-sizes a known final length |
 | Media type | declared with `with_media_type`, never guessed |
 | Siblings | [Local](local.md), [Filesystems](filesystems.md) |
-| Wrappers | [Buffered](buffered.md), `Coded` in [Coding](../../coding/index.md) |
+| Wrappers | [Buffered](buffered.md), `Coded` in [Coding](../../media/index.md#compression) |
 
 ## Use
 

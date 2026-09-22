@@ -289,7 +289,7 @@ depend on.
 | View | Vocabulary |
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
-| [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
+| [`IcebergField`, `IcebergFieldMut`](../media/index.md#iceberg) | `doc`, `schema_id`, `spec_id`, `transform` |
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
@@ -477,7 +477,7 @@ The reserved `FIELD:partition` key marks partition columns on the fields themsel
     assert.equal(schema.onlyPartitionFields().dtype.length, 2)
     ```
 
-Folder writes and reads and Iceberg identity specs read the mark: [Partitions](../holder/iobase/partitions.md), [Iceberg](../media/iceberg/index.md).
+Folder writes and reads and Iceberg identity specs read the mark: [Partitions](../holder/iobase/partitions.md), [Iceberg](../media/index.md#iceberg).
 
 ## Edges
 
