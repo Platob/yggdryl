@@ -54,3 +54,85 @@ mod categories {
         assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
     }
 }
+
+mod table {
+    use yggdryl::graph::EventColumn;
+
+    /// Every graph event column has a crate definition, and takes that
+    /// column's datatype, display and name.
+    ///
+    /// The table in `rust/src/fix/crated.rs` replaced an exhaustive match on
+    /// `EventColumn`, which the compiler used to check. This is that check:
+    /// a column added to the graph and not to the table would otherwise have
+    /// no crate tag, and a FIX row would answer it under no column at all.
+    #[test]
+    fn every_event_column_is_one_crate_definition_under_the_columns_own_name() {
+        let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+        for column in EventColumn::ALL {
+            let found: Vec<_> = held
+                .iter()
+                .filter(|field| field.name() == column.name())
+                .collect();
+            assert_eq!(found.len(), 1, "one definition of {}", column.name());
+            let field = found[0];
+            assert_eq!(
+                field.dtype(),
+                &column.datatype().expect("the column's datatype"),
+                "{} is read at the column's datatype",
+                column.name()
+            );
+            assert_eq!(
+                field.display(),
+                Some(column.display()),
+                "{} displays as the column does",
+                column.name()
+            );
+            let tag = field
+                .as_fix()
+                .tag()
+                .expect("a tag reading")
+                .expect("a stated tag");
+            assert!(
+                yggdryl::is_crate_tag(tag),
+                "{} sits in the crate's own block",
+                column.name()
+            );
+        }
+    }
+
+    /// The eight columns FIX says more about than the graph does keep their
+    /// own wording; the other eleven take the column's.
+    ///
+    /// Which is which is a judgement, so it is pinned rather than argued: a
+    /// description that drifts back into restating the column is caught here
+    /// and in the committed dictionary hash.
+    #[test]
+    fn a_crate_column_restates_the_graphs_wording_only_where_fix_adds_nothing() {
+        let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
+        let mut own = Vec::new();
+        for column in EventColumn::ALL {
+            let field = held
+                .iter()
+                .find(|field| field.name() == column.name())
+                .expect("a definition");
+            if field.description() != Some(column.description()) {
+                own.push(column.name());
+            }
+        }
+        own.sort_unstable();
+        assert_eq!(
+            own,
+            [
+                "creaunix",
+                "crosscode",
+                "currhashcode",
+                "execunix",
+                "exprtime",
+                "identifiers",
+                "recdunix",
+                "srcuuids",
+                "state",
+            ]
+        );
+    }
+}

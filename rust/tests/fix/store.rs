@@ -2990,10 +2990,16 @@ mod committed {
     /// and displays, while the other 103 retained an explicit `Grp` suffix.
     /// It moved when the crate identifier document replaced its partial two-part
     /// capture key with the complete length-prefixed `msgsesseventid` key.
+    /// It moved when the crate's event columns stopped restating what
+    /// `EventColumn` already owns: eleven of the nineteen add nothing FIX's
+    /// own and now take the column's display and wording, so a text line's
+    /// batch and a FIX row describe one column with one sentence. Only those
+    /// eleven descriptions moved - no definition, reference, tag or count
+    /// did, which is why the census below stands unchanged.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 3_303_944_819_954_890_747);
+        assert_eq!(registry.stable_hash(), 8_614_469_411_510_753_839);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
