@@ -69,7 +69,7 @@ class TestTheNameComposesTheHandle:
         assert handle.read_bytes() == PLAIN
         # The rows are the decoded ones, dated by the location holding the
         # coded bytes, because that is the layer that has a modification time.
-        assert [(row["body"], row["mtime"]) for row in handle.read_records()] == [
+        assert [(row["body"], row["currunix"]) for row in handle.read_records()] == [
             ("symbol,price", MTIME),
             ("AAPL,1", MTIME),
         ]

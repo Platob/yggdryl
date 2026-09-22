@@ -210,10 +210,10 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
 
     let pairs = pair_corpus();
     let pair_source = handle(pairs.clone());
-    let lifted = TextOptions::new()
-        .try_with_lift_names(["55"])
-        .expect("the path parses");
-    let unlifted = TextOptions::new();
+    let captured_pairs = TextOptions::new()
+        .try_with_rowheader(r"^(?<tag>\d+)=")
+        .expect("a row-header regex");
+    let plain_pairs = TextOptions::new();
 
     // The three readings of a record terminator, over one corpus each: the
     // flexible scan that takes `\n`, `\r\n` or `\r` as it finds them, a
@@ -255,13 +255,13 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Bytes(bytes.len() as u64));
 
     group.throughput(Throughput::Bytes(pairs.len() as u64));
-    // What materializing the entry tree actually costs, against the same read
-    // that never asks for one.
-    group.bench_function("entries/none", |bencher| {
-        bencher.iter(|| drain_lines(black_box(&pair_source), black_box(&unlifted)));
+    // What taking a row header off a pair-shaped line actually costs,
+    // against the same read that matches none.
+    group.bench_function("pairs/none", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&pair_source), black_box(&plain_pairs)));
     });
-    group.bench_function("entries/lifted", |bencher| {
-        bencher.iter(|| drain_lines(black_box(&pair_source), black_box(&lifted)));
+    group.bench_function("pairs/captured", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&pair_source), black_box(&captured_pairs)));
     });
     group.finish();
 

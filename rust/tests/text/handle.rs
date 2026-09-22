@@ -53,22 +53,6 @@ mod text {
             .collect()
     }
 
-    fn rownums(batches: &[arrow_array::RecordBatch]) -> Vec<i64> {
-        batches
-            .iter()
-            .flat_map(|batch| {
-                let index = batch.schema().index_of("rownum").unwrap();
-                batch
-                    .column(index)
-                    .as_any()
-                    .downcast_ref::<Int64Array>()
-                    .unwrap()
-                    .values()
-                    .to_vec()
-            })
-            .collect()
-    }
-
     fn uint64s(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<u64>> {
         batches
             .iter()
@@ -148,9 +132,10 @@ mod text {
         options.start_rownum = Some(i64::MAX);
         let text = Text::new(source).with_options(options);
 
-        // The second output row cannot be represented by the configured rownum,
-        // and its capture is a byte the decode would have to repair. Neither
-        // changes the number of records, because counting converts nothing.
+        // The second output row cannot be represented by the row number
+        // `start_rownum` configures, and its capture is a byte the decode
+        // would have to repair. Neither changes the number of records,
+        // because counting converts nothing.
         assert_eq!(text.row_size().unwrap(), 2);
     }
 
@@ -245,12 +230,15 @@ mod text {
     fn a_where_clause_reads_the_typed_columns_a_line_states() {
         // Not the body alone: the object a line came from, the instant it is
         // dated by, and the bytes a bounded record dropped are columns the
-        // clause binds against at their own datatypes.
+        // clause binds against at their own datatypes. The first two are the
+        // event's own - a buffer's URL under `crosscode`, and `currunix`,
+        // which every line answers, an undated buffer's at the epoch.
         let mut options = TextOptions::new();
         options.set_max_record_byte_size(Some(3));
         let source = named("app.log", b"alpha\nbravo\n");
 
-        let clause = "sourceurl like 'mem://%' and mtime is null and dropped_byte_size = 2";
+        let clause =
+            "crosscode like 'mem://%' and cast(currunix as int64) = 0 and dropped_byte_size = 2";
         assert_eq!(
             bodies(&collect(&source, options.with_filter(clause).unwrap())),
             [b"alp".to_vec(), b"bra".to_vec()]
@@ -275,15 +263,15 @@ mod text {
     #[test]
     fn a_where_clause_reads_the_logical_record_framing_built() {
         // Framing decides what a row is before the clause decides whether to
-        // keep it: the body the clause reads is the joined record, and the
-        // header's capture is the record's own.
+        // keep it: the body the clause reads is the joined record past the
+        // header that opened it, and the header's capture is the record's own.
         let source = named("app.log", b"[A] first\ncontinued\n[B] second\n");
         let options = framed(r"^\[(?<kind>[A-Z])\] ")
             .with_filter("kind = 'A'")
             .unwrap();
 
         let batches = collect(&source, options);
-        assert_eq!(bodies(&batches), [b"[A] first\ncontinued".to_vec()]);
+        assert_eq!(bodies(&batches), [b"first\ncontinued".to_vec()]);
     }
 
     #[test]
@@ -326,7 +314,7 @@ mod text {
             let batches = collect(&source, framed(r"^\[(?<kind>[A-Z])\] "));
             assert_eq!(
                 bodies(&batches),
-                [b"[A] first\ncontinued".to_vec(), b"[B] second".to_vec()]
+                [b"first\ncontinued".to_vec(), b"second".to_vec()]
             );
         }
     }
@@ -390,7 +378,7 @@ mod text {
     }
 
     #[test]
-    fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
+    fn folder_leaves_never_share_framing_state_and_restart_their_seqnums() {
         use yggdryl::local::Folder;
 
         let mut root = Folder::temporary().unwrap().path().unwrap();
@@ -408,17 +396,20 @@ mod text {
         assert_eq!(
             bodies(&batches),
             [
-                b"[A] first\ncontinued in a".to_vec(),
+                b"first\ncontinued in a".to_vec(),
                 b"leading in b".to_vec(),
-                b"[B] second".to_vec(),
+                b"second".to_vec(),
             ]
         );
-        assert_eq!(rownums(&batches), [1, 1, 2]);
+        // The place restarts with the leaf: `seqnum` counts from the first row
+        // number again under `b.log`, whose own leading line is a record of its
+        // own rather than a continuation of `a.log`'s.
         assert_eq!(uint64s(&batches, "seqnum"), [Some(1), Some(1), Some(2)]);
-        let sourceurls = strings(&batches, "sourceurl");
-        assert_eq!(strings(&batches, "crosscode"), sourceurls);
-        assert_ne!(sourceurls[0], sourceurls[1]);
-        assert_eq!(sourceurls[1], sourceurls[2]);
+        // And the object a row came from is the leaf's URL, stated once, under
+        // `crosscode`.
+        let crosscodes = strings(&batches, "crosscode");
+        assert_ne!(crosscodes[0], crosscodes[1]);
+        assert_eq!(crosscodes[1], crosscodes[2]);
 
         folder.remove(true).unwrap();
     }
@@ -428,8 +419,8 @@ mod text {
         let mut target = named("out.txt", b"old");
         let mut options: RecordOptions = TextOptions::new().into();
         let field = StructType::from_fields([
-            DataType::utf8().required_field("sourceurl"),
-            DataType::Int64.required_field("rownum"),
+            DataType::utf8().required_field("crosscode"),
+            DataType::UInt64.required_field("seqnum"),
             DataType::utf8().required_field("body"),
         ])
         .map(DataType::from)
@@ -438,14 +429,14 @@ mod text {
         options.set_field(field);
         let rows = [
             yggdryl::Scalar::from_struct([
-                ("sourceurl", yggdryl::Scalar::from("input")),
-                ("rownum", yggdryl::Scalar::from(1_i64)),
+                ("crosscode", yggdryl::Scalar::from("input")),
+                ("seqnum", yggdryl::Scalar::from(1_u64)),
                 ("body", yggdryl::Scalar::from("first")),
             ])
             .unwrap(),
             yggdryl::Scalar::from_struct([
-                ("sourceurl", yggdryl::Scalar::from("input")),
-                ("rownum", yggdryl::Scalar::from(2_i64)),
+                ("crosscode", yggdryl::Scalar::from("input")),
+                ("seqnum", yggdryl::Scalar::from(2_u64)),
                 ("body", yggdryl::Scalar::from("second")),
             ])
             .unwrap(),
@@ -466,7 +457,7 @@ mod text {
         options.start_rownum = Some(1);
         let options = options
             .with_select(
-                "sourceurl, cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold int64",
+                "crosscode, cast(seqnum as int32) as n, trim(body) as line, level, id * 10 as tenfold int64",
             )
             .unwrap()
             .with_filter("n > 1 and line like '%d' and level is not null")
@@ -479,7 +470,7 @@ mod text {
             .iter()
             .map(|field| field.name().clone())
             .collect();
-        assert_eq!(names, ["sourceurl", "n", "line", "level", "tenfold"]);
+        assert_eq!(names, ["crosscode", "n", "line", "level", "tenfold"]);
         assert_eq!(batch.column(1).data_type(), &arrow_schema::DataType::Int32);
         let lines = batch
             .column(2)
@@ -489,7 +480,7 @@ mod text {
             .iter()
             .map(|line| line.unwrap().to_owned())
             .collect::<Vec<_>>();
-        assert_eq!(lines, ["[WARN] id=9 second", "[INFO] id=11 third"]);
+        assert_eq!(lines, ["second", "third"]);
         let tenfold = batch
             .column(4)
             .as_any()

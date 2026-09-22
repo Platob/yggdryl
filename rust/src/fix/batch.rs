@@ -70,7 +70,6 @@ use super::codec::{FixCodec, SOH, Spread};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
 use crate::enums::EnumType;
-use crate::text::MTIME_COLUMN;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -794,7 +793,7 @@ impl Columns {
             payload: payload_at,
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
-            mtime: named(MTIME_COLUMN),
+            mtime: named(EventColumn::CurrUnix.name()),
             source: named(EventColumn::CurrUuid.name()),
             fills,
             carried,
@@ -870,9 +869,13 @@ impl RowReader {
         let at = columns.payload;
         let payload = payload_bytes(&columns.dtypes[at], batch.column(at), row)?;
         let beginstring = stated(columns.beginstring)?;
-        // When the row's line was written, in the clock the line counts in.
+        // When the row's line was written, in the clock the line counts in:
+        // the instant the line states as the event it is. The epoch is
+        // silence, because a line nothing dated reads as the epoch and an
+        // undated carrier must not date its messages.
         let mtime = stated(columns.mtime)?
-            .and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond));
+            .and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
+            .filter(|count| *count != 0);
         // The direction a row states outranks any reading of its line, and
         // the codec's pin fills what neither states.
         let direction = stated(columns.direction)?

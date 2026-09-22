@@ -7,7 +7,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use arrow_array::{ArrayRef, Int64Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{
+    ArrayRef, Int64Array, RecordBatch, RecordBatchIterator, StringArray, UInt64Array,
+};
 use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema};
 
 use yggdryl::Result;
@@ -19,10 +21,16 @@ use yggdryl::text::{
 };
 
 fn line(index: u64, body: &str) -> TextLine {
+    line_under(index, body, &Arc::new(TextOptions::new()))
+}
+
+/// One line read under the same options the batch is built from, because
+/// the place a line states is counted from the offset its own options carry.
+fn line_under(index: u64, body: &str, options: &Arc<TextOptions>) -> TextLine {
     TextLine::from_bytes(
         index,
         TextBytes::from_bytes(body).expect("bytes"),
-        Arc::new(TextOptions::new()),
+        Arc::clone(options),
     )
     .expect("line")
 }
@@ -101,8 +109,9 @@ fn the_forward_converters_build_every_line_and_leave_the_clauses_above_them() {
 
     let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
     assert_eq!(batch.num_rows(), 3);
-    // Nor did the projection run: the batch is the whole row schema.
-    assert!(batch.schema().index_of("sourceurl").is_ok());
+    // Nor did the projection run: the batch is the whole row schema, the
+    // nineteen event columns it opens with included.
+    assert!(batch.schema().index_of("crosscode").is_ok());
 
     let read = into_arrow_reader(lines, &options).expect("a reader");
     assert_eq!(
@@ -173,14 +182,32 @@ fn eof_fuses_even_a_source_that_would_resume() {
 
 #[test]
 fn row_numbers_remove_the_configured_offset_and_missing_columns_use_stream_ordinals() {
-    for start in [-9, 0, 12] {
+    // The place a line holds is its `seqnum`, counted from the offset the
+    // read was configured with. Reading the batch back takes the same offset
+    // off again, so a line comes out at the index it went in at.
+    for start in [0, 12] {
         let mut options = TextOptions::new();
         options.start_rownum = Some(start);
-        let original = [line(2, "one"), line(7, "two")];
+        let held = Arc::new(options.clone());
+        let original = [line_under(2, "one", &held), line_under(7, "two", &held)];
         let batch = into_arrow_batch(original, &options).expect("batch");
         let rows = from_arrow_batch(&batch, &options).expect("reverse");
         assert_eq!(rows.iter().map(TextLine::index).collect::<Vec<_>>(), [2, 7]);
     }
+    // A place is a count, and a count holds nothing below zero: an offset
+    // that would put a line before the start of its chain is refused by
+    // name rather than stated as a negative row number.
+    let mut options = TextOptions::new();
+    options.start_rownum = Some(-9);
+    let held = Arc::new(options.clone());
+    let error = into_arrow_batch([line_under(2, "one", &held)], &options)
+        .expect_err("a place before the chain begins");
+    assert!(
+        error
+            .to_string()
+            .contains("expected a row number a count can hold, got -7"),
+        "{error}"
+    );
     let first = bodies(vec![Some("one"), Some("two")]);
     let last = bodies(vec![Some("three")]);
     let empty = first.slice(0, 0);
@@ -214,19 +241,21 @@ fn body_column(rows: usize) -> ArrayRef {
 fn malformed_present_numbers_types_and_media_are_refused() {
     let mut options = TextOptions::new();
     options.start_rownum = Some(10);
+    // A place before the offset the read counts from: taking the offset off
+    // again leaves no count, and the refusal names the column that stated it.
     let source = batch(
         vec![
             body_field(),
-            ArrowField::new("rownum", ArrowType::Int64, false),
+            ArrowField::new("seqnum", ArrowType::UInt64, true),
         ],
-        vec![body_column(1), Arc::new(Int64Array::from(vec![9]))],
+        vec![body_column(1), Arc::new(UInt64Array::from(vec![9_u64]))],
     );
     let error = from_arrow_batch(&source, &options).expect_err("offset underflow");
-    assert!(error.to_string().contains("$[0].rownum"));
+    assert!(error.to_string().contains("$[0].seqnum"), "{error}");
     let source = batch(
         vec![
             body_field(),
-            ArrowField::new("rownum", ArrowType::Utf8, false),
+            ArrowField::new("seqnum", ArrowType::Utf8, false),
         ],
         vec![body_column(1), Arc::new(StringArray::from(vec!["wrong"]))],
     );
@@ -234,7 +263,7 @@ fn malformed_present_numbers_types_and_media_are_refused() {
         from_arrow_batch(&source, &options)
             .expect_err("wrong layout")
             .to_string()
-            .contains("$.rownum")
+            .contains("$.seqnum")
     );
     options.parse_mimetype = true;
     let source = batch(
@@ -253,20 +282,20 @@ fn malformed_present_numbers_types_and_media_are_refused() {
             .to_string()
             .contains("$[0].mimetype")
     );
-    // A row number restored by an earlier column never relocates a later refusal.
+    // A place restored by an earlier column never relocates a later refusal.
     let source = batch(
         vec![
             body_field(),
-            ArrowField::new("rownum", ArrowType::Int64, false),
+            ArrowField::new("seqnum", ArrowType::UInt64, true),
             ArrowField::new("mimetype", ArrowType::Utf8, false),
         ],
         vec![
             body_column(1),
-            Arc::new(Int64Array::from(vec![15])),
+            Arc::new(UInt64Array::from(vec![15_u64])),
             Arc::new(StringArray::from(vec!["not a mime type"])),
         ],
     );
-    let error = from_arrow_batch(&source, &options).expect_err("bad mime after rownum");
+    let error = from_arrow_batch(&source, &options).expect_err("bad mime after seqnum");
     assert!(error.to_string().contains("$[0].mimetype"), "{error}");
 }
 
@@ -276,8 +305,8 @@ fn a_row_that_states_no_body_states_no_line() {
     // No column at all: the one absence the read path refuses, because
     // the body is what a line is made from.
     let source = batch(
-        vec![ArrowField::new("rownum", ArrowType::Int64, false)],
-        vec![Arc::new(Int64Array::from(vec![0]))],
+        vec![ArrowField::new("seqnum", ArrowType::UInt64, true)],
+        vec![Arc::new(UInt64Array::from(vec![1_u64]))],
     );
     let error = from_arrow_batch(&source, &options).expect_err("no body column");
     assert!(error.to_string().contains("$[0].body"), "{error}");
@@ -288,13 +317,12 @@ fn a_row_that_states_no_body_states_no_line() {
     // A null cell, refused by the plan's own non-nullable column.
     let error = from_arrow_batch(&bodies(vec![None]), &options).expect_err("null body");
     assert!(error.to_string().contains("$[0].body"), "{error}");
-    // An empty cell, which is a row stating nothing rather than a line.
-    let error = from_arrow_batch(&bodies(vec![Some("")]), &options).expect_err("empty body");
-    assert!(error.to_string().contains("$[0].body"), "{error}");
-    assert!(
-        error.to_string().contains("got an empty one"),
-        "the refusal names the emptiness: {error}"
-    );
+    // An empty cell is not an absence: it is the line a row header consumed
+    // whole, whose captures are what it states, and a read emits those - so
+    // a read back takes them rather than refusing what it just wrote.
+    let read = from_arrow_batch(&bodies(vec![Some("")]), &options).expect("an empty body");
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].body(), "");
 }
 
 #[test]
@@ -376,6 +404,7 @@ mod text {
     fn an_unconvertible_next_record_follows_the_completed_record_batch_prefix() {
         // The second record's number cannot be represented, and the refusal
         // arrives after the batch the first record completed - never inside it.
+        // Each body is the line past its row header, the kind taken off.
         let source = named("invalid-next-header.log", b"A first\nB second\n");
         let mut options = framed(r"^(?<kind>(?-u:.)) ");
         options.start_rownum = Some(i64::MAX);
@@ -383,7 +412,7 @@ mod text {
         let mut reader = source.read_arrow_reader(&options.into()).unwrap();
 
         let prefix = reader.next().unwrap().unwrap();
-        assert_eq!(bodies(&[prefix]), [b"A first".to_vec()]);
+        assert_eq!(bodies(&[prefix]), [b"first".to_vec()]);
         let error = reader.next().unwrap().unwrap_err().to_string();
         assert!(
             error.contains("text row number exceeds i64::MAX"),

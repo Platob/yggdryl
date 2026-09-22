@@ -639,9 +639,15 @@ mod dataset {
         assert_eq!(written.len(), ROWS);
         for (at, (message, wire)) in source_messages.iter().zip(&wires).enumerate() {
             // The capture's columns are the capture's: the body the line was
-            // read from, its place in the object and the bridge's row header
-            // are not content, so none of them reaches a counterparty.
-            for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|msgthreadid="] {
+            // read from, what the reader classified it as and the bridge's row
+            // header are not content, so none of them reaches a counterparty.
+            for carried in [
+                "|body=",
+                "|mimetype=",
+                "|timestamp=",
+                "|level=",
+                "|msgthreadid=",
+            ] {
                 assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
             }
             let source_tokens = wire_tokens(wire);
@@ -726,6 +732,7 @@ mod pipeline {
 
     use std::sync::Arc;
 
+    use arrow_array::Array as _;
     use arrow_array::RecordBatch;
     use arrow_array::cast::AsArray;
     use yggdryl::holder::Buffer;
@@ -872,6 +879,30 @@ mod pipeline {
         batches.into_iter().next().expect("the batch")
     }
 
+    /// Both readings of one object: what the text reader hands the codec, and
+    /// what the codec answers - over the same buffer, because a line's cross
+    /// code is the object it was read from and its identity follows from that,
+    /// so two buffers over the same bytes are two chains.
+    fn staged_and_read(lines: &[&str]) -> (RecordBatch, RecordBatch) {
+        let source = corpus(lines);
+        let staged: Vec<RecordBatch> = source
+            .read_arrow_reader(&text())
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch"))
+            .collect();
+        let held: Vec<RecordBatch> = codec()
+            .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+            .expect("the batch reader opens")
+            .map(|batch| batch.expect("a batch"))
+            .collect();
+        assert_eq!(staged.len(), 1, "one staged batch, under the byte target");
+        assert_eq!(held.len(), 1, "one batch, under the byte target");
+        (
+            staged.into_iter().next().expect("the staged batch"),
+            held.into_iter().next().expect("the batch"),
+        )
+    }
+
     /// How many messages each capture line carries, read by the codec over the
     /// very bodies the text reader hands it.
     fn messages_per_line(lines: &[&str]) -> Vec<usize> {
@@ -939,27 +970,22 @@ mod pipeline {
             .map(|held| held.name().as_str())
             .collect();
 
-        // The text reader's own columns lead the row - where the line was read
-        // from, which line it was, when it was written, what it was, the line
-        // itself and the header's captures - and the fixed columns follow. A
-        // capture whose folded name a fixed column takes is not carried in
-        // front, it fills that column: the reader's `msgtype`, and the header's
-        // `bridgesessionid`, `msgctxid` and `msgseqnum`, each named for the
-        // field it fills. What is left in front is what no column is spelled
-        // for - the object the line came out of, which is the reader's word and
-        // not the message's, the thread that wrote the line and its level.
+        // The text reader's own columns lead the row - what the line was
+        // classified as, the line itself and the header's captures - and the
+        // fixed columns follow. A capture whose folded name a fixed column
+        // takes is not carried in front, it fills that column: the reader's
+        // `msgtype`, and the header's `bridgesessionid`, `msgctxid` and
+        // `msgseqnum`, each named for the field it fills. What is left in
+        // front is what no column is spelled for - the clock the bridge
+        // printed, which is the line's own text and not the message's
+        // `SendingTime`, the thread that wrote the line and its level. Where
+        // the line came out of, which line it was and when it was written lead
+        // nothing any more: they are `crosscode`, `seqnum` and `currunix`, the
+        // event columns both halves already open with, so they stand in the
+        // fixed band with the rest of them.
         assert_eq!(
-            &names[..8],
-            [
-                "sourceurl",
-                "rownum",
-                "mtime",
-                "mimetype",
-                "body",
-                "timestamp",
-                "msgthreadid",
-                "level"
-            ],
+            &names[..5],
+            ["mimetype", "body", "timestamp", "msgthreadid", "level"],
             "{names:?}"
         );
         // The crate's own clocks open the fixed columns; the standard header
@@ -984,7 +1010,9 @@ mod pipeline {
         );
         for once in [
             "msgtype",
-            "sourceurl",
+            "crosscode",
+            "seqnum",
+            "currunix",
             "timestamp",
             "msgsessionid",
             "msgctxid",
@@ -1057,8 +1085,7 @@ mod pipeline {
 
     #[test]
     fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
-        let read = read(&CAPTURE);
-        let stage = text_stage(&CAPTURE);
+        let (stage, read) = staged_and_read(&CAPTURE);
 
         // Per line, what the line carries: the Jolokia answer's
         // document, three framed messages and the bridge row, and nothing at all
@@ -1077,19 +1104,38 @@ mod pipeline {
         assert_eq!(stage.num_rows(), CAPTURE.len());
         assert_eq!(read.num_rows(), MESSAGES);
 
-        // The line number is the capture's, one-based as the options said - and
-        // it is the number of the line the message was read from, so the six
-        // silent lines are simply missing from it.
-        let rownum = read
-            .column(read.schema().index_of("rownum").expect("rownum"))
-            .as_primitive::<arrow_array::types::Int64Type>();
+        // Which line a message came out of is no longer a number riding in
+        // front of the row. A line's place is its own `seqnum` - the text
+        // stage numbers every line from one, as the options said - and the
+        // fixed row's `seqnum` is the *message's* place, which none of these
+        // five states, so the column is null on every row rather than
+        // repeating the line's. What ties a row to its line is the line's
+        // identity: the row names it under `srcuuids`, and the six silent
+        // lines are simply missing from that.
+        let stage_seqnum = stage
+            .column(stage.schema().index_of("seqnum").expect("seqnum"))
+            .as_primitive::<arrow_array::types::UInt64Type>();
+        assert_eq!(stage_seqnum.null_count(), 0, "the count opened at one");
         assert_eq!(
-            rownum.values().iter().copied().collect::<Vec<_>>(),
-            CARRYING
-                .iter()
-                .map(|line| *line as i64 + 1)
-                .collect::<Vec<i64>>()
+            stage_seqnum.values().iter().copied().collect::<Vec<_>>(),
+            (1..=CAPTURE.len() as u64).collect::<Vec<u64>>()
         );
+        assert!(
+            column(&read, "seqnum").iter().all(Scalar::is_null),
+            "a message the bridge logged states no place of its own"
+        );
+        let lines = column(&stage, "curruuid");
+        let sources = column(&read, "srcuuids");
+        assert_eq!(sources.len(), MESSAGES);
+        for (row, line) in CARRYING.iter().enumerate() {
+            assert_eq!(
+                sources[row]
+                    .as_sequence()
+                    .expect("the line the row was read from"),
+                [lines[*line].clone()],
+                "row {row} names line {line}"
+            );
+        }
 
         // The row header's captures survive the codec untouched: the thread that
         // wrote the line and the level, and the bracket's sequence number - null
@@ -1529,7 +1575,13 @@ mod pipeline {
         // The prose the text reader framed the line in is gone, and so are the
         // columns the capture put in front of the row.
         for line in &lines {
-            for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "Receiving :"] {
+            for carried in [
+                "|body=",
+                "|mimetype=",
+                "|timestamp=",
+                "|level=",
+                "Receiving :",
+            ] {
                 assert!(!line.contains(carried), "{line}");
             }
         }
@@ -1557,7 +1609,7 @@ mod pipeline {
 
     #[test]
     fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
-        let read = read(&BATCHED);
+        let (stage, read) = staged_and_read(&BATCHED);
 
         // A row yields none, one or many. The first line holds two
         // frames - the second opens at the `8=` behind the first's `10=` checksum
@@ -1565,14 +1617,26 @@ mod pipeline {
         // it holds none. Two lines in, two rows out, and neither count is the
         // other's: the text reader still reads both lines.
         assert_eq!(messages_per_line(&BATCHED), [2, 0]);
-        assert_eq!(text_stage(&BATCHED).num_rows(), BATCHED.len());
+        assert_eq!(stage.num_rows(), BATCHED.len());
         assert_eq!(read.num_rows(), 2);
 
-        // Both rows came from line 1, because line 2 contributed none.
-        let rownum = read
-            .column(read.schema().index_of("rownum").expect("rownum"))
-            .as_primitive::<arrow_array::types::Int64Type>();
-        assert_eq!(rownum.values().iter().copied().collect::<Vec<_>>(), [1, 1]);
+        // Both rows came from line 1, because line 2 contributed none, and
+        // both say which line by naming its identity rather than its number:
+        // `seqnum` on a fixed row is the message's own place, and neither of
+        // these two frames states one.
+        let first = column(&stage, "curruuid")[0].clone();
+        let sources = column(&read, "srcuuids");
+        assert_eq!(sources.len(), 2);
+        for named in &sources {
+            assert_eq!(
+                named.as_sequence().expect("the line the row was read from"),
+                std::slice::from_ref(&first)
+            );
+        }
+        assert!(
+            column(&read, "seqnum").iter().all(Scalar::is_null),
+            "a frame the bridge relayed states no place of its own"
+        );
 
         // Each message owns the entries of its own frame and none of its
         // neighbour's: two versions, two senders, two sequence numbers.

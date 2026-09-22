@@ -951,29 +951,21 @@ test('handler-backed framed text resets at every leaf', () => {
     .intoTable()
   // The event columns lead the row, the line's own behind them.
   const schemaFields = table.schema.fields
-  const sourceurlIndex = schemaFields.findIndex((field) => field.name === 'sourceurl')
-  assert.notEqual(sourceurlIndex, -1)
+  const bodyIndex = schemaFields.findIndex((field) => field.name === 'body')
+  assert.notEqual(bodyIndex, -1)
   assert.equal(schemaFields[0].name, 'currunix')
-  assert.equal(schemaFields[sourceurlIndex - 1].name, 'state')
+  assert.equal(schemaFields[bodyIndex - 1].name, 'state')
   assert.deepEqual(
-    schemaFields.slice(sourceurlIndex).map((field) => [field.name, field.nullable]),
+    schemaFields.slice(bodyIndex).map((field) => [field.name, field.nullable]),
     [
-      ['sourceurl', true],
-      ['mtime', true],
       ['body', false],
       ['level', true],
     ],
   )
-  // The url column is the `url` datatype: Utf8 storage under the extension
-  // identity, and it names the leaf each row was actually read from.
-  const sourceurl = schemaFields[sourceurlIndex]
-  assert.equal(sourceurl.type.toString(), 'Utf8')
-  assert.equal(
-    sourceurl.metadata.get('ARROW:extension:name'),
-    'yggdryl.url',
-  )
+  // The chain a row stands in is the leaf it was actually read from, so a
+  // folder read names each leaf under `crosscode`.
   assert.deepEqual(
-    [...table.getChild('sourceurl')],
+    [...table.getChild('crosscode')],
     [
       'memory://bound/bucket/logs/a.txt',
       'memory://bound/bucket/logs/b.txt',
@@ -982,7 +974,7 @@ test('handler-backed framed text resets at every leaf', () => {
   )
   assert.deepEqual(
     [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
-    ['[INFO] first\ncontinuation from a', 'leading fragment from b', '[WARN] second'],
+    ['first\ncontinuation from a', 'leading fragment from b', 'second'],
   )
   assert.deepEqual([...table.getChild('level')], ['INFO', null, 'WARN'])
 })

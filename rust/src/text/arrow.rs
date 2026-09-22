@@ -1310,13 +1310,11 @@ impl TextLines {
     /// Nothing else is read: the header is stated only where the cut
     /// matched it, and every other reading is the line's, on its first ask.
     fn convert(&self, row: RawRow) -> Result<TextLine> {
-        let mut line = TextLine::from_bytes(row.index, row.body, Arc::clone(&self.options))?;
+        let mut line =
+            TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
         line.set_sourceurl(self.url.clone());
         line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
-        if let Some((end, captures)) = row.header {
-            line.state_matched_header(end, captures);
-        }
         Ok(line)
     }
 }
@@ -1422,7 +1420,7 @@ pub(crate) fn physical_rownum(start: Option<i64>, index: u64) -> Result<Option<i
 
 fn rownum_overflow(index: u64) -> Error {
     Error::InvalidRecord {
-        path: format_smolstr!("$[{index}].rownum"),
+        path: format_smolstr!("$[{index}].seqnum"),
         reason: SmolStr::new_static("text row number exceeds i64::MAX"),
     }
 }

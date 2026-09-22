@@ -2,7 +2,7 @@
 //! by - which columns exist, under which names, at which datatypes.
 
 mod columns {
-    use arrow_array::{Array as _, Int64Array, StringArray};
+    use arrow_array::{Array as _, StringArray, UInt64Array};
     use yggdryl::holder::Buffer;
     use yggdryl::media::{IORecordOptions as _, RecordOptions};
     use yggdryl::text::{Text, TextOptions};
@@ -112,7 +112,7 @@ mod columns {
     }
 
     #[test]
-    fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures() {
+    fn ordinary_record_reading_numbers_the_rows_in_seqnum_and_types_captures_by_regex() {
         let source = named(
             "app.log",
             b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
@@ -130,48 +130,87 @@ mod columns {
             .unwrap();
         assert_eq!(batches.len(), 1);
         let batch = &batches[0];
-        assert_eq!(batch.schema().field(19).name(), "sourceurl");
-        assert_eq!(batch.schema().field(20).name(), "rownum");
-        assert_eq!(batch.schema().field(21).name(), "mtime");
-        assert_eq!(batch.schema().field(22).name(), "body");
+        // Nothing stands between the event columns and the line's own: the
+        // row number is the event's place, `seqnum`, and the object the line
+        // came from is the event's chain, `crosscode`.
+        assert_eq!(batch.schema().field(14).name(), "seqnum");
+        assert_eq!(batch.schema().field(19).name(), "body");
         assert_eq!(
-            batch.schema().field(24).data_type(),
+            batch.schema().field(21).data_type(),
             &arrow_schema::DataType::Int64
         );
         assert_eq!(
             batch
-                .column(20)
+                .column(14)
                 .as_any()
-                .downcast_ref::<Int64Array>()
+                .downcast_ref::<UInt64Array>()
                 .unwrap()
-                .values(),
-            &[10, 11, 12]
+                .iter()
+                .collect::<Vec<_>>(),
+            [Some(10), Some(11), Some(12)]
         );
-        // The body is the line as cut - the header included, the edges
-        // stripped - and the captures are read off it beside it.
+        // The body is the line past its row header - the edges stripped, what
+        // the header matched taken off - and the captures state what it took.
         assert_eq!(
             batch
-                .column(22)
+                .column(19)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
                 .iter()
                 .collect::<Vec<_>>(),
-            [
-                Some("[INFO] id=7 first"),
-                Some("[WARN] id=9 second"),
-                Some("plain")
-            ]
+            [Some(" first"), Some(" second"), Some("plain")]
         );
         assert_eq!(
             batch
-                .column(23)
+                .column(20)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
                 .iter()
                 .collect::<Vec<_>>(),
             [Some("INFO"), Some("WARN"), None]
+        );
+    }
+
+    #[test]
+    fn seqnum_is_null_where_the_line_has_no_place_in_its_chain() {
+        // Every read answers `seqnum`, numbered or not. Asked for no first row
+        // number, the place is the physical line number, and the first line's
+        // zero is no place at all: the column counts what came before a line,
+        // and before the first line nothing did.
+        let source = named("rows.log", b"first\nsecond\nthird\n");
+        let batch = collect(&source, TextOptions::new()).pop().unwrap();
+        assert_eq!(
+            batch.schema().field(14).data_type(),
+            &arrow_schema::DataType::UInt64
+        );
+        assert!(batch.schema().field(14).is_nullable());
+        assert_eq!(
+            batch
+                .column(14)
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>(),
+            [None, Some(1), Some(2)]
+        );
+
+        // Asked for one, the first row number is the first line's place and
+        // the count runs from there, so no line of a numbered read is placeless.
+        let mut numbered = TextOptions::new();
+        numbered.start_rownum = Some(1);
+        let batch = collect(&source, numbered).pop().unwrap();
+        assert_eq!(
+            batch
+                .column(14)
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>(),
+            [Some(1), Some(2), Some(3)]
         );
     }
 
@@ -197,7 +236,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Int64
         );
 
@@ -209,7 +248,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Utf8
         );
         assert_eq!(
@@ -219,12 +258,12 @@ mod columns {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            with_event(&["sourceurl", "mtime", "body", "value"])
+            with_event(&["body", "value"])
         );
     }
 
     #[test]
-    fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
+    fn sequence_numbers_start_at_the_requested_row_number_and_refuse_what_no_count_holds() {
         let mut options = TextOptions::new();
         options.start_rownum = Some(i64::MAX);
         options.set_batch_row_size(Some(1));
@@ -235,19 +274,33 @@ mod columns {
         let first = reader.next().unwrap().unwrap();
         assert_eq!(
             first
-                .column(20)
+                .column(14)
                 .as_any()
-                .downcast_ref::<Int64Array>()
+                .downcast_ref::<UInt64Array>()
                 .unwrap()
                 .value(0),
-            i64::MAX
+            u64::try_from(i64::MAX).unwrap()
         );
         let error = reader.next().unwrap().unwrap_err().to_string();
         assert!(error.contains("text row number exceeds i64::MAX"));
+
+        // The place in a chain is a count, so a row number below zero is no
+        // place at all: the read refuses it by name rather than numbering a
+        // line backwards.
+        let mut below = TextOptions::new();
+        below.start_rownum = Some(-1);
+        let error = named("rows.log", b"first\n")
+            .read_arrow_reader(&below.into())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("a row number a count can hold"), "{error}");
     }
 
     #[test]
-    fn url_column_is_rendered_from_the_handlers_real_url() {
+    fn the_cross_code_is_rendered_from_the_handlers_real_url() {
         use yggdryl::local::{File, Folder};
 
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -263,9 +316,11 @@ mod columns {
             .next()
             .unwrap()
             .unwrap();
+        // The object a line was read from is the chain it belongs to, so the
+        // URL is stated under `crosscode` and nowhere beside it.
         assert_eq!(
             batch
-                .column(19)
+                .column(10)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -288,12 +343,12 @@ mod columns {
             .unwrap();
 
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
         );
         assert_eq!(
             batch
-                .column(22)
+                .column(20)
                 .as_any()
                 .downcast_ref::<arrow_array::Time32SecondArray>()
                 .unwrap()
@@ -327,11 +382,22 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Microsecond,
                 Some("UTC".into())
             )
+        );
+        // The stamp, the thread, the module and the level are the header's,
+        // so the body is what the line says after them.
+        assert_eq!(
+            batch
+                .column(19)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "Execution report (execId: 20260828180000369318, from session:"
         );
         assert_eq!(
             batch
@@ -340,22 +406,11 @@ mod columns {
                 .downcast_ref::<StringArray>()
                 .unwrap()
                 .value(0),
-            "2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] \
-[ModuleFailFastFilterChecker] (DEBUG) Execution report \
-(execId: 20260828180000369318, from session:"
-        );
-        assert_eq!(
-            batch
-                .column(23)
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap()
-                .value(0),
             "77-2f3e6ff7:9f4d2a08b1:128"
         );
         assert_eq!(
             batch
-                .column(24)
+                .column(22)
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap()
@@ -386,7 +441,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Millisecond,
                 Some("UTC".into())
@@ -394,7 +449,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(22)
+                .column(20)
                 .as_any()
                 .downcast_ref::<arrow_array::TimestampMillisecondArray>()
                 .unwrap()
@@ -421,7 +476,7 @@ mod columns {
             .unwrap()
             .unwrap();
         assert_eq!(
-            batch.schema().field(22).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Microsecond,
                 Some("UTC".into())
@@ -429,7 +484,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(22)
+                .column(20)
                 .as_any()
                 .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
                 .unwrap()
@@ -454,7 +509,7 @@ mod columns {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            with_event(&["sourceurl", "mtime", "body", "dropped_byte_size", "kind"])
+            with_event(&["body", "dropped_byte_size", "kind"])
         );
         assert!(
             reader
@@ -481,7 +536,7 @@ mod columns {
                     .iter()
                     .map(|field| field.name().as_str())
                     .collect::<Vec<_>>(),
-                with_event(&["sourceurl", "mtime", "body", "dropped_byte_size", "kind"])
+                with_event(&["body", "dropped_byte_size", "kind"])
             );
             assert!(
                 reader
@@ -524,10 +579,7 @@ mod columns {
             .iter()
             .map(Field::name)
             .collect();
-        assert_eq!(
-            names,
-            with_event(&["sourceurl", "mtime", "mimetype", "body"])
-        );
+        assert_eq!(names, with_event(&["mimetype", "body"]));
 
         let batches = collect(&source, options);
         assert_eq!(
@@ -556,11 +608,12 @@ mod columns {
     }
 
     #[test]
-    fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
+    fn the_currunix_column_prefers_the_header_capture_over_the_handles_own_time() {
         use arrow_array::TimestampNanosecondArray;
 
-        // The expression dates the line, so the column is the line's own reading
-        // resolved into UTC - not the moment the file happened to be written.
+        // The expression dates the line, so the instant is the line's own
+        // reading resolved into UTC - not the moment the file happened to be
+        // written.
         let source = named("dated.log", b"2020-01-02T03:04:05Z id=7 first\n");
         let batch = collect(&source, options(r"^(?<mtime>\S+) id=(?<id>\d+) "))
             .pop()
@@ -571,11 +624,11 @@ mod columns {
             .iter()
             .map(|field| field.name().as_str())
             .collect();
-        // One column, not two: the capture fills `mtime` rather than sitting
-        // beside it under the same name.
-        assert_eq!(names, with_event(&["sourceurl", "mtime", "body", "id"]));
+        // No column of its own: when the record was written is the event's
+        // `currunix`, and the `mtime` capture is consumed filling it.
+        assert_eq!(names, with_event(&["body", "id"]));
         assert_eq!(
-            batch.schema().field(20).data_type(),
+            batch.schema().field(0).data_type(),
             &arrow_schema::DataType::Timestamp(
                 arrow_schema::TimeUnit::Nanosecond,
                 Some("UTC".into())
@@ -583,7 +636,7 @@ mod columns {
         );
         assert_eq!(
             batch
-                .column(20)
+                .column(0)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -597,15 +650,16 @@ mod columns {
         use arrow_array::TimestampNanosecondArray;
 
         // A log that dates its lines by the day states no clock, and a date is
-        // the instant that day opens: the capture reads midnight in the column's
-        // zone rather than failing the row for want of a clock it never had.
+        // the instant that day opens: the capture reads midnight in the
+        // instant's zone rather than failing the row for want of a clock it
+        // never had.
         let source = named("dated.log", b"2020-01-02 id=7 first\n");
         let batch = collect(&source, options(r"^(?<mtime>\S+) id=(?<id>\d+) "))
             .pop()
             .unwrap();
         assert_eq!(
             batch
-                .column(20)
+                .column(0)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -621,7 +675,7 @@ mod columns {
             .unwrap();
         assert_eq!(
             batch
-                .column(20)
+                .column(0)
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -631,21 +685,30 @@ mod columns {
     }
 
     #[test]
-    fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
-        use arrow_array::Array as _;
+    fn a_handle_with_no_modification_time_dates_its_lines_at_the_epoch() {
+        use arrow_array::{Array as _, TimestampNanosecondArray};
 
-        // A buffer records no such fact, and the reader says so rather than
-        // inventing a clock reading.
+        // An event happens when it happens, so `currunix` holds no null. A
+        // buffer records no modification time and no header dates these lines,
+        // and what is left is the instant the count starts from.
         let batch = collect(&named("plain.log", b"first\nsecond\n"), TextOptions::new())
             .pop()
             .unwrap();
-        let mtime = batch.column_by_name("mtime").unwrap();
-        assert_eq!(mtime.len(), 2);
-        assert_eq!(mtime.null_count(), 2);
+        let currunix = batch.column_by_name("currunix").unwrap();
+        assert_eq!(currunix.len(), 2);
+        assert_eq!(currunix.null_count(), 0);
+        assert_eq!(
+            currunix
+                .as_any()
+                .downcast_ref::<TimestampNanosecondArray>()
+                .unwrap()
+                .values(),
+            &[0, 0]
+        );
     }
 
     #[test]
-    fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
+    fn the_currunix_column_falls_back_to_the_handles_own_modification_time() {
         use arrow_array::TimestampNanosecondArray;
         use yggdryl::local::File;
 
@@ -658,7 +721,7 @@ mod columns {
 
         let batch = collect(&handle, TextOptions::new()).pop().unwrap();
         let values = batch
-            .column_by_name("mtime")
+            .column_by_name("currunix")
             .unwrap()
             .as_any()
             .downcast_ref::<TimestampNanosecondArray>()
@@ -671,24 +734,25 @@ mod columns {
     }
 
     #[test]
-    fn the_mtime_column_is_off_when_the_flag_is_and_frees_its_name_for_a_capture() {
-        let mut plain = TextOptions::new();
-        plain.parse_mtime = false;
-        let batch = collect(&named("plain.log", b"first\n"), plain)
+    fn turning_the_mtime_flag_off_frees_the_name_for_an_ordinary_capture() {
+        // No read emits a column called `mtime`, flag or no flag: on, the
+        // capture of that name dates the line and is spent doing it.
+        let batch = collect(&named("plain.log", b"first\n"), TextOptions::new())
             .pop()
             .unwrap();
         assert!(batch.column_by_name("mtime").is_none());
 
-        // With no column of that name, a capture spelled `mtime` is an ordinary
-        // one, typed by its own syntax rather than by the column it no longer
-        // fills.
+        // Off, nothing claims the name and a capture spelled `mtime` is an
+        // ordinary one, typed by its own syntax rather than by the fact it no
+        // longer feeds - and it gets the column every unconsumed capture gets.
         let mut captured = options(r"^(?<mtime>\d+) ");
         captured.parse_mtime = false;
         let batch = collect(&named("counted.log", b"77 first\n"), captured)
             .pop()
             .unwrap();
+        assert_eq!(batch.schema().field(20).name(), "mtime");
         assert_eq!(
-            batch.schema().field(21).data_type(),
+            batch.schema().field(20).data_type(),
             &arrow_schema::DataType::Int64
         );
     }
@@ -720,7 +784,6 @@ mod columns {
         use arrow_array::{Array as _, StringArray};
         use yggdryl::text::{TextEntries, TextOptions};
 
-        use yggdryl::FieldPath;
         use yggdryl::text::{into_arrow_batch, read_text_lines};
 
         use super::named;
@@ -764,59 +827,10 @@ mod columns {
         }
 
         #[test]
-        fn declaring_a_lifted_path_builds_the_tree_and_the_column() {
-            let options = TextOptions::new()
-                .try_with_lift_names(["55"])
-                .expect("the path parses");
-            let decoded = lines(b"35=D|55=AAPL\n", &options);
-            let entries = decoded[0].entries().expect("a lifted column wants a tree");
-            assert!(entries.len() >= 2, "both pairs were read");
-            let path = FieldPath::from_str("55").expect("the path parses");
-            assert_eq!(
-                decoded[0]
-                    .get_entry_by_path(&path)
-                    .and_then(|held| held.value_bytes().as_str()),
-                Some("AAPL")
-            );
-
-            let batch = into_arrow_batch(decoded, &options).expect("a batch builds");
-            let column = batch
-                .column_by_name("55")
-                .expect("the lifted column is there");
-            assert_eq!(
-                column
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .expect("lifted values are text")
-                    .value(0),
-                "AAPL"
-            );
-        }
-
-        #[test]
-        fn a_lifted_path_no_line_carries_is_null_rather_than_a_refusal() {
-            let options = TextOptions::new()
-                .try_with_lift_names(["absent"])
-                .expect("the path parses");
-            let decoded = lines(b"35=D\n", &options);
-            let batch = into_arrow_batch(decoded, &options).expect("a batch builds");
-            let column = batch.column_by_name("absent").expect("the column exists");
-            assert!(column.is_null(0), "a path nothing carried is null");
-            // And the column exists in the schema whether or not a row filled it.
-            assert!(
-                options
-                    .source_field()
-                    .expect("a schema")
-                    .get_field_by_path("absent")
-                    .is_some()
-            );
-        }
-
-        #[test]
         fn renaming_changes_what_a_column_is_called_and_nothing_else() {
             let options = TextOptions::new()
                 .with_renamed_column("body", "payload")
-                .with_renamed_column("sourceurl", "source");
+                .with_renamed_column("crosscode", "source");
             let batch = into_arrow_batch(lines(b"hello\n", &options), &options).expect("a batch");
             assert!(batch.column_by_name("payload").is_some());
             assert!(batch.column_by_name("source").is_some());
@@ -844,68 +858,14 @@ mod columns {
                 .expect_err("a rename must name a column");
             let rendered = error.to_string();
             assert!(rendered.contains("nosuch"), "{rendered}");
-            assert!(rendered.contains("lift_names"), "{rendered}");
+            assert!(rendered.contains("row-header capture"), "{rendered}");
         }
 
         #[test]
         fn two_columns_may_not_emit_one_name() {
-            let options = TextOptions::new().with_renamed_column("body", "sourceurl");
+            let options = TextOptions::new().with_renamed_column("body", "crosscode");
             let error = options.source_field().expect_err("one column per name");
             assert!(error.to_string().contains("twice"), "{error}");
-        }
-
-        #[test]
-        fn a_lifted_path_names_its_own_column_with_an_alias() {
-            // `as` names the column in the same breath that selects it, so no
-            // rename is needed for the common case.
-            let options = TextOptions::new()
-                .try_with_lift_names(["\"55\" as symbol"])
-                .expect("the path parses");
-            let batch = into_arrow_batch(
-                lines(
-                    b"55=AAPL
-",
-                    &options,
-                ),
-                &options,
-            )
-            .expect("a batch");
-            assert!(batch.column_by_name("symbol").is_some());
-            assert!(batch.column_by_name("55").is_none());
-            assert_eq!(
-                batch
-                    .column_by_name("symbol")
-                    .expect("aliased")
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .expect("lifted values are text")
-                    .value(0),
-                "AAPL"
-            );
-        }
-
-        #[test]
-        fn two_lifted_paths_ending_alike_are_told_apart_by_their_aliases() {
-            // Without aliases both would take the last segment's name and collide.
-            let options = TextOptions::new()
-                .try_with_lift_names(["a.id as left_id", "b.id as right_id"])
-                .expect("the paths parse");
-            let field = options.source_field().expect("a schema");
-            let children = field.dtype().as_fields().expect("a struct");
-            let names: Vec<&str> = children.iter().map(yggdryl::Field::name).collect();
-            assert!(names.contains(&"left_id"));
-            assert!(names.contains(&"right_id"));
-        }
-
-        #[test]
-        fn a_lifted_path_may_be_renamed_like_any_other_column() {
-            let options = TextOptions::new()
-                .try_with_lift_names(["55"])
-                .expect("the path parses")
-                .with_renamed_column("55", "symbol");
-            let batch = into_arrow_batch(lines(b"55=AAPL\n", &options), &options).expect("a batch");
-            assert!(batch.column_by_name("symbol").is_some());
-            assert!(batch.column_by_name("55").is_none());
         }
 
         #[test]
@@ -936,10 +896,11 @@ mod columns {
             options.start_rownum = Some(1);
             options.parse_mimetype = true;
             let options = options
-                .try_with_lift_names(["55"])
-                .expect("the path parses");
+                .try_with_rowheader(r"^(?<kind>\w+): ")
+                .expect("a header");
             let declared = options.source_field().expect("a schema");
-            let batch = into_arrow_batch(lines(b"55=AAPL\n", &options), &options).expect("a batch");
+            let batch =
+                into_arrow_batch(lines(b"trade: 55=AAPL\n", &options), &options).expect("a batch");
             let schema = batch.schema();
             let names: Vec<&str> = schema
                 .fields()
@@ -961,13 +922,6 @@ mod columns {
                 into_arrow_batch(Vec::<yggdryl::text::TextLine>::new(), &options).expect("a batch");
             assert_eq!(batch.num_rows(), 0);
             assert!(batch.column_by_name("body").is_some());
-        }
-
-        #[test]
-        fn a_lifted_path_with_no_name_to_take_is_refused() {
-            let mut options = TextOptions::new();
-            options.set_lift_paths(Some(vec![FieldPath::root()]));
-            assert!(options.source_field().is_err());
         }
     }
 }

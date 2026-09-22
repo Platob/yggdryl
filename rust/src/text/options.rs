@@ -8,12 +8,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::DateTimeType;
 use crate::media::IORecordOptions;
-use crate::{DataType, Error, Field, FieldPath, Level, Result, Timezone};
+use crate::{DataType, Error, Field, Level, Result, Timezone};
 
 use super::{LeadingFragment, LineSep};
 
 /// Reserved columns emitted before decoded row-header captures.
-pub(crate) const BASE_COLUMNS: [&str; 4] = ["sourceurl", "rownum", "body", "dropped_byte_size"];
+pub(crate) const BASE_COLUMNS: [&str; 2] = ["body", "dropped_byte_size"];
 
 /// The event columns a row-header capture feeds by its exact name: the
 /// capture's value is the fact's, read at the fact's own datatype, and the
@@ -47,12 +47,11 @@ pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 10] = [
     "seqnum",
 ];
 
-/// The column stating when a record was written, and the row-header capture
-/// that fills it.
+/// The row-header capture that dates a line, feeding `currunix`.
 ///
-/// Not a reserved name: with `parse_mtime` off there is no such column and a
-/// capture spelled this way is an ordinary one, so the flag alone decides
-/// whether the name belongs to the reader or to the expression.
+/// Not a reserved name: with `parse_mtime` off the capture is an ordinary
+/// one with a column of its own, so the flag alone decides whether the name
+/// belongs to the reader or to the expression.
 pub(crate) const MTIME_COLUMN: &str = "mtime";
 
 /// The column stating what a line was classified as.
@@ -174,17 +173,21 @@ pub struct TextOptions {
     pub commit_row_size: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
-    /// First emitted row number; `None` omits the `rownum` column and uses the
-    /// zero-based physical index as the default event sequence. When set, each
-    /// nonnegative row number supplies `seqnum`; a negative one is refused.
+    /// First emitted row number, which `seqnum` counts from; `None` counts
+    /// from the zero-based physical index. Each nonnegative row number
+    /// supplies `seqnum`; a negative one is refused.
+    ///
+    /// There is no column of its own: the row number is the event's place in
+    /// its chain, and `seqnum` is where an event states that.
     pub start_rownum: Option<i64>,
-    /// Whether to emit an `mtime` column stating when each record was written.
+    /// Whether the row header's `mtime` capture dates the line.
     ///
     /// On by default, because a captured line's own timestamp is the fact a
-    /// reader of a capture reaches for first. The value is the row header's
-    /// `mtime` capture when the expression declares one, and the handle's own
-    /// modification time when it does not - one column either way, so a
-    /// caller reads the same name whichever answered.
+    /// reader of a capture reaches for first. With it on the capture feeds
+    /// `currunix` and has no column beside it, and the handle's own
+    /// modification time answers for a line the header did not date; with it
+    /// off the capture is an ordinary one, read at its own syntax into its
+    /// own column, and the handle's time answers `currunix` alone.
     pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
     pub parse_mimetype: bool,
@@ -204,8 +207,8 @@ pub struct TextOptions {
     ///
     /// Renaming decides what a column is called and never whether one exists:
     /// a key naming no column is refused rather than read as a request to add
-    /// one. Lifting an entry into a column of its own is `lift_names`, and
-    /// keeping those two jobs apart is what stops one fact having two owners.
+    /// one. The row header is the only thing that lifts a column out of a
+    /// line, so a name a header does not capture is a mistake here.
     ///
     /// Ordered rather than hashed, because these options are compared, ordered
     /// and hashed, and two equal configurations must have one stored form.
@@ -220,7 +223,6 @@ pub struct TextOptions {
     autotype: bool,
     timezone: Option<Timezone>,
     captures: Vec<Field>,
-    lift_names: Option<Vec<FieldPath>>,
 }
 
 impl TextOptions {
@@ -255,7 +257,6 @@ impl TextOptions {
             autotype: true,
             timezone: None,
             captures: Vec::new(),
-            lift_names: None,
         }
     }
 
@@ -361,7 +362,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers, seqnum - got {:?}",
+                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers, seqnum - got {:?}",
                         capture.name()
                     ),
                 });
@@ -515,62 +516,6 @@ impl TextOptions {
         self.captures.iter().map(Field::name)
     }
 
-    /// Borrow the entry paths lifted into columns of their own.
-    ///
-    /// `None` is not "lift nothing": it is the default policy, which lifts
-    /// nothing beyond what the row header already declares as captures.
-    /// `Some` with an empty list means the same thing said explicitly, and
-    /// `Some` with paths lifts exactly those, in that order, after the fixed
-    /// columns.
-    #[must_use]
-    pub fn lift_names(&self) -> Option<&[FieldPath]> {
-        self.lift_names.as_deref()
-    }
-
-    /// Set or clear the lifted entry paths.
-    ///
-    /// Resolved here, once. Nothing downstream re-parses a path, and a caller
-    /// reading one in a loop hoists it.
-    ///
-    /// # Errors
-    ///
-    /// Returns the path grammar's refusal, naming the byte position, for a
-    /// path that will not parse. Failure leaves the options unchanged.
-    pub fn set_lift_names<I, S>(&mut self, paths: Option<I>) -> Result<()>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        self.lift_names = paths
-            .map(|paths| {
-                paths
-                    .into_iter()
-                    .map(|path| FieldPath::from_str(path.as_ref()))
-                    .collect::<Result<Vec<_>>>()
-            })
-            .transpose()?;
-        Ok(())
-    }
-
-    /// Set or clear the lifted entry paths already resolved.
-    pub fn set_lift_paths(&mut self, paths: Option<Vec<FieldPath>>) {
-        self.lift_names = paths;
-    }
-
-    /// Return these options with lifted entry paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns the same refusal as [`Self::set_lift_names`].
-    pub fn try_with_lift_names<I, S>(mut self, paths: I) -> Result<Self>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        self.set_lift_names(Some(paths))?;
-        Ok(self)
-    }
-
     /// Borrow the emitted-name overrides.
     #[must_use]
     pub const fn rename_columns(&self) -> &BTreeMap<SmolStr, SmolStr> {
@@ -584,17 +529,12 @@ impl TextOptions {
         self
     }
 
-    /// The lifted paths, empty where none are declared.
-    pub(crate) fn lift_paths(&self) -> &[FieldPath] {
-        self.lift_names.as_deref().unwrap_or_default()
-    }
-
     /// Compile the column plan these options answer with.
     ///
     /// # Errors
     ///
-    /// Returns the refusals the plan states for a rename naming no column, two
-    /// columns emitting one name, or a lifted path with no name to take.
+    /// Returns the refusals the plan states for a rename naming no column or
+    /// two columns emitting one name.
     pub(crate) fn line_plan(&self) -> Result<super::plan::TextPlan> {
         super::plan::TextPlan::compile(self)
     }
@@ -687,8 +627,8 @@ impl TextOptions {
     /// where this capture's value goes.
     ///
     /// One owner per fact: with `parse_mtime` on, a capture spelled `mtime`
-    /// fills that column and is not repeated beside it; with it off, there is
-    /// no such column and the capture is an ordinary one. A capture spelled
+    /// dates the line and has no column beside it; with it off, the capture
+    /// is an ordinary one with its own column. A capture spelled
     /// as an event fact - `state`, `prevuuid` or one of the lifecycle
     /// instants, by that exact name, as the reading that takes it looks it up,
     /// feeds that fact, and the event column states it at the fact's own
