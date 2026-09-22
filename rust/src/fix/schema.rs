@@ -527,10 +527,10 @@ pub(super) fn rooted(
 /// ```
 /// use yggdryl::StructType;
 /// # fn main() -> yggdryl::Result<()> {
-/// # use yggdryl::local::Folder;
+/// # use yggdryl::local::LocalFolder;
 /// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-/// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+/// # let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 /// let capture = DataType::from(StructType::from_fields([
 ///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
@@ -1782,11 +1782,11 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::local::Folder;
+    /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl::graph::Element;
     /// # use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
     /// let line = b"8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|11=A1|55=AAPL|9999=x|10=0|";
@@ -2002,10 +2002,10 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::local::Folder;
+    /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
     /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;

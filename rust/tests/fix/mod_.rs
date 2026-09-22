@@ -31,7 +31,7 @@ mod internal {
     use yggdryl::internals::fix_replacements::render as render_replacements;
     use yggdryl::internals::fix_store::shard_of;
     use yggdryl::internals::hashing_stable::stable_hash_of;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::sequence::SequenceType;
     use yggdryl::{
         DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
@@ -103,7 +103,7 @@ mod internal {
 
     /// A fresh directory of this test's own under the platform temporary root.
     fn scratch(label: &str) -> PathBuf {
-        let path = Folder::temporary()
+        let path = LocalFolder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -684,7 +684,7 @@ mod internal {
             .join("..")
             .join("config")
             .join("fix");
-        let folder = Folder::new(root).unwrap();
+        let folder = LocalFolder::new(root).unwrap();
         let registry = FixRegistry::from_handle(&folder).unwrap();
         let classes: HashSet<u8> = registry
             .iter()
@@ -2601,7 +2601,7 @@ mod internal {
         let root = scratch("autoload");
         let location = root.join("location");
         let home = root.join("home");
-        let config = Folder::new(home.join(".config")).unwrap();
+        let config = LocalFolder::new(home.join(".config")).unwrap();
 
         // Nothing configured, or no home at all: a new registry, holding the
         // crate's own fields and nothing else.
@@ -2612,7 +2612,7 @@ mod internal {
         assert_eq!(autoload(None, None).unwrap(), FixRegistry::new());
 
         // A present dictionary under the configuration directory loads.
-        let mut configured = Folder::new(home.join(".config").join("fix")).unwrap();
+        let mut configured = LocalFolder::new(home.join(".config").join("fix")).unwrap();
         FixRegistry::from_fields([tagged("Symbol", 55)])
             .unwrap()
             .write_into(&mut configured)
@@ -2621,7 +2621,7 @@ mod internal {
         assert_eq!(loaded.field_by_tag(55).unwrap().name(), "Symbol");
 
         // The explicit location beats it, spelled as a path or as a URL.
-        let mut located = Folder::new(&location).unwrap();
+        let mut located = LocalFolder::new(&location).unwrap();
         FixRegistry::from_fields([tagged("Price", 44)])
             .unwrap()
             .write_into(&mut located)
@@ -4072,7 +4072,7 @@ mod internal {
         static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
         Arc::clone(REGISTRY.get_or_init(|| {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-            Arc::new(FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap())
+            Arc::new(FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap())
         }))
     }
 

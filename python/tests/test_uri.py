@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 import pytest
 
-from yggdryl import MediaType, MimeType, Uri, Url, Urn
+from yggdryl import Arn, IOBase, MediaType, MimeType, Uri, Url, Urn
 
 
 def test_uri_components_path_collection_and_value_protocols() -> None:
@@ -36,7 +36,7 @@ def test_uri_components_path_collection_and_value_protocols() -> None:
     assert Uri.from_str(str(value)) == value
     assert Uri.from_value(value) == value
     assert Uri.from_json(value.into_json()) == value
-    assert eval(repr(value), {"Uri": Uri}) == value
+    assert eval(repr(value), {"Url": Url}) == value
     assert copy.copy(value) == value
     assert pickle.loads(pickle.dumps(value)) == value
     assert hash(value) == hash(Uri.from_str(str(value)))
@@ -103,7 +103,7 @@ def test_uri_joinpath_and_division_use_the_core_path_resolver() -> None:
     locked_join.set_extension("json")
     assert locked_join == Uri("https://example.com/a/b/after-hash.json?q=1#rows")
     assert keyed[base] == "source"
-    with pytest.raises(TypeError, match="hashed Uri is frozen"):
+    with pytest.raises(TypeError, match="hashed identifier is frozen"):
         base.set_stem("blocked")
 
 
@@ -191,8 +191,9 @@ def test_url_converts_through_uri_without_binding_side_parsing() -> None:
     other = Url("https://example.com/b/data.json")
     assert value < other or other < value
 
+    # `from_uri` is the strict door: a name is not a location.
     with pytest.raises(ValueError, match="URL"):
-        Url(Urn("urn:isbn:9780131103627"))
+        Url.from_uri(Urn("urn:isbn:9780131103627"))
 
 
 def test_urn_components_and_uri_conversion() -> None:
@@ -708,3 +709,214 @@ def test_joining_a_path_like_value_reads_its_own_separators() -> None:
     assert str(base / PurePosixPath("a/b")) == "file:///lake/a/b"
     assert str(base / PurePosixPath("a/./b/../c")) == "file:///lake/a/c"
     assert str(base.joinpath(PurePosixPath("a"), PurePosixPath("b"))) == "file:///lake/a/b"
+
+
+def test_the_uri_constructor_answers_the_narrowing_its_scheme_names() -> None:
+    narrowed: list[tuple[str, type[Uri]]] = [
+        ("https://example.com/a.json", Url),
+        ("s3://market-data/2026/part.parquet", Url),
+        ("file:///tmp/data.csv", Url),
+        ("urn:isbn:9780141036144", Urn),
+        ("arn:aws:s3:::market-data/2026/part.parquet", Arn),
+    ]
+    for text, expected in narrowed:
+        value = Uri(text)
+        assert type(value) is expected, text
+        assert isinstance(value, Uri), text
+        assert Uri.from_value(text) == value
+
+    # An identifier that is none of the three stays the union type itself.
+    for text in ("mailto:user@example.test", "file:"):
+        assert type(Uri(text)) is Uri, text
+
+    # The named doors answer the union type, which is what a copy and a pickle
+    # round trip need to land back on the class they started from.
+    strict = Uri.from_str("https://example.com/a.json")
+    assert type(strict) is Uri
+    assert strict == Uri("https://example.com/a.json")
+    assert hash(strict) == hash(Uri("https://example.com/a.json"))
+    for value in (Uri("https://example.com/a.json"), Uri("urn:isbn:1"), Uri("arn:aws:s3:::b")):
+        assert type(copy.copy(value)) is type(value)
+        assert type(pickle.loads(pickle.dumps(value))) is type(value)
+        assert copy.copy(value) == value
+        assert pickle.loads(pickle.dumps(value)) == value
+
+    # A path-like value reads as the location it names, so it narrows too.
+    assert type(Uri(PurePosixPath("/tmp/data.csv"))) is Url
+
+
+def test_arn_components_and_uri_conversion() -> None:
+    uri = Uri.from_str("arn:aws:s3:::market-data/2026/part.parquet")
+    value = Arn.from_uri(uri)
+
+    assert Arn(uri) == value
+    assert Arn.from_value(str(value)) == value
+    assert Uri(value) == uri
+    assert value.into_uri() == uri
+    assert uri.into_arn() == value
+    assert value.scheme == "arn"
+    assert value.authority == ""
+    assert value.partition == "aws"
+    assert value.service == "s3"
+    assert value.region is None
+    assert value.account is None
+    assert value.resource == "market-data/2026/part.parquet"
+    assert value.resource_type == "market-data"
+    assert value.resource_id == "2026/part.parquet"
+    assert value.resource_separator == "/"
+    assert value.file_name == "part.parquet"
+    assert value.stem == "part"
+    assert value.extension == "parquet"
+    assert Arn.from_parts("aws", "s3", "", "", "market-data/2026/part.parquet") == value
+    assert Arn.from_json(value.into_json()) == value
+    assert eval(repr(value), {"Arn": Arn}) == value
+    assert copy.copy(value) == value
+    assert pickle.loads(pickle.dumps(value)) == value
+    assert hash(value) == hash(Arn.from_str(str(value)))
+    assert value.stable_hash() == Arn.from_str(str(value)).stable_hash()
+    other = Arn("arn:aws:s3:::market-data/2026/part.avro")
+    assert other < value
+
+    # The three fields AWS decides fold to lower case; the rest stay as written.
+    folded = Arn("ARN:AWS:S3:US-EAST-1:123456789012:Trades/Part.PARQUET")
+    assert str(folded) == "arn:aws:s3:us-east-1:123456789012:Trades/Part.PARQUET"
+    assert folded.region == "us-east-1"
+    assert folded.account == "123456789012"
+
+    for rejected in ("arn:aws:s3", "arn:aws:s3:::", "arn::s3:::trades", "urn:isbn:1"):
+        with pytest.raises(ValueError):
+            Arn(rejected)
+
+
+def test_an_arn_locates_only_an_amazon_s3_bucket() -> None:
+    value = Arn("arn:aws:s3:::market-data/2026/part.parquet")
+
+    assert value.bucket == "market-data"
+    assert value.key == "2026/part.parquet"
+    assert value.locator() == Url("s3://market-data/2026/part.parquet")
+    assert Uri("arn:aws:s3:::market-data/2026/part.parquet").locator() == value.locator()
+    assert Url(value) == value.locator()
+
+    bucket = Arn("arn:aws:s3:::market-data")
+    assert bucket.key == ""
+    assert str(bucket.locator()) == "s3://market-data"
+
+    # Only the bucket form locates: an access point or another service does not.
+    for named in (
+        "arn:aws:s3:us-west-2:123456789012:accesspoint/reports",
+        "arn:aws:iam::123456789012:user/David",
+    ):
+        other = Arn(named)
+        assert other.bucket is None
+        with pytest.raises(ValueError):
+            other.locator()
+
+    # A resource edit rewrites the resource alone, and refuses atomically.
+    edited = Arn("arn:aws:s3:::market-data/2026/part.tar.gz")
+    edited.set_stem("renamed")
+    assert str(edited) == "arn:aws:s3:::market-data/2026/renamed.gz"
+    assert edited.remove_extension() is True
+    assert edited.resource == "market-data/2026/renamed"
+    before = copy.copy(edited)
+    with pytest.raises(ValueError):
+        edited.set_file_name("")
+    assert edited == before
+
+
+def test_a_name_resolves_to_where_it_is_and_opens_there(tmp_path: Any) -> None:
+    value = Urn("urn:lake:trades:2026:part.csv")
+
+    assert value.locator_path() == "lake/trades/2026/part.csv"
+    assert value.resolve("s3://market-data/warehouse/") == Url(
+        "s3://market-data/warehouse/lake/trades/2026/part.csv"
+    )
+    assert value.resolve(Url("s3://market-data/warehouse/")) == value.resolve(
+        "s3://market-data/warehouse/"
+    )
+
+    # An empty name part would let two names spell one path, so it is refused.
+    with pytest.raises(ValueError, match="empty name part"):
+        Urn("urn:example:a::b").locator_path()
+
+    # With no base named, a name resolves under the working directory, which is
+    # what lets a reader open it.
+    leaf = tmp_path / "lake" / "trades" / "2026"
+    leaf.mkdir(parents=True)
+    (leaf / "part.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
+    previous = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        located = value.locator()
+        assert located.is_local()
+        assert located.exists()
+        assert Url(value) == located
+        with IOBase(value) as handle:
+            assert handle.read_bytes() == b"symbol\nMSFT\n"
+    finally:
+        os.chdir(previous)
+
+
+def test_a_shared_mutator_keeps_the_narrowing_its_class_names() -> None:
+    # The vocabulary every identifier shares is inherited, so an edit made
+    # through it has to leave the value still being what its class says it is.
+    urn = Urn("urn:example:a")
+    with pytest.raises(ValueError, match="`[?][+]` or `[?]=`"):
+        urn.set_query("bad")
+    assert str(urn) == "urn:example:a"
+    assert type(urn) is Urn
+
+    urn.set_query("=k=v")
+    assert str(urn) == "urn:example:a?=k=v"
+    assert urn.query() == "=k=v"
+
+    arn = Arn("arn:aws:s3:::market-data/part.parquet")
+    with pytest.raises(ValueError, match="must not contain a query"):
+        arn.set_query("versionId=1")
+    assert str(arn) == "arn:aws:s3:::market-data/part.parquet"
+
+    # A location stays a location under every one of them.
+    url = Url("https://example.com/a/data.json")
+    url.set_query("raw=true")
+    url.set_stem("other")
+    assert str(url) == "https://example.com/a/other.json?raw=true"
+    assert type(url) is Url
+
+
+def test_an_s3_tables_arn_names_a_table_bucket_and_a_table() -> None:
+    table = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")
+
+    assert table.service == "s3tables"
+    assert table.region == "us-east-1"
+    assert table.account == "123456789012"
+    assert table.bucket == "lake"
+    assert table.table == "t-a1"
+    # A table is not an object, so it is not a key.
+    assert table.key is None
+    assert table.locator() == Url("s3tables://lake/t-a1")
+
+    # The container alone locates the table bucket, and names no table.
+    bucket = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake")
+    assert bucket.bucket == "lake"
+    assert bucket.table is None
+    assert str(bucket.locator()) == "s3tables://lake"
+
+    # An Amazon S3 ARN names no table, and a resource that is not the
+    # `bucket/...` form names no container at all.
+    assert Arn("arn:aws:s3:::market-data/part.parquet").table is None
+    policy = Arn("arn:aws:s3tables:us-east-1:123456789012:policy/deny")
+    assert policy.bucket is None
+    with pytest.raises(ValueError):
+        policy.locator()
+
+    # A table bucket is one position in a location, so the store accessors read
+    # an `s3tables:` URL the way they read an `s3:` one.
+    located = Uri("s3tables://lake/t-a1")
+    assert located.bucket == "lake"
+    assert located.key == "t-a1"
+    assert located.hostname is None
+    assert isinstance(located, Url)
+
+    # No byte backend speaks S3 Tables, so opening one is refused by its
+    # scheme rather than by the path conversion it is not.
+    with pytest.raises(ValueError, match='"s3tables" does not support'):
+        IOBase(table)

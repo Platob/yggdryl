@@ -213,7 +213,7 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
 /// Return an owned view for a reader that must outlive this borrow.
 fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     if let Some(bound) = handle.bound_location() {
-        let mut file = crate::fs::File::new(bound.clone());
+        let mut file = crate::fs::FsFile::new(bound.clone());
         file.set_media_type(handle.media_type().clone());
         return Ok(Holder::FsFile(file));
     }
@@ -340,7 +340,7 @@ impl BoundReader {
                 "text filesystem stream lost its binding",
             ));
         };
-        let stream = match crate::fs::File::new(bound).open_input_stream() {
+        let stream = match crate::fs::FsFile::new(bound).open_input_stream() {
             Ok(stream) => stream,
             Err(error) if error.is_absent() => {
                 self.done = true;

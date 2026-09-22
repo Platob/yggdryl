@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  Arn,
   DataType,
   Field,
   MediaType,
@@ -220,6 +221,9 @@ test('field HTTP metadata is canonical, typed, and HTTPS-compatible', () => {
   assert.equal(field.removeProperty('https', 'CONTENT-LENGTH'), '42')
   field.setHttpLocation('https://example.test/data')
   assert.equal(field.httpLocation.toString(), 'https://example.test/data')
+  field.setHttpLocation(Arn.fromString('arn:aws:s3:::example-bucket/data'))
+  assert.equal(field.httpLocation.toString(), 's3://example-bucket/data')
+  field.setHttpLocation('https://example.test/data')
   assert.equal(field.removeHttpLocation().toString(), 'https://example.test/data')
 })
 
@@ -328,6 +332,19 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
     ),
   )
   assert.equal(field.get('location'), field.location.toString())
+
+  // A typed location takes any identifier naming one: a name crosses through
+  // `locator`, so what is stored is still the location it names.
+  field.setLocation(Arn.fromString('arn:aws:s3:::warehouse/bars/day=2026-08-15/data.parquet'))
+  assert.ok(
+    field.location.equals(
+      Url.fromString('s3://warehouse/bars/day=2026-08-15/data.parquet'),
+    ),
+  )
+  assert.throws(
+    () => field.setLocation(Arn.fromString('arn:aws:iam::123456789012:user/David')),
+    /names a location/,
+  )
 
   assert.equal(field.setProperty('POSTGRES', 'type', 'numeric(18,6)'), null)
   assert.equal(field.setProperty('postgres', 'column', 'close'), null)

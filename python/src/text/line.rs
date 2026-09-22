@@ -414,11 +414,12 @@ impl PyTextLine {
 
     /// The object this line was read from.
     #[getter]
-    fn sourceurl(&self) -> Option<crate::uri::PyUrl> {
+    fn sourceurl(&self, py: Python<'_>) -> PyResult<Option<Py<crate::uri::PyUrl>>> {
         self.inner
             .sourceurl()
             .cloned()
-            .map(crate::uri::PyUrl::from_core)
+            .map(|value| crate::uri::url_object(py, value))
+            .transpose()
     }
 
     /// When the record was written, in nanoseconds UTC: the row header's

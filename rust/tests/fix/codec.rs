@@ -2708,7 +2708,7 @@ mod msgtype_filter_tests {
     fn a_spelling_is_resolved_once_and_an_unknown_code_is_kept() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
         let registry =
-            FixRegistry::from_handle(&yggdryl::local::Folder::new(root).unwrap()).unwrap();
+            FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(root).unwrap()).unwrap();
         let codec = FixCodec::new(Arc::new(registry)).with_include_msgtypes([
             "NewOrderSingle",
             "EXECUTIONREPORT",

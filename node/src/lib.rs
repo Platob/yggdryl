@@ -86,7 +86,7 @@ pub use text::codec::{
 };
 pub use text::options::JsTextOptions;
 pub use timezone::{JsTimezone, TimezoneAlias};
-pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
+pub use uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry};
 pub use version::JsVersion;
 
 /// Read a structural JSON document from the object or the text a caller holds.

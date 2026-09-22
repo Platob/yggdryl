@@ -377,6 +377,53 @@ mod encoding {
     }
 }
 
+mod location {
+
+    use yggdryl::{Uri, Url, Urn};
+
+    /// The location door reads every spelling of *where*: a URL, a bare path,
+    /// and a name - while the strict door keeps refusing a name.
+    #[test]
+    fn the_location_door_resolves_a_name_and_the_strict_door_refuses_one() {
+        assert_eq!(
+            Url::from_location("arn:aws:s3:::trades/2026/part.parquet").unwrap(),
+            Url::from_str("s3://trades/2026/part.parquet").unwrap()
+        );
+        assert_eq!(
+            Url::from_location("urn:lake:trades:part.parquet").unwrap(),
+            Urn::from_str("urn:lake:trades:part.parquet")
+                .unwrap()
+                .locator()
+                .unwrap()
+        );
+
+        // A location still reads as itself, and a bare path still roots.
+        assert_eq!(
+            Url::from_location("s3://trades/part.parquet")
+                .unwrap()
+                .to_string(),
+            "s3://trades/part.parquet"
+        );
+        let rooted = Url::from_location("data/part.parquet").unwrap();
+        assert!(rooted.is_local());
+        assert!(rooted.to_string().ends_with("/data/part.parquet"));
+
+        // The strict door is the other reading, and names its refusal.
+        for (name, reason) in [
+            ("urn:lake:trades:part.parquet", "URN values are not URLs"),
+            ("arn:aws:s3:::trades", "ARN values are not URLs"),
+        ] {
+            let error = Url::from_uri(Uri::from_str(name).unwrap())
+                .map(|url| url.to_string())
+                .expect_err(name);
+            assert!(error.to_string().contains(reason), "{name}: {error}");
+        }
+
+        // A name that locates nothing is refused by the service, not rooted.
+        assert!(Url::from_location("arn:aws:iam::123456789012:user/David").is_err());
+    }
+}
+
 /// The canonical rendering a located reader shares across its rows.
 ///
 /// `shared_text` is crate-internal - a text reader projects one `Arc<Url>`

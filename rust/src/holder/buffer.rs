@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::iobase::oversized;
-use crate::{IOBase, MediaType, MimeType, Result, Url};
+use crate::{IOBase, MediaType, MimeType, Result, Uri, Url};
 
 /// A growable byte array addressed by offset.
 ///
@@ -183,6 +183,10 @@ impl IOBase for Buffer {
         }
         self.invalidate();
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.url().map(AsRef::as_ref)
     }
 
     fn url(&self) -> Option<&Url> {

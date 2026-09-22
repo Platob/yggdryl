@@ -18,7 +18,7 @@ from collections.abc import Callable
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.holder import Path
+from yggdryl.holder import LocalPath
 
 
 PAYLOAD = bytes(range(256)) * 4096
@@ -89,7 +89,7 @@ def main() -> None:
         )
         _measure(
             "describe role only",
-            lambda: Path(COMPOSED),
+            lambda: LocalPath(COMPOSED),
             arguments.iterations,
         )
         # Construction plus one descent, against construction alone above.

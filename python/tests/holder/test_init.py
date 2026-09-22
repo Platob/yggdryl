@@ -24,15 +24,15 @@ from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
 from yggdryl.holder import (
     Buffer,
     Buffered,
-    File,
-    Folder,
     FsFile,
     FsFolder,
     FsPath,
-    ObjectFile,
-    ObjectFolder,
-    ObjectPath,
-    Path,
+    LocalFile,
+    LocalFolder,
+    LocalPath,
+    S3File,
+    S3Folder,
+    S3Path,
 )
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
@@ -63,7 +63,7 @@ class TestTheNameComposesTheHandle:
         # configuration describes the decoded rows; the coding underneath is
         # what decodes them, and the location is what holds the coded bytes.
         assert isinstance(handle, Text)
-        assert repr(handle) == f'Text(Gzip(Path("{handle.url}")))'
+        assert repr(handle) == f'Text(Gzip(LocalPath("{handle.url}")))'
         assert str(handle.media_type) == "text/plain"
         assert handle.codec == "gzip"
         assert handle.read_bytes() == PLAIN
@@ -82,20 +82,20 @@ class TestTheNameComposesTheHandle:
     @pytest.mark.parametrize(
         ("name", "expected"),
         [
-            ("trades.txt.gz", "Text(Gzip(Path))"),
-            ("trades.txt.zz", "Text(Zlib(Path))"),
-            ("trades.txt.zst", "Text(Zstd(Path))"),
-            ("trades.log", "Text(Path)"),
-            ("archive.bin.gz", "Gzip(Path)"),
-            ("trades.parquet", "Parquet(Path)"),
-            ("trades.arrows", "Ipc(Path)"),
-            ("trades.avro", "Avro(Path)"),
+            ("trades.txt.gz", "Text(Gzip(LocalPath))"),
+            ("trades.txt.zz", "Text(Zlib(LocalPath))"),
+            ("trades.txt.zst", "Text(Zstd(LocalPath))"),
+            ("trades.log", "Text(LocalPath)"),
+            ("archive.bin.gz", "Gzip(LocalPath)"),
+            ("trades.parquet", "Parquet(LocalPath)"),
+            ("trades.arrows", "Ipc(LocalPath)"),
+            ("trades.avro", "Avro(LocalPath)"),
             # Parquet compresses internally, so a coded name is left for the
             # writer to refuse rather than composed behind a decoded view.
-            ("trades.parquet.gz", "Path"),
+            ("trades.parquet.gz", "LocalPath"),
             # Nothing this build reads as rows, and no coding declared.
-            ("trades.json", "Path"),
-            ("trades", "Path"),
+            ("trades.json", "LocalPath"),
+            ("trades", "LocalPath"),
         ],
     )
     def test_each_name_composes_the_layers_it_declares(
@@ -131,7 +131,7 @@ class TestDescendingTheComposition:
         assert coding.read_bytes() == PLAIN
 
         location = coding.into_handle()
-        assert isinstance(location, Path)
+        assert isinstance(location, LocalPath)
         assert location.read_bytes()[:2] == b"\x1f\x8b"
 
         # A storage role stands on nothing, so it has no layer to descend to.
@@ -168,9 +168,9 @@ class TestTheExplicitRoles:
     def test_the_stored_byte_role_skips_the_composition(
         self, log: pathlib.Path
     ) -> None:
-        stored = Path(log)
+        stored = LocalPath(log)
 
-        assert isinstance(stored, Path)
+        assert isinstance(stored, LocalPath)
         assert stored.codec == "gzip"
         assert stored.read_bytes()[:2] == b"\x1f\x8b"
         assert str(stored.media_type) == "text/plain;encodings=application/gzip"
@@ -178,11 +178,11 @@ class TestTheExplicitRoles:
     def test_a_role_can_be_named_before_anything_is_there(
         self, tmp_path: pathlib.Path
     ) -> None:
-        leaf = File(tmp_path / "trades.bin")
-        container = Folder(tmp_path / "lake")
+        leaf = LocalFile(tmp_path / "trades.bin")
+        container = LocalFolder(tmp_path / "lake")
 
-        assert isinstance(leaf, File)
-        assert isinstance(container, Folder)
+        assert isinstance(leaf, LocalFile)
+        assert isinstance(container, LocalFolder)
         assert not leaf.exists()
         assert not (tmp_path / "lake").exists()
 
@@ -191,8 +191,8 @@ class TestTheExplicitRoles:
         assert (tmp_path / "lake").is_dir()
 
     def test_the_well_known_roots_are_containers_nothing_created(self) -> None:
-        for root in (Folder.temporary(), Folder.home(), Folder.config()):
-            assert isinstance(root, Folder)
+        for root in (LocalFolder.temporary(), LocalFolder.home(), LocalFolder.config()):
+            assert isinstance(root, LocalFolder)
             assert root.url is not None
 
     def test_an_in_memory_handle_is_the_buffer_role(self) -> None:
@@ -210,13 +210,13 @@ class TestRolesReachEveryHandleACallerGets:
         (tmp_path / "lake" / "part-0.parquet").write_bytes(b"parquet")
         (tmp_path / "lake" / "notes.txt").write_text("notes", encoding="utf-8")
 
-        root = Folder(tmp_path / "lake")
+        root = LocalFolder(tmp_path / "lake")
         listed = {entry.name: type(entry).__name__ for entry in root.iterdir()}
         assert listed == {"part-0.parquet": "Parquet", "notes.txt": "Text"}
 
         assert isinstance(root / "part-0.parquet", Parquet)
         assert isinstance(root.joinpath("notes.txt"), Text)
-        assert isinstance(IOBase(tmp_path / "lake" / "notes.txt").parent, Path)
+        assert isinstance(IOBase(tmp_path / "lake" / "notes.txt").parent, LocalPath)
 
     def test_a_foreign_filesystem_composes_over_its_own_role(
         self, log: pathlib.Path
@@ -234,12 +234,12 @@ class TestRolesReachEveryHandleACallerGets:
     def test_creating_a_container_answers_the_container(
         self, tmp_path: pathlib.Path
     ) -> None:
-        leaf = Folder(tmp_path) / "sub"
+        leaf = LocalFolder(tmp_path) / "sub"
         created = leaf.mkdir()
 
         # A byte write here would have made this location a file, so the
         # container is a different role - and a role is what a class says.
-        assert isinstance(created, Folder)
+        assert isinstance(created, LocalFolder)
         assert created.is_dir()
 
     def test_opening_never_changes_what_a_handle_is(
@@ -256,7 +256,7 @@ class TestRolesReachEveryHandleACallerGets:
     def test_every_role_is_an_iobase_and_the_wrappers_share_a_base(
         self, tmp_path: pathlib.Path
     ) -> None:
-        for role in (Buffer, Buffered, File, Folder, FsPath, Path, Text, Coded, Media):
+        for role in (Buffer, Buffered, FsPath, LocalFile, LocalFolder, LocalPath, Text, Coded, Media):
             assert issubclass(role, IOBase)
         for coding in (Gzip, Zlib, Zstd, Identity):
             assert issubclass(coding, Coded)
@@ -324,15 +324,15 @@ class TestTheObjectStoreRoles:
     """
 
     def test_each_role_commits_to_what_it_is(self) -> None:
-        assert isinstance(ObjectFile("s3://trades/lake/part.parquet"), ObjectFile)
-        assert isinstance(ObjectFolder("s3://trades/lake/"), ObjectFolder)
-        assert isinstance(ObjectPath("s3://trades/lake/part.parquet"), ObjectPath)
+        assert isinstance(S3File("s3://trades/lake/part.parquet"), S3File)
+        assert isinstance(S3Folder("s3://trades/lake/"), S3Folder)
+        assert isinstance(S3Path("s3://trades/lake/part.parquet"), S3Path)
 
         # A prefix always ends in the delimiter, whether or not one was written.
-        assert ObjectFolder("s3://trades/lake").name == "lake"
-        assert ObjectFolder("s3://trades/lake").is_dir()
+        assert S3Folder("s3://trades/lake").name == "lake"
+        assert S3Folder("s3://trades/lake").is_dir()
         # A leaf reports what its name says, without asking the store.
-        leaf = ObjectFile("s3://trades/lake/part.parquet")
+        leaf = S3File("s3://trades/lake/part.parquet")
         assert str(leaf.media_type) == "application/vnd.apache.parquet"
         assert leaf.url is not None
         assert leaf.url.bucket == "trades"
@@ -341,14 +341,14 @@ class TestTheObjectStoreRoles:
     def test_a_bucket_and_a_raw_key_name_an_object_a_url_cannot_spell(self) -> None:
         # `a b/c.txt` is an ordinary key and not a URL, so the second argument
         # takes the name a store uses and the escaping belongs to the handle.
-        handle = ObjectFile("trades", "lake/a b/part.parquet", provider="s3")
+        handle = S3File("trades", "lake/a b/part.parquet", provider="s3")
         assert handle.url is not None
         assert str(handle.url) == "s3://trades/lake/a%20b/part.parquet"
         assert handle.url.key == "lake/a%20b/part.parquet"
 
         # The same name reaches the same object through the generic role.
-        assert str(ObjectPath("trades", "lake/a b/part.parquet", provider="s3").url) == str(handle.url)
-        assert str(ObjectFolder("trades", "lake/a b", provider="s3").url) == "s3://trades/lake/a%20b"
+        assert str(S3Path("trades", "lake/a b/part.parquet", provider="s3").url) == str(handle.url)
+        assert str(S3Folder("trades", "lake/a b", provider="s3").url) == "s3://trades/lake/a%20b"
 
     def test_an_object_store_location_is_a_handle_like_any_other(self) -> None:
         # The scheme is what selects the backend, so the ordinary constructor
@@ -367,12 +367,12 @@ class TestTheObjectStoreRoles:
         # work, exactly as a local location does - `type(handle)` is how a
         # caller reads which implementation it got.
         located = IOBase("s3://trades/lake/part.bin")
-        assert isinstance(located, ObjectPath)
+        assert isinstance(located, S3Path)
 
         # What a handle derives stays on the store rather than dropping to the
         # base class on the way out.
-        assert isinstance(located.parent, ObjectFolder)
-        assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), ObjectPath)
+        assert isinstance(located.parent, S3Folder)
+        assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), S3Path)
 
     @pytest.mark.parametrize(
         ("scheme", "authority"),
@@ -397,9 +397,9 @@ class TestTheObjectStoreRoles:
         # through the roles and the generic constructor alike. Azure attaches
         # its container to the account's own host, which is the shape that says
         # where the store is. Nothing here contacts a store.
-        assert isinstance(IOBase(f"{scheme}://{authority}/lake/part.bin"), ObjectPath)
-        assert isinstance(ObjectFile(f"{scheme}://{authority}/lake/part.bin"), ObjectFile)
-        assert isinstance(ObjectFolder(f"{scheme}://{authority}/lake/"), ObjectFolder)
+        assert isinstance(IOBase(f"{scheme}://{authority}/lake/part.bin"), S3Path)
+        assert isinstance(S3File(f"{scheme}://{authority}/lake/part.bin"), S3File)
+        assert isinstance(S3Folder(f"{scheme}://{authority}/lake/"), S3Folder)
 
         # The spelling the caller wrote is what the handle reports back, so a
         # location survives the round trip through a child or a parent.
@@ -416,7 +416,7 @@ class TestTheObjectStoreRoles:
         # `az://container/blob` is what a catalog writes, and it says nothing
         # about which account holds the container - so the account comes from
         # the properties beside it, in whichever vocabulary they are written.
-        handle = ObjectFile(
+        handle = S3File(
             f"{scheme}://trades/lake/part.bin",
             options={"adls.account-name": "lake", "adls.account-key": "a2V5"},
         )
@@ -427,12 +427,12 @@ class TestTheObjectStoreRoles:
 
     def test_a_location_naming_no_container_is_refused(self) -> None:
         with pytest.raises(ValueError, match="naming a container"):
-            ObjectFile("file:///tmp/part.parquet")
+            S3File("file:///tmp/part.parquet")
 
     def test_options_are_read_in_whichever_vocabulary_they_are_written(self) -> None:
         # A PyIceberg catalog's properties, handed over whole: what is not
         # about a store is ignored, and nothing contacts one either way.
-        handle = ObjectFile(
+        handle = S3File(
             "s3://trades/lake/part.parquet",
             options={
                 "warehouse": "s3://trades/lake",
@@ -447,7 +447,7 @@ class TestTheObjectStoreRoles:
 
         # PyArrow's argument names reach the same knobs, and a bucket and a
         # raw key are named the same way with them.
-        prefix = ObjectFolder(
+        prefix = S3Folder(
             "trades",
             "lake/a b",
             provider="s3",
@@ -455,13 +455,13 @@ class TestTheObjectStoreRoles:
         )
         assert str(prefix.url) == "s3://trades/lake/a%20b"
 
-        located = ObjectPath("s3://trades/lake/", options=None)
+        located = S3Path("s3://trades/lake/", options=None)
         assert located.is_dir()
 
     def test_an_option_that_will_not_parse_is_an_argument_error(self) -> None:
         # Nothing is contacted, so every failure a constructor can report is
         # about what it was handed.
         with pytest.raises(ValueError, match="seconds"):
-            ObjectFile("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
+            S3File("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
         with pytest.raises(ValueError, match="does not do"):
-            ObjectFolder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})
+            S3Folder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})

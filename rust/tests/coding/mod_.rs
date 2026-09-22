@@ -30,7 +30,7 @@ impl yggdryl::IOMedia for SharedReads {
 }
 
 impl IOBase for SharedReads {
-    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url, media_type,
+    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
         is_tabular, is_io);
 
@@ -531,7 +531,7 @@ mod transport {
     }
 
     impl IOBase for Asked {
-        yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
+        yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url,
             media_type, set_media_type, flush, parent, child_by_path, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 

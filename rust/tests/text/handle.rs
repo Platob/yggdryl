@@ -321,11 +321,11 @@ mod text {
 
     #[test]
     fn a_folder_of_logs_answers_one_where_clause_across_its_leaves() {
-        use yggdryl::local::Folder;
+        use yggdryl::local::LocalFolder;
 
-        let mut root = Folder::temporary().unwrap().path().unwrap();
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-clause-folder-{}", std::process::id()));
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         folder.remove(true).unwrap();
         folder
             .child_by_path("a.log")
@@ -349,11 +349,11 @@ mod text {
 
     #[test]
     fn a_partition_equality_prunes_text_leaves_before_one_is_opened() {
-        use yggdryl::local::Folder;
+        use yggdryl::local::LocalFolder;
 
-        let mut root = Folder::temporary().unwrap().path().unwrap();
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-clause-hive-{}", std::process::id()));
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         folder.remove(true).unwrap();
         folder
             .child_by_path("year=2024/a.log")
@@ -379,11 +379,11 @@ mod text {
 
     #[test]
     fn folder_leaves_never_share_framing_state_and_restart_their_seqnums() {
-        use yggdryl::local::Folder;
+        use yggdryl::local::LocalFolder;
 
-        let mut root = Folder::temporary().unwrap().path().unwrap();
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-framed-folder-{}", std::process::id()));
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         folder.remove(true).unwrap();
         let mut first = folder.child_by_path("a.log").unwrap();
         first.write_all_bytes(b"[A] first\ncontinued in a").unwrap();

@@ -182,7 +182,7 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
     from yggdryl import IOBase
     from yggdryl import zstd
     from yggdryl.coding import Zstd
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     handle = IOBase(root / "trades.bin.zst")
@@ -195,8 +195,8 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
     assert handle.read_bytes() == b"symbol,price\nAAPL,1\n"
     assert handle.size == 20
 
-    # `Path` addresses the stored bytes: the frame.
-    assert zstd.loads(Path(root / "trades.bin.zst").read_bytes()) == (
+    # `LocalPath` addresses the stored bytes: the frame.
+    assert zstd.loads(LocalPath(root / "trades.bin.zst").read_bytes()) == (
         b"symbol,price\nAAPL,1\n"
     )
     ```

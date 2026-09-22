@@ -177,6 +177,7 @@ const {
   Uri: NativeUri,
   Url: NativeUrl,
   Urn: NativeUrn,
+  Arn: NativeArn,
   Scalar: NativeScalar,
   Version,
 } = binding
@@ -375,6 +376,7 @@ const MediaType = publicNativeClass(
 const Uri = publicNativeClass(NativeUri, 'Uri', new Set(['fromJSON']))
 const Url = publicNativeClass(NativeUrl, 'Url', new Set(['fromJSON']))
 const Urn = publicNativeClass(NativeUrn, 'Urn', new Set(['fromJSON']))
+const Arn = publicNativeClass(NativeArn, 'Arn', new Set(['fromJSON']))
 const Scalar = publicNativeClass(
   NativeScalar,
   'Scalar',
@@ -419,6 +421,7 @@ binding.MediaType = MediaType
 binding.Uri = Uri
 binding.Url = Url
 binding.Urn = Urn
+binding.Arn = Arn
 binding.Scalar = Scalar
 binding.PartitionSpec = PartitionSpec
 binding.AvroSchema = AvroSchema
@@ -452,6 +455,7 @@ for (const [PublicClass, NativeClass, name] of [
   [Uri, NativeUri, 'Uri'],
   [Url, NativeUrl, 'Url'],
   [Urn, NativeUrn, 'Urn'],
+  [Arn, NativeArn, 'Arn'],
 ]) {
   const nativeFromJSON = NativeClass.fromJSON.bind(NativeClass)
   Object.defineProperty(PublicClass, 'fromJSON', {
@@ -696,6 +700,7 @@ const nativeWrapperPrototypes = Object.freeze([
   Uri.prototype,
   Url.prototype,
   Urn.prototype,
+  Arn.prototype,
   Version.prototype,
 ])
 const regexpSourceGetter = Object.getOwnPropertyDescriptor(
@@ -2474,7 +2479,7 @@ Object.defineProperty(ProtocolField.prototype, Symbol.iterator, {
   },
 })
 
-for (const PathValue of [Uri, Url, Urn]) {
+for (const PathValue of [Uri, Url, Urn, Arn]) {
   Object.defineProperty(PathValue.prototype, Symbol.iterator, {
     configurable: true,
     value: function pathSegments() {

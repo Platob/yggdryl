@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::object::{ObjectOptions, Provider};
+use yggdryl::s3::{Provider, S3Options};
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -33,21 +33,22 @@ role!(
      nameless stream is captured into."
 );
 role!(
-    PyFile,
-    "File",
+    PyLocalFile,
+    "LocalFile",
     "One memory-mapped local file. The mapping is created by the first \
      operation that needs it, not by naming the location."
 );
 role!(
-    PyFolder,
-    "Folder",
+    PyLocalFolder,
+    "LocalFolder",
     "One local directory, listed and walked without being opened."
 );
 role!(
-    PyPath,
-    "Path",
-    "One local location that resolves to `File` or `Folder` when an operation \
-     needs to know which it is - the role a name that says nothing takes."
+    PyLocalPath,
+    "LocalPath",
+    "One local location that resolves to `LocalFile` or `LocalFolder` when an \
+     operation needs to know which it is - the role a name that says nothing \
+     takes."
 );
 role!(
     PyFsFile,
@@ -66,26 +67,25 @@ role!(
      needs to know what is there."
 );
 role!(
-    PyObjectFile,
-    "ObjectFile",
+    PyS3File,
+    "S3File",
     "One object on Amazon S3, Google Cloud Storage, or Azure Blob Storage, \
      read by range and written whole. A ranged read transfers the range \
      rather than the object, and learns the object's length from the answer."
 );
 role!(
-    PyObjectFolder,
-    "ObjectFolder",
+    PyS3Folder,
+    "S3Folder",
     "One key prefix, or a whole bucket or container. A prefix is not stored: \
      it exists exactly while a key starts with it, so creating and deleting \
      one cost nothing and listing is the only question the store answers."
 );
 role!(
-    PyObjectPath,
-    "ObjectPath",
-    "One object-store location that resolves to `ObjectFile` or \
-     `ObjectFolder` when an operation needs to know which it is - one listing \
-     of a single key, or none at all when a trailing slash already said it is \
-     a container."
+    PyS3Path,
+    "S3Path",
+    "One object-store location that resolves to `S3File` or `S3Folder` \
+     when an operation needs to know which it is - one listing of a single \
+     key, or none at all when a trailing slash already said it is a container."
 );
 role!(
     PyBuffered,
@@ -138,7 +138,7 @@ fn fs_holder(
 }
 
 #[pymethods]
-impl PyPath {
+impl PyLocalPath {
     /// Describe a local location without deciding what it is.
     ///
     /// `IOBase(location)` answers with the coding and record implementation
@@ -151,14 +151,18 @@ impl PyPath {
 
     /// Read this location as a mapped file, whether or not it exists.
     ///
-    /// A name that says nothing is a `Path` until an operation needs to know
-    /// which role it is; this decides without asking the file system, and
-    /// carries any media type the `Path` declared across.
+    /// A name that says nothing is a `LocalPath` until an operation needs to
+    /// know which role it is; this decides without asking the file system, and
+    /// carries any media type the `LocalPath` declared across.
     fn as_file(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let base = slf.borrow();
         let holder = match base.as_super().inner()? {
-            Holder::Path(path) => Holder::File(path.as_file().map_err(value_error)?),
-            _ => return Err(PyValueError::new_err("this handle is no longer a Path")),
+            Holder::LocalPath(path) => Holder::LocalFile(path.as_file().map_err(value_error)?),
+            _ => {
+                return Err(PyValueError::new_err(
+                    "this handle is no longer a LocalPath",
+                ));
+            }
         };
         crate::iobase::describe(py, holder)
     }
@@ -167,15 +171,21 @@ impl PyPath {
     fn as_directory(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let base = slf.borrow();
         let holder = match base.as_super().inner()? {
-            Holder::Path(path) => Holder::Folder(path.as_directory().map_err(value_error)?),
-            _ => return Err(PyValueError::new_err("this handle is no longer a Path")),
+            Holder::LocalPath(path) => {
+                Holder::LocalFolder(path.as_directory().map_err(value_error)?)
+            }
+            _ => {
+                return Err(PyValueError::new_err(
+                    "this handle is no longer a LocalPath",
+                ));
+            }
         };
         crate::iobase::describe(py, holder)
     }
 }
 
 #[pymethods]
-impl PyFile {
+impl PyLocalFile {
     /// Describe a local file, whether or not it exists yet.
     #[new]
     fn new(location: &Bound<'_, PyAny>) -> PyResult<PyClassInitializer<Self>> {
@@ -184,7 +194,7 @@ impl PyFile {
 }
 
 #[pymethods]
-impl PyFolder {
+impl PyLocalFolder {
     /// Describe a local directory, whether or not it exists yet.
     ///
     /// Naming a location as a container is what tells a handle to resolve
@@ -197,26 +207,29 @@ impl PyFolder {
     /// The platform temporary directory, created by nothing.
     #[classmethod]
     fn temporary(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::temporary())
+        Self::root(py, yggdryl::local::LocalFolder::temporary())
     }
 
     /// The user's home directory, from `HOME` then `USERPROFILE`.
     #[classmethod]
     fn home(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::home())
+        Self::root(py, yggdryl::local::LocalFolder::home())
     }
 
     /// The user's configuration directory: `home` joined with `.config`.
     #[classmethod]
     fn config(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::config())
+        Self::root(py, yggdryl::local::LocalFolder::config())
     }
 }
 
-impl PyFolder {
+impl PyLocalFolder {
     /// Answer one well-known root as this class.
-    fn root(py: Python<'_>, folder: yggdryl::Result<yggdryl::local::Folder>) -> PyResult<Py<Self>> {
-        let holder = Holder::Folder(folder.map_err(value_error)?);
+    fn root(
+        py: Python<'_>,
+        folder: yggdryl::Result<yggdryl::local::LocalFolder>,
+    ) -> PyResult<Py<Self>> {
+        let holder = Holder::LocalFolder(folder.map_err(value_error)?);
         Py::new(
             py,
             PyClassInitializer::from(PyIOBase::from_core(holder)).add_subclass(Self),
@@ -275,7 +288,7 @@ impl PyFsFile {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFile(yggdryl::fs::File::new(bound));
+        let build = |bound| Holder::FsFile(yggdryl::fs::FsFile::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -290,7 +303,7 @@ impl PyFsFolder {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFolder(yggdryl::fs::Folder::new(bound));
+        let build = |bound| Holder::FsFolder(yggdryl::fs::FsFolder::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -302,16 +315,16 @@ impl PyFsFolder {
 /// store uses passes the container and the key, and encoding belongs here
 /// rather than to them - `a b/c.txt` is an ordinary key and not a URL. A raw
 /// name does not say which store holds it, so `provider` does.
-fn object_holder(
+fn s3_holder(
     location: &Bound<'_, PyAny>,
     key: Option<&Bound<'_, PyAny>>,
     provider: Option<&str>,
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
-    from_url: impl FnOnce(&str, ObjectOptions) -> yggdryl::Result<Holder>,
-    from_key: impl FnOnce(Provider, &str, &str, ObjectOptions) -> yggdryl::Result<Holder>,
+    from_url: impl FnOnce(&str, S3Options) -> yggdryl::Result<Holder>,
+    from_key: impl FnOnce(Provider, &str, &str, S3Options) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
-    let options = object_options(options)?;
+    let options = s3_options(options)?;
     let holder = match key {
         Some(key) => {
             let provider = provider.ok_or_else(|| {
@@ -345,9 +358,9 @@ fn object_holder(
 /// anything else is ignored, so a catalog's properties can be handed over
 /// whole. Values are taken as their text, so `True` and `30` are as good as
 /// `"true"` and `"30"`.
-fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<ObjectOptions> {
+fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
     let Some(options) = options else {
-        return Ok(ObjectOptions::default());
+        return Ok(S3Options::default());
     };
     let mut properties: Vec<(String, String)> = Vec::with_capacity(options.len());
     for (name, value) in options {
@@ -358,15 +371,15 @@ fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<
     }
     // Nothing is contacted, so a value that will not parse is an argument
     // error rather than a store's refusal.
-    ObjectOptions::from_properties(properties).map_err(value_error)
+    S3Options::from_properties(properties).map_err(value_error)
 }
 
 #[pymethods]
-impl PyObjectPath {
+impl PyS3Path {
     /// Describe an object-store location without deciding what it is.
     ///
-    /// `ObjectPath("gs://trades/lake/part.parquet")` names a location;
-    /// `ObjectPath("trades", "lake/a b/part.parquet", provider="gs")` names a
+    /// `S3Path("gs://trades/lake/part.parquet")` names a location;
+    /// `S3Path("trades", "lake/a b/part.parquet", provider="gs")` names a
     /// container and the raw key a store uses. Neither contacts the store, and
     /// the provider is needed only for the second form, because a raw name -
     /// unlike a location - does not say which store holds it.
@@ -382,15 +395,14 @@ impl PyObjectPath {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,
             options,
-            yggdryl::object::located_with,
+            yggdryl::s3::located_with,
             |provider, container, key, options| {
-                yggdryl::object::path_at_with(provider, container, key, options)
-                    .map(Holder::ObjectPath)
+                yggdryl::s3::path_at_with(provider, container, key, options).map(Holder::S3Path)
             },
         )?
         .add_subclass(Self))
@@ -398,10 +410,10 @@ impl PyObjectPath {
 }
 
 #[pymethods]
-impl PyObjectFile {
+impl PyS3File {
     /// Describe one object, whether or not it exists yet.
     ///
-    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
+    /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
     #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
@@ -410,15 +422,14 @@ impl PyObjectFile {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,
             options,
-            |url, options| yggdryl::object::file_with(url, options).map(Holder::ObjectFile),
+            |url, options| yggdryl::s3::file_with(url, options).map(Holder::S3File),
             |provider, container, key, options| {
-                yggdryl::object::file_at_with(provider, container, key, options)
-                    .map(Holder::ObjectFile)
+                yggdryl::s3::file_at_with(provider, container, key, options).map(Holder::S3File)
             },
         )?
         .add_subclass(Self))
@@ -426,10 +437,10 @@ impl PyObjectFile {
 }
 
 #[pymethods]
-impl PyObjectFolder {
+impl PyS3Folder {
     /// Describe a prefix, bucket, or container, creating nothing.
     ///
-    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
+    /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
     #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
@@ -438,15 +449,14 @@ impl PyObjectFolder {
         provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(object_holder(
+        Ok(s3_holder(
             location,
             key,
             provider,
             options,
-            |url, options| yggdryl::object::folder_with(url, options).map(Holder::ObjectFolder),
+            |url, options| yggdryl::s3::folder_with(url, options).map(Holder::S3Folder),
             |provider, container, key, options| {
-                yggdryl::object::folder_at_with(provider, container, key, options)
-                    .map(Holder::ObjectFolder)
+                yggdryl::s3::folder_at_with(provider, container, key, options).map(Holder::S3Folder)
             },
         )?
         .add_subclass(Self))
@@ -548,15 +558,15 @@ impl PyBuffered {
 /// Register every storage role.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyBuffer>()?;
-    module.add_class::<PyFile>()?;
-    module.add_class::<PyFolder>()?;
-    module.add_class::<PyPath>()?;
+    module.add_class::<PyLocalFile>()?;
+    module.add_class::<PyLocalFolder>()?;
+    module.add_class::<PyLocalPath>()?;
     module.add_class::<PyFsFile>()?;
     module.add_class::<PyFsFolder>()?;
     module.add_class::<PyFsPath>()?;
-    module.add_class::<PyObjectFile>()?;
-    module.add_class::<PyObjectFolder>()?;
-    module.add_class::<PyObjectPath>()?;
+    module.add_class::<PyS3File>()?;
+    module.add_class::<PyS3Folder>()?;
+    module.add_class::<PyS3Path>()?;
     module.add_class::<PyBuffered>()?;
     Ok(())
 }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, Field, FixRegistry};
 
 /// Large-dictionary size: reportable in release, quick to smoke-test in debug.
@@ -58,7 +58,7 @@ pub(crate) fn seed() -> FixRegistry {
     static REGISTRY: std::sync::OnceLock<FixRegistry> = std::sync::OnceLock::new();
     REGISTRY
         .get_or_init(|| {
-            let folder = Folder::new(seed_root()).expect("the seed folder is a local path");
+            let folder = LocalFolder::new(seed_root()).expect("the seed folder is a local path");
             FixRegistry::from_handle(&folder).expect("the tracked seed loads")
         })
         .clone()
@@ -106,7 +106,7 @@ pub(crate) fn mixed_categories(count: usize) -> Vec<Field> {
 
 /// A fresh directory of this benchmark's own under the platform temporary root.
 pub(crate) fn scratch(label: &str) -> PathBuf {
-    let path = Folder::temporary()
+    let path = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")

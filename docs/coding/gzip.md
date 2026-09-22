@@ -190,7 +190,7 @@ Downstream encodings and codecs never see the coding. A level set on the handle 
     from yggdryl import IOBase
     from yggdryl import gzip
     from yggdryl.coding import Gzip
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     handle = IOBase(root / "trades.csv.gz")
@@ -203,8 +203,8 @@ Downstream encodings and codecs never see the coding. A level set on the handle 
     assert handle.read_bytes() == b"symbol,price\nAAPL,1\n"
     assert handle.size == 20
 
-    # `Path` addresses the stored bytes: the gzip member.
-    assert gzip.loads(Path(root / "trades.csv.gz").read_bytes()) == (
+    # `LocalPath` addresses the stored bytes: the gzip member.
+    assert gzip.loads(LocalPath(root / "trades.csv.gz").read_bytes()) == (
         b"symbol,price\nAAPL,1\n"
     )
     ```
@@ -241,7 +241,7 @@ A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](i
 
     from yggdryl import IOBase
     from yggdryl.coding import Gzip
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
     from yggdryl import MediaType
 
     root = pathlib.Path(tempfile.mkdtemp())
@@ -254,7 +254,7 @@ A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](i
     # Construction composes what the name declares.
     assert IOBase(root / "trades.csv.gz").codec == "gzip"
 
-    stored = Path(root / "trades.csv.gz")
+    stored = LocalPath(root / "trades.csv.gz")
     assert stored.media_type.is_encoded()
 
     handle = stored.into_coded()

@@ -26,7 +26,7 @@ Native rows first: the folder *is* the table, so the ordinary record surface rea
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType};
 
@@ -44,13 +44,13 @@ Native rows first: the folder *is* the table, so the ordinary record surface rea
     ])?)
     .required_field("row");
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-native-read");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-native-read");
     let _ = std::fs::remove_dir_all(&path);
-    Table::create(Folder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
+    Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, PartitionSpec::unpartitioned())?;
 
     // The folder *is* the table, so the ordinary record surface reaches it, and
     // its options come from the metadata before a single data file exists.
-    let mut folder = Folder::new(&path)?;
+    let mut folder = LocalFolder::new(&path)?;
     let base = folder.record_options()?;
     // The table's stored schema declares the rows: a native row is an ordered
     // sequence under it.
@@ -135,7 +135,7 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
@@ -147,10 +147,10 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
     ])?)
     .required_field("row");
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-pushdown");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-pushdown");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
-        Folder::new(&path)?,
+        LocalFolder::new(&path)?,
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -262,7 +262,7 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::media::IORecordOptions;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType, IOMedia};
 
     let mut schema = DataType::from(StructType::from_fields([
@@ -271,10 +271,10 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
     ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-where-pushdown");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-where-pushdown");
     let _ = std::fs::remove_dir_all(&root);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
     let arrow_schema = schema.into_arrow_schema()?;
     for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
         let batch = RecordBatch::try_new(
@@ -403,7 +403,7 @@ One predicate crosses every level. Four rows are committed one at a time, so eac
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, IOMedia, StructType, arrow};
 
     let mut schema = DataType::from(StructType::from_fields([
@@ -415,10 +415,10 @@ One predicate crosses every level. Four rows are committed one at a time, so eac
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-planning");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-planning");
     let _ = std::fs::remove_dir_all(&root);
     let spec = PartitionSpec::identity(1, &schema, &["year"])?;
-    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
     let arrow_schema = schema.into_arrow_schema()?;
     for (id, ccy, price, year) in [
         (1_i64, "EUR", 150_i64, "2024"),
@@ -558,16 +558,16 @@ Nothing a commit writes is mutated in place, so a retained snapshot is read by a
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, StructType};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-time-travel");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-time-travel");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
-        Folder::new(&root)?,
+        LocalFolder::new(&root)?,
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -692,7 +692,7 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{DataFile, FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     let mut schema = DataType::from(StructType::from_fields([
@@ -703,10 +703,10 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-filtered-writes");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-filtered-writes");
     let _ = std::fs::remove_dir_all(&root);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
 
     let arrow_schema = schema.into_arrow_schema()?;
     let rows = |ids: Vec<i64>, venues: Vec<&'static str>, quantities: Vec<i64>| {
@@ -944,16 +944,16 @@ Rust only; the fan-out is inside the core scan, so every binding gets it through
     use yggdryl::iceberg::{
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, StructType};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-parallel-read");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-parallel-read");
     let _ = std::fs::remove_dir_all(&root);
 
     let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
-        Folder::new(&root)?,
+        LocalFolder::new(&root)?,
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -1021,6 +1021,7 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/test_iceberg.py
+    YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"

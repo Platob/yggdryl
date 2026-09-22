@@ -32,11 +32,11 @@ One order's life: the order under its client identifier, the acknowledgement und
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, MarketElement};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
     let lines: [&[u8]; 5] = [
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30.250|10=0|",
@@ -254,11 +254,11 @@ At one instant, finite expirations come first, then every source message at that
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(registry).with_snapshot_ns(1_000_000_000);
     assert_eq!(codec.snapshot_ns(), Some(1_000_000_000));
     let source = codec.parse_fix_line(
@@ -352,11 +352,11 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix")?;
     let lines: [&[u8]; 2] = [

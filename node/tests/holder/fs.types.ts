@@ -119,7 +119,7 @@ const handle: IOBase = IOBase.fromFs(
 const local: IOBase = IOBase.fromUri('file:///tmp/key.bin')
 const filesystem: object | null = handle.filesystem
 const rawPath: string | null = handle.path
-const exactUri: string | null = handle.uri
+const boundUri: string | null = handle.boundUri
 const maskedUri: string | null = handle.maskedUri
 const stream: ByteReader = handle.openInputStream()
 const input: RandomAccessReader = handle.openInputFile()
@@ -144,7 +144,7 @@ void info
 void local
 void filesystem
 void rawPath
-void exactUri
+void boundUri
 void maskedUri
 void stream
 void input

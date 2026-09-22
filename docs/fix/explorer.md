@@ -30,10 +30,10 @@ The live additions are the crate's 30 scalar fields - `parentuuids`, `srcuuids`,
 
     ```rust
     use yggdryl::{DataType, FixId, FixRegistry, CURRUNIX_TAG_NAME};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
     assert_eq!(registry.len(), 7_781);

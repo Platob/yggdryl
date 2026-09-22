@@ -2,18 +2,18 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use super::File;
-use super::Folder;
+use super::LocalFile;
+use super::LocalFolder;
 use crate::holder::Holder;
-use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{Error, IOKind, MediaType, MimeType, Result, Uri, Url};
 use crate::{IOBase, IOPath, Listing};
 
 /// A local location that resolves to the implementation it turns out to need.
 ///
 /// A caller often knows a path without knowing whether it names a directory or
 /// a file - a listing entry, a configuration value, a command-line argument.
-/// `Path` is that value: it answers [`IOBase::kind`] by looking, and every
-/// other operation runs through [`Folder`] or [`File`] accordingly.
+/// `LocalPath` is that value: it answers [`IOBase::kind`] by looking, and every
+/// other operation runs through [`LocalFolder`] or [`LocalFile`] accordingly.
 ///
 /// Resolution follows the laziness contract. Construction touches nothing.
 /// A read of a location that does not exist yields nothing, and a write creates
@@ -22,22 +22,22 @@ use crate::{IOBase, IOPath, Listing};
 ///
 /// ```no_run
 /// use yggdryl::IOBase;
-/// use yggdryl::local::{Folder, Path};
+/// use yggdryl::local::{LocalFolder, LocalPath};
 /// use yggdryl::IOKind;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let path = Path::new(Folder::temporary()?.path()?)?;
+/// let path = LocalPath::new(LocalFolder::temporary()?.path()?)?;
 /// assert_eq!(path.kind(), IOKind::Directory);
 ///
 /// // The same type addresses a leaf, and reading a missing one is empty.
-/// let leaf = Path::new(Folder::temporary()?.path()?.join("yggdryl-absent.arrows"))?;
+/// let leaf = LocalPath::new(LocalFolder::temporary()?.path()?.join("yggdryl-absent.arrows"))?;
 /// assert_eq!(leaf.kind(), IOKind::Unknown);
 /// assert!(leaf.read_all_bytes()?.is_empty());
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Path {
+pub struct LocalPath {
     url: Url,
     /// An explicit representation supplied by the caller.
     declared: Option<MediaType>,
@@ -50,12 +50,13 @@ pub struct Path {
 
 /// The specialized implementations a local location can resolve to.
 ///
-/// This is deliberately not [`Holder`]: a `Holder` can hold a `Path`, and a
-/// `Path` that could hold a `Holder` would be a type of unbounded size.
+/// This is deliberately not [`Holder`]: a `Holder` can hold a `LocalPath`,
+/// and a `LocalPath` that could hold a `Holder` would be a type of unbounded
+/// size.
 #[derive(Debug)]
 enum Resolved {
-    Directory(Folder),
-    File(File),
+    Directory(LocalFolder),
+    File(LocalFile),
 }
 
 impl Resolved {
@@ -74,7 +75,7 @@ impl Resolved {
     }
 }
 
-impl Path {
+impl LocalPath {
     /// Describe a local location without touching it.
     ///
     /// # Errors
@@ -129,8 +130,8 @@ impl Path {
     /// # Errors
     ///
     /// Returns an error when the URL is not local.
-    pub fn as_directory(&self) -> Result<Folder> {
-        Folder::from_url(self.url.clone())
+    pub fn as_directory(&self) -> Result<LocalFolder> {
+        LocalFolder::from_url(self.url.clone())
     }
 
     /// Treat this location as a file, whether or not it exists yet.
@@ -139,8 +140,8 @@ impl Path {
     ///
     /// Returns an error when the URL is not local, or when this build has no
     /// local leaf implementation.
-    pub fn as_file(&self) -> Result<File> {
-        let mut file = File::new(self.path()?)?;
+    pub fn as_file(&self) -> Result<LocalFile> {
+        let mut file = LocalFile::new(self.path()?)?;
         if let Some(media_type) = &self.declared {
             file.set_media_type(media_type.clone());
         }
@@ -198,7 +199,7 @@ impl Path {
 }
 
 /// A local location is the generic role over the file system.
-impl IOPath for Path {
+impl IOPath for LocalPath {
     fn path_url(&self) -> &Url {
         &self.url
     }
@@ -212,11 +213,11 @@ impl IOPath for Path {
     }
 }
 
-impl crate::IOMedia for Path {
+impl crate::IOMedia for LocalPath {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Path {
+impl IOBase for LocalPath {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }
@@ -250,6 +251,10 @@ impl IOBase for Path {
             return self.as_directory()?.truncate(size);
         }
         self.with_resolved_mut(|handle| handle.truncate(size))?
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {
@@ -315,23 +320,23 @@ impl IOBase for Path {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        Self::from_url(parent).ok().map(Holder::Path)
+        Self::from_url(parent).ok().map(Holder::LocalPath)
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         if self.kind() == IOKind::File {
             return self.as_file()?.child_by_path(name);
         }
-        Ok(Holder::Path(Self::from_url(self.url.joinpath(name)?)?))
+        Ok(Holder::LocalPath(Self::from_url(self.url.joinpath(name)?)?))
     }
 
     /// Empty whichever of the two the resolved kind names.
     ///
-    /// `Path`'s whole job is to report [`IOKind`] from what is actually there,
-    /// so routing on that kind is the one documented exception to the
-    /// no-pre-call rule - and it is the resolution `Path` already performs, not
-    /// a second probe added for the lifecycle pair. An undecided location has
-    /// nothing to empty.
+    /// `LocalPath`'s whole job is to report [`IOKind`] from what is actually
+    /// there, so routing on that kind is the one documented exception to the
+    /// no-pre-call rule - and it is the resolution `LocalPath` already
+    /// performs, not a second probe added for the lifecycle pair. An undecided
+    /// location has nothing to empty.
     fn clear(&mut self) -> Result<()> {
         {
             let mut resolved = self.resolved.lock().map_err(|_| {
@@ -340,8 +345,9 @@ impl IOBase for Path {
                 ))
             })?;
             if let Some(resolved) = resolved.as_mut() {
-                // Clear the retained mapping itself: a fresh File would not
-                // own its mapping state, and its later close could restore it.
+                // Clear the retained mapping itself: a fresh LocalFile would
+                // not own its mapping state, and its later close could restore
+                // it.
                 return resolved.as_io_mut().clear();
             }
         }
@@ -359,8 +365,8 @@ impl IOBase for Path {
     /// the removal, and a later operation re-resolves from scratch.
     fn remove(&mut self, recursive: bool) -> Result<()> {
         let kind = self.kind();
-        // Drop whatever was resolved before deleting: a retained `File` holds a
-        // mapping, and a mapping must not outlive the file it maps.
+        // Drop whatever was resolved before deleting: a retained `LocalFile`
+        // holds a mapping, and a mapping must not outlive the file it maps.
         if let Ok(mut slot) = self.resolved.lock() {
             *slot = None;
         }

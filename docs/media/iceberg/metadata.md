@@ -25,7 +25,7 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
@@ -34,10 +34,10 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
     let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-layout");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-layout");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
-        Folder::new(&path)?,
+        LocalFolder::new(&path)?,
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -49,7 +49,7 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
     )?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-    let names: Vec<String> = Folder::new(&path)?
+    let names: Vec<String> = LocalFolder::new(&path)?
         .ls(true, false)
         .collect::<yggdryl::Result<Vec<_>>>()?
         .iter()
@@ -226,7 +226,7 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
         read_manifest_spec,
     };
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType, MimeType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -239,10 +239,10 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-manifests");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-manifests");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec.clone())?;
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec.clone())?;
 
     let batch = RecordBatch::try_new(
         schema.into_arrow_schema()?,
@@ -261,7 +261,7 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 
     // A manifest is self-describing: its Avro header carries the schema and the spec.
     let name = manifests[0].manifest_path.rsplit('/').next().unwrap().to_owned();
-    let handle = Folder::new(&path)?.child_by_path(&format!("metadata/{name}"))?;
+    let handle = LocalFolder::new(&path)?.child_by_path(&format!("metadata/{name}"))?;
     assert_eq!(read_manifest_spec(&handle)?, spec);
 
     let entries = read_manifest(&handle)?;

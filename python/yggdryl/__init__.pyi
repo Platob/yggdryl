@@ -87,6 +87,7 @@ from .text import (
     TextOptions as TextOptions,
 )
 from .uri import (
+    Arn as Arn,
     Parameters as Parameters,
     Uri as Uri,
     Url as Url,

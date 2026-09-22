@@ -404,11 +404,11 @@ names are folded; `display` keeps the specification's spelling.
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     // The counter names the group it opens, and one door answers all three
     // categories: a scalar, a component, a group.

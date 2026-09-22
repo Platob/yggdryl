@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, Field, FixCategory, FixDirection, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
@@ -442,7 +442,7 @@ fn ingest(
     let mut progress = style::Progress::start(format!("reading {}", path.display()));
     progress.tick();
     let path = registry::located(path)?;
-    let held = Folder::new(
+    let held = LocalFolder::new(
         path.parent()
             .map(std::path::Path::to_path_buf)
             .unwrap_or_default(),

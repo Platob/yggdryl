@@ -7,9 +7,9 @@ mod charset;
 #[cfg(feature = "iceberg")]
 #[path = "interop/iceberg.rs"]
 mod iceberg;
-#[cfg(feature = "object")]
-#[path = "interop/object/mod.rs"]
-mod object;
+#[cfg(feature = "s3")]
+#[path = "interop/s3/mod.rs"]
+mod s3;
 #[path = "interop/variant.rs"]
 mod variant;
 #[path = "interop/zip.rs"]

@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::format_smolstr;
 
 use super::FixRegistry;
-use crate::local::Folder;
+use crate::local::LocalFolder;
 use crate::{Error, Result, Url};
 
 /// The environment variable naming the folder the default loads from.
@@ -30,7 +30,7 @@ impl FixRegistry {
     /// 1. a registry installed by [`Self::install_global`];
     /// 2. the folder `YGGDRYL_FIX_REGISTRY` names - a URL, or a bare path -
     ///    opened through the local backend;
-    /// 3. `~/.config/fix`, reached through [`Folder::config`], when that
+    /// 3. `~/.config/fix`, reached through [`LocalFolder::config`], when that
     ///    folder exists; skipped when the machine has no home variable;
     /// 4. the empty registry.
     ///
@@ -58,7 +58,7 @@ impl FixRegistry {
             })?),
             None => None,
         };
-        let config = match Folder::config() {
+        let config = match LocalFolder::config() {
             Ok(config) => Some(config),
             Err(error) if error.is_absent() => None,
             Err(error) => return Err(error),
@@ -88,11 +88,11 @@ impl FixRegistry {
 /// Resolve the default from its two inputs, in the documented order.
 ///
 /// Pure in both: `registry_location` is what `YGGDRYL_FIX_REGISTRY` held and
-/// `config` what [`Folder::config`] answered, so the rule is tested with
+/// `config` what [`LocalFolder::config`] answered, so the rule is tested with
 /// explicit inputs and never through the process-wide environment.
 pub(super) fn autoload(
     registry_location: Option<&str>,
-    config: Option<Folder>,
+    config: Option<LocalFolder>,
 ) -> Result<FixRegistry> {
     if let Some(location) = registry_location {
         return from_location(location);
@@ -100,7 +100,7 @@ pub(super) fn autoload(
     if let Some(config) = config {
         // A lazy handle: an absent `~/.config/fix` lists nothing and loads
         // as the empty registry, while a present malformed one fails.
-        let folder = Folder::from_url(config.url().joinpath(CONFIG_FOLDER)?)?;
+        let folder = LocalFolder::from_url(config.url().joinpath(CONFIG_FOLDER)?)?;
         return FixRegistry::from_handle(&folder);
     }
     Ok(FixRegistry::new())
@@ -115,7 +115,7 @@ fn from_location(location: &str) -> Result<FixRegistry> {
             format_args!("scheme {}", url.scheme()),
         ));
     }
-    let folder = Folder::from_url(url)?;
+    let folder = LocalFolder::from_url(url)?;
     if !folder.exists() {
         // The caller named this folder, so nothing there is a misconfiguration
         // rather than a first run.
@@ -134,7 +134,7 @@ pub mod internals {
     //! pinned through the pure step underneath it instead.
     use super::FixRegistry;
     use crate::Result;
-    use crate::local::Folder;
+    use crate::local::LocalFolder;
 
     /// Resolve the default from its two inputs, in the documented order.
     ///
@@ -144,7 +144,7 @@ pub mod internals {
     /// scheme this crate has no backend for, or holds a malformed shard.
     pub fn autoload(
         registry_location: Option<&str>,
-        config: Option<Folder>,
+        config: Option<LocalFolder>,
     ) -> Result<FixRegistry> {
         super::autoload(registry_location, config)
     }
