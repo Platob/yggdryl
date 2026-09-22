@@ -249,8 +249,12 @@ pub trait IORecordOptions: Sized {
 
     /// Borrow the rows a read or write keeps: the `where` clause.
     ///
-    /// Always true keeps every row. The clause binds once against the rows'
-    /// own schema and runs before the selector, so it reads stored names.
+    /// Always true keeps every row. The clause binds once, and against the
+    /// rows' own schema wherever it can: it runs before the selector, reading
+    /// stored names, and after it exactly where it names a column only the
+    /// selector publishes - which is what
+    /// [`apply_arrow_expressions`](Self::apply_arrow_expressions) decides, once
+    /// per stream.
     fn filter(&self) -> &Filter;
 
     /// Set the rows a read or write keeps.

@@ -198,7 +198,7 @@ impl EventColumn {
                 "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
             }
             Self::CurrUuid => {
-                "The event's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive."
+                "The event's identity: the UUIDv7 its microsecond instant and code derive."
             }
             Self::CrossUuid => {
                 "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."

@@ -1,45 +1,12 @@
 //! Hierarchical resource URLs.
 
-use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
-
-use crate::Str;
-use smol_str::format_smolstr;
+use std::hash::Hash;
 
 use super::*;
 
 /// A validated URL backed directly by a canonical [`Uri`].
-pub struct Url(Uri, OnceLock<Str>);
-
-impl Clone for Url {
-    fn clone(&self) -> Self {
-        let rendered = OnceLock::new();
-        if let Some(value) = self.1.get() {
-            let _ = rendered.set(value.clone());
-        }
-        Self(self.0.clone(), rendered)
-    }
-}
-
-impl fmt::Debug for Url {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("Url").field(&self.0).finish()
-    }
-}
-
-impl PartialEq for Url {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Eq for Url {}
-
-impl Hash for Url {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Url(Uri);
 
 impl PartialOrd for Url {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -73,8 +40,7 @@ impl Url {
     /// Returns [`Uri::from_path`]'s refusal, or the working directory's own
     /// failure when the process cannot read one.
     pub fn from_path(value: impl AsRef<Path>) -> Result<Self> {
-        let value = value.as_ref();
-        Self::rooted(Uri::from_path(value)?, value)
+        Uri::from_path(value.as_ref())?.locator()
     }
 
     /// Validate and wrap an existing URI as a URL.
@@ -101,7 +67,7 @@ impl Url {
                 "URL requires hierarchical authority syntax and non-file URLs require a host",
             ));
         }
-        Ok(Self(value, OnceLock::new()))
+        Ok(Self(value))
     }
 
     /// Read one location a caller named: a URL, or a path to root.
@@ -141,24 +107,10 @@ impl Url {
     /// Returns the URL parse failure, or [`Self::from_path`]'s.
     pub fn from_location(value: &str) -> Result<Self> {
         // `Uri::from_str` already decides URL against path: text naming no
-        // usable scheme is read as a filesystem path and left relative.
-        Self::rooted(Uri::from_str(value)?, Path::new(value))
-    }
-
-    /// Answer a URI as a URL, rooting a `file:` path that names no root.
-    ///
-    /// The URI parser reads text carrying no scheme as a filesystem path and
-    /// leaves it relative, so this is where a rootless one becomes a location:
-    /// `path` is the text the URI was read from, joined onto the working
-    /// directory rather than re-derived from the URI, which would have to undo
-    /// the percent-encoding the parser just applied. Every other identifier
-    /// answers through [`Uri::locator`], so a name resolves here exactly as it
-    /// does anywhere else a location is asked for.
-    fn rooted(uri: Uri, path: &Path) -> Result<Self> {
-        if uri.has_authority() || uri.scheme() != &Scheme::FILE {
-            return uri.locator();
-        }
-        Self::from_uri(Uri::from_path(std::env::current_dir()?.join(path))?)
+        // usable scheme is read as a filesystem path and left relative, and
+        // `Uri::locator` is the one door that says where any identifier is -
+        // a name, a relative path, or a location that is already one.
+        Uri::from_str(value)?.locator()
     }
 
     /// Deserialize a URL from structural JSON.
@@ -169,15 +121,6 @@ impl Url {
     /// Consume this URL and serialize it as structural JSON.
     pub fn into_json(self) -> Result<String> {
         serde_json::to_string(&self).map_err(Error::from)
-    }
-
-    /// Return the canonical rendering as one lazily cached shared string.
-    ///
-    /// A located text reader shares one `Arc<Url>` across its rows, so this
-    /// lets every row project the same cross code without another reader
-    /// allocation or one rendered string per row.
-    pub(crate) fn shared_text(&self) -> &Str {
-        self.1.get_or_init(|| Str::from(format_smolstr!("{self}")))
     }
 
     /// Consume this URL and return its URI without allocating.
@@ -407,7 +350,6 @@ impl Url {
     /// As [`Uri::set_parameters`].
     pub fn set_parameters(&mut self, parameters: &Parameters<'_>) -> Result<()> {
         self.0.set_parameters(parameters)?;
-        self.clear_shared_text();
         Ok(())
     }
 
@@ -418,7 +360,6 @@ impl Url {
     /// As [`Uri::set_query`].
     pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
         self.0.set_query(query)?;
-        self.clear_shared_text();
         Ok(())
     }
 
@@ -560,24 +501,12 @@ impl Url {
 
     /// Remove the final URL filename extension and report whether one existed.
     pub fn remove_extension(&mut self) -> bool {
-        let removed = self.0.remove_extension();
-        if removed {
-            self.clear_shared_text();
-        }
-        removed
+        self.0.remove_extension()
     }
 
     /// Remove every URL filename extension and report whether any existed.
     pub fn clear_extensions(&mut self) -> bool {
-        let removed = self.0.clear_extensions();
-        if removed {
-            self.clear_shared_text();
-        }
-        removed
-    }
-
-    fn clear_shared_text(&mut self) {
-        self.1 = OnceLock::new();
+        self.0.clear_extensions()
     }
 
     fn replace_uri(&mut self, candidate: Uri) -> Result<()> {
@@ -791,13 +720,16 @@ impl<'de> Deserialize<'de> for Url {
 pub mod internals {
     //! What `rust/tests/uri/url.rs` pins and a caller cannot reach.
     //!
-    //! The canonical rendering a located reader shares across its rows is
-    //! crate-internal, so whether a mutation clears it is pinned here.
+    //! The canonical rendering a reader shares across its rows is
+    //! crate-internal, so whether a mutation clears it is pinned here. The
+    //! rendering belongs to the canonical [`Uri`](crate::Uri) a URL narrows,
+    //! and a mutation reaches it through that value.
 
-    use super::{Str, Url};
+    use super::Url;
+    use crate::Str;
 
     /// The URL's canonical rendering as the lazily cached shared string.
     pub fn shared_text(url: &Url) -> &Str {
-        url.shared_text()
+        <Url as AsRef<crate::Uri>>::as_ref(url).shared_text()
     }
 }

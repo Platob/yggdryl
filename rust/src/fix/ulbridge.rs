@@ -28,17 +28,18 @@
 /// in front of the row: `timestamp`, `msgthreadid` and `level`.
 ///
 /// `timestamp` dates nothing, and is not this header's failing but its
-/// shape. It is not the line's clock: that is the `mtime` column, which
-/// only a capture spelled `mtime` fills, so a line read through this header
-/// falls back to the handle's own modification time and an unlocated handle
-/// leaves every line at the epoch. It is not the message's clock either: a
-/// message is dated by the `SendingTime(52)` it states, else the
-/// `TransactTime(60)` it states, else the codec's `default_sending_time`.
-/// A caller who wants this header to date its lines names the capture
-/// `mtime`, and pays two prices for it: an `mtime` capture is consumed into
-/// that column instead of being carried beside it, so the `timestamp`
-/// column goes; and the column is read at `datetime64(ns, UTC)` whatever
-/// fraction the expression spells, so the syntax no longer types the clock.
+/// shape. It is not the line's clock: that is `currunix`, which a capture
+/// spelled `mtime` fills where the header declares one, so a line read
+/// through this header falls back to the handle's own modification time and
+/// an unlocated handle leaves every line at the epoch. It is not the
+/// message's clock either: a message is dated by the `SendingTime(52)` it
+/// states, else the `TransactTime(60)` it states, else the codec's
+/// `default_sending_time`. A caller who wants this header to date its lines
+/// renames the capture `mtime`, and pays two prices for it: an `mtime`
+/// capture is consumed into `currunix` instead of being carried beside it,
+/// so the `timestamp` column goes; and it is read at `datetime64(ns, UTC)`
+/// whatever fraction the expression spells, so the syntax no longer types
+/// the clock.
 /// `level` is the bridge's own log level and answers no column but its own,
 /// which a caller who wants it elsewhere renames the same way.
 ///

@@ -309,17 +309,16 @@ fn version_parse_compare_and_render_allocate_nothing() {
 
 #[test]
 fn uuid_version_7_and_8_construction_allocate_nothing() {
-    let instants = [0, 1, 999, 281_474_976_710_655];
+    let instants = [0, 1, 999, 281_474_976_710_655_999];
     for count in [1, 32, 1_024] {
         free(&format!("constructing {count} UUIDv7 values"), || {
             for index in 0..count {
                 black_box(
                     Uuid::from_v7(
                         black_box(instants[index % instants.len()]),
-                        black_box(index as u64),
                         black_box(u64::MAX - index as u64),
                     )
-                    .expect("an in-range millisecond instant"),
+                    .expect("an in-range microsecond instant"),
                 );
             }
         });
@@ -364,8 +363,8 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
                 for index in 0..count {
                     black_box(
                         black_box(values[index % values.len()])
-                            .into_uuid(black_box(index as u64), black_box(index as u64 + 1))
-                            .expect("an in-range millisecond instant and a 64-bit digest"),
+                            .into_uuid()
+                            .expect("an in-range microsecond instant and a 64-bit digest"),
                     );
                 }
             },
@@ -2122,12 +2121,19 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     }
 }
 
-/// A line built by hand and read costs nothing: the body is the range it
-/// was handed, the options a reference count, and no reading is resolved
-/// until asked. The first ask for the captures costs the match - the
-/// locations the regex fills, and the list the line keeps - and the second
-/// ask nothing, because the slot holds it; a line under no header resolves
-/// its captures for nothing.
+/// A line built by hand costs its row header and nothing else: the body is
+/// the range it was handed, the options a reference count, and no other
+/// reading is resolved until asked. The header comes off the line at
+/// construction, so the match - the locations the regex fills, and the list
+/// of captures the line keeps - is paid there, once, and every later ask for
+/// the captures is free because the slot already holds them. Reading the body
+/// and the index adds nothing.
+///
+/// Reading the content code does, and this is where it moved: the code is no
+/// longer the body's bytes alone but the facts the line states as an event,
+/// which walks the names it goes by - a name and a value owned per capture,
+/// and the map that holds them. A line under no header goes by no name, so it
+/// still builds and digests for nothing.
 #[test]
 fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
     let options = Arc::new(
@@ -2136,37 +2142,43 @@ fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
             .expect("a header"),
     );
     let page = TextBytes::from_bytes("[INFO] 7 body of the line").expect("a page");
-    free("a line built, its body and its index read", || {
+    costs("a line built, its body and its index read", 2, || {
         let line = TextLine::from_bytes(0, page.clone(), Arc::clone(&options)).expect("a line");
         black_box(line.body());
         black_box(line.index());
-        black_box(line.get_currhashcode());
     });
     // The regex keeps a per-thread cache it fills on its first use, which is
     // the expression's cost and not a line's: warmed outside the count.
     black_box(
         TextLine::from_bytes(0, page.clone(), Arc::clone(&options))
             .expect("a line")
-            .captures()
-            .len(),
+            .get_currhashcode(),
     );
     let line = TextLine::from_bytes(0, page.clone(), Arc::clone(&options)).expect("a line");
     let (first, count) = counted(|| black_box(line.captures().len()));
     assert_eq!(count, 2);
     assert_eq!(
-        first, 2,
-        "the match's locations and the list the line keeps"
+        first, 0,
+        "the header was taken off at construction and the list is kept"
     );
     free("the captures asked again", || {
         black_box(line.captures().len());
         black_box(line.capture(1));
     });
+    // The two captures are the two names this line goes by, and the digest
+    // owns them: each is a name and a value, over the map they are held in.
+    let (code, _) = counted(|| black_box(line.get_currhashcode()));
+    assert_eq!(code, 6, "a name and a value per capture, over their map");
+    free("the content code asked again", || {
+        black_box(line.get_currhashcode());
+    });
     let bare = TextLine::from_bytes(0, page, Arc::new(TextOptions::new())).expect("a line");
-    free("the captures of a line under no header", || {
+    free("a line under no header, read and digested", || {
         black_box(bare.captures().len());
+        black_box(bare.get_currhashcode());
     });
     // The tree is the first ask's cost and nothing on the second: a line
-    // read for its body and its row number never pays for it.
+    // read for its body and its place never pays for it.
     let paired = TextLine::from_bytes(
         0,
         TextBytes::from_bytes("[INFO] 7 a=1|b=2").expect("a page"),
@@ -2343,13 +2355,14 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let mut changed = held[0].clone();
         let original_uuid = changed.get_curruuid();
         let replacement = Arc::new(
-            yggdryl::Url::from_str("file:///replacement/location.log").expect("a replacement URL"),
+            yggdryl::Uri::from_str("file:///replacement/location.log")
+                .expect("a replacement identifier"),
         );
-        changed.set_sourceurl(Some(Arc::clone(&replacement)));
+        changed.set_sourceuri(Some(Arc::clone(&replacement)));
         assert_eq!(changed.get_crosscode(), replacement.to_string());
         assert_ne!(changed.get_curruuid(), original_uuid);
         assert_eq!(held[0].get_crosscode(), expected);
-        changed.set_sourceurl(None);
+        changed.set_sourceuri(None);
         assert_eq!(changed.get_crosscode(), "");
     }
 }
@@ -2383,6 +2396,11 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// Five of the fourteen are the nineteen event columns the plan compiles once
 /// per read: the two identity lists, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
+///
+/// A read now shares what it was addressed by rather than where that
+/// resolves to, and the count did not move: the location is a narrowing of
+/// the identifier rather than a second value beside it, so the read still
+/// holds one reference-counted source and a row still clones one handle.
 const TEXT_LINES_ONCE: usize = 14;
 
 /// What a reader that keeps its lines pays on top: two per window it had to

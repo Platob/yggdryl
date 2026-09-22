@@ -248,7 +248,11 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         message.get_crosshashcode(),
         yggdryl::xxhash::xxh3(b"EXPLICIT")
     );
-    assert_ne!(message.get_curruuid(), implicit_uuid);
+    // Naming the chain moves the chain's identity and not the message's: a
+    // message's `currhashcode` leaves the cross code out on purpose, so that
+    // one message logged at two hops is one message, and the identity the
+    // code and the instant derive says the same.
+    assert_eq!(message.get_curruuid(), implicit_uuid);
     assert_eq!(message.get_curruuid(), message.time_uuid().unwrap());
     assert_eq!(
         message.get_crossuuid(),

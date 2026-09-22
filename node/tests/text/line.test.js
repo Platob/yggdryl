@@ -11,11 +11,6 @@ function source(payload = CAPTURE) {
   return IOBase.fromBytes(Buffer.from(payload))
 }
 
-function lifted() {
-  const options = new TextOptions()
-  options.liftNames = ['55']
-  return options
-}
 
 test('a path parses every segment kind and renders back', () => {
   const path = new FieldPath('order.line[0]')
@@ -55,6 +50,21 @@ test('every line becomes one typed row', () => {
   assert.notEqual(lines[0].sourceurl, null)
 })
 
+test('a line is crossed by the identifier it was read under', () => {
+  const lines = [...source().readTextLines(new TextOptions())]
+  // A located read is the common case, and there the identifier a line was
+  // read under and the location it narrows to are the same text.
+  assert.notEqual(lines[0].sourceuri, null)
+  assert.equal(lines[0].sourceuri, lines[0].sourceurl)
+  // The cross code is that identifier, which is what names the chain.
+  assert.equal(lines[0].crosscode, lines[0].sourceuri)
+  assert.notEqual(lines[0].crosshashcode, 0n)
+  // Every row of one read is addressed the same way, so they cross alike.
+  assert.equal(lines[1].sourceuri, lines[0].sourceuri)
+  assert.equal(lines[1].crossuuid, lines[0].crossuuid)
+  assert.notEqual(lines[1].curruuid, lines[0].curruuid)
+})
+
 test('a line reads itself on the first ask', () => {
   const lines = [...source().readTextLines(new TextOptions())]
   // Nothing asked for a tree while the line was read; the payload's own
@@ -68,8 +78,9 @@ test('a line is an event under the options it reads itself by', () => {
   const options = new TextOptions()
   options.rowheader = String.raw`^\[(?P<level>[A-Z]+)\] `
   const line = new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
-  // The body is the whole line, and the header is read off it when asked.
-  assert.equal(line.body, '[INFO] 8=FIX|55=AAPL|35=D')
+  // The body is the line past its header, which comes off where the line is
+  // made; the captures are what the header named.
+  assert.equal(line.body, '8=FIX|55=AAPL|35=D')
   assert.deepEqual(line.captures, ['INFO'])
   assert.equal(line.mtime, null)
   assert.equal(line.currunix, 0n)
@@ -78,7 +89,16 @@ test('a line is an event under the options it reads itself by', () => {
   const later = new TextLine(7, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
   assert.equal(later.index, 7)
   assert.notEqual(line.curruuid, later.curruuid)
-  assert.equal(line.currhashcode, new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode)
+  // A line read under no header states the whole text as its body and names
+  // nothing, so it is a different event from this one.
+  assert.notEqual(
+    line.currhashcode,
+    new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
+  )
+  // A line a caller holds was read under no identifier, so both accessors
+  // answer null and nothing spells a cross code.
+  assert.equal(line.sourceuri, null)
+  assert.equal(line.sourceurl, null)
   assert.equal(line.crosscode, '')
   assert.equal(line.crosshashcode, 0n)
   assert.match(line.crossuuid, /^[0-9a-f-]{36}$/)
@@ -99,26 +119,26 @@ test('a line with no body is no line', () => {
   assert.deepEqual(lines.map((line) => Number(line.index)), [0, 2])
 })
 
-test('a lifted path builds the tree and is found by path', () => {
-  const lines = [...source().readTextLines(lifted())]
+test('the entry tree is built and found by path', () => {
+  const lines = [...source().readTextLines(new TextOptions())]
   assert.notEqual(lines[0].entries, null)
   assert.equal(lines[0].getEntryByPath('55').value, 'AAPL')
   assert.equal(lines[1].getEntryByPath('55').value, 'MSFT')
 })
 
 test('a miss is null and the raising form says which path', () => {
-  const [line] = [...source().readTextLines(lifted())]
+  const [line] = [...source().readTextLines(new TextOptions())]
   assert.equal(line.getEntryByPath('nosuch'), null)
   assert.throws(() => line.entryByPath('nosuch'), /nosuch/)
 })
 
 test('a resolved path and its text reach the same entry', () => {
-  const [line] = [...source().readTextLines(lifted())]
+  const [line] = [...source().readTextLines(new TextOptions())]
   assert.equal(line.getEntryByPath(new FieldPath('"55"')).value, 'AAPL')
 })
 
 test('the setter creates what is not there and the remover takes it', () => {
-  const [line] = [...source().readTextLines(lifted())]
+  const [line] = [...source().readTextLines(new TextOptions())]
   line.setEntryByPath('order.price', '12')
   assert.equal(line.getEntryByPath('order.price').value, '12')
   line.setEntryByPath('order.price', Buffer.from('13'))
@@ -128,7 +148,7 @@ test('the setter creates what is not there and the remover takes it', () => {
 })
 
 test('entries measure, index and list', () => {
-  const [line] = [...source().readTextLines(lifted())]
+  const [line] = [...source().readTextLines(new TextOptions())]
   const entries = line.entries
   assert.ok(entries.length >= 2)
   assert.equal(entries.at(0).key, '8')
@@ -137,7 +157,7 @@ test('entries measure, index and list', () => {
 })
 
 test('an entry is text, and its bytes are beside it', () => {
-  const [line] = [...source().readTextLines(lifted())]
+  const [line] = [...source().readTextLines(new TextOptions())]
   const entry = line.getEntryByPath('55')
   assert.equal(typeof entry.key, 'string')
   assert.equal(typeof entry.value, 'string')
@@ -190,9 +210,9 @@ test('a valid character is kept beside a lone byte on the same line', () => {
   assert.equal(line.decodedByteSize, 1)
 })
 
-test('a byte that was not text reaches a lifted entry decoded, with its bytes beside it', () => {
+test('a byte that was not text reaches an entry decoded, with its bytes beside it', () => {
   const wire = Buffer.concat([Buffer.from('8=FIX|55=caf'), Buffer.from([0xe9]), Buffer.from('|10=0\n')])
-  const [line] = [...IOBase.fromBytes(wire).readTextLines(lifted())]
+  const [line] = [...IOBase.fromBytes(wire).readTextLines(new TextOptions())]
   assert.equal(line.decodedByteSize, 1)
   const entry = line.getEntryByPath('55')
   assert.equal(entry.value, 'caf\u00e9')
@@ -212,9 +232,8 @@ test('a .log read through the reader carries body as a string column', () => {
   )
 })
 
-test('lift names and renames round-trip through the options', () => {
-  const options = lifted()
-  assert.equal(options.liftNames.length, 1)
+test('renames round-trip through the options', () => {
+  const options = new TextOptions()
   options.renameColumns = { body: 'payload' }
   assert.deepEqual(options.renameColumns, { body: 'payload' })
   const field = options.sourceField()
@@ -224,9 +243,6 @@ test('lift names and renames round-trip through the options', () => {
   }
   assert.ok(names.includes('payload'))
   assert.ok(!names.includes('body'))
-  assert.ok(names.includes('55'))
-  options.liftNames = null
-  assert.equal(options.liftNames, null)
 })
 
 test('a rename naming no column is refused when the schema is asked for', () => {
@@ -261,18 +277,6 @@ test('a malformed alias is refused', () => {
   }
 })
 
-test('a lifted path names its column with its alias', () => {
-  const options = new TextOptions()
-  options.liftNames = ['"55" as symbol']
-  const field = options.sourceField()
-  const names = []
-  for (let at = 0; at < field.fieldLen; at += 1) {
-    names.push(field.fieldAt(at).name)
-  }
-  assert.ok(names.includes('symbol'))
-  assert.ok(!names.includes('55'))
-})
-
 test('a text read is shaped by select and where given as properties', () => {
   const handle = IOBase.fromBytes(
     Buffer.from('[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n'),
@@ -284,7 +288,7 @@ test('a text read is shaped by select and where given as properties', () => {
     .readArrowReader({
       rowheader: '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
       startRownum: 1n,
-      select: 'cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
+      select: 'cast(seqnum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
       filter: "n > 1 and line like '%d' and level is not null",
     })
     .intoTable()
@@ -292,8 +296,8 @@ test('a text read is shaped by select and where given as properties', () => {
     table.schema.fields.map((field) => field.name),
     ['n', 'line', 'level', 'tenfold'],
   )
-  // The body is the whole line, its row header included.
-  assert.deepEqual([...table.getChild('line')], ['[WARN] id=9 second', '[INFO] id=11 third'])
+  // The body is the line past its row header.
+  assert.deepEqual([...table.getChild('line')], ['second', 'third'])
   assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
   // Given options stay untouched: the properties land on a copy, and an
   // undefined property is skipped.
@@ -304,7 +308,7 @@ test('a text read is shaped by select and where given as properties', () => {
     .intoTable()
   assert.deepEqual(
     [...lines.getChild('line')],
-    ['[INFO] id=7 first', '[WARN] id=9 second', '[INFO] id=11 third', 'plain'],
+    [' first', ' second', ' third', 'plain'],
   )
   assert.equal(options.select.isAll, true)
 })

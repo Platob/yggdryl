@@ -32,7 +32,7 @@ mod text {
         let values = Arc::new(StringArray::from(vec!["one", "two"]));
         let body = DictionaryArray::<arrow_array::types::Int32Type>::try_new(keys, values).unwrap();
         let schema = Arc::new(arrow_schema::Schema::new(vec![
-            arrow_schema::Field::new("sourceurl", arrow_schema::DataType::Utf8, false),
+            arrow_schema::Field::new("crosscode", arrow_schema::DataType::Utf8, false),
             arrow_schema::Field::new(
                 "body",
                 arrow_schema::DataType::Dictionary(
@@ -61,7 +61,7 @@ mod text {
         let mut target = named("refused.txt", b"old");
         let mut options: RecordOptions = TextOptions::new().into();
         let field = StructType::from_fields([
-            DataType::utf8().required_field("sourceurl"),
+            DataType::utf8().required_field("crosscode"),
             DataType::binary().required_field("body"),
         ])
         .map(DataType::from)
@@ -69,7 +69,7 @@ mod text {
         .required_field("row");
         options.set_field(field);
         let rows = [yggdryl::Scalar::from_struct([
-            ("sourceurl", yggdryl::Scalar::from("input")),
+            ("crosscode", yggdryl::Scalar::from("input")),
             ("body", yggdryl::Scalar::from(&b"first"[..])),
         ])
         .unwrap()];
@@ -88,7 +88,6 @@ mod text {
 
     mod intake {
 
-        use yggdryl::FieldPath;
         use yggdryl::graph::Event as _;
         use yggdryl::text::TextOptions;
         use yggdryl::text::{from_arrow_batch, from_arrow_reader};
@@ -105,6 +104,9 @@ mod text {
 
         #[test]
         fn a_batch_round_trips_back_into_its_lines() {
+            // The two facts a line no longer has a column of its own for are
+            // read back off the event columns that state them: the object out
+            // of `crosscode`, the place out of `seqnum`.
             let mut options = TextOptions::new();
             options.start_rownum = Some(0);
             options.parse_mimetype = true;
@@ -128,9 +130,12 @@ mod text {
         fn a_column_named_the_way_someone_else_writes_it_is_still_found() {
             let options = TextOptions::new();
             // A producer that calls the body `payload` and the object `source`.
+            // The object a line came from is the `crosscode` column now, so
+            // that is the column the other spelling renames - and the same
+            // spelling resolves back onto it on the way in.
             let renamed = TextOptions::new()
                 .with_renamed_column("body", "payload")
-                .with_renamed_column("sourceurl", "source");
+                .with_renamed_column("crosscode", "source");
             let lines = decode(b"hello\n", &renamed);
             let foreign = into_arrow_batch(lines, &renamed).expect("a batch");
 
@@ -151,33 +156,21 @@ mod text {
         }
 
         #[test]
-        fn a_column_the_batch_does_not_carry_leaves_its_field_at_the_default() {
-            let mut with_rownum = TextOptions::new();
-            with_rownum.start_rownum = Some(5);
+        fn a_column_that_states_nothing_leaves_its_field_at_the_default() {
+            let mut with_offset = TextOptions::new();
+            with_offset.start_rownum = Some(5);
+            // Written with no offset, so the first line has no place in a
+            // chain and its `seqnum` cell is null - a place is a count, and
+            // `seqnum` is null at zero.
             let lines = decode(b"only\n", &TextOptions::new());
             let batch = into_arrow_batch(lines, &TextOptions::new()).expect("a batch");
-            // The reading options want a rownum column the batch has none of.
-            let back = from_arrow_batch(&batch, &with_rownum).expect("lines read back");
+            // The reading options count from five. Nothing stated is nothing
+            // to take an offset off, so the line keeps the position the
+            // stream read it at rather than a place the row never stated.
+            let back = from_arrow_batch(&batch, &with_offset).expect("lines read back");
             assert_eq!(back.len(), 1);
             assert_eq!(back[0].index(), 0, "the position it was read at");
             assert_eq!(back[0].body(), "only");
-        }
-
-        #[test]
-        fn a_lifted_column_round_trips_back_into_its_entry() {
-            let options = TextOptions::new()
-                .try_with_lift_names(["55"])
-                .expect("the path parses");
-            let lines = decode(b"55=AAPL\n", &options);
-            let batch = into_arrow_batch(lines, &options).expect("a batch");
-            let back = from_arrow_batch(&batch, &options).expect("lines read back");
-            let path = FieldPath::from_str("55").expect("the path parses");
-            assert_eq!(
-                back[0]
-                    .get_entry_by_path(&path)
-                    .and_then(|held| held.value_bytes().as_str()),
-                Some("AAPL")
-            );
         }
 
         #[test]
@@ -200,13 +193,17 @@ mod text {
 
         #[test]
         fn a_stated_instant_is_the_rows_word_over_the_headers() {
-            // The mtime column states the instant a line read back answers, over
+            // `currunix` states the instant a line read back answers, over
             // whatever its own header would read: the row's word is the fact.
+            // With `parse_mtime` on the capture dates the line and has no
+            // column beside it - one owner per fact.
             let options = TextOptions::new()
                 .try_with_rowheader(r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ")
                 .expect("a header");
             let lines = decode(b"2026-01-02T10:15:30Z body\n", &options);
             let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+            assert!(batch.schema().index_of("mtime").is_err(), "no mtime column");
+            assert!(batch.schema().index_of("currunix").is_ok());
             let back = from_arrow_batch(&batch, &options).expect("lines read back");
             assert_eq!(back[0].mtime().unwrap(), lines[0].mtime().unwrap());
             assert_eq!(back[0].body(), lines[0].body());
@@ -214,6 +211,126 @@ mod text {
             restated.set_currunix(7);
             assert_eq!(restated.mtime().unwrap(), Some(7));
             assert_eq!(restated.get_currunix(), 7);
+        }
+    }
+
+    // --- The clauses and the one decode ---
+
+    mod clauses {
+
+        use arrow_array::StringArray;
+        use yggdryl::IOMedia as _;
+        use yggdryl::media::IORecordOptions as _;
+        use yggdryl::text::{TextOptions, read_text_lines};
+
+        use super::named;
+
+        const SOURCE: &[u8] = b"alpha\nbravo\ncharlie\ndelta\n";
+
+        /// Every body the one decode yields, in order.
+        fn decoded(source: &[u8], options: &TextOptions) -> Vec<String> {
+            read_text_lines(&named("app.log", source), options)
+                .expect("a settled configuration")
+                .map(|line| line.expect("a line").body().to_owned())
+                .collect()
+        }
+
+        /// Every value of one published column, in order.
+        fn published(source: &[u8], options: &TextOptions, column: &str) -> Vec<String> {
+            named("app.log", source)
+                .read_arrow_reader(&options.clone().into())
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch"))
+                .flat_map(|batch| {
+                    let index = batch.schema().index_of(column).expect("the column");
+                    batch
+                        .column(index)
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .expect("a text column")
+                        .iter()
+                        .map(|value| value.expect("a value").to_owned())
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        }
+
+        #[test]
+        fn the_one_decode_yields_every_line_and_the_where_clause_keeps_rows_above_it() {
+            // The decode is not the query. `read_text_lines` is the one parse
+            // both surfaces route through, so it answers every line the object
+            // holds; the `where` clause is a record clause, and the record
+            // surface is where it keeps rows. A caller holding the iterator
+            // holds the lines, not the result.
+            let options = TextOptions::new()
+                .with_filter("body like 'b%'")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            assert_eq!(published(SOURCE, &options, "body"), ["bravo"]);
+        }
+
+        #[test]
+        fn a_where_clause_naming_a_projection_alias_cannot_be_read_at_the_line() {
+            // Why the clause belongs above the decode rather than inside it: a
+            // `where` may name what the `select` made, and no line states a
+            // name the projection has not built yet. The clause runs after the
+            // projection here, and there is nothing at the line to run.
+            let options = TextOptions::new()
+                .with_select("trim(body) as line")
+                .expect("a projection")
+                .with_filter("line like 'b%'")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            assert_eq!(published(SOURCE, &options, "line"), ["bravo"]);
+        }
+
+        #[test]
+        fn a_where_clause_reads_every_column_the_row_schema_states() {
+            // The clause binds against the whole row a line becomes - the
+            // nineteen event columns it opens with, the place they state, and
+            // the header's own captures - not against the body alone.
+            let mut options = TextOptions::new()
+                .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")
+                .expect("a header");
+            options.start_rownum = Some(1);
+            let options = options
+                .with_filter("level = 'WARN' and seqnum > 1")
+                .expect("a clause");
+            let source = b"[WARN] first\n[INFO] second\n[WARN] third\n";
+
+            // Every body is the line past its row header: the level the
+            // header lifted into its own column is off the body.
+            assert_eq!(decoded(source, &options), ["first", "second", "third"]);
+            assert_eq!(published(source, &options, "body"), ["third"]);
+        }
+
+        #[test]
+        fn a_where_clause_naming_no_column_is_refused_by_the_read_and_not_by_the_decode() {
+            // The row schema states no `rownum` under any configuration - a
+            // line's place is its `seqnum` - so the read refuses the clause by
+            // name, before a byte is pulled; the decode never binds it at all,
+            // because the decode is not the query.
+            let options = TextOptions::new()
+                .with_filter("rownum > 1")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            let error = match named("app.log", SOURCE).read_arrow_reader(&options.into()) {
+                Err(error) => error.to_string(),
+                Ok(_) => panic!("a column the schema does not state is refused"),
+            };
+            assert!(error.contains("rownum"), "{error}");
         }
     }
 }

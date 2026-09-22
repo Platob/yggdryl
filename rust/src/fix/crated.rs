@@ -172,8 +172,8 @@ pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 /// counterparty are two instances.
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");
 
-/// The tag and name carrying the message's identity: the UUIDv7 its millisecond
-/// instant, sequence and cross-seeded code derive.
+/// The tag and name carrying the message's identity: the UUIDv7 its microsecond
+/// instant and code derive.
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
@@ -807,7 +807,14 @@ impl super::FixRegistry {
         }
         if next.get_msgtype(&value).is_none() {
             let normalized = crate::normalized(codes[at].name());
-            let canonical = if !normalized.is_empty()
+            // A code carrying no name of its own is named after its wire
+            // value, and a wire value folded is not a name: `B` would derive
+            // `b`, which is the spelling the *other* FIX message answers to,
+            // so the next registration of `b` would find that entry and add
+            // nothing. A placeholder therefore takes the value-derived name
+            // below, which no spelling can contend.
+            let canonical = if codes[at].name() != value.as_str()
+                && !normalized.is_empty()
                 && !matches!(normalized.as_str(), "." | "..")
                 && normalized
                     .bytes()

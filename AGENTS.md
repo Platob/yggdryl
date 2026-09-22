@@ -943,25 +943,38 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
-- Plain-text rows open with the nineteen event columns `EventColumn::ALL` names -
-  the line as the event it is, `currunix` first and `state` last - then nullable
-  `sourceurl: url` and required `body: utf8` - a line is never empty and text
-  by construction, refused at every door that sets one, and a blank physical
-  line is a separator rather than a record - its bytes decoded at the
-  transport in the charset the
-  handle's media type declares other than UTF-8 or US-ASCII, and otherwise
-  once where the line is made,
+- Plain-text rows are the nineteen event columns `EventColumn::ALL` names -
+  the line as the event it is, `currunix` first and `state` last - then
+  required `body: utf8`, then one column per row-header capture. The event
+  states every fact a column used to repeat and no column repeats one: the
+  object a line came from is `crosscode`, so `crosshashcode` is the XXH3-64 of
+  that URL string and `crossuuid` derives from it; the row number under
+  `TextOptions.start_rownum` is `seqnum`, null at zero and refused where a
+  count cannot hold it; when the record was written is `currunix`, the row
+  header's `mtime` capture where `parse_mtime` declares one and `IOBase::mtime`
+  where it does not. `body` is the line past what the header matched - the
+  header comes off where the line is made, so the captures are the line's and
+  the body is the payload, empty exactly where the header consumed the line -
+  and a line is never empty as cut, refused at every door that sets one, a
+  blank physical line being a separator rather than a record; its bytes are
+  decoded at the transport in the charset the handle's media type declares
+  other than UTF-8 or US-ASCII, and otherwise once where the line is made,
   each byte that is not UTF-8 read as the Windows-1252 character it is,
-  `TextLine::decoded_byte_size` counting them;
-  `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
-  them and names its first value. `parse_mtime`, on by default, inserts nullable
-  `mtime: datetime64(ns, UTC)` after it, filled by the row header's `mtime`
-  capture when the expression declares one and by `IOBase::mtime` when it does
-  not - one column whichever answered, and null when neither can. Flat `TextOptions` owns named `rowheader`
+  `TextLine::decoded_byte_size` counting them. `currhashcode` is the shared
+  event digest - the captures a header lifted, the parents, the state, the
+  place and the predecessor - and then the body, with the capture that dates
+  the line left out, because `currunix` is coupled with the code rather than
+  fed into it. The row header is the only thing that lifts a column out of a
+  line. Flat `TextOptions` owns named `rowheader`
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free
   datetime captures; writes consume only non-null, non-empty `utf8` `body`.
+  `read_text_lines` is the decode, not the query: it answers every line under
+  the options it is given, and the `where`, `select` and row bounds are the
+  record surface's - `apply_arrow_expressions` over the rows the lines become -
+  because a `where` may name a column the `select` builds and no line states
+  one. `into_arrow_batch`/`into_arrow_reader` sit on the same side of that seam.
 - Content coding belongs to the handle: reject outer compression for formats that
   compress internally, such as Parquet.
 

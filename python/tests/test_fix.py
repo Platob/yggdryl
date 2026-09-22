@@ -3311,8 +3311,8 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
         "level",
     ]
     assert str(captures.field("msgseqnum").dtype) == "int64"
-    # The clock is the capture's own column rather than the `mtime` one, so
-    # this header dates no line: it is typed by its own syntax, where an
-    # `mtime` capture would be consumed and read at nanoseconds UTC.
+    # The clock is the capture's own column rather than `currunix`, so this
+    # header dates no line: it is typed by its own syntax, where an `mtime`
+    # capture would be consumed into `currunix` and read at nanoseconds UTC.
     assert str(captures.field("timestamp").dtype) == "datetime64(us)"
     assert "mtime" not in names[-7:]

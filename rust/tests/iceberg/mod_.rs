@@ -6504,11 +6504,11 @@ mod line_projection {
             levels.iter().collect::<Vec<_>>(),
             [Some("INFO"), Some("WARN")]
         );
-        // The body is the whole retained record, the row header included
-        // and the edges stripped; the captures are their own columns.
+        // The body is the retained record past its row header, the edges
+        // stripped; the captures are their own columns.
         assert_eq!(
             bodies.iter().collect::<Vec<_>>(),
-            [Some("[INFO] id=7 first"), Some("[WARN] id=42 second")]
+            [Some("first"), Some("second")]
         );
         assert_eq!(
             table

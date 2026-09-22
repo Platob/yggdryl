@@ -226,9 +226,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .with_threads(1)
         .with_capture_names(["msgpluginid"])
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    // A record the row header consumed whole states an empty body, which a
+    // line built by hand refuses; the corpus carries one, and it is skipped
+    // here exactly as the count above skips it.
     let lines: Vec<TextLine> = held
         .iter()
         .enumerate()
+        .filter(|(_, body)| !body.is_empty())
         .map(|(index, body)| {
             let plugin = if index % 2 == 0 {
                 "ULB"

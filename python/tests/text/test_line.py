@@ -7,22 +7,18 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions
+from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions, Url
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
 
 
 def lifted() -> TextOptions:
-    options = TextOptions()
-    options.lift_names = ["55"]
-    return options
+    return TextOptions()
 
 
 def lifted_58() -> TextOptions:
-    options = TextOptions()
-    options.lift_names = ["58"]
-    return options
+    return TextOptions()
 
 
 def source(payload: bytes = CAPTURE) -> Buffer:
@@ -68,6 +64,25 @@ class TestTextLine:
         assert lines[0].body == "8=FIX|55=AAPL|35=D"
         assert lines[0].sourceurl is not None
 
+    def test_a_line_is_crossed_by_the_identifier_it_was_read_under(self) -> None:
+        handle = source()
+        lines = list(handle.read_text_lines(options=TextOptions()))
+        # A line carries what its read was addressed by, which is not always a
+        # place. A located read - the common case - narrows that identifier to
+        # a URL, so both answer and both spell the same text; a read under a
+        # name answers the name here and nothing at `sourceurl`.
+        assert isinstance(lines[0].sourceuri, Url)
+        assert str(lines[0].sourceuri) == str(handle.uri)
+        assert str(lines[0].sourceurl) == str(lines[0].sourceuri)
+        # The code that names the chain is that identifier rather than the
+        # location it narrows to.
+        assert lines[0].crosscode == str(lines[0].sourceuri)
+        assert lines[0].crosshashcode != 0
+        # Every row of one read is addressed the same way, so they cross alike.
+        assert str(lines[1].sourceuri) == str(lines[0].sourceuri)
+        assert lines[1].crossuuid == lines[0].crossuuid
+        assert lines[1].curruuid != lines[0].curruuid
+
     def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
         # Nothing asked for a tree while the line was read; the payload's own
@@ -80,17 +95,25 @@ class TestTextLine:
         options = TextOptions()
         options.rowheader = r"^\[(?P<level>[A-Z]+)\] "
         line = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
-        # The body is the whole line, and the header is read off it when asked.
-        assert line.body == "[INFO] 8=FIX|55=AAPL|35=D"
+        # The body is the line past its header, which comes off where the
+        # line is made; the captures are what the header named.
+        assert line.body == "8=FIX|55=AAPL|35=D"
         assert line.captures == ("INFO",)
         assert line.mtime is None
         assert line.currunix == 0
-        # Its identity derives from its instant, physical sequence and bytes.
+        # Its identity derives from its instant and the whole code of its
+        # source, its row and its bytes, so one body on two rows is two.
         assert isinstance(line.curruuid, Scalar)
         later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
         assert later.index == 7
         assert line.curruuid != later.curruuid
-        assert line.currhashcode == TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        # A line read under no header states the whole text as its body and
+        # names nothing, so it is a different event from this one.
+        assert line.currhashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        # Another body is another code, and so another identity.
+        other = TextLine(7, "[INFO] 8=FIX|55=MSFT|35=D", None, options)
+        assert other.currhashcode != line.currhashcode
+        assert other.curruuid != line.curruuid
         assert line.crosscode == "" and line.crosshashcode == 0
         assert line.crossuuid != line.curruuid or line.crosscode == ""
         # Stated captures are the line's word over its own header.
@@ -214,12 +237,6 @@ class TestTextIsDecodedWhereTheLineIsMade:
 
 
 class TestTextOptions:
-    def test_lift_names_round_trips(self) -> None:
-        options = lifted()
-        assert options.lift_names is not None
-        options.lift_names = None
-        assert options.lift_names is None
-
     def test_rename_columns_round_trips_and_renames(self) -> None:
         options = TextOptions()
         options.rename_columns = {"body": "payload"}
@@ -234,9 +251,11 @@ class TestTextOptions:
         with pytest.raises(ValueError, match="nosuch"):
             options.source_field()
 
-    def test_a_lifted_column_appears_in_the_schema_before_any_read(self) -> None:
-        names = [child.name for child in lifted().source_field()]
-        assert "55" in names
+    def test_a_capture_column_appears_in_the_schema_before_any_read(self) -> None:
+        options = TextOptions()
+        options.rowheader = r"^(?P<level>[A-Z]+) "
+        names = [child.name for child in options.source_field()]
+        assert "level" in names
 
     def test_the_options_stay_hashable_with_both_new_fields(self) -> None:
         options = lifted()
@@ -276,11 +295,3 @@ class TestFieldPathAlias:
             with pytest.raises(ValueError, match="field path"):
                 FieldPath(text)
 
-    def test_a_lifted_path_names_its_column_with_its_alias(self) -> None:
-        options = TextOptions()
-        options.lift_names = ['"55" as symbol']
-        names = [child.name for child in options.source_field()]
-        assert "symbol" in names
-        assert "55" not in names
-        line = next(iter(source(b"55=AAPL\n").read_text_lines(options=options)))
-        assert line.get_entry_by_path("55").value == "AAPL"

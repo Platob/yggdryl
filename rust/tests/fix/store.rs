@@ -2994,16 +2994,26 @@ mod committed {
     /// and displays, while the other 103 retained an explicit `Grp` suffix.
     /// It moved when the crate identifier document replaced its partial two-part
     /// capture key with the complete length-prefixed `msgsesseventid` key.
-    /// It moved when the crate's event columns stopped restating what
+    /// It moved when `curruuid` said its instant is a microsecond one: the
+    /// UUIDv7 a message derives carries the microsecond within the
+    /// millisecond in `rand_a`, so that one definition's description hashes
+    /// differently and no other document in the store does.
+    /// It last moved when that identity stopped naming a sequence and a cross
+    /// seed: the code is stored whole in the identifier rather than rehashed
+    /// with them, and since the code already holds both, the same one
+    /// description is shorter by what it no longer has to say.
+    /// It last moved when the crate's event columns stopped restating what
     /// `EventColumn` already owns: eleven of the nineteen add nothing FIX's
     /// own and now take the column's display and wording, so a text line's
-    /// batch and a FIX row describe one column with one sentence. Only those
-    /// eleven descriptions moved - no definition, reference, tag or count
-    /// did, which is why the census below stands unchanged.
+    /// batch and a FIX row describe one column with one sentence - and
+    /// `curruuid`'s microsecond wording above reaches the crate field through
+    /// that column rather than through a second copy of the sentence. Only
+    /// those eleven descriptions moved - no definition, reference, tag or
+    /// count did, which is why the census below stands unchanged.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 8_614_469_411_510_753_839);
+        assert_eq!(registry.stable_hash(), 4_902_395_561_484_260_370);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

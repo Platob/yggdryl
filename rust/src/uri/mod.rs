@@ -13,13 +13,14 @@ use std::net::Ipv6Addr;
 use std::ops::Div;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 use serde::de::Error as _;
 use serde::ser::SerializeStruct as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, SmolStrBuilder};
 
-use crate::{Error, Result, hashing::stable_hash_display};
+use crate::{Error, Result, Str, hashing::stable_hash_display};
 use crate::{MediaType, MimeType, Scheme};
 
 mod arn;
@@ -53,7 +54,16 @@ use parser::*;
 use path::file_name_from_path;
 
 /// An owned, canonical absolute URI with concrete scheme, authority, and path.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+///
+/// The canonical rendering is cached beside the components, because a reader
+/// that shares one identifier across its rows projects that text once per
+/// reader rather than once per row. The cache is what the value renders to,
+/// so it is no part of the value: every comparison, ordering and hash reads
+/// the components alone, and a clone starts unrendered. That is what keeps
+/// the cache honest: a mutation either replaces the value with a clone of it,
+/// which has rendered nothing, or writes its path through
+/// [`state_path`](Self::state_path), the one door that drops the rendering
+/// with the component it spelled.
 pub struct Uri {
     scheme: Scheme,
     authority: Authority,
@@ -61,6 +71,75 @@ pub struct Uri {
     has_authority: bool,
     query: Option<SmolStr>,
     fragment: Option<SmolStr>,
+    rendered: OnceLock<Str>,
+}
+
+impl Clone for Uri {
+    fn clone(&self) -> Self {
+        Self {
+            scheme: self.scheme.clone(),
+            authority: self.authority.clone(),
+            path: self.path.clone(),
+            has_authority: self.has_authority,
+            query: self.query.clone(),
+            fragment: self.fragment.clone(),
+            rendered: OnceLock::new(),
+        }
+    }
+}
+
+impl fmt::Debug for Uri {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Uri")
+            .field("scheme", &self.scheme)
+            .field("authority", &self.authority)
+            .field("path", &self.path)
+            .field("has_authority", &self.has_authority)
+            .field("query", &self.query)
+            .field("fragment", &self.fragment)
+            .finish()
+    }
+}
+
+/// Every component the value is, in declaration order and without the cache.
+macro_rules! uri_components {
+    ($value:expr) => {
+        (
+            &$value.scheme,
+            &$value.authority,
+            &$value.path,
+            $value.has_authority,
+            &$value.query,
+            &$value.fragment,
+        )
+    };
+}
+
+impl PartialEq for Uri {
+    fn eq(&self, other: &Self) -> bool {
+        uri_components!(self) == uri_components!(other)
+    }
+}
+
+impl Eq for Uri {}
+
+impl std::hash::Hash for Uri {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        uri_components!(self).hash(state);
+    }
+}
+
+impl PartialOrd for Uri {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Uri {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        uri_components!(self).cmp(&uri_components!(other))
+    }
 }
 
 impl Uri {
@@ -123,6 +202,7 @@ impl Uri {
             has_authority,
             query,
             fragment,
+            rendered: OnceLock::new(),
         })
     }
 
@@ -268,8 +348,35 @@ impl Uri {
         match self.scheme() {
             scheme if scheme == &Scheme::URN => Urn::from_uri(self.clone())?.locator(),
             scheme if scheme == &Scheme::ARN => Arn::from_uri(self.clone())?.locator(),
+            scheme if scheme == &Scheme::FILE && !self.has_authority => self.rooted(),
             _ => Url::from_uri(self.clone()),
         }
+    }
+
+    /// Answer a relative `file:` identifier as the location it names.
+    ///
+    /// The parser reads text carrying no usable scheme as a filesystem path
+    /// and leaves it relative, so `data/x` is `file:data/x` and names no root
+    /// of its own. The working directory is the root every relative path is
+    /// read against - the same one [`Url::from_path`] roots one at - and this
+    /// is where that reading happens: the directory is converted as the
+    /// platform path it is and this identifier's path joined onto it as the
+    /// URI text it is, so an escape the path carries stays the one escape it
+    /// was rather than being encoded a second time. The query and the
+    /// fragment are this identifier's own and are carried across, because the
+    /// directory contributes neither.
+    fn rooted(&self) -> Result<Url> {
+        let base = Self::from_path(std::env::current_dir()?)?;
+        let path = base.path.joinpath(self.path.as_str())?;
+        Self::from_parts_with_authority(
+            base.scheme,
+            base.authority,
+            path,
+            true,
+            self.query.clone(),
+            self.fragment.clone(),
+        )
+        .and_then(Url::from_uri)
     }
 
     /// Consume a canonical `file:` URI and return its platform path.
@@ -307,6 +414,27 @@ impl Uri {
             validate_component(fragment, "uri fragment", 0, is_query_fragment_byte)?;
         }
         Ok(())
+    }
+
+    /// Return the canonical rendering as one lazily cached shared string.
+    ///
+    /// A reader that shares one identifier across its rows - a located text
+    /// read sharing one `Arc<Uri>` - projects the same cross code from this
+    /// without another allocation per row.
+    pub(crate) fn shared_text(&self) -> &Str {
+        self.rendered
+            .get_or_init(|| Str::from(smol_str::format_smolstr!("{self}")))
+    }
+
+    /// Replace the path component and drop what the value rendered to.
+    ///
+    /// Every write to a path goes through this one door, so a cached
+    /// rendering cannot outlive the components it spells - including the two
+    /// narrowings that fold a path's case as they canonicalize, which write
+    /// a component of a value a caller handed them.
+    pub(super) fn state_path(&mut self, path: UriPath) {
+        self.path = path;
+        self.rendered = OnceLock::new();
     }
 
     /// Return the required scheme component.
@@ -659,7 +787,7 @@ impl Uri {
         if !path.remove_extension() {
             return false;
         }
-        self.path = path;
+        self.state_path(path);
         true
     }
 
@@ -669,13 +797,13 @@ impl Uri {
         if !path.clear_extensions() {
             return false;
         }
-        self.path = path;
+        self.state_path(path);
         true
     }
 
     fn set_resource_path(&mut self, path: UriPath) -> Result<()> {
         let mut candidate = self.clone();
-        candidate.path = path;
+        candidate.state_path(path);
         candidate.validate()?;
         *self = candidate;
         Ok(())
@@ -698,7 +826,7 @@ impl Uri {
     pub fn joinpath(&self, value: &str) -> Result<Self> {
         let path = self.path.joinpath(value)?;
         let mut candidate = self.clone();
-        candidate.path = path;
+        candidate.state_path(path);
         candidate.validate()?;
         Ok(candidate)
     }
@@ -707,7 +835,7 @@ impl Uri {
     pub fn parent(&self) -> Option<Self> {
         let path = self.path.parent()?;
         let mut candidate = self.clone();
-        candidate.path = path;
+        candidate.state_path(path);
         candidate.validate().ok()?;
         Some(candidate)
     }

@@ -3660,9 +3660,9 @@
       'level',
     ])
     assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
-    // The clock is the capture's own column rather than the `mtime` one, so
-    // this header dates no line: it is typed by its own syntax, where an
-    // `mtime` capture would be consumed and read at nanoseconds UTC.
+    // The clock is the capture's own column rather than `currunix`, so this
+    // header dates no line: it is typed by its own syntax, where an `mtime`
+    // capture would be consumed into `currunix` and read at nanoseconds UTC.
     assert.equal(String(captures.field('timestamp').dtype), 'datetime64(us)')
     assert.ok(!names.slice(-7).includes('mtime'))
   })

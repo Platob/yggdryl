@@ -415,9 +415,6 @@ class TestFramedText:
 
         reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
         assert reader.schema.names[len(EVENT_COLUMNS) :] == [
-            "sourceurl",
-            "rownum",
-            "mtime",
             "body",
             "dropped_byte_size",
             "kind",
@@ -432,14 +429,14 @@ class TestFramedText:
 
         table = reader.read_all()
         assert table.column("body").to_pylist() == [
-            "[A] first\ncontinued in a",
+            "first\ncontinued in a",
             "leading in b",
-            "[B] second",
+            "second",
         ]
-        assert table.column("rownum").to_pylist() == [1, 1, 2]
+        assert table.column("seqnum").to_pylist() == [1, 1, 2]
         assert table.column("kind").to_pylist() == ["A", None, "B"]
         assert table.column("dropped_byte_size").to_pylist() == [None, None, None]
-        urls = table.column("sourceurl").to_pylist()
+        urls = table.column("crosscode").to_pylist()
         assert urls[0].endswith("a.log")
         assert urls[1].endswith("b.log") and urls[2].endswith("b.log")
         if handler is not None:
@@ -464,8 +461,6 @@ class TestFramedText:
         )
 
         assert reader.schema.names[len(EVENT_COLUMNS) :] == [
-            "sourceurl",
-            "mtime",
             "body",
             "dropped_byte_size",
             "kind",

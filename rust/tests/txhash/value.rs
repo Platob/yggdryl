@@ -5,8 +5,6 @@ mod coupled {
     use yggdryl::txhash::{
         DEFAULT_UNIT, TxHash, UNIX_WIDTH, digest, dtype, restate_unix, txh3, txh64, txh128,
     };
-    use yggdryl::xxhash;
-
     use yggdryl::{Digest, DigestAlgorithm, Error, TimeUnit};
 
     const INSTANT: i64 = 1_700_000_000_000_000;
@@ -18,18 +16,28 @@ mod coupled {
             .map(|algorithm| (algorithm, digest(b"AAPL", INSTANT, algorithm)))
     }
 
-    fn expected_uuid(millis: i64, seqnum: u64, digest: u64, seed: u64) -> yggdryl::Uuid {
-        let mut identity = [0_u8; 16];
-        identity[..8].copy_from_slice(&seqnum.to_be_bytes());
-        identity[8..].copy_from_slice(&digest.to_be_bytes());
-        let fingerprint = u128::from(xxhash::xxh3_with_seed(&identity, seed) & ((1_u64 << 62) - 1));
+    /// The packing rule restated: the millisecond, the version, the
+    /// microsecond remainder, the digest's top two bits, the variant, and the
+    /// digest's low sixty-two. Nothing is hashed here because nothing is
+    /// hashed there - the expectation is the layout itself.
+    fn expected_uuid(micros: i64, digest: u64) -> yggdryl::Uuid {
         yggdryl::Uuid::new(
-            (u128::from(millis.unsigned_abs()) << 80)
+            (u128::from((micros / 1_000).unsigned_abs()) << 80)
                 | (7_u128 << 76)
-                | (u128::from(seqnum & 0x0fff) << 64)
+                | (u128::from((micros % 1_000).unsigned_abs()) << 66)
+                | (u128::from(digest >> 62) << 64)
                 | (2_u128 << 62)
-                | fingerprint,
+                | u128::from(digest & ((1_u64 << 62) - 1)),
         )
+    }
+
+    /// The whole 64-bit payload one identifier carries, read back out of the
+    /// two places the layout splits it: the two bits above the variant and
+    /// the low sixty-two under it.
+    fn payload_of(value: yggdryl::Uuid) -> u64 {
+        let packed = value.get();
+        let payload = (((packed >> 64) & 0x3) << 62) | (packed & ((1_u128 << 62) - 1));
+        u64::try_from(payload).expect("the layout hands back exactly 64 bits")
     }
 
     #[test]
@@ -61,16 +69,16 @@ mod coupled {
     }
 
     #[test]
-    fn uuid_projection_packs_milliseconds_sequence_and_content_as_uuidv7() {
+    fn uuid_projection_packs_microseconds_and_content_as_uuidv7() {
         let digest = Digest::new(DigestAlgorithm::Xxh64, 0x0123_4567_89ab_cdef);
         let content = 0x0123_4567_89ab_cdef_u64;
         for nanoseconds in [0, 999, 1_000, 999_999, 1_000_000, 1_000_000_000, i64::MAX] {
             let value = TxHash::new_in(nanoseconds, TimeUnit::Nanosecond, digest).unwrap();
             let raw = value.into_bytes();
-            let projected = value.into_uuid(0, 0).unwrap();
+            let projected = value.into_uuid().unwrap();
             assert_eq!(
                 projected,
-                expected_uuid(nanoseconds.div_euclid(1_000_000), 0, content, 0),
+                expected_uuid(nanoseconds.div_euclid(1_000), content),
                 "{nanoseconds}"
             );
             let bytes = projected.into_bytes();
@@ -84,23 +92,27 @@ mod coupled {
             assert_eq!(&raw[..UNIX_WIDTH], &nanoseconds.to_be_bytes());
             assert_eq!(&raw[UNIX_WIDTH..], &*digest.into_bytes());
         }
-        let value = TxHash::new_in(0, TimeUnit::Nanosecond, digest).unwrap();
+        // The helper restates the packing, so one worked value pins both it
+        // and the layout: the millisecond, the 123rd microsecond within it,
+        // and the digest whole - its low 48 bits verbatim in the last group.
+        let pinned = TxHash::new_in(
+            1_645_557_742_000_123,
+            TimeUnit::Microsecond,
+            Digest::new(DigestAlgorithm::Xxh64, 0xfedc_ba98_7654_3210),
+        )
+        .unwrap();
         assert_eq!(
-            value.into_uuid(7, 0).unwrap(),
-            expected_uuid(0, 7, content, 0)
+            pinned.into_uuid().unwrap(),
+            expected_uuid(1_645_557_742_000_123, 0xfedc_ba98_7654_3210)
         );
-        assert_ne!(
-            value.into_uuid(0, 0).unwrap(),
-            value.into_uuid(4_096, 0).unwrap()
-        );
-        assert_ne!(
-            value.into_uuid(4_096, 0).unwrap(),
-            value.into_uuid(u64::MAX, 0).unwrap()
+        assert_eq!(
+            pinned.into_uuid().unwrap().to_string(),
+            "017f22e2-79b0-71ef-bedc-ba9876543210"
         );
     }
 
     #[test]
-    fn uuid_projection_hashes_the_content_code_under_the_supplied_seed() {
+    fn uuid_projection_stores_the_content_code_rather_than_hashing_it() {
         let code = 0x0123_4567_89ab_cdef_u64;
         let value = TxHash::new_in(
             1_645_557_742_000,
@@ -108,21 +120,39 @@ mod coupled {
             Digest::new(DigestAlgorithm::Xxh3, u128::from(code)),
         )
         .unwrap();
-        for seed in [0, 1, 0xfeed_face_cafe_beef, u64::MAX] {
-            assert_eq!(
-                value.into_uuid(29, seed).unwrap(),
-                expected_uuid(1_645_557_742_000, 29, code, seed),
-                "seed {seed}"
-            );
-        }
-        assert_ne!(
-            value.into_uuid(29, 0).unwrap(),
-            value.into_uuid(29, 1).unwrap()
+        assert_eq!(
+            value.into_uuid().unwrap(),
+            expected_uuid(1_645_557_742_000_000, code)
         );
+        // The payload bits are the digest itself: every code reads back out
+        // of the identifier as the 64 bits that went in, so the projection
+        // stores the digest rather than hashing it. The last four straddle
+        // the split - all sixty-two low bits, each of the two bits above the
+        // variant on its own, and every bit at once.
+        let codes = [
+            0,
+            1,
+            code,
+            0x3fff_ffff_ffff_ffff,
+            0x4000_0000_0000_0000,
+            0x8000_0000_0000_0000,
+            u64::MAX,
+        ];
+        for code in codes {
+            let projected = TxHash::new_in(
+                1_645_557_742_000,
+                TimeUnit::Millisecond,
+                Digest::new(DigestAlgorithm::Xxh3, u128::from(code)),
+            )
+            .unwrap()
+            .into_uuid()
+            .unwrap();
+            assert_eq!(payload_of(projected), code, "code {code:#018x}");
+        }
     }
 
     #[test]
-    fn uuid_projection_orders_milliseconds_before_sequence_and_digest() {
+    fn uuid_projection_orders_microseconds_before_the_digest() {
         let instants = [
             0,
             1_000_000,
@@ -151,26 +181,45 @@ mod coupled {
                 "native ordering still compares the signed count"
             );
             assert!(
-                earlier.into_uuid(0, 0).unwrap() < later.into_uuid(0, 0).unwrap(),
+                earlier.into_uuid().unwrap() < later.into_uuid().unwrap(),
                 "{pair:?}"
             );
         }
-        // Within one millisecond the sequence orders before the digest while its
-        // low twelve bits do not wrap.
-        let low = TxHash::new_in(
+        // Within one microsecond the digest orders, because nothing else is
+        // left to: both nanosecond counts floor to the same microsecond, so
+        // the identifiers differ only in the bits the digest fills.
+        let smaller = TxHash::new_in(
             1_000,
             TimeUnit::Nanosecond,
             Digest::new(DigestAlgorithm::Xxh64, 1),
         )
         .unwrap();
-        let high = TxHash::new_in(
+        let larger = TxHash::new_in(
             1_999,
             TimeUnit::Nanosecond,
             Digest::new(DigestAlgorithm::Xxh64, 2),
         )
         .unwrap();
-        assert!(high.into_uuid(0, 0).unwrap() < low.into_uuid(1, 0).unwrap());
-        assert_ne!(low.into_uuid(7, 0).unwrap(), high.into_uuid(7, 0).unwrap());
+        assert!(smaller.into_uuid().unwrap() < larger.into_uuid().unwrap());
+        // The whole digest orders, including the top two bits that ride above
+        // the variant rather than under it.
+        let top = TxHash::new_in(
+            1_000,
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh64, u128::from(1_u64 << 63)),
+        )
+        .unwrap();
+        assert!(larger.into_uuid().unwrap() < top.into_uuid().unwrap());
+        // One microsecond later is a strictly greater identifier, whatever the
+        // digest: these two instants share one millisecond, and the
+        // microsecond remainder in `rand_a` sits above every payload bit.
+        let next = TxHash::new_in(
+            2_000,
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh64, 0),
+        )
+        .unwrap();
+        assert!(top.into_uuid().unwrap() < next.into_uuid().unwrap());
         // Before the epoch there is no UUIDv7: the projection is refused at `$`,
         // while the raw bytes still hold the two's-complement count.
         let before = TxHash::new_in(
@@ -181,7 +230,7 @@ mod coupled {
         .unwrap();
         let epoch = TxHash::new_in(0, TimeUnit::Nanosecond, before.digest()).unwrap();
         assert!(matches!(
-            before.into_uuid(0, 0).unwrap_err(),
+            before.into_uuid().unwrap_err(),
             Error::InvalidRecord { ref path, .. } if path == "$"
         ));
         assert!(
@@ -196,7 +245,7 @@ mod coupled {
         for seconds in [0, 2] {
             let expected = TxHash::new_in(seconds, TimeUnit::Second, digest)
                 .unwrap()
-                .into_uuid(0, 0)
+                .into_uuid()
                 .unwrap();
             for (unit, scale) in [
                 (TimeUnit::Second, 1),
@@ -205,31 +254,31 @@ mod coupled {
                 (TimeUnit::Nanosecond, 1_000_000_000),
             ] {
                 let value = TxHash::new_in(seconds * scale, unit, digest).unwrap();
-                assert_eq!(value.into_uuid(0, 0).unwrap(), expected, "{unit}");
+                assert_eq!(value.into_uuid().unwrap(), expected, "{unit}");
             }
         }
-        let largest = 281_474_976_710_655_i64;
+        let largest = 281_474_976_710_655_999_i64;
         assert!(
-            TxHash::new_in(largest, TimeUnit::Millisecond, digest)
+            TxHash::new_in(largest, TimeUnit::Microsecond, digest)
                 .unwrap()
-                .into_uuid(0, 0)
+                .into_uuid()
                 .is_ok()
         );
         for count in [-1, largest + 1] {
             assert!(matches!(
-                TxHash::new_in(count, TimeUnit::Millisecond, digest)
+                TxHash::new_in(count, TimeUnit::Microsecond, digest)
                     .unwrap()
-                    .into_uuid(0, 0)
+                    .into_uuid()
                     .unwrap_err(),
                 Error::InvalidRecord { ref path, .. } if path == "$"
             ));
         }
-        for count in [i64::MIN / 1_000 - 1, i64::MAX / 1_000 + 1] {
+        for count in [i64::MIN / 1_000_000 - 1, i64::MAX / 1_000_000 + 1] {
             let expected =
-                restate_unix(count, TimeUnit::Second, TimeUnit::Millisecond).unwrap_err();
+                restate_unix(count, TimeUnit::Second, TimeUnit::Microsecond).unwrap_err();
             let error = TxHash::new_in(count, TimeUnit::Second, digest)
                 .unwrap()
-                .into_uuid(0, 0)
+                .into_uuid()
                 .unwrap_err();
             assert_eq!(error.to_string(), expected.to_string());
             assert!(matches!(
@@ -243,20 +292,31 @@ mod coupled {
     }
 
     #[test]
-    fn uuid_projection_hashes_every_digest_bit_and_not_the_algorithm_name() {
-        let project = |algorithm, payload| {
-            TxHash::new_in(1, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
-                .unwrap()
-                .into_uuid(0, 0)
-                .unwrap()
+    fn uuid_projection_keeps_every_digest_bit_and_not_the_algorithm_name() {
+        let project = |algorithm, payload: u64| {
+            TxHash::new_in(
+                1,
+                TimeUnit::Nanosecond,
+                Digest::new(algorithm, u128::from(payload)),
+            )
+            .unwrap()
+            .into_uuid()
+            .unwrap()
         };
-        let payload = 0x0123_4567_89ab_cdef;
+        let payload = 0x0123_4567_89ab_cdef_u64;
         let expected = project(DigestAlgorithm::Xxh64, payload);
+        // The algorithm names itself nowhere in the identifier: one 64-bit
+        // payload is one identifier, whichever 64-bit algorithm wrote it.
         assert_eq!(project(DigestAlgorithm::Xxh3, payload), expected);
+        // Every bit survives rather than merely affecting a hash, so each
+        // flipped payload reads back out as itself.
+        assert_eq!(payload_of(expected), payload);
         for bit in 0..64 {
-            assert_ne!(
-                project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
-                expected
+            let flipped = payload ^ (1_u64 << bit);
+            assert_eq!(
+                payload_of(project(DigestAlgorithm::Xxh64, flipped)),
+                flipped,
+                "bit {bit}"
             );
         }
     }
@@ -268,8 +328,7 @@ mod coupled {
                 let value =
                     TxHash::new_in(0, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
                         .unwrap();
-                let Error::InvalidRecord { path, reason } = value.into_uuid(0, 0).unwrap_err()
-                else {
+                let Error::InvalidRecord { path, reason } = value.into_uuid().unwrap_err() else {
                     panic!("a wrong-width digest must raise a located value refusal");
                 };
                 assert_eq!(path, "$.digest");
@@ -503,32 +562,37 @@ mod coupled {
     /// two's-complement bytes of [`TxHash::into_bytes`] sort the other way.
     ///
     /// This is what a FIX identity column holds, so the ordering is
-    /// the column's ordering and the digest is not the lossy 58 bits
-    /// [`TxHash::into_uuid`] keeps.
+    /// the column's ordering. [`TxHash::into_uuid`] keeps all 64 digest bits
+    /// too, so what separates the two is the instant - eight bytes of signed
+    /// microseconds here, against 48 bits of milliseconds and ten of
+    /// remainder from the epoch on - and the six bits an identifier spends on
+    /// its version and variant.
     #[test]
     fn ordered_bytes_lead_with_the_instant_and_keep_every_digest_bit() {
         let value = TxHash::new_in(
             1,
-            TimeUnit::Nanosecond,
+            TimeUnit::Microsecond,
             Digest::new(DigestAlgorithm::Xxh64, u64::MAX.into()),
         )
         .unwrap();
         let held = value.into_ordered_bytes().unwrap();
         // The instant leads, its sign bit flipped so that negatives sort first.
         assert_eq!(&held[..8], &[0x80, 0, 0, 0, 0, 0, 0, 1]);
-        // Every one of the digest's 64 bits survives, where a UUID keeps 58.
+        // Every one of the digest's 64 bits survives, in eight plain bytes
+        // the digest fills alone; a UUID keeps the same 64 bits split around
+        // the variant, and spends six on its version and variant.
         assert_eq!(&held[8..], &[0xff; 8]);
         assert_ne!(
             held,
-            value.into_uuid(0, 0).unwrap().into_bytes(),
-            "the uuid spends six of those bits on its version and variant"
+            value.into_uuid().unwrap().into_bytes(),
+            "the uuid splits the same digest around its version and variant"
         );
 
         // The bytes order as the instants do, across the epoch.
         let mut sorted: Vec<[u8; 16]> = [1_i64, -1, 0, i64::MIN, i64::MAX]
             .into_iter()
             .map(|unix| {
-                TxHash::new_in(unix, TimeUnit::Nanosecond, value.digest())
+                TxHash::new_in(unix, TimeUnit::Microsecond, value.digest())
                     .unwrap()
                     .into_ordered_bytes()
                     .unwrap()
@@ -559,7 +623,7 @@ mod coupled {
             "{refused}"
         );
 
-        // An instant no signed nanosecond count can hold refuses the same way
+        // An instant no signed microsecond count can hold refuses the same way
         // `into_uuid` refuses it.
         let far = TxHash::new_in(i64::MAX, TimeUnit::Second, value.digest()).unwrap();
         assert!(far.into_ordered_bytes().is_err());

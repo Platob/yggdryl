@@ -362,7 +362,19 @@ impl JsTextLine {
         i64::try_from(self.inner.index()).unwrap_or(i64::MAX)
     }
 
-    /// The object this line was read from.
+    /// The identifier this line was read under, as its canonical text.
+    ///
+    /// What the handle is addressed by, which is not always a place: a read
+    /// through a name answers that name here and where it resolves to at
+    /// `sourceurl`. This is what the line's cross code spells, so the code
+    /// does not move with the directory a name resolved in.
+    #[napi(getter)]
+    pub fn sourceuri(&self) -> Option<String> {
+        self.inner.sourceuri().map(ToString::to_string)
+    }
+
+    /// The object this line was read from: the identifier itself where it
+    /// is a location, else where the name it is resolves to.
     #[napi(getter)]
     pub fn sourceurl(&self) -> Option<String> {
         self.inner.sourceurl().map(ToString::to_string)
@@ -412,9 +424,9 @@ impl JsTextLine {
     }
 
     /// The line's identity, as its hyphenated text: `UUIDv7` over its
-    /// millisecond instant, row-derived sequence and body hash, with the
-    /// source URL's cross hash as seed. A line is an event of the graph, and
-    /// a message parsed out of it states this among its `srcuuids`.
+    /// microsecond instant and the whole code of its source, row and body. A
+    /// line is an event of the
+    /// graph, and a message parsed out of it states this among its `srcuuids`.
     #[napi(getter)]
     pub fn curruuid(&self) -> String {
         self.inner.get_curruuid().to_string()
@@ -427,14 +439,14 @@ impl JsTextLine {
         self.inner.get_crossuuid().to_string()
     }
 
-    /// The code the chain is named by: the canonical source URL, and empty
-    /// where the line was read from no located source.
+    /// The code the chain is named by: the canonical text of the identifier
+    /// the line was read under, and empty where it was read under none.
     #[napi(getter)]
     pub fn crosscode(&self) -> String {
         self.inner.get_crosscode().to_owned()
     }
 
-    /// The XXH3-64 of the line's bytes.
+    /// The XXH3-64 of the cross code, the row number and the line's bytes.
     #[napi(getter)]
     pub fn currhashcode(&self) -> BigInt {
         BigInt::from(self.inner.get_currhashcode())

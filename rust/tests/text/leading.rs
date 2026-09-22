@@ -2,7 +2,7 @@
 //! record header.
 
 mod text {
-    use arrow_array::{Array as _, Int64Array, StringArray};
+    use arrow_array::{Array as _, StringArray, UInt64Array};
     use yggdryl::holder::Buffer;
 
     use yggdryl::text::{LeadingFragment, TextOptions};
@@ -53,18 +53,18 @@ mod text {
             .collect()
     }
 
-    fn rownums(batches: &[arrow_array::RecordBatch]) -> Vec<i64> {
+    fn seqnums(batches: &[arrow_array::RecordBatch]) -> Vec<Option<u64>> {
         batches
             .iter()
             .flat_map(|batch| {
-                let index = batch.schema().index_of("rownum").unwrap();
+                let index = batch.schema().index_of("seqnum").unwrap();
                 batch
                     .column(index)
                     .as_any()
-                    .downcast_ref::<Int64Array>()
+                    .downcast_ref::<UInt64Array>()
                     .unwrap()
-                    .values()
-                    .to_vec()
+                    .iter()
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -76,11 +76,15 @@ mod text {
         let mut keep = framed(r"^\[(?<kind>[A-Z])\] ");
         keep.start_rownum = Some(1);
         let kept = collect(&source, keep);
+        // A fragment matched no header, so the whole of it is its body; the
+        // record's header came off into `kind`, leaving the line past it.
         assert_eq!(
             bodies(&kept),
-            [b"before\nstill before".to_vec(), b"[A] final".to_vec()]
+            [b"before\nstill before".to_vec(), b"final".to_vec()]
         );
-        assert_eq!(rownums(&kept), [1, 3]);
+        // `seqnum` counts from `start_rownum` over the physical lines, so the
+        // record that opens on the third one is row three.
+        assert_eq!(seqnums(&kept), [Some(1), Some(3)]);
         let kind = kept[0]
             .column(kept[0].schema().index_of("kind").unwrap())
             .as_any()
@@ -92,7 +96,7 @@ mod text {
             &source,
             framed(r"^\[(?<kind>[A-Z])\] ").with_leading_fragment(LeadingFragment::Drop),
         );
-        assert_eq!(bodies(&dropped), [b"[A] final".to_vec()]);
+        assert_eq!(bodies(&dropped), [b"final".to_vec()]);
 
         let rejected =
             framed(r"^\[(?<kind>[A-Z])\] ").with_leading_fragment(LeadingFragment::Error);
