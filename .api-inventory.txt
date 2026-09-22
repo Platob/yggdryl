@@ -587,7 +587,7 @@ pub struct FixCode  (one member of a code set as a caller states it, what `FixRe
   pub fn value(&self) -> &str
   pub fn description(&self) -> Option<&str>
   pub fn aliases(&self) -> &[SmolStr]
-  pub fn is_spelled(&self, text: &str) -> bool  (the name or an alias, ASCII case folded)
+  pub fn is_spelled(&self, text: &str) -> bool  (the name or an alias, folded - except a spelling that is the code's own wire value, which is matched exactly)
   pub fn group(&self) -> Option<&str>
   impl Clone, Debug, PartialEq, Eq for FixCode
   impl From<FixCodeValue<'_>> for FixCode

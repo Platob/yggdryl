@@ -214,7 +214,20 @@ impl Catalog {
             return Some(*position);
         }
         if let Some(position) = self.position(FixCategory::Components, spelling) {
-            if self.entries[position].field.message().is_some() {
+            // A definition found by its folded name answers a wire code only
+            // where it does not contradict one. A message named `b` carrying
+            // wire code `B` is News under a spelling MassQuoteAcknowledgement
+            // answers to, and handing it back for `b` would answer one
+            // message for the other - so a name that folds onto this
+            // message's own code without being it names nothing here, and the
+            // exact index above stays the one reading a wire code has.
+            let code = self.entries[position]
+                .field
+                .message()
+                .map(super::msgtype::MsgType::as_str);
+            let contradicts =
+                code.is_some_and(|code| code != spelling && crate::folds_equal(code, spelling));
+            if code.is_some() && !contradicts {
                 return Some(position);
             }
         }
@@ -241,6 +254,14 @@ impl Catalog {
             self.code_names
                 .insert(SmolStr::new(code.value()), SmolStr::new(code.name()));
             for spelling in std::iter::once(code.name()).chain(code.aliases()) {
+                // A spelling that is the code's own wire value is not indexed
+                // here. `message_codes` answers it exactly above, which is the
+                // one reading a wire value has, while this index is folded -
+                // so indexing it would let `b` and `B` null each other and
+                // leave two real messages reachable by neither spelling.
+                if spelling == code.value() {
+                    continue;
+                }
                 let digest = name_digest(spelling, 0x4d53_475f_414c_4941);
                 self.message_aliases
                     .entry(digest)

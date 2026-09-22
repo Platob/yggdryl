@@ -172,6 +172,16 @@
 //! becomes `ioi` and keeps `6 Inbound` among its spellings, rather than
 //! renaming the type after a direction.
 //!
+//! **A wire value is case-bearing and the fold stops at it.** Tag 35 reads
+//! `b` as MassQuoteAcknowledgement and `B` as News, `c` as
+//! SecurityDefinitionRequest and `C` as Email, `d`, `g`, `h`, `j`, `q`, `r`
+//! and `s` against their own capitals the same way - so a dialect stating
+//! both cases of a letter states two messages, and each keeps its own
+//! grammar, its own wording and its own entry. The qualifiers around it
+//! still fold, because they are spellings: `b Inbound`, `b-inbound` and
+//! `B Inbound` all reach whichever value they qualify. Only the value
+//! itself is read exactly, which is the one reading the wire has.
+//!
 //! **One wire type is one message**, however many grammars the file binds
 //! under it: the second binding folds into the first, keeping its members in
 //! order and appending every member only the second declares, so a dialect
@@ -310,6 +320,13 @@ impl FixRegistry {
     /// warning naming it, and the rest of the file is still a dictionary. The
     /// warnings are `log` records at warn level; nothing is emitted unless the
     /// host installs a logger.
+    ///
+    /// What the file states twice is not one of them. A type the listing and
+    /// a binding both declare, a grammar bound under a wire type another
+    /// grammar already bound, and a member a held message already carries are
+    /// each what a dialect looks like rather than a defect: the declarations
+    /// fold, the members union, and the fold is recorded at info level where
+    /// it is recorded at all.
     pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)> {
         let bytes = handle.read_all_bytes()?;
         Parse::new(&bytes, dialect)?.run()
@@ -564,10 +581,41 @@ impl<'doc> Parse<'doc> {
         // grammar bound under one type, so a held one is this same message
         // and folds; `catalog_entry`'s qualification stays where distinct
         // contexts really do share a spelling, which is the members.
+        //
+        // **The wire value decides, never the derived name.** The name is
+        // lower-cased out of a spelling the file chose, so two case-bearing
+        // types can reach one spelling - a dialect naming `B` "News" and `b`
+        // "news" derives `news` twice - and folding on that would merge two
+        // messages the file was explicit about. A held entry under another
+        // wire value is therefore a different message wearing this name, and
+        // this one takes the value-derived name that no spelling can contend.
+        let held_entry = registry.get_definition(crate::FixCategory::Components, root.name());
+        let folds = match held_entry {
+            Some(entry) => entry.as_fix().msgtype() == Some(wire),
+            None => false,
+        };
+        if held_entry.is_some() && !folds {
+            let derived = format!("message{scope}");
+            log::debug!(
+                "message type {wire:?} takes {derived:?}: {:?} names message type {:?}",
+                root.name(),
+                held_entry
+                    .and_then(|entry| entry.as_fix().msgtype())
+                    .unwrap_or_default()
+            );
+            root.set_name(derived);
+        }
         if registry
             .get_definition(crate::FixCategory::Components, root.name())
             .is_some()
         {
+            // One wire type is one message: the grammar bound second folds
+            // into the first, keeping the members already declared in their
+            // order and appending every member only this binding states.
+            log::info!(
+                "folding another grammar for message type {wire:?} into {:?}",
+                root.name()
+            );
             registry.fold_definition(crate::FixCategory::Components, root)?;
         } else {
             catalog_entry(registry, crate::FixCategory::Components, root, &scope)?;
@@ -1225,22 +1273,11 @@ impl<'doc> Parse<'doc> {
             self.alias_msgtype(at, spelling);
             return Some(at);
         }
-        // Two values hashing to one spelling is a collision and not something
-        // to resolve by picking one, so the second names nothing and is
-        // dropped - the rule every contended spelling in this file is read
-        // under.
-        if let Some(taken) = self.spellings.get(&crate::normalized(value)).copied() {
-            self.dropped(&self.refused(
-                "a free message type value",
-                format_args!(
-                    "{:?} at {:?}, which {:?} holds",
-                    elide_to(spelling, ERROR_TEXT_LIMIT),
-                    value,
-                    elide_to(self.msgtypes[taken].name(), ERROR_TEXT_LIMIT)
-                ),
-            ));
-            return None;
-        }
+        // A wire value is never contended by the fold. `self.values` keys it
+        // exactly, which is the only reading tag 35 has: `b` and `B` are two
+        // messages and so are `c` and `C`, so a file declaring both declares
+        // two types rather than one it spelled twice. The fold owns the
+        // spellings below and stops at the values.
         let mut code = FixCode::new(value, value);
         if let Some(described) = described {
             code = code.with_description(described);
@@ -1248,9 +1285,10 @@ impl<'doc> Parse<'doc> {
         self.msgtypes.push(code);
         let at = self.msgtypes.len() - 1;
         self.values.insert(SmolStr::new(value), at);
-        self.spellings.insert(crate::normalized(value), at);
         // The whole spelling, and only as a spelling: a qualifier says which
-        // grammar the file bound, never what the type is called.
+        // grammar the file bound, never what the type is called. A spelling
+        // that is the bare wire value claims nothing in the folded namespace,
+        // because `self.values` already holds it under the one reading it has.
         self.alias_msgtype(at, spelling);
         Some(at)
     }
@@ -1260,9 +1298,18 @@ impl<'doc> Parse<'doc> {
     /// A spelling another code already answers to is dropped rather than
     /// added, because two codes one spelling reaches resolve to neither -
     /// the rule a map's entries are read under.
+    ///
+    /// The bare wire value is the exception, and it is not a spelling: a code
+    /// answers its own value exactly, `self.values` is where that is keyed,
+    /// and claiming its fold here would let `B` hold the name `b` answers to.
+    /// It is still pushed as an alias where the code does not already carry
+    /// it, so nothing the file said is lost.
     fn alias_msgtype(&mut self, at: usize, spelling: &str) {
         let spelling = spelling.trim();
         if spelling.is_empty() {
+            return;
+        }
+        if spelling == self.msgtypes[at].value() {
             return;
         }
         let key = crate::normalized(spelling);
