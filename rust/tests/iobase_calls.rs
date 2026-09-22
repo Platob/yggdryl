@@ -80,7 +80,7 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
         &calls,
         "child_by_path=10",
         || {
-            registry.write_into(&mut folder).unwrap();
+            registry.commit(&mut folder).unwrap();
         },
     );
     // And four on the way back: the code sets are read before the fields,

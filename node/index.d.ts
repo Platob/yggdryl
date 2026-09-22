@@ -2156,8 +2156,14 @@ export declare class FixRegistry {
    * is `components/fixmsg.json` - so a store states the whole row; a
    * reader takes the definition it holds from construction over the
    * document it finds.
+   *
+   * Each document is digested where it lies and left alone where it
+   * already states this registry, so a commit writes what moved and a
+   * second commit of one registry writes nothing. The report is a plain
+   * object: `written` and `removed` name the documents, in the order a
+   * store lays them out, and `skipped` counts the ones a run left.
    */
-  writeInto(location: LocationInput): void
+  commit(location: LocationInput): FixCommitReport
   /**
    * How many fields are held: the scalar fields, then the components and
    * the groups, the crate's own and the two seeded clocks among them.
@@ -6348,6 +6354,22 @@ export interface FixCodeSetView {
   name: string
   /** The members, ordered by wire value. */
   codes: Array<FixCode>
+}
+
+/**
+ * What one [`JsFixRegistry::commit`] moved under a store root.
+ *
+ * A commit names the documents it wrote and removed and counts the ones it
+ * left, because a store holds thousands a run normally leaves alone: naming
+ * each of those would bury the handful that moved.
+ */
+export interface FixCommitReport {
+  /** The documents written, in the order a store lays them out. */
+  written: Array<string>
+  /** How many documents already stated what the registry does. */
+  skipped: number
+  /** The documents removed because no definition holds them any more. */
+  removed: Array<string>
 }
 
 /**

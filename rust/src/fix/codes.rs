@@ -14,7 +14,7 @@
 //! names it from as many fields as draw on it, 103 of them in the shipped
 //! dictionary for one offset-unit set alone. So the [registry](super::FixRegistry)
 //! holds each set once under its name, stored beside the fields in
-//! [`codesets/`](super::FixRegistry::write_into), and a field's `FIX:codeset`
+//! [`codesets/`](super::FixRegistry::commit), and a field's `FIX:codeset`
 //! states which set it draws from rather than a copy of its members. One
 //! owner per vocabulary: a code named, aliased or documented once is named
 //! for every field that reads it, and two fields cannot drift apart while

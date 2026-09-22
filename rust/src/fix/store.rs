@@ -14,13 +14,15 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::FixRegistry;
 use crate::holder::Holder;
 use crate::sequence::SequenceType;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url};
+use crate::{
+    DataType, DigestAlgorithm, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url,
+};
 
 const SHARD_WIDTH: i32 = 100;
 /// The folder the code sets live in, beside the three category folders.
@@ -396,6 +398,47 @@ fn is_crate_field(field: &Field) -> bool {
         .ok()
         .flatten()
         .is_some_and(super::is_crate_tag)
+}
+
+/// What one [`FixRegistry::commit`] changed under a store root.
+///
+/// A commit states the paths it moved and counts the ones it left, because a
+/// caller reads this to see filesystem changes and a store holds thousands of
+/// documents that a run normally leaves alone: naming every one of those would
+/// bury the handful that moved. The operation bounds the report, so it is owned
+/// rather than a lazy walk.
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct FixCommit {
+    /// The documents written, in the order a store lays them out.
+    pub written: Vec<SmolStr>,
+    /// The documents already holding what the registry states.
+    pub skipped: usize,
+    /// The documents removed because no definition holds them any more.
+    pub removed: Vec<SmolStr>,
+}
+
+impl FixCommit {
+    /// Whether the root already held everything this registry states.
+    ///
+    /// A second commit of an unchanged registry answers `true`, which is what
+    /// makes a dump replayable: the bytes settle once and nothing after that
+    /// touches the filesystem.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.written.is_empty() && self.removed.is_empty()
+    }
+
+    /// How many documents the commit considered, moved and left alike.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.written.len() + self.skipped
+    }
+
+    /// Whether the registry stated no document at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl FixRegistry {
@@ -825,13 +868,29 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Writes category documents and removes definitions no longer held.
+    /// Writes the documents whose bytes moved and removes what is no longer held.
     ///
     /// Each document is written through the handle's byte-write contract.
     /// Referenced children persist as native Null-typed Fields and regain
     /// their resolved datatypes when loaded.
-    pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()> {
+    ///
+    /// The store is compared before it is written: every document is digested
+    /// where it lies and left alone where it already states what this registry
+    /// does. That is one read per document either way, and it is the cheaper
+    /// half of the pair - a write is durable work on every backend and an
+    /// object store charges for each one - so a commit that changes one field
+    /// moves one document rather than all of them, and a second commit of an
+    /// unchanged registry moves none. A missing document digests as empty and
+    /// so never matches, which is how a document is created without asking
+    /// whether it is there.
+    ///
+    /// # Errors
+    ///
+    /// Returns the backing store's read or write failure, or the catalog's own
+    /// validation failure before a single byte is written.
+    pub fn commit(&self, root: &mut dyn IOBase) -> Result<FixCommit> {
         self.validate_catalog()?;
+        let mut report = FixCommit::default();
         let mut documents: BTreeMap<String, Scalar> = BTreeMap::new();
         let mut shards: BTreeMap<i32, Vec<Field>> = BTreeMap::new();
         // Every scalar the dictionary holds, the crate's own among them, so a
@@ -896,7 +955,15 @@ impl FixRegistry {
             let mut bytes =
                 crate::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
             bytes.push(b'\n');
-            root.child_by_path(path)?.write_all_bytes(&bytes)?;
+            let mut child = root.child_by_path(path)?;
+            if child.read_digest(DigestAlgorithm::default())?
+                == crate::xxhash::digest(&bytes, DigestAlgorithm::default())
+            {
+                report.skipped += 1;
+                continue;
+            }
+            child.write_all_bytes(&bytes)?;
+            report.written.push(path.as_str().into());
         }
         for folder in FixCategory::ALL
             .into_iter()
@@ -907,6 +974,7 @@ impl FixRegistry {
             let mut tree = root.child_by_path(folder)?;
             if !documents.keys().any(|path| path.starts_with(&prefix)) {
                 tree.remove(true)?;
+                report.removed.push(prefix.as_str().into());
                 continue;
             }
             for entry in tree.ls(false, false) {
@@ -925,10 +993,11 @@ impl FixRegistry {
                     && !documents.contains_key(&format!("{folder}/{name}"))
                 {
                     entry.remove(false)?;
+                    report.removed.push(format_smolstr!("{folder}/{name}"));
                 }
             }
         }
-        Ok(())
+        Ok(report)
     }
 }
 

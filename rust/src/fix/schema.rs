@@ -378,7 +378,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// column a reference to the scalar or group the registry holds under it -
 /// by name and by tag, so a reader resolves it by identity - and the
 /// arrival record inline, because no definition can reference a shape that
-/// contains itself. Written by [`FixRegistry::write_into`] as
+/// contains itself. Written by [`FixRegistry::commit`] as
 /// `components/fixmsg.json` and read past by every reader, since this
 /// crate is the row's one owner.
 ///

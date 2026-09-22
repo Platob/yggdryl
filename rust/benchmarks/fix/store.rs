@@ -21,9 +21,7 @@ fn sharded(shards: i32) -> (std::path::PathBuf, LocalFolder) {
     let registry = FixRegistry::from_fields(fields).expect("distinct generated tags");
     let path = scratch(&format!("shards-{shards}"));
     let mut folder = LocalFolder::new(&path).expect("a local folder");
-    registry
-        .write_into(&mut folder)
-        .expect("the shards written");
+    registry.commit(&mut folder).expect("the shards written");
     (path, folder)
 }
 
@@ -59,7 +57,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function(
         format!("write_into_{}_shards", shard_counts[2]),
         |bencher| {
-            bencher.iter(|| black_box(&hundred).write_into(&mut target_folder).unwrap());
+            bencher.iter(|| black_box(&hundred).commit(&mut target_folder).unwrap());
         },
     );
 
@@ -69,9 +67,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mixed = two_dialects(DIALECT_FIELDS);
     let mixed_root = scratch("two-branches");
     let mut mixed_folder = LocalFolder::new(&mixed_root).expect("a local folder");
-    mixed
-        .write_into(&mut mixed_folder)
-        .expect("the shards written");
+    mixed.commit(&mut mixed_folder).expect("the shards written");
     let reloaded = FixRegistry::from_handle(&mixed_folder).expect("the shards read back");
     assert_eq!(reloaded.len(), mixed.len());
     assert!(
@@ -90,9 +86,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut mixed_target_folder = LocalFolder::new(&mixed_target).expect("a local folder");
     group.bench_function("write_into_two_dialects", |bencher| {
         bencher.iter(|| {
-            black_box(&mixed)
-                .write_into(&mut mixed_target_folder)
-                .unwrap();
+            black_box(&mixed).commit(&mut mixed_target_folder).unwrap();
         });
     });
 

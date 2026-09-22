@@ -6,7 +6,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 
 | Aspect | Rule |
 | --- | --- |
-| Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
+| Owner | `FixRegistry::from_handle` and `commit`; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
 | Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `FIX:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
 | Code sets | `codesets/<name>.json`, one document per named [code set](registry.md#a-field-names-the-code-set-it-reads-by), stating the name it is filed under and its members in the set's own order; a scalar's `FIX:codeset` holds that name. Read first, because a field naming a set the dictionary does not hold is refused. Not a `FixCategory`: a set has no tag, no datatype and no reference, so nothing in it resolves against a field |
@@ -17,7 +17,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Membership | `FIX:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `FIX:tag` and the field's name; no document holds an id |
 | Builtins | The crate listing has 32 definitions: 30 scalar fields and the `identifiers(65020)` and `metadata(65049)` Map groups. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
-| The fixed row | `write_into` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
+| The fixed row | `commit` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
 | Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/000000000.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, code set names, cycles, and depth are checked before exposing the registry; a set's stem must equal the name its document states, the way a definition's does |
 | Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
@@ -63,7 +63,11 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     source.as_fix_mut().set_codeset("partyidsourcecodeset")?;
     registry.insert(source)?;
 
-    registry.write_into(&mut root)?;
+    // A commit writes the documents that moved and leaves the rest where
+    // they lie, so it answers what it changed.
+    let report = registry.commit(&mut root)?;
+    assert!(!report.written.is_empty());
+    assert!(report.removed.is_empty());
     assert!(path.join("fields/000000004.json").is_file());
     assert!(path.join("components/Party.json").is_file());
     assert!(path.join("groups/Parties.json").is_file());
@@ -130,7 +134,9 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     with tempfile.TemporaryDirectory(prefix="ygg-doc-store-") as temporary:
         root = pathlib.Path(temporary) / "catalog"
-        registry.write_into(root)
+        report = registry.commit(root)
+        assert report["written"]
+        assert report["removed"] == []
         assert (root / "fields/000000004.json").is_file()
         assert (root / "components/Party.json").is_file()
         assert (root / "groups/Parties.json").is_file()
@@ -208,7 +214,9 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-doc-store-'))
     try {
-      registry.writeInto(root)
+      const report = registry.commit(root)
+      assert.ok(report.written.length > 0)
+      assert.deepEqual(report.removed, [])
       for (const file of ['fields/000000004.json', 'components/Party.json', 'groups/Parties.json', 'components/Order.json', 'codesets/partyidsourcecodeset.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
@@ -304,7 +312,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds 30 crate scalar definitions, including the two UUID lists, six normalized identifier codes and the execution, recording and merge-reference clocks, plus two Map groups: 6,271 scalar fields, 582 groups, 928 components and 181 message types in the live registry, 7,781 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset` makes 736 live sets.
 
-Beside those 2,308 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
+Beside those 2,308 the tracked tree carries the crate's own dump, which `commit` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
 It contains 7,751 code records across those 735 generated sets, read by 2,027 fields. The same dictionary held 27,209 of them when every field carried its own vocabulary, which is what naming each one once buys: the 65 field shards are 2,271,320 bytes where they were 5,874,130, against 896,022 for all of `codesets/`. Generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and 109 components declare their matching direct [identifiers](registry.md#component-identifiers), the property omitted where none match.
 

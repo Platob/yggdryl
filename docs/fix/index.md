@@ -13,7 +13,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Decode](decode.md) | A line in, every message it holds out; every shape a capture holds, read by the package |
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
-| [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
+| [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
 | [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |

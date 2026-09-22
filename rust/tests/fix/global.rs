@@ -51,7 +51,7 @@ mod from_env {
         symbol.as_fix_mut().set_tag(55).expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
-            .write_into(&mut LocalFolder::new(&good).expect("a local folder"))
+            .commit(&mut LocalFolder::new(&good).expect("a local folder"))
             .expect("the shard written");
         // SAFETY: the same reasoning as above.
         unsafe {
@@ -113,7 +113,7 @@ mod from_home {
         symbol.as_fix_mut().set_tag(55).expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
-            .write_into(
+            .commit(
                 &mut LocalFolder::new(home.join(".config").join("fix")).expect("a local folder"),
             )
             .expect("the shard written");

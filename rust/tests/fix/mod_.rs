@@ -2658,7 +2658,7 @@ mod internal {
         let mut configured = LocalFolder::new(home.join(".config").join("fix")).unwrap();
         FixRegistry::from_fields([tagged("Symbol", 55)])
             .unwrap()
-            .write_into(&mut configured)
+            .commit(&mut configured)
             .unwrap();
         let loaded = autoload(None, Some(config.clone())).unwrap();
         assert_eq!(loaded.field_by_tag(55).unwrap().name(), "Symbol");
@@ -2667,7 +2667,7 @@ mod internal {
         let mut located = LocalFolder::new(&location).unwrap();
         FixRegistry::from_fields([tagged("Price", 44)])
             .unwrap()
-            .write_into(&mut located)
+            .commit(&mut located)
             .unwrap();
         let as_path = location.to_string_lossy().into_owned();
         let as_url = located.url().to_string();
