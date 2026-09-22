@@ -86,8 +86,6 @@ mod merge;
 mod metadata;
 pub mod mic_code;
 mod mime_type;
-#[cfg(feature = "s3")]
-pub mod s3;
 mod parallel;
 #[cfg(feature = "parquet")]
 pub mod parquet;
@@ -97,6 +95,8 @@ mod pretty;
 pub mod protocol;
 mod regex;
 pub mod runend;
+#[cfg(feature = "s3")]
+pub mod s3;
 mod scalar;
 mod scheme;
 pub mod sedol_code;
@@ -354,6 +354,13 @@ pub mod internals {
     pub use crate::merge::internals as merge;
     pub use crate::metadata::internals as metadata;
     pub use crate::mime_type::line::internals as mime_type_line;
+    pub use crate::parallel::internals as parallel;
+    #[cfg(feature = "parquet")]
+    pub use crate::parquet::geospatial::internals as parquet_geospatial;
+    #[cfg(feature = "parquet")]
+    pub use crate::parquet::internals as parquet;
+    pub use crate::path::internals as path;
+    pub use crate::protocol::internals as protocol;
     #[cfg(feature = "s3")]
     pub use crate::s3::answer::internals as s3_answer;
     #[cfg(feature = "s3")]
@@ -378,13 +385,6 @@ pub mod internals {
     pub use crate::s3::sigv4::internals as s3_sigv4;
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
-    pub use crate::parallel::internals as parallel;
-    #[cfg(feature = "parquet")]
-    pub use crate::parquet::geospatial::internals as parquet_geospatial;
-    #[cfg(feature = "parquet")]
-    pub use crate::parquet::internals as parquet;
-    pub use crate::path::internals as path;
-    pub use crate::protocol::internals as protocol;
     pub use crate::scalar::internals as scalar;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;

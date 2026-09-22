@@ -228,10 +228,7 @@ impl Drop for Staging {
 // The length is what an object store's multipart upload plans against; with
 // no object backend compiled in there is nothing to plan and the file is
 // read whole.
-#[cfg_attr(
-    not(feature = "s3"),
-    expect(unused_variables, reason = "object-only")
-)]
+#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "object-only"))]
 fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
     match target {
         #[cfg(feature = "s3")]
@@ -303,10 +300,7 @@ pub(super) fn container(holder: Holder) -> Result<Holder> {
 /// the handle is returned as it was and the file answers for its own length,
 /// which is one request more and the truth. A handle with no such memory is
 /// returned as it was.
-#[cfg_attr(
-    not(feature = "s3"),
-    expect(unused_variables, reason = "object-only")
-)]
+#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "object-only"))]
 pub(super) fn sized(holder: Holder, size: u64) -> Holder {
     match holder {
         #[cfg(feature = "s3")]

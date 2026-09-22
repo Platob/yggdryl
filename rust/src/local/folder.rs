@@ -381,7 +381,9 @@ impl IOBase for LocalFolder {
     }
 
     fn parent(&self) -> Option<Holder> {
-        self.url.parent().map(|url| Holder::LocalFolder(Self { url }))
+        self.url
+            .parent()
+            .map(|url| Holder::LocalFolder(Self { url }))
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {

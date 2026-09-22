@@ -77,8 +77,7 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 /// touches nothing on either.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::s3::located(&url.to_string())
-            .map_err(crate::holder::fs::storage_error);
+        return yggdryl::s3::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
     }
     if !url.is_local() {
         // A location whose scheme no backend speaks is refused by that scheme,

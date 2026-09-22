@@ -521,10 +521,7 @@ fn an_azure_blob_type_and_tier_are_read_and_a_name_neither_has_is_refused() {
         ("adls.encryption-scope", "desk-power"),
     ])
     .expect("readable properties");
-    assert_eq!(
-        options.azure().blob_type(),
-        yggdryl::s3::BlobType::Append
-    );
+    assert_eq!(options.azure().blob_type(), yggdryl::s3::BlobType::Append);
     assert_eq!(options.azure().access_tier(), Some("Cool"));
     assert!(matches!(
         options.encryption(),

@@ -43,14 +43,12 @@ fn options() -> S3Options {
 
 /// The object `key` names in the exchange bucket.
 fn object(key: &str) -> yggdryl::s3::S3File {
-    yggdryl::s3::file_at_with(Provider::Google, BUCKET, key, options())
-        .expect("an object handle")
+    yggdryl::s3::file_at_with(Provider::Google, BUCKET, key, options()).expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
 fn prefix(key: &str) -> yggdryl::s3::S3Folder {
-    yggdryl::s3::folder_at_with(Provider::Google, BUCKET, key, options())
-        .expect("a prefix handle")
+    yggdryl::s3::folder_at_with(Provider::Google, BUCKET, key, options()).expect("a prefix handle")
 }
 
 /// Say why nothing ran, in the word the driver greps for.

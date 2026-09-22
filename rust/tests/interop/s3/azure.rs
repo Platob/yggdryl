@@ -57,8 +57,7 @@ fn options() -> S3Options {
 
 /// The blob `key` names in the exchange container.
 fn blob(key: &str) -> yggdryl::s3::S3File {
-    yggdryl::s3::file_at_with(Provider::Azure, CONTAINER, key, options())
-        .expect("a blob handle")
+    yggdryl::s3::file_at_with(Provider::Azure, CONTAINER, key, options()).expect("a blob handle")
 }
 
 /// The prefix `key` names in the exchange container.

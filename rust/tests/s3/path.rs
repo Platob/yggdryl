@@ -180,8 +180,7 @@ mod protocol {
         // names only an endpoint has named no container yet.
         let error = yggdryl::s3::file("gs://storage.googleapis.com/").expect_err("a refusal");
         assert!(error.to_string().contains("naming a bucket"), "{error}");
-        let error =
-            yggdryl::s3::file("az://trades.blob.core.windows.net/").expect_err("a refusal");
+        let error = yggdryl::s3::file("az://trades.blob.core.windows.net/").expect_err("a refusal");
         assert!(error.to_string().contains("naming a container"), "{error}");
     }
 

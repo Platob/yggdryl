@@ -23,9 +23,9 @@ use yggdryl::{FixCodec, FixMsg, FixRegistry, Timezone, Url};
 
 fn main() -> yggdryl::Result<()> {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
-        manifest.join("../config/fix"),
-    )?)?);
+    let registry = Arc::new(FixRegistry::from_handle(
+        &yggdryl::local::LocalFolder::new(manifest.join("../config/fix"))?,
+    )?);
     let capture = Buffer::from_bytes(std::fs::read(manifest.join("tests/fix/ulbridge.log"))?)
         .with_media_type(Url::from_str("file:///ulbridge.log")?.media_type());
     // The row header is the capture's own columns, and the codec is told their
