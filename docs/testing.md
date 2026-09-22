@@ -130,10 +130,14 @@ binding supports. It lived in a `release.yml` heredoc until a renamed module
 reached 0.1.9 and stopped the release there, which is why it is a file both
 sides share. That release stopped quietly - the wheels failed, the two jobs
 below them were skipped rather than failed, and the version reached crates.io
-and npm without ever reaching PyPI or growing a tag. A release that was going
-to publish and did not now files an issue naming what each registry holds, and
-the `consistency` job refuses a branch push that would publish a version some
-registry already carries.
+and npm without reaching PyPI or growing a tag. It was finished four commits
+later, from the tree `main` held by then, so 0.1.9's wheel is not built from
+the tree its crate and its npm package are: one number came to name two
+libraries, which is the whole reason the rules below exist. A release that was
+going to publish and did not now files an issue naming what each registry
+holds, and the `consistency` job refuses a branch push that would publish a
+version some registry already carries - the tag is what pins a tree, so a
+half-published version is finished from the commit it was built at.
 
 ## Exchange formats meet an outside implementation
 
