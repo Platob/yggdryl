@@ -1,5 +1,5 @@
 //! The canonical columns of a market element, one per fact
-//! [`MarketElement`](super::MarketElement) answers.
+//! [`MarketElement`] answers.
 
 use crate::{
     BloombergCode, CfiCode, Currency, CusipCode, DataType, Decimal18, FIGICode, Field, IsinCode,
