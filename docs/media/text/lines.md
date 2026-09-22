@@ -7,17 +7,17 @@
 | Key | Value |
 | --- | --- |
 | Owns | `TextLine`, `TextBytes`, `TextEntries`, `TextEntry`, and `read_text_lines`, the one decode entry point every record method routes through |
-| Holds | what the reader cut and nothing it derived: `index`, `sourceurl`, the whole `body` with its row header included, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
-| Lazy | `mtime`, `bodytype`, the `captures`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceurl`, the rest off the body |
+| Holds | what the reader cut and nothing it derived: `index`, `sourceurl`, the `body` past the row header the cut took off it, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
+| Lazy | `mtime`, `bodytype`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceurl`, the rest off the body. The header is the exception: it comes off the body where the line is made, so the `captures` are already there |
 | Text | a body is text where the line is made: valid UTF-8 costs the validation, and every other byte reads as the character Windows-1252 gives it |
 | Validated | an empty body is refused wherever one is set; a capture named for an event fact that does not parse at the fact's datatype is a named refusal |
 | Owned | nothing: every key, value, body and capture is a range of the reader's own window, until a binding copies it across |
-| Refused | a lifted path whose last segment names nothing; an `entry_by_path` miss, where `get_entry_by_path` answers `None` |
+| Refused | an `entry_by_path` miss, where `get_entry_by_path` answers `None` |
 | Bindings | Python and JavaScript take a `str` / `string` body beside bytes and the options as an optional last argument; `set_body`, `with_captures`, `body_bytes` and `marked` are Rust-only |
 
 ## Use
 
-`lift_names` names the entry paths the line reads out of its own text, and `get_entry_by_path` reads one directly off the line.
+A line reads a key/value tree out of its own body, and `get_entry_by_path` reads one entry directly off the line.
 
 === "Rust"
 
@@ -26,7 +26,7 @@
     use yggdryl::{FieldPath, holder::Buffer};
 
     let capture = Buffer::from_bytes(b"8=FIX|55=AAPL\n35=D|55=MSFT\n".to_vec());
-    let options = TextOptions::new().try_with_lift_names(["55"])?;
+    let options = TextOptions::new();
 
     let symbol = FieldPath::from_str("\"55\"")?;
     let mut read = Vec::new();
@@ -52,7 +52,6 @@
 
     capture = Buffer.from_bytes(b"8=FIX|55=AAPL\n35=D|55=MSFT\n")
     options = TextOptions()
-    options.lift_names = ["55"]
 
     read = [
         (line.index, line.get_entry_by_path("55").value)
@@ -69,7 +68,6 @@
 
     const capture = IOBase.fromBytes(Buffer.from('8=FIX|55=AAPL\n35=D|55=MSFT\n'))
     const options = new TextOptions()
-    options.liftNames = ['55']
 
     const read = []
     for (const line of capture.readTextLines(options)) {
@@ -84,9 +82,15 @@
 through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
+One decode, two answers: the record methods keep the rows the `where` names and
+publish the columns the `select` names, and the line iterator yields every line
+it cuts under the same options. Reading lines is reading the resource, not
+reading the result - a `where` may name a column the `select` builds, and no
+line states one, so the clauses are answered over the rows the lines become.
+
 A line is an [event](../../graph.md) of the graph, and a struct rather than a
 map. It holds the reader facts `index` and `sourceurl`, what the reader cut -
-the whole `body` with its row header included - plus
+the `body` past the row header taken off it - plus
 `dropped_byte_size`, `decoded_byte_size`, and the options it reads itself by.
 Everything else is resolved on its first ask, once, and never before:
 `seqnum` from `index` under `start_rownum`, `crosscode` from the canonical
@@ -312,7 +316,8 @@ handle's fact, not a second option on every reader.
     // The transport read the declaration below the splitter: the header saw
     // the text and a Unicode class matched `ü`, and the line repaired nothing.
     assert_eq!(line.capture(0), Some("Zürich"));
-    assert_eq!(line.body(), "Zürich premièr");
+    // The header comes off the body, so the line past it is what remains.
+    assert_eq!(line.body(), "premièr");
     assert_eq!(line.decoded_byte_size(), 0);
 
     // Undeclared, the same bytes are the wire: each stray byte reads as the
@@ -340,7 +345,8 @@ handle's fact, not a second option on every reader.
     # The transport read the declaration below the splitter: the header saw
     # the text and a Unicode class matched `ü`.
     assert row["city"] == "Zürich"
-    assert row["body"] == "Zürich premièr"
+    # The header comes off the body, so the line past it is what remains.
+    assert row["body"] == "premièr"
 
     # Undeclared, the same bytes are the wire: each stray byte reads as the
     # Windows-1252 character it is, and the line counts the two it read so.
@@ -368,7 +374,8 @@ handle's fact, not a second option on every reader.
     // The transport read the declaration below the splitter: the header saw
     // the text and a Unicode class matched `ü`.
     assert.equal(row.city, 'Zürich')
-    assert.equal(row.body, 'Zürich premièr')
+    // The header comes off the body, so the line past it is what remains.
+    assert.equal(row.body, 'premièr')
 
     // Undeclared, the same bytes are the wire: each stray byte reads as the
     // Windows-1252 character it is, and the line counts the two it read so.
@@ -464,33 +471,13 @@ stripped of it, so a path lifts the name the writer gave the field, and the mark
 rides beside the pair instead - two entries differing only in it are two values,
 and a bridge restating `#ORDERID=123` under an `ORDERID=123` it already sent is
 telling the reader something. What that means is a dialect's reading of the
-mark, not the text reader's. An entry a caller created, or one rebuilt from a
-lifted column, is unmarked.
+mark, not the text reader's. An entry a caller created is unmarked.
 
 !!! note "Rust-only"
     `marked` has no Python or Node getter yet. Both bindings already show the
     mark - an entry renders as the line wrote it, `#` and all, and two entries
     differing only in the mark compare unequal - so read it there off the
     rendered pair until the getter lands with the rest of the FIX work.
-
-## Lifting an entry into a column
-
-`lift_names` names the entry paths that become columns of their own. The column
-exists in the schema whether or not any row carries that entry — a row without
-it is null — so the schema is still complete before a byte is read, exactly as
-`autotype` already guarantees for captures.
-
-A lifted column takes the path's [alias](../../types/paths.md#aliases) where it
-writes one, and the last segment's own name otherwise. `"55" as symbol` selects
-and names in one breath, which is also how two paths ending in the same segment
-are told apart. `rename_columns` still renames it like any other column.
-
-A lifted column is `utf8`, nullable: it holds the entry's value as the line's
-text holds it, and a row not carrying the entry is null.
-
-The two options have one job each and meet only at the compiled column plan:
-renaming decides what a column is called and never whether one exists, lifting
-decides which entry paths become columns and never what they are called.
 
 ## What is copied
 
@@ -522,8 +509,6 @@ into Arrow, which copies each value into its column.
 - a handle declaring a charset other than UTF-8 or US-ASCII -> [decoded at the transport](#declaring-a-charset), below the splitter: the header, the strips and every byte count see the declared text, `decoded_byte_size` is `0` unless a limit cut inside a scalar, and a write encodes back into it. `us-ascii` is never wrapped: a stray byte under it reads by the one rule and is counted.
 - a mis-declared handle - `charset=iso-8859-1` over UTF-8 bytes -> the mojibake it declares, `café` as `cafÃ©`, with `decoded_byte_size` `0`; correct the media type, or wrap the handle in `Transcoded::new(handle, Charset::Utf8)`.
 - `utf-16le` with its `FF FE` mark -> the mark comes off and the rows read as they do without it; `FE FF` under that declaration is data, read as the code unit it is; an odd trailing byte reads `U+FFFD` and refuses nothing.
-- a lifted path no line carries -> that column is null in every row; the column still exists in the schema.
-- a lifted path whose last segment names nothing -> refused when the option is set.
 - an empty body -> refused wherever one is set, as [a line with no body is no line](options.md#a-line-with-no-body-is-no-line).
 
 ## Commands

@@ -1,7 +1,7 @@
 //! `rust/src/text/limits.rs`: the row and byte bounds a text read stops at.
 
 mod text {
-    use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
+    use arrow_array::{Array as _, StringArray, UInt64Array};
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions as _;
     use yggdryl::text::TextOptions;
@@ -50,18 +50,18 @@ mod text {
             .collect()
     }
 
-    fn rownums(batches: &[arrow_array::RecordBatch]) -> Vec<i64> {
+    fn seqnums(batches: &[arrow_array::RecordBatch]) -> Vec<Option<u64>> {
         batches
             .iter()
             .flat_map(|batch| {
-                let index = batch.schema().index_of("rownum").unwrap();
+                let index = batch.schema().index_of("seqnum").unwrap();
                 batch
                     .column(index)
                     .as_any()
-                    .downcast_ref::<Int64Array>()
+                    .downcast_ref::<UInt64Array>()
                     .unwrap()
-                    .values()
-                    .to_vec()
+                    .iter()
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -101,8 +101,8 @@ mod text {
 
     #[test]
     fn a_result_row_limit_does_not_convert_the_following_record() {
-        // The second row's number cannot be represented, so converting it would
-        // be a refusal; the limit stops the read before that.
+        // The second row's sequence number cannot be represented, so converting
+        // it would be a refusal; the limit stops the read before that.
         let source = named("limited-values.log", b"A first\nB second\n");
         let mut options = framed(r"^(?<kind>(?-u:.)) ");
         options.start_rownum = Some(i64::MAX);
@@ -110,8 +110,9 @@ mod text {
         options.set_max_row_size(Some(1));
 
         let batches = collect(&source, options);
-        assert_eq!(bodies(&batches), [b"A first".to_vec()]);
-        assert_eq!(rownums(&batches), [i64::MAX]);
+        // The body is the line past its header: `A ` matched and came off.
+        assert_eq!(bodies(&batches), [b"first".to_vec()]);
+        assert_eq!(seqnums(&batches), [Some(u64::try_from(i64::MAX).unwrap())]);
     }
 
     #[test]
@@ -123,41 +124,38 @@ mod text {
         options.set_max_row_size(Some(1));
 
         let batches = collect(&source, options);
-        assert_eq!(bodies(&batches), [b"A first".to_vec()]);
-        assert_eq!(rownums(&batches), [i64::MAX]);
+        assert_eq!(bodies(&batches), [b"first".to_vec()]);
+        assert_eq!(seqnums(&batches), [Some(u64::try_from(i64::MAX).unwrap())]);
     }
 
     #[test]
     fn record_byte_limit_reports_only_bytes_beyond_the_retained_prefix() {
         let source = named("limit.log", b"[A] abc\ndef\n[B] xyz\n");
 
-        // The limit bounds what follows the header, which is retained whole: a
-        // record is known by its header, so a limit of nothing still leaves it.
+        // The limit bounds the body, which is what follows the header: the
+        // header is retained whole - a record is known by its header, and it
+        // comes off the body into its own columns - so a limit of nothing
+        // still leaves the record, with an empty body and the whole of it
+        // dropped.
         let exact = collect(
             &source,
             framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(7),
         );
-        assert_eq!(
-            bodies(&exact),
-            [b"[A] abc\ndef".to_vec(), b"[B] xyz".to_vec()]
-        );
+        assert_eq!(bodies(&exact), [b"abc\ndef".to_vec(), b"xyz".to_vec()]);
         assert_eq!(dropped(&exact), [None, None]);
 
         let limited = collect(
             &source,
             framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(6),
         );
-        assert_eq!(
-            bodies(&limited),
-            [b"[A] abc\nde".to_vec(), b"[B] xyz".to_vec()]
-        );
+        assert_eq!(bodies(&limited), [b"abc\nde".to_vec(), b"xyz".to_vec()]);
         assert_eq!(dropped(&limited), [Some(1), None]);
 
         let zero = collect(
             &source,
             framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(0),
         );
-        assert_eq!(bodies(&zero), [b"[A] ".to_vec(), b"[B] ".to_vec()]);
+        assert_eq!(bodies(&zero), [b"".to_vec(), b"".to_vec()]);
         assert_eq!(dropped(&zero), [Some(7), Some(3)]);
     }
 
@@ -171,10 +169,7 @@ mod text {
         let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(8);
 
         let batches = collect(&source, options);
-        assert_eq!(
-            bodies(&batches),
-            [b"[A] begin\nxx".to_vec(), b"[B] after".to_vec()]
-        );
+        assert_eq!(bodies(&batches), [b"begin\nxx".to_vec(), b"after".to_vec()]);
         assert_eq!(
             dropped(&batches),
             [Some(u64::try_from(oversized - 2).unwrap()), None]
@@ -191,10 +186,7 @@ mod text {
         let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(8);
 
         let batches = collect(&source, options);
-        assert_eq!(
-            bodies(&batches),
-            [b"[A] xxxxxxxx".to_vec(), b"[B] after".to_vec()]
-        );
+        assert_eq!(bodies(&batches), [b"xxxxxxxx".to_vec(), b"after".to_vec()]);
         assert_eq!(
             dropped(&batches),
             [Some(u64::try_from(oversized - 8).unwrap()), None]

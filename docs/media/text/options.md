@@ -12,12 +12,11 @@
 | `max_record_byte_size` / `maxRecordByteSize` | retained body byte limit per record, counted in bytes as read - below the transport, so the wire where nothing is declared and the decoded text under a coding or a [declared charset](lines.md#declaring-a-charset); unset is unlimited |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
-| `start_rownum` / `startRownum` | optional signed 64-bit first row number; adds `rownum`, which also supplies the event's unsigned `seqnum`; unset omits `rownum` and `seqnum` uses the zero-based physical index |
-| `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
+| `start_rownum` / `startRownum` | optional signed 64-bit first row number, which the event's unsigned `seqnum` states; unset counts `seqnum` from the zero-based physical index. There is no column beside it, and a negative number refuses the read |
+| `parse_mtime` / `parseMtime` | let the row header's `mtime` capture date the line, feeding `currunix` and taking no column of its own; off, the capture is an ordinary one and the handle's own modification time answers alone; default `true` |
 | `parse_mimetype` | classify each record and add the `mimetype` column, off by default; Rust only |
 | `dedup_adjacent` | drop a record whose body repeats the previous row's, holding one previous digest and never a set; off by default because it gives up row-in / row-out alignment; Rust only |
 | `rename_columns` / `renameColumns` | emitted name for a column, keyed by its default name; a key naming no column is refused |
-| `lift_names` / `liftNames` | entry paths [lifted](lines.md#lifting-an-entry-into-a-column) into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 | `batch_row_size` / `batchRowSize`, `batch_byte_size` | the [shared batch targets](../options.md), a batch closing on whichever it reaches first; a text read states `35 * 1024` rows and 64 MiB where the options state none |
@@ -43,7 +42,7 @@ The `select` and `where` sections of the options shape a text read as they shape
     let mut options = TextOptions::new().try_with_rowheader(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)")?;
     options.start_rownum = Some(1);
     let options = options
-        .with_select("cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold")?
+        .with_select("cast(seqnum as int32) as n, trim(body) as line, level, id * 10 as tenfold")?
         .with_filter("n > 1 and line like '%d' and level is not null")?;
 
     let batches = source
@@ -67,11 +66,11 @@ The `select` and `where` sections of the options shape a text read as they shape
     table = IOBase(path).read_arrow_reader(
         rowheader=r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)",
         start_rownum=1,
-        select="cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold",
+        select="cast(seqnum as int32) as n, trim(body) as line, level, id * 10 as tenfold",
         filter="n > 1 and line like '%d' and level is not null",
     ).read_all()
     assert table.schema.names == ["n", "line", "level", "tenfold"]
-    assert table.column("line").to_pylist() == ["[WARN] id=9 second", "[INFO] id=11 third"]
+    assert table.column("line").to_pylist() == ["second", "third"]
     assert table.column("tenfold").to_pylist() == [90, 110]
     ```
 
@@ -89,12 +88,12 @@ The `select` and `where` sections of the options shape a text read as they shape
       .readArrowReader({
         rowheader: '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
         startRownum: 1n,
-        select: 'cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
+        select: 'cast(seqnum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
         filter: "n > 1 and line like '%d' and level is not null",
       })
       .intoTable()
     assert.deepEqual(table.schema.fields.map((field) => field.name), ['n', 'line', 'level', 'tenfold'])
-    assert.deepEqual([...table.getChild('line')], ['[WARN] id=9 second', '[INFO] id=11 third'])
+    assert.deepEqual([...table.getChild('line')], ['second', 'third'])
     assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
     ```
 
@@ -109,8 +108,8 @@ closes the active record and starts the next one.
 | later nonmatching lines | appended to the same `body`, separated by one `\n` |
 | LF, CRLF, or CR terminator | normalized to that separator, adding no trailing byte |
 | EOF without a final terminator | the active record is still emitted |
-| end of a handle or folder leaf | framing state ends, so records never join across source objects; each leaf supplies its own `sourceurl` / `crosscode`, and numbering restarts |
-| `rownum` / default `seqnum` | the record's first physical line number, a kept leading fragment included |
+| end of a handle or folder leaf | framing state ends, so records never join across source objects; each leaf supplies its own `crosscode`, and numbering restarts |
+| `seqnum` | the record's first physical line number, a kept leading fragment included |
 | unbounded `body` | the exact source bytes after first-line header removal and normalization, [as text](lines.md#a-line-is-text) |
 | `lstrip`, `rstrip` | cut from each physical line before it is joined |
 
@@ -136,11 +135,12 @@ without retaining it.
 
 ## A line with no body is no line
 
-`body` is the line, so a record that states no byte of its own is not a row:
+`body` is the line past its header, and the line is what the reader cut, so a
+record that cut to no byte of its own is not a row:
 a blank line, and one the `lstrip`/`rstrip` patterns take whole, is a
 separator between records rather than a record, and the reader goes past it.
-The numbering does not close over the gap - `rownum`, and therefore the
-default event `seqnum`, is the physical line's own - and a count answers
+The numbering does not close over the gap - `seqnum` is the physical line's
+own - and a count answers
 exactly what a read answers, because what makes a line a record is what it cut
 and never what `max_record_byte_size` kept.
 
@@ -166,7 +166,8 @@ a record by it would answer a line with no body on every row; under a
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - a rename onto a name another column already emits -> refused when the option is set, naming both.
 - a key of `rename_columns` naming no column -> refused.
-- `Text` handle -> options only, no line iterator or schema builder.
+- `Text` handle -> the retained options, and `read_text_lines` under them; no schema builder.
+- a `where`, a `select` or a row bound with `read_text_lines` -> every line, unfiltered and unprojected: the clauses are the record surfaces'.
 
 ## Commands
 

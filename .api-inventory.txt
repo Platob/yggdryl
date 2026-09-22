@@ -2679,7 +2679,6 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn capture(&self, index: usize) -> Option<&str>
   pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>  (the line's word over its header, decoded as a body is)
   pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Result<Self>
-  pub fn payload_bytes(&self) -> TextBytes  (the body past the header match, as a range of the same page; the body where the header declares nothing or did not match)
   pub fn entries(&self) -> Option<&TextEntries>  (the stated tree, else the payload's own by `TextEntries::from_bytes` on the first ask; `None` where it states no pair)
   pub fn entries_mut(&mut self) -> Option<&mut TextEntries>  (the tree moves from the resolved slot to the stated fact on the first mutation, so it stands over a body set later)
   pub fn set_entries(&mut self, entries: Option<TextEntries>)  (stated, a tree or its absence stands over the payload's own)
@@ -2765,10 +2764,6 @@ pub struct TextOptions  (`new()` states the two batch targets above)
   pub fn with_timezone(self, timezone: Timezone) -> Self
   pub fn capture_names(&self) -> impl ExactSizeIterator<Item = &str>
   pub rename_columns: BTreeMap<SmolStr, SmolStr>
-  pub fn lift_names(&self) -> Option<&[FieldPath]>
-  pub fn set_lift_names<I, S>(&mut self, paths: Option<I>) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
-  pub fn set_lift_paths(&mut self, paths: Option<Vec<FieldPath>>)
-  pub fn try_with_lift_names<I, S>(self, paths: I) -> Result<Self> where I: IntoIterator<Item = S>, S: AsRef<str>,
   pub const fn rename_columns(&self) -> &BTreeMap<SmolStr, SmolStr>
   pub fn with_renamed_column(self, from: impl Into<SmolStr>, to: impl Into<SmolStr>) -> Self
   pub fn stable_hash(&self) -> u64

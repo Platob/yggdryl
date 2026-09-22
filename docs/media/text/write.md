@@ -13,6 +13,7 @@ One line per row, out of native scalars or out of Arrow batches, each body plus 
 | Terminator | `linesep` when pinned, otherwise LF; an append compares the tail with the terminator as the charset spells it |
 | Charset | bodies are rendered through the charset the handle's media type [declares](lines.md#declaring-a-charset), inside the coding writer |
 | Refused | a `binary` body column, a null or empty body, a body holding the terminator, a row with no `body` column at all |
+| Header | a read takes the [row header](index.md#row-schema) off the body and states its captures as columns, so a write emits the body without it: reading and writing one object back is the payload, not the line |
 
 ## Use
 
@@ -181,6 +182,7 @@ bytes no reader of the file could read back as the rows they were.
 - `body` holding the terminator -> write refused; with `linesep` unset any LF or CR in a body is the refusal, since a read would split there.
 - a dictionary-encoded `utf8` body -> accepted, unpacked once per batch.
 - a declared charset -> the body is encoded back into it, or a declared handle would read its own UTF-8 back as legacy bytes.
+- a row read under a `rowheader` and written back out -> the header the read took off the body is not written again: a write states the `body` column and nothing derived from it, and a line the header consumed whole states an empty body, which a write refuses.
 
 ## Commands
 

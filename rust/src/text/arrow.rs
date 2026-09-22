@@ -119,11 +119,21 @@ fn text_lines(
 /// The one decode entry point. Every record method routes through it, and
 /// nothing else parses a line.
 ///
+/// The decode is not the query: this answers every line the object holds,
+/// whatever the options' `where`, `select` and row bounds say. Those are
+/// record clauses, applied once by the record surface -
+/// [`IOMedia::read_arrow_reader`](crate::IOMedia::read_arrow_reader) - over
+/// the rows the lines become, and they have to be, because a `where` may name
+/// a column the `select` builds and no line states one. Reading lines is
+/// therefore reading the resource, not reading the result; a caller who wants
+/// the result reads rows.
+///
 /// # Errors
 ///
 /// Returns the configuration's refusals - a framing mode with no header
 /// pattern, a rename naming no column, a lifted path with no name - before a
-/// byte is read.
+/// byte is read. A clause naming no column is not one of them: nothing binds
+/// it here, and the record surface refuses it by name.
 pub fn read_text_lines(
     handle: &(impl IOBase + ?Sized),
     options: &TextOptions,
@@ -1265,7 +1275,9 @@ impl<R: Read> Iterator for RawRows<R> {
 /// Physical or framed rows decoded into typed line values.
 ///
 /// The one decode path: every record method routes through this, and nothing
-/// else parses a line.
+/// else parses a line. It yields every line it decodes - the options' `where`,
+/// `select` and row bounds are the record surface's, as
+/// [`read_text_lines`] states.
 pub struct TextLines {
     raw: RawRows<Box<dyn Read + Send + 'static>>,
     /// The object every line of this read came from, shared rather than rebuilt.
@@ -1298,13 +1310,11 @@ impl TextLines {
     /// Nothing else is read: the header is stated only where the cut
     /// matched it, and every other reading is the line's, on its first ask.
     fn convert(&self, row: RawRow) -> Result<TextLine> {
-        let mut line = TextLine::from_bytes(row.index, row.body, Arc::clone(&self.options))?;
+        let mut line =
+            TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
         line.set_sourceurl(self.url.clone());
         line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
-        if let Some((end, captures)) = row.header {
-            line.state_matched_header(end, captures);
-        }
         Ok(line)
     }
 }
@@ -1410,7 +1420,7 @@ pub(crate) fn physical_rownum(start: Option<i64>, index: u64) -> Result<Option<i
 
 fn rownum_overflow(index: u64) -> Error {
     Error::InvalidRecord {
-        path: format_smolstr!("$[{index}].rownum"),
+        path: format_smolstr!("$[{index}].seqnum"),
         reason: SmolStr::new_static("text row number exceeds i64::MAX"),
     }
 }

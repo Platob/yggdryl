@@ -455,37 +455,27 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       field.type.toString(),
       field.nullable,
     ]),
-    [
-      ['sourceurl', 'Utf8', true],
-      ['mtime', 'Timestamp<NANOSECOND, UTC>', true],
-      ['body', 'Utf8', false],
-    ],
+    [['body', 'Utf8', false]],
   )
-  // The url column is the `url` datatype: Utf8 storage carrying the extension
-  // identity, and nullable because a handle without a location has no URL.
-  const sourceurl = table.schema.fields.find((field) => field.name === 'sourceurl')
-  assert.ok(sourceurl)
-  assert.equal(
-    sourceurl.metadata.get('ARROW:extension:name'),
-    'yggdryl.url',
-  )
-  // A located handle fills it with the canonical URL text of its location.
+  // The object a line came from is its chain, so a located handle fills
+  // `crosscode` with the canonical URL text of its location.
   assert.deepEqual(
-    [...table.getChild('sourceurl')],
+    [...table.getChild('crosscode')],
     [handle.url.toString(), handle.url.toString()],
   )
 
-  // One fact about the file, read once and repeated: every row carries the
-  // handle's own modification time, to the nanosecond it is stored at.
+  // One fact about the file, read once and repeated: every row is dated by
+  // the handle's own modification time, to the nanosecond it is stored at.
   const stamped = fs.statSync(target, { bigint: true }).mtimeNs
-  assert.deepEqual([...table.getChild('mtime').toArray()], [stamped, stamped])
+  assert.deepEqual([...table.getChild('currunix').toArray()], [stamped, stamped])
   // The record path reads the same column as the batch path.
   assert.deepEqual(
-    [...handle.readRecords(options)].map((row) => row.mtime),
-    [...table.getChild('mtime')],
+    [...handle.readRecords(options)].map((row) => row.currunix),
+    [...table.getChild('currunix')],
   )
 
-  // rownum still comes first when it is asked for, and captures still trail.
+  // Captures trail the line's own columns, and the row number needs none of
+  // its own: the event states it.
   const numbered = new TextOptions()
   numbered.startRownum = 1n
   numbered.rowheader = '^(?<word>\\w+)'
@@ -494,36 +484,25 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(numbered)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    [...EVENT_COLUMNS, 'sourceurl', 'rownum', 'mtime', 'body', 'word'],
+    [...EVENT_COLUMNS, 'body', 'word'],
   )
-
-  // Turning the flag off takes the column away rather than nulling it.
-  const undated = new TextOptions()
-  undated.parseMtime = false
   assert.deepEqual(
-    handle
-      .readArrowReader(undated)
-      .intoTable()
-      .schema.fields.map((field) => field.name),
-    [...EVENT_COLUMNS, 'sourceurl', 'body'],
+    [...handle.readArrowReader(numbered).intoTable().getChild('seqnum')],
+    [1n, 2n],
   )
 
-  // A buffer records no modification time, so the column is there and null:
-  // the reader says so rather than inventing a clock reading.
+  // A buffer records no modification time, so nothing dates its lines and
+  // the instant reads as the epoch rather than an invented clock reading.
   const buffer = IOBase.fromBytes(Buffer.from('first\nsecond\n'))
   const held = buffer.readArrowReader(options).intoTable()
   assert.deepEqual(
     held.schema.fields.map((field) => field.name),
-    [...EVENT_COLUMNS, 'sourceurl', 'mtime', 'body'],
+    [...EVENT_COLUMNS, 'body'],
   )
-  assert.deepEqual([...held.getChild('mtime')], [null, null])
-  assert.deepEqual(
-    [...buffer.readRecords(options)].map((row) => row.mtime),
-    [null, null],
-  )
+  assert.deepEqual([...held.getChild('currunix').toArray()], [0n, 0n])
 })
 
-test('a row header that dates a line fills mtime rather than adding a column', () => {
+test('a row header that dates a line fills currunix rather than adding a column', () => {
   const options = new TextOptions()
   options.rowheader = '^(?<mtime>\\S+) id=(?<id>\\d+) '
   const table = IOBase.fromBytes(
@@ -532,22 +511,23 @@ test('a row header that dates a line fills mtime rather than adding a column', (
     .readArrowReader(options)
     .intoTable()
 
-  // One column, not two: the capture dates the line, and is read at the
-  // column's own datatype rather than at the one its syntax suggests.
+  // No column of its own: the capture dates the line, and the instant it
+  // states is the event's, read at that clock rather than at the datatype
+  // its syntax suggests.
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    [...EVENT_COLUMNS, 'sourceurl', 'mtime', 'body', 'id'],
+    [...EVENT_COLUMNS, 'body', 'id'],
   )
-  const mtime = table.schema.fields.find((field) => field.name === 'mtime')
-  assert.ok(mtime)
-  assert.equal(mtime.type.unit, arrow.TimeUnit.NANOSECOND)
-  assert.equal(mtime.type.timezone, 'UTC')
+  const currunix = table.schema.fields.find((field) => field.name === 'currunix')
+  assert.ok(currunix)
+  assert.equal(currunix.type.unit, arrow.TimeUnit.NANOSECOND)
+  assert.equal(currunix.type.timezone, 'UTC')
   assert.deepEqual(
-    [...table.getChild('mtime').toArray()],
+    [...table.getChild('currunix').toArray()],
     [1_577_934_245_123_456_789n],
   )
 
-  // With the column off, the same name is an ordinary trailing capture,
+  // With the flag off, the same name is an ordinary trailing capture,
   // typed by its own syntax and sitting after body.
   const undated = new TextOptions()
   undated.parseMtime = false
@@ -560,7 +540,6 @@ test('a row header that dates a line fills mtime rather than adding a column', (
       .slice(EVENT_COLUMNS.length)
       .map((field) => [field.name, field.type.toString()]),
     [
-      ['sourceurl', 'Utf8'],
       ['body', 'Utf8'],
       ['mtime', 'Int64'],
     ],

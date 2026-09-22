@@ -2959,6 +2959,11 @@ export declare class IOBase {
    * through the same iterator, so a caller reading lines and a caller
    * reading batches read one decode. Lines are pulled one at a time and
    * never collected.
+   *
+   * One decode, two answers: this yields every line the resource holds,
+   * and the options' `where`, `select` and row bounds are the record
+   * surface's - a `where` may name a column the `select` builds, which no
+   * line states. A caller wanting the clauses answered reads records.
    */
   readTextLines(options?: JsTextOptions | undefined | null): TextLineIterator
   /**
@@ -5287,7 +5292,7 @@ export declare class TextOptions {
    * The columns a text read answers, built without reading anything.
    *
    * Every column is settled here - the fixed ones, the row header's
-   * captures, and every lifted entry path - so a caller has the schema
+   * captures - so a caller has the schema
    * before there is a resource to read.
    */
   sourceField(): Field
@@ -5295,21 +5300,12 @@ export declare class TextOptions {
    * The emitted name of each column, keyed by its default name.
    *
    * Renaming decides what a column is called and never whether one exists:
-   * a key naming no column is refused. Lifting an entry into a column of
-   * its own is `liftNames`.
+   * a key naming no column is refused. Lifting a column out of a line is
+   * the row header's own job.
    */
   get renameColumns(): Record<string, string>
   /** Replace the emitted-name overrides. */
   set renameColumns(renames: Record<string, string> | undefined | null)
-  /**
-   * The entry paths lifted into columns of their own.
-   *
-   * `null` lifts nothing beyond the row header's own captures; an empty
-   * array says the same thing explicitly.
-   */
-  get liftNames(): Array<string> | null
-  /** Replace the lifted entry paths, resolving each exactly once. */
-  set liftNames(paths: Array<string> | undefined | null)
   /** Return the timezone for offset-free autotyped timestamps. */
   get timezone(): JsTimezone | null
   /** Set or clear the autotyping timezone. */

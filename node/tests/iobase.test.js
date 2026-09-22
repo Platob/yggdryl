@@ -794,17 +794,15 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    [
-      ...EVENT_COLUMNS,
-      'sourceurl', 'rownum', 'mtime', 'body', 'level', 'id',
-    ],
+    [...EVENT_COLUMNS, 'body', 'level', 'id'],
   )
-  assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
-  // The body is the whole line, its row header included; the edges are
-  // what stripping removes.
+  // The row number is the event's place in its chain, and states it alone.
+  assert.deepEqual([...table.getChild('seqnum')], [10n, 11n, 12n])
+  // The body is the line past its row header; the edges are what stripping
+  // removes, and the header is what the reader took off.
   assert.deepEqual(
     [...table.getChild('body')],
-    ['[INFO] id=7 first', '[WARN] id=9 second', 'plain'],
+    [' first', ' second', 'plain'],
   )
   assert.deepEqual([...table.getChild('level')], ['INFO', 'WARN', null])
   assert.deepEqual([...table.getChild('id')], [7n, 9n, null])
@@ -812,7 +810,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const records = [...new IOBase(target).readRecords(options)]
   assert.deepEqual(
     records.map((row) => row.body),
-    ['[INFO] id=7 first', '[WARN] id=9 second', 'plain'],
+    [' first', ' second', 'plain'],
   )
   assert.deepEqual(
     records.map((row) => row.id),
@@ -848,37 +846,27 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
       .slice(EVENT_COLUMNS.length)
       .map((field) => [field.name, field.nullable]),
     [
-      ['sourceurl', true],
-      ['rownum', false],
-      ['mtime', true],
       ['body', false],
       ['dropped_byte_size', true],
       ['level', true],
     ],
   )
-  // The url column is the `url` datatype over Utf8 storage, and every row
-  // carries the canonical URL text of the handle it was read from.
-  const sourceurl = schemaFields.find((field) => field.name === 'sourceurl')
-  assert.ok(sourceurl)
-  assert.equal(sourceurl.type.toString(), 'Utf8')
-  assert.equal(
-    sourceurl.metadata.get('ARROW:extension:name'),
-    'yggdryl.url',
-  )
+  // The object a line came from is the chain it stands in, so every row
+  // carries the canonical URL text of the handle under `crosscode`.
   assert.deepEqual(
-    batches.flatMap((batch) => [...batch.getChild('sourceurl')]),
+    batches.flatMap((batch) => [...batch.getChild('crosscode')]),
     Array(3).fill(source.url.toString()),
   )
   assert.deepEqual(
-    batches.flatMap((batch) => [...batch.getChild('rownum')]),
+    batches.flatMap((batch) => [...batch.getChild('seqnum')]),
     [41n, 42n, 44n],
   )
   assert.deepEqual(
     batches
       .flatMap((batch) => [...batch.getChild('body')])
       .map((body) => Buffer.from(body).toString()),
-    // The header is always retained; the limit bounds what follows it.
-    ['[A] 12345678', '[B] abc\ndefg', '[C] z'],
+    // The header comes off the body, and the limit bounds what follows it.
+    ['12345678', 'abc\ndefg', 'z'],
   )
   assert.deepEqual(
     batches.flatMap((batch) => [...batch.getChild('dropped_byte_size')]),
@@ -936,7 +924,7 @@ test('text-only settings are flat native TextOptions value state', () => {
 
   assert.throws(() => {
     options.rowheader = '(?<body>.+)'
-  }, /distinct from sourceurl, rownum, body, dropped_byte_size and the event columns/)
+  }, /distinct from body, dropped_byte_size and the event columns/)
   assert.throws(() => {
     options.startRownum = 1
   })
@@ -979,11 +967,10 @@ test('retained text options parse the real execution row', () => {
   assert.equal(row.thread, '77-2f3e6ff7:9f4d2a08b1:128')
   assert.equal(row.module, 'ModuleFailFastFilterChecker')
   assert.equal(row.level, 'DEBUG')
+  // The body is the record past the header its captures came out of.
   assert.equal(
     row.body,
-    '2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] ' +
-      '[ModuleFailFastFilterChecker] (DEBUG) Execution report ' +
-      '(execId: 20260828180000369318, from session:',
+    'Execution report (execId: 20260828180000369318, from session:',
   )
 })
 
@@ -1035,12 +1022,12 @@ test('text folders decode coded leaves through the same record path', (t) => {
   const rows = [...new IOBase(root).readRecords(options)]
 
   assert.deepEqual(
-    rows.map((row) => row.rownum),
+    rows.map((row) => row.seqnum),
     [1n, 1n],
   )
   assert.deepEqual(
     rows.map((row) => row.body),
-    ['[INFO] id=1 from a', '[WARN] id=2 from b'],
+    [' from a', ' from b'],
   )
   assert.deepEqual(
     rows.map((row) => row.id),

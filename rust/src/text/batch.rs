@@ -10,15 +10,20 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
-use crate::graph::Event as _;
 use crate::media::IORecordOptions as _;
-use crate::{DataType, Result, Scalar};
+use crate::{DataType, Result, Scalar, Url};
 
 use super::line::TextLine;
 use super::options::TextOptions;
 use super::plan::{TextColumn, TextPlan, TextSource};
 
 /// Turn decoded lines into one Arrow batch.
+///
+/// Every line handed in becomes a row: the options are read for the column
+/// plan the rows take, never for the `where`, the `select` or the row bounds,
+/// which the record surface applies once over the batch this builds. A caller
+/// holding lines already past that seam shapes them with
+/// [`IORecordOptions::apply_arrow_batch`](crate::media::IORecordOptions::apply_arrow_batch).
 ///
 /// # Errors
 ///
@@ -54,7 +59,10 @@ where
 
 /// Turn decoded lines into streamed Arrow batches.
 ///
-/// Lines are pulled one batch at a time and never all held at once.
+/// Lines are pulled one batch at a time and never all held at once, and every
+/// one of them becomes a row: as in [`into_arrow_batch`], the `where`, the
+/// `select` and the row bounds belong to the record surface that reads a
+/// handle, and only the batch shape is read from the options here.
 ///
 /// # Errors
 ///
@@ -116,29 +124,10 @@ fn value_of(
         // The line's own reading of the fact, which refuses by name a
         // capture the fact's type cannot read.
         TextSource::Event(column) => line.event_fact(*column)?.unwrap_or(Scalar::Null),
-        TextSource::Url => line
-            .shared_url()
-            .map_or(Scalar::Null, |url| Scalar::Url(Arc::clone(url))),
-        TextSource::Rownum => super::arrow::physical_rownum(options.start_rownum, line.index())?
-            .map_or(Scalar::Null, Scalar::from),
-        // The line's own reading, which refuses by name a capture that is
-        // not an instant; the column is the clock the reading counts in.
-        TextSource::Timestamp => match line.mtime()? {
-            Some(count) => {
-                Scalar::datetime64(count, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)
-                    .unwrap_or(Scalar::Null)
-            }
-            None => Scalar::Null,
-        },
         TextSource::BodyType => Scalar::from(line.bodytype().as_str()),
         TextSource::Body => Scalar::from(line.body()),
         TextSource::DroppedByteSize => line.dropped_byte_size().map_or(Scalar::Null, Scalar::from),
         TextSource::Capture(index) => capture_value(line, *index, dtype, options)?,
-        // A path naming something this line did not carry is a null, which is
-        // the whole reason a caller lifts a path out of a shape that varies.
-        TextSource::Entry(path) => line
-            .get_entry_by_path(path)
-            .map_or(Scalar::Null, |entry| Scalar::from(entry.value().as_ref())),
     })
 }
 
@@ -167,18 +156,32 @@ fn capture_value(
 /// spelling but this crate's own would make the reverse direction useless.
 /// Meaning stays exact - a matched column is read at the plan's own datatype,
 /// and nothing here guesses what a value means, only what a column is called.
-const ALIASES: [(&str, &[&str]); 6] = [
+const ALIASES: [(&str, &[&str]); 5] = [
+    // The object a line came from and the place it holds are event facts
+    // now, so the spellings a producer wrote them under resolve onto the
+    // columns that state them rather than onto columns of their own.
     (
-        "sourceurl",
-        &["url", "source", "uri", "path", "file", "location"],
+        "crosscode",
+        &[
+            "sourceurl",
+            "url",
+            "source",
+            "uri",
+            "path",
+            "file",
+            "location",
+        ],
     ),
     (
-        "rownum",
-        &["row_number", "rownumber", "line_number", "lineno", "row"],
-    ),
-    (
-        "mtime",
-        &["timestamp", "time", "ts", "written_at", "event_time"],
+        "seqnum",
+        &[
+            "rownum",
+            "row_number",
+            "rownumber",
+            "line_number",
+            "lineno",
+            "row",
+        ],
     ),
     (
         "mimetype",
@@ -198,13 +201,10 @@ const ALIASES: [(&str, &[&str]); 6] = [
 const fn default_name_of(source: &TextSource) -> Option<&'static str> {
     Some(match source {
         TextSource::Event(column) => column.name(),
-        TextSource::Url => "sourceurl",
-        TextSource::Rownum => "rownum",
-        TextSource::Timestamp => "mtime",
         TextSource::BodyType => "mimetype",
         TextSource::Body => "body",
         TextSource::DroppedByteSize => "dropped_byte_size",
-        TextSource::Capture(_) | TextSource::Entry(_) => return None,
+        TextSource::Capture(_) => return None,
     })
 }
 
@@ -416,7 +416,9 @@ fn line_of(
     row: usize,
     ordinal: u64,
 ) -> Result<TextLine> {
-    let mut line = TextLine::from_bytes(
+    // The row's body is already the line past its header, so it is taken as
+    // it stands; the header's captures are this row's own columns.
+    let mut line = TextLine::from_row(
         ordinal,
         body_of(plan, intake, batch, row, ordinal)?,
         Arc::clone(&intake.options),
@@ -480,6 +482,9 @@ fn body_of(
         )));
     };
     let value = cell_of(batch, at, row, ordinal, None, column, child)?;
+    // A cell that states nothing at all is no row; an empty one is the line
+    // a row header consumed whole, whose captures are what it states, and a
+    // read emits those - so a read back takes them.
     let body = read_bytes(&value)
         .map_err(|error| {
             refused(smol_str::format_smolstr!(
@@ -487,12 +492,7 @@ fn body_of(
                 crate::text::elide_display(&error)
             ))
         })?
-        .filter(|body| !body.is_empty())
-        .ok_or_else(|| {
-            refused(SmolStr::new_static(
-                "expected a line body, got an empty one",
-            ))
-        })?;
+        .ok_or_else(|| refused(SmolStr::new_static("expected a line body, got a null one")))?;
     Ok(body)
 }
 
@@ -563,8 +563,11 @@ fn apply(
     }
     // Located by the stream ordinal `line_of` reports, never by a restored
     // row number an earlier column of this same row may already have set.
+    // The object is taken once, up front, because restoring a column writes
+    // to the line the refusal would otherwise still be reading.
+    let located = line.shared_url().cloned();
     let refused =
-        |reason| super::arrow::row_error(ordinal, None, line.sourceurl(), &column.name, reason);
+        |reason| super::arrow::row_error(ordinal, None, located.as_deref(), &column.name, reason);
     let text = |value| {
         read_bytes(value).map_err(|error| {
             refused(smol_str::format_smolstr!(
@@ -590,28 +593,32 @@ fn apply(
             if !nothing {
                 held.record(line, value);
             }
-        }
-        TextSource::Url => {
-            if let Scalar::Url(url) = value {
-                line.set_sourceurl(Some(Arc::clone(url)));
-            }
-        }
-        TextSource::Rownum => {
-            let number = value
-                .as_i128()
-                .and_then(|number| u64::try_from(number - i128::from(start_rownum)).ok())
-                .ok_or_else(|| {
-                    refused(SmolStr::new_static(
-                        "expected a row number at or after start_rownum",
-                    ))
-                })?;
-            line.set_index(number);
-        }
-        // The column is the clock the line counts in, so what it states is
-        // the line's instant: the row's word, over what its header reads.
-        TextSource::Timestamp => {
-            if let Some(count) = value.temporal_count() {
-                line.set_currunix(count);
+            match held {
+                // The chain is the object a line came from, so a cross code
+                // that reads as a URL locates the line again. One that does
+                // not is an ordinary code and locates nothing, which is the
+                // unlocated line it always was.
+                crate::graph::EventColumn::CrossCode => {
+                    if let Some(url) = value.as_str().and_then(|text| Url::from_str(text).ok()) {
+                        line.set_sourceurl(Some(Arc::new(url)));
+                    }
+                }
+                // The place in the chain is the row number, so it restores
+                // the line's index under the same offset the read counted
+                // from; a number before that offset is refused rather than
+                // wrapped.
+                crate::graph::EventColumn::SeqNum => {
+                    let number = value
+                        .as_i128()
+                        .and_then(|number| u64::try_from(number - i128::from(start_rownum)).ok())
+                        .ok_or_else(|| {
+                            refused(SmolStr::new_static(
+                                "expected a sequence number at or after start_rownum",
+                            ))
+                        })?;
+                    line.set_index(number);
+                }
+                _ => {}
             }
         }
         TextSource::BodyType => {
@@ -641,11 +648,6 @@ fn apply(
             line.set_dropped_byte_size(Some(size));
         }
         TextSource::Capture(index) => captures[*index] = text(value)?,
-        TextSource::Entry(path) => {
-            if let Some(held) = text(value)? {
-                line.set_entry_by_path(path, held)?;
-            }
-        }
     }
     Ok(())
 }
