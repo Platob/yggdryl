@@ -21,8 +21,7 @@
 #![allow(dead_code)]
 
 use yggdryl::object::{
-    self, AzureOptions, Credentials, GoogleOptions, ObjectFile, ObjectFolder, ObjectOptions,
-    ObjectPath, Provider,
+    self, AzureOptions, Credentials, GoogleOptions, Provider, S3File, S3Folder, S3Options, S3Path,
 };
 
 use crate::server::{self, FakeS3};
@@ -38,8 +37,8 @@ pub fn store() -> FakeS3 {
 }
 
 /// Options that reach `store` and consult nothing outside the test.
-pub fn options(store: &FakeS3) -> ObjectOptions {
-    ObjectOptions::default()
+pub fn options(store: &FakeS3) -> S3Options {
+    S3Options::default()
         .with_environment(false)
         .with_endpoint(store.endpoint())
         .with_region("us-east-1")
@@ -48,34 +47,34 @@ pub fn options(store: &FakeS3) -> ObjectOptions {
 }
 
 /// The object `key` on `store`.
-pub fn file(store: &FakeS3, key: &str) -> ObjectFile {
+pub fn file(store: &FakeS3, key: &str) -> S3File {
     file_with(key, options(store))
 }
 
 /// The object `key`, under options a test tightened.
 ///
 /// The options already name the endpoint, so the store is not passed again.
-pub fn file_with(key: &str, options: ObjectOptions) -> ObjectFile {
+pub fn file_with(key: &str, options: S3Options) -> S3File {
     object::file_with(&location(key), options).expect("an object handle")
 }
 
 /// The prefix `key` on `store`.
-pub fn folder(store: &FakeS3, key: &str) -> ObjectFolder {
+pub fn folder(store: &FakeS3, key: &str) -> S3Folder {
     folder_with(key, options(store))
 }
 
 /// The prefix `key`, under options a test tightened.
-pub fn folder_with(key: &str, options: ObjectOptions) -> ObjectFolder {
+pub fn folder_with(key: &str, options: S3Options) -> S3Folder {
     object::folder_with(&location(key), options).expect("a prefix handle")
 }
 
 /// The location `key` on `store`.
-pub fn path(store: &FakeS3, key: &str) -> ObjectPath {
+pub fn path(store: &FakeS3, key: &str) -> S3Path {
     path_with(key, options(store))
 }
 
 /// The location `key`, under options a test tightened.
-pub fn path_with(key: &str, options: ObjectOptions) -> ObjectPath {
+pub fn path_with(key: &str, options: S3Options) -> S3Path {
     object::path_at_with(Provider::Aws, BUCKET, key, options).expect("a location handle")
 }
 
@@ -89,8 +88,8 @@ pub fn location(key: &str) -> String {
 ///
 /// Each store is authorized the way that store is: S3 by its keys, Google by a
 /// token the caller holds, Azure by the account key the emulators publish.
-pub fn options_for(store: &FakeS3, provider: Provider) -> ObjectOptions {
-    let options = ObjectOptions::default()
+pub fn options_for(store: &FakeS3, provider: Provider) -> S3Options {
+    let options = S3Options::default()
         .with_environment(false)
         .with_endpoint(store.endpoint())
         .with_region("us-east-1")
@@ -113,27 +112,27 @@ pub fn options_for(store: &FakeS3, provider: Provider) -> ObjectOptions {
 }
 
 /// The object `key` in the fixture container on `provider`.
-pub fn file_on(store: &FakeS3, provider: Provider, key: &str) -> ObjectFile {
+pub fn file_on(store: &FakeS3, provider: Provider, key: &str) -> S3File {
     file_on_with(provider, key, options_for(store, provider))
 }
 
 /// The object `key` on `provider`, under options a test tightened.
-pub fn file_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectFile {
+pub fn file_on_with(provider: Provider, key: &str, options: S3Options) -> S3File {
     object::file_with(&location_on(provider, key), options).expect("an object handle")
 }
 
 /// The prefix `key` in the fixture container on `provider`.
-pub fn folder_on(store: &FakeS3, provider: Provider, key: &str) -> ObjectFolder {
+pub fn folder_on(store: &FakeS3, provider: Provider, key: &str) -> S3Folder {
     folder_on_with(provider, key, options_for(store, provider))
 }
 
 /// The prefix `key` on `provider`, under options a test tightened.
-pub fn folder_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectFolder {
+pub fn folder_on_with(provider: Provider, key: &str, options: S3Options) -> S3Folder {
     object::folder_with(&location_on(provider, key), options).expect("a prefix handle")
 }
 
 /// The location `key` on `provider`, under options a test tightened.
-pub fn path_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectPath {
+pub fn path_on_with(provider: Provider, key: &str, options: S3Options) -> S3Path {
     object::path_at_with(provider, BUCKET, key, options).expect("a location handle")
 }
 
@@ -228,7 +227,7 @@ mod accounting {
             FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
             read_manifest, write_manifest,
         };
-        use yggdryl::object::ObjectFolder;
+        use yggdryl::object::S3Folder;
         use yggdryl::{DataType, Field, IOBase};
 
         /// The requests the store handled since the last clear, by shape.
@@ -320,7 +319,7 @@ mod accounting {
         #[test]
         fn what_a_table_costs_over_the_store() {
             let store = crate::mod_::store();
-            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
+            let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
 
@@ -479,7 +478,7 @@ mod accounting {
         #[test]
         fn a_failed_upload_publishes_nothing_and_leaves_no_staged_file() {
             let store = crate::mod_::store();
-            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
+            let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table =
@@ -608,7 +607,7 @@ mod accounting {
         #[test]
         fn a_manifest_recording_no_length_is_not_believed() {
             let store = crate::mod_::store();
-            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
+            let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table = Table::create(
@@ -921,7 +920,7 @@ mod roles {
     fn a_holder_walks_a_store_through_one_type() {
         let store = store();
         store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
-        let root = yggdryl::holder::Holder::ObjectFolder(folder(&store, ""));
+        let root = yggdryl::holder::Holder::S3Folder(folder(&store, ""));
 
         assert!(root.is_container());
         assert_eq!(root.kind(), IOKind::Directory);
@@ -932,7 +931,7 @@ mod roles {
         assert_eq!(entries.len(), 3, "two containers and the leaf");
         let leaf = entries.last().expect("the leaf");
         assert_eq!(leaf.read_all_bytes().expect("the object"), b"PAR1");
-        assert!(matches!(leaf, yggdryl::holder::Holder::ObjectFile(_)));
+        assert!(matches!(leaf, yggdryl::holder::Holder::S3File(_)));
 
         // Resolving down the tree stays in one type the whole way.
         let child = root

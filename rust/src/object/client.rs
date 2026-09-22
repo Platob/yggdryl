@@ -20,11 +20,11 @@ use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
 
-use super::answer::{ListPage, ObjectMeta};
+use super::answer::{ListPage, S3Meta};
 use super::aws::credentials::{CredentialCache, CredentialSource, Credentials, variable};
 use super::aws::xml;
 use super::encryption::Encryption;
-use super::options::ObjectOptions;
+use super::options::S3Options;
 use super::provider::Provider;
 use super::request::Request;
 use super::sigv4::{self, Signer};
@@ -237,7 +237,7 @@ pub(super) struct Client {
     /// What Azure's dialect authorizes with: a signature, a token in the query,
     /// a bearer token, or nothing.
     azure: super::azure::auth::Authorization,
-    options: ObjectOptions,
+    options: S3Options,
     stats: Stats,
     /// What is left to spend on retries.
     retries: RetryBudget,
@@ -256,7 +256,7 @@ impl Client {
     ///
     /// Returns a refusal when the URL's scheme names no store, when it names no
     /// container, or when an endpoint cannot be read as a location.
-    pub(super) fn new(url: &Url, options: ObjectOptions) -> Result<Self> {
+    pub(super) fn new(url: &Url, options: S3Options) -> Result<Self> {
         let provider = Provider::from_scheme(url.scheme()).ok_or_else(|| {
             Error::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -350,7 +350,7 @@ impl Client {
     /// A client whose transport matches the defaults shares one process-wide
     /// agent, so many handles against one store share connections rather than
     /// each opening its own.
-    fn agent(options: &ObjectOptions) -> ureq::Agent {
+    fn agent(options: &S3Options) -> ureq::Agent {
         if !options.has_custom_transport() {
             return shared_agent().clone();
         }
@@ -401,7 +401,7 @@ impl Client {
     pub(super) fn azure_account(
         provider: Provider,
         url: &Url,
-        options: &ObjectOptions,
+        options: &S3Options,
         handed: Option<&Credentials>,
     ) -> Option<String> {
         if !matches!(provider, Provider::Azure) {
@@ -423,7 +423,7 @@ impl Client {
     fn endpoint_of(
         provider: Provider,
         url: &Url,
-        options: &ObjectOptions,
+        options: &S3Options,
         handed: Option<&Credentials>,
     ) -> Result<Endpoint> {
         // An explicitly configured endpoint wins: it is a deliberate choice
@@ -491,7 +491,7 @@ impl Client {
     }
 
     /// The endpoint the environment and a store's own files name.
-    fn ambient_endpoint(provider: Provider, options: &ObjectOptions) -> Option<String> {
+    fn ambient_endpoint(provider: Provider, options: &S3Options) -> Option<String> {
         match provider {
             Provider::Aws => variable("AWS_ENDPOINT_URL_S3")
                 .or_else(|| variable("AWS_ENDPOINT_URL"))
@@ -518,7 +518,7 @@ impl Client {
     fn published_host(
         provider: Provider,
         url: &Url,
-        options: &ObjectOptions,
+        options: &S3Options,
         account: Option<&str>,
     ) -> Result<(String, String, Option<u16>)> {
         let host = match provider {
@@ -588,7 +588,7 @@ impl Client {
     }
 
     /// The signing region the URL and options name.
-    fn region_of(url: &Url, options: &ObjectOptions) -> String {
+    fn region_of(url: &Url, options: &S3Options) -> String {
         options
             .region()
             .map(str::to_owned)
@@ -638,7 +638,7 @@ impl Client {
         self.options.encryption()
     }
 
-    pub(super) const fn options(&self) -> &ObjectOptions {
+    pub(super) const fn options(&self) -> &S3Options {
         &self.options
     }
 
@@ -1121,7 +1121,7 @@ impl Client {
     /// # Errors
     ///
     /// Returns the store's refusal for anything that is not a 404.
-    pub(super) fn head_object(&self, bucket: &str, key: &str) -> Result<Option<ObjectMeta>> {
+    pub(super) fn head_object(&self, bucket: &str, key: &str) -> Result<Option<S3Meta>> {
         let request = match self.provider {
             Provider::Aws | Provider::Azure => self
                 .common(Request::new("HEAD", "HeadObject", bucket, key))
@@ -1149,7 +1149,7 @@ impl Client {
                     )
                 });
         }
-        Ok(Some(ObjectMeta {
+        Ok(Some(S3Meta {
             size: answer
                 .header("content-length")
                 .and_then(|value| value.trim().parse().ok())
@@ -2375,7 +2375,7 @@ const MAX_DOCUMENT: u64 = 32 * 1024 * 1024;
 /// The process-wide connection pool, shared by every default-configured client.
 fn shared_agent() -> &'static ureq::Agent {
     static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| build_agent(&ObjectOptions::default()))
+    AGENT.get_or_init(|| build_agent(&S3Options::default()))
 }
 
 /// Build an agent for `options`.
@@ -2385,7 +2385,7 @@ fn shared_agent() -> &'static ureq::Agent {
 /// stops answering - but a global deadline is re-checked around every read and
 /// write, which costs more per request than the whole of signing one. Per
 /// phase, the bound is free.
-fn build_agent(options: &ObjectOptions) -> ureq::Agent {
+fn build_agent(options: &S3Options) -> ureq::Agent {
     let mut builder = ureq::Agent::config_builder()
             // Statuses are read, never raised: a store says what it means in
             // the status and a document, and this client maps both itself.
@@ -2691,7 +2691,7 @@ pub mod internals {
 
     use crate::Result;
     use crate::Url;
-    use crate::object::{Credentials, ObjectOptions, Provider};
+    use crate::object::{Credentials, Provider, S3Options};
 
     /// The region a location that names no endpoint is signed for.
     pub const DEFAULT_REGION: &str = super::DEFAULT_REGION;
@@ -2765,7 +2765,7 @@ pub mod internals {
         ///
         /// Returns a refusal when the URL names no store, no container, or an
         /// endpoint that cannot be read as a location.
-        pub fn new(url: &Url, options: ObjectOptions) -> Result<Self> {
+        pub fn new(url: &Url, options: S3Options) -> Result<Self> {
             super::Client::new(url, options).map(Self)
         }
 
@@ -2793,7 +2793,7 @@ pub mod internals {
         pub fn azure_account(
             provider: Provider,
             url: &Url,
-            options: &ObjectOptions,
+            options: &S3Options,
             handed: Option<&Credentials>,
         ) -> Option<String> {
             super::Client::azure_account(provider, url, options, handed)

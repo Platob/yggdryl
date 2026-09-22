@@ -13,13 +13,11 @@ use std::time::Duration;
 
 use yggdryl::Url;
 use yggdryl::internals::object_client::Client;
-use yggdryl::object::{
-    AssumedRole, AzureOptions, Credentials, Encryption, ObjectOptions, Provider,
-};
+use yggdryl::object::{AssumedRole, AzureOptions, Credentials, Encryption, Provider, S3Options};
 
 #[test]
 fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         // Most of a catalog's properties have nothing to do with a store.
         ("type", "rest"),
         ("uri", "https://catalog.example.io"),
@@ -51,7 +49,7 @@ fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
 
 #[test]
 fn pyarrows_arguments_reach_the_same_knobs_by_their_own_names() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("endpoint_override", "localhost:9000"),
         ("scheme", "http"),
         ("access_key", "minioadmin"),
@@ -77,7 +75,7 @@ fn pyarrows_arguments_reach_the_same_knobs_by_their_own_names() {
 
 #[test]
 fn the_aws_environment_names_are_the_same_knobs_again() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
         ("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI"),
         ("AWS_REGION", "us-east-1"),
@@ -102,7 +100,7 @@ fn a_catalogs_bearer_token_is_never_read_as_a_session_token() {
     // `token` is a REST catalog's OAuth token, and reading it as an AWS
     // session token would sign every request with a credential set that is
     // half right - which fails at the store, far from the cause.
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("token", "an-oauth-bearer-token"),
         ("s3.access-key-id", "minioadmin"),
         ("s3.secret-access-key", "minioadmin-secret"),
@@ -116,7 +114,7 @@ fn a_catalogs_bearer_token_is_never_read_as_a_session_token() {
 
 #[test]
 fn a_role_is_assembled_from_the_properties_that_describe_it() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("s3.role-arn", "arn:aws:iam::123456789012:role/lake-reader"),
         ("s3.role-session-name", "power-desk"),
         ("external_id", "desk-42"),
@@ -136,7 +134,7 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     assert_eq!(role.endpoint(), Some("https://sts.eu-west-1.amazonaws.com"));
 
     // A duration outside what STS issues is clamped rather than refused.
-    let options = ObjectOptions::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
+    let options = S3Options::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
         .expect("readable properties");
     assert_eq!(
         options.aws().assumed_role().map(AssumedRole::duration),
@@ -146,10 +144,10 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
 
 #[test]
 fn the_sse_properties_name_each_of_the_three_kinds() {
-    let managed = ObjectOptions::from_properties([("s3.sse.type", "AES256")]).expect("properties");
+    let managed = S3Options::from_properties([("s3.sse.type", "AES256")]).expect("properties");
     assert!(matches!(managed.encryption(), Encryption::Managed));
 
-    let kms = ObjectOptions::from_properties([
+    let kms = S3Options::from_properties([
         ("s3.sse.type", "aws:kms"),
         ("s3.sse.key", "arn:aws:kms:eu-west-1:1234:key/abcd"),
         ("sse.context", r#"{"desk":"power"}"#),
@@ -165,7 +163,7 @@ fn the_sse_properties_name_each_of_the_three_kinds() {
 
     // `AES256` is what SSE-S3 is called and what a customer key's algorithm
     // is called; a key alongside it is what tells the two apart.
-    let customer = ObjectOptions::from_properties([
+    let customer = S3Options::from_properties([
         ("s3.sse.type", "AES256"),
         ("s3.sse.key", "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw="),
         ("s3.sse.md5", "N+iD0sgzzGlyEXJzCNck5w=="),
@@ -175,7 +173,7 @@ fn the_sse_properties_name_each_of_the_three_kinds() {
 
     // And nothing said is nothing done.
     assert!(
-        ObjectOptions::from_properties([("s3.sse.type", "none")])
+        S3Options::from_properties([("s3.sse.type", "none")])
             .expect("properties")
             .encryption()
             .is_default()
@@ -191,7 +189,7 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
         ("part_size", "big", "byte count"),
         ("s3.sse.type", "rot13", "sse type"),
     ] {
-        let refused = ObjectOptions::from_properties([(name, value)]).expect_err("a refusal");
+        let refused = S3Options::from_properties([(name, value)]).expect_err("a refusal");
         assert!(
             refused.to_string().contains(expected),
             "{name}={value}: {refused}"
@@ -199,7 +197,7 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
     }
 
     // A customer key whose MD5 does not match it is the same story.
-    let refused = ObjectOptions::from_properties([
+    let refused = S3Options::from_properties([
         ("s3.sse.type", "sse-c"),
         ("s3.sse.key", "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw="),
         ("s3.sse.md5", "AAAAAAAAAAAAAAAAAAAAAA=="),
@@ -210,13 +208,13 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
 
 #[test]
 fn a_knob_this_client_cannot_honor_is_refused_rather_than_dropped() {
-    let refused = ObjectOptions::from_properties([("s3.signer.uri", "https://signer.example.io")])
+    let refused = S3Options::from_properties([("s3.signer.uri", "https://signer.example.io")])
         .expect_err("a refusal");
     assert!(refused.to_string().contains("does not do"), "{refused}");
 
     // Whereas a knob about something that is not this store is simply not
     // this store's business.
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("adls.account-name", "trades"),
         ("gcs.project-id", "trades"),
         ("py-io-impl", "pyiceberg.io.pyarrow.PyArrowFileIO"),
@@ -228,7 +226,7 @@ fn a_knob_this_client_cannot_honor_is_refused_rather_than_dropped() {
 
 #[test]
 fn sizes_may_carry_the_unit_a_configuration_file_writes_them_with() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("part_size", "8MiB"),
         ("multipart_threshold", "32 MB"),
         ("list_page_size", "500"),
@@ -248,7 +246,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     // without this test setting a variable of its own - which it could not do
     // in a crate that denies unsafe code, and should not do to a process it
     // shares with every other test.
-    let found = ObjectOptions::default()
+    let found = S3Options::default()
         .with_environment_prefixes(["PAT"])
         .environment_properties();
     assert!(
@@ -260,7 +258,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
 
     // The longest matching prefix wins, so a specific spelling is not eaten by
     // a general one.
-    let found = ObjectOptions::default()
+    let found = S3Options::default()
         .with_environment_prefixes(["PA", "PAT"])
         .environment_properties();
     assert!(
@@ -271,14 +269,14 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     // And nothing at all when the environment is shut off, whatever the
     // prefixes say.
     assert!(
-        ObjectOptions::default()
+        S3Options::default()
             .with_environment(false)
             .with_environment_prefix("PAT")
             .environment_properties()
             .is_empty()
     );
     assert_eq!(
-        ObjectOptions::default().environment_prefixes(),
+        S3Options::default().environment_prefixes(),
         [
             "AWS_".to_owned(),
             "GOOGLE_".to_owned(),
@@ -287,7 +285,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
         ]
     );
     assert_eq!(
-        ObjectOptions::default()
+        S3Options::default()
             .with_environment_prefix("TRADING_S3_")
             .environment_prefixes()
             .len(),
@@ -297,7 +295,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
 
 #[test]
 fn what_a_caller_set_wins_over_what_the_environment_says() {
-    let ambient = ObjectOptions::from_properties([
+    let ambient = S3Options::from_properties([
         ("endpoint", "https://ambient.example.io"),
         ("region", "us-east-1"),
         ("access_key_id", "AMBIENT"),
@@ -309,7 +307,7 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
     ])
     .expect("readable properties");
 
-    let explicit = ObjectOptions::default()
+    let explicit = S3Options::default()
         .with_region("eu-west-1")
         .with_max_attempts(2)
         .under(&ambient);
@@ -328,9 +326,7 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
     assert!(!explicit.container_creation());
 
     // An anonymous client stays anonymous, whatever keys are lying about.
-    let anonymous = ObjectOptions::default()
-        .with_anonymous(true)
-        .under(&ambient);
+    let anonymous = S3Options::default().with_anonymous(true).under(&ambient);
     assert!(anonymous.anonymous());
     assert!(anonymous.credentials().is_none());
 }
@@ -346,26 +342,20 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
     let handed = Credentials::new("devstoreaccount1", "a2V5");
     let url = Url::from_str("az://trades/lake/part.bin").expect("a location");
     assert_eq!(
-        Client::azure_account(
-            Provider::Azure,
-            &url,
-            &ObjectOptions::default(),
-            Some(&handed)
-        ),
+        Client::azure_account(Provider::Azure, &url, &S3Options::default(), Some(&handed)),
         Some("devstoreaccount1".to_owned())
     );
 
     // The same pair sitting in the options, with nothing handed over, is what
     // the environment sweep leaves behind - and it names nothing.
-    let ambient = ObjectOptions::default().with_credentials(handed.clone());
+    let ambient = S3Options::default().with_credentials(handed.clone());
     assert_eq!(
         Client::azure_account(Provider::Azure, &url, &ambient, None),
         None
     );
 
     // The options and the location both outrank a pair either way.
-    let named =
-        ObjectOptions::default().with_azure(AzureOptions::default().with_account("trading"));
+    let named = S3Options::default().with_azure(AzureOptions::default().with_account("trading"));
     assert_eq!(
         Client::azure_account(Provider::Azure, &url, &named, Some(&handed)),
         Some("trading".to_owned())
@@ -376,7 +366,7 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
         Client::azure_account(
             Provider::Azure,
             &attached,
-            &ObjectOptions::default(),
+            &S3Options::default(),
             Some(&handed)
         ),
         Some("lake".to_owned())
@@ -391,7 +381,7 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
         ))
         .expect("a location");
         assert_eq!(
-            Client::azure_account(provider, &url, &ObjectOptions::default(), Some(&handed)),
+            Client::azure_account(provider, &url, &S3Options::default(), Some(&handed)),
             None,
             "{provider}"
         );
@@ -400,7 +390,7 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
     // And with no account anywhere - which is what a process holding only
     // another store's keys now has - the refusal names where to put one rather
     // than sending the request to whichever host a stray key spelled.
-    let Err(refusal) = Client::new(&url, ObjectOptions::default().with_environment(false)) else {
+    let Err(refusal) = Client::new(&url, S3Options::default().with_environment(false)) else {
         panic!("an unaddressable location is refused");
     };
     assert!(
@@ -413,7 +403,7 @@ fn a_pair_the_environment_answered_never_names_an_azure_account() {
 
 #[test]
 fn the_service_specific_endpoint_and_region_names_win() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("AWS_ENDPOINT_URL", "https://generic.example.io"),
         ("AWS_ENDPOINT_URL_S3", "https://s3.example.io"),
         ("AWS_DEFAULT_REGION", "us-east-1"),
@@ -430,7 +420,7 @@ fn a_catalogs_google_and_azure_properties_reach_the_store_they_name() {
     // One catalog can hold all three stores' properties at once, because a
     // warehouse on one cloud and a backup on another is an ordinary thing to
     // configure. Each name reaches its own store's options and no other's.
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("type", "rest"),
         ("warehouse", "gs://trades/lake"),
         // PyIceberg's Google names.
@@ -463,7 +453,7 @@ fn a_catalogs_google_and_azure_properties_reach_the_store_they_name() {
 
 #[test]
 fn an_azure_connection_string_is_read_whole_rather_than_taken_apart() {
-    let options = ObjectOptions::from_properties([(
+    let options = S3Options::from_properties([(
         "azure_storage_connection_string",
         "DefaultEndpointsProtocol=https;AccountName=trades;AccountKey=a2V5;\
          EndpointSuffix=core.windows.net",
@@ -479,7 +469,7 @@ fn an_azure_connection_string_is_read_whole_rather_than_taken_apart() {
     // The emulator's switch names the published development account, so a test
     // needs no secret of its own.
     let development =
-        ObjectOptions::from_properties([("connection_string", "UseDevelopmentStorage=true")])
+        S3Options::from_properties([("connection_string", "UseDevelopmentStorage=true")])
             .expect("readable properties");
     assert_eq!(development.azure().account(), Some("devstoreaccount1"));
     assert_eq!(
@@ -492,15 +482,15 @@ fn an_azure_connection_string_is_read_whole_rather_than_taken_apart() {
 fn a_name_two_stores_both_have_is_applied_to_both() {
     // Only the store that answers ever reads its own options, so nothing is
     // ambiguous by the time it matters.
-    let options = ObjectOptions::from_properties([("storage_class", "NEARLINE")])
-        .expect("readable properties");
+    let options =
+        S3Options::from_properties([("storage_class", "NEARLINE")]).expect("readable properties");
     assert_eq!(options.aws().storage_class(), Some("NEARLINE"));
     assert_eq!(options.google().storage_class(), Some("NEARLINE"));
 }
 
 #[test]
 fn a_google_credentials_file_and_an_impersonation_are_read_by_their_own_names() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         (
             "google_application_credentials",
             "/etc/keys/service-account.json",
@@ -525,7 +515,7 @@ fn a_google_credentials_file_and_an_impersonation_are_read_by_their_own_names() 
 
 #[test]
 fn an_azure_blob_type_and_tier_are_read_and_a_name_neither_has_is_refused() {
-    let options = ObjectOptions::from_properties([
+    let options = S3Options::from_properties([
         ("adls.blob-type", "append"),
         ("adls.access-tier", "Cool"),
         ("adls.encryption-scope", "desk-power"),
@@ -542,7 +532,7 @@ fn an_azure_blob_type_and_tier_are_read_and_a_name_neither_has_is_refused() {
     ));
 
     let refused =
-        ObjectOptions::from_properties([("adls.blob-type", "ledger")]).expect_err("a refusal");
+        S3Options::from_properties([("adls.blob-type", "ledger")]).expect_err("a refusal");
     assert!(
         refused.to_string().contains("block, append, or page"),
         "{refused}"
@@ -555,7 +545,7 @@ fn an_encryption_shape_a_store_does_not_have_is_refused_when_the_client_is_built
     // KMS key for it is a mistake worth hearing before the first write.
     let refused = yggdryl::object::file_with(
         "az://lake/part.bin",
-        ObjectOptions::default()
+        S3Options::default()
             .with_environment(false)
             .with_azure(yggdryl::object::AzureOptions::default().with_account("trades"))
             .with_encryption(Encryption::kms("a-key")),
@@ -569,7 +559,7 @@ fn an_encryption_shape_a_store_does_not_have_is_refused_when_the_client_is_built
     // And the other way round: a scope is Azure's shape, not Google's.
     let refused = yggdryl::object::file_with(
         "gs://lake/part.bin",
-        ObjectOptions::default()
+        S3Options::default()
             .with_environment(false)
             .with_encryption(Encryption::scope("desk-power")),
     )

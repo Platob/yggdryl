@@ -73,9 +73,9 @@ impl std::str::FromStr for BlobType {
 /// How this backend reaches Azure Blob Storage in particular.
 ///
 /// ```
-/// use yggdryl::object::{AzureOptions, ObjectOptions};
+/// use yggdryl::object::{AzureOptions, S3Options};
 ///
-/// let options = ObjectOptions::default().with_azure(
+/// let options = S3Options::default().with_azure(
 ///     AzureOptions::default()
 ///         .with_account("trades")
 ///         .with_sas_token("sv=2025-05-05&sig=..."),

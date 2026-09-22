@@ -5,7 +5,7 @@
 //! staged upload. The reader is [`crate::object::xml`]; this module
 //! names the elements and nothing else.
 
-use super::super::answer::{ListPage, ObjectSummary};
+use super::super::answer::{ListPage, S3Summary};
 use super::super::xml::{XmlError, escape_text, parse_root};
 
 /// Read one page of `List Blobs`.
@@ -24,7 +24,7 @@ pub(crate) fn parse_list(xml: &[u8]) -> Result<ListPage, XmlError> {
     if let Some(blobs) = root.child("Blobs") {
         for blob in blobs.children("Blob") {
             let properties = blob.child("Properties");
-            page.objects.push(ObjectSummary {
+            page.objects.push(S3Summary {
                 key: blob.required("Name")?.to_owned(),
                 size: properties
                     .and_then(|properties| properties.child_text("Content-Length"))

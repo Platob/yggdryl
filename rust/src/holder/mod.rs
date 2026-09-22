@@ -82,13 +82,13 @@ pub enum Holder {
     FsFile(crate::fs::FsFile),
     /// A key prefix, or a whole container, on an object store.
     #[cfg(feature = "object")]
-    ObjectFolder(crate::object::ObjectFolder),
+    S3Folder(crate::object::S3Folder),
     /// An object-store location that resolves to whatever it turns out to be.
     #[cfg(feature = "object")]
-    ObjectPath(crate::object::ObjectPath),
+    S3Path(crate::object::S3Path),
     /// One object on an object store.
     #[cfg(feature = "object")]
-    ObjectFile(crate::object::ObjectFile),
+    S3File(crate::object::S3File),
     /// A prefix of one ZIP archive's members, or the archive root.
     ZipNode(crate::zip::ZipNode),
     /// A location inside a ZIP archive that resolves to whatever it holds.
@@ -212,7 +212,7 @@ impl Holder {
         } else if url.scheme().is_object_store() {
             #[cfg(feature = "object")]
             {
-                let options = crate::object::ObjectOptions::from_properties(
+                let options = crate::object::S3Options::from_properties(
                     properties.iter().map(|(name, value)| (name, value)),
                 )?;
                 crate::object::located_with(&url.to_string(), options)?
@@ -546,11 +546,11 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
+            Self::S3Folder(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
+            Self::S3Path(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -572,11 +572,11 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
+            Self::S3Folder(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
+            Self::S3Path(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -598,11 +598,11 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
+            Self::S3Folder(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
+            Self::S3Path(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -624,11 +624,11 @@ impl Holder {
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
+            Self::S3Folder(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
+            Self::S3Path(inner) => inner,
             #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,

@@ -77,7 +77,7 @@ fn iso8601_utc_instants_parse_and_the_rest_does_not() {
 
 mod protocol {
     use yggdryl::IOBase;
-    use yggdryl::object::ObjectOptions;
+    use yggdryl::object::S3Options;
 
     use crate::mod_::{BUCKET, file_with, store};
 
@@ -88,7 +88,7 @@ mod protocol {
         store.put(BUCKET, "lake/part.parquet", b"PAR1");
         let handle = file_with(
             "lake/part.parquet",
-            ObjectOptions::default()
+            S3Options::default()
                 .with_environment(false)
                 .with_endpoint(store.endpoint())
                 .with_path_style(true)
@@ -114,7 +114,7 @@ mod protocol {
         store.require_access_key(Some("AKIAINURL"));
         let mut handle = yggdryl::object::file_with(
             &format!("s3://AKIAINURL:s3cr3t@{BUCKET}/lake/part.parquet"),
-            ObjectOptions::default()
+            S3Options::default()
                 .with_environment(false)
                 .with_endpoint(store.endpoint())
                 .with_region("us-east-1")

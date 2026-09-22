@@ -99,7 +99,7 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
 pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
         return yggdryl::object::folder(&url.to_string())
-            .map(Holder::ObjectFolder)
+            .map(Holder::S3Folder)
             .map_err(crate::holder::fs::storage_error);
     }
     if !url.is_local() {
@@ -134,9 +134,9 @@ pub(crate) enum Role {
     FsFolder,
     FsPath,
     FsFile,
-    ObjectFolder,
-    ObjectPath,
-    ObjectFile,
+    S3Folder,
+    S3Path,
+    S3File,
     Buffered,
     Coded(Codec),
     Text,
@@ -156,9 +156,9 @@ impl Role {
             Holder::FsFolder(_) => Self::FsFolder,
             Holder::FsPath(_) => Self::FsPath,
             Holder::FsFile(_) => Self::FsFile,
-            Holder::ObjectFolder(_) => Self::ObjectFolder,
-            Holder::ObjectPath(_) => Self::ObjectPath,
-            Holder::ObjectFile(_) => Self::ObjectFile,
+            Holder::S3Folder(_) => Self::S3Folder,
+            Holder::S3Path(_) => Self::S3Path,
+            Holder::S3File(_) => Self::S3File,
             Holder::Buffered(_) => Self::Buffered,
             Holder::Text(_) => Self::Text,
             Holder::Coded(coded) => Self::Coded(coded.codec()),
@@ -182,9 +182,9 @@ impl Role {
             Self::FsFolder => "FsFolder",
             Self::FsPath => "FsPath",
             Self::FsFile => "FsFile",
-            Self::ObjectFolder => "ObjectFolder",
-            Self::ObjectPath => "ObjectPath",
-            Self::ObjectFile => "ObjectFile",
+            Self::S3Folder => "S3Folder",
+            Self::S3Path => "S3Path",
+            Self::S3File => "S3File",
             Self::Buffered => "Buffered",
             Self::Coded(Codec::Gzip) => "Gzip",
             Self::Coded(Codec::Zlib | Codec::Deflate) => "Zlib",
@@ -221,9 +221,9 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
         Role::FsFolder => Py::new(py, base.add_subclass(roles::PyFsFolder))?.into_any(),
         Role::FsPath => Py::new(py, base.add_subclass(roles::PyFsPath))?.into_any(),
         Role::FsFile => Py::new(py, base.add_subclass(roles::PyFsFile))?.into_any(),
-        Role::ObjectFolder => Py::new(py, base.add_subclass(roles::PyObjectFolder))?.into_any(),
-        Role::ObjectPath => Py::new(py, base.add_subclass(roles::PyObjectPath))?.into_any(),
-        Role::ObjectFile => Py::new(py, base.add_subclass(roles::PyObjectFile))?.into_any(),
+        Role::S3Folder => Py::new(py, base.add_subclass(roles::PyS3Folder))?.into_any(),
+        Role::S3Path => Py::new(py, base.add_subclass(roles::PyS3Path))?.into_any(),
+        Role::S3File => Py::new(py, base.add_subclass(roles::PyS3File))?.into_any(),
         Role::Buffered => Py::new(py, base.add_subclass(roles::PyBuffered))?.into_any(),
         Role::Text => encodings::describe_text(py, base)?,
         Role::Coded(codec) => codings::describe(py, base, codec)?,

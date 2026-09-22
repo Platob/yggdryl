@@ -1,7 +1,7 @@
 //! `rust/src/object/provider.rs`: which store a location addresses, and the
 //! same operations spoken to each of the three.
 
-use yggdryl::object::{ObjectOptions, Provider};
+use yggdryl::object::{Provider, S3Options};
 use yggdryl::{IOBase, IOFolder, IOKind};
 
 use crate::mod_::{
@@ -311,7 +311,7 @@ fn a_location_reports_the_spelling_it_was_handed_on_every_store() {
     // own host, so a handle that dropped that half would report a location
     // naming a different container than the one it was handed. Nothing here
     // contacts a store.
-    let quiet = || ObjectOptions::default().with_environment(false);
+    let quiet = || S3Options::default().with_environment(false);
     for scheme in ["az", "abfs", "abfss", "wasb", "wasbs"] {
         let spelled = format!("{scheme}://trades@lake.dfs.core.windows.net/year=2026/part.parquet");
         let handle = yggdryl::object::file_with(&spelled, quiet()).expect("an object handle");

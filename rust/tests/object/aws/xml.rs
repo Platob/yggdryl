@@ -5,7 +5,7 @@
 //! does not control - so the documents below are spelled the way S3 spells
 //! them, malformed ones included.
 
-use yggdryl::internals::object_answer::{DeleteFailure, ListPage, ObjectSummary};
+use yggdryl::internals::object_answer::{DeleteFailure, ListPage, S3Summary};
 use yggdryl::internals::object_aws_xml::{
     decode_url, parse_complete_multipart, parse_delete_result, parse_list_objects, parse_upload_id,
     render_complete_multipart, render_create_bucket, render_delete_objects,
@@ -47,13 +47,13 @@ fn a_plain_listing_yields_objects_in_document_order() {
     assert_eq!(
         page.objects,
         vec![
-            ObjectSummary {
+            S3Summary {
                 key: "my-image.jpg".to_owned(),
                 size: 434_234,
                 etag: Some("\"fba9dede5f27731c9771645a39863328\"".to_owned()),
                 last_modified: Some("2009-10-12T17:50:30.000Z".to_owned()),
             },
-            ObjectSummary {
+            S3Summary {
                 key: "notes/".to_owned(),
                 size: 0,
                 etag: None,

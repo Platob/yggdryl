@@ -418,7 +418,7 @@ mod protocol {
     use yggdryl::IOBase;
     use yggdryl::internals::object_options::signs_payload;
     use yggdryl::internals::object_sigv4::sha256_hex;
-    use yggdryl::object::{AwsOptions, ObjectOptions};
+    use yggdryl::object::{AwsOptions, S3Options};
 
     #[test]
     fn every_request_carries_a_signature_over_the_headers_it_names() {
@@ -496,9 +496,9 @@ mod protocol {
         );
 
         // The policy an unset value picks follows the endpoint's scheme.
-        let over_tls = ObjectOptions::default().with_endpoint("https://s3.example.io");
+        let over_tls = S3Options::default().with_endpoint("https://s3.example.io");
         assert!(!signs_payload(&over_tls, "https"));
-        assert!(signs_payload(&ObjectOptions::default(), "http"));
+        assert!(signs_payload(&S3Options::default(), "http"));
         assert!(signs_payload(
             &over_tls.with_aws(AwsOptions::default().with_payload_signing(true)),
             "https"

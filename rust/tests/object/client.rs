@@ -10,15 +10,15 @@ use yggdryl::internals::object_client::{
     Client, DEFAULT_REGION, Endpoint, RETRY_BACKOFF, backoff, bucket_region_of,
     total_of_content_range,
 };
-use yggdryl::object::ObjectOptions;
+use yggdryl::object::S3Options;
 
 fn url(text: &str) -> Url {
     Url::from_str(text).expect("a valid location")
 }
 
 /// Options that consult nothing outside the test.
-fn sealed() -> ObjectOptions {
-    ObjectOptions::default().with_environment(false)
+fn sealed() -> S3Options {
+    S3Options::default().with_environment(false)
 }
 
 #[test]

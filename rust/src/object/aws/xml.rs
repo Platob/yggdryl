@@ -11,7 +11,7 @@
 //! over its UTF-8 bytes - so both are undone, as botocore (`unquote_plus`)
 //! and the Java SDK (`URLDecoder`) do.
 
-use super::super::answer::{DeleteFailure, ListPage, ObjectSummary};
+use super::super::answer::{DeleteFailure, ListPage, S3Summary};
 use super::super::xml::{XmlError, error_body, escape_text, parse_document, parse_root};
 
 /// Read one `ListObjectsV2` page.
@@ -39,7 +39,7 @@ pub(crate) fn parse_list_objects(xml: &[u8]) -> Result<ListPage, XmlError> {
             .trim()
             .parse()
             .map_err(|_| XmlError(format!("<Size> is not a number: `{size}`")))?;
-        page.objects.push(ObjectSummary {
+        page.objects.push(S3Summary {
             key: decode(contents.required("Key")?),
             size,
             etag: contents.child_text("ETag").map(str::to_owned),

@@ -31,12 +31,12 @@ const DEFAULT_SESSION_NAME: &str = "yggdryl";
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::object::{AssumedRole, AwsOptions, ObjectOptions};
+/// use yggdryl::object::{AssumedRole, AwsOptions, S3Options};
 ///
 /// let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
 ///     .with_session_name("power-desk")
 ///     .with_duration(Duration::from_secs(3600));
-/// let options = ObjectOptions::default().with_aws(AwsOptions::default().with_assumed_role(role));
+/// let options = S3Options::default().with_aws(AwsOptions::default().with_assumed_role(role));
 /// assert_eq!(
 ///     options.aws().assumed_role().map(AssumedRole::role_arn),
 ///     Some("arn:aws:iam::123456789012:role/lake-reader")

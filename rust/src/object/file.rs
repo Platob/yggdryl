@@ -3,9 +3,9 @@
 use std::io::Read as _;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use super::answer::ObjectMeta;
+use super::answer::S3Meta;
 use super::client::Client;
-use super::folder::ObjectFolder;
+use super::folder::S3Folder;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
@@ -49,7 +49,7 @@ use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Ur
 /// memory, and published as one upload on [`IOBase::flush`] or
 /// [`IOBase::close`]. Whole-value writes skip the load, because nothing of the
 /// old value survives them.
-pub struct ObjectFile {
+pub struct S3File {
     client: Arc<Client>,
     /// The location, with any credentials the caller wrote into it removed.
     url: Url,
@@ -69,7 +69,7 @@ struct State {
     /// The stored object's metadata: `None` when unknown, `Some(None)` when
     /// known absent. Held only between `open` and `close`, plus whatever a
     /// read learned along the way.
-    meta: Option<Option<ObjectMeta>>,
+    meta: Option<Option<S3Meta>>,
     /// Positional writes waiting to be published.
     stage: Option<Stage>,
     /// Whether metadata learned along the way is kept.
@@ -82,7 +82,7 @@ struct Stage {
     dirty: bool,
 }
 
-impl ObjectFile {
+impl S3File {
     /// Describe the object `url` names on `client`, touching nothing.
     pub(super) fn new(client: Arc<Client>, url: Url) -> Result<Self> {
         let (bucket, key) = super::split_location(&url)?;
@@ -122,9 +122,9 @@ impl ObjectFile {
     #[must_use]
     pub fn with_known_size(self, size: u64) -> Self {
         if let Ok(mut state) = self.state.lock() {
-            state.meta = Some(Some(ObjectMeta {
+            state.meta = Some(Some(S3Meta {
                 size,
-                ..ObjectMeta::default()
+                ..S3Meta::default()
             }));
         }
         self
@@ -163,7 +163,7 @@ impl ObjectFile {
     }
 
     /// The stored object's metadata, from the cache or from one `HEAD`.
-    fn meta(&self, state: &mut State) -> Result<Option<ObjectMeta>> {
+    fn meta(&self, state: &mut State) -> Result<Option<S3Meta>> {
         if let Some(known) = state.meta.as_ref() {
             return Ok(known.clone());
         }
@@ -184,15 +184,15 @@ impl ObjectFile {
         match state.meta.as_mut() {
             Some(Some(meta)) => meta.size = size,
             Some(slot @ None) => {
-                *slot = Some(ObjectMeta {
+                *slot = Some(S3Meta {
                     size,
-                    ..ObjectMeta::default()
+                    ..S3Meta::default()
                 });
             }
             None => {
-                state.meta = Some(Some(ObjectMeta {
+                state.meta = Some(Some(S3Meta {
                     size,
-                    ..ObjectMeta::default()
+                    ..S3Meta::default()
                 }));
             }
         }
@@ -237,7 +237,7 @@ impl ObjectFile {
             if let Some(stage) = state.stage.as_mut() {
                 stage.dirty = false;
             }
-            state.meta = Some(Some(ObjectMeta {
+            state.meta = Some(Some(S3Meta {
                 size,
                 etag,
                 content_type: Some(content_type),
@@ -307,7 +307,7 @@ impl ObjectFile {
         };
         // What went out is the store's, exactly as after a staged publish.
         if state.opened {
-            state.meta = Some(Some(ObjectMeta {
+            state.meta = Some(Some(S3Meta {
                 size: length,
                 etag,
                 content_type: Some(content_type),
@@ -350,7 +350,7 @@ impl ObjectFile {
 }
 
 /// An S3 object is the leaf role over the store.
-impl IOFile for ObjectFile {
+impl IOFile for S3File {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -387,11 +387,11 @@ impl IOFile for ObjectFile {
     }
 }
 
-impl crate::IOMedia for ObjectFile {
+impl crate::IOMedia for S3File {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for ObjectFile {
+impl IOBase for S3File {
     /// Read into `buffer` from `offset` with one ranged `GET`.
     ///
     /// A staged write answers from memory instead, because it is what a later
@@ -774,9 +774,9 @@ impl IOBase for ObjectFile {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        ObjectFolder::new(self.client.clone(), parent)
+        S3Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::ObjectFolder)
+            .map(Holder::S3Folder)
     }
 
     fn clear(&mut self) -> Result<()> {
@@ -796,7 +796,7 @@ impl IOBase for ObjectFile {
     }
 }
 
-impl Drop for ObjectFile {
+impl Drop for S3File {
     fn drop(&mut self) {
         // Publish a staged write; a failure here cannot be reported, and
         // callers who care call `flush` or `close` explicitly.
@@ -806,10 +806,10 @@ impl Drop for ObjectFile {
     }
 }
 
-impl std::fmt::Debug for ObjectFile {
+impl std::fmt::Debug for S3File {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("ObjectFile")
+            .debug_struct("S3File")
             .field("url", &self.url)
             .finish()
     }
@@ -843,10 +843,10 @@ pub mod internals {
     //! A streaming upload is how a record writer reaches a store, so what it
     //! costs in round trips and how much of the source it holds at once are
     //! pinned counts; no caller spells it, because a caller writes through
-    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`ObjectFile`]
-    //! keeps the surface it publishes.
+    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`S3File`] keeps
+    //! the surface it publishes.
     use crate::Result;
-    use crate::object::ObjectFile;
+    use crate::object::S3File;
 
     /// Upload `length` bytes read from `source` as the object's whole value.
     ///
@@ -854,7 +854,7 @@ pub mod internals {
     ///
     /// Whatever the upload refuses, a source that ends early included.
     pub fn upload_from(
-        file: &mut ObjectFile,
+        file: &mut S3File,
         source: &mut dyn std::io::Read,
         length: u64,
     ) -> Result<()> {

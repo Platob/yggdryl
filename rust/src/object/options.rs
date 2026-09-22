@@ -10,8 +10,8 @@
 //! store's own options - [`AwsOptions`](super::AwsOptions),
 //! [`GoogleOptions`](super::GoogleOptions), and
 //! [`AzureOptions`](super::AzureOptions), reached through
-//! [`ObjectOptions::with_aws`] and its two siblings. A knob therefore has
-//! exactly one owner, and nothing pretends the three stores are one store.
+//! [`S3Options::with_aws`] and its two siblings. A knob therefore has exactly
+//! one owner, and nothing pretends the three stores are one store.
 
 use std::time::Duration;
 
@@ -60,9 +60,9 @@ const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 4] = ["AWS_", "GOOGLE_", "AZURE_", "Y
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::object::{Credentials, ObjectOptions};
+/// use yggdryl::object::{Credentials, S3Options};
 ///
-/// let options = ObjectOptions::default()
+/// let options = S3Options::default()
 ///     .with_endpoint("http://localhost:9000")
 ///     .with_region("us-east-1")
 ///     .with_credentials(Credentials::new("minioadmin", "minioadmin"))
@@ -74,7 +74,7 @@ const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 4] = ["AWS_", "GOOGLE_", "AZURE_", "Y
 /// assert_eq!(options.path_style(), Some(true));
 /// ```
 #[derive(Clone)]
-pub struct ObjectOptions {
+pub struct S3Options {
     endpoint: Option<String>,
     region: Option<String>,
     credentials: Option<Credentials>,
@@ -98,7 +98,7 @@ pub struct ObjectOptions {
     azure: AzureOptions,
 }
 
-impl Default for ObjectOptions {
+impl Default for S3Options {
     fn default() -> Self {
         Self {
             endpoint: None,
@@ -129,7 +129,7 @@ impl Default for ObjectOptions {
     }
 }
 
-impl ObjectOptions {
+impl S3Options {
     /// Address the store at `endpoint`, a URL such as `https://s3.example.io`
     /// or `http://localhost:9000`.
     ///
@@ -488,10 +488,10 @@ impl ObjectOptions {
     }
 }
 
-impl std::fmt::Debug for ObjectOptions {
+impl std::fmt::Debug for S3Options {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("ObjectOptions")
+            .debug_struct("S3Options")
             .field("endpoint", &self.endpoint)
             .field("region", &self.region)
             // `Credentials` redacts its own secret.
@@ -528,11 +528,11 @@ pub mod internals {
     //! Whether a request hashes its payload or sends `UNSIGNED-PAYLOAD` is a
     //! policy the endpoint's scheme settles when the caller leaves it unset,
     //! and only the request that goes out otherwise says which was picked.
-    //! This forwards, so [`ObjectOptions`] keeps the surface it publishes.
-    use crate::object::ObjectOptions;
+    //! This forwards, so [`S3Options`] keeps the surface it publishes.
+    use crate::object::S3Options;
 
     /// Whether a request over `scheme` signs the real payload hash.
-    pub fn signs_payload(options: &ObjectOptions, scheme: &str) -> bool {
+    pub fn signs_payload(options: &S3Options, scheme: &str) -> bool {
         options.signs_payload(scheme)
     }
 }

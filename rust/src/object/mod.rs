@@ -5,11 +5,11 @@
 //! over its own REST API directly - no SDK, no async runtime, no object-store
 //! abstraction in between:
 //!
-//! - [`ObjectPath`] is the generic location, which resolves to whichever of
-//!   the two it turns out to name.
-//! - [`ObjectFolder`] is the container: a key prefix, or a whole bucket or
+//! - [`S3Path`] is the generic location, which resolves to whichever of the
+//!   two it turns out to name.
+//! - [`S3Folder`] is the container: a key prefix, or a whole bucket or
 //!   container.
-//! - [`ObjectFile`] is the leaf: one object, read by range and written whole.
+//! - [`S3File`] is the leaf: one object, read by range and written whole.
 //!
 //! Which store answers is the location's scheme. `s3`, `s3a`, and `s3n` name
 //! Amazon S3; `gs` and `gcs` name Google Cloud Storage; `az`, `abfs`, `abfss`,
@@ -33,7 +33,7 @@
 //! module - how a request is authorized, what its path is, how a large value is
 //! uploaded, and how a listing, an object, and a refusal are spelled.
 //!
-//! Configuration follows the same split. [`ObjectOptions`] holds what all three
+//! Configuration follows the same split. [`S3Options`] holds what all three
 //! have - an endpoint, a region, credentials, timeouts, retries, part sizes,
 //! encryption - and [`AwsOptions`], [`GoogleOptions`], and [`AzureOptions`]
 //! hold what one has. A knob therefore has exactly one owner, and nothing
@@ -55,9 +55,9 @@
 //! | listing a level, or a whole subtree | one listing per page |
 //! | emptying or removing a prefix | one listing and one bulk delete per batch |
 //!
-//! [`ObjectFolder::stats`], [`ObjectFile::stats`], and [`ObjectPath::stats`]
-//! report what actually went out, so "this costs one request" is a thing a
-//! caller can check rather than take on trust.
+//! [`S3Folder::stats`], [`S3File::stats`], and [`S3Path::stats`] report what
+//! actually went out, so "this costs one request" is a thing a caller can
+//! check rather than take on trust.
 //!
 //! # Reaching a store
 //!
@@ -85,12 +85,12 @@
 //!
 //! A store that is not the published one - MinIO, Ceph, an S3-compatible
 //! gateway, `fake-gcs-server`, Azurite - is named by its endpoint, either in the
-//! location itself or through [`ObjectOptions`]:
+//! location itself or through [`S3Options`]:
 //!
 //! ```
-//! use yggdryl::object::{Credentials, ObjectOptions};
+//! use yggdryl::object::{Credentials, S3Options};
 //!
-//! let options = ObjectOptions::default()
+//! let options = S3Options::default()
 //!     .with_endpoint("http://localhost:9000")
 //!     .with_credentials(Credentials::new("minioadmin", "minioadmin"))
 //!     .with_region("us-east-1");
@@ -122,11 +122,11 @@ pub use aws::{AssumedRole, AwsOptions, Checksum, Credentials};
 pub use azure::{AzureOptions, BlobType};
 pub use client::StatsSnapshot;
 pub use encryption::{CustomerKey, Encryption, KmsKey};
-pub use file::ObjectFile;
-pub use folder::ObjectFolder;
+pub use file::S3File;
+pub use folder::S3Folder;
 pub use google::GoogleOptions;
-pub use options::ObjectOptions;
-pub use path::ObjectPath;
+pub use options::S3Options;
+pub use path::S3Path;
 pub use provider::Provider;
 
 use client::Client;
@@ -141,7 +141,7 @@ use client::Client;
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
 pub fn located(url: &str) -> Result<Holder> {
-    located_with(url, ObjectOptions::default())
+    located_with(url, S3Options::default())
 }
 
 /// Hold the resource `url` names, configured by `options`.
@@ -150,10 +150,10 @@ pub fn located(url: &str) -> Result<Holder> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder> {
+pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectPath::new(client, url).map(Holder::ObjectPath)
+    S3Path::new(client, url).map(Holder::S3Path)
 }
 
 /// Hold the object `url` names, whether or not it exists yet.
@@ -162,8 +162,8 @@ pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn file(url: &str) -> Result<ObjectFile> {
-    file_with(url, ObjectOptions::default())
+pub fn file(url: &str) -> Result<S3File> {
+    file_with(url, S3Options::default())
 }
 
 /// Hold the object `url` names, configured by `options`.
@@ -172,10 +172,10 @@ pub fn file(url: &str) -> Result<ObjectFile> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn file_with(url: &str, options: ObjectOptions) -> Result<ObjectFile> {
+pub fn file_with(url: &str, options: S3Options) -> Result<S3File> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectFile::new(client, url)
+    S3File::new(client, url)
 }
 
 /// Hold the prefix or container `url` names, whether or not anything is under
@@ -185,8 +185,8 @@ pub fn file_with(url: &str, options: ObjectOptions) -> Result<ObjectFile> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn folder(url: &str) -> Result<ObjectFolder> {
-    folder_with(url, ObjectOptions::default())
+pub fn folder(url: &str) -> Result<S3Folder> {
+    folder_with(url, S3Options::default())
 }
 
 /// Hold the prefix or bucket `url` names, configured by `options`.
@@ -195,10 +195,10 @@ pub fn folder(url: &str) -> Result<ObjectFolder> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn folder_with(url: &str, options: ObjectOptions) -> Result<ObjectFolder> {
+pub fn folder_with(url: &str, options: S3Options) -> Result<S3Folder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectFolder::new(client, url)
+    S3Folder::new(client, url)
 }
 
 /// Hold the object `key` names in `container` on `provider`, whether or not it
@@ -232,8 +232,8 @@ pub fn folder_with(url: &str, options: ObjectOptions) -> Result<ObjectFolder> {
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFile> {
-    file_at_with(provider, container, key, ObjectOptions::default())
+pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<S3File> {
+    file_at_with(provider, container, key, S3Options::default())
 }
 
 /// Hold the object `key` names in `container`, configured by `options`.
@@ -245,11 +245,11 @@ pub fn file_at_with(
     provider: Provider,
     container: &str,
     key: &str,
-    options: ObjectOptions,
-) -> Result<ObjectFile> {
+    options: S3Options,
+) -> Result<S3File> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectFile::new(client, url)
+    S3File::new(client, url)
 }
 
 /// Hold the prefix `key` names in `container` on `provider`, entries or not.
@@ -259,8 +259,8 @@ pub fn file_at_with(
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFolder> {
-    folder_at_with(provider, container, key, ObjectOptions::default())
+pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<S3Folder> {
+    folder_at_with(provider, container, key, S3Options::default())
 }
 
 /// Hold the prefix `key` names in `container`, configured by `options`.
@@ -272,11 +272,11 @@ pub fn folder_at_with(
     provider: Provider,
     container: &str,
     key: &str,
-    options: ObjectOptions,
-) -> Result<ObjectFolder> {
+    options: S3Options,
+) -> Result<S3Folder> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectFolder::new(client, url)
+    S3Folder::new(client, url)
 }
 
 /// Hold the resource `key` names in `container`, resolving its role when asked.
@@ -286,8 +286,8 @@ pub fn folder_at_with(
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<ObjectPath> {
-    path_at_with(provider, container, key, ObjectOptions::default())
+pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<S3Path> {
+    path_at_with(provider, container, key, S3Options::default())
 }
 
 /// Hold the resource `key` names in `container`, configured by `options`.
@@ -299,11 +299,11 @@ pub fn path_at_with(
     provider: Provider,
     container: &str,
     key: &str,
-    options: ObjectOptions,
-) -> Result<ObjectPath> {
+    options: S3Options,
+) -> Result<S3Path> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    ObjectPath::new(client, url)
+    S3Path::new(client, url)
 }
 
 /// The canonical location of a raw `key` in `container` on `provider`.

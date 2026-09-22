@@ -46,7 +46,7 @@ from typing import Any
 import pyarrow as pa
 
 from yggdryl import Arn
-from yggdryl.holder import ObjectFolder
+from yggdryl.holder import S3Folder
 from yggdryl.iceberg import Table
 
 ARN_VARIABLE = "YGGDRYL_S3TABLES_ARN"
@@ -79,7 +79,7 @@ BATCHES = tuple(
 )
 TABLE = pa.Table.from_batches(BATCHES, schema=SCHEMA)
 
-# The names PyIceberg keeps a vended credential under. `ObjectFolder` reads
+# The names PyIceberg keeps a vended credential under. `S3Folder` reads
 # them as they are spelled, so the catalog's answer is handed over whole
 # rather than translated.
 VENDED = (
@@ -159,7 +159,7 @@ def _fill(table: Any) -> float:
     return time.perf_counter() - started
 
 
-def _root(table: Any, bucket: Arn) -> tuple[ObjectFolder, str]:
+def _root(table: Any, bucket: Arn) -> tuple[S3Folder, str]:
     """The warehouse folder this crate reads the table from, and how it signs.
 
     The region is the ARN's. The credentials are the ones the catalog vended
@@ -174,14 +174,14 @@ def _root(table: Any, bucket: Arn) -> tuple[ObjectFolder, str]:
     }
     options.update(vended)
     signing = "credentials vended by the catalog" if vended else "the AWS chain"
-    return ObjectFolder(table.location(), options=options), signing
+    return S3Folder(table.location(), options=options), signing
 
 
 def _open_pyiceberg(catalog: Any, name: str) -> Callable[[], object]:
     return lambda: catalog.load_table((NAMESPACE, name)).metadata_location
 
 
-def _open_yggdryl(root: ObjectFolder) -> Callable[[], object]:
+def _open_yggdryl(root: S3Folder) -> Callable[[], object]:
     return lambda: Table.open(root).metadata_location
 
 

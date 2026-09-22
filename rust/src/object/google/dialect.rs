@@ -6,7 +6,7 @@
 //! large one is a resumable session rather than numbered parts. Those four
 //! facts are the whole of the dialect; everything else is the backend's.
 
-use super::super::options::ObjectOptions;
+use super::super::options::S3Options;
 use super::super::request::Request;
 
 /// Where the JSON API's object and bucket resources live.
@@ -246,7 +246,7 @@ pub(crate) fn batch_body(bucket: &str, keys: &[String], boundary: &str) -> Vec<u
 ///
 /// Requester pays and quota attribution are per-request facts on Google, where
 /// the other two stores put them in a header or nowhere.
-pub(crate) fn common_query(options: &ObjectOptions) -> Vec<(String, String)> {
+pub(crate) fn common_query(options: &S3Options) -> Vec<(String, String)> {
     let mut query = Vec::new();
     if let Some(project) = options.google().user_project() {
         query.push(("userProject".to_owned(), project.to_owned()));

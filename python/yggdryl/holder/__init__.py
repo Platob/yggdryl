@@ -18,9 +18,9 @@ from .._native import (
     LocalFile,
     LocalFolder,
     LocalPath,
-    ObjectFile,
-    ObjectFolder,
-    ObjectPath,
+    S3File,
+    S3Folder,
+    S3Path,
 )
 
 __all__ = [
@@ -34,7 +34,7 @@ __all__ = [
     "LocalFile",
     "LocalFolder",
     "LocalPath",
-    "ObjectFile",
-    "ObjectFolder",
-    "ObjectPath",
+    "S3File",
+    "S3Folder",
+    "S3Path",
 ]

@@ -3,7 +3,7 @@
 
 mod protocol {
     use yggdryl::IOBase;
-    use yggdryl::object::{Credentials, ObjectOptions};
+    use yggdryl::object::{Credentials, S3Options};
 
     use crate::mod_::{file_with, options, store};
 
@@ -11,7 +11,7 @@ mod protocol {
     fn options_record_what_was_asked_for_and_the_store_clamps_it() {
         // The options keep the caller's number, because which store will answer is
         // not known until a location is handed over.
-        let bounded = ObjectOptions::default()
+        let bounded = S3Options::default()
             .with_part_size(1)
             .with_list_page_size(50_000)
             .with_max_attempts(0);
@@ -28,13 +28,13 @@ mod protocol {
 
         // A bare host becomes an https endpoint, and a trailing slash is dropped.
         assert_eq!(
-            ObjectOptions::default()
+            S3Options::default()
                 .with_endpoint("s3.example.io/")
                 .endpoint(),
             Some("https://s3.example.io")
         );
         // Asking for anonymous access drops any credentials that were set.
-        let anonymous = ObjectOptions::default()
+        let anonymous = S3Options::default()
             .with_credentials(Credentials::new("a", "b"))
             .with_anonymous(true);
         assert!(anonymous.credentials().is_none());

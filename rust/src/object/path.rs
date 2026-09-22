@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex};
 
 use super::client::Client;
-use super::file::ObjectFile;
-use super::folder::ObjectFolder;
+use super::file::S3File;
+use super::folder::S3Folder;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
@@ -12,9 +12,9 @@ use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result,
 ///
 /// A caller often knows a location without knowing whether it names an object
 /// or a prefix - a listing entry, a configuration value, a command-line
-/// argument. `ObjectPath` is that value: it answers [`IOBase::kind`] by
-/// asking, and every other operation runs through [`ObjectFolder`] or
-/// [`ObjectFile`] accordingly.
+/// argument. `S3Path` is that value: it answers [`IOBase::kind`] by asking,
+/// and every other operation runs through [`S3Folder`] or [`S3File`]
+/// accordingly.
 ///
 /// # What resolving costs
 ///
@@ -30,7 +30,7 @@ use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result,
 /// read of a location that does not exist yields nothing, and a write creates
 /// an object, because a byte write is what distinguishes a leaf from a
 /// container. Use [`Self::as_directory`] when the location must be a prefix.
-pub struct ObjectPath {
+pub struct S3Path {
     client: Arc<Client>,
     /// The location, with any credentials the caller wrote into it removed.
     url: Url,
@@ -51,12 +51,12 @@ pub struct ObjectPath {
 
 /// The specialized implementations an S3 location can resolve to.
 ///
-/// Deliberately not [`Holder`]: a `Holder` can hold an `ObjectPath`, and an
-/// `ObjectPath` that could hold a `Holder` would be a type of unbounded size.
+/// Deliberately not [`Holder`]: a `Holder` can hold an `S3Path`, and an
+/// `S3Path` that could hold a `Holder` would be a type of unbounded size.
 #[derive(Debug)]
 enum Resolved {
-    Directory(ObjectFolder),
-    File(ObjectFile),
+    Directory(S3Folder),
+    File(S3File),
 }
 
 impl Resolved {
@@ -75,7 +75,7 @@ impl Resolved {
     }
 }
 
-impl ObjectPath {
+impl S3Path {
     /// Describe the location `url` names on `client`, touching nothing.
     pub(super) fn new(client: Arc<Client>, url: Url) -> Result<Self> {
         let (bucket, key) = super::split_location(&url)?;
@@ -121,8 +121,8 @@ impl ObjectPath {
     /// # Errors
     ///
     /// Returns a refusal when the location names no bucket.
-    pub fn as_directory(&self) -> Result<ObjectFolder> {
-        ObjectFolder::new(self.client.clone(), self.url.clone())
+    pub fn as_directory(&self) -> Result<S3Folder> {
+        S3Folder::new(self.client.clone(), self.url.clone())
     }
 
     /// Treat this location as an object, whether or not it exists yet.
@@ -130,8 +130,8 @@ impl ObjectPath {
     /// # Errors
     ///
     /// Returns a refusal when the location names no bucket.
-    pub fn as_file(&self) -> Result<ObjectFile> {
-        let mut file = ObjectFile::new(self.client.clone(), self.url.clone())?;
+    pub fn as_file(&self) -> Result<S3File> {
+        let mut file = S3File::new(self.client.clone(), self.url.clone())?;
         if let Some(media_type) = &self.declared {
             file.set_media_type(media_type.clone());
         }
@@ -257,7 +257,7 @@ impl ObjectPath {
 }
 
 /// An S3 location is the generic role over the store.
-impl IOPath for ObjectPath {
+impl IOPath for S3Path {
     fn path_url(&self) -> &Url {
         &self.url
     }
@@ -272,11 +272,11 @@ impl IOPath for ObjectPath {
     }
 }
 
-impl crate::IOMedia for ObjectPath {
+impl crate::IOMedia for S3Path {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for ObjectPath {
+impl IOBase for S3Path {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }
@@ -441,9 +441,9 @@ impl IOBase for ObjectPath {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        ObjectFolder::new(self.client.clone(), parent)
+        S3Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::ObjectFolder)
+            .map(Holder::S3Folder)
     }
 
     /// Name a descendant without asking the store anything.
@@ -464,8 +464,8 @@ impl IOBase for ObjectPath {
     /// Empty whichever of the two the resolved kind names.
     ///
     /// Routing on the kind this handle already resolves is the one documented
-    /// exception to the no-pre-call rule, and it is the resolution
-    /// `ObjectPath` performs anyway rather than a second probe.
+    /// exception to the no-pre-call rule, and it is the resolution `S3Path`
+    /// performs anyway rather than a second probe.
     fn clear(&mut self) -> Result<()> {
         {
             let mut resolved = self.resolved.lock().map_err(|_| poisoned())?;
@@ -520,10 +520,10 @@ impl IOBase for ObjectPath {
     }
 }
 
-impl std::fmt::Debug for ObjectPath {
+impl std::fmt::Debug for S3Path {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("ObjectPath")
+            .debug_struct("S3Path")
             .field("url", &self.url)
             .finish()
     }

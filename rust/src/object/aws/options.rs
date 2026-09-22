@@ -5,16 +5,16 @@
 //! profile, whether a payload is hashed for the signature, the role a request
 //! is signed as, the storage class an object lands in, and who pays for a
 //! request. A knob all three stores have lives on
-//! [`ObjectOptions`](super::super::ObjectOptions) instead.
+//! [`S3Options`](super::super::S3Options) instead.
 
 use super::sts::AssumedRole;
 
 /// How this backend reaches Amazon S3 in particular.
 ///
 /// ```
-/// use yggdryl::object::{AwsOptions, ObjectOptions};
+/// use yggdryl::object::{AwsOptions, S3Options};
 ///
-/// let options = ObjectOptions::default().with_aws(
+/// let options = S3Options::default().with_aws(
 ///     AwsOptions::default()
 ///         .with_profile("trading")
 ///         .with_storage_class("INTELLIGENT_TIERING")

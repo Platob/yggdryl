@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::client::Client;
-use super::file::ObjectFile;
+use super::file::S3File;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
@@ -33,7 +33,7 @@ use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Ur
 /// is emitted before it - so a lake of ten thousand parts across a thousand
 /// partitions is ten requests, not a thousand.
 #[derive(Clone)]
-pub struct ObjectFolder {
+pub struct S3Folder {
     client: Arc<Client>,
     /// The location, with any credentials the caller wrote into it removed.
     url: Url,
@@ -42,7 +42,7 @@ pub struct ObjectFolder {
     prefix: String,
 }
 
-impl ObjectFolder {
+impl S3Folder {
     /// Describe the prefix `url` names on `client`, touching nothing.
     pub(super) fn new(client: Arc<Client>, url: Url) -> Result<Self> {
         let (bucket, key) = super::split_location(&url)?;
@@ -313,14 +313,14 @@ impl Entry {
 fn hold(client: &Arc<Client>, root: &Url, relative: &str, entry: &Entry) -> Result<Holder> {
     let child = root.joinpath(&super::encode_key_path(relative))?;
     match entry {
-        Entry::Prefix { .. } => ObjectFolder::new(client.clone(), child).map(Holder::ObjectFolder),
-        Entry::Object { size, .. } => ObjectFile::new(client.clone(), child)
-            .map(|file| Holder::ObjectFile(file.with_known_size(*size))),
+        Entry::Prefix { .. } => S3Folder::new(client.clone(), child).map(Holder::S3Folder),
+        Entry::Object { size, .. } => S3File::new(client.clone(), child)
+            .map(|file| Holder::S3File(file.with_known_size(*size))),
     }
 }
 
 /// An S3 prefix is the container role over the store.
-impl IOFolder for ObjectFolder {
+impl IOFolder for S3Folder {
     fn folder_url(&self) -> &Url {
         &self.url
     }
@@ -392,11 +392,11 @@ impl IOFolder for ObjectFolder {
     }
 }
 
-impl crate::IOMedia for ObjectFolder {
+impl crate::IOMedia for S3Folder {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for ObjectFolder {
+impl IOBase for S3Folder {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
     }
@@ -442,20 +442,20 @@ impl IOBase for ObjectFolder {
         let parent = self.url.parent()?;
         Self::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::ObjectFolder)
+            .map(Holder::S3Folder)
     }
 
     /// Resolve a descendant without asking the store anything.
     ///
     /// A name ending in `/` is a container by its spelling; anything else is
     /// undecided until an operation needs to know, which is what
-    /// [`super::ObjectPath`] is for.
+    /// [`super::S3Path`] is for.
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         let url = self.url.joinpath(name)?;
         if url.has_trailing_slash() {
-            return Self::new(self.client.clone(), url).map(Holder::ObjectFolder);
+            return Self::new(self.client.clone(), url).map(Holder::S3Folder);
         }
-        super::ObjectPath::new(self.client.clone(), url).map(Holder::ObjectPath)
+        super::S3Path::new(self.client.clone(), url).map(Holder::S3Path)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
@@ -483,10 +483,10 @@ impl IOBase for ObjectFolder {
     }
 }
 
-impl std::fmt::Debug for ObjectFolder {
+impl std::fmt::Debug for S3Folder {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("ObjectFolder")
+            .debug_struct("S3Folder")
             .field("url", &self.url)
             .finish()
     }

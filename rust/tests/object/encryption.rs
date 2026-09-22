@@ -7,7 +7,7 @@
 //! presented again on *every* read, and a handle that forgets it on one path
 //! reads as a refusal rather than as bytes.
 
-use yggdryl::object::{CustomerKey, Encryption, KmsKey, ObjectOptions};
+use yggdryl::object::{CustomerKey, Encryption, KmsKey, S3Options};
 use yggdryl::{Error, IOBase};
 
 use crate::mod_::{BUCKET, file, file_with, options, payload, store};
@@ -249,7 +249,7 @@ fn an_unusable_customer_key_is_refused_before_anything_is_sent() {
 fn a_customer_key_is_never_rendered() {
     let key = CustomerKey::new(&customer_key()).expect("a key");
     let encoded = key.encoded().to_owned();
-    let options = ObjectOptions::default().with_encryption(Encryption::Customer(key));
+    let options = S3Options::default().with_encryption(Encryption::Customer(key));
 
     let rendered = format!("{options:?}");
     assert!(rendered.contains("<redacted>"), "{rendered}");

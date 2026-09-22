@@ -7,7 +7,7 @@
 //! 64-bit and JSON numbers are not, so a reader that takes them as numbers gets
 //! nothing at all.
 
-use super::super::answer::{ErrorBody, ListPage, ObjectMeta, ObjectSummary};
+use super::super::answer::{ErrorBody, ListPage, S3Meta, S3Summary};
 use super::super::xml::XmlError;
 use crate::{Result, Scalar};
 
@@ -16,9 +16,9 @@ use crate::{Result, Scalar};
 /// # Errors
 ///
 /// Returns a refusal when the body is not JSON.
-pub(crate) fn parse_object(body: &[u8]) -> std::result::Result<ObjectMeta, XmlError> {
+pub(crate) fn parse_object(body: &[u8]) -> std::result::Result<S3Meta, XmlError> {
     let value = read(body)?;
-    Ok(ObjectMeta {
+    Ok(S3Meta {
         size: number(&value, "size").unwrap_or(0),
         etag: text(&value, "etag").map(str::to_owned),
         content_type: text(&value, "contentType").map(str::to_owned),
@@ -40,7 +40,7 @@ pub(crate) fn parse_list(body: &[u8]) -> std::result::Result<ListPage, XmlError>
         for item in items.sequence_iter() {
             let key = text(item, "name")
                 .ok_or_else(|| XmlError("an object without a name".to_owned()))?;
-            page.objects.push(ObjectSummary {
+            page.objects.push(S3Summary {
                 key: key.to_owned(),
                 size: number(item, "size").unwrap_or(0),
                 etag: text(item, "etag").map(str::to_owned),

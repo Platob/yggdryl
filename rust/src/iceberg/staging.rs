@@ -235,7 +235,7 @@ impl Drop for Staging {
 fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
     match target {
         #[cfg(feature = "object")]
-        Holder::ObjectFile(file) => {
+        Holder::S3File(file) => {
             let mut source = std::fs::File::open(path)?;
             file.upload_from(&mut source, size)
         }
@@ -256,7 +256,7 @@ fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
 fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
     match target {
         #[cfg(feature = "object")]
-        Holder::ObjectFile(file) => {
+        Holder::S3File(file) => {
             let _ = file.discard();
         }
         mut other => {
@@ -275,7 +275,7 @@ fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
 pub(super) fn leaf(holder: Holder) -> Result<Holder> {
     match holder {
         #[cfg(feature = "object")]
-        Holder::ObjectPath(path) => Ok(Holder::ObjectFile(path.as_file()?)),
+        Holder::S3Path(path) => Ok(Holder::S3File(path.as_file()?)),
         other => Ok(other),
     }
 }
@@ -288,7 +288,7 @@ pub(super) fn leaf(holder: Holder) -> Result<Holder> {
 pub(super) fn container(holder: Holder) -> Result<Holder> {
     match holder {
         #[cfg(feature = "object")]
-        Holder::ObjectPath(path) => Ok(Holder::ObjectFolder(path.as_directory()?)),
+        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
         other => Ok(other),
     }
 }
@@ -310,7 +310,7 @@ pub(super) fn container(holder: Holder) -> Result<Holder> {
 pub(super) fn sized(holder: Holder, size: u64) -> Holder {
     match holder {
         #[cfg(feature = "object")]
-        Holder::ObjectFile(file) if size > 0 => Holder::ObjectFile(file.with_known_size(size)),
+        Holder::S3File(file) if size > 0 => Holder::S3File(file.with_known_size(size)),
         other => other,
     }
 }

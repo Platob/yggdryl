@@ -22,7 +22,7 @@ pub(crate) mod server;
 
 use object_store::aws::{AmazonS3, AmazonS3Builder};
 use server::FakeS3;
-use yggdryl::object::{Credentials, ObjectOptions};
+use yggdryl::object::{Credentials, S3Options};
 
 /// The bucket every fixture writes into.
 pub(crate) const BUCKET: &str = "bench";
@@ -50,8 +50,8 @@ pub(crate) fn store() -> FakeS3 {
 }
 
 /// Options addressing `store`, consulting nothing outside the benchmark.
-pub(crate) fn options(store: &FakeS3) -> ObjectOptions {
-    ObjectOptions::default()
+pub(crate) fn options(store: &FakeS3) -> S3Options {
+    S3Options::default()
         .with_environment(false)
         .with_endpoint(store.endpoint())
         .with_region("us-east-1")

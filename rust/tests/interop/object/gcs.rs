@@ -11,7 +11,7 @@
 //! `YGGDRYL_GCS_ENDPOINT` is what turns the suite on; without it every test
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
-use yggdryl::object::{GoogleOptions, ObjectOptions, Provider};
+use yggdryl::object::{GoogleOptions, Provider, S3Options};
 use yggdryl::{IOBase, IOFolder, IOKind};
 
 /// The bucket both sides exchange through.
@@ -30,8 +30,8 @@ fn endpoint() -> Option<String> {
 }
 
 /// Options addressing that endpoint with a token the emulator does not read.
-fn options() -> ObjectOptions {
-    ObjectOptions::default()
+fn options() -> S3Options {
+    S3Options::default()
         .with_environment(false)
         .with_endpoint(endpoint().expect("an endpoint"))
         .with_google(
@@ -42,13 +42,13 @@ fn options() -> ObjectOptions {
 }
 
 /// The object `key` names in the exchange bucket.
-fn object(key: &str) -> yggdryl::object::ObjectFile {
+fn object(key: &str) -> yggdryl::object::S3File {
     yggdryl::object::file_at_with(Provider::Google, BUCKET, key, options())
         .expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
-fn prefix(key: &str) -> yggdryl::object::ObjectFolder {
+fn prefix(key: &str) -> yggdryl::object::S3Folder {
     yggdryl::object::folder_at_with(Provider::Google, BUCKET, key, options())
         .expect("a prefix handle")
 }
@@ -59,7 +59,7 @@ fn skipped(what: &str) {
 }
 
 /// The bucket the exchange runs in, created if the driver did not.
-fn bucket() -> yggdryl::object::ObjectFolder {
+fn bucket() -> yggdryl::object::S3Folder {
     let root = yggdryl::object::folder_at_with(Provider::Google, BUCKET, "", options())
         .expect("a bucket handle");
     if !root.folder_exists() {

@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::object::{ObjectOptions, Provider};
+use yggdryl::object::{Provider, S3Options};
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -67,26 +67,25 @@ role!(
      needs to know what is there."
 );
 role!(
-    PyObjectFile,
-    "ObjectFile",
+    PyS3File,
+    "S3File",
     "One object on Amazon S3, Google Cloud Storage, or Azure Blob Storage, \
      read by range and written whole. A ranged read transfers the range \
      rather than the object, and learns the object's length from the answer."
 );
 role!(
-    PyObjectFolder,
-    "ObjectFolder",
+    PyS3Folder,
+    "S3Folder",
     "One key prefix, or a whole bucket or container. A prefix is not stored: \
      it exists exactly while a key starts with it, so creating and deleting \
      one cost nothing and listing is the only question the store answers."
 );
 role!(
-    PyObjectPath,
-    "ObjectPath",
-    "One object-store location that resolves to `ObjectFile` or \
-     `ObjectFolder` when an operation needs to know which it is - one listing \
-     of a single key, or none at all when a trailing slash already said it is \
-     a container."
+    PyS3Path,
+    "S3Path",
+    "One object-store location that resolves to `S3File` or `S3Folder` \
+     when an operation needs to know which it is - one listing of a single \
+     key, or none at all when a trailing slash already said it is a container."
 );
 role!(
     PyBuffered,
@@ -313,8 +312,8 @@ fn object_holder(
     key: Option<&Bound<'_, PyAny>>,
     provider: Option<&str>,
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
-    from_url: impl FnOnce(&str, ObjectOptions) -> yggdryl::Result<Holder>,
-    from_key: impl FnOnce(Provider, &str, &str, ObjectOptions) -> yggdryl::Result<Holder>,
+    from_url: impl FnOnce(&str, S3Options) -> yggdryl::Result<Holder>,
+    from_key: impl FnOnce(Provider, &str, &str, S3Options) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
     let options = object_options(options)?;
@@ -351,9 +350,9 @@ fn object_holder(
 /// anything else is ignored, so a catalog's properties can be handed over
 /// whole. Values are taken as their text, so `True` and `30` are as good as
 /// `"true"` and `"30"`.
-fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<ObjectOptions> {
+fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
     let Some(options) = options else {
-        return Ok(ObjectOptions::default());
+        return Ok(S3Options::default());
     };
     let mut properties: Vec<(String, String)> = Vec::with_capacity(options.len());
     for (name, value) in options {
@@ -364,15 +363,15 @@ fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<
     }
     // Nothing is contacted, so a value that will not parse is an argument
     // error rather than a store's refusal.
-    ObjectOptions::from_properties(properties).map_err(value_error)
+    S3Options::from_properties(properties).map_err(value_error)
 }
 
 #[pymethods]
-impl PyObjectPath {
+impl PyS3Path {
     /// Describe an object-store location without deciding what it is.
     ///
-    /// `ObjectPath("gs://trades/lake/part.parquet")` names a location;
-    /// `ObjectPath("trades", "lake/a b/part.parquet", provider="gs")` names a
+    /// `S3Path("gs://trades/lake/part.parquet")` names a location;
+    /// `S3Path("trades", "lake/a b/part.parquet", provider="gs")` names a
     /// container and the raw key a store uses. Neither contacts the store, and
     /// the provider is needed only for the second form, because a raw name -
     /// unlike a location - does not say which store holds it.
@@ -396,7 +395,7 @@ impl PyObjectPath {
             yggdryl::object::located_with,
             |provider, container, key, options| {
                 yggdryl::object::path_at_with(provider, container, key, options)
-                    .map(Holder::ObjectPath)
+                    .map(Holder::S3Path)
             },
         )?
         .add_subclass(Self))
@@ -404,10 +403,10 @@ impl PyObjectPath {
 }
 
 #[pymethods]
-impl PyObjectFile {
+impl PyS3File {
     /// Describe one object, whether or not it exists yet.
     ///
-    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
+    /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
     #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
@@ -421,10 +420,10 @@ impl PyObjectFile {
             key,
             provider,
             options,
-            |url, options| yggdryl::object::file_with(url, options).map(Holder::ObjectFile),
+            |url, options| yggdryl::object::file_with(url, options).map(Holder::S3File),
             |provider, container, key, options| {
                 yggdryl::object::file_at_with(provider, container, key, options)
-                    .map(Holder::ObjectFile)
+                    .map(Holder::S3File)
             },
         )?
         .add_subclass(Self))
@@ -432,10 +431,10 @@ impl PyObjectFile {
 }
 
 #[pymethods]
-impl PyObjectFolder {
+impl PyS3Folder {
     /// Describe a prefix, bucket, or container, creating nothing.
     ///
-    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
+    /// `options` and `provider` are read as they are by [`S3Path`](PyS3Path).
     #[new]
     #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
@@ -449,10 +448,10 @@ impl PyObjectFolder {
             key,
             provider,
             options,
-            |url, options| yggdryl::object::folder_with(url, options).map(Holder::ObjectFolder),
+            |url, options| yggdryl::object::folder_with(url, options).map(Holder::S3Folder),
             |provider, container, key, options| {
                 yggdryl::object::folder_at_with(provider, container, key, options)
-                    .map(Holder::ObjectFolder)
+                    .map(Holder::S3Folder)
             },
         )?
         .add_subclass(Self))
@@ -560,9 +559,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFsFile>()?;
     module.add_class::<PyFsFolder>()?;
     module.add_class::<PyFsPath>()?;
-    module.add_class::<PyObjectFile>()?;
-    module.add_class::<PyObjectFolder>()?;
-    module.add_class::<PyObjectPath>()?;
+    module.add_class::<PyS3File>()?;
+    module.add_class::<PyS3Folder>()?;
+    module.add_class::<PyS3Path>()?;
     module.add_class::<PyBuffered>()?;
     Ok(())
 }

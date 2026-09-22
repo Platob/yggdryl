@@ -118,7 +118,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
         return yggdryl::object::folder(&url.to_string())
-            .map(Holder::ObjectFolder)
+            .map(Holder::S3Folder)
             .map_err(napi_error);
     }
     non_local_scheme(url)?;

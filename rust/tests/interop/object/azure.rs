@@ -12,7 +12,7 @@
 //! `YGGDRYL_AZURE_ENDPOINT` is what turns the suite on; without it every test
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
-use yggdryl::object::{AzureOptions, ObjectOptions, Provider};
+use yggdryl::object::{AzureOptions, Provider, S3Options};
 use yggdryl::{IOBase, IOFolder, IOKind};
 
 /// The container both sides exchange through.
@@ -44,8 +44,8 @@ fn key() -> String {
 }
 
 /// Options addressing that endpoint with the key the driver set.
-fn options() -> ObjectOptions {
-    ObjectOptions::default()
+fn options() -> S3Options {
+    S3Options::default()
         .with_environment(false)
         .with_endpoint(endpoint().expect("an endpoint"))
         .with_azure(
@@ -56,13 +56,13 @@ fn options() -> ObjectOptions {
 }
 
 /// The blob `key` names in the exchange container.
-fn blob(key: &str) -> yggdryl::object::ObjectFile {
+fn blob(key: &str) -> yggdryl::object::S3File {
     yggdryl::object::file_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a blob handle")
 }
 
 /// The prefix `key` names in the exchange container.
-fn prefix(key: &str) -> yggdryl::object::ObjectFolder {
+fn prefix(key: &str) -> yggdryl::object::S3Folder {
     yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a prefix handle")
 }
@@ -74,7 +74,7 @@ fn skipped(what: &str) -> bool {
 }
 
 /// The container the exchange runs in, created if the driver did not.
-fn container() -> yggdryl::object::ObjectFolder {
+fn container() -> yggdryl::object::S3Folder {
     let root = yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, "", options())
         .expect("a container handle");
     if !root.folder_exists() {

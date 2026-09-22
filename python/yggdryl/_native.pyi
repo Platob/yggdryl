@@ -3281,8 +3281,8 @@ class FsPath(IOBase):
     def as_file(self) -> FsFile: ...
     def as_directory(self) -> FsFolder: ...
 
-class ObjectFile(IOBase):
-    """One object on S3, Google Cloud Storage, or Azure Blob Storage."""
+class S3File(IOBase):
+    """One object on Amazon S3, Google Cloud Storage, or Azure Blob Storage."""
 
     def __init__(
         self,
@@ -3293,7 +3293,7 @@ class ObjectFile(IOBase):
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 
-class ObjectFolder(IOBase):
+class S3Folder(IOBase):
     """One key prefix, or a whole bucket or container."""
 
     def __init__(
@@ -3305,8 +3305,8 @@ class ObjectFolder(IOBase):
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 
-class ObjectPath(IOBase):
-    """One location that resolves to `ObjectFile` or `ObjectFolder`."""
+class S3Path(IOBase):
+    """One object-store location that resolves to `S3File` or `S3Folder`."""
 
     def __init__(
         self,

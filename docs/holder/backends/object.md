@@ -1,14 +1,14 @@
 # Object stores
 
 Objects on Amazon S3, Google Cloud Storage, and Azure Blob Storage as three
-[`IOBase`](../iobase/bytes.md) handles: `ObjectPath` a location, `ObjectFolder`
-a prefix or container, `ObjectFile` one object.
+[`IOBase`](../iobase/bytes.md) handles: `S3Path` a location, `S3Folder`
+a prefix or container, `S3File` one object.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `yggdryl::object::{ObjectPath, ObjectFolder, ObjectFile}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
+| Owns | `yggdryl::object::{S3Path, S3Folder, S3File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
 | Feature | `object`, not default: the signed client and its TLS stack are a cost a local consumer never pays |
 | Stores | Amazon S3 and every store answering its API, Google Cloud Storage, Azure Blob Storage and Data Lake Storage Gen2 |
 | Bindings | An `s3:`, `s3a:`, `s3n:`, `gs:`, `gcs:`, `az:`, `abfs:`, `abfss:`, `wasb:`, or `wasbs:` [`Url`](../../uri/index.md) selects this backend; Rust and Python also take the knobs |
@@ -24,14 +24,14 @@ a prefix or container, `ObjectFile` one object.
 | Retry | Full jitter over a doubling window, a token budget so a failing store is not hammered, and `Retry-After` where the store sends one |
 | Recovery | A stream cut part way through resumes from the byte it stopped at, not from the beginning |
 | Encryption | One value, each store's own shapes: `SSE-S3`/`SSE-KMS`/`DSSE`/`SSE-C`, CMEK and customer-supplied keys, encryption scopes and customer-provided keys |
-| Configuration | `ObjectOptions::with_properties` reads PyIceberg's `s3.*`, `gcs.*` and `adls.*` names, PyArrow's arguments, and each store's environment |
+| Configuration | `S3Options::with_properties` reads PyIceberg's `s3.*`, `gcs.*` and `adls.*` names, PyArrow's arguments, and each store's environment |
 | Environment | The whole environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or whatever prefixes are set, through the same names |
 
 ## What each operation costs
 
 This is the contract the backend exists for, so it is stated as a number and
-asserted by tests rather than intended. `ObjectFolder::stats`,
-`ObjectFile::stats`, and `ObjectPath::stats` report what actually went out.
+asserted by tests rather than intended. `S3Folder::stats`,
+`S3File::stats`, and `S3Path::stats` report what actually went out.
 
 | operation | Amazon S3 | Google Cloud Storage | Azure Blob Storage |
 | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ A **ranged read learns the object's length** from the `Content-Range` it comes
 back with, so an open scope that reads and then asks the size pays nothing for
 the answer. A closed handle asks again, because a length is only true of the
 moment the store stated it - unless the caller already knew it: a listing
-states every entry's size, and `ObjectFile::with_known_size` lets a caller
+states every entry's size, and `S3File::with_known_size` lets a caller
 hand over a size it holds from elsewhere, which is how an Iceberg scan reads
 each data file with one `GET` and no `HEAD`, the manifest having stated the
 length.
@@ -152,15 +152,16 @@ three role classes, in whichever vocabulary the caller already has.
 
     ```{ .python .ignore }
     from yggdryl import IOBase
-    from yggdryl.holder import ObjectFile
+    from yggdryl.holder import S3File
 
     # The same class, the same methods: the scheme picks the backend.
     part = IOBase("s3://trades/lake/year=2026/part.parquet")
     footer = part.read_range_bytes(part.size - 8, 8)
     blob = IOBase("gs://trades/lake/year=2026/part.parquet")
 
-    # Or the role by name, with the catalog's properties handed over whole.
-    part = ObjectFile(
+    # Or the role by name - one class for all three stores, with `provider`
+    # saying which - and the catalog's properties handed over whole.
+    part = S3File(
         "trades",
         "lake/year=2026/part.parquet",
         provider="gs",
@@ -243,14 +244,14 @@ assert_eq!(azure.key(), "part.parquet");
 ## Reaching a store that is not the published one
 
 MinIO, Ceph, other S3-compatible gateways, `fake-gcs-server`, and Azurite are
-named by their endpoint, either in the location or through `ObjectOptions`. A
+named by their endpoint, either in the location or through `S3Options`. A
 port, an IP literal, or `localhost` in the URL names an endpoint rather than a
 container, so a local store reads the way the published one does.
 
 ```rust
-use yggdryl::object::{Credentials, ObjectOptions};
+use yggdryl::object::{Credentials, S3Options};
 
-let options = ObjectOptions::default()
+let options = S3Options::default()
     .with_endpoint("http://localhost:9000")
     .with_credentials(Credentials::new("minioadmin", "minioadmin"))
     .with_region("us-east-1");
@@ -259,7 +260,7 @@ assert_eq!(options.endpoint(), Some("http://localhost:9000"));
 // The options record what the caller asked for; the store that answers is what
 // clamps it, because the three floors differ - 5 MiB on S3, a multiple of
 // 256 KiB on Google, a block on Azure.
-assert_eq!(ObjectOptions::default().with_part_size(1).part_size(), 1);
+assert_eq!(S3Options::default().with_part_size(1).part_size(), 1);
 ```
 
 Where each unset knob is found:
@@ -282,11 +283,11 @@ property map accepts is also an environment variable, under any prefix the
 caller names:
 
 ```rust
-use yggdryl::object::ObjectOptions;
+use yggdryl::object::S3Options;
 
 // The defaults: one prefix per store, plus this crate's own.
 assert_eq!(
-    ObjectOptions::default().environment_prefixes(),
+    S3Options::default().environment_prefixes(),
     [
         "AWS_".to_owned(),
         "GOOGLE_".to_owned(),
@@ -298,14 +299,14 @@ assert_eq!(
 // A deployment that spells its configuration its own way gets every knob -
 // `TRADING_ENDPOINT`, `TRADING_SSE_TYPE`, `TRADING_ROLE_ARN` - rather than the
 // handful someone remembered to wire up.
-let options = ObjectOptions::default().with_environment_prefix("TRADING_");
+let options = S3Options::default().with_environment_prefix("TRADING_");
 assert_eq!(options.environment_prefixes().len(), 5);
 
 // Explicit wins, which is what makes the order above a fact rather than a
 // special case per knob: a knob left at its default takes the ambient answer,
 // one the caller set keeps theirs.
-let ambient = ObjectOptions::from_properties([("region", "us-east-1"), ("max_attempts", "9")])?;
-let explicit = ObjectOptions::default().with_region("eu-west-1").under(&ambient);
+let ambient = S3Options::from_properties([("region", "us-east-1"), ("max_attempts", "9")])?;
+let explicit = S3Options::default().with_region("eu-west-1").under(&ambient);
 assert_eq!(explicit.region(), Some("eu-west-1"));
 assert_eq!(explicit.max_attempts(), 9);
 ```
@@ -359,11 +360,11 @@ A name two stores both have - `storage_class`, `client_id` - is applied to
 nothing is ambiguous by the time it matters.
 
 ```rust
-use yggdryl::object::ObjectOptions;
+use yggdryl::object::S3Options;
 
 // Hand it the catalog's properties whole; what is not about a store is
 // ignored, because most of a catalog's properties are not.
-let options = ObjectOptions::from_properties([
+let options = S3Options::from_properties([
     ("warehouse", "s3://trades/lake"),
     ("token", "a catalog bearer token, which is not a session token"),
     ("s3.endpoint", "http://localhost:9000"),
@@ -376,15 +377,15 @@ assert_eq!(options.endpoint(), Some("http://localhost:9000"));
 assert_eq!(options.path_style(), Some(true));
 
 // A value that will not parse is heard here rather than at the store.
-assert!(ObjectOptions::from_properties([("s3.request-timeout", "soon")]).is_err());
+assert!(S3Options::from_properties([("s3.request-timeout", "soon")]).is_err());
 // And a knob this client cannot honor is refused rather than dropped, so
 // nothing a caller asked for silently does not happen.
-assert!(ObjectOptions::from_properties([("s3.signer.uri", "https://signer")]).is_err());
+assert!(S3Options::from_properties([("s3.signer.uri", "https://signer")]).is_err());
 
 // One catalog can hold all three stores' properties at once, because a
 // warehouse on one cloud and a backup on another is an ordinary thing to
 // configure. Each name reaches its own store's options and no other's.
-let options = ObjectOptions::from_properties([
+let options = S3Options::from_properties([
     ("gcs.project-id", "trading-analytics"),
     ("gcs.oauth2.token", "ya29.a0AfH6"),
     ("adls.account-name", "trades"),
@@ -447,14 +448,14 @@ bucket - refreshed shortly before it lapses rather than asked for per request.
 ```rust
 use std::time::Duration;
 
-use yggdryl::object::{AssumedRole, AwsOptions, GoogleOptions, ObjectOptions};
+use yggdryl::object::{AssumedRole, AwsOptions, GoogleOptions, S3Options};
 
 let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
     .with_session_name("power-desk")
     .with_external_id("desk-42")
     .with_duration(Duration::from_secs(3600));
 let options =
-    ObjectOptions::default().with_aws(AwsOptions::default().with_assumed_role(role));
+    S3Options::default().with_aws(AwsOptions::default().with_assumed_role(role));
 assert_eq!(
     options.aws().assumed_role().map(AssumedRole::session_name),
     Some("power-desk")
@@ -462,7 +463,7 @@ assert_eq!(
 
 // Google's shape: whatever the credential chain answers signs one call to
 // `iamcredentials`, and the token that call returns is what reaches the store.
-let options = ObjectOptions::default().with_google(
+let options = S3Options::default().with_google(
     GoogleOptions::default().with_impersonation("lake-reader@trading.iam.gserviceaccount.com"),
 );
 assert_eq!(
@@ -486,9 +487,9 @@ would be a round trip and an audit-log entry.
 
 ```rust
 use yggdryl::IOBase;
-use yggdryl::object::ObjectOptions;
+use yggdryl::object::S3Options;
 
-let options = ObjectOptions::default()
+let options = S3Options::default()
     .with_container_creation(false)
     .with_container_deletion(false);
 assert!(!options.container_creation());
@@ -532,10 +533,10 @@ A combination a store does not have is refused once, when the client is built,
 rather than silently dropped or discovered from the store on the first write.
 
 ```rust
-use yggdryl::object::{CustomerKey, Encryption, KmsKey, ObjectOptions, Provider};
+use yggdryl::object::{CustomerKey, Encryption, KmsKey, Provider, S3Options};
 
 // The bucket's own default, which is what an unset value means.
-assert!(ObjectOptions::default().encryption().is_default());
+assert!(S3Options::default().encryption().is_default());
 
 // A named KMS key, an encryption context KMS records and requires again, and
 // an S3 Bucket Key - one KMS call per bucket and window rather than per
@@ -543,7 +544,7 @@ assert!(ObjectOptions::default().encryption().is_default());
 let key = KmsKey::new("arn:aws:kms:eu-west-1:123456789012:key/abcd")
     .with_context(r#"{"desk":"power"}"#)
     .with_bucket_key(true);
-let options = ObjectOptions::default().with_encryption(Encryption::Kms(key));
+let options = S3Options::default().with_encryption(Encryption::Kms(key));
 assert_eq!(
     options.encryption().write_headers(Provider::Aws)[0],
     ("x-amz-server-side-encryption", "aws:kms".to_owned())

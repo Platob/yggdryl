@@ -20,9 +20,9 @@ pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.full
 /// How this backend reaches Google Cloud Storage in particular.
 ///
 /// ```
-/// use yggdryl::object::{GoogleOptions, ObjectOptions};
+/// use yggdryl::object::{GoogleOptions, S3Options};
 ///
-/// let options = ObjectOptions::default().with_google(
+/// let options = S3Options::default().with_google(
 ///     GoogleOptions::default()
 ///         .with_project("trading-analytics")
 ///         .with_storage_class("NEARLINE"),

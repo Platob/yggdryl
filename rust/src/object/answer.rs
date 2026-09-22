@@ -9,7 +9,7 @@
 
 /// One object's metadata, as a store states it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ObjectMeta {
+pub(crate) struct S3Meta {
     /// The object's byte length.
     pub(crate) size: u64,
     /// The entity tag, quotes included, when the store gave one.
@@ -20,7 +20,7 @@ pub(crate) struct ObjectMeta {
 
 /// One object a listing page named, with what the page said about it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ObjectSummary {
+pub struct S3Summary {
     /// The object key, percent-decoded when the page says
     /// `<EncodingType>url</EncodingType>`.
     pub key: String,
@@ -36,7 +36,7 @@ pub struct ObjectSummary {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ListPage {
     /// The objects in document order, which is key order.
-    pub objects: Vec<ObjectSummary>,
+    pub objects: Vec<S3Summary>,
     /// The `CommonPrefixes`, decoded like keys.
     pub prefixes: Vec<String>,
     /// Whether another page follows.
@@ -79,5 +79,5 @@ pub mod internals {
     //! spells one out and compares. `object::answer` is a private module of a
     //! published one, so these being `pub` reaches nobody: this door is the
     //! only path to them, and it exists under the `internals` feature alone.
-    pub use super::{DeleteFailure, ErrorBody, ListPage, ObjectSummary};
+    pub use super::{DeleteFailure, ErrorBody, ListPage, S3Summary};
 }

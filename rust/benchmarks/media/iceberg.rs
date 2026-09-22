@@ -1303,9 +1303,7 @@ mod s3 {
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::object::{
-        Credentials, ObjectFile, ObjectFolder, ObjectOptions, file_with, folder_with,
-    };
+    use yggdryl::object::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
     use yggdryl::text::TextOptions;
     use yggdryl::{
         DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
@@ -1338,8 +1336,8 @@ mod s3 {
         store
     }
 
-    fn options(store: &FakeS3) -> ObjectOptions {
-        ObjectOptions::default()
+    fn options(store: &FakeS3) -> S3Options {
+        S3Options::default()
             .with_environment(false)
             .with_endpoint(store.endpoint())
             .with_region("us-east-1")
@@ -1347,11 +1345,11 @@ mod s3 {
             .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY))
     }
 
-    fn folder(store: &FakeS3, key: &str) -> ObjectFolder {
+    fn folder(store: &FakeS3, key: &str) -> S3Folder {
         folder_with(&format!("s3://{BUCKET}/{key}/"), options(store)).expect("a prefix handle")
     }
 
-    fn log_object(store: &FakeS3) -> ObjectFile {
+    fn log_object(store: &FakeS3) -> S3File {
         file_with(&format!("s3://{BUCKET}/logs/ulbridge.log"), options(store))
             .expect("an object handle")
     }
@@ -1398,7 +1396,7 @@ mod s3 {
     }
 
     /// A fresh venue-partitioned table under `key`.
-    fn table(store: &FakeS3, key: &str) -> Table<ObjectFolder> {
+    fn table(store: &FakeS3, key: &str) -> Table<S3Folder> {
         let schema = plan_schema();
         let spec =
             PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
@@ -1410,7 +1408,7 @@ mod s3 {
         yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
     }
 
-    fn scan_rows(table: &Table<ObjectFolder>, filters: &[(&str, &str)]) -> usize {
+    fn scan_rows(table: &Table<S3Folder>, filters: &[(&str, &str)]) -> usize {
         table
             .scan_where(filters, None)
             .expect("the scan plans")
@@ -1430,7 +1428,7 @@ mod s3 {
         options.into()
     }
 
-    fn text_rows(log: &ObjectFile) -> usize {
+    fn text_rows(log: &S3File) -> usize {
         log.read_arrow_reader(&text())
             .expect("a reader")
             .map(|batch| batch.expect("a batch").num_rows())
@@ -1624,7 +1622,7 @@ mod s3 {
             )
             .expect("the FIX table creates")
         };
-        let fix_rows = |table: &mut Table<ObjectFolder>| {
+        let fix_rows = |table: &mut Table<S3Folder>| {
             let read = log.read_arrow_reader(&text()).expect("a reader");
             let parsed = codec
                 .parse_text_arrow_reader(read)

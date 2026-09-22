@@ -16,7 +16,7 @@
 //! meant to write are not there, and the driver fails on that word, so a
 //! skipped half can never read as a pass.
 
-use yggdryl::object::{Credentials, ObjectOptions, Provider};
+use yggdryl::object::{Credentials, Provider, S3Options};
 use yggdryl::{IOBase, IOKind};
 
 /// The bucket both sides exchange through.
@@ -39,10 +39,10 @@ fn endpoint() -> Option<String> {
 }
 
 /// Options addressing that endpoint with the credentials the driver set.
-fn options() -> ObjectOptions {
+fn options() -> S3Options {
     let access = std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "minioadmin".to_owned());
     let secret = std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "minioadmin".to_owned());
-    ObjectOptions::default()
+    S3Options::default()
         .with_environment(false)
         .with_endpoint(endpoint().expect("an endpoint"))
         .with_region(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_owned()))
@@ -57,12 +57,12 @@ fn options() -> ObjectOptions {
 /// Reached by raw name rather than by location, because that is what these
 /// keys are: `a b/spaced.txt` is an ordinary key and not a URL, and the point
 /// of the exercise is that both sides address the same object by it.
-fn object(key: &str) -> yggdryl::object::ObjectFile {
+fn object(key: &str) -> yggdryl::object::S3File {
     yggdryl::object::file_at_with(Provider::Aws, BUCKET, key, options()).expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
-fn prefix(key: &str) -> yggdryl::object::ObjectFolder {
+fn prefix(key: &str) -> yggdryl::object::S3Folder {
     yggdryl::object::folder_at_with(Provider::Aws, BUCKET, key, options()).expect("a prefix handle")
 }
 

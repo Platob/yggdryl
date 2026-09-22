@@ -24,10 +24,10 @@ use super::aws::sts::AssumedRole;
 use super::azure::options::{AzureOptions, BlobType};
 use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
-use super::options::ObjectOptions;
+use super::options::S3Options;
 use crate::{Error, Result};
 
-impl ObjectOptions {
+impl S3Options {
     /// Read the knobs `properties` names, in whichever vocabulary it uses.
     ///
     /// Explicit calls still win where they say the same thing, because this
@@ -60,10 +60,10 @@ impl ObjectOptions {
     /// client does not do.
     ///
     /// ```
-    /// use yggdryl::object::ObjectOptions;
+    /// use yggdryl::object::S3Options;
     ///
     /// // A PyIceberg catalog's properties, most of which are not about a store.
-    /// let options = ObjectOptions::default().with_properties([
+    /// let options = S3Options::default().with_properties([
     ///     ("warehouse", "s3://trades/lake"),
     ///     ("s3.endpoint", "http://localhost:9000"),
     ///     ("s3.access-key-id", "minioadmin"),
@@ -77,7 +77,7 @@ impl ObjectOptions {
     /// assert_eq!(options.path_style(), Some(true));
     ///
     /// // The same catalog's Azure and Google properties, in their own names.
-    /// let options = ObjectOptions::default().with_properties([
+    /// let options = S3Options::default().with_properties([
     ///     ("adls.account-name", "trades"),
     ///     ("adls.sas-token", "sv=2025-05-05&sig=x"),
     ///     ("gcs.project-id", "trading-analytics"),
@@ -507,7 +507,7 @@ struct Parts {
 
 impl Parts {
     /// Assemble what was collected onto `options`.
-    fn apply(self, mut options: ObjectOptions) -> Result<ObjectOptions> {
+    fn apply(self, mut options: S3Options) -> Result<S3Options> {
         if let Some(region) = self.region.as_ref().or(self.default_region.as_ref()) {
             options = options.with_region(region);
         }
