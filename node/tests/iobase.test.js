@@ -255,6 +255,24 @@ test('a name opens a handle as well as a location does', (t) => {
     () => new IOBase(new Arn('arn:aws:iam::123456789012:user/David')),
     /names a location/,
   )
+
+  // A table bucket is reached through the S3 Tables catalog rather than a byte
+  // backend, so the scheme is what refuses it - by its own name, not by the
+  // path conversion a location of no backend would fall through to.
+  for (const named of [
+    's3tables://lake/t-a1',
+    new Url('s3tables://lake/t-a1'),
+    new Arn('arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1'),
+  ]) {
+    assert.throws(
+      () => new IOBase(named),
+      /filesystem "s3tables" does not support holding a location of this scheme/,
+    )
+  }
+  assert.throws(
+    () => new IOBase('https://example.com/part.csv'),
+    /filesystem "https" does not support holding a location of this scheme/,
+  )
 })
 
 test('a missing location is empty rather than an error', (t) => {
@@ -702,7 +720,9 @@ test('a memory handle needs no location', () => {
   // A buffer still has an identity, but not one the file system knows.
   assert.equal(handle.url.scheme, 'mem')
   assert.throws(() => handle.intoPath(), /only a file URI/)
-  assert.throws(() => handle.mkdir(), /only a file URI/)
+  // A container is refused by the scheme that says no backend holds one, not
+  // by the path conversion it would otherwise fall through to.
+  assert.throws(() => handle.mkdir(), /filesystem "mem" does not support holding/)
   assert.equal(IOBase.fromBytes().size, 0)
 })
 

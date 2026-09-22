@@ -5553,8 +5553,9 @@ export declare class Uri {
   /** Network hostname under the core store-aware rules. */
   get hostname(): string | null
   /**
-   * Container name - a bucket on S3 and Google, a container on Azure - or
-   * `null` for a scheme that names no store.
+   * Container name - a bucket on Amazon S3 and Google, a container on
+   * Azure, a table bucket on Amazon S3 Tables - or `null` for a scheme that
+   * names no store.
    */
   get bucket(): string | null
   /** Azure storage account this location names, when it names one. */
@@ -5662,8 +5663,9 @@ export declare class Url {
   /** Network hostname under the core store-aware rules. */
   get hostname(): string | null
   /**
-   * Container name - a bucket on S3 and Google, a container on Azure - or
-   * `null` for a scheme that names no store.
+   * Container name - a bucket on Amazon S3 and Google, a container on
+   * Azure, a table bucket on Amazon S3 Tables - or `null` for a scheme that
+   * names no store.
    */
   get bucket(): string | null
   /** Azure storage account this location names, when it names one. */

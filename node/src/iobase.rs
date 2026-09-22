@@ -110,6 +110,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
         return yggdryl::object::located(&url.to_string()).map_err(napi_error);
     }
+    non_local_scheme(url)?;
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
@@ -120,7 +121,24 @@ fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
             .map(Holder::ObjectFolder)
             .map_err(napi_error);
     }
+    non_local_scheme(url)?;
     Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
+}
+
+/// Refuse a location no byte backend speaks, by the scheme that says so.
+///
+/// A location whose scheme no backend speaks is refused by that scheme, not by
+/// the path conversion it would otherwise fall through to: an Amazon S3 Tables
+/// table names a resource a catalog reads, and saying "only a file URI can be
+/// converted to a platform path" would name the wrong thing entirely.
+fn non_local_scheme(url: &yggdryl::Url) -> Result<()> {
+    if url.is_local() {
+        return Ok(());
+    }
+    Err(napi_error(yggdryl::Error::unsupported(
+        "holding a location of this scheme",
+        url.scheme().as_str(),
+    )))
 }
 
 /// Rebuild a foreign-file-system handle, keeping the file system it stands on.

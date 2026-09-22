@@ -213,8 +213,9 @@ impl JsUri {
         self.inner.hostname().map(ToOwned::to_owned)
     }
 
-    /// Container name - a bucket on S3 and Google, a container on Azure - or
-    /// `null` for a scheme that names no store.
+    /// Container name - a bucket on Amazon S3 and Google, a container on
+    /// Azure, a table bucket on Amazon S3 Tables - or `null` for a scheme that
+    /// names no store.
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
@@ -604,8 +605,9 @@ impl JsUrl {
         self.inner.hostname().map(ToOwned::to_owned)
     }
 
-    /// Container name - a bucket on S3 and Google, a container on Azure - or
-    /// `null` for a scheme that names no store.
+    /// Container name - a bucket on Amazon S3 and Google, a container on
+    /// Azure, a table bucket on Amazon S3 Tables - or `null` for a scheme that
+    /// names no store.
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
