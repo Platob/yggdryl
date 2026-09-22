@@ -17,7 +17,7 @@
 //!
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-//! use yggdryl::local::Folder;
+//! use yggdryl::local::LocalFolder;
 //! use yggdryl::{DataType, Field, StructType};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +28,7 @@
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //!
-//! let folder = Folder::new(Folder::temporary()?.path()?.join("yggdryl-trades"))?;
+//! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("yggdryl-trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
 //! let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec)?;
 //!

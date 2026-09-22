@@ -92,12 +92,12 @@ from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
-    File,
-    Folder,
     FsFile,
     FsFolder,
     FsPath,
-    Path as Path_,
+    LocalFile,
+    LocalFolder,
+    LocalPath,
 )
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
@@ -546,12 +546,12 @@ cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_b
 )
 
 # Every storage role is an ``IOBase``; the wrappers descend one layer at a time.
-role_path: Path_ = Path_("trades.txt")
-role_file: File = File("trades.bin")
-role_folder: Folder = Folder("lake")
-role_temporary: Folder = Folder.temporary()
-role_home: Folder = Folder.home()
-role_config: Folder = Folder.config()
+role_path: LocalPath = LocalPath("trades.txt")
+role_file: LocalFile = LocalFile("trades.bin")
+role_folder: LocalFolder = LocalFolder("lake")
+role_temporary: LocalFolder = LocalFolder.temporary()
+role_home: LocalFolder = LocalFolder.home()
+role_config: LocalFolder = LocalFolder.config()
 role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
 role_fs_path: FsPath = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
 role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")

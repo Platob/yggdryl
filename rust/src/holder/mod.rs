@@ -13,8 +13,8 @@ pub use buffer::Buffer;
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
-use crate::local::{File, Folder};
-use crate::{MediaType, Result, Url};
+use crate::local::{LocalFile, LocalFolder};
+use crate::{MediaType, Result, Uri, Url};
 
 use crate::IOBase;
 
@@ -42,17 +42,17 @@ pub(crate) fn system_time_ns(value: std::time::SystemTime) -> Option<i64> {
 /// to match on. `Holder` is that return type: an enum over the implementations
 /// the core ships, which itself implements [`IOBase`] by delegation.
 ///
-/// A local directory therefore yields [`Holder::Folder`] for its
-/// subdirectories and [`Holder::File`] for its files, and a caller can walk the
+/// A local directory therefore yields [`Holder::LocalFolder`] for its
+/// subdirectories and [`Holder::LocalFile`] for its files, and a caller can walk the
 /// tree through one type.
 ///
 /// ```
 /// use yggdryl::holder::Holder;
 /// use yggdryl::IOBase;
-/// use yggdryl::local::Folder;
+/// use yggdryl::local::LocalFolder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Holder::folder(Folder::temporary()?.path()?)?;
+/// let root = Holder::folder(LocalFolder::temporary()?.path()?)?;
 /// assert!(root.is_container());
 ///
 /// // A leaf is a mapped file, and it need not exist yet.
@@ -68,33 +68,33 @@ pub enum Holder {
     /// An in-memory byte array.
     Buffer(Buffer),
     /// A local directory.
-    Folder(Folder),
+    LocalFolder(LocalFolder),
     /// A local location that resolves to whatever it turns out to be.
-    Path(crate::local::Path),
+    LocalPath(crate::local::LocalPath),
     /// A memory-mapped local file.
-    File(File),
+    LocalFile(LocalFile),
     /// A directory on a foreign filesystem.
-    FsFolder(crate::fs::Folder),
+    FsFolder(crate::fs::FsFolder),
     /// A foreign-filesystem location that resolves to whatever it turns out
     /// to be.
-    FsPath(crate::fs::Path),
+    FsPath(crate::fs::FsPath),
     /// A stream-backed file on an Arrow-compatible filesystem.
-    FsFile(crate::fs::File),
+    FsFile(crate::fs::FsFile),
     /// A key prefix, or a whole container, on an object store.
-    #[cfg(feature = "object")]
-    ObjectFolder(crate::object::Folder),
+    #[cfg(feature = "s3")]
+    S3Folder(crate::s3::S3Folder),
     /// An object-store location that resolves to whatever it turns out to be.
-    #[cfg(feature = "object")]
-    ObjectPath(crate::object::Path),
+    #[cfg(feature = "s3")]
+    S3Path(crate::s3::S3Path),
     /// One object on an object store.
-    #[cfg(feature = "object")]
-    ObjectFile(crate::object::File),
+    #[cfg(feature = "s3")]
+    S3File(crate::s3::S3File),
     /// A prefix of one ZIP archive's members, or the archive root.
-    ZipNode(crate::zip::Node),
+    ZipNode(crate::zip::ZipNode),
     /// A location inside a ZIP archive that resolves to whatever it holds.
-    ZipPath(crate::zip::Path),
+    ZipPath(crate::zip::ZipPath),
     /// One member of a ZIP archive, addressed positionally.
-    ZipLeaf(crate::zip::Leaf),
+    ZipLeaf(crate::zip::ZipLeaf),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -133,7 +133,7 @@ impl Holder {
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        Ok(Self::Folder(Folder::new(path)?))
+        Ok(Self::LocalFolder(LocalFolder::new(path)?))
     }
 
     /// Hold a memory-mapped local file, without touching it.
@@ -143,12 +143,12 @@ impl Holder {
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        Ok(Self::File(File::new(path)?))
+        Ok(Self::LocalFile(LocalFile::new(path)?))
     }
 
     /// Hold the local resource a path names.
     ///
-    /// The returned [`Self::Path`] resolves only when an operation needs to
+    /// The returned [`Self::LocalPath`] resolves only when an operation needs to
     /// know what is there. A caller that already knows the role can select
     /// [`Self::folder`] or [`Self::file`] explicitly.
     ///
@@ -157,7 +157,7 @@ impl Holder {
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        Ok(Self::Path(crate::local::Path::new(path)?))
+        Ok(Self::LocalPath(crate::local::LocalPath::new(path)?))
     }
 
     /// Hold the resource a URL names, opened with properties.
@@ -166,7 +166,7 @@ impl Holder {
     /// target opens: a `file:` URL is a local path, resolved to a folder or a
     /// file when an operation needs to know; a `file:` URL with a fragment is
     /// a member of a ZIP archive; an object-store URL - `s3:`, `gs:`, `az:`
-    /// and their aliases - is held through the `object` feature, configured
+    /// and their aliases - is held through the `s3` feature, configured
     /// by the properties the store's own tooling names, read the way the
     /// object store options read them.
     ///
@@ -207,20 +207,20 @@ impl Holder {
             {
                 crate::zip::from_url(url)?
             } else {
-                Self::Path(crate::local::Path::from_url(url.clone())?)
+                Self::LocalPath(crate::local::LocalPath::from_url(url.clone())?)
             }
         } else if url.scheme().is_object_store() {
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             {
-                let options = crate::object::ObjectOptions::from_properties(
+                let options = crate::s3::S3Options::from_properties(
                     properties.iter().map(|(name, value)| (name, value)),
                 )?;
-                crate::object::located_with(&url.to_string(), options)?
+                crate::s3::located_with(&url.to_string(), options)?
             }
-            #[cfg(not(feature = "object"))]
+            #[cfg(not(feature = "s3"))]
             {
                 return Err(crate::Error::unsupported(
-                    "holding an object store location without the object feature",
+                    "holding an object store location without the s3 feature",
                     url.scheme().as_str(),
                 ));
             }
@@ -351,7 +351,7 @@ impl Holder {
         // directory - whose own name may end in a record suffix - stays a
         // directory here.
         let media_type = match &self {
-            Self::Path(path) => path.url().media_type(),
+            Self::LocalPath(path) => path.url().media_type(),
             Self::FsPath(path) => path.url().media_type(),
             other => other.media_type().clone(),
         };
@@ -539,18 +539,18 @@ impl Holder {
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
             Self::Buffer(inner) => inner,
-            Self::Folder(inner) => inner,
-            Self::Path(inner) => inner,
-            Self::File(inner) => inner,
+            Self::LocalFolder(inner) => inner,
+            Self::LocalPath(inner) => inner,
+            Self::LocalFile(inner) => inner,
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -565,18 +565,18 @@ impl Holder {
     pub fn as_io_mut(&mut self) -> &mut dyn IOBase {
         match self {
             Self::Buffer(inner) => inner,
-            Self::Folder(inner) => inner,
-            Self::Path(inner) => inner,
-            Self::File(inner) => inner,
+            Self::LocalFolder(inner) => inner,
+            Self::LocalPath(inner) => inner,
+            Self::LocalFile(inner) => inner,
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -591,18 +591,18 @@ impl Holder {
     fn as_media(&self) -> &dyn crate::IOMedia {
         match self {
             Self::Buffer(inner) => inner,
-            Self::Folder(inner) => inner,
-            Self::Path(inner) => inner,
-            Self::File(inner) => inner,
+            Self::LocalFolder(inner) => inner,
+            Self::LocalPath(inner) => inner,
+            Self::LocalFile(inner) => inner,
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -617,18 +617,18 @@ impl Holder {
     fn as_media_mut(&mut self) -> &mut dyn crate::IOMedia {
         match self {
             Self::Buffer(inner) => inner,
-            Self::Folder(inner) => inner,
-            Self::Path(inner) => inner,
-            Self::File(inner) => inner,
+            Self::LocalFolder(inner) => inner,
+            Self::LocalPath(inner) => inner,
+            Self::LocalFile(inner) => inner,
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFolder(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectPath(inner) => inner,
-            #[cfg(feature = "object")]
-            Self::ObjectFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -779,6 +779,10 @@ impl IOBase for Holder {
         self.as_io_mut().truncate(size)
     }
 
+    fn uri(&self) -> Option<&Uri> {
+        self.as_io().uri()
+    }
+
     fn url(&self) -> Option<&Url> {
         self.as_io().url()
     }
@@ -873,32 +877,32 @@ impl From<Buffer> for Holder {
     }
 }
 
-impl From<Folder> for Holder {
-    fn from(value: Folder) -> Self {
-        Self::Folder(value)
+impl From<LocalFolder> for Holder {
+    fn from(value: LocalFolder) -> Self {
+        Self::LocalFolder(value)
     }
 }
 
-impl From<File> for Holder {
-    fn from(value: File) -> Self {
-        Self::File(value)
+impl From<LocalFile> for Holder {
+    fn from(value: LocalFile) -> Self {
+        Self::LocalFile(value)
     }
 }
 
-impl From<crate::fs::Folder> for Holder {
-    fn from(value: crate::fs::Folder) -> Self {
+impl From<crate::fs::FsFolder> for Holder {
+    fn from(value: crate::fs::FsFolder) -> Self {
         Self::FsFolder(value)
     }
 }
 
-impl From<crate::fs::Path> for Holder {
-    fn from(value: crate::fs::Path) -> Self {
+impl From<crate::fs::FsPath> for Holder {
+    fn from(value: crate::fs::FsPath) -> Self {
         Self::FsPath(value)
     }
 }
 
-impl From<crate::fs::File> for Holder {
-    fn from(value: crate::fs::File) -> Self {
+impl From<crate::fs::FsFile> for Holder {
+    fn from(value: crate::fs::FsFile) -> Self {
         Self::FsFile(value)
     }
 }

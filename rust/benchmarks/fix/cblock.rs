@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::fs::{File, FileSystem, MemoryFileSystem};
+use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::{DataType, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
@@ -107,7 +107,7 @@ fn document() -> String {
 fn handle(body: &str) -> impl IOBase {
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     filesystem.create_dir("cblock", true).expect("a container");
-    let mut file = File::from_path(filesystem, "cblock/bench.cfb", None).expect("a path");
+    let mut file = FsFile::from_path(filesystem, "cblock/bench.cfb", None).expect("a path");
     file.write_all_bytes(body.as_bytes()).expect("the document");
     file
 }

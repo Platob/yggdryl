@@ -14,7 +14,7 @@ import pathlib
 import pytest
 
 from yggdryl import IOBase
-from yggdryl.holder import Path
+from yggdryl.holder import LocalPath
 
 PAYLOAD = '{"id": 1, "venue": "XNAS"}\n' * 64
 
@@ -62,7 +62,7 @@ class TestCompressInto:
     def test_a_gz_target_round_trips_through_a_real_file_on_disk(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = Path(tmp_path / "rows.json.gz")
+        coded = LocalPath(tmp_path / "rows.json.gz")
         back = IOBase(tmp_path / "back.json")
 
         written = plain.compress_into(coded)
@@ -79,7 +79,7 @@ class TestCompressInto:
     def test_the_file_it_wrote_is_a_gzip_the_standard_library_reads(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = Path(tmp_path / "rows.json.gz")
+        coded = LocalPath(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
 
         # The name promised gzip, so anything that reads gzip has to be able to
@@ -121,8 +121,8 @@ class TestCompressInto:
     def test_the_level_reaches_the_encoder_at_both_ends_of_the_scale(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        stored = Path(tmp_path / "stored.json.gz")
-        smallest = Path(tmp_path / "small.json.gz")
+        stored = LocalPath(tmp_path / "stored.json.gz")
+        smallest = LocalPath(tmp_path / "small.json.gz")
 
         # 0 is "wrap it and store it", so it is the one level that must come
         # out larger than the input - which is how a level that never reached
@@ -147,11 +147,11 @@ class TestDecompressInto:
     def test_the_source_name_supplies_the_coding(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = Path(tmp_path / "rows.json.gz")
+        coded = LocalPath(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
         back = IOBase(tmp_path / "back.json")
 
-        reopened = Path(tmp_path / "rows.json.gz")
+        reopened = LocalPath(tmp_path / "rows.json.gz")
         assert reopened.decompress_into(back) == len(PAYLOAD)
         assert back.read_text() == PAYLOAD
         # The target loses the coding this removed, so the pair is symmetric.
@@ -160,7 +160,7 @@ class TestDecompressInto:
     def test_a_coding_the_bytes_are_not_is_refused(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = Path(tmp_path / "rows.json.gz")
+        coded = LocalPath(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
 
         # Overriding the name is allowed, so naming the wrong coding has to
@@ -186,13 +186,13 @@ class TestCodedView:
         path.write_bytes(std_gzip.compress(plain.encode()))
 
         # The stored-byte role mirrors what is on disk, coding and all.
-        source = Path(path)
+        source = LocalPath(path)
         assert source.codec == "gzip"
         assert source.read_bytes()[:2] == b"\x1f\x8b"
 
         # The view presents what those bytes hold. The coding is the class it
         # reports, not something left in its media type.
-        decoded = Path(path).into_coded()
+        decoded = LocalPath(path).into_coded()
         assert type(decoded).__name__ == "Gzip"
         assert decoded.media_type.base == source.media_type.base
         assert decoded.read_text() == plain
@@ -233,7 +233,7 @@ class TestCodedView:
         self, tmp_path: pathlib.Path
     ) -> None:
         path = tmp_path / "notes.txt.gz"
-        handle = Path(path).into_coded()
+        handle = LocalPath(path).into_coded()
 
         handle.write_text("alpha\n")
         handle.close()

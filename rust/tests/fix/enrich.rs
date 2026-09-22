@@ -13,7 +13,7 @@ use std::sync::Arc;
 use yggdryl::expression::Term;
 use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::holder::Buffer;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{
     DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructType, Timezone, Url,
@@ -26,7 +26,7 @@ fn reader() -> FixCodec {
         .join("..")
         .join("config")
         .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
+    let folder = LocalFolder::new(root).expect("the seed folder is a local path");
     super::fixed_codec(Arc::new(
         FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
     ))
@@ -693,7 +693,7 @@ fn committed() -> FixRegistry {
         .join("..")
         .join("config")
         .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
+    let folder = LocalFolder::new(root).expect("the seed folder is a local path");
     FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
 }
 
@@ -1114,7 +1114,7 @@ fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_f
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
     assert!(rendered.contains("FIX:derivation"), "{rendered}");
 
-    let root = Folder::temporary()
+    let root = LocalFolder::temporary()
         .expect("a temporary folder")
         .path()
         .expect("a local path")
@@ -1123,7 +1123,7 @@ fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_f
             std::process::id()
         ));
     let _ = std::fs::remove_dir_all(&root);
-    let mut folder = Folder::new(&root).expect("a local folder");
+    let mut folder = LocalFolder::new(&root).expect("a local folder");
     registry.write_into(&mut folder).expect("the store writes");
     assert!(
         FixRegistry::from_handle(&folder).is_ok(),

@@ -212,9 +212,9 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 
     ```{ .rust .ignore }
     use yggdryl::iceberg::Table;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let table = Table::open(Folder::new("/lake/trades")?)?;
+    let table = Table::open(LocalFolder::new("/lake/trades")?)?;
 
     let plan = table.plan_matching("&holder.partition['year'] = '2024'")?;
     println!("{} manifests never opened", plan.manifests_skipped());

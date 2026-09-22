@@ -31,7 +31,7 @@ use crate::iomedia::{
 };
 use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::uri::{PyUrl, core_url_from_value};
+use crate::uri::{PyUrl, core_url_from_value, url_object};
 use crate::value_error;
 
 /// A random-access resource: a local file, a directory, or a memory buffer.
@@ -77,8 +77,18 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 /// touches nothing on either.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::located(&url.to_string())
-            .map_err(crate::holder::fs::storage_error);
+        return yggdryl::s3::located(&url.to_string()).map_err(crate::holder::fs::storage_error);
+    }
+    if !url.is_local() {
+        // A location whose scheme no backend speaks is refused by that scheme,
+        // not by the path conversion it would otherwise fall through to: an
+        // Amazon S3 Tables table names a resource a catalog reads, and saying
+        // "only a file URI can be converted to a platform path" would name the
+        // wrong thing entirely.
+        return Err(value_error(yggdryl::Error::unsupported(
+            "holding a location of this scheme",
+            url.scheme().as_str(),
+        )));
     }
     Holder::local(url.clone().into_path().map_err(value_error)?)
         .map_err(crate::holder::fs::storage_error)
@@ -87,9 +97,15 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
 /// Hold `url` as a container, on the store its scheme selects.
 pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::folder(&url.to_string())
-            .map(Holder::ObjectFolder)
+        return yggdryl::s3::folder(&url.to_string())
+            .map(Holder::S3Folder)
             .map_err(crate::holder::fs::storage_error);
+    }
+    if !url.is_local() {
+        return Err(value_error(yggdryl::Error::unsupported(
+            "holding a location of this scheme",
+            url.scheme().as_str(),
+        )));
     }
     Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
 }
@@ -99,7 +115,7 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
         .bound_location()
         .cloned()
-        .map(yggdryl::fs::Folder::new)
+        .map(yggdryl::fs::FsFolder::new)
         .map(Holder::FsFolder)
 }
 
@@ -111,15 +127,15 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 #[derive(Clone, Copy)]
 pub(crate) enum Role {
     Buffer,
-    Folder,
-    Path,
-    File,
+    LocalFolder,
+    LocalPath,
+    LocalFile,
     FsFolder,
     FsPath,
     FsFile,
-    ObjectFolder,
-    ObjectPath,
-    ObjectFile,
+    S3Folder,
+    S3Path,
+    S3File,
     Buffered,
     Coded(Codec),
     Text,
@@ -133,15 +149,15 @@ impl Role {
     fn of(holder: &Holder) -> Self {
         match holder {
             Holder::Buffer(_) => Self::Buffer,
-            Holder::Folder(_) => Self::Folder,
-            Holder::Path(_) => Self::Path,
-            Holder::File(_) => Self::File,
+            Holder::LocalFolder(_) => Self::LocalFolder,
+            Holder::LocalPath(_) => Self::LocalPath,
+            Holder::LocalFile(_) => Self::LocalFile,
             Holder::FsFolder(_) => Self::FsFolder,
             Holder::FsPath(_) => Self::FsPath,
             Holder::FsFile(_) => Self::FsFile,
-            Holder::ObjectFolder(_) => Self::ObjectFolder,
-            Holder::ObjectPath(_) => Self::ObjectPath,
-            Holder::ObjectFile(_) => Self::ObjectFile,
+            Holder::S3Folder(_) => Self::S3Folder,
+            Holder::S3Path(_) => Self::S3Path,
+            Holder::S3File(_) => Self::S3File,
             Holder::Buffered(_) => Self::Buffered,
             Holder::Text(_) => Self::Text,
             Holder::Coded(coded) => Self::Coded(coded.codec()),
@@ -159,15 +175,15 @@ impl Role {
         use crate::media::handles::Encoding;
         match self {
             Self::Buffer => "Buffer",
-            Self::Folder => "Folder",
-            Self::Path => "Path",
-            Self::File => "File",
+            Self::LocalFolder => "LocalFolder",
+            Self::LocalPath => "LocalPath",
+            Self::LocalFile => "LocalFile",
             Self::FsFolder => "FsFolder",
             Self::FsPath => "FsPath",
             Self::FsFile => "FsFile",
-            Self::ObjectFolder => "ObjectFolder",
-            Self::ObjectPath => "ObjectPath",
-            Self::ObjectFile => "ObjectFile",
+            Self::S3Folder => "S3Folder",
+            Self::S3Path => "S3Path",
+            Self::S3File => "S3File",
             Self::Buffered => "Buffered",
             Self::Coded(Codec::Gzip) => "Gzip",
             Self::Coded(Codec::Zlib | Codec::Deflate) => "Zlib",
@@ -198,15 +214,15 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
     let base = PyClassInitializer::from(PyIOBase::from_core(holder));
     Ok(match role {
         Role::Buffer => Py::new(py, base.add_subclass(roles::PyBuffer))?.into_any(),
-        Role::Folder => Py::new(py, base.add_subclass(roles::PyFolder))?.into_any(),
-        Role::Path => Py::new(py, base.add_subclass(roles::PyPath))?.into_any(),
-        Role::File => Py::new(py, base.add_subclass(roles::PyFile))?.into_any(),
+        Role::LocalFolder => Py::new(py, base.add_subclass(roles::PyLocalFolder))?.into_any(),
+        Role::LocalPath => Py::new(py, base.add_subclass(roles::PyLocalPath))?.into_any(),
+        Role::LocalFile => Py::new(py, base.add_subclass(roles::PyLocalFile))?.into_any(),
         Role::FsFolder => Py::new(py, base.add_subclass(roles::PyFsFolder))?.into_any(),
         Role::FsPath => Py::new(py, base.add_subclass(roles::PyFsPath))?.into_any(),
         Role::FsFile => Py::new(py, base.add_subclass(roles::PyFsFile))?.into_any(),
-        Role::ObjectFolder => Py::new(py, base.add_subclass(roles::PyObjectFolder))?.into_any(),
-        Role::ObjectPath => Py::new(py, base.add_subclass(roles::PyObjectPath))?.into_any(),
-        Role::ObjectFile => Py::new(py, base.add_subclass(roles::PyObjectFile))?.into_any(),
+        Role::S3Folder => Py::new(py, base.add_subclass(roles::PyS3Folder))?.into_any(),
+        Role::S3Path => Py::new(py, base.add_subclass(roles::PyS3Path))?.into_any(),
+        Role::S3File => Py::new(py, base.add_subclass(roles::PyS3File))?.into_any(),
         Role::Buffered => Py::new(py, base.add_subclass(roles::PyBuffered))?.into_any(),
         Role::Text => encodings::describe_text(py, base)?,
         Role::Coded(codec) => codings::describe(py, base, codec)?,
@@ -259,7 +275,7 @@ fn require_stored(holder: &Holder, role: &str) -> PyResult<()> {
     Err(PyValueError::new_err(format!(
         "expected {role} presenting its stored bytes, got a {} view of {location}; a coded handle \
          codes what passes through it, so copy_into already stores the coded form - or address \
-         the stored bytes with the Path, File, FsPath, or FsFile role",
+         the stored bytes with the LocalPath, LocalFile, FsPath, or FsFile role",
         applied_codec(holder).as_str(),
     )))
 }
@@ -291,9 +307,9 @@ pub(crate) fn unwrapped(py: Python<'_>, base: &mut PyIOBase) -> PyResult<Py<PyAn
 
 /// Render the composition a handle stands on, outermost role first.
 ///
-/// `Text(Gzip(Path("file:///trades.txt.gz")))` says in one line what the class
-/// alone only says about the top: which wrappers are in play, in which order,
-/// and what they finally sit on.
+/// `Text(Gzip(LocalPath("file:///trades.txt.gz")))` says in one line what the
+/// class alone only says about the top: which wrappers are in play, in which
+/// order, and what they finally sit on.
 fn stack(holder: &Holder, location: &str) -> String {
     let name = Role::of(holder).name();
     match holder {
@@ -878,10 +894,29 @@ impl PyIOBase {
         describe(py, Holder::Buffer(buffer))
     }
 
-    /// The location this handle addresses.
+    /// The identifier this handle is addressed by.
+    ///
+    /// Every handle answers one, because an address is not always a place: a
+    /// name, or the ARN a service writes for one of its resources, addresses a
+    /// handle exactly as a location does. `locator()` on what this answers is
+    /// where such a handle opens.
     #[getter]
-    fn url(&self) -> PyResult<Option<PyUrl>> {
-        Ok(self.inner()?.url().cloned().map(PyUrl::from_core))
+    fn uri(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        self.inner()?
+            .uri()
+            .cloned()
+            .map(|value| crate::uri::describe(py, value))
+            .transpose()
+    }
+
+    /// The location this handle addresses, when its identifier names one.
+    #[getter]
+    fn url(&self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
+        self.inner()?
+            .url()
+            .cloned()
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     /// The exact `pyarrow.fs.FileSystem` supplied at construction.
@@ -906,9 +941,10 @@ impl PyIOBase {
             .map(|bound| bound.path().to_owned()))
     }
 
-    /// The caller's exact optional URI spelling. It may contain credentials.
+    /// The caller's exact optional URI spelling for the bound filesystem. It
+    /// may contain credentials.
     #[getter]
-    fn uri(&self) -> PyResult<Option<String>> {
+    fn bound_uri(&self) -> PyResult<Option<String>> {
         Ok(self
             .inner()?
             .bound_location()
@@ -1759,7 +1795,7 @@ impl PyIOBase {
             .filesystem()
             .create_dir(bound.path(), recursive)
             .map_err(crate::holder::fs::storage_error)?;
-        describe(py, Holder::FsFolder(yggdryl::fs::Folder::new(bound)))
+        describe(py, Holder::FsFolder(yggdryl::fs::FsFolder::new(bound)))
     }
 
     /// Delete this empty directory itself.
@@ -1783,7 +1819,7 @@ impl PyIOBase {
 
     /// Delete all filesystem-root children while retaining its root.
     fn delete_root_dir_contents(&mut self) -> PyResult<()> {
-        yggdryl::fs::Folder::new(self.bound()?.clone())
+        yggdryl::fs::FsFolder::new(self.bound()?.clone())
             .delete_root_dir_contents()
             .map_err(crate::holder::fs::storage_error)
     }

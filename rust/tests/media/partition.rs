@@ -17,7 +17,10 @@ mod lake {
 
     /// Build an empty `lake/` under the temp directory and hold it as a folder.
     fn lake(label: &str) -> (PathBuf, Holder) {
-        let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!("yggdryl-lake-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
@@ -1424,7 +1427,7 @@ mod lazy_folder {
     use arrow_ipc::writer::StreamWriter;
 
     use yggdryl::fs::{
-        ByteReader, ByteWriter, File, FileInfo, FileInfos, FileSelector, FileSystem,
+        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, FsFile,
         MemoryFileSystem, OutputMetadata, RandomAccessReader,
     };
     use yggdryl::holder::Holder;
@@ -1639,6 +1642,10 @@ mod lazy_folder {
             Ok(())
         }
 
+        fn uri(&self) -> Option<&yggdryl::Uri> {
+            Some(self.url.as_ref())
+        }
+
         fn url(&self) -> Option<&Url> {
             Some(&self.url)
         }
@@ -1670,7 +1677,8 @@ mod lazy_folder {
                 if failing_entry == Some(index) {
                     return Err(Error::Io(std::io::Error::other(LISTING_FAILURE)));
                 }
-                File::from_path(Arc::clone(&filesystem), part_path(index), None).map(Holder::FsFile)
+                FsFile::from_path(Arc::clone(&filesystem), part_path(index), None)
+                    .map(Holder::FsFile)
             })))
         }
     }

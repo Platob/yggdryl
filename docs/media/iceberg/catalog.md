@@ -28,12 +28,12 @@ A caller holding rows and a dotted name needs nothing else.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::Catalog;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, StructType};
 
-    let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
+    let warehouse = LocalFolder::temporary()?.path()?.join("yggdryl-doc-warehouse");
     let _ = std::fs::remove_dir_all(&warehouse);
-    let catalog = Catalog::new(Folder::new(&warehouse)?);
+    let catalog = Catalog::new(LocalFolder::new(&warehouse)?);
 
     // Rows and a name are enough: the first append creates the table with the
     // schema the rows carry, and the second appends to it.
@@ -187,11 +187,11 @@ A nested namespace comes from its parent's own view.
 
     ```rust
     use yggdryl::iceberg::Catalog;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-views");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-views");
     let _ = std::fs::remove_dir_all(&root);
-    let catalog = Catalog::new(Folder::new(&root)?);
+    let catalog = Catalog::new(LocalFolder::new(&root)?);
 
     // Constructing the views touches nothing; every answer is storage's.
     let namespaces = catalog.namespaces();
@@ -322,12 +322,12 @@ use arrow_array::{Float32Array, Float64Array, Int64Array, RecordBatch, StringArr
 use yggdryl::holder::Holder;
 use yggdryl::StructType;
 use yggdryl::iceberg::Table;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::DataType;
 
-let root = Folder::temporary()?.path()?.join("yggdryl-doc-nyc-taxis");
+let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-nyc-taxis");
 let _ = std::fs::remove_dir_all(&root);
-let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
+let catalog = yggdryl::iceberg::Catalog::new(LocalFolder::new(&root)?);
 
 // CREATE TABLE nyc.taxis (...) PARTITIONED BY (vendor_id)
 // The partition mark on the schema is the whole PARTITIONED BY clause.

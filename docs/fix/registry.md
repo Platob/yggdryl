@@ -804,11 +804,11 @@ used still reaches the value.
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 
     // FIX 4.1 declared ExecType 1; 4.3 folded it into Trade. Both are codes
     // of the one set tag 150 reads by.
@@ -853,11 +853,11 @@ metadata documents remain on the field and round-trip through both bindings.
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 
     // Rule80A: FIX stopped declaring it after 4.3, and it is still a field.
     let rule80a = registry.field_by_tag(47)?;
@@ -929,11 +929,11 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     use std::sync::Arc;
 
     use yggdryl::fix::FixReplacement;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, Plan};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 
     let mut rule80a = registry.field_by_tag(47)?.clone();
     let plan: Plan = "select 'P' as ordercapacity where rule80a = 'A'".parse()?;
@@ -1073,11 +1073,11 @@ A derivation is metadata on the field, so it is configured the way any field fac
     use std::sync::Arc;
 
     use yggdryl::expression::Term;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{Decimal18, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 
     let mut leaves = registry.field_by_tag(151)?.clone();
     let shipped = leaves.as_fix().derivation()?.expect("the dictionary derives LeavesQty");
@@ -1279,9 +1279,9 @@ Registration states the set tag 35 reads by - the one the field names, else `msg
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: 30 crate scalar fields and two Map groups beside the two seeded clocks, so `len()` is 34. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 30 crate scalar fields and two Map groups beside the two seeded clocks, so `len()` is 34. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
-Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
+Environment and default-folder resolution happen once, on the first global lookup. `LocalFolder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 
 | Rust | Python | JavaScript |
 | --- | --- | --- |

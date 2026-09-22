@@ -16,6 +16,7 @@ enum SchemeWire {
     Https,
     File,
     Urn,
+    Arn,
     Postgres,
     Postgresql,
     Mysql,
@@ -32,6 +33,7 @@ enum SchemeWire {
     S3,
     S3a,
     S3n,
+    S3Tables,
     Gs,
     Gcs,
     Az,
@@ -65,6 +67,8 @@ impl Scheme {
     pub const FILE: Self = Self(SchemeWire::File);
     /// The uniform resource name scheme.
     pub const URN: Self = Self(SchemeWire::Urn);
+    /// The Amazon Resource Name scheme.
+    pub const ARN: Self = Self(SchemeWire::Arn);
     /// The short PostgreSQL protocol spelling.
     pub const POSTGRES: Self = Self(SchemeWire::Postgres);
     /// The long PostgreSQL protocol spelling.
@@ -97,6 +101,8 @@ impl Scheme {
     pub const S3A: Self = Self(SchemeWire::S3a);
     /// The Hadoop `s3n` spelling of the same Amazon S3 protocol.
     pub const S3N: Self = Self(SchemeWire::S3n);
+    /// The Amazon S3 Tables protocol scheme.
+    pub const S3TABLES: Self = Self(SchemeWire::S3Tables);
     /// The Google Cloud Storage protocol scheme.
     pub const GS: Self = Self(SchemeWire::Gs);
     /// The `gcs` spelling of the same Google Cloud Storage protocol.
@@ -149,6 +155,7 @@ impl Scheme {
             SchemeWire::Http | SchemeWire::Https => "HTTP",
             SchemeWire::File => "FILE",
             SchemeWire::Urn => "URN",
+            SchemeWire::Arn => "ARN",
             SchemeWire::Postgres => "POSTGRES",
             SchemeWire::Postgresql => "POSTGRESQL",
             SchemeWire::Mysql => "MYSQL",
@@ -165,6 +172,7 @@ impl Scheme {
             SchemeWire::S3 => "S3",
             SchemeWire::S3a => "S3A",
             SchemeWire::S3n => "S3N",
+            SchemeWire::S3Tables => "S3TABLES",
             SchemeWire::Gs => "GS",
             SchemeWire::Gcs => "GCS",
             SchemeWire::Az => "AZ",
@@ -187,6 +195,7 @@ impl Scheme {
             SchemeWire::Https => "https",
             SchemeWire::File => "file",
             SchemeWire::Urn => "urn",
+            SchemeWire::Arn => "arn",
             SchemeWire::Postgres => "postgres",
             SchemeWire::Postgresql => "postgresql",
             SchemeWire::Mysql => "mysql",
@@ -203,6 +212,7 @@ impl Scheme {
             SchemeWire::S3 => "s3",
             SchemeWire::S3a => "s3a",
             SchemeWire::S3n => "s3n",
+            SchemeWire::S3Tables => "s3tables",
             SchemeWire::Gs => "gs",
             SchemeWire::Gcs => "gcs",
             SchemeWire::Az => "az",
@@ -249,6 +259,16 @@ impl Scheme {
         matches!(self.0, SchemeWire::S3 | SchemeWire::S3a | SchemeWire::S3n)
     }
 
+    /// Return whether the scheme addresses Amazon S3 Tables.
+    ///
+    /// A table bucket holds tables rather than objects, and no byte-level
+    /// backend opens one, so this is deliberately not part of
+    /// [`Self::is_object_store`]: it is the question a reader asks before
+    /// speaking the S3 Tables catalog, not before selecting a byte store.
+    pub const fn is_s3_tables(&self) -> bool {
+        matches!(self.0, SchemeWire::S3Tables)
+    }
+
     /// Return whether the scheme addresses Google Cloud Storage.
     ///
     /// `gs` and `gcs` name one protocol, for the reason [`Self::is_s3`] gives:
@@ -282,6 +302,21 @@ impl Scheme {
     /// another tool reaches it rather than falling through to a filesystem.
     pub const fn is_object_store(&self) -> bool {
         self.is_s3() || self.is_gs() || self.is_az()
+    }
+
+    /// Return whether a location under this scheme names a container.
+    ///
+    /// Every object store does - a bucket on Amazon S3 and Google Cloud
+    /// Storage, a container on Azure Blob Storage - and so does Amazon S3
+    /// Tables, whose table bucket holds tables. It is one position in the
+    /// location whichever store it is, so this is what [`Uri::bucket`] and
+    /// [`Uri::key`] read, while [`Self::is_object_store`] stays the question
+    /// of which backend opens it.
+    ///
+    /// [`Uri::bucket`]: crate::Uri::bucket
+    /// [`Uri::key`]: crate::Uri::key
+    pub const fn has_container(&self) -> bool {
+        self.is_object_store() || self.is_s3_tables()
     }
 
     /// Return whether the scheme addresses a byte-oriented storage location.
@@ -362,7 +397,9 @@ impl FromStr for Scheme {
             5 if value.eq_ignore_ascii_case("wasbs") => Some(Self::WASBS),
             3 if value.eq_ignore_ascii_case("s3a") => Some(Self::S3A),
             3 if value.eq_ignore_ascii_case("s3n") => Some(Self::S3N),
+            8 if value.eq_ignore_ascii_case("s3tables") => Some(Self::S3TABLES),
             3 if value.eq_ignore_ascii_case("urn") => Some(Self::URN),
+            3 if value.eq_ignore_ascii_case("arn") => Some(Self::ARN),
             3 if value.eq_ignore_ascii_case("sql") => Some(Self::SQL),
             3 if value.eq_ignore_ascii_case("fix") => Some(Self::FIX),
             4 if value.eq_ignore_ascii_case("http") => Some(Self::HTTP),

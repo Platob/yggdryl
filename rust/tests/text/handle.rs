@@ -172,11 +172,11 @@ mod text {
 
     #[test]
     fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
-        use yggdryl::local::Folder;
+        use yggdryl::local::LocalFolder;
 
-        let mut root = Folder::temporary().unwrap().path().unwrap();
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-framed-folder-{}", std::process::id()));
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         folder.remove(true).unwrap();
         let mut first = folder.child_by_path("a.log").unwrap();
         first.write_all_bytes(b"[A] first\ncontinued in a").unwrap();

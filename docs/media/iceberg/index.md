@@ -24,7 +24,7 @@ Create in a folder, append, and reopen with no catalog in between.
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -37,12 +37,12 @@ Create in a folder, append, and reopen with no catalog in between.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-lead");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-lead");
     let _ = std::fs::remove_dir_all(&path);
 
     // A table is created in a folder, and a folder is all it ever touches.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     // A table that has never been written to has no current snapshot.
     assert!(table.current_snapshot().is_none());
@@ -62,7 +62,7 @@ Create in a folder, append, and reopen with no catalog in between.
     assert_eq!(table.data_files()?.len(), 2, "one file per venue");
 
     // Reopening finds the table again, with no catalog in between.
-    let reopened = Table::open(Folder::new(&path)?)?;
+    let reopened = Table::open(LocalFolder::new(&path)?)?;
     let rows: usize = reopened.scan(None)?.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
     ```
@@ -177,18 +177,20 @@ The boundary follows the [Iceberg specification](https://iceberg.apache.org/spec
 
 ## Interoperability
 
-Both exchanges run in both directions and skip themselves, naming what is missing, rather than pass quietly.
+The two format exchanges run in both directions and fail when a half is missing, rather than pass quietly. The S3 Tables run is one direction - PyIceberg commits through the service, this crate reads the warehouse - and it is a benchmark rather than a check, so it reports `SKIPPED` and succeeds where it cannot run.
 
 | Exchange | Driver | Covers |
 | --- | --- | --- |
 | [PyIceberg](https://py.iceberg.apache.org/) | `python scripts/check_iceberg_interop.py` (needs `pyiceberg`); the Rust half is the `iceberg::` module of the `interop` test | A partitioned v2 table read as a `StaticTable`; a PyIceberg table with other file names, manifest field order, and deflate Avro |
 | Apache Spark | `python scripts/setup_spark_interop.py`, then `pytest -m spark_interop` (deselected by default; needs Java) | Field ids, primitive and nested types with nulls, transforms, time travel and refs, evolution, properties, mixed Parquet and Avro, compaction, metadata tables, statistics |
+| Amazon S3 Tables | `python python/benchmarks/media/s3tables.py` (needs `pyiceberg`, `boto3`, and a table bucket ARN in `YGGDRYL_S3TABLES_ARN`; reports `SKIPPED` otherwise) | PyIceberg creates, partitions, fills and drops a table through the service's catalog; this crate opens the same table at the warehouse `s3:` location the catalog answers, signing with the credentials it vended, and the rows both read are compared before either is timed |
 
 ## Edges
 
 - Renamed column -> resolved by field id, so a pre-rename file's column is renamed on read and pushed down under its own name.
 - `uuid`, `fixed`, `time` in Spark -> no DDL spelling, so the exchange covers only the direction that exists.
 - Remote catalog -> none; `Catalog` is an `IOBase` warehouse view, and commits publish through the supplied handle.
+- Amazon S3 Tables -> no catalog client either; the table bucket ARN and the `s3tables:` locator are [identifiers](../../uri/arn.md), and a table is read at the warehouse `s3:` location its catalog answers, which is what `python/benchmarks/media/s3tables.py` times beside PyIceberg.
 - Writing delete files, and applying deletes on read -> not implemented.
 - Live position or equality delete manifests -> scans return a typed unsupported error, never undeleted rows; proven-inert manifests pass.
 - Branch other than `main` -> no writes, since a commit's parent is always the current snapshot; read it with `scan_ref` and move it with `fast_forward`.
@@ -253,7 +255,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 ### Iceberg over S3
 
-The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/object/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+The same table over the in-process S3 the S3 backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/s3/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
 
 | operation | requests before | requests after | median before | median after |
 | --- | ---: | ---: | ---: | ---: |
@@ -268,5 +270,13 @@ The same table over the in-process S3 the object backend's own suites run on, ev
 Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
 
 ```bash
-cargo bench --features "iceberg object" -p yggdryl --bench media -- 's3/' --quick
+cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
+```
+
+### Iceberg on Amazon S3 Tables
+
+`python/benchmarks/media/s3tables.py` is the same question against the real service, beside PyIceberg. It takes a table bucket ARN in `YGGDRYL_S3TABLES_ARN`, has PyIceberg create a table there partitioned by `symbol`, append 65,536 rows in four partitions through the service's catalog - the only door a commit to S3 Tables has - and then opens the same table both ways: PyIceberg through the catalog's REST load, this crate through the warehouse `s3:` location that load answers, with the region the ARN carries and the credentials the catalog vended. Opening the table, a full scan to Arrow, and a scan pruned to one partition of four are each timed on both sides, after the rows both read have been compared; the table is dropped afterwards. The ratio column is PyIceberg's median over this crate's, so above one is in this crate's favor. No table is published here: the run needs an account's own table bucket, and the numbers are those of a network round trip to it, which is why the request counts pinned above are the part that travels.
+
+```bash
+YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
 ```

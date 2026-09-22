@@ -3,23 +3,23 @@
 //! An archive is a file system that happens to live inside one file, so it is
 //! a storage backend like any other and supplies the same three roles:
 //!
-//! - [`Node`] is the container: the archive root, or any prefix its members
+//! - [`ZipNode`] is the container: the archive root, or any prefix its members
 //!   share. It lists and resolves members out of the archive's own directory,
 //!   reading no member byte to do it.
-//! - [`Leaf`] is one member, addressed positionally. A stored member reads
+//! - [`ZipLeaf`] is one member, addressed positionally. A stored member reads
 //!   straight out of the archive at an offset; a compressed one decodes from
 //!   the nearest restart point through one bounded window.
-//! - [`Path`] is the generic location, which resolves to whichever of the two
-//!   is actually there.
+//! - [`ZipPath`] is the generic location, which resolves to whichever of the
+//!   two is actually there.
 //!
 //! A member is neither a directory nor a file of the host: it is a name in one
 //! archive's index. The roles are named for what they are - a node of that
 //! index and a leaf of it - so nothing here reads as a promise the format does
 //! not make.
 //!
-//! [`Archive`] is what the three share: one byte handle plus the central
-//! directory that indexes it. [`Entry`] is what that directory says about one
-//! member.
+//! [`ZipArchive`] is what the three share: one byte handle plus the central
+//! directory that indexes it. [`ZipEntry`] is what that directory says about
+//! one member.
 //!
 //! All three follow the shared [`IOBase`](crate::IOBase) laziness contract:
 //! constructing one touches nothing, reading something that is not there
@@ -62,11 +62,11 @@ pub(crate) mod name;
 mod node;
 mod path;
 
-pub use archive::Archive;
-pub use entry::Entry;
-pub use leaf::Leaf;
-pub use node::Node;
-pub use path::Path;
+pub use archive::ZipArchive;
+pub use entry::ZipEntry;
+pub use leaf::ZipLeaf;
+pub use node::ZipNode;
+pub use path::ZipPath;
 
 use crate::holder::Holder;
 
@@ -77,7 +77,7 @@ use crate::holder::Holder;
 /// does not exist yet is an empty one that the first write creates.
 #[must_use]
 pub fn mount(handle: Holder) -> Holder {
-    Holder::ZipNode(Archive::new(handle).mount())
+    Holder::ZipNode(ZipArchive::new(handle).mount())
 }
 
 /// Resolve the archive and member a location names, without touching either.
@@ -92,11 +92,11 @@ pub fn mount(handle: Holder) -> Holder {
 /// archive the next level is a member of.
 ///
 /// ```
-/// use yggdryl::{IOBase, local::Folder, zip};
+/// use yggdryl::{IOBase, local::LocalFolder, zip};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let name = format!("yggdryl-zip-from-url-{}.zip", std::process::id());
-/// let archive = Folder::temporary()?.child_by_path(&name)?;
+/// let archive = LocalFolder::temporary()?.child_by_path(&name)?;
 /// let mut root = zip::mount(archive);
 /// root.child_by_path("trades/eu.csv")?.write_all_bytes(b"symbol")?;
 ///
@@ -130,8 +130,9 @@ pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
             base.scheme().as_str(),
         ));
     }
-    let mut held =
-        Holder::ZipNode(Archive::new(Holder::Path(crate::local::Path::from_url(base)?)).mount());
+    let mut held = Holder::ZipNode(
+        ZipArchive::new(Holder::LocalPath(crate::local::LocalPath::from_url(base)?)).mount(),
+    );
     let member = member.unwrap_or_default();
     let mut levels = member.split(archive::NESTED).peekable();
     while let Some(level) = levels.next() {
@@ -165,7 +166,7 @@ fn member_name(holder: &Holder) -> Option<&str> {
 ///
 /// Both halves count: a lake can partition the archives themselves and
 /// partition again inside one, and a member carries whichever it is under.
-fn member_partitions(archive: &Archive, member: &str) -> Vec<(String, String)> {
+fn member_partitions(archive: &ZipArchive, member: &str) -> Vec<(String, String)> {
     let mut pairs = archive.url().hive_partitions();
     // An archive inside an archive spells its own chain in the fragment, and
     // every link of it can partition too; the empty segment a level marker

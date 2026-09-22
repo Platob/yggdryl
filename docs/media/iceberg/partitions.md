@@ -23,7 +23,7 @@ A create names the identity partition columns, and every commit after it lays it
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -36,10 +36,10 @@ A create names the identity partition columns, and every commit after it lays it
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-partition-use");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-partition-use");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     let batch = RecordBatch::try_new(
         schema.into_arrow_schema()?,
@@ -189,7 +189,7 @@ A table marks its stored schema on create and on open, so `Table::schema` report
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -202,10 +202,10 @@ A table marks its stored schema on create and on open, so `Table::schema` report
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-null-partition");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-null-partition");
     let _ = std::fs::remove_dir_all(&path);
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     let batch = RecordBatch::try_new(
         schema.into_arrow_schema()?,

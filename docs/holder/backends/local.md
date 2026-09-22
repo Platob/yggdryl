@@ -1,14 +1,14 @@
 # Local
 
-The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a location, `Folder` a directory, `File` a memory-mapped leaf.
+The local file system as three [`IOBase`](../iobase/bytes.md) handles: `LocalPath` a location, `LocalFolder` a directory, `LocalFile` a memory-mapped leaf.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `yggdryl::local::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
-| Bindings | Rust, and Python as `yggdryl.holder.{Path, File, Folder}`; JavaScript has one `IOBase` and no role classes |
-| Validates | Only the canonical `file:` [`Url`](../../uri/index.md), which is a `Folder`'s whole state |
+| Owns | `yggdryl::local::{LocalPath, LocalFolder, LocalFile}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
+| Bindings | Rust, and Python as `yggdryl.holder.{LocalPath, LocalFile, LocalFolder}`; JavaScript has one `IOBase` and no role classes |
+| Validates | Only the canonical `file:` [`Url`](../../uri/index.md), which is a `LocalFolder`'s whole state |
 | Lazy | Constructing touches nothing; a write creates the file and every missing parent |
 | Roots | `temporary()`, `home()` (`HOME`, then `USERPROFILE`, unset or empty skipped), `config()` (home joined with `.config`); none creates |
 | Listings | Sorted; dot-prefixed entries skipped and never descended unless asked |
@@ -21,11 +21,11 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::{File, Folder};
+    use yggdryl::local::{LocalFile, LocalFolder};
 
-    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
+    let path = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
 
-    let mut file = File::create(&path)?;
+    let mut file = LocalFile::create(&path)?;
     file.write_all_bytes(b"AAPL")?;
     file.flush()?;
 
@@ -41,11 +41,11 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File
+    from yggdryl.holder import LocalFile
 
     path = pathlib.Path(tempfile.mkdtemp()) / "trades.bin"
 
-    leaf = File(path)
+    leaf = LocalFile(path)
     leaf.write_bytes(b"AAPL")
     leaf.flush()
 
@@ -58,26 +58,26 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::{File, Folder, Path};
+    use yggdryl::local::{LocalFile, LocalFolder, LocalPath};
     use yggdryl::IOKind;
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-roles-{}", std::process::id()));
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-roles-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("nested"))?;
     std::fs::write(root.join("a.bin"), b"a")?;
 
     // A container: it holds no bytes of its own, only children.
-    let folder = Folder::new(&root)?;
+    let folder = LocalFolder::new(&root)?;
     assert_eq!(folder.size(), 0);
     assert_eq!(folder.ls(false, false).count(), 2);
 
     // A leaf: bytes addressed by offset.
-    let leaf = File::new(root.join("a.bin"))?;
+    let leaf = LocalFile::new(root.join("a.bin"))?;
     assert_eq!(leaf.read_all_bytes()?, b"a");
 
     // A location: it answers by looking at what is actually there.
-    assert_eq!(Path::new(&root)?.kind(), IOKind::Directory);
-    assert_eq!(Path::new(root.join("a.bin"))?.kind(), IOKind::File);
+    assert_eq!(LocalPath::new(&root)?.kind(), IOKind::Directory);
+    assert_eq!(LocalPath::new(root.join("a.bin"))?.kind(), IOKind::File);
 
     let _ = std::fs::remove_dir_all(&root);
     ```
@@ -88,27 +88,27 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File, Folder, Path
+    from yggdryl.holder import LocalFile, LocalFolder, LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     (root / "nested").mkdir()
     (root / "a.bin").write_bytes(b"a")
 
     # A container: it holds no bytes of its own, only children.
-    folder = Folder(root)
+    folder = LocalFolder(root)
     assert folder.size == 0
     assert len(list(folder.ls())) == 2
 
     # A leaf: bytes addressed by offset.
-    leaf = File(root / "a.bin")
+    leaf = LocalFile(root / "a.bin")
     assert leaf.read_bytes() == b"a"
 
     # A location: it answers by looking at what is actually there.
-    assert Path(root).kind == "directory"
-    assert Path(root / "a.bin").kind == "file"
+    assert LocalPath(root).kind == "directory"
+    assert LocalPath(root / "a.bin").kind == "file"
     ```
 
-`Path` resolves once and routes every call through that implementation; each role trait pre-implements the rest. The three Python constructors commit to a role, so they skip the composition a name declares and address the stored bytes.
+`LocalPath` resolves once and routes every call through that implementation; each role trait pre-implements the rest. The three Python constructors commit to a role, so they skip the composition a name declares and address the stored bytes.
 
 ## Well-known roots
 
@@ -116,15 +116,15 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let temporary = Folder::temporary()?;
+    let temporary = LocalFolder::temporary()?;
     assert!(temporary.is_container());
     assert!(temporary.url().to_string().starts_with("file:"));
 
     // When a home resolves, the configuration directory is that home joined with `.config`.
-    match Folder::home() {
-        Ok(home) => assert_eq!(Folder::config()?.path()?, home.path()?.join(".config")),
+    match LocalFolder::home() {
+        Ok(home) => assert_eq!(LocalFolder::config()?.path()?, home.path()?.join(".config")),
         Err(error) => assert!(error.is_absent()),
     }
     ```
@@ -132,25 +132,25 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 === "Python"
 
     ```python
-    from yggdryl.holder import Folder
+    from yggdryl.holder import LocalFolder
 
-    temporary = Folder.temporary()
-    assert isinstance(temporary, Folder)
+    temporary = LocalFolder.temporary()
+    assert isinstance(temporary, LocalFolder)
     assert str(temporary.url).startswith("file:")
 
     try:
-        home = Folder.home()
+        home = LocalFolder.home()
     except ValueError as error:
         # An absence names both variables it looked at.
         assert "HOME or USERPROFILE" in str(error)
     else:
         # When a home resolves, the configuration directory is that home joined with `.config`.
-        assert Folder.config().url == home.url / ".config"
+        assert LocalFolder.config().url == home.url / ".config"
     ```
 
 ## Laziness
 
-Constructing, reading, and listing an absent location create nothing; a write creates the file and every missing parent. [Bytes](../iobase/bytes.md#laziness) shows it on a local `File`, and [Walking the tree](#walking-the-tree) on an absent `Folder`.
+Constructing, reading, and listing an absent location create nothing; a write creates the file and every missing parent. [Bytes](../iobase/bytes.md#laziness) shows it on a `LocalFile`, and [Walking the tree](#walking-the-tree) on an absent `LocalFolder`.
 
 ## A write decides an undecided location
 
@@ -160,15 +160,15 @@ Constructing, reading, and listing an absent location create nothing; a write cr
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::{Folder, Path};
+    use yggdryl::local::{LocalFolder, LocalPath};
     use yggdryl::IOKind;
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-decide-{}", std::process::id()));
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-decide-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
 
     // Nothing is there, so nothing has decided what it is.
-    let mut location = Path::new(root.join("trades.bin"))?;
+    let mut location = LocalPath::new(root.join("trades.bin"))?;
     assert_eq!(location.kind(), IOKind::Unknown);
 
     // A byte write settles it: an undecided location becomes a file.
@@ -178,7 +178,7 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     assert_eq!(location.read_all_bytes()?, b"AAPL");
 
     // To settle it the other way, say so before writing.
-    let container = Path::new(root.join("day=2026-08-16"))?;
+    let container = LocalPath::new(root.join("day=2026-08-16"))?;
     assert_eq!(container.kind(), IOKind::Unknown);
     container.as_directory()?.create()?;
     assert_eq!(container.kind(), IOKind::Directory);
@@ -193,12 +193,12 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     import pathlib
     import tempfile
 
-    from yggdryl.holder import Folder, Path
+    from yggdryl.holder import LocalFolder, LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
 
     # Nothing is there, so nothing has decided what it is.
-    location = Path(root / "trades.bin")
+    location = LocalPath(root / "trades.bin")
     assert location.kind == "unknown"
 
     # A byte write settles it: an undecided location becomes a file.
@@ -209,8 +209,8 @@ Constructing, reading, and listing an absent location create nothing; a write cr
 
     # To settle it the other way, say so before writing. The container is a
     # different role, so it is a different handle, not the one that made it.
-    container = Path(root / "day=2026-08-16").mkdir()
-    assert isinstance(container, Folder)
+    container = LocalPath(root / "day=2026-08-16").mkdir()
+    assert isinstance(container, LocalFolder)
     assert container.kind == "directory"
     ```
 
@@ -223,14 +223,14 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::IOBase;
-    use yggdryl::local::{File, Folder};
+    use yggdryl::local::{LocalFile, LocalFolder};
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
     // Constructing, listing, and reading an absent location create nothing.
-    let folder = Folder::new(&root)?;
-    let absent = File::new(root.join("sub").join("inner.bin"))?;
+    let folder = LocalFolder::new(&root)?;
+    let absent = LocalFile::new(root.join("sub").join("inner.bin"))?;
     assert!(!folder.exists());
     assert_eq!(folder.ls(true, false).count(), 0);
     assert!(absent.read_all_bytes()?.is_empty());
@@ -242,7 +242,7 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     let mut leaf = folder.child_by_path("trades.arrows")?;
     leaf.write_all_bytes(b"payload")?;
     leaf.flush()?;
-    assert!(matches!(leaf, Holder::File(_)));
+    assert!(matches!(leaf, Holder::LocalFile(_)));
 
     // A nested child creates its parent directory on write.
     let mut nested = folder.child_by_path("sub/inner.bin")?;
@@ -280,20 +280,20 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File, Folder
+    from yggdryl.holder import LocalFile, LocalFolder
 
     root = pathlib.Path(tempfile.mkdtemp()) / "lake"
 
     # Constructing, listing, and reading an absent location create nothing.
-    folder = Folder(root)
+    folder = LocalFolder(root)
     assert len(list(folder.ls(True))) == 0
-    assert File(root / "sub" / "inner.bin").read_bytes() == b""
+    assert LocalFile(root / "sub" / "inner.bin").read_bytes() == b""
     assert not root.exists()
     folder.mkdir()
 
     # A child is a handle; writing through it creates the leaf.
     leaf = folder / "trades.bin"
-    assert isinstance(leaf, File)
+    assert isinstance(leaf, LocalFile)
     leaf.write_bytes(b"payload")
     leaf.flush()
 
@@ -309,7 +309,7 @@ Constructing, reading, and listing an absent location create nothing; a write cr
 
     # A leaf's parent is the directory holding it.
     parent = leaf.parent
-    assert isinstance(parent, Folder)
+    assert isinstance(parent, LocalFolder)
     assert parent.url == folder.url
     ```
 
@@ -321,11 +321,11 @@ Appends remap a logarithmic number of times, so the mapping outruns the bytes wr
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::{File, Folder};
+    use yggdryl::local::{LocalFile, LocalFolder};
 
-    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
+    let path = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
 
-    let mut file = File::create(&path)?;
+    let mut file = LocalFile::create(&path)?;
     file.pwrite(0, b"ab")?;
     file.pwrite(5, b"z")?;
 
@@ -352,11 +352,11 @@ Appends remap a logarithmic number of times, so the mapping outruns the bytes wr
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File
+    from yggdryl.holder import LocalFile
 
     path = pathlib.Path(tempfile.mkdtemp()) / "growth.bin"
 
-    leaf = File(path)
+    leaf = LocalFile(path)
     leaf.pwrite(0, b"ab")
     leaf.pwrite(5, b"z")
 
@@ -382,14 +382,14 @@ The mapping aliases the file's bytes, so copy them into a [`Buffer`](buffer.md) 
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::local::{File, Folder};
+    use yggdryl::local::{LocalFile, LocalFolder};
 
-    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
+    let path = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
     std::fs::write(&path, b"trade")?;
 
     // The handle - and its mapping - is gone by the time the copy returns.
     let mut snapshot = Buffer::new();
-    File::new(&path)?.copy_into(&mut snapshot)?;
+    LocalFile::new(&path)?.copy_into(&mut snapshot)?;
 
     assert_eq!(snapshot.into_bytes(), b"trade");
     let _ = std::fs::remove_file(&path);
@@ -402,7 +402,7 @@ The mapping aliases the file's bytes, so copy them into a [`Buffer`](buffer.md) 
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.holder import Buffer, File
+    from yggdryl.holder import Buffer, LocalFile
 
     path = pathlib.Path(tempfile.mkdtemp()) / "snapshot.bin"
     path.write_bytes(b"trade")
@@ -410,7 +410,7 @@ The mapping aliases the file's bytes, so copy them into a [`Buffer`](buffer.md) 
     # The handle - and its mapping - is unreferenced by the time the copy returns.
     snapshot = IOBase.from_bytes()
     assert isinstance(snapshot, Buffer)
-    File(path).copy_into(snapshot)
+    LocalFile(path).copy_into(snapshot)
 
     assert snapshot.read_bytes() == b"trade"
     ```
@@ -426,15 +426,15 @@ A new backend supplies the same three roles as a sibling module; see [Filesystem
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::local::{File, Folder};
+    use yggdryl::local::{LocalFile, LocalFolder};
 
     fn head(handle: &dyn IOBase) -> yggdryl::Result<Vec<u8>> {
         handle.read_range_bytes(0, 4)
     }
 
-    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));
+    let path = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-agnostic-{}.bin", std::process::id()));
 
-    let mut file = File::create(&path)?;
+    let mut file = LocalFile::create(&path)?;
     file.write_all_bytes(b"AAPL,100")?;
 
     let memory = Buffer::from_bytes(b"AAPL,100".to_vec());
@@ -452,12 +452,12 @@ A new backend supplies the same three roles as a sibling module; see [Filesystem
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.holder import File
+    from yggdryl.holder import LocalFile
 
     def head(handle: IOBase) -> bytes:
         return handle.read_range_bytes(0, 4)
 
-    leaf = File(pathlib.Path(tempfile.mkdtemp()) / "trades.bin")
+    leaf = LocalFile(pathlib.Path(tempfile.mkdtemp()) / "trades.bin")
     leaf.write_bytes(b"AAPL,100")
 
     memory = IOBase.from_bytes(b"AAPL,100")
@@ -475,14 +475,14 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::Url;
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-private");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-private");
     std::fs::create_dir_all(root.join(".git"))?;
     std::fs::write(root.join("trades.arrows"), b"x")?;
 
-    let folder = Folder::new(&root)?;
+    let folder = LocalFolder::new(&root)?;
     assert_eq!(folder.ls(false, false).count(), 1);
     assert_eq!(folder.ls(false, true).count(), 2);
 
@@ -500,13 +500,13 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
     import tempfile
 
     from yggdryl import Url
-    from yggdryl.holder import Folder
+    from yggdryl.holder import LocalFolder
 
     root = pathlib.Path(tempfile.mkdtemp())
     (root / ".git").mkdir()
     (root / "trades.arrows").write_bytes(b"x")
 
-    folder = Folder(root)
+    folder = LocalFolder(root)
     assert len(list(folder.ls())) == 1
     assert len(list(folder.ls(False, True))) == 2
 
@@ -520,11 +520,11 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 - `home()` or `config()` with neither variable set -> an absence naming both; `Error::is_absent()` is true, Python raises `ValueError`.
 - `from_url` with a non-local URL -> error; `new` fails only when the path has no `file:` URL form.
 - Read of an absent path -> empty bytes, `size` 0, no entries; nothing created.
-- Byte write through a `Path` of kind `Unknown` -> a file; `as_directory()?.create()?` decides otherwise, and Python's `mkdir()` answers the `Folder` it created.
-- Python: a named role is the answer to `kind`, so `Folder(absent).kind` is `directory`; `Path` and `File` answer `unknown` until something is there.
+- Byte write through a `LocalPath` of kind `Unknown` -> a file; `as_directory()?.create()?` decides otherwise, and Python's `mkdir()` answers the `LocalFolder` it created.
+- Python: a named role is the answer to `kind`, so `LocalFolder(absent).kind` is `directory`; `LocalPath` and `LocalFile` answer `unknown` until something is there.
 - `truncate(0)` on a container -> creates it and its parents; any other size -> error.
 - `pwrite` past the end -> a zero-filled gap.
-- Drop of a `File` -> publishes the length but cannot fail; `flush` when the write must be known to have landed.
+- Drop of a `LocalFile` -> publishes the length but cannot fail; `flush` when the write must be known to have landed.
 
 ## Commands
 

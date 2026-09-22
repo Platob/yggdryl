@@ -60,7 +60,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
     from yggdryl import IOBase
     from yggdryl.coding import Coded, Gzip
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     path = root / "app.log.gz"
@@ -68,7 +68,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
     # The coding goes underneath the text rows, which read the decoded bytes.
     source = IOBase(path)
-    assert repr(source) == f'Text(Gzip(Path("{path.as_uri()}")))'
+    assert repr(source) == f'Text(Gzip(LocalPath("{path.as_uri()}")))'
     assert source.codec == "gzip"
     assert str(source.media_type) == "text/plain"
     assert source.read_text() == "[INFO] alpha\n[WARN] beta\n"
@@ -84,8 +84,8 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
     assert isinstance(blob, Gzip)
     assert isinstance(blob, Coded)
 
-    # `Path` commits to the stored bytes instead, coding and all.
-    assert Path(path).read_bytes()[:2] == b"\x1f\x8b"
+    # `LocalPath` commits to the stored bytes instead, coding and all.
+    assert LocalPath(path).read_bytes()[:2] == b"\x1f\x8b"
     ```
 
 ## Wrap and publish
@@ -128,11 +128,11 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
     from yggdryl import IOBase
     from yggdryl import gzip
-    from yggdryl.holder import Buffer, Path
+    from yggdryl.holder import Buffer, LocalPath
 
-    # `Path` skips the composition, so the coding is the only layer retained.
+    # `LocalPath` skips the composition, so the coding is the only layer retained.
     root = pathlib.Path(tempfile.mkdtemp())
-    handle = Path(root / "trades.arrows.gz").into_coded()
+    handle = LocalPath(root / "trades.arrows.gz").into_coded()
 
     # The handle's bytes are decoded, so its media type has the coding removed.
     assert str(handle.media_type) == "application/vnd.apache.arrow.stream"
@@ -144,7 +144,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
     # Reads decompress; the stored bytes only ever hold the encoded form.
     assert handle.read_bytes() == payload
-    assert Path(root / "trades.arrows.gz").size < len(payload)
+    assert LocalPath(root / "trades.arrows.gz").size < len(payload)
 
     # The conversion answers the coded handle and spends the one it took;
     # into_handle publishes the pending write, then gives back the compressed bytes.

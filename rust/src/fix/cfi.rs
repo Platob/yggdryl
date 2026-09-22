@@ -150,10 +150,10 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::local::Folder;
+    /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let reader = FixCodec::new(Arc::clone(&registry));
     ///
     /// // A stated code is the classification of record.

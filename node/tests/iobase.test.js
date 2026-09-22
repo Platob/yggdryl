@@ -10,6 +10,7 @@ const zlib = require('node:zlib')
 const arrow = require('apache-arrow')
 
 const {
+  Arn,
   BatchReader,
   ByteIterator,
   Field,
@@ -17,7 +18,9 @@ const {
   IOCursor,
   RecordOptions,
   TextOptions,
+  Uri,
   Url,
+  Urn,
 } = require('yggdryl')
 
 const EVENT_COLUMNS = [
@@ -199,6 +202,77 @@ test('a handle reports what is there and is inferred from every spelling', (t) =
   assert.equal(new IOBase(handle).toString(), handle.toString())
   assert.equal(handle.url.toString(), Url.fromPath(root).toString())
   assert.equal(handle.intoPath(), Url.fromPath(root).intoPath())
+})
+
+test('a handle answers the identifier it is addressed by', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const leaf = path.join(root, 'part.csv')
+  fs.writeFileSync(leaf, 'symbol\n')
+  const handle = new IOBase(leaf)
+
+  // A located handle is addressed by its location, so the two agree.
+  assert.ok(handle.uri.equals(handle.url.intoUri()))
+  assert.equal(handle.uri.toString(), Url.fromPath(leaf).toString())
+  // The file-system binding is a separate fact, and a local handle has none.
+  assert.equal(handle.boundUri, null)
+  assert.equal(handle.maskedUri, null)
+  // A buffer is addressed too, by an identity no file system knows.
+  assert.equal(IOBase.fromBytes().uri.scheme, 'mem')
+})
+
+test('a name opens a handle as well as a location does', (t) => {
+  const root = fs.realpathSync(scratch())
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const previous = process.cwd()
+  try {
+    fs.mkdirSync(path.join(root, 'lake'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'lake', 'x.txt'), 'AAPL')
+    process.chdir(root)
+
+    // A URN resolves to the path it spells, however it is handed over.
+    const spelled = Url.fromPath(path.join(root, 'lake', 'x.txt')).toString()
+    const named = new IOBase(new Urn('urn:lake:x.txt'))
+    assert.equal(named.readText(), 'AAPL')
+    assert.equal(named.url.toString(), spelled)
+    assert.equal(new IOBase('urn:lake:x.txt').url.toString(), spelled)
+    assert.equal(IOBase.from(new Uri('urn:lake:x.txt')).url.toString(), spelled)
+  } finally {
+    process.chdir(previous)
+  }
+
+  // An Amazon S3 ARN addresses the `s3:` URL it names, and nothing is touched.
+  for (const named of [
+    new Arn('arn:aws:s3:::b/k'),
+    new Uri('arn:aws:s3:::b/k'),
+    'arn:aws:s3:::b/k',
+  ]) {
+    assert.equal(new IOBase(named).url.toString(), 's3://b/k')
+  }
+
+  // A name addressing no location refuses exactly as `locator` does.
+  assert.throws(
+    () => new IOBase(new Arn('arn:aws:iam::123456789012:user/David')),
+    /names a location/,
+  )
+
+  // A table bucket is reached through the S3 Tables catalog rather than a byte
+  // backend, so the scheme is what refuses it - by its own name, not by the
+  // path conversion a location of no backend would fall through to.
+  for (const named of [
+    's3tables://lake/t-a1',
+    new Url('s3tables://lake/t-a1'),
+    new Arn('arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1'),
+  ]) {
+    assert.throws(
+      () => new IOBase(named),
+      /filesystem "s3tables" does not support holding a location of this scheme/,
+    )
+  }
+  assert.throws(
+    () => new IOBase('https://example.com/part.csv'),
+    /filesystem "https" does not support holding a location of this scheme/,
+  )
 })
 
 test('a missing location is empty rather than an error', (t) => {
@@ -646,7 +720,9 @@ test('a memory handle needs no location', () => {
   // A buffer still has an identity, but not one the file system knows.
   assert.equal(handle.url.scheme, 'mem')
   assert.throws(() => handle.intoPath(), /only a file URI/)
-  assert.throws(() => handle.mkdir(), /only a file URI/)
+  // A container is refused by the scheme that says no backend holds one, not
+  // by the path conversion it would otherwise fall through to.
+  assert.throws(() => handle.mkdir(), /filesystem "mem" does not support holding/)
   assert.equal(IOBase.fromBytes().size, 0)
 })
 

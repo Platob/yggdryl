@@ -25,7 +25,7 @@ iceberg = ["parquet", "dep:iceberg-official", "dep:uuid"]
 # local or schema-only consumer never pays. Every protocol is spoken directly -
 # SigV4, OAuth 2.0 bearer tokens, and Azure Shared Key over a synchronous
 # HTTP/1.1 client - so no SDK, runtime, or async executor rides in.
-object = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
+s3 = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
 # The crate's own modules, reachable by `rust/tests/` alone. Every test lives
 # in `tests/`, and the handful that pin something a caller cannot reach - a
 # signing step, a format reader, a canonical rewrite - turn this on. No

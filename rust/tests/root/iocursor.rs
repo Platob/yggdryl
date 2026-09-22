@@ -88,7 +88,7 @@ mod over_pages {
 
     #[test]
     fn a_buffered_file_reads_from_pages_and_writes_through() {
-        let path = yggdryl::local::Folder::temporary()
+        let path = yggdryl::local::LocalFolder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -101,7 +101,7 @@ mod over_pages {
         let payload: Vec<u8> = (0..5_000_u32).map(|index| index as u8).collect();
         std::fs::write(&path, &payload).unwrap();
 
-        let mut handle = yggdryl::local::File::new(&path)
+        let mut handle = yggdryl::local::LocalFile::new(&path)
             .unwrap()
             .buffered(BufferedOptions::default().with_page_size(512));
 

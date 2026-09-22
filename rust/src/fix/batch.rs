@@ -430,10 +430,10 @@ impl FixCodec {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::local::Folder;
+    /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let codec = FixCodec::new(Arc::clone(&registry));
     /// let target = fix_schema(&registry, "fix")?;
     /// let messages = codec.parse_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|")?;

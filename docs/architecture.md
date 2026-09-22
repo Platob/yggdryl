@@ -28,12 +28,12 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | Tab | Root files and folders |
 | --- | --- |
 | [Types](types/index.md) | `datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one file per type - `string.rs`, `bytes.rs`, `integer.rs`, `floating.rs`, `decimal.rs` with `int256.rs`, `boolean.rs`, `date.rs`, `time.rs`, `datetime.rs`, `duration.rs`, `interval.rs` with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs` with `wkb.rs`, `enums.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs`, `code.rs` with the twelve registered codes, `uri/datatype.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs`: `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
-| [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting), and one folder per backend - `local/`, `fs/`, `zip/`, `object/`: every `IOBase` implementation |
+| [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting), and one folder per backend - `local/`, `fs/`, `zip/`, `s3/`: every `IOBase` implementation |
 | [Coding](coding/index.md) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
 | [Charset](charset/index.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
 | [Media](media/index.md) | `media_type.rs`, `mime_type.rs`, `media/` (record options, inference, magic, merge, partition) and one folder per medium - `ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` (plain-text records) |
 | [Structured documents](media/structured.md) | `json/`, `toml/`, `yaml/`: structured `Scalar` codecs over the machinery in `text/`, under the [Media](media/index.md) tab as three more schemes |
-| [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, path, glob, and partition syntax |
+| [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, ARN, path, glob, and partition syntax |
 | [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
 | [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown |
 | [Graph](graph.md) | `graph/element.rs`: the `Element`, `Event`, `MarketElement` and `MarketEvent` traits - an element's `Uuid`, the identity it has elsewhere, its parents' UUIDs, an event's instant and code, a market element's price, quantity and side - as signatures a value implements; `graph/event.rs` the two holders and `graph/iterator.rs` the one walk |

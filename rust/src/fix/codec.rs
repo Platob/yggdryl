@@ -977,7 +977,7 @@ impl FixCodec {
     /// # use std::sync::Arc;
     /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(root)?)?);
     /// // Any spelling the dictionary resolves: `NewOrderSingle` is `35=D`.
     /// let orders = FixCodec::new(Arc::clone(&registry)).with_include_msgtypes(["NewOrderSingle"]);
     /// let lines = ["8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=8|37=O1|10=0|"];

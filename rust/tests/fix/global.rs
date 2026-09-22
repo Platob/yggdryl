@@ -9,7 +9,7 @@ mod from_env {
     use std::ffi::OsString;
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixRegistry};
 
     const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";
@@ -23,7 +23,7 @@ mod from_env {
             return;
         }
         let original: Option<OsString> = std::env::var_os(LOCATION);
-        let root = Folder::temporary()
+        let root = LocalFolder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
@@ -51,7 +51,7 @@ mod from_env {
         symbol.as_fix_mut().set_tag(55).expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
-            .write_into(&mut Folder::new(&good).expect("a local folder"))
+            .write_into(&mut LocalFolder::new(&good).expect("a local folder"))
             .expect("the shard written");
         // SAFETY: the same reasoning as above.
         unsafe {
@@ -84,7 +84,7 @@ mod from_env {
 mod from_home {
     use std::ffi::OsString;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixRegistry};
 
     const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";
@@ -102,7 +102,7 @@ mod from_home {
             ("USERPROFILE", std::env::var_os("USERPROFILE")),
             (LOCATION, std::env::var_os(LOCATION)),
         ];
-        let home = Folder::temporary()
+        let home = LocalFolder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
@@ -113,7 +113,9 @@ mod from_home {
         symbol.as_fix_mut().set_tag(55).expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
-            .write_into(&mut Folder::new(home.join(".config").join("fix")).expect("a local folder"))
+            .write_into(
+                &mut LocalFolder::new(home.join(".config").join("fix")).expect("a local folder"),
+            )
             .expect("the shard written");
         assert!(home.join(".config/fix/fields/000000000.json").is_file());
 

@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Either4, Env, Object, Reference, Result,
+    BigInt, Buffer, ClassInstance, Either, Either6, Either7, Env, Object, Reference, Result,
     Uint8Array,
 };
 use napi_derive::napi;
@@ -31,7 +31,7 @@ use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
 use crate::text::options::JsTextOptions;
-use crate::uri::{JsUrl, PartitionEntry, partition_entries};
+use crate::uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry, partition_entries};
 use crate::{exact_u64, napi_error};
 
 /// Resolve the digest algorithm a handle read names, defaulting to XXH3-64.
@@ -69,14 +69,33 @@ fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
 }
 
-/// A native handle, a native `Url`, or anything that names a location.
-pub(crate) type LocationInput<'a> =
-    Either3<ClassInstance<'a, JsIOBase>, ClassInstance<'a, JsUrl>, String>;
+/// A native handle, any identifier naming a location, or location text.
+///
+/// An identifier crosses through `locator`, so a name opens as well as a
+/// location does: a URN resolves to the path it spells and an Amazon S3 ARN to
+/// the `s3:` URL it addresses. Text carrying a scheme is a URL, text naming a
+/// resource is that same resolution, and text carrying neither is a path
+/// rooted at the working directory.
+pub(crate) type LocationInput<'a> = Either6<
+    ClassInstance<'a, JsIOBase>,
+    ClassInstance<'a, JsUrl>,
+    ClassInstance<'a, JsUri>,
+    ClassInstance<'a, JsUrn>,
+    ClassInstance<'a, JsArn>,
+    String,
+>;
 
 /// What the constructor takes first: a location, or the file system one of
 /// its locations sits on.
-pub(crate) type LocationOrFileSystemInput<'a> =
-    Either4<ClassInstance<'a, JsIOBase>, ClassInstance<'a, JsUrl>, String, FileSystemInput<'a>>;
+pub(crate) type LocationOrFileSystemInput<'a> = Either7<
+    ClassInstance<'a, JsIOBase>,
+    ClassInstance<'a, JsUrl>,
+    ClassInstance<'a, JsUri>,
+    ClassInstance<'a, JsUrn>,
+    ClassInstance<'a, JsArn>,
+    String,
+    FileSystemInput<'a>,
+>;
 
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
@@ -89,19 +108,37 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     // backend; everything else stays local. Construction touches nothing on
     // either.
     if url.scheme().is_object_store() {
-        return yggdryl::object::located(&url.to_string()).map_err(napi_error);
+        return yggdryl::s3::located(&url.to_string()).map_err(napi_error);
     }
+    non_local_scheme(url)?;
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
 /// Hold `url` as a container, on the store its scheme selects.
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::folder(&url.to_string())
-            .map(Holder::ObjectFolder)
+        return yggdryl::s3::folder(&url.to_string())
+            .map(Holder::S3Folder)
             .map_err(napi_error);
     }
+    non_local_scheme(url)?;
     Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
+}
+
+/// Refuse a location no byte backend speaks, by the scheme that says so.
+///
+/// A location whose scheme no backend speaks is refused by that scheme, not by
+/// the path conversion it would otherwise fall through to: an Amazon S3 Tables
+/// table names a resource a catalog reads, and saying "only a file URI can be
+/// converted to a platform path" would name the wrong thing entirely.
+fn non_local_scheme(url: &yggdryl::Url) -> Result<()> {
+    if url.is_local() {
+        return Ok(());
+    }
+    Err(napi_error(yggdryl::Error::unsupported(
+        "holding a location of this scheme",
+        url.scheme().as_str(),
+    )))
 }
 
 /// Rebuild a foreign-file-system handle, keeping the file system it stands on.
@@ -110,8 +147,12 @@ fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
-        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::File::new(file.bound().clone()))),
-        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::fs::Path::new(path.bound().clone()))),
+        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::FsFile::new(
+            file.bound().clone(),
+        ))),
+        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::fs::FsPath::new(
+            path.bound().clone(),
+        ))),
         _ => None,
     }
 }
@@ -120,11 +161,35 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::FsFolder(folder) => folder.clone(),
-        Holder::FsFile(file) => yggdryl::fs::Folder::new(file.bound().clone()),
-        Holder::FsPath(path) => yggdryl::fs::Folder::new(path.bound().clone()),
+        Holder::FsFile(file) => yggdryl::fs::FsFolder::new(file.bound().clone()),
+        Holder::FsPath(path) => yggdryl::fs::FsFolder::new(path.bound().clone()),
         _ => return None,
     };
     Some(Holder::FsFolder(folder))
+}
+
+/// Reduce one location argument to the handle it is, or the URL it names.
+///
+/// Every identifier answers through the core's `locator`, which is the one
+/// door a name and a location share, and text answers through
+/// `Url::from_location`, which is that same resolution for what a caller
+/// typed. This is where both happen, so each role below - leaf, container,
+/// constructor - decides only what to do with the location, never how to read
+/// one.
+fn location_target(
+    value: LocationInput<'_>,
+) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Url>> {
+    Ok(match value {
+        Either6::A(handle) => Either::A(handle),
+        Either6::B(url) => Either::B(url.inner.clone()),
+        Either6::C(uri) => Either::B(uri.inner.locator().map_err(napi_error)?),
+        Either6::D(urn) => Either::B(urn.inner.locator().map_err(napi_error)?),
+        Either6::E(arn) => Either::B(arn.inner.locator().map_err(napi_error)?),
+        // The core already reads a Windows drive, a UNC share, and a
+        // scheme-less path as a `file:` URL, and resolves text that names a
+        // resource rather than a place, so there is nothing to sniff here.
+        Either6::F(value) => Either::B(yggdryl::Url::from_location(&value).map_err(napi_error)?),
+    })
 }
 
 /// Build a handle for the location `value` names, in the role it is.
@@ -134,12 +199,9 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 /// all, so a reader handed one answers an empty document rather than a
 /// refusal.
 pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    match value {
-        Either3::A(handle) => handle.rebuilt().map(|held| held.inner),
-        Either3::B(url) => local_holder(&url.inner),
-        // The core already reads a Windows drive, a UNC share, and a
-        // scheme-less path as a `file:` URL, so there is nothing to sniff here.
-        Either3::C(value) => local_holder(&yggdryl::Url::from_str(&value).map_err(napi_error)?),
+    match location_target(value)? {
+        Either::A(handle) => handle.rebuilt().map(|held| held.inner),
+        Either::B(url) => local_holder(&url),
     }
 }
 
@@ -152,8 +214,8 @@ pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
 /// a foreign Arrow file system becomes a container on that same file system,
 /// so a table reached this way never learns which backend it stands on.
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    let url = match value {
-        Either3::A(handle) => {
+    let url = match location_target(value)? {
+        Either::A(handle) => {
             if let Some(holder) = fs_folder_holder(&handle.inner) {
                 return Ok(holder);
             }
@@ -163,8 +225,7 @@ pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
                 .cloned()
                 .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?
         }
-        Either3::B(url) => url.inner.clone(),
-        Either3::C(value) => yggdryl::Url::from_str(&value).map_err(napi_error)?,
+        Either::B(url) => url,
     };
     folder_holder_for(&url)
 }
@@ -419,10 +480,10 @@ impl JsIOBase {
         self.inner.bound_location()
     }
 
-    fn bound_file(&self) -> Result<yggdryl::fs::File> {
+    fn bound_file(&self) -> Result<yggdryl::fs::FsFile> {
         self.bound_location()
             .cloned()
-            .map(yggdryl::fs::File::new)
+            .map(yggdryl::fs::FsFile::new)
             .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
     }
 
@@ -470,8 +531,11 @@ impl JsIOBase {
     /// Describe a location without touching it.
     ///
     /// Accepts anything that names one: a path or URL string, a native
-    /// [`Url`][crate::uri::JsUrl], or another handle. Per the laziness
-    /// contract, nothing is opened, created, or read here.
+    /// [`Url`][crate::uri::JsUrl], any other identifier - a `Uri`, a `Urn`, an
+    /// `Arn` - naming a location, or another handle. A name is resolved the
+    /// way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
+    /// opens the path that name spells. Per the laziness contract, nothing is
+    /// opened, created, or read here.
     ///
     /// An Arrow file system handler as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
@@ -484,10 +548,13 @@ impl JsIOBase {
         path: Option<String>,
     ) -> Result<Self> {
         let value = match value {
-            Either4::A(handle) => Either3::A(handle),
-            Either4::B(url) => Either3::B(url),
-            Either4::C(value) => Either3::C(value),
-            Either4::D(filesystem) => {
+            Either7::A(handle) => Either6::A(handle),
+            Either7::B(url) => Either6::B(url),
+            Either7::C(uri) => Either6::C(uri),
+            Either7::D(urn) => Either6::D(urn),
+            Either7::E(arn) => Either6::E(arn),
+            Either7::F(value) => Either6::F(value),
+            Either7::G(filesystem) => {
                 let path = path.ok_or_else(|| {
                     napi_error(
                         "expected a path on the file system as the second argument, got none",
@@ -501,26 +568,14 @@ impl JsIOBase {
                 "expected an Arrow file system handler to resolve {path:?} against, got a location"
             )));
         }
-        match value {
-            Either3::A(handle) => handle.rebuilt(),
-            Either3::B(url) => local_holder(&url.inner).map(Self::from_core),
-            // The core already reads a Windows drive, a UNC share, and a
-            // scheme-less path as a `file:` URL, so there is nothing to sniff
-            // here.
-            Either3::C(value) => local_holder(&yggdryl::Url::from_str(&value).map_err(napi_error)?)
-                .map(Self::from_core),
-        }
+        located_from_input(value).map(Self::from_core)
     }
 
-    /// Infer a handle from a native handle, a `Url`, or a location string.
+    /// Infer a handle from a native handle, any identifier naming a location,
+    /// or location text.
     #[napi(factory, js_name = "from")]
     pub fn from_js(value: LocationInput<'_>) -> Result<Self> {
-        match value {
-            Either3::A(handle) => handle.rebuilt(),
-            Either3::B(url) => local_holder(&url.inner).map(Self::from_core),
-            Either3::C(value) => local_holder(&yggdryl::Url::from_str(&value).map_err(napi_error)?)
-                .map(Self::from_core),
-        }
+        located_from_input(value).map(Self::from_core)
     }
 
     /// Describe a resource on any Arrow file system a caller supplies.
@@ -613,7 +668,18 @@ impl JsIOBase {
         Self::from_core(Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes)))
     }
 
-    /// The location this handle addresses.
+    /// The identifier this handle is addressed by.
+    ///
+    /// Every handle answers one, because an address is not always a place: a
+    /// name, or the ARN a service writes for one of its resources, addresses a
+    /// handle exactly as a location does. `locator()` on what this answers is
+    /// where such a handle opens.
+    #[napi(getter)]
+    pub fn uri(&self) -> Option<JsUri> {
+        self.inner.uri().cloned().map(JsUri::from_core)
+    }
+
+    /// The location this handle addresses, when its identifier names one.
     #[napi(getter)]
     pub fn url(&self) -> Option<JsUrl> {
         self.inner.url().cloned().map(JsUrl::from_core)
@@ -638,9 +704,10 @@ impl JsIOBase {
         self.bound_location().map(|bound| bound.path().to_owned())
     }
 
-    /// The exact optional URI spelling supplied by the caller.
+    /// The caller's exact optional URI spelling for the bound filesystem. It
+    /// may contain credentials.
     #[napi(getter)]
-    pub fn uri(&self) -> Option<String> {
+    pub fn bound_uri(&self) -> Option<String> {
         self.bound_location()
             .and_then(yggdryl::fs::BoundLocation::uri)
             .map(str::to_owned)
@@ -1188,7 +1255,7 @@ impl JsIOBase {
         let bound = self.bound_location().ok_or_else(|| {
             napi_error("deleteRootDirContents requires a bound filesystem location")
         })?;
-        yggdryl::fs::Folder::new(bound.clone())
+        yggdryl::fs::FsFolder::new(bound.clone())
             .delete_root_dir_contents()
             .map_err(napi_error)
     }

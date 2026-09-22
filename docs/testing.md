@@ -67,8 +67,8 @@ everything it declares.
     cargo test -p yggdryl --all-features --test media_type
     cargo test -p yggdryl --all-features --test metadata
     cargo test -p yggdryl --all-features --test mime_type
-    cargo test -p yggdryl --all-features --test object
     cargo test -p yggdryl --all-features --test parquet
+    cargo test -p yggdryl --all-features --test s3
     cargo test -p yggdryl --all-features --test text
     cargo test -p yggdryl --all-features --test toml
     cargo test -p yggdryl --all-features --test txhash

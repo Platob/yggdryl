@@ -2695,7 +2695,7 @@ fn default_aliases_allocation_profile_is_idempotent() {
     const FIRST_MAX_ALLOCATIONS: usize = 2_500_000;
     const REPEATED_MAX_ALLOCATIONS: usize = 4_096;
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
     let loaded_at = Instant::now();
     let registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
     let load_elapsed = loaded_at.elapsed();
@@ -2751,7 +2751,7 @@ fn default_aliases_allocation_profile_is_idempotent() {
 #[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
     let mut registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
     let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
     gross

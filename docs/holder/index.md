@@ -11,20 +11,20 @@ Every storage implementation is reached through the positional `IOBase` contract
 | [Values](iobase/values.md) | bytes, digests, structured scalars |
 | [Records](iobase/records.md) | Arrow batches, pushdown, write intents |
 | [Partitions](iobase/partitions.md) | globs, Hive partitions, derived partition columns |
-| [Local](backends/local.md) | `Path`, `Folder`, mapped `File` |
+| [Local](backends/local.md) | `LocalPath`, `LocalFolder`, mapped `LocalFile` |
 | [Buffer](backends/buffer.md) | in-memory bytes |
 | [Buffered](backends/buffered.md) | the page cache |
 | [Filesystems](backends/filesystems.md) | Arrow-style `FileSystem` |
-| [Object stores](backends/object.md) | `Path`, `Folder`, `File` over the Amazon S3, Google Cloud Storage, and Azure Blob Storage REST APIs |
-| [ZIP](backends/zip.md) | `Path`, `Node`, `Leaf` inside one archive, nested archives included |
+| [Object stores](backends/s3.md) | `S3Path`, `S3Folder`, `S3File` over the Amazon S3, Google Cloud Storage, and Azure Blob Storage REST APIs |
+| [ZIP](backends/zip.md) | `ZipPath`, `ZipNode`, `ZipLeaf` inside one archive, nested archives included |
 
 ## Contract
 
 | key | value |
 | --- | --- |
 | Owns | one enum over every `IOBase` implementation |
-| Variants | one in memory, three local, three foreign, three on object stores (`object` feature), three inside a ZIP archive, four wrapping another `Holder` |
-| `Holder::local` | `Holder::Path`, the unresolved role |
+| Variants | one in memory, three local, three foreign, three on object stores (`s3` feature), three inside a ZIP archive, four wrapping another `Holder` |
+| `Holder::local` | `Holder::LocalPath`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
 | Lazy | construction touches no filesystem; a role resolves only when an operation needs it |
 | `into_declared_media` | composes what the name declares, the coding under the record implementation, reading nothing |
@@ -41,15 +41,15 @@ Construction records a location without probing it, and the enum answers the who
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::holder::{Buffer, Holder};
     use yggdryl::{IOBase, IOKind};
 
     // Generic construction records the location without probing its role,
     // whether something is there or not.
-    let root = Folder::temporary()?.path()?;
-    assert!(matches!(Holder::local(&root)?, Holder::Path(_)));
-    assert!(matches!(Holder::local(root.join("yggdryl-generic-doc.bin"))?, Holder::Path(_)));
+    let root = LocalFolder::temporary()?.path()?;
+    assert!(matches!(Holder::local(&root)?, Holder::LocalPath(_)));
+    assert!(matches!(Holder::local(root.join("yggdryl-generic-doc.bin"))?, Holder::LocalPath(_)));
 
     // A value that could have been any handle. The calls do not change.
     let mut handle = Holder::buffer(Buffer::new());
@@ -65,13 +65,13 @@ Construction records a location without probing it, and the enum answers the who
     import pathlib
     import tempfile
 
-    from yggdryl.holder import Buffer, IOBase, Path
+    from yggdryl.holder import Buffer, IOBase, LocalPath
     from yggdryl.media import Text
 
     root = pathlib.Path(tempfile.mkdtemp())
 
     # The class is read off the name, not the store: neither location exists.
-    assert type(IOBase(root / "trades.bin")) is Path
+    assert type(IOBase(root / "trades.bin")) is LocalPath
     assert type(IOBase(root / "trades.txt.gz")) is Text
 
     # The class names the implementation; the contract is the same one.
@@ -87,9 +87,9 @@ Construction records a location without probing it, and the enum answers the who
 | variant | holds | Python class |
 | --- | --- | --- |
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
-| `Folder`, `Path`, `File` | a local directory, an undecided local location, a mapped local leaf | `holder.Folder`, `holder.Path`, `holder.File` |
+| `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three on an Arrow `FileSystem` | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile` |
-| `ObjectFolder`, `ObjectPath`, `ObjectFile` | a prefix or container, an undecided location, one object on an [object store](backends/object.md) | `holder.ObjectFolder`, `holder.ObjectPath`, `holder.ObjectFile` |
+| `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](backends/s3.md) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](backends/zip.md) | Rust only |
 | `Buffered` | any of the others behind the page cache | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
@@ -104,15 +104,15 @@ The last four own the `Holder` they wrap. `repr` renders that stack outermost fi
 
 | name | composed handle |
 | --- | --- |
-| `trades.txt.gz` | `Text(Gzip(Path))` |
-| `archive.bin.gz` | `Gzip(Path)` |
-| `trades.parquet` | `Parquet(Path)` |
-| `trades.arrows` | `Ipc(Path)` |
-| `trades.avro` | `Avro(Path)` |
-| `trades.log` | `Text(Path)` |
-| `trades.json` | `Path` |
-| `trades` | `Path` |
-| `trades.parquet.gz` | `Path` |
+| `trades.txt.gz` | `Text(Gzip(LocalPath))` |
+| `archive.bin.gz` | `Gzip(LocalPath)` |
+| `trades.parquet` | `Parquet(LocalPath)` |
+| `trades.arrows` | `Ipc(LocalPath)` |
+| `trades.avro` | `Avro(LocalPath)` |
+| `trades.log` | `Text(LocalPath)` |
+| `trades.json` | `LocalPath` |
+| `trades` | `LocalPath` |
+| `trades.parquet.gz` | `LocalPath` |
 
 Nothing this build reads declares JSON, so that name composes to the location it already was. `trades.parquet.gz` is left alone on purpose: Parquet compresses internally, so the name is one no other Parquet reader could open, and the writer refuses it.
 
@@ -141,14 +141,14 @@ Nothing this build reads declares JSON, so that name composes to the location it
     import pathlib
     import tempfile
 
-    from yggdryl.holder import IOBase, Path
+    from yggdryl.holder import IOBase, LocalPath
     from yggdryl.media import Text
 
     location = pathlib.Path(tempfile.mkdtemp()) / "trades.txt.gz"
 
     handle = IOBase(location)
     assert type(handle) is Text
-    assert repr(handle) == f'Text(Gzip(Path("{handle.url}")))'
+    assert repr(handle) == f'Text(Gzip(LocalPath("{handle.url}")))'
 
     # The composed handle reads and writes the decoded value.
     handle.write_bytes(b"AAPL,1\n")
@@ -159,8 +159,8 @@ Nothing this build reads declares JSON, so that name composes to the location it
     assert str(handle.media_type) == "text/plain"
     assert handle.codec == "gzip"
 
-    # `Path` commits to a role and skips the composition: the stored bytes.
-    assert Path(location).read_bytes()[:2] == b"\x1f\x8b"
+    # `LocalPath` commits to a role and skips the composition: the stored bytes.
+    assert LocalPath(location).read_bytes()[:2] == b"\x1f\x8b"
     ```
 
 ## Hierarchy
@@ -170,14 +170,14 @@ Nothing this build reads declares JSON, so that name composes to the location it
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let root = Holder::folder(Folder::temporary()?.path()?)?;
+    let root = Holder::folder(LocalFolder::temporary()?.path()?)?;
     assert!(root.is_container());
 
     // A child need not exist. Naming one yields a leaf handle, and nothing is created.
     let leaf = root.child_by_path("yggdryl-generic-child.bin")?;
-    assert!(matches!(leaf, Holder::File(_)));
+    assert!(matches!(leaf, Holder::LocalFile(_)));
     assert!(!leaf.is_container());
     assert_eq!(leaf.size(), 0);
     ```
@@ -188,21 +188,21 @@ Nothing this build reads declares JSON, so that name composes to the location it
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File, Folder
+    from yggdryl.holder import LocalFile, LocalFolder
     from yggdryl.media import Ipc
 
-    root = Folder(pathlib.Path(tempfile.mkdtemp()))
+    root = LocalFolder(pathlib.Path(tempfile.mkdtemp()))
 
     # A child need not exist. Naming one yields a leaf handle, and nothing is created.
     plain = root / "yggdryl-generic-child.bin"
-    assert type(plain) is File
+    assert type(plain) is LocalFile
     assert plain.size == 0
 
     # Composition is applied wherever a handle is described, children included.
     records = root.joinpath("yggdryl-generic-child.arrows")
     assert type(records) is Ipc
-    assert repr(records) == f'Ipc(File("{records.url}"))'
-    assert type(records.parent) is Folder
+    assert repr(records) == f'Ipc(LocalFile("{records.url}"))'
+    assert type(records.parent) is LocalFolder
     ```
 
 ## Roles
@@ -216,10 +216,10 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     use yggdryl::{IOKind, MimeType};
     use yggdryl::local;
 
-    let temporary = local::Folder::temporary()?.path()?;
+    let temporary = local::LocalFolder::temporary()?.path()?;
     let path = temporary.join("yggdryl-docs-io-folder");
     let _ = std::fs::remove_dir_all(&path);
-    let mut folder = local::Folder::new(&path)?;
+    let mut folder = local::LocalFolder::new(&path)?;
 
     // A container holds no bytes: reads are empty, byte writes are refused.
     let mut probe = [0_u8; 4];
@@ -236,13 +236,13 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     assert_eq!(folder.ls(false, false).count(), 0);
 
     // A location that arrived from outside answers by looking at what is there.
-    assert_eq!(local::Path::new(&temporary)?.kind(), IOKind::Directory);
-    let undecided = local::Path::new(temporary.join("yggdryl-docs-io-undecided"))?;
+    assert_eq!(local::LocalPath::new(&temporary)?.kind(), IOKind::Directory);
+    let undecided = local::LocalPath::new(temporary.join("yggdryl-docs-io-undecided"))?;
     assert_eq!(undecided.kind(), IOKind::Unknown);
     assert!(undecided.read_all_bytes()?.is_empty());
 
     // A leaf is not a container: it lists nothing and resolves no child.
-    let leaf = local::File::new(temporary.join("yggdryl-docs-io-leaf.arrows"))?;
+    let leaf = local::LocalFile::new(temporary.join("yggdryl-docs-io-leaf.arrows"))?;
     assert_eq!(leaf.ls(true, false).count(), 0);
     assert!(leaf.child_by_path("nested").is_err());
 
@@ -255,11 +255,11 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     import pathlib
     import tempfile
 
-    from yggdryl.holder import File, Folder, Path
+    from yggdryl.holder import LocalFile, LocalFolder, LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     path = root / "yggdryl-docs-io-folder"
-    folder = Folder(path)
+    folder = LocalFolder(path)
 
     # A container holds no bytes: reads are empty, byte writes are refused.
     assert folder.read_bytes() == b""
@@ -278,13 +278,13 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     assert list(folder.ls()) == []
 
     # A location that arrived from outside answers by looking at what is there.
-    assert Path(root).kind == "directory"
-    undecided = Path(root / "yggdryl-docs-io-undecided")
+    assert LocalPath(root).kind == "directory"
+    undecided = LocalPath(root / "yggdryl-docs-io-undecided")
     assert undecided.kind == "unknown"
     assert undecided.read_bytes() == b""
 
     # A leaf is not a container: it lists nothing and resolves no child.
-    leaf = File(root / "yggdryl-docs-io-leaf.arrows")
+    leaf = LocalFile(root / "yggdryl-docs-io-leaf.arrows")
     assert list(leaf.ls()) == []
     try:
         leaf.joinpath("nested")
@@ -348,7 +348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - A `.parquet.gz` name -> uncomposed, so the Parquet writer still refuses a file no Parquet reader could open.
 - An in-memory buffer -> no name to read, so composition asks what it holds.
 - Python `buffered`, `into_text`, `into_coded` -> answer the wrapper and spend the handle they took; the spent one raises `ValueError`.
-- Python `compress_into` / `decompress_into` on a composed handle -> refused; address the stored bytes with `Path`, `File`, or `from_fs`, or use `copy_into`.
+- Python `compress_into` / `decompress_into` on a composed handle -> refused; address the stored bytes with `LocalPath`, `LocalFile`, or `from_fs`, or use `copy_into`.
 - A method omitted from the list form -> the trait default, so `clear` and `remove` truncate.
 - A method the wrapper writes itself -> leave it out of the list; the macro cannot also expand it.
 - `Ipc`, `Parquet`, the text handler -> `except_lifecycle`; [Buffered](backends/buffered.md) -> the list form.

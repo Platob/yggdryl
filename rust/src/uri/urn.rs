@@ -125,6 +125,106 @@ impl Urn {
             .map_or("", |(_, namespace_specific)| namespace_specific)
     }
 
+    /// Return the relative path this name spells.
+    ///
+    /// A name is read as a path by taking its namespace as the first segment
+    /// and the namespace-specific string's `:` separators as the ones after
+    /// it, so `urn:lake:trades:2026:part.parquet` spells
+    /// `lake/trades/2026/part.parquet`. Every part crosses exactly as the URN
+    /// path holds it - escapes stay escaped - because it is already URI path
+    /// text.
+    ///
+    /// ```
+    /// use yggdryl::Urn;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let urn = Urn::from_str("urn:lake:trades:2026:part.parquet")?;
+    /// assert_eq!(urn.locator_path()?.as_str(), "lake/trades/2026/part.parquet");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when a part between two `:` is empty, because two
+    /// names would then spell one path and neither reading can be preferred.
+    pub fn locator_path(&self) -> Result<UriPath> {
+        let path = self.0.path().as_str();
+        let mut spelled = SmolStrBuilder::new();
+        for (index, part) in path.split(':').enumerate() {
+            if part.is_empty() {
+                return Err(parse_error(
+                    "urn",
+                    4 + path.len(),
+                    "a URN with an empty name part spells no path",
+                ));
+            }
+            if index > 0 {
+                spelled.push('/');
+            }
+            spelled.push_str(part);
+        }
+        Ok(UriPath(spelled.into()))
+    }
+
+    /// Resolve this name under `base`, answering where it is.
+    ///
+    /// The path [`locator_path`](Self::locator_path) spells is joined onto
+    /// `base`, so one base turns a whole namespace of names into locations
+    /// without either of them being rewritten.
+    ///
+    /// ```
+    /// use yggdryl::{Url, Urn};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let urn = Urn::from_str("urn:lake:trades:2026:part.parquet")?;
+    /// let base = Url::from_str("s3://market-data/warehouse/")?;
+    ///
+    /// assert_eq!(
+    ///     urn.resolve(&base)?.to_string(),
+    ///     "s3://market-data/warehouse/lake/trades/2026/part.parquet"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`locator_path`](Self::locator_path)'s refusal, or the joined
+    /// URL's own.
+    pub fn resolve(&self, base: &Url) -> Result<Url> {
+        base.joinpath(self.locator_path()?.as_str())
+    }
+
+    /// Resolve this name under the process working directory.
+    ///
+    /// This is what makes a name openable with no base named: the path the
+    /// name spells is relative, and the working directory is the root every
+    /// relative path is read against - the same one [`Url::from_path`] roots a
+    /// relative path at. The directory is converted as the platform path it
+    /// is and the name joined onto it as the URI text it is, so an escape the
+    /// name carries stays the one escape it was rather than being encoded a
+    /// second time.
+    ///
+    /// ```
+    /// use yggdryl::Urn;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let urn = Urn::from_str("urn:example:a%2Fb")?;
+    /// assert!(urn.locator()?.to_string().ends_with("/example/a%2Fb"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`locator_path`](Self::locator_path)'s refusal, the working
+    /// directory's own failure when the process cannot read one, or the joined
+    /// URL's.
+    pub fn locator(&self) -> Result<Url> {
+        self.resolve(&Url::from_path(std::env::current_dir()?)?)
+    }
+
     /// Iterate over non-empty URN path segments without allocating.
     pub fn path_segments(&self) -> PathSegments<'_> {
         self.0.path_segments()
