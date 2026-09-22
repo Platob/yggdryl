@@ -3343,6 +3343,20 @@ export interface FixMsgConstructor {
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
+   * The row header a ULBridge log writes in front of every line, as a
+   * `rowheader` for a text read. Four of its seven captures are named for
+   * the fields they fill - `msgsessionid`, `msgctxid`, `msgseqnum` and
+   * `msgpluginid`; `timestamp`, `msgthreadid` and `level` name none and are
+   * the capture's own columns, carried in front, so the header dates
+   * neither its line nor its message. A caller who wants the line dated
+   * names that capture `mtime` in a header of their own, which costs the
+   * `timestamp` column and reads the clock at nanoseconds UTC whatever the
+   * expression spells. Its clock matches a fraction of exactly three
+   * digits, and a line a row header does not match carries no capture
+   * context - which is what the lifecycle folds deliveries on.
+   */
+  readonly ULBRIDGE_ROWHEADER: string
+  /**
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path. One namespace: an identifier is the number `field.fix.id`
    * derives from a tag and a name, a bare number is a tag, and a

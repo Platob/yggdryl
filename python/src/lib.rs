@@ -393,6 +393,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         yggdryl::DEFAULT_STREAM_BATCH_SIZE,
     )?;
     module.add("DEFAULT_FETCH_BYTE_SIZE", yggdryl::DEFAULT_FETCH_BYTE_SIZE)?;
+    // The row header a ULBridge log writes, so a caller reads a bridge
+    // capture without spelling the expression a second time.
+    module.add("ULBRIDGE_ROWHEADER", yggdryl::ULBRIDGE_ROWHEADER)?;
     Ok(())
 }
 

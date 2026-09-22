@@ -35,6 +35,7 @@ from yggdryl import (
     refresh_logging,
 )
 from yggdryl.fix import (
+    ULBRIDGE_ROWHEADER,
     FixCapture,
     FixCodec,
     FixHeader,
@@ -3292,3 +3293,26 @@ def test_identifiers_refuse_nontext_other_protocols_and_readonly_declarations() 
     with pytest.raises(TypeError, match="read-only"):
         frozen.fix.identifiers = []
     assert frozen.into_json() == before
+
+
+def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -> None:
+    """The constant crosses whole, so a caller never respells the expression."""
+    options = yggdryl.TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    captures = options.source_field()
+    names = [child.name for child in captures]
+    assert names[-7:] == [
+        "timestamp",
+        "msgthreadid",
+        "msgsessionid",
+        "msgctxid",
+        "msgseqnum",
+        "msgpluginid",
+        "level",
+    ]
+    assert str(captures.field("msgseqnum").dtype) == "int64"
+    # The clock is the capture's own column rather than the `mtime` one, so
+    # this header dates no line: it is typed by its own syntax, where an
+    # `mtime` capture would be consumed and read at nanoseconds UTC.
+    assert str(captures.field("timestamp").dtype) == "datetime64(ms)"
+    assert "mtime" not in names[-7:]

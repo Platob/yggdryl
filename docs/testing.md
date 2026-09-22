@@ -128,7 +128,12 @@ The release runs it against every wheel it is about to publish, and CI's Python
 lane runs it against the wheel that job builds, under both PyArrow versions the
 binding supports. It lived in a `release.yml` heredoc until a renamed module
 reached 0.1.9 and stopped the release there, which is why it is a file both
-sides share.
+sides share. That release stopped quietly - the wheels failed, the two jobs
+below them were skipped rather than failed, and the version reached crates.io
+and npm without ever reaching PyPI or growing a tag. A release that was going
+to publish and did not now files an issue naming what each registry holds, and
+the `consistency` job refuses a branch push that would publish a version some
+registry already carries.
 
 ## Exchange formats meet an outside implementation
 

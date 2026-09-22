@@ -3588,8 +3588,15 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
 // The FIX surface is reached through this namespace: a dictionary is one
 // namespace of tags and names, an identity is the number `field.fix.id`
 // derives from both, and a dictionary's membership is `fix:branches` on the
-// field it contributed to - so there is no constant a caller spells here.
+// field it contributed to - so no dictionary fact is a constant here. The
+// one constant that is, is a capture's shape rather than a dictionary's: the
+// row header a ULBridge log writes, carried across so a reader of a bridge
+// log does not keep a second copy of the expression.
+const ulbridgeRowheader = binding._fixUlbridgeRowheaderNative()
+delete binding._fixUlbridgeRowheaderNative
+
 const fix = Object.freeze({
+  ULBRIDGE_ROWHEADER: ulbridgeRowheader,
   FixRegistry: binding.FixRegistry,
   FixMsg,
   FixCodec: binding.FixCodec,

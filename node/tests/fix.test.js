@@ -1715,6 +1715,7 @@
         'FixMsg',
         'FixRegistry',
         'MsgType',
+        'ULBRIDGE_ROWHEADER',
         'crateFields',
         'globalRegistry',
         'installGlobalRegistry',
@@ -3341,11 +3342,10 @@
   // `rust/tests/fix/ulbridge.rs` reads.
   const CAPTURE = path.join(__dirname, '..', '..', 'rust', 'tests', 'fix', 'ulbridge.log')
   // The bridge's own row header, as the core spells it: what a line states
-  // about itself in front of the payload.
-  const ROWHEADER =
-    String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<msgthreadid>[1-9]\d*)` +
-    String.raw`(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] ` +
-    String.raw`\[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
+  // about itself in front of the payload. The core exports the text, so this
+  // suite reads a bridge log under the same expression the crate ships rather
+  // than a second copy of it.
+  const ROWHEADER = fix.ULBRIDGE_ROWHEADER
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
   let seedRegistry
@@ -3632,5 +3632,30 @@
     assert.equal(day.header().sendingtime, day.currunix)
     const [walked] = codec.lifecycle([day])
     assert.equal(walked.currunix, day.currunix)
+  })
+
+  test('the bridge row header crosses whole and names its own captures', () => {
+    const options = new TextOptions()
+    options.rowheader = fix.ULBRIDGE_ROWHEADER
+    const captures = options.sourceField()
+    const names = []
+    for (let at = 0; at < captures.fieldLen; at += 1) {
+      names.push(captures.fieldAt(at).name)
+    }
+    assert.deepEqual(names.slice(-7), [
+      'timestamp',
+      'msgthreadid',
+      'msgsessionid',
+      'msgctxid',
+      'msgseqnum',
+      'msgpluginid',
+      'level',
+    ])
+    assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
+    // The clock is the capture's own column rather than the `mtime` one, so
+    // this header dates no line: it is typed by its own syntax, where an
+    // `mtime` capture would be consumed and read at nanoseconds UTC.
+    assert.equal(String(captures.field('timestamp').dtype), 'datetime64(ms)')
+    assert.ok(!names.slice(-7).includes('mtime'))
   })
 }

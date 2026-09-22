@@ -1017,7 +1017,7 @@ impl FixRegistry
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (the three category directories and `codesets/`, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory)
 
 ### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
-pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`, each capture named for the field it fills; kept ULBridge's because the line shape is the product's)
+pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`; `msgsessionid`, `msgctxid`, `msgseqnum` and `msgpluginid` are named for the fields they fill, and `timestamp`, `msgthreadid` and `level` name none and are the capture's own columns, so the header dates neither its line nor its message; kept ULBridge's because the line shape is the product's)
 
 ### yggdryl::graph  [rust/src/graph/mod.rs]
 pub mod arrow;

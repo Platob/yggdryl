@@ -2846,6 +2846,14 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
         .map_err(napi_error)
 }
 
+/// The row header a ULBridge log writes in front of every line, as the
+/// crate spells it: `fix.ULBRIDGE_ROWHEADER` is where a caller reads it,
+/// and this is the half that carries the text across.
+#[napi(js_name = "_fixUlbridgeRowheaderNative", skip_typescript)]
+pub fn fix_ulbridge_rowheader_native() -> &'static str {
+    yggdryl::ULBRIDGE_ROWHEADER
+}
+
 /// One row's columns, in order, as tags: the crate's own, the header, the
 /// body, the groups, the trailer, `MsgDirection` and the counter of the
 /// content record.
