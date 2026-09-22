@@ -3003,13 +3003,14 @@ mod committed {
     /// with them, and since the code already holds both, the same one
     /// description is shorter by what it no longer has to say.
     /// It last moved when the crate's event columns stopped restating what
-    /// `EventColumn` already owns: eleven of the nineteen add nothing FIX's
-    /// own and now take the column's display and wording, so a text line's
-    /// batch and a FIX row describe one column with one sentence - and
-    /// `curruuid`'s microsecond wording above reaches the crate field through
-    /// that column rather than through a second copy of the sentence. Only
-    /// those eleven descriptions moved - no definition, reference, tag or
-    /// count did, which is why the census below stands unchanged.
+    /// `EventColumn` already owns: ten of the nineteen add nothing FIX's own
+    /// and now take the column's display and wording, so a text line's batch
+    /// and a FIX row describe one column with one sentence - and `curruuid`'s
+    /// microsecond wording above reaches the crate field through that column
+    /// rather than through a second copy of the sentence. Eleven descriptions
+    /// moved, those ten and `recdunix`'s own wording beside them - no
+    /// definition, reference, tag or count did, which is why the census below
+    /// stands unchanged.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();

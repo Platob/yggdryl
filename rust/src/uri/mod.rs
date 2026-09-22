@@ -61,9 +61,11 @@ use path::file_name_from_path;
 /// so it is no part of the value: every comparison, ordering and hash reads
 /// the components alone, and a clone starts unrendered. That is what keeps
 /// the cache honest: a mutation either replaces the value with a clone of it,
-/// which has rendered nothing, or writes its path through
-/// [`state_path`](Self::state_path), the one door that drops the rendering
-/// with the component it spelled.
+/// which has rendered nothing, or writes its path through `state_path`, the
+/// one door that drops the rendering with the component it spelled. That door
+/// is `pub(super)`, so this names it rather than linking it: a caller cannot
+/// reach it, and `cargo doc` under `-D warnings` refuses a public page that
+/// points at a private item.
 pub struct Uri {
     scheme: Scheme,
     authority: Authority,

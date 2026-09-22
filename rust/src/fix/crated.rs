@@ -30,9 +30,9 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Eight of the nineteen say more than the column
+//! sentence, and join on it. Nine of the nineteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
-//! module's to know and no other medium's - and those eight spell their own
+//! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
 //!
 //! # Why 65000, and why each is a tag and a name
