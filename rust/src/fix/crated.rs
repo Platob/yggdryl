@@ -28,8 +28,12 @@
 //!
 //! The event facts are the columns every graph event is
 //! stated in, [`EventColumn`]: each crate field here takes that column's
-//! datatype, so a text line's batch, a FIX row and a chained message carry
-//! one column under one name and join on it.
+//! datatype, display and wording, so a text line's batch, a FIX row and a
+//! chained message carry one column under one name, one datatype and one
+//! sentence, and join on it. Nine of the nineteen say more than the column
+//! can - they name the FIX fields a value is read off, which is this
+//! module's to know and no other medium's - and those nine spell their own
+//! wording beside the tag.
 //!
 //! # Why 65000, and why each is a tag and a name
 //!
@@ -72,7 +76,8 @@
 //! copies over: the crate's own definition is the one that types a row.
 //! Folding another dictionary in never counts them either.
 //!
-//! Twenty-nine scalar fields and two Map groups, each registered by its shape.
+//! Thirty scalar fields and two Map groups, each registered by its shape,
+//! and every one of them a row of [`CRATED`].
 
 use std::sync::{Arc, LazyLock};
 
@@ -151,6 +156,11 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 /// sense: `NoPartyIDs` counts `Parties`, and this counts entries not fully
 /// represented by the row's projected columns. A reader prunes on it without
 /// opening the list.
+///
+/// The group it counts is not a registry definition - a `fixentry` contains
+/// `fixentries`, and a definition referencing itself would be a cycle - so
+/// the counter is a crate field here while the group is built beside the
+/// fixed row it closes.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
@@ -279,38 +289,14 @@ pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
-/// text line's batch answer one cell for one fact.
+/// text line's batch answer one cell for one fact. [`CRATED`] is where the
+/// pairing is stated, so a column and its tag are never written twice.
 #[must_use]
 pub fn event_column_of(tag: i32) -> Option<EventColumn> {
-    EventColumn::ALL
-        .into_iter()
-        .find(|column| crate_tag_of(*column).0 == tag)
-}
-
-/// The crate's own tag and name of one graph event column.
-#[must_use]
-pub const fn crate_tag_of(column: EventColumn) -> (i32, &'static str) {
-    match column {
-        EventColumn::CurrUnix => CURRUNIX_TAG_NAME,
-        EventColumn::ExecUnix => EXECUNIX_TAG_NAME,
-        EventColumn::RecdUnix => RECDUNIX_TAG_NAME,
-        EventColumn::RefRecdUnix => REFRECDUNIX_TAG_NAME,
-        EventColumn::CreaUnix => CREAUNIX_TAG_NAME,
-        EventColumn::ExprTime => EXPRTIME_TAG_NAME,
-        EventColumn::PrevUnix => PREVUNIX_TAG_NAME,
-        EventColumn::SnapUnix => SNAPUNIX_TAG_NAME,
-        EventColumn::CurrUuid => CURRUUID_TAG_NAME,
-        EventColumn::CrossUuid => CROSSUUID_TAG_NAME,
-        EventColumn::CrossCode => CROSSCODE_TAG_NAME,
-        EventColumn::CurrHashCode => CURRHASHCODE_TAG_NAME,
-        EventColumn::CrossHashCode => CROSSHASHCODE_TAG_NAME,
-        EventColumn::PrevUuid => PREVUUID_TAG_NAME,
-        EventColumn::SeqNum => SEQNUM_TAG_NAME,
-        EventColumn::ParentUuids => PARENTUUIDS_TAG_NAME,
-        EventColumn::SrcUuids => SRCUUIDS_TAG_NAME,
-        EventColumn::Identifiers => IDENTIFIERS_TAG_NAME,
-        EventColumn::State => STATE_TAG_NAME,
-    }
+    CRATED.iter().find_map(|held| match held.holds {
+        Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+        _ => None,
+    })
 }
 
 /// Whether a tag is one of this crate's own.
@@ -386,305 +372,289 @@ const ALWAYS_STATED: [i32; 6] = [
     CROSSUUID_TAG_NAME.0,
 ];
 
-/// One field of the crate's own, from its tag and name, with a FIX-style
-/// display.
+/// Where one definition's datatype, display and wording come from.
+enum Holds {
+    /// One of the nineteen [`EventColumn`]s, which owns all three: a text
+    /// line's batch, a FIX row and a chained message then carry one column
+    /// under one name, one datatype and one sentence, and join on it.
+    Event(EventColumn),
+    /// A fact no graph event states - what a bridge's row header said, where
+    /// the line was read from, the residual counter and the six normalized
+    /// identifiers - which therefore spells its own.
+    Own {
+        datatype: fn() -> Result<DataType>,
+        display: &'static str,
+        description: &'static str,
+    },
+}
+
+/// One definition of the crate's own, declared once.
 ///
-/// Display and description use generic field metadata rather than the `FIX:`
-/// scheme because every catalog the crate writes to understands them.
-fn crated(
-    (tag, name): (i32, &str),
-    display: &str,
-    dtype: DataType,
-    description: &str,
-) -> Result<Field> {
-    let mut field = Field::new(name, dtype, !ALWAYS_STATED.contains(&tag));
-    field.as_fix_mut().set_tag(tag)?;
-    field.set_display(display)?;
-    field.set_description(description)?;
-    if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
-        field.as_fix_mut().set_transient(false)?;
+/// A definition is its tag and its name and what it holds; everything else
+/// is a rule read off one of those. [`SETTLED_TO_ONE_MESSAGE`] and
+/// [`ALWAYS_STATED`] say which columns carry forward and which a row must
+/// state, a Map counts itself, and an event column already owns its
+/// datatype, its display and its wording. What is left to a row is the tag
+/// that reaches the column and the three things only FIX knows: the fields
+/// a value is read off, a second spelling, and a vocabulary. So a column is
+/// one row of [`CRATED`], and adding one is adding a row.
+struct Crated {
+    /// The tag and the name, exactly the pair the public constant declares.
+    tag_name: (i32, &'static str),
+    /// Where the datatype, the display and the wording come from.
+    holds: Holds,
+    /// What the field says it is, where FIX names the fields a value is read
+    /// off and the column - which is every medium's, not this one's - cannot.
+    fix_wording: Option<&'static str>,
+    /// The spellings a registry also answers this field by.
+    names: &'static [&'static str],
+    /// The registry vocabulary it reads by, where it reads by one.
+    codeset: Option<&'static str>,
+}
+
+impl Crated {
+    /// One graph event column under the crate's own tag.
+    const fn event(tag_name: (i32, &'static str), column: EventColumn) -> Self {
+        Self {
+            tag_name,
+            holds: Holds::Event(column),
+            fix_wording: None,
+            names: &[],
+            codeset: None,
+        }
     }
-    Ok(field)
+
+    /// One fact no graph event states, spelling its own datatype, display
+    /// and wording.
+    const fn own(
+        tag_name: (i32, &'static str),
+        datatype: fn() -> Result<DataType>,
+        display: &'static str,
+        description: &'static str,
+    ) -> Self {
+        Self {
+            tag_name,
+            holds: Holds::Own {
+                datatype,
+                display,
+                description,
+            },
+            fix_wording: None,
+            names: &[],
+            codeset: None,
+        }
+    }
+
+    /// The same definition, saying what FIX states and the column cannot:
+    /// the fields the value is read off, in the order they are read.
+    const fn saying(mut self, description: &'static str) -> Self {
+        self.fix_wording = Some(description);
+        self
+    }
+
+    /// The same definition, which a registry also answers by these spellings.
+    const fn also_called(mut self, names: &'static [&'static str]) -> Self {
+        self.names = names;
+        self
+    }
+
+    /// The same definition, reading its values by a registry vocabulary.
+    const fn reading(mut self, codeset: &'static str) -> Self {
+        self.codeset = Some(codeset);
+        self
+    }
+
+    /// This definition as the field every registry holds.
+    ///
+    /// Display and description use generic field metadata rather than the
+    /// `FIX:` scheme because every catalog the crate writes to understands
+    /// them.
+    fn field(&self) -> Result<Field> {
+        let (tag, name) = self.tag_name;
+        let (dtype, display, description) = match self.holds {
+            Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
+            Holds::Own {
+                datatype,
+                display,
+                description,
+            } => (datatype()?, display, description),
+        };
+        // A crate Map is a group whose occurrence is its own entries Struct,
+        // so the tag counting it is the tag it is: there is no second tag to
+        // state, and no row that could state a different one.
+        let counts_itself = matches!(dtype, DataType::Mapping(_));
+        let mut field = Field::new(name, dtype, !ALWAYS_STATED.contains(&tag));
+        field.as_fix_mut().set_tag(tag)?;
+        field.set_display(display)?;
+        field.set_description(self.fix_wording.unwrap_or(description))?;
+        if counts_itself {
+            field.as_fix_mut().set_counter(tag)?;
+        }
+        if !self.names.is_empty() {
+            field.as_fix_mut().set_names(self.names.iter().copied())?;
+        }
+        if let Some(codeset) = self.codeset {
+            field.as_fix_mut().set_codeset(codeset)?;
+        }
+        if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
+            field.as_fix_mut().set_transient(false)?;
+        }
+        Ok(field)
+    }
 }
 
-/// One of the nineteen event columns as a field of the crate's own: the
-/// column's datatype under the crate's tag, display and wording.
-fn event(column: EventColumn, display: &str, description: &str) -> Result<Field> {
-    crated(
-        crate_tag_of(column),
-        display,
-        column.datatype()?,
-        description,
-    )
-}
-
-fn msgcat() -> Result<Field> {
-    let mut field = crated(
-        MSGCAT_TAG_NAME,
-        "MsgCat",
-        DataType::fixed_ascii(4)?,
-        "The four-byte business category of the message type.",
-    )?;
-    field.as_fix_mut().set_codeset(MSGCAT_CODESET_NAME)?;
-    Ok(field)
-}
-
-/// Builds every field this crate defines, in tag order.
-fn build() -> Result<Vec<Field>> {
-    let mut metadata = crated(
-        METADATA_TAG_NAME,
-        "Metadata",
-        DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
-        "What a bridge stated under its own namespaces - a `TECH.` or an \
-         `AMON.` key - each under the key as the bridge spelled it, folded, \
-         in sorted order.",
-    )?;
-    metadata.as_fix_mut().set_counter(METADATA_TAG_NAME.0)?;
-    let mut identifiers = event(
-        EventColumn::Identifiers,
-        "Identifiers",
+/// Every definition this crate invents, in tag order.
+///
+/// The order is the tags', because that is the order a schema, a document
+/// and [`fix_crate_fields`] all walk them in. A row that only names a tag
+/// and a column is a column this crate adds nothing to but the tag.
+const CRATED: [Crated; 32] = [
+    Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
+    Crated::own(
+        MSGCTXID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "MsgCtxId",
+        "The message context a bridge handled the message in, as its own \
+         log names it.",
+    ),
+    Crated::own(
+        MSGPLUGINID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "MsgPluginId",
+        "The plugin that logged the line inside a bridge, as the bridge \
+         names it: the row's own msgpluginid column, never derived.",
+    ),
+    Crated::event(CURRHASHCODE_TAG_NAME, EventColumn::CurrHashCode).saying(
+        "The XXH3-64 of what the event states and the named FIX content \
+         behind it.",
+    ),
+    Crated::event(CROSSHASHCODE_TAG_NAME, EventColumn::CrossHashCode),
+    Crated::event(IDENTIFIERS_TAG_NAME, EventColumn::Identifiers).saying(
         "The names this message goes by, each under the canonical name of the \
          field that stated it, in sorted order; complete message type, session, \
          context and sequence provenance adds `msgsesseventid` with each text \
          part byte-length-prefixed; repeating-group members are not flattened.",
-    )?;
-    identifiers
-        .as_fix_mut()
-        .set_counter(IDENTIFIERS_TAG_NAME.0)?;
-    let mut creation = event(
-        EventColumn::CreaUnix,
-        "CreaUnix",
-        "When the message was created: what it states, else when the \
-         original was sent, else when it happened; the earliest its \
-         chain knows once followed.",
-    )?;
-    creation.as_fix_mut().set_names(["CreationTime"])?;
-    Ok(vec![
-        // When the message happened: the settled instant every clock a
-        // message states resolves to, and what its identity opens with.
-        event(
-            EventColumn::CurrUnix,
-            "CurrUnix",
-            "When the message happened: the settled instant, UTC.",
-        )?,
-        // The message context a bridge handled the line in, from the bracket
-        // its row header writes after the clock.
-        crated(
-            MSGCTXID_TAG_NAME,
-            "MsgCtxId",
-            DataType::utf8(),
-            "The message context a bridge handled the message in, as its own \
-             log names it.",
-        )?,
-        // The plugin that logged a line inside a bridge, as the bridge names
-        // it: a fact about the bridge that FIX never states, stated by the
-        // row's own column - the bracket the bridge's row header writes in
-        // front of every line - and never derived.
-        crated(
-            MSGPLUGINID_TAG_NAME,
-            "MsgPluginId",
-            DataType::utf8(),
-            "The plugin that logged the line inside a bridge, as the bridge \
-             names it: the row's own msgpluginid column, never derived.",
-        )?,
-        // The instrument and the market, one spelling each: an ISIN as a
-        // bridge row states it or as `SecurityID` with an ISIN source, and
-        // the market as the MIC the message names first. Each declares how
-        // it derives on the field itself, and the enriching pass and the row
-        // fill evaluate that declaration and nothing else.
-        // The state the order is in, whatever code set or word stated it.
-        // The two codes: what the message's content digests to, and what
-        // the identifier its lifecycle shares digests to.
-        event(
-            EventColumn::CurrHashCode,
-            "CurrHashCode",
-            "The XXH3-64 of what the event states and the named FIX content \
-             behind it.",
-        )?,
-        event(
-            EventColumn::CrossHashCode,
-            "CrossHashCode",
-            "The XXH3-64 of the cross code; zero where the message names none.",
-        )?,
-        identifiers,
-        event(
-            EventColumn::PrevUnix,
-            "PrevUnix",
-            "When the message this one follows happened, where it follows one.",
-        )?,
-        event(
-            EventColumn::PrevUuid,
-            "PrevUuid",
-            "The identity of the message this one follows, where it follows one.",
-        )?,
-        creation,
-        event(
-            EventColumn::SnapUnix,
-            "SnapUnix",
-            "The grid instant a walk read this message as the snapshot of; \
-             empty on every row no snapshot was taken of.",
-        )?,
-        // Where the line was read from, typed as the URL it is. A text read
-        // names its own column `sourceurl` too, so a capture's column is
-        // this field without anyone spelling a mapping - and it stays the
-        // capture's, beside the row, because no column of the fixed row
-        // holds it.
-        crated(
-            SOURCEURL_TAG_NAME,
-            "SourceUrl",
-            DataType::url(),
-            "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
-        )?,
-        // The arrival record's counter. The group it counts is not a registry
-        // definition - a `fixentry` contains `fixentries`, and a definition
-        // that referenced itself would be a cycle - so the counter is here
-        // and the group is built beside the fixed row it closes.
-        crated(
-            NOFIXENTRIES_TAG_NAME,
-            "NoFixEntries",
-            DataType::Int32,
-            "How many residual entries remain outside the row's projected columns.",
-        )?,
-        // The session instance the bridge handled a line on, which its own
-        // row header states and no FIX message carries: `SenderCompID` names
-        // a counterparty, and two connections to one counterparty are two
-        // sessions. It is filled from the bracket alone.
-        crated(
-            MSGSESSIONID_TAG_NAME,
-            "MsgSessionId",
-            DataType::utf8(),
-            "The session instance a bridge handled a line on, as its own row \
-             header brackets it - never what the message states about itself.",
-        )?,
-        // The four identifiers beside `isincode`, each typed as the code it
-        // is so a row joins on it rather than on text that looks like one.
-        // The identities: the message's own, the one its lifecycle shares,
-        // and the ones it descends from.
-        event(
-            EventColumn::CurrUuid,
-            "CurrUuid",
-            "The message's identity: the UUIDv7 its microsecond instant and code derive.",
-        )?,
-        event(
-            EventColumn::CrossUuid,
-            "CrossUuid",
-            "The identity every message of one lifecycle shares, derived from \
-             the identifier they share; the message's own where it names none.",
-        )?,
-        event(
-            EventColumn::ParentUuids,
-            "ParentUuids",
-            "The identities of the messages this one descends from, in the \
-             order it states them.",
-        )?,
-        event(
-            EventColumn::SeqNum,
-            "SeqNum",
-            "The message's place in its chain: how many came before it.",
-        )?,
-        // The market's numbers, exact. Price and quantity carry no
-        // derivation: the message holds Price, OrderQty, LastPx, LastQty,
-        // AvgPx, CumQty and LeavesQty as its own typed facts, and
-        // `MarketElement::fill_market` is the one statement of which of them
-        // the message is about.
-        // The chain's own name, as the message spells it: what the cross
-        // hash code and the cross identity derive from, and what a walk
-        // forces onto a message of the chain that spells none.
-        event(
-            EventColumn::CrossCode,
-            "CrossCode",
-            "The identifier every message of one lifecycle shares: OrderID, \
-             else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
-             first stated.",
-        )?,
-        metadata,
-        // Where the message was read from: the identities of the lines it
-        // was parsed out of, its provenance beside its lineage. Declared
-        // last because the list is in tag order and this is the crate's
-        // newest column, above the fixed row's own tag.
-        event(
-            EventColumn::SrcUuids,
-            "SrcUuids",
-            "The identities of the elements this message was read from: the \
-             text line it was parsed out of, and none for one parsed from \
-             raw bytes. Provenance, never lineage: no walk moves it.",
-        )?,
-        // The two lifecycle facts a walk folds forward: the state the
-        // message reached and when it stops being good. Read off FIX's own
-        // fields as a message is built, and the furthest and the latest its
-        // chain knows once followed - which a reader of the rows could not
-        // see while the traits alone answered them.
-        event(
-            EventColumn::State,
-            "State",
-            "The state the message reached, ranked so the column sorts by \
-             lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither \
-             states one; the furthest its chain knows once followed.",
-        )?,
-        event(
-            EventColumn::ExprTime,
-            "ExprTime",
-            "When the message stops being good: ExpireTime, else \
-             ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
-             deadline replaces the one its chain carried.",
-        )?,
-        msgcat()?,
-        crated(
-            ISINCODE_TAG_NAME,
-            "IsinCode",
-            DataType::isin(),
-            "The normalized ISIN the message identifies.",
-        )?,
-        crated(
-            CUSIPCODE_TAG_NAME,
-            "CusipCode",
-            DataType::cusip(),
-            "The normalized CUSIP the message identifies.",
-        )?,
-        crated(
-            SEDOLCODE_TAG_NAME,
-            "SedolCode",
-            DataType::sedol(),
-            "The normalized SEDOL the message identifies.",
-        )?,
-        crated(
-            BLOOMBERGCODE_TAG_NAME,
-            "BloombergCode",
-            DataType::BloombergCode,
-            "The normalized Bloomberg identifier the message identifies.",
-        )?,
-        crated(
-            MICCODE_TAG_NAME,
-            "MicCode",
-            DataType::mic(),
-            "The normalized market MIC the message identifies.",
-        )?,
-        crated(
-            FIGICODE_TAG_NAME,
-            "FIGICode",
-            DataType::figi(),
-            "The normalized FIGI the message identifies.",
-        )?,
-        event(
-            EventColumn::ExecUnix,
-            "ExecUnix",
-            "When the message's execution happened: ExecutionTimestamp, an \
-             execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
-             trade's TransactTime, the first one stated.",
-        )?,
-        event(
-            EventColumn::RecdUnix,
-            "RecdUnix",
-            "When the message was recorded by its carrier, where the carrier \
-             states one.",
-        )?,
-        event(
-            EventColumn::RefRecdUnix,
-            "RefRecdUnix",
-            "The recording clock of the observation selected as the message's \
-             merge reference; the latest its statements know.",
-        )?,
-    ])
+    ),
+    Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
+    Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
+    Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
+        .saying(
+            "When the message was created: what it states, else when the \
+             original was sent, else when it happened; the earliest its \
+             chain knows once followed.",
+        )
+        .also_called(&["CreationTime"]),
+    Crated::event(SNAPUNIX_TAG_NAME, EventColumn::SnapUnix),
+    Crated::own(
+        SOURCEURL_TAG_NAME,
+        || Ok(DataType::url()),
+        "SourceUrl",
+        "The object this message's line was read from; the capture's own \
+         column, carried beside the row and never one of its own.",
+    ),
+    Crated::own(
+        NOFIXENTRIES_TAG_NAME,
+        || Ok(DataType::Int32),
+        "NoFixEntries",
+        "How many residual entries remain outside the row's projected columns.",
+    ),
+    Crated::own(
+        MSGSESSIONID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "MsgSessionId",
+        "The session instance a bridge handled a line on, as its own row \
+         header brackets it - never what the message states about itself.",
+    ),
+    Crated::event(CURRUUID_TAG_NAME, EventColumn::CurrUuid),
+    Crated::event(CROSSUUID_TAG_NAME, EventColumn::CrossUuid),
+    Crated::event(PARENTUUIDS_TAG_NAME, EventColumn::ParentUuids),
+    Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum),
+    Crated::event(CROSSCODE_TAG_NAME, EventColumn::CrossCode).saying(
+        "The identifier every message of one lifecycle shares: OrderID, \
+         else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
+         first stated.",
+    ),
+    Crated::own(
+        METADATA_TAG_NAME,
+        || DataType::map_of(DataType::utf8(), DataType::utf8(), true),
+        "Metadata",
+        "What a bridge stated under its own namespaces - a `TECH.` or an \
+         `AMON.` key - each under the key as the bridge spelled it, folded, \
+         in sorted order.",
+    ),
+    Crated::event(SRCUUIDS_TAG_NAME, EventColumn::SrcUuids).saying(
+        "The identities of the elements this message was read from: the \
+         text line it was parsed out of, and none for one parsed from \
+         raw bytes. Provenance, never lineage: no walk moves it.",
+    ),
+    Crated::event(STATE_TAG_NAME, EventColumn::State).saying(
+        "The state the message reached, ranked so the column sorts by \
+         lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither \
+         states one; the furthest its chain knows once followed.",
+    ),
+    Crated::event(EXPRTIME_TAG_NAME, EventColumn::ExprTime).saying(
+        "When the message stops being good: ExpireTime, else \
+         ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
+         deadline replaces the one its chain carried.",
+    ),
+    Crated::own(
+        MSGCAT_TAG_NAME,
+        || DataType::fixed_ascii(4),
+        "MsgCat",
+        "The four-byte business category of the message type.",
+    )
+    .reading(MSGCAT_CODESET_NAME),
+    Crated::own(
+        ISINCODE_TAG_NAME,
+        || Ok(DataType::isin()),
+        "IsinCode",
+        "The normalized ISIN the message identifies.",
+    ),
+    Crated::own(
+        CUSIPCODE_TAG_NAME,
+        || Ok(DataType::cusip()),
+        "CusipCode",
+        "The normalized CUSIP the message identifies.",
+    ),
+    Crated::own(
+        SEDOLCODE_TAG_NAME,
+        || Ok(DataType::sedol()),
+        "SedolCode",
+        "The normalized SEDOL the message identifies.",
+    ),
+    Crated::own(
+        BLOOMBERGCODE_TAG_NAME,
+        || Ok(DataType::BloombergCode),
+        "BloombergCode",
+        "The normalized Bloomberg identifier the message identifies.",
+    ),
+    Crated::own(
+        MICCODE_TAG_NAME,
+        || Ok(DataType::mic()),
+        "MicCode",
+        "The normalized market MIC the message identifies.",
+    ),
+    Crated::own(
+        FIGICODE_TAG_NAME,
+        || Ok(DataType::figi()),
+        "FIGICode",
+        "The normalized FIGI the message identifies.",
+    ),
+    Crated::event(EXECUNIX_TAG_NAME, EventColumn::ExecUnix).saying(
+        "When the message's execution happened: ExecutionTimestamp, an \
+         execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
+         trade's TransactTime, the first one stated.",
+    ),
+    Crated::event(RECDUNIX_TAG_NAME, EventColumn::RecdUnix).saying(
+        "When the message was recorded by its carrier, where the carrier \
+         states one; the earliest its statements know.",
+    ),
+    Crated::event(REFRECDUNIX_TAG_NAME, EventColumn::RefRecdUnix),
+];
+
+/// Builds every field this crate defines, in tag order.
+fn build() -> Result<Vec<Field>> {
+    CRATED.iter().map(Crated::field).collect()
 }
 
 /// The fields this crate defines, in tag order.

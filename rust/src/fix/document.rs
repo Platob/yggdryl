@@ -953,7 +953,7 @@ fn refused(target: &'static str, reason: impl fmt::Display) -> Error {
 /// One field as a FIX store spells it: a native `Field` document whose `FIX:`
 /// document properties are the JSON they are rather than one escaped line.
 ///
-/// The shape [`FixRegistry::write_into`](super::FixRegistry::write_into) and
+/// The shape [`FixRegistry::commit`](super::FixRegistry::commit) and
 /// [`FixRegistry::into_json`](super::FixRegistry::into_json) write and
 /// [`from_fix_document`] reads, exposed on its own so a caller editing one
 /// document out of a store - what `ygg fix read --json` prints and

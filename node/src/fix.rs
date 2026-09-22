@@ -140,6 +140,21 @@ impl FixKeyArg {
     }
 }
 
+/// What one [`JsFixRegistry::commit`] moved under a store root.
+///
+/// A commit names the documents it wrote and removed and counts the ones it
+/// left, because a store holds thousands a run normally leaves alone: naming
+/// each of those would bury the handful that moved.
+#[napi(object)]
+pub struct FixCommitReport {
+    /// The documents written, in the order a store lays them out.
+    pub written: Vec<String>,
+    /// How many documents already stated what the registry does.
+    pub skipped: u32,
+    /// The documents removed because no definition holds them any more.
+    pub removed: Vec<String>,
+}
+
 /// One member of a FIX code set, as the plain object JavaScript reads and
 /// writes.
 ///
@@ -394,6 +409,16 @@ impl JsFixRegistry {
         self.msgtype(spelling)
     }
 
+    /// Commit the store and answer nothing.
+    ///
+    /// The same work as [`Self::commit`] for a caller that does not read what
+    /// moved.
+    #[napi]
+    pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
+        let mut holder = folder_from_input(location)?;
+        self.inner.write_into(&mut holder).map_err(napi_error)
+    }
+
     /// Write every populated shard under `<location>/fields/<shard>.json` and
     /// every definition under `<location>/<category>/<name>.json`, removing
     /// the shards and trees no field populates any more. A shard is named by
@@ -405,10 +430,21 @@ impl JsFixRegistry {
     /// is `components/fixmsg.json` - so a store states the whole row; a
     /// reader takes the definition it holds from construction over the
     /// document it finds.
+    ///
+    /// Each document is digested where it lies and left alone where it
+    /// already states this registry, so a commit writes what moved and a
+    /// second commit of one registry writes nothing. The report is a plain
+    /// object: `written` and `removed` name the documents, in the order a
+    /// store lays them out, and `skipped` counts the ones a run left.
     #[napi]
-    pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
+    pub fn commit(&self, location: LocationInput<'_>) -> Result<FixCommitReport> {
         let mut holder = folder_from_input(location)?;
-        self.inner.write_into(&mut holder).map_err(napi_error)
+        let report = self.inner.commit(&mut holder).map_err(napi_error)?;
+        Ok(FixCommitReport {
+            written: report.written.iter().map(ToString::to_string).collect(),
+            skipped: u32::try_from(report.skipped).unwrap_or(u32::MAX),
+            removed: report.removed.iter().map(ToString::to_string).collect(),
+        })
     }
 
     /// How many fields are held: the scalar fields, then the components and
@@ -2843,6 +2879,14 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
+}
+
+/// The row header a `ULBridge` log writes in front of every line, as the
+/// crate spells it: `fix.ULBRIDGE_ROWHEADER` is where a caller reads it,
+/// and this is the half that carries the text across.
+#[napi(js_name = "_fixUlbridgeRowheaderNative", skip_typescript)]
+pub fn fix_ulbridge_rowheader_native() -> &'static str {
+    yggdryl::ULBRIDGE_ROWHEADER
 }
 
 /// One row's columns, in order, as tags: the crate's own, the header, the

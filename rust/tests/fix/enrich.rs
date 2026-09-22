@@ -1124,7 +1124,7 @@ fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_f
         ));
     let _ = std::fs::remove_dir_all(&root);
     let mut folder = LocalFolder::new(&root).expect("a local folder");
-    registry.write_into(&mut folder).expect("the store writes");
+    registry.commit(&mut folder).expect("the store writes");
     assert!(
         FixRegistry::from_handle(&folder).is_ok(),
         "the store loads as written"

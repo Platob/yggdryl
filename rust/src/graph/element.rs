@@ -272,9 +272,19 @@ pub trait Element {
     /// the given order; an empty list makes it a root.
     fn set_parentuuids(&mut self, parents: Vec<Uuid>);
 
-    /// The identities of the elements this one was read from, in the order
-    /// the element states them: its provenance, never its lineage. Empty
-    /// for an element read from a handle rather than from another element.
+    /// The identities of the elements this one was read from: its
+    /// provenance, never its lineage. Empty for an element read from a
+    /// handle rather than from another element.
+    ///
+    /// The merge reference leads, and the statements folded into it follow
+    /// in the order that merge took them, each once. Nothing beyond the
+    /// first entry is specified: which statement becomes the reference is
+    /// decided by recording clock and instant, and where those tie the
+    /// order the caller happened to hand them in survives. So a reader may
+    /// take the head as the reference this row's conflicts were resolved
+    /// against, and may take the set as the whole provenance, but must not
+    /// read the tail as arrival order - a capture fed in the other order
+    /// answers the same set spelled differently.
     fn get_srcuuids(&self) -> &[Uuid];
 
     /// Records the identities of the elements this one was read from; the

@@ -928,7 +928,7 @@ stays `utf8`.
 - Merging follows [Field](../field.md): two strings meet parameter by parameter, and a string never meets a byte column.
 - `from_regex(pattern, false)` -> every capture stays `utf8`; invalid regex syntax or an expression past the recursion limit -> datatype error.
 - `\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}` -> a millisecond datetime and `\d{2}:\d{2}:\d{2},\d{3}` -> a millisecond time: the comma is a decimal sign inside a clock. Outside one it is not, so `\d+,\d+` and `\d{1,3}(?:,\d{3})*` stay `utf8` and a bare fraction such as `,\d{3}` carries no clock to be part of.
-- A capture admitting several widths takes the widest: `\.\d{1,5}` -> microseconds, and an optional or variable fraction publishes the widest unit it admits even where every row spells none, so `\d{2}:\d{2}:\d{2}(?:\.\d{2})?` -> `time32(ms)`. A capture spelling one width it once had no candidate for - two, four, seven or eight digits - is now that width's datetime rather than `utf8`, and a row the reader refuses in such a column is null under `safe` rather than the text it used to stay.
+- A capture admitting several widths takes the widest: `\.\d{1,5}` -> microseconds, and an optional or variable fraction publishes the widest unit it admits even where every row spells none, so `\d{2}:\d{2}:\d{2}(?:\.\d{2})?` -> `time32(ms)`. A capture spelling one width it once had no candidate for - two, four, seven or eight digits - is now that width's datetime rather than `utf8`, so a row the reader refuses in such a column ends the read where it used to stay as text: `safe` governs a cast and not a capture's own reading, and turning it on does not null the cell. A line the header did not match is the other case, and keeps its body.
 
 ## Commands
 

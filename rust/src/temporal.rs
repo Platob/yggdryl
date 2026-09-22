@@ -720,6 +720,14 @@ fn parse_date_at(text: &str, position: usize) -> Result<(i32, usize)> {
 /// spells a clock. A separator is legal only *between* digits; the digit count
 /// with separators removed keeps the 1-to-9 rule, so grouping never changes
 /// the unit a width names.
+///
+/// `_` groups digits and does not open a fraction: `00:05:01_147` is a clock
+/// of seconds followed by text, not a clock of milliseconds. The two signs
+/// that open one are the two ISO 31-0 names for the decimal sign, and a
+/// group separator is not a third - one character cannot mean "the fraction
+/// starts here" and "these digits are grouped" in one token. An emitter that
+/// divides its fraction with `_` is writing no ISO clock, and a reader of it
+/// states the shape in its own row header rather than here.
 fn parse_fraction_at(
     text: &str,
     position: usize,

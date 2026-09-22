@@ -10,7 +10,7 @@
     "metadata": {
       "FIX:tag": "65003",
       "FIX:transient": "false",
-      "description": "When the message happened: the settled instant, UTC.",
+      "description": "When the event happened: the settled instant, UTC.",
       "display": "CurrUnix"
     }
   },
@@ -60,7 +60,7 @@
     "metadata": {
       "FIX:tag": "65018",
       "FIX:transient": "false",
-      "description": "The XXH3-64 of the cross code; zero where the message names none.",
+      "description": "The XXH3-64 of the cross code; zero where the event names none.",
       "display": "CrossHashCode"
     }
   },
@@ -75,7 +75,7 @@
     "metadata": {
       "FIX:tag": "65021",
       "FIX:transient": "false",
-      "description": "When the message this one follows happened, where it follows one.",
+      "description": "When the event this one follows happened, where it follows one.",
       "display": "PrevUnix"
     }
   },
@@ -88,7 +88,7 @@
     "metadata": {
       "FIX:tag": "65022",
       "FIX:transient": "false",
-      "description": "The identity of the message this one follows, where it follows one.",
+      "description": "The identity of the event this one follows, where it follows one.",
       "display": "PrevUuid"
     }
   },
@@ -121,7 +121,7 @@
     "metadata": {
       "FIX:tag": "65025",
       "FIX:transient": "false",
-      "description": "The grid instant a walk read this message as the snapshot of; empty on every row no snapshot was taken of.",
+      "description": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of.",
       "display": "SnapUnix"
     }
   },
@@ -172,7 +172,7 @@
     "metadata": {
       "FIX:tag": "65039",
       "FIX:transient": "false",
-      "description": "The message's identity: the UUIDv7 its microsecond instant and code derive.",
+      "description": "The event's identity: the UUIDv7 its microsecond instant and code derive.",
       "display": "CurrUuid"
     }
   },
@@ -185,7 +185,7 @@
     "metadata": {
       "FIX:tag": "65040",
       "FIX:transient": "false",
-      "description": "The identity every message of one lifecycle shares, derived from the identifier they share; the message's own where it names none.",
+      "description": "The identity every event of one chain shares, derived from the code they share; the event's own where it names none.",
       "display": "CrossUuid"
     }
   },
@@ -206,7 +206,7 @@
     "metadata": {
       "FIX:tag": "65041",
       "FIX:transient": "false",
-      "description": "The identities of the messages this one descends from, in the order it states them.",
+      "description": "The identities of the events this one descends from, oldest first, each once.",
       "display": "ParentUuids"
     }
   },
@@ -219,7 +219,7 @@
     "metadata": {
       "FIX:tag": "65042",
       "FIX:transient": "false",
-      "description": "The message's place in its chain: how many came before it.",
+      "description": "The event's place in its chain: how many came before it.",
       "display": "SeqNum"
     }
   },
@@ -398,7 +398,7 @@
     "metadata": {
       "FIX:tag": "65063",
       "FIX:transient": "false",
-      "description": "When the message was recorded by its carrier, where the carrier states one.",
+      "description": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know.",
       "display": "RecdUnix"
     }
   },
@@ -413,7 +413,7 @@
     "metadata": {
       "FIX:tag": "65064",
       "FIX:transient": "false",
-      "description": "The recording clock of the observation selected as the message's merge reference; the latest its statements know.",
+      "description": "The recording clock of the observation selected as this event's merge reference; the latest its statements know.",
       "display": "RefRecdUnix"
     }
   }

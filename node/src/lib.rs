@@ -62,7 +62,7 @@ pub use fix::{
     FixCaptureView, FixCodecOptions, FixEntryView, FixEventView, FixHeaderView, JsFixCodec,
     JsFixFieldIterator, JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields,
     fix_global_registry, fix_install_global_registry, fix_schema, fix_schema_carrying,
-    fix_schema_tags,
+    fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iceberg::{

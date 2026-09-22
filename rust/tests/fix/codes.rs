@@ -170,7 +170,7 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     let mut root = Holder::local(path.clone()).unwrap();
     let registry = FixRegistry::new();
     assert_eq!(registry.codesets().len(), 1);
-    registry.write_into(root.as_io_mut()).unwrap();
+    registry.commit(root.as_io_mut()).unwrap();
     assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
 
     // And one that gains a set writes the folder, while one that loses it
@@ -178,12 +178,12 @@ fn a_dictionary_holding_only_the_crate_set_reads_back_equal() {
     let mut held = registry.clone();
     held.set_codeset("sidecodeset", &[FixCode::new("Buy", "1")])
         .unwrap();
-    held.write_into(root.as_io_mut()).unwrap();
+    held.commit(root.as_io_mut()).unwrap();
     let read = FixRegistry::from_handle(root.as_io()).unwrap();
     assert_eq!(read, held);
     assert_eq!(read.codeset("sidecodeset").unwrap().codes().count(), 1);
 
-    registry.write_into(root.as_io_mut()).unwrap();
+    registry.commit(root.as_io_mut()).unwrap();
     assert_eq!(FixRegistry::from_handle(root.as_io()).unwrap(), registry);
     let _ = std::fs::remove_dir_all(&path);
 

@@ -1678,9 +1678,28 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
 
 - `main` triggers `.github/workflows/release.yml`; `v<version>` is the receipt
   created after registry publication, and manual runs rehearse only.
-- Publishes are idempotent, the tag is last, partial publication is repaired by
-  rerunning, and a released version is never reused.
+- Publishes are idempotent, the tag is last, and a released version is never
+  reused.
+- A version is out on all three registries or on none. The `consistency` job
+  reads crates.io, PyPI and npm before anything builds and refuses a branch
+  push that would publish a version some of them already carry, because the
+  tree under a branch is not the tree those artifacts were built from and one
+  number would come to name two libraries. Such a version is finished from the
+  commit it was built at - `git tag v<version> <commit> && git push origin
+  v<version>`, a tag being what pins that tree - or it is left partial and
+  every manifest bumps. Re-running on `main` repairs only a version no
+  registry has yet.
+- A release that was going to publish and did not files an issue naming the
+  version, the run and what each registry holds, and comments on that issue
+  rather than opening a second. A failed `preflight` files one too: three
+  manifests disagreeing is the loudest failure there is and the one that
+  publishes no version to name, so the report reads the tree instead.
 - Root Cargo, Python, and Node versions match exactly. Publish crates.io, PyPI,
   npm only after platform smoke tests import and exercise the artifacts.
+- A bump moves seven files together, and `preflight` reads three of them:
+  `Cargo.toml` and `Cargo.lock`, `python/pyproject.toml`, `node/package.json`
+  and `node/package-lock.json`, and the two generated documentation manifests
+  `docs/assets/fix.json` and `docs/assets/playground.json`, which stamp
+  `node/package.json`'s version.
 - Credentials stay in repository configuration: Cargo and npm secrets, PyPI
   trusted publishing. No stored PyPI password, no fourth registry.

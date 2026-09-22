@@ -1715,6 +1715,7 @@
         'FixMsg',
         'FixRegistry',
         'MsgType',
+        'ULBRIDGE_ROWHEADER',
         'crateFields',
         'globalRegistry',
         'installGlobalRegistry',
@@ -3341,11 +3342,10 @@
   // `rust/tests/fix/ulbridge.rs` reads.
   const CAPTURE = path.join(__dirname, '..', '..', 'rust', 'tests', 'fix', 'ulbridge.log')
   // The bridge's own row header, as the core spells it: what a line states
-  // about itself in front of the payload.
-  const ROWHEADER =
-    String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<msgthreadid>[1-9]\d*)` +
-    String.raw`(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] ` +
-    String.raw`\[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
+  // about itself in front of the payload. The core exports the text, so this
+  // suite reads a bridge log under the same expression the crate ships rather
+  // than a second copy of it.
+  const ROWHEADER = fix.ULBRIDGE_ROWHEADER
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
   let seedRegistry
@@ -3512,15 +3512,20 @@
     // The finite capture fully merges observations carrying one forced
     // delivery key: message type, session, context and delivery sequence. The
     // latest recording is the reference and earlier observations fill it.
-    // That coalesces 54 reports and one order; six rows without a FIX type and
-    // two cancel rejects are refused. One additional output expires a live
-    // order at its stated deadline.
+    // That coalesces 54 reports, one order, six cancel rejects and the six
+    // rows that state no FIX type at all. One additional output expires a
+    // live order at its stated deadline.
+    //
+    // It was 32 while the row header's clock admitted three fractional digits
+    // and no more: the capture's last fifteen lines write grouped
+    // microseconds, so those lines arrived with no session, context or
+    // sequence and could not be folded onto the deliveries they repeat.
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === '95EXPIRED')
     const retained = walked.filter((message) => message.state !== '95EXPIRED')
-    assert.equal(retained.length, 31)
+    assert.equal(retained.length, 27)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 32)
+    assert.equal(walked.length, 28)
 
     const counts = (held) => {
       const found = new Map()
@@ -3535,7 +3540,7 @@
     const removed = Object.fromEntries(
       [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
     )
-    assert.deepEqual(removed, { 8: 54, '': 6, D: 1, cancelreject: 2 })
+    assert.deepEqual(removed, { 8: 54, '': 6, D: 1, cancelreject: 6 })
 
     // The default cross-code chains six retained bridge messages.
     // Every non-root message states both its predecessor and a positive sequence.
@@ -3543,9 +3548,12 @@
     assert.equal(walked.filter((message) => message.seqnum > 0).length, 6)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
-    // one output; only the six untyped rows and two refused cancel rejects lose
-    // their provenance. The synthetic expiry keeps its predecessor's
-    // provenance and lands at the stated deadline.
+    // one output; only the six rows that state no FIX type lose their
+    // provenance. Two cancel rejects lost theirs as well until the row
+    // header's clock admitted the bridge's grouped microseconds - unread,
+    // those lines carried no delivery key to be folded onto. The synthetic
+    // expiry keeps its predecessor's provenance and lands at the stated
+    // deadline.
     assert.ok(walked.every((message) => message.parentuuids.length === message.seqnum))
     assert.ok(messages.every((message) => message.srcuuids.length === 1))
     const inputSources = new Set(messages.flatMap((message) => message.srcuuids))
@@ -3553,7 +3561,7 @@
       message.srcuuids.length > 0 && message.srcuuids.every((source) => inputSources.has(source))))
     const retainedSources = retained.flatMap((message) => message.srcuuids)
     assert.equal(new Set(retainedSources).size, retainedSources.length)
-    assert.equal(retainedSources.length, inputSources.size - 8)
+    assert.equal(retainedSources.length, inputSources.size - 6)
 
     const [expiry] = expired
     const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
@@ -3632,5 +3640,30 @@
     assert.equal(day.header().sendingtime, day.currunix)
     const [walked] = codec.lifecycle([day])
     assert.equal(walked.currunix, day.currunix)
+  })
+
+  test('the bridge row header crosses whole and names its own captures', () => {
+    const options = new TextOptions()
+    options.rowheader = fix.ULBRIDGE_ROWHEADER
+    const captures = options.sourceField()
+    const names = []
+    for (let at = 0; at < captures.fieldLen; at += 1) {
+      names.push(captures.fieldAt(at).name)
+    }
+    assert.deepEqual(names.slice(-7), [
+      'timestamp',
+      'msgthreadid',
+      'msgsessionid',
+      'msgctxid',
+      'msgseqnum',
+      'msgpluginid',
+      'level',
+    ])
+    assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
+    // The clock is the capture's own column rather than `currunix`, so this
+    // header dates no line: it is typed by its own syntax, where an `mtime`
+    // capture would be consumed into `currunix` and read at nanoseconds UTC.
+    assert.equal(String(captures.field('timestamp').dtype), 'datetime64(us)')
+    assert.ok(!names.slice(-7).includes('mtime'))
   })
 }

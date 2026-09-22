@@ -762,26 +762,26 @@ pub struct FixMessages
 ### yggdryl::fix::crated  [rust/src/fix/crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the last; the retired slots below 65050 are never reused)
-pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else the official transaction clock standing within the codec's official_time_delay_ms of `SendingTime(52)`, else that `SendingTime`)
+pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the event happened - a stated `currunix`, else the official transaction clock standing within the codec's official_time_delay_ms of `SendingTime(52)`, else that `SendingTime`)
 pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");  (the message context a bridge handled the line in; a capture fact, held by `FixCapture`)
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_009, "msgpluginid");  (display `MsgPluginId`: the plugin that logged the line, stated by a row's own `msgpluginid` capture or column and never derived; selects nothing)
 pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the lifted FIX fields and the named content of the row - every field but the standard header and trailer)
-pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");  (non-null uint64: the XXH3-64 of the cross code, zero where the message names none)
+pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");  (non-null uint64: the XXH3-64 of the cross code, zero where the event names none)
 pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_020, "identifiers");  (nullable sorted `map<utf8, utf8>` group, self-countered: the names the message goes by, each under the canonical field that stated it - the message component's FIX:identifiers)
-pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");  (nullable clock: when the message this one follows happened)
-pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable uuid: the identity of the message this one follows)
+pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");  (nullable clock: when the event this one follows happened)
+pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable uuid: the identity of the event this one follows)
 pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_023, "creaunix");  (non-null clock: a stated creation, else `currunix`; the earliest a chain knows once walked)
-pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable clock: the opening instant of the grid step a walk read the message as the snapshot of)
+pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable clock: the opening instant of the grid step a walk read the event as the snapshot of)
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column and no column of the fixed row: declared by whoever read the line, carried in front of the row and by every message read out of it, stated again at its column by `into_row`; held as no fact, so outside the currhashcode, the entries and the wire)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the residual entry record group's counter, closing the fixed row; outside the currhashcode)
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");  (display `MsgSessionId`: the session instance a bridge handled a line on, as its own row header brackets it and never what the message states; a capture fact)
-pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");  (non-null uuid: the message's identity, the UUIDv7 its microsecond `currunix` and its whole `currhashcode` pack, that code already carrying the sequence and the cross chain it digests)
-pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_040, "crossuuid");  (non-null uuid: the identity every message of one lifecycle shares, the UUIDv8 of `crosshashcode`, or `curruuid` where the message names no cross code)
-pub const PARENTUUIDS_TAG_NAME: (i32, &str) = (65_041, "parentuuids");  (nullable `list<uuid>`: the identities of the messages this one descends from, in the order it states them; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
-pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");  (nullable uint64: the message's place in its chain, how many came before it; zero answers as absent)
+pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");  (non-null uuid: the event's identity, the UUIDv7 its microsecond `currunix` and its whole `currhashcode` pack, that code already carrying the sequence and the cross chain it digests)
+pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_040, "crossuuid");  (non-null uuid: the identity every event of one chain shares, the UUIDv8 of `crosshashcode`, or `curruuid` where the event names no cross code)
+pub const PARENTUUIDS_TAG_NAME: (i32, &str) = (65_041, "parentuuids");  (nullable `list<uuid>`: the identities of the events this one descends from, oldest first, each once - the wording is `EventColumn::ParentUuids`'s own, as it is for every crate column FIX adds nothing to; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
+pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");  (nullable uint64: the event's place in its chain, how many came before it; zero answers as absent)
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_048, "crosscode");  (utf8: the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131) or MDReqID(262); `crosshashcode` and `crossuuid` derive from it)
 pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.*`, `ullink.*` - each under the key as the bridge spelled it, folded)
-pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `write_into`, passed over on read)
+pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `commit`, passed over on read)
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");  (nullable `list<uuid>` of required `srcuuid` items, display `SrcUuids`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never lineage - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
 pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state` code, written on every row a message writes, display `State`: the state the message reached - `OrdStatus(39)`, else `ExecType(150)`, `00UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
 pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");  (nullable clock, display `ExprTime`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
@@ -1014,10 +1014,18 @@ impl FixRegistry
   pub fn into_json(&self) -> Result<String>
   pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)>  (added, merged) under merge_with's rules; no dialect - a snapshot states its own FIX:branches
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>  (`codesets/<name>.json` first - one document per named code set, stating its name and its members, refused when the name and the filename stem disagree - then `fields/<shard>.json` arrays under nine-digit shard names - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - and one native Field document per component or group; a crate-tagged document and `components/fixmsg.json` are passed over, the crate's own definition being the one that types a row; references resolve once, missing names and cycles refused)
-  pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (the three category directories and `codesets/`, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory)
+  pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (`commit` with its report discarded, one implementation so the two never answer differently)
+  pub fn commit(&self, root: &mut dyn IOBase) -> Result<FixCommit>  (the three category directories and `codesets/`, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory. Each document is digested where it lies and skipped where it already states this registry, so a commit writes what moved and a second commit of one registry writes nothing)
+pub struct FixCommit  (what one `commit` moved under a store root: `written` and `removed` name the documents, `skipped` counts the ones already stating the registry, because a store holds thousands a run leaves alone; `is_clean` is the replay answer and `len` what the commit considered)
+  pub written: Vec<SmolStr>
+  pub skipped: usize
+  pub removed: Vec<SmolStr>
+  pub fn is_clean(&self) -> bool
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
 
 ### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
-pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`, each capture named for the field it fills; kept ULBridge's because the line shape is the product's)
+pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`; `msgsessionid`, `msgctxid`, `msgseqnum` and `msgpluginid` are named for the fields they fill, and `timestamp`, `msgthreadid` and `level` name none and are the capture's own columns, so the header dates neither its line nor its message; kept ULBridge's because the line shape is the product's)
 
 ### yggdryl::fs  [rust/src/fs/mod.rs]  (Arrow-compatible filesystems bound to the crate's one IOBase: `FileSystem` is the public, object-safe seam, `BoundLocation` the binding every handle carries, and an unsupported backend capability returns `Error::Unsupported`)
   pub use file::FsFile;

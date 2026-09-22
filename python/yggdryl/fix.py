@@ -182,11 +182,26 @@ declaration Field clones paired with native Scalar wrappers in declaration
 order, skipping absent/null members and never flattening a group. Exact
 canonical names win; a renamed member's tag is used only when unique in both
 declaration and row.
+
+``ULBRIDGE_ROWHEADER`` is the row header a ULBridge log writes in front of
+every line, as a ``rowheader`` for
+:class:`~yggdryl.text.TextOptions` - the crate's own text rather than a
+second copy of it. Four of its seven captures are named for the fields they
+fill - ``msgsessionid``, ``msgctxid``, ``msgseqnum`` and ``msgpluginid`` -
+and ``timestamp``, ``msgthreadid`` and ``level`` name none and are the
+capture's own columns, carried in front, so the header dates neither its line
+nor its message: a caller who wants the line dated names that capture
+``mtime`` in a header of their own, which costs the ``timestamp`` column and
+reads the clock at ``datetime64(ns, UTC)`` whatever the expression spells.
+Its clock reads both fractions the bridge writes, three digits and grouped
+microseconds - and a line a row header does not match carries no capture
+context, which is what the lifecycle folds deliveries on.
 """
 
 from __future__ import annotations
 
 from ._native import (
+    ULBRIDGE_ROWHEADER,
     FixMsg,
     FixCapture,
     FixCodec,
@@ -204,6 +219,7 @@ from ._native import (
 )
 
 __all__ = [
+    "ULBRIDGE_ROWHEADER",
     "FixMsg",
     "FixCapture",
     "FixCodec",

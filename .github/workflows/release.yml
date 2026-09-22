@@ -108,6 +108,59 @@ jobs:
             echo "releasing $version from main"
           fi
 
+  consistency:
+    # The tag is the only record that a version is out, so a version with no
+    # tag can still be half out - and republishing a half-published version
+    # from a tree that has moved is how one number comes to name two
+    # different libraries. crates.io and npm cannot be rewritten, PyPI
+    # cannot be rewritten, and the registries that already answered are the
+    # ones that decide what the version means.
+    #
+    # So: all three or none, when `main` is the ref. A version some
+    # registries already carry is finished from the commit they were built
+    # at, by pushing `v<version>` there - which pins the tree the wheels are
+    # built from - or it is abandoned and `main` bumps. Neither is a push to
+    # `main`, and this is where that is refused rather than discovered.
+    name: No version is half out
+    needs: preflight
+    if: needs.preflight.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: All three registries, or none
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -uo pipefail
+          crate=no
+          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$VERSION\""; then crate=yes; fi
+          pypi=no
+          if curl -fsSL "https://pypi.org/pypi/yggdryl/$VERSION/json" >/dev/null 2>&1; then pypi=yes; fi
+          npm=no
+          if curl -fsSL "https://registry.npmjs.org/yggdryl/$VERSION" >/dev/null 2>&1; then npm=yes; fi
+          echo "crates.io=$crate pypi=$pypi npm=$npm for $VERSION"
+          held="$crate$pypi$npm"
+          if [ "$held" = "nonono" ] || [ "$held" = "yesyesyes" ]; then
+            echo "$VERSION is consistently out or consistently unreleased"
+            exit 0
+          fi
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "::warning title=Finishing a half-published version::$VERSION is on some registries and not others; the tag pins the tree, so this run finishes it"
+            exit 0
+          fi
+          echo "::error title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm"
+          cat >&2 <<EOF
+          $VERSION is already on some registries and not others, and this run is a
+          push to a branch, so the tree it would publish is whatever that branch
+          holds now - which is not necessarily the tree the published artifacts
+          were built from. Publishing from here would give one version number two
+          different contents.
+
+          Finish it from the commit it was built at:   git tag v$VERSION <commit> && git push origin v$VERSION
+          Or leave it partial and move on:             bump every manifest and push that.
+          EOF
+          exit 1
+
   crate:
     # crates.io carries only the core: the binding crates are `publish =
     # false` because their artifacts are the wheel and the npm package. The
@@ -115,7 +168,7 @@ jobs:
     # verification a release performs; the sparse index says whether the
     # version is already up, so a repaired run skips instead of failing.
     name: crates.io (yggdryl)
-    needs: preflight
+    needs: [preflight, consistency]
     if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -148,7 +201,7 @@ jobs:
     # hard runtime dependency, publishes no wheel to install against; the
     # build is still shipped so the platform works the day its stack does.
     name: Wheel (${{ matrix.label }})
-    needs: preflight
+    needs: [preflight, consistency]
     if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -306,7 +359,7 @@ jobs:
     # the core as a path dependency and prunes the Node member - so an
     # architecture without a wheel can still build from source.
     name: Source distribution
-    needs: preflight
+    needs: [preflight, consistency]
     if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -351,7 +404,7 @@ jobs:
     # ships every one of them, and the generated loader picks the matching
     # binary at require time.
     name: Node binary (${{ matrix.label }})
-    needs: preflight
+    needs: [preflight, consistency]
     if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -471,4 +524,98 @@ jobs:
           else
             gh release create "$version" --target "$GITHUB_SHA" \
               --title "$version" --generate-notes
+          fi
+
+  report:
+    # A release that dies is silent where it matters. Its own red tick is on
+    # a push nobody opened, `main` goes on spelling a version no registry
+    # finished, and the tag - the one record that a version is out - is
+    # exactly what a failed run never writes. That is how 0.1.9 reached
+    # crates.io and npm, missed PyPI, and then took four commits of feature
+    # work under the same number before anyone read the run.
+    #
+    # So a release that was going to publish and did not says so where it
+    # will be read: one issue per version, naming what each registry
+    # actually holds. A second failure of the same version comments on that
+    # issue rather than opening another, and the issue is the thing to close
+    # once the repair run is green.
+    #
+    # It fires on a failed `preflight` too. A preflight that refuses is the
+    # loudest failure there is - three manifests disagreeing, or a tag naming
+    # a version nothing spells - and it is the one case where no version
+    # output exists to name, so the commit names the report instead.
+    name: Say so when a release did not finish
+    needs: [preflight, consistency, crate, wheels, sdist, publish-pypi, node, publish-npm, release]
+    if: >-
+      always() && github.event_name != 'workflow_dispatch'
+      && (needs.preflight.result == 'failure'
+          || (needs.preflight.outputs.publish == 'true'
+              && (contains(needs.*.result, 'failure')
+                  || contains(needs.*.result, 'cancelled'))))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: The version, and what each registry holds
+        id: state
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          # A curl that fails reads as "this registry does not have it",
+          # which is the safe reading: the report says so and a human looks.
+          if [ -z "${VERSION:-}" ]; then
+            # Preflight never published one, so the tree is the only source -
+            # and it is the tree whose disagreement is being reported.
+            VERSION=$(python3 -c 'import tomllib;print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"])' 2>/dev/null || echo "")
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "title=Release from ${GITHUB_SHA} did not finish" >> "$GITHUB_OUTPUT"
+            echo "state=The workspace version could not be read, so this run never chose one." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "title=Release $VERSION did not finish" >> "$GITHUB_OUTPUT"
+          held() {
+            if [ "$2" = "yes" ]; then echo "- $1: has \`$VERSION\`"; else echo "- $1: does **not** have \`$VERSION\`"; fi
+          }
+          crate=no
+          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$VERSION\""; then crate=yes; fi
+          pypi=no
+          if curl -fsSL "https://pypi.org/pypi/yggdryl/$VERSION/json" >/dev/null 2>&1; then pypi=yes; fi
+          npm=no
+          if curl -fsSL "https://registry.npmjs.org/yggdryl/$VERSION" >/dev/null 2>&1; then npm=yes; fi
+          {
+            echo "state<<YGGEOF"
+            held "crates.io" "$crate"
+            held "PyPI" "$pypi"
+            held "npm" "$npm"
+            echo "YGGEOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$crate$pypi$npm" != "nonono" ] && [ "$crate$pypi$npm" != "yesyesyes" ]; then
+            echo "::error title=Half published::$VERSION is on some registries and not others"
+          fi
+      - name: File the report, or add to the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ steps.state.outputs.title }}
+          STATE: ${{ steps.state.outputs.state }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          body=$(printf '%s\n\n%s\n\n%s\n\n%s\n' \
+            "The release from \`$GITHUB_SHA\` did not finish: $RUN_URL" \
+            "$STATE" \
+            "No tag is written until every registry has the version, so the next push to \`main\` spelling this version will try again. Fix the cause on \`main\` first: every publish skips a registry that already has the version, and the tag lands last." \
+            "A version some registries carry and others do not must not be republished from a tree that has moved. Finish it from the commit it was built at by pushing \`v<version>\` there, or leave it partial and bump."
+          )
+          # The title is the key: a hidden marker is not reliably indexed by
+          # issue search, and two failures minutes apart would both miss it.
+          open=$(gh issue list --repo "$REPO" --state open --search "$TITLE in:title" \
+            --json number,title --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$REPO" --body "$body"
+            echo "commented on #$open"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$body"
           fi

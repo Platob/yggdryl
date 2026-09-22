@@ -733,7 +733,7 @@ impl PyFixRegistry {
 
     /// Write every populated field shard and named definition under
     /// `location`, removing the files no field or definition populates any
-    /// more.
+    /// more, and answering what moved.
     ///
     /// Shards are named by their tag's hundred, nine digits wide - tag 55
     /// lands in `fields/000000000.json`, tag 65003 in
@@ -743,9 +743,45 @@ impl PyFixRegistry {
     /// row rather than the half it declared itself; a reader takes the
     /// definition it holds from construction over the document it finds
     /// there.
+    /// Commits the store and answers nothing.
+    ///
+    /// The same work as `commit` for a caller that does not read what moved.
     fn write_into(&self, location: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut holder = folder_holder_from_value(location)?;
         self.inner.write_into(&mut holder).map_err(value_error)
+    }
+
+    /// Each document is digested where it lies and left alone where it
+    /// already states this registry, so a commit writes what moved and a
+    /// second commit of one registry writes nothing. The report is an
+    /// ordinary mapping: `written` and `removed` name the documents, in the
+    /// order a store lays them out, and `skipped` counts the ones a run left.
+    fn commit<'py>(
+        &self,
+        python: Python<'py>,
+        location: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let mut holder = folder_holder_from_value(location)?;
+        let report = self.inner.commit(&mut holder).map_err(value_error)?;
+        let answer = PyDict::new(python);
+        answer.set_item(
+            "written",
+            report
+                .written
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        )?;
+        answer.set_item("skipped", report.skipped)?;
+        answer.set_item(
+            "removed",
+            report
+                .removed
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        )?;
+        Ok(answer)
     }
 
     /// The field one identifier names exactly, or `None`.

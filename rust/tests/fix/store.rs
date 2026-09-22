@@ -61,7 +61,7 @@ fn the_committed_store_carries_the_crate_dump() {
     let scratch = scratch("crate-dump");
     std::fs::create_dir_all(&scratch).unwrap();
     let mut folder = LocalFolder::new(scratch.clone()).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     for name in CRATE_DOCUMENTS {
         let written = std::fs::read(scratch.join(name)).unwrap();
         let committed = root.join(name);
@@ -160,7 +160,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert!(root.join("groups/identifiers.json").exists());
     folder
         .child_by_path("groups/identifiers.json")
@@ -188,7 +188,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
 
     let root = scratch("crate-map-reference");
     let mut folder = LocalFolder::new(&root).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert!(root.join("groups/identifiers.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
@@ -275,7 +275,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
             "map-members"
         });
         let mut folder = LocalFolder::new(&root).unwrap();
-        registry.write_into(&mut folder).unwrap();
+        registry.commit(&mut folder).unwrap();
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -414,7 +414,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
             "map-component"
         });
         let mut folder = LocalFolder::new(&root).unwrap();
-        registry.write_into(&mut folder).unwrap();
+        registry.commit(&mut folder).unwrap();
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -753,7 +753,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     let root = scratch("roundtrip");
     let mut folder = LocalFolder::new(&root).unwrap();
     let registry = catalog();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     for file in [
         "fields/000000004.json",
         "components/Party.json",
@@ -825,7 +825,7 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     registry
         .set_codeset("venuecodeset", &[FixCode::new("Venue", "V")])
         .unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     // One document per set, each stating the name it is filed under so the
     // file says what it is without its own path.
     let stored = std::fs::read(root.join("codesets/partyidcodeset.json")).unwrap();
@@ -855,7 +855,7 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     // A set the dictionary no longer holds takes its document with it, the
     // way a definition no longer held takes its own.
     assert!(registry.remove_codeset("venuecodeset").unwrap().is_some());
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert!(!root.join("codesets/venuecodeset.json").exists());
     assert!(root.join("codesets/partyidcodeset.json").is_file());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
@@ -922,7 +922,7 @@ fn replacing_a_code_set_forgets_warm_typed_parse_memos() {
 fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
     let root = scratch("codeset-stem");
     let mut folder = LocalFolder::new(&root).unwrap();
-    catalog().write_into(&mut folder).unwrap();
+    catalog().commit(&mut folder).unwrap();
     // The stem is how a set is addressed, so a file stating another name is
     // refused the way a definition's document is.
     folder
@@ -945,7 +945,7 @@ fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
 fn a_field_naming_a_code_set_the_store_does_not_hold_is_refused() {
     let root = scratch("codeset-absent");
     let mut folder = LocalFolder::new(&root).unwrap();
-    catalog().write_into(&mut folder).unwrap();
+    catalog().commit(&mut folder).unwrap();
     // A field may not be left reading by a vocabulary nothing states, so
     // the field's own document is where the absence is named.
     std::fs::remove_file(root.join("codesets/partyidcodeset.json")).unwrap();
@@ -1150,7 +1150,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
 
     let root = scratch("two-on-one-tag");
     let mut folder = LocalFolder::new(&root).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert!(root.join("fields/000000004.json").is_file());
     let shard =
         yggdryl::from_json_scalar(std::fs::read(root.join("fields/000000004.json")).unwrap())
@@ -1187,10 +1187,10 @@ fn store_removes_empty_shards_and_named_documents() {
     registry
         .insert(tagged("Distant", 10000, DataType::utf8()))
         .unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     registry.remove(10000).unwrap();
     registry.remove("NewOrderSingle").unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert!(!root.join("fields/000000100.json").exists());
     assert!(!root.join("components/NewOrderSingle.json").exists());
     assert!(root.join("components/Party.json").exists());
@@ -1608,7 +1608,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
     );
     let root = scratch("metadata-refresh");
     let mut folder = LocalFolder::new(&root).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
     let before = registry.clone();
@@ -1631,7 +1631,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
     let mut registry = catalog();
     let root = scratch("canonical-case");
     let mut folder = LocalFolder::new(&root).unwrap();
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     for (_, name) in [
         (FixCategory::Fields, "PartyID"),
         (FixCategory::Components, "Party"),
@@ -1667,7 +1667,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
     };
     assert_eq!(item.name(), "Party");
     assert_eq!(item.as_fix().description(), Some("Replaced metadata"));
-    registry.write_into(&mut folder).unwrap();
+    registry.commit(&mut folder).unwrap();
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
 
@@ -2634,9 +2634,7 @@ mod committed {
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(&scratch).expect("a scratch folder");
         let mut folder = LocalFolder::new(scratch.clone()).expect("a local folder");
-        registry
-            .write_into(&mut folder)
-            .expect("the dictionary writes");
+        registry.commit(&mut folder).expect("the dictionary writes");
 
         let written = FixRegistry::from_handle(&LocalFolder::new(scratch.clone()).unwrap())
             .expect("what was written loads");
@@ -3002,10 +3000,19 @@ mod committed {
     /// seed: the code is stored whole in the identifier rather than rehashed
     /// with them, and since the code already holds both, the same one
     /// description is shorter by what it no longer has to say.
+    /// It last moved when the crate's event columns stopped restating what
+    /// `EventColumn` already owns: ten of the nineteen add nothing FIX's own
+    /// and now take the column's display and wording, so a text line's batch
+    /// and a FIX row describe one column with one sentence - and `curruuid`'s
+    /// microsecond wording above reaches the crate field through that column
+    /// rather than through a second copy of the sentence. Eleven descriptions
+    /// moved, those ten and `recdunix`'s own wording beside them - no
+    /// definition, reference, tag or count did, which is why the census below
+    /// stands unchanged.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 17_504_052_687_710_592_339);
+        assert_eq!(registry.stable_hash(), 4_902_395_561_484_260_370);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();
@@ -3038,4 +3045,145 @@ mod committed {
                 + definitions(&registry, FixCategory::Groups).count()
         );
     }
+}
+
+/// A commit states every document the first time and none the second.
+///
+/// This is what makes a dump replayable: the bytes settle in one pass, and a
+/// commit run again over the same registry is a read of each document and a
+/// write of nothing. A store that rewrote every document each time would churn
+/// two thousand files to change one, which is the cost the comparison buys off.
+#[test]
+fn committing_twice_writes_the_store_once() {
+    let registry = committed_registry();
+    let scratch = scratch("commit-twice");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+
+    let first = registry.commit(&mut folder).unwrap();
+    assert!(
+        !first.written.is_empty(),
+        "an empty root takes every document"
+    );
+    assert_eq!(first.skipped, 0, "nothing is there to skip yet");
+    assert!(
+        first.removed.is_empty(),
+        "an empty root holds nothing to remove"
+    );
+    assert!(
+        !first.is_clean(),
+        "writing the whole store is not a clean commit"
+    );
+
+    let second = registry.commit(&mut folder).unwrap();
+    assert!(
+        second.is_clean(),
+        "a second commit moved {:?} and removed {:?}",
+        second.written,
+        second.removed,
+    );
+    assert_eq!(
+        second.skipped,
+        first.written.len(),
+        "every document the first commit wrote is skipped by the second",
+    );
+    assert_eq!(first.len(), second.len(), "both commits consider one store");
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// One changed field is one written document, and the rest are left alone.
+///
+/// The point of comparing before writing: a caller loads a dictionary, merges
+/// a dialect into it and commits, and the report names the documents that
+/// actually moved rather than the whole store.
+#[test]
+fn a_commit_writes_the_documents_a_change_reaches_and_no_others() {
+    let mut registry = (*committed_registry()).clone();
+    let scratch = scratch("commit-delta");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+    let settled = registry.commit(&mut folder).unwrap();
+    assert!(registry.commit(&mut folder).unwrap().is_clean());
+
+    // One definition the store did not hold, filed on the shard its tag picks:
+    // one scalar moves, so one shard document moves and nothing else does.
+    let mut field = DataType::Int32.nullable_field("commitprobe");
+    field.as_fix_mut().set_tag(9_999).unwrap();
+    field
+        .as_fix_mut()
+        .set_description("What a commit reaches, and nothing beside it.")
+        .unwrap();
+    assert!(registry.add_field(field).unwrap(), "the probe is new");
+
+    let moved = registry.commit(&mut folder).unwrap();
+    assert!(moved.removed.is_empty(), "a restated field removes nothing");
+    assert_eq!(
+        moved.written.len(),
+        1,
+        "one changed field is one document, not {:?}",
+        moved.written,
+    );
+    assert!(
+        moved.written[0].starts_with("fields/"),
+        "a scalar lives on a field shard, not at {}",
+        moved.written[0],
+    );
+    assert_eq!(
+        moved.skipped + moved.written.len(),
+        moved.len(),
+        "a commit considers every document it states",
+    );
+    assert!(
+        moved.skipped >= settled.written.len() - 1,
+        "every document the probe did not reach is left where it lies",
+    );
+    assert!(registry.commit(&mut folder).unwrap().is_clean());
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// A store read back and committed again writes nothing.
+///
+/// The round trip is the replay: load the documents a commit wrote, and the
+/// registry they rebuild states the same bytes. A dump whose ordering or
+/// rendering depended on how the registry was built would write here.
+#[test]
+fn a_store_read_back_commits_clean() {
+    let registry = committed_registry();
+    let scratch = scratch("commit-replay");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+    registry.commit(&mut folder).unwrap();
+
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    let replay = loaded.commit(&mut folder).unwrap();
+    assert!(
+        replay.is_clean(),
+        "a loaded store restates itself; it moved {:?} and removed {:?}",
+        replay.written,
+        replay.removed,
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The two doors do one thing, so neither can drift from the other.
+///
+/// `write_into` is `commit` with its report discarded, kept for a caller that
+/// reads no report. It is one implementation: what the store holds after each
+/// is the same store, and a commit after a write_into is clean.
+#[test]
+fn write_into_is_the_commit_a_caller_reads_nothing_from() {
+    let registry = committed_registry();
+    let scratch = scratch("write-into-door");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
+
+    registry.write_into(&mut folder).unwrap();
+    let after = registry.commit(&mut folder).unwrap();
+    assert!(
+        after.is_clean(),
+        "write_into settled the store; a commit after it moved {:?}",
+        after.written,
+    );
+    assert!(after.skipped > 0, "the store is there to skip");
+    std::fs::remove_dir_all(&scratch).ok();
 }
