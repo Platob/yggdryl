@@ -1614,7 +1614,8 @@ section change together. What binds every page:
   `RecordOptions`), then one short section per media type - IPC, Parquet, Avro,
   plain text, JSON, YAML, TOML, Iceberg - then Compression (gzip, zlib, zstd)
   and Charsets. Each section is a sentence or two and a tabbed example; the
-  example carries the detail, not the prose.
+  example carries the detail, not the prose. A section's benchmarks sit in its
+  own `<section> performance` subsection, never in a shared one.
   `docs/types/` is a theme of the same kind: the Core pages - `datatype.md`,
   `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
   subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,

@@ -407,6 +407,55 @@ The stream carries its schema. A narrower `field` is a column pushdown: skipped 
     assert.equal(handle.readArrowField().dtype.length, 3)
     ```
 
+### Arrow IPC performance
+
+Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, with the stored side prepared outside the timer.
+
+| batch operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| read and drain `read_arrow_reader` | 65,536 | 4.33 ms | 15.1M rows/s |
+| `overwrite_arrow_reader` | 4,096 | 181 us | 22.6M rows/s |
+| `append_arrow_reader` | 4,096 | 615 us | 6.66M rows/s |
+| keyed `merge_arrow_reader` (upsert) | 4,096 | 5.44 ms | 754k rows/s |
+
+The same 65,536-row fixture, closed against opened:
+
+| dimension | fresh | opened |
+| --- | ---: | ---: |
+| `row_size` | 2.51 us | 6.63 ns |
+| `column_size` | 6.25 us | 7.04 ns |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/ipc
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record
+```
+
+`python/benchmarks/media.py` carries a PyArrow IPC write baseline over the same batches and sink. One containerized x86_64 Linux run with `--min-time 0.1 --repeat 3`, 65,536 rows, 4 columns, 8 batches.
+
+```text
+ipc write reader                 1.133 ms   57.9M rows/s
+PyArrow IPC write baseline       1.607 ms   40.8M rows/s
+```
+
+```bash
+python/.venv/bin/python python/benchmarks/media.py --filter ipc --filter "PyArrow IPC"
+```
+
+Through the `Media` enum, which redirects to the same implementation:
+
+| operation through `Media::Ipc` | estimate | throughput |
+| --- | ---: | ---: |
+| overwrite | 82.2 us | 49.8M rows/s |
+| append | 424 us | 9.67M rows/s |
+| keyed merge (upsert) | 6.41 ms | 639k rows/s |
+
+Criterion prepares the stored side for append and merge outside the timer. Sub-millisecond estimates are regression anchors.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/media_ipc
+```
+
 ## Parquet
 
 Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused.
@@ -575,6 +624,74 @@ Pages are compressed inside the file (`compression`), and the footer records the
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+### Parquet performance
+
+#### Batch operations
+
+Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23).
+
+| batch operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| read and drain `read_arrow_reader` | 65,536 | 18.6 ms | 3.52M rows/s |
+| `overwrite_arrow_reader` | 4,096 | 3.91 ms | 1.05M rows/s |
+| `append_arrow_reader` | 4,096 | 8.06 ms | 508k rows/s |
+| keyed `merge_arrow_reader` (upsert) | 4,096 | 9.03 ms | 453k rows/s |
+
+The read fixture holds 65,536 rows and four columns, the write fixture 4,096 rows. Criterion prepares the stored side for append and keyed merge (the upsert) outside the timer.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/parquet/read_rows
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/parquet
+```
+
+#### Dimensions
+
+Same 65,536-row fixture and host; fresh calls read the footer, opened calls answer from the cache.
+
+| operation | fresh | opened |
+| --- | ---: | ---: |
+| `row_size` | 8.95 us | 9.12 ns |
+| `column_size` | 18.1 us | 6.86 ns |
+| `read_arrow_field` | 297 us | 119 us |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/(row_size|column_size|read_arrow_field)'
+```
+
+#### Against PyArrow
+
+One containerized x86_64 Linux run of `python/benchmarks/media.py` with `--min-time 0.1 --repeat 3`: 65,536 rows, 4 columns, 8 batches.
+
+```text
+parquet write reader             6.932 ms    9.5M rows/s
+PyArrow parquet write baseline   6.495 ms   10.1M rows/s
+parquet read whole               2.620 ms   25.0M rows/s
+PyArrow parquet read baseline    2.195 ms   29.9M rows/s
+```
+
+Both directions sit within ~15% of PyArrow because both sides drive the same `parquet` machinery; [Arrow IPC](#arrow-ipc) carries that encoding's rows from the same run.
+
+```bash
+python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "parquet read whole" --filter "parquet read subset" --filter "parquet read records" --filter "parquet row size" --filter "parquet column size" --filter "PyArrow parquet"
+```
+
+#### Footer statistics
+
+Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are per-runtime anchors, not a comparison.
+
+| operation | runtime | rows | estimate |
+| --- | --- | ---: | ---: |
+| footer to native record (`read_parquet_statistics`) | Python | 65,536 | 504 us |
+| footer to native record (`readParquetStatistics`) | JavaScript | 10,000 | 728 us |
+| projected WKB to native record (`read_parquet_geospatial_statistics`) | Python | 8,192 | 2.64 ms |
+| projected WKB to native record (`readParquetGeospatialStatistics`) | JavaScript | 10,000 | 3.26 ms |
+
+```bash
+python/.venv/bin/python python/benchmarks/media.py --filter "parquet read statistics" --filter "parquet read geospatial stats" --filter "parquet read arrow field"
+YGGDRYL_BENCH_FILTER=records/read_parquet_statistics npm run --prefix node bench:media
+YGGDRYL_BENCH_FILTER=records/read_parquet_geospatial_statistics npm run --prefix node bench:media
+```
+
 ## Avro
 
 A container carries its writer schema; a reader schema resolves renames, promotions and defaults.
@@ -672,6 +789,91 @@ A container carries its writer schema; a reader schema resolves renames, promoti
       { note: 'none', quantity: 100 },
     ])
     ```
+
+### Avro performance
+
+#### Record surface
+
+Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, its append and merge base prepared outside the timer.
+
+| batch operation | rows | estimate | throughput |
+| --- | ---: | ---: | ---: |
+| read and drain `read_arrow_reader` | 65,536 | 26.0 ms | 2.52M rows/s |
+| `overwrite_arrow_reader` | 4,096 | 6.10 ms | 671k rows/s |
+| `append_arrow_reader` | 4,096 | 12.9 ms | 318k rows/s |
+| keyed `merge_arrow_reader` (upsert) | 4,096 | 11.4 ms | 358k rows/s |
+
+Opened calls answer from the cache `open` fills; closed calls derive fresh metadata, on the same 65,536-row fixture.
+
+| dimension | fresh | opened |
+| --- | ---: | ---: |
+| `row_size` | 20.6 us | 83.6 ns |
+| `column_size` | 22.3 us | 87.8 ns |
+| `read_arrow_field` | 101 us | 72.5 us |
+
+The generic options enum redirects both Avro settings without downcasting or allocation.
+
+| options operation | estimate |
+| --- | ---: |
+| read the block codec | 9.65 ns |
+| set the block codec and a fixed marker | 49.8 ns |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/avro
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/avro
+```
+
+#### JavaScript raw codec, historical
+
+One 4,580-byte container of 1,000 three-column rows, fixtures outside the loops, from `npm run bench:codec` on Node 24.18.0, an x86-64 Windows release build (AMD Ryzen 5 150). That script no longer exists and has no replacement, so these numbers stand as history.
+
+| operation | ms/op |
+| --- | ---: |
+| schema parse / canonical form | 0.136 / 0.003 |
+| container decode / resolve / encode | 13.075 / 10.549 / 18.667 |
+| first compressed block / decode / resolve | 0.054 / 13.833 / 11.979 |
+| single-object decode / encode | 0.018 / 0.087 |
+
+The first-block row includes header parsing and the first lazy `next` but not row decompression; the block decode and resolve rows measure that separately.
+
+#### Against fastavro and PyIceberg, on identical bytes
+
+`scripts/bench_avro_baseline.py` writes one deterministic ten-thousand-entry [Iceberg](#iceberg) manifest (112,246 bytes, statistics included) from Rust, then times three readers over those exact bytes. One containerized x86_64 Linux run: rustc stable release build, CPython 3.11.15, fastavro 1.12.2, pyiceberg 0.11.1.
+
+```text
+fastavro 1.12.2:                    67,719 entries/s best (147.7 ms best of 7)
+pyiceberg 0.11.1:                   46,790 entries/s best (213.7 ms best of 7)
+yggdryl full (release):            101,937 entries/s best ( 98.1 ms best of 7)
+yggdryl plan_stats (release):      203,252 entries/s best ( 49.2 ms best of 7)
+yggdryl plan_identity (release):   438,596 entries/s best ( 22.8 ms best of 7)
+```
+
+| row | call | keeps |
+| --- | --- | --- |
+| `full` | `read_manifest` | Every field, the way the other two readers do |
+| `plan_stats` | `read_manifest_for_plan(handle, true)`, what a filtered scan runs | The value counts, null counts, and bounds that pruning consults; the rest skipped as bytes |
+| `plan_identity` | The unfiltered planning read | File identity, partition tuple, and sizes |
+
+On this manifest the planning path is 2.1x the full decode with statistics kept and 4.4x without. The ratios hold at 1,000 and 100,000 entries: `manifest/decode_full`, `manifest/decode_plan_with_stats`, and `manifest/decode_plan_identity_only` in the `media` bench target.
+
+The script needs `fastavro` and `pyiceberg` installed into `python/.venv` and regenerates its fixture itself.
+
+```bash
+python/.venv/bin/python scripts/bench_avro_baseline.py
+```
+
+#### Codec groups
+
+From the same machine, the five `codec/avro*` groups:
+
+- **Types** (`codec/avro_types`, 10,000 rows each): primitives decode at ~2.9M rows/s and encode at ~3.5M rows/s. Two-string rows decode at ~3.3M rows/s, 18-digit decimals at ~6.7M rows/s, and array of records of maps at ~620K rows/s. The single-object varint floor sits at ~57-65 ns per framed datum.
+- **Codec x block size** (`codec/avro_blocks`, 65,536 three-column rows): decode throughput is nearly flat from 1,024 to 65,536 rows per block for every codec. Below ~1,000 rows the per-block header and sync overhead shows. Encoded bytes decode at ~20 MiB/s for snappy, ~12 for deflate, ~9.6 for zstandard, and ~38 for null. Null's bytes are bigger, so compare row rates.
+- **Projection** (`codec/avro_projection`, 40 columns, null codec so the skip itself is visible). Reading 3 of 40 columns takes 6.4 ms against 9.4 ms for all 40 over 8,192 rows. The saving is the decode and allocation of the 37 skipped columns, jumped by their length prefixes, never the row read.
+- **Resolution** (`codec/avro_resolution`): compiling a five-field plan costs ~533 ns once. Executing it per row beats the direct decode on this shape: 4.12 ms against 4.74 ms for 10,000 rows. The plan skips two writer columns the reader never wanted.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
+```
 
 ## Plain text
 
@@ -849,6 +1051,25 @@ A document is one [`Scalar`](../types/scalar.md); the bindings return native obj
     assert.ok(json.loads(encoded, { scalar: true }).equals(value))
     ```
 
+### JSON performance
+
+One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
+
+| operation | runtime | JSON |
+| --- | --- | ---: |
+| field class encode | CPython | 150 us |
+| field class decode | CPython | 340 us |
+| bytes decode | CPython | 19.5 us |
+| reader redirect | CPython | 26.8 us |
+| writer redirect | CPython | 141 us |
+| natural document decode | Node | 9.37 ms |
+| natural document emit | Node | 18.0 ms |
+
+```bash
+python/.venv/bin/python python/benchmarks/text.py --iterations 10000
+npm run --prefix node bench:text
+```
+
 ## YAML
 
 === "Rust"
@@ -906,6 +1127,44 @@ A document is one [`Scalar`](../types/scalar.md); the bindings return native obj
     assert.deepEqual(yaml.loads(encoded), natural)
     assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
     ```
+
+### YAML performance
+
+One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
+
+| operation | runtime | YAML |
+| --- | --- | ---: |
+| field class encode | CPython | 202 us |
+| field class decode | CPython | 387 us |
+| bytes decode | CPython | 47.6 us |
+| reader redirect | CPython | 51.5 us |
+| writer redirect | CPython | 200 us |
+| natural document decode | Node | 16.5 ms |
+| natural document emit | Node | 24.3 ms |
+
+```bash
+python/.venv/bin/python python/benchmarks/text.py --iterations 10000
+npm run --prefix node bench:text
+```
+
+#### Placeholders
+
+256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals.
+
+```text
+codec/placeholder/none/off  272.81 us   [271.30 us 274.52 us]
+codec/placeholder/none/on   266.07 us   [265.12 us 267.21 us]
+codec/placeholder/few/off   265.58 us   [264.58 us 266.86 us]
+codec/placeholder/few/on    327.80 us   [325.00 us 330.56 us]
+codec/placeholder/most/off  264.84 us   [262.10 us 268.46 us]
+codec/placeholder/most/on   386.80 us   [384.48 us 389.17 us]
+```
+
+The guard is within run noise; substitution cost about 0.5 us per rebuilt scalar.
+
+```bash
+cargo bench -p yggdryl --bench text -- codec/placeholder
+```
 
 ## TOML
 
@@ -969,6 +1228,25 @@ A document is one [`Scalar`](../types/scalar.md); the bindings return native obj
     assert.deepEqual(toml.loads(encoded), natural)
     assert.ok(toml.loads(encoded, { scalar: true }).equals(value))
     ```
+
+### TOML performance
+
+One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
+
+| operation | runtime | TOML |
+| --- | --- | ---: |
+| field class encode | CPython | 140 us |
+| field class decode | CPython | 363 us |
+| bytes decode | CPython | 26.5 us |
+| reader redirect | CPython | 27.9 us |
+| writer redirect | CPython | 145 us |
+| natural document decode | Node | 14.3 ms |
+| natural document emit | Node | 15.5 ms |
+
+```bash
+python/.venv/bin/python python/benchmarks/text.py --iterations 10000
+npm run --prefix node bench:text
+```
 
 ## Iceberg
 
@@ -1104,6 +1382,60 @@ A table lives in one folder: `metadata/` and `data/`, no catalog required.
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
+
+### Iceberg performance
+
+Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Avro](#avro-performance).
+
+| Metadata operation | Median | Throughput |
+| --- | ---: | ---: |
+| Parse 100 snapshots and three 50-column schemas | 12.168 ms | 2.8613 MiB/s |
+| Expire 99 of 100 snapshots | 9.5145 ms | 3.6592 MiB/s |
+| Stable hash of the same metadata | 61.634 us | - |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^identity/'
+```
+
+The manifest rows share that host and toolchain.
+
+| Manifest operation, 100,000 entries | Median | Throughput |
+| --- | ---: | ---: |
+| Full official-validated decode | 5.8718 s | 17.031 K entries/s |
+| Spec/header only; entries untouched | 190.02 us | 526.26 M nominal entries/s |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
+```
+
+#### Iceberg over S3
+
+The same table over the in-process S3 the S3 backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/s3/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+
+| operation | requests before | requests after | median before | median after |
+| --- | ---: | ---: | ---: | ---: |
+| append, one partition, 5,000 rows | 25 | 9 | 7.81 ms | 7.41 ms |
+| append, eight partitions, 40,000 rows | 67 | 16 | 56.7 ms | 35.0 ms |
+| upsert of 10 rows into one partition of eight | 37 | 13 | 16.6 ms | 8.93 ms |
+| full scan, eight files | 30 | 10 | 8.70 ms | 5.42 ms |
+| pruned scan, one file of eight | 9 | 3 | 4.11 ms | 2.40 ms |
+| `.log` object read as text, 2,304 lines | 6 | 6 | 36.2 ms | 25.0 ms |
+| FIX rows parsed, enriched and written back | 61 | 20 | 3.99 s | 2.81 s |
+
+Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
+
+```bash
+cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
+```
+
+#### Iceberg on Amazon S3 Tables
+
+`python/benchmarks/media/s3tables.py` is the same question against the real service, beside PyIceberg. It takes a table bucket ARN in `YGGDRYL_S3TABLES_ARN`, has PyIceberg create a table there partitioned by `symbol`, append 65,536 rows in four partitions through the service's catalog - the only door a commit to S3 Tables has - and then opens the same table both ways: PyIceberg through the catalog's REST load, this crate through the warehouse `s3:` location that load answers, with the region the ARN carries and the credentials the catalog vended. Opening the table, a full scan to Arrow, and a scan pruned to one partition of four are each timed on both sides, after the rows both read have been compared; the table is dropped afterwards. The ratio column is PyIceberg's median over this crate's, so above one is in this crate's favor. No table is published here: the run needs an account's own table bucket, and the numbers are those of a network round trip to it, which is why the request counts pinned above are the part that travels.
+
+```bash
+YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
+```
 
 ## Compression
 
@@ -1269,6 +1601,23 @@ A coding suffix on the name wraps the encoding: the same calls, compressed bytes
     assert.deepEqual(gzip.loads(standard.gzipSync(payload)), payload)
     ```
 
+#### gzip performance
+
+One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,000 bytes of JSON lines.
+
+```text
+gzip encode (yggdryl)      0.362 ms   2848.0 MiB/s
+gzip encode (stdlib gzip)  3.003 ms    343.0 MiB/s
+gzip decode (yggdryl)      0.253 ms   4065.4 MiB/s
+gzip decode (stdlib gzip)  0.396 ms   2597.8 MiB/s
+```
+
+`zlib-rs` puts the encode 8x ahead; [zlib](#zlib-performance) and [zstd](#zstd-performance) carry their rows from the same run.
+
+```bash
+python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
+```
+
 ### zlib
 
 `*_raw` is DEFLATE without the zlib header and trailer.
@@ -1354,6 +1703,23 @@ A coding suffix on the name wraps the encoding: the same calls, compressed bytes
     assert.deepEqual(standard.inflateRawSync(raw), plain)
     ```
 
+#### zlib performance
+
+`python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JSON lines, one containerized x86_64 Linux run, same wire format. `zlib-rs` puts the encode 9x ahead.
+
+```text
+zlib encode (yggdryl)      0.344 ms   2998.3 MiB/s
+zlib encode (stdlib zlib)  3.177 ms    324.2 MiB/s
+zlib decode (yggdryl)      0.234 ms   4401.1 MiB/s
+zlib decode (stdlib zlib)  0.484 ms   2127.9 MiB/s
+```
+
+`zlib-rs` level 6 trades a little ratio for speed on repetitive payloads; raise the level when size matters. [gzip](#gzip-performance) and [zstd](#zstd-performance) share this run.
+
+```bash
+python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
+```
+
 ### zstd
 
 === "Rust"
@@ -1419,6 +1785,21 @@ A coding suffix on the name wraps the encoding: the same calls, compressed bytes
     // A payload that is not a frame is reported, not silently returned.
     assert.throws(() => zstd.loads(Buffer.from('definitely not a compressed payload')))
     ```
+
+#### zstd performance
+
+One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines.
+
+```text
+zstd encode (yggdryl)     14.879 ms     69.2 MiB/s
+zstd decode (yggdryl)      0.358 ms   2877.3 MiB/s
+```
+
+Standard-library rows need `compression.zstd` (Python 3.14+); on 3.11 the script prints `stdlib compression.zstd unavailable on this interpreter; skipped`.
+
+```bash
+python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
+```
 
 ## Charsets
 
