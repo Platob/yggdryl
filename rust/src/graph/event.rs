@@ -1105,6 +1105,16 @@ fn copy_market<T: MarketElement + ?Sized, E: MarketElement + ?Sized>(this: &mut 
     this.set_figicode(other.get_figicode().cloned());
     this.set_cficode(other.get_cficode().cloned());
     this.set_miccode(other.get_miccode().cloned());
+    this.set_lastpx(other.get_lastpx());
+    this.set_lastqty(other.get_lastqty());
+    this.set_tif(other.get_tif().map(str::to_owned));
+    this.set_tradable(other.get_tradable());
+    this.set_symbolticker(other.get_symbolticker().map(str::to_owned));
+    this.set_avgpx(other.get_avgpx());
+    this.set_cumqty(other.get_cumqty());
+    this.set_leavesqty(other.get_leavesqty());
+    this.set_prevpx(other.get_prevpx());
+    this.set_prevqty(other.get_prevqty());
     this.set_bidpx(other.get_bidpx());
     this.set_bidcurrency(other.get_bidcurrency().cloned());
     this.set_bidqty(other.get_bidqty());

@@ -2812,6 +2812,14 @@ impl From<FixMsg> for Result<FixMsg> {
     }
 }
 
+impl From<FixMsg> for MarketEventData {
+    /// Moves the message's generic market event out without re-reading or
+    /// cloning any FIX content.
+    fn from(message: FixMsg) -> Self {
+        *message.event
+    }
+}
+
 impl Clone for FixMsg {
     /// The message, without its caches: the name table and the entries are
     /// derived from the row, rebuilt by the clone on its own first ask

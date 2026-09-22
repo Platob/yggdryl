@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::hash::Hasher;
 
+use super::event::{MarketElementData, MarketEventData};
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
 use crate::{
@@ -2050,6 +2051,50 @@ pub trait MarketEvent: Event + MarketElement {
 }
 
 impl<E: Event + MarketElement + ?Sized> MarketEvent for E {}
+
+/// A concrete market element that can move through the graph's canonical
+/// [`MarketElementData`] holder.
+///
+/// The holder is the one interchange representation. Implementors convert
+/// into it by value and rebuild from it by value, so changing one market
+/// entry wrapper into another moves owned strings, maps, and lineage rather
+/// than cloning them.
+pub trait MarketEntryValue:
+    MarketElement + From<MarketElementData> + Into<MarketElementData> + Sized
+{
+    /// Converts this entry into any other concrete market-entry value through
+    /// the canonical holder, moving every shared fact.
+    fn into_entry<T: MarketEntryValue>(self) -> T {
+        T::from(self.into())
+    }
+}
+
+impl<T> MarketEntryValue for T where
+    T: MarketElement + From<MarketElementData> + Into<MarketElementData> + Sized
+{
+}
+
+/// A concrete market event that can move through the graph's canonical
+/// [`MarketEventData`] holder.
+///
+/// The holder is the one interchange representation. Implementors convert
+/// into it by value and rebuild from it by value, so changing one operation
+/// wrapper into another moves owned strings, maps, and lineage rather than
+/// cloning them.
+pub trait MarketOperationValue:
+    MarketEvent + From<MarketEventData> + Into<MarketEventData> + Sized
+{
+    /// Converts this operation into any other concrete market-operation value
+    /// through the canonical holder, moving every shared fact.
+    fn into_operation<T: MarketOperationValue>(self) -> T {
+        T::from(self.into())
+    }
+}
+
+impl<T> MarketOperationValue for T where
+    T: MarketEvent + From<MarketEventData> + Into<MarketEventData> + Sized
+{
+}
 
 /// Folds `other` into a market event whose identity as the same event has
 /// already been established. `other_is_reference` selects which statement

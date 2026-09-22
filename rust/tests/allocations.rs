@@ -28,16 +28,19 @@ use std::time::Instant;
 use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
-use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
+use yggdryl::graph::{
+    Book, Element, Event, EventColumn, MarketElement, MarketEventData, MarketOperation, Order,
+    Quote,
+};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
 };
 use yggdryl::{
-    Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
-    FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar,
-    TimeUnit, Timezone, Value, Variant, Version,
+    Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord, FieldScalar, FixCode,
+    FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata,
+    Scalar, Side, State, TimeUnit, Timezone, Value, Variant, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -771,6 +774,75 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
             ));
         });
     }
+}
+
+#[test]
+fn typed_market_operation_and_entry_conversions_move_without_allocating() {
+    let mut event = MarketEventData::at(1);
+    event.set_crosscode("ORDER-1".to_owned());
+    event.finalize();
+    let mut operation = Some(MarketOperation::from(Order::from(event)));
+    let (into_entry, entry) = counted(|| {
+        operation
+            .take()
+            .expect("one operation")
+            .into_entry()
+            .expect("an order has an entry")
+    });
+    assert_eq!(into_entry, 0, "operation to entry allocated");
+
+    let mut entry = Some(entry);
+    let (at, operation) = counted(|| entry.take().expect("one entry").at(2));
+    assert_eq!(at, 0, "entry to operation allocated");
+    black_box(operation);
+}
+
+fn allocation_book_operation(
+    code: impl Into<String>,
+    unix: i64,
+    quantity: i64,
+    state: &str,
+) -> MarketOperation {
+    let mut event = MarketEventData::at(unix);
+    event.set_crosscode(code.into());
+    event.set_symbolticker(Some("ALLOC".to_owned()));
+    event.set_side(Side::read("Buy").expect("the shipped buy side"));
+    event.set_px(Decimal18::from_int(100));
+    event.set_qty(Decimal18::from_int(quantity));
+    event.set_state(State::read(state).expect("a shipped state"));
+    event.finalize();
+    Quote::from(event).into()
+}
+
+fn allocation_book(entries: usize) -> Book {
+    let mut book = Book::new(1, "ALLOC");
+    book.add_operations(
+        (0..entries).map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New")),
+    )
+    .expect("the initial depth");
+    book
+}
+
+#[test]
+fn one_book_update_does_not_allocate_per_live_entry() {
+    let mut shallow = allocation_book(1);
+    let shallow_update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
+    let (shallow_allocations, shallow_result) =
+        counted(|| shallow.add_operations([shallow_update]));
+    shallow_result.expect("the shallow update");
+
+    let mut deep = allocation_book(128);
+    let deep_update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
+    let (deep_allocations, deep_result) = counted(|| deep.add_operations([deep_update]));
+    deep_result.expect("the deep update");
+    assert_eq!(shallow.bid().len(), 1);
+    assert_eq!(deep.bid().len(), 128);
+
+    assert!(
+        deep_allocations <= shallow_allocations + 4,
+        "one update allocated {deep_allocations} times at depth 128 but {shallow_allocations} times at depth 1"
+    );
+    black_box((shallow, deep));
 }
 
 #[test]
