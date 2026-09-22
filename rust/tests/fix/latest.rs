@@ -279,9 +279,11 @@ fn occurrences<'msg>(message: &'msg FixMsg, group: &str) -> Vec<Vec<(&'msg str, 
         DataType::Sequence(SequenceType::List(item)) => item.as_ref(),
         other => panic!("a list, got {other}"),
     };
+    // A parsed message's row is a run, lent for the borrows the answer keeps.
     message
         .as_value()
-        .get(at)
+        .as_sequence()
+        .and_then(|row| row.get(at))
         .and_then(Scalar::as_sequence)
         .expect("occurrences")
         .iter()

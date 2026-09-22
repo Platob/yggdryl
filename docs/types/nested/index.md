@@ -6,13 +6,13 @@ The datatypes that hold other datatypes: four layouts that carry child fields, t
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Struct(StructType)`, `Sequence(SequenceType)`, `Mapping(MappingType)`, `Union(UnionFields, UnionMode)`, `Enum(EnumType)` and `RunEndEncoded(RunEndEncodedType)`; the values `Struct`, `Sequence` and `Map`, and `Nested`, the one family value over them |
+| Owns | `DataType::Struct(StructType)`, `Sequence(SequenceType)`, `Mapping(MappingType)`, `Union(UnionFields, UnionMode)`, `Enum(EnumType)` and `RunEndEncoded(RunEndEncodedType)`; the values `Struct`, `Serie` - a schema-free `Run` or the buffers of one field, on its [own page](../serie.md) - and `Map`, and `Nested`, the one family value over them |
 | Validates | At construction, once: unique child names, non-negative and unique union type ids, a non-negative fixed list length, map entries that are a non-null struct of a key and a value, an integer dictionary key, and non-null `int16`/`int32`/`int64` run ends |
 | Lazy | Nothing - a layout is checked when it is built and never re-derived; the `validate` a hand-built payload meets is the same check |
 | Cached | The children of one layout live in one shared allocation, so a datatype clone shares them rather than walking them; the Arrow projection is cached on the [`Field`](../field.md) |
 | Refuses | A duplicate child name, a duplicate or negative union type id, more than 128 union members, a child count that is not the layout's arity, and a value whose shape is not the one the layout declares |
 | Kinds | `DataTypeKind::Nested` for every one of the twelve ids (`0x91`-`0x9c`); `is_nested()` resolves the two wrappers through the value they encode, so a `dictionary(int16,utf8)` answers `false` |
-| Bindings | `Nested`, `Sequence`, `Map` and `Struct` are Rust only: Python and JavaScript read a stored value as a [`Scalar`](../scalar.md) whose `family` is `nested` |
+| Bindings | `Nested`, `Serie`, `Map` and `Struct` are Rust only: Python and JavaScript read a stored value as a [`Scalar`](../scalar.md) whose `family` is `nested` |
 
 ## Pages
 
@@ -144,7 +144,7 @@ record's values in sorted name order.
     let held = Nested::from_scalar(&sequence).expect("a sequence");
     let Nested::Sequence(leaf) = &held else { panic!("a sequence") };
     assert_eq!(leaf.len(), 2);
-    assert_eq!(leaf.children().count(), 2);
+    assert_eq!(leaf.iter().count(), 2);
     assert_eq!(held.dtype()?, DataType::list(DataType::Int64.required_field("item")));
     assert_eq!(held.into_scalar(), sequence);
 

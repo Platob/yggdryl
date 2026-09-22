@@ -558,7 +558,7 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
     match value {
         Scalar::Arrow(_) => collect_keys(&value.into_native()?, depth, keys)?,
         Scalar::Sequence(held) => {
-            for item in held.as_slice() {
+            for item in held.rows().iter() {
                 collect_keys(item, depth + 1, keys)?;
             }
         }
@@ -878,7 +878,7 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Timezone(held) => write_text(out, held.as_str())?,
         Scalar::MimeType(held) => write_text(out, held.as_str())?,
         Scalar::MediaType(held) => write_text(out, &held.to_string())?,
-        Scalar::Sequence(held) => write_array(held.as_slice(), keys, depth, out)?,
+        Scalar::Sequence(held) => write_array(&held.rows(), keys, depth, out)?,
         Scalar::Struct(held) => {
             let entries: Vec<(&str, &Scalar)> = held
                 .as_map()

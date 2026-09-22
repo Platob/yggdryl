@@ -280,16 +280,16 @@ impl FieldSegment {
         Ok(match self {
             Self::Field(name) => struct_child(field, value, name),
             Self::Index(position) => {
-                let Some(items) = value.as_sequence() else {
+                let Some(items) = value.as_serie() else {
                     return Ok(Scalar::Null);
                 };
+                // One row: lent by a run, built by a column.
                 resolve_index(*position, items.len())
                     .and_then(|index| items.get(index))
-                    .cloned()
-                    .unwrap_or(Scalar::Null)
+                    .map_or(Scalar::Null, Cow::into_owned)
             }
             Self::Range { start, end } => {
-                let Some(items) = value.as_sequence() else {
+                let Some(items) = value.sequence_rows() else {
                     return Ok(Scalar::Null);
                 };
                 let (from, until) = resolve_range(*start, *end, items.len());
@@ -369,9 +369,9 @@ pub(crate) fn struct_values<'value>(
     value: &'value Scalar,
 ) -> Option<Cow<'value, [Scalar]>> {
     let width = field.field_len();
-    if let Some(values) = value.as_sequence() {
+    if let Some(values) = value.sequence_rows() {
         if values.len() == width {
-            return Some(Cow::Borrowed(values));
+            return Some(values);
         }
         // A short or long sequence still reads in schema order: what is
         // missing is null, and what is past the schema is not there to read.
@@ -440,7 +440,7 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
     }
     // A struct spelled as a bare sequence takes its order from the schema.
     if let (Some(values), DataType::Struct(fields)) =
-        (value.as_sequence(), unwrap_dictionary(field.dtype()))
+        (value.sequence_rows(), unwrap_dictionary(field.dtype()))
     {
         return fields
             .as_fields()

@@ -156,7 +156,7 @@ A Struct `Field` resolves record names into its child order, whatever order the 
 
     // The core answers the ordered row the field names, not the document's order.
     assert_eq!(value.len(), 2);
-    assert_eq!(value[0], Scalar::from("AAPL"));
+    assert_eq!(value.get(0).as_deref(), Some(&Scalar::from("AAPL")));
     ```
 
 === "Python"

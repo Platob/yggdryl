@@ -813,8 +813,8 @@ impl<'a> FieldScalar<'a> {
         self.value.as_struct()
     }
 
-    /// Look up a sequence index.
-    pub fn get(&self, index: usize) -> Option<&Scalar> {
+    /// Look up a sequence index: lent by a run, built by a column.
+    pub fn get(&self, index: usize) -> Option<std::borrow::Cow<'_, Scalar>> {
         self.value.get(index)
     }
 

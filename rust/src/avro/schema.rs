@@ -342,7 +342,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
     match value {
         Scalar::Sequence(values) => Ok(Scalar::from_sequence(
             values
-                .as_slice()
+                .rows()
                 .iter()
                 .map(normalized_schema_json)
                 .collect::<Result<Vec<_>>>()?,

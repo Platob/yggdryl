@@ -203,7 +203,7 @@ impl Input {
                 .index_of_group(counter)
                 .and_then(|at| msg.as_value().get(at))
                 .map_or(Scalar::Null, |held| {
-                    msg.regrouped(counter, &self.field, held.clone())
+                    msg.regrouped(counter, &self.field, held.into_owned())
                 }),
             Source::Absent => Scalar::Null,
         }

@@ -2492,7 +2492,10 @@ mod widths {
         assert_eq!(canonical(Scalar::from(b"EUR".to_vec())), row(fixed("EUR")));
         // The canonical value carries the column's parameters, not the text's.
         let restated = canonical(Scalar::from("USD"));
-        let Some(Scalar::String(held)) = restated.get(0) else {
+        let Some(cell) = restated.get(0) else {
+            panic!("a string cell");
+        };
+        let Scalar::String(held) = cell.as_ref() else {
             panic!("a string cell");
         };
         assert_eq!(held.fixed(), Some(4));

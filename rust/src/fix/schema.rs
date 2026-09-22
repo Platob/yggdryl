@@ -41,6 +41,7 @@
 //! value and children remain in place, and `tagname` spells the key itself
 //! rather than nothing. No second projection duplicates them.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Weak};
@@ -2018,9 +2019,9 @@ impl super::FixMsg {
     /// // An unresolved numeric key stays in the one arrival record as tag zero,
     /// // named after itself rather than nulled, with its value as it arrived.
     /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
-    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
-    /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
-    /// assert_eq!(entry.get(2).and_then(yggdryl::Scalar::as_str), Some("x"));
+    /// let entry = entries.iter().find(|entry| entry.get(1).as_deref().and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// assert_eq!(entry.get(0).as_deref().and_then(yggdryl::Scalar::as_i128), Some(0));
+    /// assert_eq!(entry.get(2).as_deref().and_then(yggdryl::Scalar::as_str), Some("x"));
     /// # Ok(())
     /// # }
     /// ```
@@ -2071,7 +2072,7 @@ impl super::FixMsg {
                     let value = self
                         .index_of_group(counter)
                         .and_then(|index| self.as_value().get(index))
-                        .cloned()
+                        .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null);
                     self.regrouped(counter, column, value)
                 }
@@ -2082,7 +2083,7 @@ impl super::FixMsg {
                     crate::Scalar::Null => self
                         .index_of_name(column.name())
                         .and_then(|at| self.as_value().get(at))
-                        .cloned()
+                        .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null),
                     carried => carried,
                 },
@@ -2172,7 +2173,7 @@ impl super::FixMsg {
                 } else if source_field.dtype().is_nested()
                     || !crate::folds_equal(source_field.name(), entry.name())
                     || !entry.entries().is_empty()
-                    || source_value != &values[index]
+                    || *source_value != values[index]
                     || !covers_entry(self.registry(), column, &values[index], entry)
                 {
                     continue;
@@ -2353,8 +2354,7 @@ impl super::FixMsg {
         if let Some(count) = self
             .index_of_group(tag)
             .and_then(|index| self.as_value().get(index))
-            .and_then(crate::Scalar::as_sequence)
-            .map(<[crate::Scalar]>::len)
+            .and_then(|held| held.as_serie().map(crate::Serie::len))
         {
             return Ok(crate::Scalar::from(
                 i32::try_from(count).unwrap_or(i32::MAX),

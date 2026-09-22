@@ -8,9 +8,9 @@ mod nested {
         use std::collections::BTreeMap;
         use std::sync::Arc;
 
-        use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Scalar, Sequence, Struct};
+        use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Scalar, Serie, Struct};
 
-        let sequence = Sequence::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
+        let sequence = Serie::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
         let mapping = Mapping::Map(Map::new(Arc::from([(
             Scalar::from("k"),
             Scalar::from(1_i64),

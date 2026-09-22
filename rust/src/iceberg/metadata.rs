@@ -926,7 +926,7 @@ impl TableMetadata {
         let mut schemas = Vec::new();
         for entry in document
             .get_key_str("schemas")
-            .map(Scalar::sequence_iter)
+            .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
             schemas.push(schema_from_json("row", entry)?);
@@ -946,7 +946,7 @@ impl TableMetadata {
         let mut partition_specs = Vec::new();
         for entry in document
             .get_key_str("partition-specs")
-            .map(Scalar::sequence_iter)
+            .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
             partition_specs.push(PartitionSpec::from_json(entry)?);
@@ -979,7 +979,7 @@ impl TableMetadata {
         let mut sort_orders = Vec::new();
         for entry in document
             .get_key_str("sort-orders")
-            .map(Scalar::sequence_iter)
+            .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
             sort_orders.push(SortOrder::from_json(entry)?);
@@ -992,7 +992,7 @@ impl TableMetadata {
         let mut snapshots = Vec::new();
         for entry in document
             .get_key_str("snapshots")
-            .map(Scalar::sequence_iter)
+            .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
             snapshots.push(Snapshot::from_json(entry)?);
@@ -2678,7 +2678,7 @@ fn validate_versioned_document(document: &Scalar) -> Result<()> {
     reject_duplicate_document_string_ids(document, "encryption-keys", "key-id")?;
     for snapshot in document
         .get_key_str("snapshots")
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
     {
         Snapshot::from_json(snapshot)?.validate_for_version(version)?;
@@ -2744,7 +2744,7 @@ fn reject_duplicate_document_string_ids(
     let mut seen = HashSet::new();
     for entry in document
         .get_key_str(collection)
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
     {
         let Some(id) = entry.get_key_str(key).and_then(Scalar::as_str) else {
@@ -2764,7 +2764,7 @@ fn reject_duplicate_document_ids(document: &Scalar, collection: &str, key: &str)
     let mut seen = HashSet::new();
     for entry in document
         .get_key_str(collection)
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
     {
         let Some(id) = entry.get_key_str(key).and_then(Scalar::as_i64) else {
@@ -2930,8 +2930,9 @@ fn require_v3_types_absent(node: &Field, version: FormatVersion) -> Result<()> {
 fn log_entries(document: &Scalar, key: &str, value_key: &str) -> Vec<(i64, i64)> {
     document
         .get_key_str(key)
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
+        .iter()
         .filter_map(|entry| {
             Some((
                 entry.get_key_str("timestamp-ms")?.as_i64()?,
@@ -2945,8 +2946,9 @@ fn log_entries(document: &Scalar, key: &str, value_key: &str) -> Vec<(i64, i64)>
 fn metadata_log(document: &Scalar) -> Vec<(i64, SmolStr)> {
     document
         .get_key_str("metadata-log")
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
+        .iter()
         .filter_map(|entry| {
             Some((
                 entry.get_key_str("timestamp-ms")?.as_i64()?,
@@ -2960,10 +2962,9 @@ fn metadata_log(document: &Scalar) -> Vec<(i64, SmolStr)> {
 fn sequence(document: &Scalar, key: &str) -> Vec<Scalar> {
     document
         .get_key_str(key)
-        .map(Scalar::sequence_iter)
+        .and_then(Scalar::as_sequence)
         .unwrap_or_default()
-        .cloned()
-        .collect()
+        .to_vec()
 }
 
 /// Return the current wall-clock time in milliseconds since the Unix epoch.

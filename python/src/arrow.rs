@@ -524,8 +524,10 @@ impl PyArrowScalar {
             return as_py_with_field(py, &scalar, &field);
         }
         let items = PyList::empty(py);
-        for item in scalar.as_sequence().unwrap_or_default() {
-            items.append(as_py_with_field(py, item, &field)?)?;
+        if let Some(rows) = scalar.as_serie() {
+            for item in rows {
+                items.append(as_py_with_field(py, &item, &field)?)?;
+            }
         }
         Ok(items.into_any().unbind())
     }

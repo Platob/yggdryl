@@ -840,7 +840,7 @@ fn contains_fixed_uuid(value: &Scalar) -> bool {
         return true;
     }
     value.as_mapping().map_or_else(
-        || value.iter().any(contains_fixed_uuid),
+        || value.iter().any(|child| contains_fixed_uuid(&child)),
         |entries| entries.iter().any(|(_, value)| contains_fixed_uuid(value)),
     )
 }

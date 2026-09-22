@@ -721,19 +721,23 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         DefaultPlan::Bytes(width) => value
             .as_bytes()
             .is_some_and(|bytes| bytes.len() == *width && bytes.iter().all(|byte| *byte == 0)),
-        DefaultPlan::EmptySequence => value.as_sequence().is_some_and(<[Scalar]>::is_empty),
-        DefaultPlan::Sequence(plans) => value.as_sequence().is_some_and(|values| {
+        // A length is constant for either leaf, so no row is built to
+        // answer it.
+        DefaultPlan::EmptySequence => {
+            matches!(value, Scalar::Sequence(serie) if serie.is_empty())
+        }
+        DefaultPlan::Sequence(plans) => value.sequence_rows().is_some_and(|values| {
             values.len() == plans.len()
                 && plans
                     .iter()
-                    .zip(values)
+                    .zip(values.iter())
                     .all(|(plan, value)| plan_matches_value(plan, value))
         }),
-        DefaultPlan::Repeated(plan, length) => value.as_sequence().is_some_and(|values| {
+        DefaultPlan::Repeated(plan, length) => value.sequence_rows().is_some_and(|values| {
             values.len() == *length && values.iter().all(|value| plan_matches_value(plan, value))
         }),
-        DefaultPlan::Union(type_id, payload) => value.as_sequence().is_some_and(|values| {
-            let [actual_type_id, actual_payload] = values else {
+        DefaultPlan::Union(type_id, payload) => value.sequence_rows().is_some_and(|values| {
+            let [actual_type_id, actual_payload] = &*values else {
                 return false;
             };
             actual_type_id.as_i128() == Some(i128::from(*type_id))
@@ -779,12 +783,12 @@ fn interval_is_zero(value: &Scalar, unit: TimeUnit) -> bool {
     }
     match unit {
         TimeUnit::YearMonth => value.as_i128() == Some(0),
-        TimeUnit::DayTime => value.as_sequence().is_some_and(|values| {
-            matches!(values, [days, milliseconds]
+        TimeUnit::DayTime => value.sequence_rows().is_some_and(|values| {
+            matches!(&*values, [days, milliseconds]
                 if days.as_i128() == Some(0) && milliseconds.as_i128() == Some(0))
         }),
-        TimeUnit::MonthDayNano => value.as_sequence().is_some_and(|values| {
-            matches!(values, [months, days, nanoseconds]
+        TimeUnit::MonthDayNano => value.sequence_rows().is_some_and(|values| {
+            matches!(&*values, [months, days, nanoseconds]
                 if months.as_i128() == Some(0)
                     && days.as_i128() == Some(0)
                     && nanoseconds.as_i128() == Some(0))
@@ -799,7 +803,10 @@ pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool 
     }
     match dtype {
         DataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let Some(pair) = value.sequence_rows() else {
+                return false;
+            };
+            let [type_id, payload] = &*pair else {
                 return false;
             };
             let Some(type_id) = type_id.as_i128().and_then(|value| i8::try_from(value).ok()) else {

@@ -34,7 +34,8 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
             sequence(value, |value| into_natural(value, child), field)
         }
         DataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let pair = value.sequence_rows();
+            let Some([type_id, payload]) = pair.as_deref() else {
                 return Err(invalid(field, "expected [type_id, value] for a union"));
             };
             let id = type_id
@@ -83,7 +84,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
 
 /// Re-key one canonical struct row by the names its Field declares.
 fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.sequence_rows() else {
         // A record already carries its names; anything else is not a struct
         // row and the format writer refuses it under its own rules.
         return Ok(value);
@@ -160,7 +161,7 @@ fn sequence(
     mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
     field: &Field,
 ) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.sequence_rows() else {
         return Err(invalid(field, "expected an array"));
     };
     values
@@ -188,11 +189,11 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
             Scalar::from_struct(prepared)
         }
         Scalar::Sequence(values) => {
-            if values.as_slice().len() != fields.len() {
+            if values.len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values
-                .as_slice()
+                .rows()
                 .iter()
                 .cloned()
                 .zip(fields.iter())
@@ -206,10 +207,8 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
 
 /// Descend the branch a union's type ID selects.
 fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
-        return Err(invalid(field, "expected [type_id, value] for a union"));
-    };
-    let [type_id, payload] = values else {
+    let pair = value.sequence_rows();
+    let Some([type_id, payload]) = pair.as_deref() else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
     };
     let id = type_id

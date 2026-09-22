@@ -1314,8 +1314,8 @@ mod schema_documents {
         let identifiers: Vec<i64> = emitted
             .get_key_str("identifier-field-ids")
             .into_iter()
-            .flat_map(Scalar::sequence_iter)
-            .filter_map(Scalar::as_i64)
+            .flat_map(Scalar::iter)
+            .filter_map(|id| id.as_i64())
             .collect();
         assert_eq!(identifiers, [1, 2]);
     }
@@ -2092,16 +2092,14 @@ mod table_metadata {
         let encoded = document
             .get_key_str("snapshots")
             .into_iter()
-            .flat_map(Scalar::sequence_iter)
+            .flat_map(Scalar::iter)
             .next()
             .unwrap();
         assert!(encoded.get_key_str("manifest-list").is_none());
         assert_eq!(
             encoded
                 .get_key_str("manifests")
-                .map(Scalar::sequence_iter)
-                .unwrap_or_default()
-                .count(),
+                .map_or(0, |manifests| manifests.iter().count()),
             2
         );
 
@@ -2238,10 +2236,11 @@ mod table_metadata {
             emitted
                 .get_key_str("snapshots")
                 .into_iter()
-                .flat_map(Scalar::sequence_iter)
+                .flat_map(Scalar::iter)
                 .find(|snapshot| {
                     snapshot.get_key_str("snapshot-id").and_then(Scalar::as_i64) == Some(7)
                 })
+                .as_deref()
                 .and_then(|snapshot| snapshot.get_key_str("key-id"))
                 .and_then(Scalar::as_str),
             Some("key-1")
@@ -2615,7 +2614,7 @@ mod tables {
         let snapshots = document
             .get_key_str("snapshots")
             .unwrap()
-            .sequence_iter()
+            .iter()
             .map(|snapshot| {
                 snapshot
                     .without_key("manifest-list")

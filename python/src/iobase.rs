@@ -3195,9 +3195,9 @@ impl PyRecordIterator {
 
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         loop {
-            if let Some(row) = self.rows.as_sequence().and_then(|rows| rows.get(self.next)) {
+            if let Some(row) = self.rows.get(self.next) {
                 self.next += 1;
-                let record = crate::scalar::as_py_with_field(py, row, &self.field)?;
+                let record = crate::scalar::as_py_with_field(py, &row, &self.field)?;
                 return match &self.from_dict {
                     Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
                     None => Ok(Some(record)),

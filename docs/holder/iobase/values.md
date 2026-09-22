@@ -147,7 +147,7 @@ Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. T
     let field = Field::from_str(
         "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
     )?;
-    assert_eq!(handle.read_scalar(Some(&field))?[0], Scalar::from(2_i64));
+    assert_eq!(handle.read_scalar(Some(&field))?.get(0).as_deref(), Some(&Scalar::from(2_i64)));
     ```
 
 === "Python"

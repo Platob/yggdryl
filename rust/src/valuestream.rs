@@ -370,8 +370,17 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
         }
         Scalar::Sequence(held) => {
             chunk.push(DataTypeId::List.as_u8());
-            write_size(chunk, held.as_slice().len());
-            children.extend(held.as_slice().iter().map(Child::Value));
+            write_size(chunk, held.len());
+            match held.as_slice() {
+                Some(rows) => children.extend(rows.iter().map(Child::Value)),
+                // A column lends no row: each is built and written whole
+                // here, the same pre-order the children stack writes.
+                None => {
+                    for row in held.rows().iter() {
+                        encode_whole(row, chunk);
+                    }
+                }
+            }
         }
         Scalar::Mapping(held) => {
             chunk.push(DataTypeId::Map.as_u8());

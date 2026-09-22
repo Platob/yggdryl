@@ -373,8 +373,9 @@ impl Scalar {
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
             Self::Sequence(values) => {
-                write_sequence_header(sink, values.as_slice().len());
-                for value in values.as_slice() {
+                let rows = values.rows();
+                write_sequence_header(sink, rows.len());
+                for value in rows.iter() {
                     value.feed(sink, depth + 1);
                 }
             }

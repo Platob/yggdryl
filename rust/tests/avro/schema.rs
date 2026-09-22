@@ -254,7 +254,7 @@ mod avro {
             let container = yggdryl::avro::read_container(&handle).unwrap();
             let tail = container.rows[0]
                 .path("next.next.value")
-                .and_then(yggdryl::Scalar::as_i64);
+                .and_then(|value| value.as_i64());
             assert_eq!(tail, Some(3));
         }
 

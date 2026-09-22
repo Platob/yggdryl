@@ -224,7 +224,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
             snapshot.as_struct().unwrap()["components"]
                 .get(at)
                 .unwrap()
-                .clone(),
+                .into_owned(),
         )
         .unwrap();
         let DataType::Mapping(map) = component.fields()[0].dtype() else {
@@ -312,7 +312,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
             document.as_struct().unwrap()["components"]
                 .get(at)
                 .unwrap()
-                .clone(),
+                .into_owned(),
         )
         .unwrap();
         assert_eq!(stored.name(), "mappedlookup");
@@ -502,7 +502,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     for category in FixCategory::ALL {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
-    let group = Field::from_value(record["groups"].get(0).unwrap().clone()).unwrap();
+    let group = Field::from_value(record["groups"].get(0).unwrap().into_owned()).unwrap();
     let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the native group list")
     };
@@ -838,6 +838,7 @@ fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
         document
             .get_key_str("codes")
             .and_then(|codes| codes.get(0))
+            .as_deref()
             .and_then(|code| code.get_key_str("value"))
             .and_then(Scalar::as_str),
         Some("B")
@@ -2068,13 +2069,17 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     assert_eq!(
         rules
             .get(0)
+            .as_deref()
             .and_then(|rule| rule.get_key_str("plan"))
             .and_then(Scalar::as_str),
         Some("select maxfloor as displayqty"),
     );
     // And the keys stay in the order the reader walks them, so the file
     // reads the way the document is written.
-    assert_eq!(rules.get(0).map(Scalar::keys), Some(vec!["plan", "doc"]));
+    assert_eq!(
+        rules.get(0).as_deref().map(Scalar::keys),
+        Some(vec!["plan", "doc"])
+    );
 
     // Reading one back restates the canonical text, whatever order the file
     // spelled an entry's keys in.

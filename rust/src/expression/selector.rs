@@ -375,9 +375,9 @@ impl Selector {
         if value.is_null() {
             return Ok(Self::all());
         }
-        if let Some(items) = value.as_sequence() {
+        if let Some(items) = value.sequence_rows() {
             let mut projections = Vec::with_capacity(items.len());
-            for item in items {
+            for item in items.iter() {
                 projections.push(Projection::from_scalar(item)?);
             }
             return Ok(Self::new(projections));

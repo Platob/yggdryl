@@ -59,7 +59,7 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(
     // again on the way in; that second pass is the price of the first being
     // the only thing that reads a document's spellings.
     let canonical = rows
-        .as_sequence()
+        .sequence_rows()
         .unwrap_or_default()
         .iter()
         .map(|row| root.from_natural_value(row.clone()))

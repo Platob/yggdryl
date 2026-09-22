@@ -3,6 +3,7 @@
 //! [`PyScalar`] owns only the core value. The conversion helpers here are also
 //! the one boundary used by codecs, expressions, and record adapters.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -69,8 +70,10 @@ impl PyScalar {
         Self { inner }
     }
 
-    fn child_at(&self, index: isize) -> Option<&Scalar> {
-        let length = self.inner.as_sequence()?.len();
+    /// One sequence child under Python's negative indexing: lent by a run,
+    /// built by a column.
+    fn child_at(&self, index: isize) -> Option<Cow<'_, Scalar>> {
+        let length = self.inner.as_serie()?.len();
         let index = if index < 0 {
             length.checked_sub(index.unsigned_abs())?
         } else {
@@ -452,9 +455,8 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         ),
         Scalar::Sequence(values) => {
             let values = values
-                .as_slice()
                 .iter()
-                .map(|value| scalar_pickle_state(py, value))
+                .map(|value| scalar_pickle_state(py, &value))
                 .collect::<PyResult<Vec<_>>>()?;
             tagged_pickle_state(py, "sequence", Some(pickle_tuple(py, values)?))
         }
@@ -1305,12 +1307,14 @@ impl PyScalar {
 
     /// Iterate over sequence children, mapping keys, or record values.
     fn __iter__(&self) -> PyScalarIterator {
-        PyScalarIterator::new(self.inner.iter().cloned())
+        PyScalarIterator::new(self.inner.iter().map(Cow::into_owned))
     }
 
     /// Return a sequence child, accepting Python's negative indexes.
     fn at(&self, index: isize) -> Option<Self> {
-        self.child_at(index).cloned().map(Self::from_inner)
+        self.child_at(index)
+            .map(Cow::into_owned)
+            .map(Self::from_inner)
     }
 
     /// Look up one mapping key or record field without lowering the child.
@@ -1330,14 +1334,17 @@ impl PyScalar {
 
     /// Walk a dotted mapping/record/sequence path.
     fn path(&self, path: &str) -> Option<Self> {
-        self.inner.path(path).cloned().map(Self::from_inner)
+        self.inner
+            .path(path)
+            .map(Cow::into_owned)
+            .map(Self::from_inner)
     }
 
     /// Return whether a mapping key, record name, or sequence value exists.
     fn has(&self, key: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Some(values) = self.inner.as_sequence() {
+        if let Some(values) = self.inner.as_serie() {
             let key = from_py(key)?;
-            return Ok(values.contains(&key));
+            return Ok(values.iter().any(|value| *value == key));
         }
         Ok(self.child_for_key(key)?.is_some())
     }
@@ -1409,14 +1416,14 @@ impl PyScalar {
     }
 
     fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Self> {
-        if self.inner.as_sequence().is_some() {
+        if self.inner.as_serie().is_some() {
             if key.is_instance_of::<PyBool>() || !key.is_instance_of::<PyInt>() {
                 return Err(PyTypeError::new_err("sequence indexes must be int"));
             }
             let index = key.extract::<isize>()?;
             return self
                 .child_at(index)
-                .cloned()
+                .map(Cow::into_owned)
                 .map(Self::from_inner)
                 .ok_or_else(|| PyIndexError::new_err(index));
         }
@@ -1632,9 +1639,8 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Interval(interval) => interval_as_py(py, interval),
         Scalar::Sequence(items) => {
             let items = items
-                .as_slice()
                 .iter()
-                .map(|item| as_py(py, item))
+                .map(|item| as_py(py, &item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
@@ -1664,9 +1670,9 @@ pub(crate) fn as_py_with_field(
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
-                Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
-                    for (child, value) in fields.iter().zip(values.as_slice()) {
-                        output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
+                Scalar::Sequence(values) if values.len() == fields.len() => {
+                    for (child, value) in fields.iter().zip(values.iter()) {
+                        output.set_item(child.name(), as_py_with_field(py, &value, child)?)?;
                     }
                 }
                 Scalar::Struct(values) => {
@@ -1692,7 +1698,7 @@ pub(crate) fn as_py_with_field(
         }
         CoreDataType::Sequence(sequence) => {
             let child = sequence.item();
-            let values = value.as_sequence().ok_or_else(|| {
+            let values = value.as_serie().ok_or_else(|| {
                 PyValueError::new_err(format!(
                     "expected a typed list sequence, got {}",
                     value.kind()
@@ -1700,7 +1706,7 @@ pub(crate) fn as_py_with_field(
             })?;
             let values = values
                 .iter()
-                .map(|value| as_py_with_field(py, value, child))
+                .map(|value| as_py_with_field(py, &value, child))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, values)?.into_any().unbind())
         }
@@ -1729,7 +1735,8 @@ pub(crate) fn as_py_with_field(
             Ok(output.into_any().unbind())
         }
         CoreDataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let rows = value.sequence_rows();
+            let Some([type_id, payload]) = rows.as_deref() else {
                 return Err(PyValueError::new_err(
                     "typed union value must contain its type id and payload",
                 ));
@@ -1782,9 +1789,8 @@ fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
         Scalar::Sequence(items) => {
             let items = items
-                .as_slice()
                 .iter()
-                .map(|item| as_py_key(py, item))
+                .map(|item| as_py_key(py, &item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyTuple::new(py, items)?.into_any().unbind())
         }

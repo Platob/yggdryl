@@ -1,4 +1,5 @@
-//! Sequence: many of one thing, in all five layouts Arrow gives it.
+//! Sequence: many of one thing, in all five layouts Arrow gives it - and
+//! the run a row is.
 //!
 //! One family, one file. Every list-shaped datatype is a leaf here, and
 //! [`DataType::Sequence`] is the one variant that holds them, so a caller
@@ -16,8 +17,24 @@
 //! one item field, the same for all of them. That is why [`Self::item`] is
 //! the whole of what most readers need.
 //!
+//! On the value side the family's value is [`Serie`], and this file holds
+//! its schema-free leaf, [`Run`]: what a row canonicalizes to, what a
+//! document parses as, what [`Scalar::from_sequence`] builds. Every other
+//! leaf of [`Serie`] is a column - the Arrow buffers of one [`Field`] - and
+//! the two answer the same verbs at different costs:
+//!
+//! | ask | [`Run`] | a column |
+//! | --- | --- | --- |
+//! | `field()` | `None` | the field the rows are typed by |
+//! | `as_slice()` | the values, lent | `None`: no value is stored |
+//! | `scalar(i)` | one clone | one row built off the buffers |
+//! | `null_count()` | a walk | the validity bitmap's count |
+//! | `push`, `set`, `splice` | the whole run copied once | the buffers written in place |
+//! | `into_arrow_array()` | `None` | the buffers, shared |
+//!
 //! [`DataType::Sequence`]: crate::DataType::Sequence
 //! [`Self::item`]: SequenceType::item
+//! [`Serie`]: crate::Serie
 
 use std::fmt;
 use std::sync::Arc;
@@ -27,7 +44,7 @@ use crate::datatype::validate_non_negative;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
+use crate::{DataType, DataTypeId, DataTypeKind, Field, Result, Serie};
 use serde::{Deserialize, Serialize};
 
 /// The sequence family's datatype payload.
@@ -215,14 +232,24 @@ impl DataType {
     }
 }
 
-/// One ordered sequence of scalar children.
+/// A schema-free ordered run of values: what a row canonicalizes to.
+///
+/// One shared slice, built in one allocation and lent as it is. It declares
+/// no field, so it accepts every value and agrees its datatype back out of
+/// its rows; [`Serie`] holds it as its one schema-free leaf, beside the
+/// columns that carry a field.
+///
+/// A run is written by copying it once - `Arc<[Scalar]>` cannot grow in
+/// place - so building one a `push` at a time is quadratic;
+/// [`Scalar::from_sequence`] and [`Serie::new`] build one from values in
+/// hand.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Sequence(Arc<[Scalar]>);
+pub struct Run(Arc<[Scalar]>);
 
-impl Sequence {
-    /// Construct an ordered sequence.
+impl Run {
+    /// Construct an ordered run.
     pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
         Self(values.into())
     }
@@ -238,13 +265,13 @@ impl Sequence {
     }
 }
 
-impl fmt::Display for Sequence {
+impl fmt::Display for Run {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{:?}", self.as_slice())
     }
 }
 
-impl NestedValue for Sequence {
+impl NestedValue for Run {
     fn len(&self) -> usize {
         self.as_slice().len()
     }
@@ -254,18 +281,19 @@ impl NestedValue for Sequence {
     }
 }
 
-impl Value for Sequence {
+impl Value for Run {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::Sequence(self.clone()).dtype()
+        Scalar::Sequence(Serie::Run(self.clone())).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Sequence(self)
+        Scalar::Sequence(Serie::Run(self))
     }
 
+    /// Answers only a run: a column is the same variant and not this leaf.
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Sequence(value) => Some(value),
+            Scalar::Sequence(Serie::Run(value)) => Some(value),
             _ => None,
         }
     }

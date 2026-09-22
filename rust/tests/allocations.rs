@@ -28,6 +28,7 @@ use std::time::Instant;
 use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
+use yggdryl::SerieValue as _;
 use yggdryl::graph::{
     Book, Element, Event, EventColumn, MarketElement, MarketEventData, MarketOperation, Order,
     Quote,
@@ -40,7 +41,7 @@ use yggdryl::{
 use yggdryl::{
     Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord, FieldScalar, FixCode,
     FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata,
-    Scalar, Side, State, TimeUnit, Timezone, Value, Variant, Version,
+    Scalar, Serie, Side, State, TimeUnit, Timezone, Value, Variant, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1433,6 +1434,211 @@ fn building_a_sequence_costs_one_allocation() {
     free("building the shared empty sequence", || {
         black_box(Scalar::from_sequence([]));
     });
+}
+
+/// An int64 column and a utf8 column of `rows` rows, one row in three
+/// absent, straight off Arrow buffers.
+fn leaf_columns(rows: usize) -> (Serie, Serie) {
+    use arrow_array::{Int64Array, StringArray};
+
+    let counts = Int64Array::from(
+        (0..rows)
+            .map(|index| (index % 3 != 1).then(|| i64::try_from(index).expect("a row count")))
+            .collect::<Vec<_>>(),
+    );
+    let symbols = StringArray::from(
+        (0..rows)
+            .map(|index| (index % 3 != 1).then(|| format!("S{index}")))
+            .collect::<Vec<_>>(),
+    );
+    (
+        Serie::from_arrow_array(Field::new("count", DataType::Int64, true), Arc::new(counts))
+            .expect("an int64 column"),
+        Serie::from_arrow_array(
+            Field::new("symbol", DataType::utf8(), true),
+            Arc::new(symbols),
+        )
+        .expect("a utf8 column"),
+    )
+}
+
+#[test]
+fn reading_a_typed_leaf_allocates_nothing() {
+    // A column holds buffers and no value; a typed read lends out of them -
+    // one bounds check, one bitmap read, one buffer read - and builds
+    // nothing, however many rows the column holds.
+    for rows in [4_usize, 1_024, 16_384] {
+        let (counts, symbols) = leaf_columns(rows);
+        let middle = rows / 2;
+        let absent = 1;
+
+        let leaf = counts.as_int64().expect("an int64 column");
+        free(&format!("value on {rows} int64 rows"), || {
+            assert_eq!(
+                black_box(leaf).value(black_box(middle)),
+                Some(middle as i64)
+            );
+            assert_eq!(black_box(leaf).value(black_box(absent)), None);
+            assert_eq!(black_box(leaf).value(black_box(rows)), None);
+        });
+        free(&format!("values on {rows} int64 rows"), || {
+            assert_eq!(black_box(leaf).values().len(), rows);
+        });
+        free(&format!("len and is_null on {rows} int64 rows"), || {
+            assert_eq!(black_box(&counts).len(), rows);
+            assert!(!black_box(&counts).is_null(middle).expect("in range"));
+            assert!(black_box(leaf).is_null(absent).expect("in range"));
+            assert_eq!(black_box(&counts).null_count(), (rows + 1) / 3);
+            black_box(leaf.nulls());
+            black_box(black_box(&counts).as_int64());
+        });
+
+        let leaf = symbols.as_utf8().expect("a utf8 column");
+        free(&format!("value on {rows} utf8 rows"), || {
+            assert!(black_box(leaf).value(black_box(middle)).is_some());
+            assert_eq!(black_box(leaf).value(black_box(absent)), None);
+        });
+        free(
+            &format!("the offsets and the payload of {rows} utf8 rows"),
+            || {
+                assert_eq!(black_box(leaf).offsets().len(), rows + 1);
+                black_box(leaf.payload().as_slice());
+            },
+        );
+        free(&format!("len and is_null on {rows} utf8 rows"), || {
+            assert_eq!(black_box(&symbols).len(), rows);
+            assert!(!black_box(&symbols).is_null(middle).expect("in range"));
+            assert!(black_box(leaf).is_null(absent).expect("in range"));
+            black_box(black_box(&symbols).as_utf8());
+            black_box(black_box(&symbols).field());
+        });
+    }
+}
+
+#[test]
+fn cloning_a_column_allocates_nothing() {
+    // A column leaf sits behind one shared pointer and its Arrow buffers
+    // behind one each, so a clone at any level is pointer bumps, and so is
+    // the scalar carrying one.
+    for rows in [4_usize, 16_384] {
+        let (counts, symbols) = leaf_columns(rows);
+        let records = Serie::from_scalars(
+            Field::new(
+                "row",
+                DataType::from(
+                    StructType::from_fields([
+                        Field::new("count", DataType::Int64, true),
+                        Field::new("symbol", DataType::utf8(), true),
+                    ])
+                    .expect("two named children"),
+                ),
+                false,
+            ),
+            (0..rows).map(|index| {
+                Scalar::from_sequence([
+                    counts.scalar(index).expect("in range"),
+                    symbols.scalar(index).expect("in range"),
+                ])
+            }),
+        )
+        .expect("a record column");
+        let held = Scalar::Sequence(counts.clone());
+
+        free(&format!("cloning {rows} int64 rows"), || {
+            black_box(black_box(&counts).clone());
+        });
+        free(&format!("cloning the int64 leaf of {rows} rows"), || {
+            black_box(black_box(&counts).as_int64().expect("int64").clone());
+        });
+        free(&format!("cloning {rows} utf8 rows"), || {
+            black_box(black_box(&symbols).clone());
+        });
+        free(&format!("cloning the utf8 leaf of {rows} rows"), || {
+            black_box(black_box(&symbols).as_utf8().expect("utf8").clone());
+        });
+        free(&format!("cloning {rows} record rows"), || {
+            black_box(black_box(&records).clone());
+        });
+        free(&format!("cloning a scalar holding {rows} rows"), || {
+            black_box(black_box(&held).clone());
+        });
+    }
+}
+
+#[test]
+fn a_second_push_into_an_owned_column_allocates_nothing() {
+    // A column taken off a foreign buffer copies its rows once, on its
+    // first edit, into a buffer it owns; from then on a push lands in that
+    // buffer. What a push then costs is a bounded constant - the builder
+    // Arrow hands the buffer back as, and the handle it is finished into -
+    // and never a row: the second push costs what the thousandth does, and
+    // costs the same over sixteen times the rows. A growth past the
+    // capacity would show as one reallocation among the thousand, and a
+    // copy would show as a count that follows the corpus.
+    use arrow_array::Int64Array;
+
+    let field = || Field::new("price", DataType::Int64, false);
+    let column = |rows: usize| {
+        let array = Int64Array::from(
+            (0..rows)
+                .map(|index| i64::try_from(index).expect("a row count"))
+                .collect::<Vec<_>>(),
+        );
+        Serie::from_arrow_array(field(), Arc::new(array)).expect("an int64 column")
+    };
+
+    let mut native = Vec::new();
+    let mut proven = Vec::new();
+    for rows in [1_024_usize, 16_384] {
+        // The buffer path: a native value into the values buffer.
+        let mut owned = column(rows);
+        let leaf = owned.get_int64_mut().expect("an int64 column");
+        leaf.push_value(Some(1)).expect("the first edit");
+        let (second, ()) = counted(|| leaf.push_value(Some(2)).expect("the second push"));
+        let (thousand, ()) = counted(|| {
+            for _ in 0..1_000 {
+                leaf.push_value(Some(3)).expect("a later push");
+            }
+        });
+        assert_eq!(
+            thousand,
+            second * 1_000,
+            "a thousand native pushes into {rows} rows cost a thousand seconds"
+        );
+        assert_eq!(leaf.values().len(), rows + 1_002);
+        native.push(second);
+
+        // The proven path: a value through the field's contract on the way
+        // to the same buffer.
+        let mut owned = column(rows);
+        owned.push(Scalar::from(1_i64)).expect("the first edit");
+        let (second, ()) = counted(|| owned.push(Scalar::from(2_i64)).expect("the second push"));
+        let (thousand, ()) = counted(|| {
+            for _ in 0..1_000 {
+                owned.push(Scalar::from(3_i64)).expect("a later push");
+            }
+        });
+        assert_eq!(
+            thousand,
+            second * 1_000,
+            "a thousand proven pushes into {rows} rows cost a thousand seconds"
+        );
+        assert_eq!(owned.len(), rows + 1_002);
+        proven.push(second);
+    }
+    assert_eq!(
+        native[0], native[1],
+        "a native push costs the same at every corpus size"
+    );
+    assert_eq!(
+        proven[0], proven[1],
+        "a proven push costs the same at every corpus size"
+    );
+    assert!(
+        native[0] <= proven[0],
+        "the buffer path never costs more than the contract path: {native:?} against {proven:?}"
+    );
+    eprintln!("serie_push: native={} proven={}", native[0], proven[0]);
 }
 
 /// The two batches every cast-budget case reads, and the root they answer to.

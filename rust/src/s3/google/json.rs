@@ -37,21 +37,21 @@ pub(crate) fn parse_list(body: &[u8]) -> std::result::Result<ListPage, XmlError>
     let value = read(body)?;
     let mut page = ListPage::default();
     if let Some(items) = value.get_key_str("items") {
-        for item in items.sequence_iter() {
-            let key = text(item, "name")
+        for item in items.iter() {
+            let key = text(&item, "name")
                 .ok_or_else(|| XmlError("an object without a name".to_owned()))?;
             page.objects.push(S3Summary {
                 key: key.to_owned(),
-                size: number(item, "size").unwrap_or(0),
-                etag: text(item, "etag").map(str::to_owned),
-                last_modified: text(item, "updated").map(str::to_owned),
+                size: number(&item, "size").unwrap_or(0),
+                etag: text(&item, "etag").map(str::to_owned),
+                last_modified: text(&item, "updated").map(str::to_owned),
             });
         }
     }
     if let Some(prefixes) = value.get_key_str("prefixes") {
         page.prefixes.extend(
             prefixes
-                .sequence_iter()
+                .iter()
                 .filter_map(|prefix| prefix.as_str().map(str::to_owned)),
         );
     }
@@ -77,8 +77,9 @@ pub(crate) fn parse_error(body: &[u8]) -> Option<ErrorBody> {
     let error = value.get_key_str("error")?;
     let first = error
         .get_key_str("errors")
-        .and_then(|errors| errors.sequence_iter().next());
+        .and_then(|errors| errors.iter().next());
     let code = first
+        .as_deref()
         .and_then(|first| text(first, "reason"))
         .map(str::to_owned)
         .or_else(|| number(error, "code").map(|code| code.to_string()))
@@ -88,6 +89,7 @@ pub(crate) fn parse_error(body: &[u8]) -> Option<ErrorBody> {
         message: text(error, "message").unwrap_or_default().to_owned(),
         request_id: None,
         resource: first
+            .as_deref()
             .and_then(|first| text(first, "location"))
             .map(str::to_owned),
     })

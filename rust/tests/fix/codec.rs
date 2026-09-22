@@ -274,11 +274,8 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
 
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    let parties = row
-        .get(schema.index_of("parties").unwrap())
-        .unwrap()
-        .as_sequence()
-        .unwrap();
+    let parties = row.get(schema.index_of("parties").unwrap()).unwrap();
+    let parties = parties.as_sequence().unwrap();
     assert_eq!(parties.len(), 2, "projection retains parsed occurrences");
 }
 
@@ -1396,10 +1393,8 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     let source = party.index_of("partyidsource").expect("PartyIDSource");
     let role = party.index_of("partyrole").expect("PartyRole");
     let row = message.into_row(&schema).unwrap();
-    let parties = row
-        .get(parties_at)
-        .and_then(Scalar::as_sequence)
-        .expect("the projected occurrences");
+    let parties = row.get(parties_at).expect("the projected occurrences");
+    let parties = parties.as_sequence().expect("the projected occurrences");
     assert_eq!(parties.len(), 2);
     for (occurrence, (expected_id, expected_role)) in
         parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
@@ -1427,7 +1422,9 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     let row = numeric.into_row(&schema).unwrap();
     let parties = row
         .get(parties_at)
-        .and_then(Scalar::as_sequence)
+        .expect("the outer projected occurrences");
+    let parties = parties
+        .as_sequence()
         .expect("the outer projected occurrences");
     assert_eq!(parties.len(), 2);
     for (occurrence, (expected_id, expected_role)) in

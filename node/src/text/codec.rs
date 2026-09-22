@@ -1,5 +1,6 @@
 //! Byte-first JSON, YAML, and TOML adapters for JavaScript values.
 
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Write};
 use std::path::Path;
@@ -327,13 +328,20 @@ impl JsScalar {
         let index = crate::exact_u64(index, "index")?;
         let index = usize::try_from(index)
             .map_err(|_| napi_error(format!("index {index} exceeds this platform's range")))?;
-        Ok(self.inner.get(index).cloned().map(Self::from_core))
+        Ok(self
+            .inner
+            .get(index)
+            .map(Cow::into_owned)
+            .map(Self::from_core))
     }
 
     /// Look up a dotted mapping/record key and sequence-index path.
     #[napi]
     pub fn path(&self, path: String) -> Option<JsScalar> {
-        self.inner.path(&path).cloned().map(Self::from_core)
+        self.inner
+            .path(&path)
+            .map(Cow::into_owned)
+            .map(Self::from_core)
     }
 
     /// Iterate direct children under the core convention.
@@ -343,7 +351,12 @@ impl JsScalar {
     #[napi(js_name = "_iterNative", skip_typescript)]
     pub fn iter_native(&self) -> JsScalarIterator {
         JsScalarIterator {
-            inner: self.inner.iter().cloned().collect::<Vec<_>>().into_iter(),
+            inner: self
+                .inner
+                .iter()
+                .map(Cow::into_owned)
+                .collect::<Vec<_>>()
+                .into_iter(),
         }
     }
 
@@ -708,9 +721,10 @@ impl JsScalar {
             };
             let decoded =
                 yggdryl::arrow::array_to_value(&field, array.as_ref()).map_err(napi_error)?;
-            values.extend_from_slice(decoded.as_sequence().ok_or_else(|| {
-                napi_error("native Arrow array decode did not return a sequence")
-            })?);
+            let rows = decoded
+                .sequence_rows()
+                .ok_or_else(|| napi_error("native Arrow array decode did not return a sequence"))?;
+            values.extend_from_slice(&rows);
         }
         Ok(Self::from_core(Scalar::from_sequence(values)))
     }
@@ -804,11 +818,10 @@ impl JsScalar {
                     .map_err(napi_error)?
             };
             let decoded = yggdryl::arrow::batch_to_value(&batch).map_err(napi_error)?;
-            rows.extend_from_slice(
-                decoded
-                    .as_sequence()
-                    .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?,
-            );
+            let decoded = decoded
+                .sequence_rows()
+                .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?;
+            rows.extend_from_slice(&decoded);
         }
         Ok(Self::from_core(Scalar::from_sequence(rows)))
     }
@@ -2386,9 +2399,8 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
         Scalar::Sequence(values) => values
-            .as_slice()
             .iter()
-            .map(|value| value_to_transport(value, depth + 1, max_depth))
+            .map(|value| value_to_transport(&value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
             .map(JsonValue::Array),
         // A count is carried as text because a nanosecond instant needs more
@@ -2446,8 +2458,8 @@ fn struct_transport_with_field(
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
-            fields.iter().zip(values.as_slice()).collect::<Vec<_>>()
+        Scalar::Sequence(values) if values.len() == fields.len() => {
+            fields.iter().zip(values.iter()).collect::<Vec<_>>()
         }
         Scalar::Struct(values) => fields
             .iter()
@@ -2455,7 +2467,7 @@ fn struct_transport_with_field(
                 values
                     .as_map()
                     .get(field.name())
-                    .map(|value| (field, value))
+                    .map(|value| (field, Cow::Borrowed(value)))
                     .ok_or_else(|| {
                         napi_error(format!("typed record is missing field {:?}", field.name()))
                     })
@@ -2474,7 +2486,7 @@ fn struct_transport_with_field(
         .map(|(field, value)| {
             Ok((
                 field.name(),
-                value_to_transport_with_field(value, field, depth + 1, max_depth)?,
+                value_to_transport_with_field(&value, field, depth + 1, max_depth)?,
             ))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -2538,11 +2550,11 @@ pub(crate) fn value_to_transport_with_field(
             struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
         CoreDataType::Sequence(sequence) => value
-            .as_sequence()
+            .as_serie()
             .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
             .iter()
             .map(|value| {
-                value_to_transport_with_field(value, sequence.item(), depth + 1, max_depth)
+                value_to_transport_with_field(&value, sequence.item(), depth + 1, max_depth)
             })
             .collect::<Result<Vec<_>>>()
             .map(JsonValue::Array),
@@ -2550,7 +2562,8 @@ pub(crate) fn value_to_transport_with_field(
             map_transport_with_field(value, mapping.parameters(), depth, max_depth)
         }
         CoreDataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let rows = value.sequence_rows();
+            let Some([type_id, payload]) = rows.as_deref() else {
                 return Err(napi_error(
                     "typed union value must contain its type id and payload",
                 ));

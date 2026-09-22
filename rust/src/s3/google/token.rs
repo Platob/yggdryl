@@ -253,9 +253,8 @@ impl Credential {
                     delegates: value
                         .get_key_str("delegates")
                         .map(|list| {
-                            list.sequence_iter()
-                                .filter_map(Scalar::as_str)
-                                .map(str::to_owned)
+                            list.iter()
+                                .filter_map(|delegate| delegate.as_str().map(str::to_owned))
                                 .collect()
                         })
                         .unwrap_or_default(),

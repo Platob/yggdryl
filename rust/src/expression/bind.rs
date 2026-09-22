@@ -353,7 +353,7 @@ impl Bound {
     /// or cannot represent an exact decimal result.
     pub fn eval(&self, row: &Scalar) -> Result<Scalar> {
         let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values), None))
+        self.node.eval(&Row::new(Some(&values), None))
     }
 
     /// Evaluate this term over a row held as its column values.
@@ -382,7 +382,7 @@ impl Bound {
     /// answer an attribute it is asked for.
     pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar> {
         let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values), Some(holder)))
+        self.node.eval(&Row::new(Some(&values), Some(holder)))
     }
 
     /// Answer this predicate for one row, reading unknown as "no".
@@ -453,9 +453,12 @@ impl Bound {
     }
 }
 
-/// Borrow one row's column values.
-pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'row [Scalar]> {
-    let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+/// One row's column values: lent by a run, built once by a column.
+pub(crate) fn row_values<'row>(
+    row: &'row Scalar,
+    schema: &Field,
+) -> Result<std::borrow::Cow<'row, [Scalar]>> {
+    let values = row.sequence_rows().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(schema.name()),
         reason: format_smolstr!(
             "expected an ordered sequence of {} column values, got {}",
@@ -463,7 +466,8 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
             row.kind()
         ),
     })?;
-    sized(values, schema)
+    sized(&values, schema)?;
+    Ok(values)
 }
 
 /// The values, proven one per column of the schema.

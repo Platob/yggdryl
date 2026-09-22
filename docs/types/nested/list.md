@@ -6,13 +6,13 @@ Many of one thing, in all five layouts Arrow gives it: one item field, and a lea
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Sequence(SequenceType)` with its five leaves, the `SequenceField` marker, and the `Sequence` value |
+| Owns | `DataType::Sequence(SequenceType)` with its five leaves, the `SequenceField` marker, and the `Run` value: the schema-free run a row canonicalizes to, one leaf of [`Serie`](../serie.md), which is what `Scalar::Sequence` holds |
 | Validates | At construction: a fixed length is non-negative, and the item field validates |
 | Lazy | Nothing - a leaf holds one shared item field and, on the fixed leaf, one `i32` |
 | Cached | The item field behind one `Arc<Field>`, so a leaf clone shares it; the Arrow projection on the [`Field`](../field.md) |
 | Refuses | A negative fixed length, a second child, and a value that is not a sequence of the item's datatype |
 | Kinds | `DataTypeKind::Nested`, ids `0x91`-`0x95`; `is_nested()` is `true` |
-| Bindings | `SequenceType` and `Sequence` are Rust only: Python and JavaScript build a leaf through its own factory and read a stored run back as a [`Scalar`](../scalar.md) |
+| Bindings | `SequenceType`, `Run` and `Serie` are Rust only: Python and JavaScript build a leaf through its own factory and read a stored run back as a [`Scalar`](../scalar.md) |
 
 ## DataType
 
@@ -202,28 +202,33 @@ own nullability is the item field's.
 
 ## Scalar
 
-`Scalar::Sequence(Sequence)` is the run: the values in order, in one shared
-slice. The leaf is the column's decision and never the value's, so a cell read
-out of any of the five layouts is the same sequence, and its datatype is the
-`list` of its items.
+`Scalar::Sequence(Serie)` holds many values, and `Serie::Run` is the run: the
+values in order, in one shared slice, declaring no field. The leaf is the
+column's decision and never the value's, so a cell read out of any of the five
+layouts is the same run, and its datatype is the `list` of its items. The
+column itself - the Arrow buffers under the item field, read and written in
+place - is the other leaf of [`Serie`](../serie.md).
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FamilyValue, Nested, NestedValue, Scalar, Sequence};
+    use yggdryl::{DataType, FamilyValue, Nested, NestedValue, Run, Scalar, Serie};
 
     let levels = DataType::list(DataType::Float64.nullable_field("item"));
     let value = levels.scalar(vec![Scalar::from(1.5_f64), Scalar::Null])?;
     assert_eq!(value.len(), 2);
     assert_eq!(value.dtype()?, levels);
 
-    // `Sequence` is the holder every sequence API answers with.
-    let held = Sequence::new(vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
+    // `Run` is the schema-free leaf of `Serie`, and what a row canonicalizes to.
+    let held = Run::new(vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
     assert_eq!(held.len(), 2);
     assert_eq!(held.as_slice()[1], Scalar::from(2_i64));
     assert_eq!(held.children().count(), 2);
-    assert_eq!(Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]), Scalar::Sequence(held.clone()));
-    assert!(matches!(Scalar::Sequence(held).as_nested(), Some(Nested::Sequence(_))));
+    assert_eq!(
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+        Scalar::Sequence(Serie::Run(held.clone()))
+    );
+    assert!(matches!(Scalar::Sequence(Serie::from(held)).as_nested(), Some(Nested::Sequence(_))));
 
     // A run of the wrong item datatype is refused, with the path that failed.
     let refused = levels.scalar(vec![Scalar::from("text")]).unwrap_err().to_string();
@@ -427,7 +432,7 @@ own name - which is what keeps a list from ever growing a second child.
 - A list holds exactly one child: `set_field_at(0, ..)` replaces it, an unknown name is refused rather than appended, and `remove_field_at(0)` is refused rather than leaving a list with none.
 - `unnest_fields` treats a list as one leaf, because a list is one column; `explode_fields` is what reaches inside it and answers the item's datatype, nullable when the column or its item is.
 - The item's name is the item's: a leaf built by a parser is named `item`, and a leaf built by hand keeps whatever it was given.
-- A value carries no layout: a cell read out of `fixed_size_list(item,3)`, `large_list` or a view is a `Sequence`, and its datatype is the `list` of its items.
+- A value carries no layout: a cell read out of `fixed_size_list(item,3)`, `large_list` or a view is a `Run`, and its datatype is the `list` of its items; the column those cells are cut from is a [`Serie`](../serie.md) leaf of that layout.
 - A merge reaches the item: two lists of the same leaf meet at the list of the item that holds both, and two different leaves do not meet - see [Field](../field.md#merging-two-schemas).
 - `list_view` and `large_list_view` have no default Arrow JS materialization, so `defaultArrowScalar` refuses them in JavaScript while every other leaf answers.
 

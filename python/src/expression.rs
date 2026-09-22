@@ -17,6 +17,7 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
@@ -2970,7 +2971,12 @@ impl CoreUserFunction for PyUserFunction {
             let mut columns = Vec::with_capacity(arguments.len());
             for (field, array) in fields.iter().zip(arguments) {
                 let values = array_to_value(field, array.as_ref())?;
-                columns.push(values.as_sequence().map(<[_]>::to_vec).unwrap_or_default());
+                columns.push(
+                    values
+                        .sequence_rows()
+                        .map(Cow::into_owned)
+                        .unwrap_or_default(),
+                );
             }
             let mut answers = Vec::with_capacity(rows);
             let mut values = Vec::with_capacity(arguments.len());

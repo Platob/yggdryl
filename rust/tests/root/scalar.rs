@@ -241,9 +241,9 @@ mod internal {
                 .to_string(),
             "7"
         );
-        let held = sequence::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+        let held = sequence::Run::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
-            leaf_display(&Scalar::Sequence(held.clone()))
+            leaf_display(&Scalar::Sequence(yggdryl::Serie::Run(held.clone())))
                 .unwrap()
                 .to_string(),
             held.to_string()
@@ -480,8 +480,11 @@ mod values {
     fn collection_iteration_matches_python_sequence_and_mapping_semantics() {
         let sequence = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
         assert_eq!(
-            (&sequence).into_iter().collect::<Vec<_>>(),
-            vec![&sequence[0], &sequence[1]]
+            (&sequence)
+                .into_iter()
+                .map(|row| row.into_owned())
+                .collect::<Vec<_>>(),
+            vec![Scalar::from(1_i64), Scalar::from(2_i64)]
         );
 
         let mapping = Scalar::from_mapping([
@@ -493,9 +496,9 @@ mod values {
         assert_eq!(
             mapping
                 .iter()
-                .filter_map(Scalar::as_str)
+                .map(|key| key.into_owned())
                 .collect::<Vec<_>>(),
-            vec!["a", "b"]
+            vec![Scalar::from("a"), Scalar::from("b")]
         );
     }
 
@@ -516,7 +519,10 @@ mod values {
         let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
             unreachable!();
         };
-        assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
+        assert!(std::ptr::eq(
+            left.as_slice().unwrap(),
+            right.as_slice().unwrap()
+        ));
 
         let left = Scalar::from_mapping([]).unwrap();
         let right = Scalar::from_mapping([]).unwrap();
@@ -543,11 +549,15 @@ const POINT_EMPTY_WKB: [u8; 21] = [
     0x00, 0x00, 0x00, 0xF8, 0x7F,
 ];
 
+use std::borrow::Cow;
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use yggdryl::{Code, FamilyValue, FloatingValue, Geospatial, Nested, Temporal, TemporalValue};
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
 use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
+use yggdryl::{Field, Serie, Variant};
 use yggdryl::{Float16, Float32, Float64, Floating, Scalar};
 use yggdryl::{Int8, Int16, Int32, Int64, Int128, Integer, UInt8, UInt16, UInt32, UInt64, UInt128};
 
@@ -570,9 +580,12 @@ fn order() -> Scalar {
 fn a_dotted_path_walks_mappings_and_sequences() {
     let order = order();
 
-    assert_eq!(order.path("symbol").and_then(Scalar::as_str), Some("AAPL"));
     assert_eq!(
-        order.path("legs.1.price").and_then(Scalar::as_i64),
+        order.path("symbol").as_deref().and_then(Scalar::as_str),
+        Some("AAPL")
+    );
+    assert_eq!(
+        order.path("legs.1.price").and_then(|price| price.as_i64()),
         Some(13)
     );
 
@@ -581,8 +594,8 @@ fn a_dotted_path_walks_mappings_and_sequences() {
     assert!(order.path("symbol.price").is_none());
     assert!(order.path("missing").is_none());
 
-    // An empty path is the value itself.
-    assert_eq!(order.path(""), Some(&order));
+    // An empty path is the value itself, lent.
+    assert_eq!(order.path("").as_deref(), Some(&order));
 }
 
 #[test]
@@ -850,7 +863,10 @@ fn mapping_helpers_read_and_rebuild_in_order() {
     // Replacing keeps position; adding appends.
     let updated = order.with_key("venue", "XPAR").unwrap();
     assert_eq!(updated.keys(), vec!["symbol", "legs", "venue"]);
-    assert_eq!(updated.path("venue").and_then(Scalar::as_str), Some("XPAR"));
+    assert_eq!(
+        updated.path("venue").as_deref().and_then(Scalar::as_str),
+        Some("XPAR")
+    );
 
     let added = order.with_key("currency", "EUR").unwrap();
     assert_eq!(added.keys(), vec!["symbol", "legs", "venue", "currency"]);
@@ -996,7 +1012,10 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
         vec!["a", "m", "z"]
     );
     assert_eq!(
-        record.iter().filter_map(Scalar::as_i64).collect::<Vec<_>>(),
+        record
+            .iter()
+            .filter_map(|value| value.as_i64())
+            .collect::<Vec<_>>(),
         vec![1, 2, 3]
     );
 
@@ -1316,7 +1335,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
     assert_eq!(Value::dtype(&geometry).unwrap().id(), DataTypeId::Geometry);
 
-    let sequence = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
+    let sequence = sequence::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
     assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
@@ -1402,7 +1421,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(geometry.as_bytes(), point);
     assert!(geospatial::Geography::new(vec![0xff]).is_err());
 
-    let values = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
+    let values = sequence::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
     assert_eq!(values.as_slice().len(), 2);
     let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
         Scalar::from("one"),
@@ -1466,10 +1485,10 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::Sequence(sequence::Sequence::new(Arc::from([
+    let sequence = Scalar::Sequence(yggdryl::Serie::Run(sequence::Run::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
-    ])));
+    ]))));
     assert_eq!(sequence.len(), 2);
     assert!(!sequence.is_empty());
     assert!(sequence.is_container());
@@ -1745,4 +1764,195 @@ fn two_wkb_payloads_are_not_a_geometry() {
         .unwrap();
     assert!(point.as_bytes().is_some(), "it does read as bytes");
     assert!((point.clone() + point).is_err());
+}
+
+// ------------------------------------------------------------------------
+// A column-backed value crosses every reader a run does, and is one value
+// with the run of its rows.
+// ------------------------------------------------------------------------
+
+/// A column and the run of the same rows, for the walks that must not tell
+/// them apart.
+fn column_and_run() -> (Scalar, Scalar) {
+    let rows = [Scalar::from(1_i64), Scalar::Null, Scalar::from(3_i64)];
+    let field = Field::new("size", DataType::Int64, true);
+    let column = Scalar::from(Serie::from_scalars(field, rows.clone()).unwrap());
+    let run = Scalar::from_sequence(rows);
+    assert!(column.as_serie().is_some_and(Serie::is_column));
+    assert!(run.as_serie().is_some_and(|serie| !serie.is_column()));
+    (column, run)
+}
+
+fn std_hash(value: &Scalar) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
+    let (column, run) = column_and_run();
+
+    // The borrowing readers answer only for a run; the reading door answers
+    // both, lending the run's rows and building the column's.
+    assert_eq!(column.as_sequence(), None);
+    assert_eq!(run.as_sequence().map(<[Scalar]>::len), Some(3));
+    assert_eq!(column.sequence_rows().as_deref(), run.as_sequence());
+    assert!(matches!(run.sequence_rows(), Some(Cow::Borrowed(_))));
+    assert!(matches!(column.sequence_rows(), Some(Cow::Owned(_))));
+    assert_eq!(column.len(), 3);
+    assert!(!column.is_empty());
+
+    // One row: lent by the run, built by the column, absent past the end.
+    assert_eq!(column.get(0).as_deref(), Some(&Scalar::from(1_i64)));
+    assert_eq!(column.get(1).as_deref(), Some(&Scalar::Null));
+    assert!(matches!(column.get(2), Some(Cow::Owned(_))));
+    assert!(matches!(run.get(2), Some(Cow::Borrowed(_))));
+    assert!(column.get(3).is_none());
+
+    // A path walks a column as it walks a run, and keeps walking under a
+    // row it had to build.
+    assert_eq!(column.path("2").as_deref(), Some(&Scalar::from(3_i64)));
+    assert!(column.path("9").is_none());
+    let order = Scalar::from_mapping([(Scalar::from("sizes"), column.clone())]).unwrap();
+    assert_eq!(
+        order.path("sizes.2").and_then(|size| size.as_i64()),
+        Some(3)
+    );
+    let legs = Scalar::from(
+        Serie::from_scalars(
+            Field::new(
+                "leg",
+                DataType::list(Field::new("item", DataType::Int64, true)),
+                true,
+            ),
+            [Scalar::from_sequence([
+                Scalar::from(7_i64),
+                Scalar::from(8_i64),
+            ])],
+        )
+        .unwrap(),
+    );
+    assert_eq!(legs.path("0.1").and_then(|px| px.as_i64()), Some(8));
+    assert!(legs.path("0.2").is_none());
+
+    // The walk yields the same rows in the same order, and so does the
+    // borrowed iteration.
+    let walked = column.iter().map(Cow::into_owned).collect::<Vec<_>>();
+    let lent = run.iter().map(Cow::into_owned).collect::<Vec<_>>();
+    assert_eq!(walked, lent);
+    assert_eq!(column.iter().len(), 3);
+    assert_eq!(
+        column.iter().next_back().as_deref(),
+        Some(&Scalar::from(3_i64))
+    );
+    assert_eq!((&column).into_iter().count(), (&run).into_iter().count());
+    assert_eq!(column.kind(), "sequence");
+    assert_eq!(column.id(), DataTypeId::List);
+    assert_eq!(column.dtype().unwrap(), run.dtype().unwrap());
+}
+
+#[test]
+fn a_column_is_truthy_exactly_as_its_run_is() {
+    let (column, run) = column_and_run();
+    assert!(column.is_truthy());
+    assert!(run.is_truthy());
+
+    let field = Field::new("size", DataType::Int64, true);
+    let zeros = [Scalar::from(0_i64), Scalar::Null];
+    let column = Scalar::from(Serie::from_scalars(field.clone(), zeros.clone()).unwrap());
+    assert!(!column.is_truthy());
+    assert!(!Scalar::from_sequence(zeros).is_truthy());
+
+    // An empty column is as false as an empty run: the walk reads it, and
+    // nothing lent would have said so.
+    let empty = Scalar::from(Serie::empty(field).unwrap());
+    assert!(empty.is_empty());
+    assert!(!empty.is_truthy());
+    assert!(!Scalar::from_sequence([]).is_truthy());
+}
+
+#[test]
+fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
+    let (column, run) = column_and_run();
+    assert_eq!(column, run);
+    assert_eq!(column.cmp(&run), Ordering::Equal);
+    assert_eq!(std_hash(&column), std_hash(&run));
+    assert_eq!(column.stable_hash(), run.stable_hash());
+
+    // Exactly as their rows are: an int32 column and an int64 run of equal
+    // numbers are one value, and a different row is a different value.
+    let narrow = Scalar::from(
+        Serie::from_scalars(
+            Field::new("size", DataType::Int32, true),
+            [Scalar::from(1_i32), Scalar::Null, Scalar::from(3_i32)],
+        )
+        .unwrap(),
+    );
+    assert_eq!(narrow, run);
+    assert_eq!(std_hash(&narrow), std_hash(&run));
+    assert_eq!(narrow.stable_hash(), run.stable_hash());
+    let other = Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null, Scalar::from(4_i64)]);
+    assert_ne!(column, other);
+    assert_eq!(column.cmp(&other), Ordering::Less);
+}
+
+#[test]
+fn a_column_writes_through_every_wire_as_its_run_does() {
+    let (column, run) = column_and_run();
+
+    // The codec documents carry the rows only: no schema envelope.
+    assert_eq!(
+        yggdryl::json::into_utf8(&column).unwrap(),
+        yggdryl::json::into_utf8(&run).unwrap()
+    );
+    assert_eq!(
+        yggdryl::yaml::into_utf8(&column).unwrap(),
+        yggdryl::yaml::into_utf8(&run).unwrap()
+    );
+    // TOML spells no null and no bare sequence, so the pair it compares
+    // holds every row under a table.
+    let present = [Scalar::from(1_i64), Scalar::from(2_i64)];
+    let table = |rows: Scalar| Scalar::from_mapping([(Scalar::from("sizes"), rows)]).unwrap();
+    let present_column =
+        Serie::from_scalars(Field::new("size", DataType::Int64, false), present.clone()).unwrap();
+    assert_eq!(
+        yggdryl::toml::into_utf8(&table(Scalar::from(present_column))).unwrap(),
+        yggdryl::toml::into_utf8(&table(Scalar::from_sequence(present))).unwrap()
+    );
+    assert_eq!(
+        Variant::encode(&column).unwrap(),
+        Variant::encode(&run).unwrap()
+    );
+    assert_eq!(column.into_value_bytes(), run.into_value_bytes());
+    assert_eq!(
+        Scalar::decode_value_bytes(&column.into_value_bytes()).unwrap(),
+        run
+    );
+
+    // The crate's own serde is the one wire that tells the two apart: a run
+    // under `sequence`, a column with its field under `serie`, and each
+    // reads back as what it was.
+    let run_document = serde_json::to_value(&run).unwrap();
+    assert_eq!(run_document["type"], "sequence");
+    let column_document = serde_json::to_value(&column).unwrap();
+    assert_eq!(column_document["type"], "serie");
+    assert_eq!(column_document["value"]["field"]["name"], "size");
+    assert_eq!(column_document["value"]["rows"], run_document["value"]);
+    let read: Scalar = serde_json::from_value(column_document).unwrap();
+    assert!(read.as_serie().is_some_and(Serie::is_column));
+    assert_eq!(read, run);
+    assert_eq!(
+        read.as_serie().and_then(Serie::field).map(Field::name),
+        Some("size")
+    );
+    let read: Scalar = serde_json::from_value(run_document).unwrap();
+    assert!(read.as_serie().is_some_and(|serie| !serie.is_column()));
+    assert_eq!(read, run);
+    // A list under the `serie` tag is refused naming the wire.
+    let refused = serde_json::from_value::<Scalar>(serde_json::json!({
+        "type": "serie",
+        "value": [1, 2, 3],
+    }));
+    assert!(refused.is_err());
 }

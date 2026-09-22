@@ -809,23 +809,55 @@ pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
     value::array_from_values(field, &[&value])
 }
 
+/// Refuse an array whose physical layout is not the one `field` declares.
+///
+/// The one owner of "this array lays out as this field's projection": the
+/// cached projection is compared, so nothing is cloned or rebuilt, and both
+/// a held Arrow value and a column take this door.
+///
+/// # Errors
+///
+/// Returns an error naming the field and both datatypes when they differ,
+/// or when the field has no Arrow projection.
+pub(crate) fn require_projection(field: &Field, array: &dyn Array) -> Result<()> {
+    let expected = field.as_arrow_field_ref()?.data_type();
+    if array.data_type() == expected {
+        return Ok(());
+    }
+    Err(Error::IncompatibleSchema(format!(
+        "Arrow datatype {:?} differs from the {:?} field's {expected:?}",
+        array.data_type(),
+        field.name()
+    )))
+}
+
 /// Materialize a sequence of native values as one Arrow array.
 ///
-/// Each element is validated and canonicalized by `field`; materialization is
-/// a single array build, not a concatenation of scalar arrays.
+/// A column of `field`'s own datatype, whose nullability fits, holds only
+/// rows the field accepts and answers its own buffers with no row read.
+/// Every other sequence has each element validated and canonicalized by
+/// `field`, and materialization is a single array build, not a
+/// concatenation of scalar arrays.
 ///
 /// # Errors
 ///
 /// Returns an error when `values` is not a sequence or an element violates
 /// `field`.
 pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
-    let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
+    let serie = values.as_serie().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of array values"),
         actual: SmolStr::new(values.kind()),
     })?;
+    if let Some(array) = crate::value::column_fits_item(serie, field)
+        .then(|| serie.into_arrow_array())
+        .flatten()
+    {
+        return Ok(array);
+    }
+    let values = serie.rows();
     let mut canonical = Vec::with_capacity(values.len());
-    for value in values {
+    for value in values.iter() {
         // The field's own value contract, one value at a time: a synthetic row
         // around each element would allocate a sequence per value and answer
         // the same thing.
@@ -837,23 +869,32 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
-/// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`crate::structure::Struct`]. The root Field validates and canonicalizes every
-/// row before one columnar build.
+/// A record column of `root`'s own datatype, with no row absent, holds only
+/// rows the root accepts and its children are the batch's columns with no
+/// row read. Every other sequence has each child - an ordered row sequence
+/// or a named [`crate::structure::Struct`] - validated and canonicalized by
+/// the root Field before one columnar build.
 ///
 /// # Errors
 ///
 /// Returns an error when `root` is not a record root, `rows` is not a
 /// sequence, or a row violates the schema.
 pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
-    let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
+    let serie = rows.as_serie().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of record values"),
         actual: SmolStr::new(rows.kind()),
     })?;
     let schema = arrow_schema_from_field(root)?;
+    if let Some(array) = crate::value::column_fits_item(serie, root)
+        .then(|| serie.into_arrow_array())
+        .flatten()
+    {
+        return self::rows::batch_from_record_array(schema, &array);
+    }
+    let rows = serie.rows();
     let mut canonical = Vec::with_capacity(rows.len());
-    for row in rows {
+    for row in rows.iter() {
         canonical.push(root.canonicalize_value(row.clone())?);
     }
     self::rows::batch_from_values(root, schema, &canonical)

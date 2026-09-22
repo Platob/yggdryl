@@ -591,8 +591,13 @@ fn the_row_keeps_unrepresented_content_and_projects_explained_values() {
     // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries
         .iter()
-        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
-        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .filter(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(0))
+        .map(|entry| {
+            entry
+                .get(1)
+                .and_then(|name| name.as_str().map(str::to_owned))
+                .unwrap()
+        })
         .collect();
     assert_eq!(named, ["9999", "venueownthing"]);
 
@@ -1019,7 +1024,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(
         residual
             .iter()
-            .all(|entry| entry.get(0).and_then(Scalar::as_i128) != Some(1907)),
+            .all(|entry| entry.get(0).and_then(|tag| tag.as_i128()) != Some(1907)),
         "the projected group is not duplicated in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -1043,7 +1048,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(
         residual
             .iter()
-            .any(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(1907)),
+            .any(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(1907)),
         "the proprietary group remains whole in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();

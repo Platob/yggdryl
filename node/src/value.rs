@@ -403,13 +403,13 @@ fn sequence_to_js<'env>(
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     let values = value
-        .as_sequence()
+        .as_serie()
         .ok_or_else(|| napi_error("invalid native list record value"))?;
     let mut output = env.create_array(u32::try_from(values.len()).unwrap_or(u32::MAX))?;
     for (index, value) in values.iter().enumerate() {
         let js_index = u32::try_from(index)
             .map_err(|_| napi_error("list index exceeds the JavaScript array limit"))?;
-        output.set(js_index, projected_value_to_js(env, field, value)?)?;
+        output.set(js_index, projected_value_to_js(env, field, &value)?)?;
     }
     output.into_unknown(env)
 }
@@ -432,7 +432,7 @@ fn struct_to_js<'env>(
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     let values = value
-        .as_sequence()
+        .as_serie()
         .ok_or_else(|| napi_error("invalid native struct record value"))?;
     if values.len() != fields.len() {
         return Err(napi_error(format!(
@@ -442,10 +442,10 @@ fn struct_to_js<'env>(
         )));
     }
     let mut output = env.create_array(u32::try_from(values.len()).unwrap_or(u32::MAX))?;
-    for (index, (field, value)) in fields.iter().zip(values).enumerate() {
+    for (index, (field, value)) in fields.iter().zip(values.iter()).enumerate() {
         let js_index = u32::try_from(index)
             .map_err(|_| napi_error("struct index exceeds the JavaScript array limit"))?;
-        output.set(js_index, projected_value_to_js(env, field, value)?)?;
+        output.set(js_index, projected_value_to_js(env, field, &value)?)?;
     }
     output.into_unknown(env)
 }
@@ -456,9 +456,9 @@ fn union_to_js<'env>(
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     let values = value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| napi_error("invalid native union record value"))?;
-    let [type_id, payload] = values else {
+    let [type_id, payload] = &*values else {
         return Err(napi_error(
             "native union value must contain type id and payload",
         ));

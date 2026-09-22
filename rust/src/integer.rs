@@ -299,7 +299,7 @@ pub(crate) fn validate_integer_tuple(
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
     let values = value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| expected(expected_name, value))?;
     if values.len() != widths.len() {
         return Err(ValidationFailure::new(format_smolstr!(

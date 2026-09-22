@@ -661,6 +661,73 @@ fn dtype_rank(value: &DataType) -> u8 {
     }
 }
 
+impl DataType {
+    /// Whether every value this datatype's Arrow layout can hold is one the
+    /// datatype accepts, so a column of it is proven by its layout alone.
+    ///
+    /// True for the layouts whose storage is the whole domain - null,
+    /// boolean, every integer and float width, `Date32`, every datetime,
+    /// duration and interval, the plain unbounded UTF-8 leaves (Arrow's own
+    /// string array enforces their one rule), the plain byte leaves and a
+    /// UUID - and recursively for a nesting or an encoding of them. False
+    /// for everything narrower than its storage: a code, a sized, fixed or
+    /// non-UTF-8 string, a decimal, `Date64`, a time of day, a geospatial
+    /// reading, a version, a URI, a time zone, a MIME or media type, a
+    /// variant, and any datatype not named here.
+    pub(crate) fn layout_is_contract(&self) -> bool {
+        match self {
+            Self::Null
+            | Self::Boolean
+            | Self::Int8
+            | Self::Int16
+            | Self::Int32
+            | Self::Int64
+            | Self::UInt8
+            | Self::UInt16
+            | Self::UInt32
+            | Self::UInt64
+            | Self::Float16
+            | Self::Float32
+            | Self::Float64
+            | Self::DateTime(_)
+            | Self::Duration(_)
+            | Self::Interval(_)
+            | Self::Uuid => true,
+            Self::Date(date) => matches!(date, DateType::Date32),
+            Self::String(string) => matches!(
+                string,
+                crate::string::StringType::Utf8String
+                    | crate::string::StringType::LargeUtf8String
+                    | crate::string::StringType::Utf8StringView
+            ),
+            Self::Bytes(bytes) => matches!(
+                bytes,
+                crate::bytes::BytesType::Binary
+                    | crate::bytes::BytesType::LargeBinary
+                    | crate::bytes::BytesType::BinaryView
+                    | crate::bytes::BytesType::FixedBinary(_)
+            ),
+            Self::Struct(fields) => fields
+                .as_fields()
+                .iter()
+                .all(|field| field.dtype().layout_is_contract()),
+            Self::Sequence(sequence) => sequence.item().dtype().layout_is_contract(),
+            Self::Mapping(mapping) => mapping.entries().dtype().layout_is_contract(),
+            Self::Union(members, _) => members
+                .iter()
+                .all(|(_, field)| field.dtype().layout_is_contract()),
+            Self::Enum(encoding) => {
+                encoding.key().layout_is_contract() && encoding.value().layout_is_contract()
+            }
+            Self::RunEndEncoded(encoding) => {
+                encoding.run_ends().dtype().layout_is_contract()
+                    && encoding.values().dtype().layout_is_contract()
+            }
+            _ => false,
+        }
+    }
+}
+
 pub(crate) fn invalid(kind: &'static str, reason: impl Into<SmolStr>) -> Error {
     Error::InvalidDataType {
         kind,

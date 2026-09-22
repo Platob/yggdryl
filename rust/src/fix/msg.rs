@@ -1,5 +1,6 @@
 //! A FIX message: its typed facts, its row, and the registry that types it.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
@@ -2272,7 +2273,9 @@ impl FixMsg {
                 return self.typed_fact(tag);
             }
         }
-        self.value.get(self.field.index_of(known.name())?).cloned()
+        self.value
+            .get(self.field.index_of(known.name())?)
+            .map(Cow::into_owned)
     }
 
     /// Returns the value the root child an identifier names, raising
@@ -2298,7 +2301,9 @@ impl FixMsg {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
         }
-        self.value.get(self.reached_by_tag(tag)?).cloned()
+        self.value
+            .get(self.reached_by_tag(tag)?)
+            .map(Cow::into_owned)
     }
 
     /// The value a tag names by the index alone: a typed fact, else the
@@ -2310,7 +2315,7 @@ impl FixMsg {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
         }
-        self.value.get(self.index_of_tag(tag)?).cloned()
+        self.value.get(self.index_of_tag(tag)?).map(Cow::into_owned)
     }
 
     /// The child a tag reaches: the one carrying the tag, by one hash-free
@@ -2399,7 +2404,7 @@ impl FixMsg {
         }
         self.value
             .get(self.child_index(&self.field, name)?)
-            .cloned()
+            .map(Cow::into_owned)
     }
 
     /// Returns the value a name reaches, raising absence.
@@ -2443,7 +2448,7 @@ impl FixMsg {
                 let index = self.child_index(&self.field, name)?;
                 (
                     self.field.fields().get(index)?.clone(),
-                    self.value.get(index)?.clone(),
+                    self.value.get(index)?.into_owned(),
                 )
             }
         };
@@ -2557,7 +2562,7 @@ impl FixMsg {
                 let index = self.segment_index(field, segment)?;
                 Some((
                     field.fields().get(index)?.clone(),
-                    value.get(index)?.clone(),
+                    value.get(index)?.into_owned(),
                 ))
             }
             DataType::Sequence(SequenceType::List(item))
@@ -2574,7 +2579,7 @@ impl FixMsg {
                 } else {
                     usize::try_from(*position).ok()?
                 };
-                Some((item.as_ref().clone(), value.get(at)?.clone()))
+                Some((item.as_ref().clone(), value.get(at)?.into_owned()))
             }
             DataType::Mapping(map) => {
                 let FieldSegment::Key(key) = segment else {

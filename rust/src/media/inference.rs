@@ -76,7 +76,7 @@ impl Scalar {
     /// gives an inferred List. Empty sequences are ambiguous and require a
     /// declared Field.
     pub fn inferred_array_field(&self) -> Result<Field> {
-        let Some(values) = self.as_sequence() else {
+        let Some(values) = self.as_serie() else {
             return Err(unnameable(format_smolstr!(
                 "expected an outer Sequence to infer an array item Field, got {}",
                 self.kind()
@@ -104,7 +104,7 @@ impl Scalar {
     /// datatype, so both require a declared Field. The stable root name is
     /// `row` in Rust, Python, and JavaScript.
     pub fn inferred_struct_field(&self) -> Result<Field> {
-        let Some(rows) = self.as_sequence() else {
+        let Some(rows) = self.as_serie() else {
             return Err(unnameable(format_smolstr!(
                 "expected a non-empty Sequence of named Record rows to infer a Struct Field, got {}",
                 self.kind()
@@ -115,7 +115,12 @@ impl Scalar {
                 "cannot infer a Struct Field from empty rows; pass a Struct Field",
             )));
         }
-        if rows.iter().any(|row| !matches!(row, Self::Struct(_))) {
+        // A run's rows must name their columns themselves; a column's field
+        // already does, and is what the datatype below reads.
+        if rows
+            .as_slice()
+            .is_some_and(|rows| rows.iter().any(|row| !matches!(row, Self::Struct(_))))
+        {
             return Err(unnameable(SmolStr::new_static(
                 "positional Sequence rows cannot infer field names; pass a Struct Field",
             )));
@@ -216,8 +221,12 @@ impl Scalar {
             Self::Duration32(value) => DataType::duration32(value.unit()),
             Self::Duration64(value) => DataType::duration64(value.unit()),
             Self::Interval(value) => DataType::interval(value.unit()),
+            // A column carries its field and is read; a run has its item
+            // agreed back out of its rows.
+            Self::Sequence(values) if values.is_column() => values.dtype(),
             Self::Sequence(values) => {
-                let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
+                let rows = values.rows();
+                let (dtype, nullable) = agreed(rows.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // An Arrow payload already carries its exact field: one pinned

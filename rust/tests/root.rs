@@ -122,8 +122,12 @@ mod scalar;
 mod scheme;
 #[path = "root/sedol_code.rs"]
 mod sedol_code;
+#[path = "root/sequence.rs"]
+mod sequence;
 #[path = "root/serde.rs"]
 mod serde;
+#[path = "root/serie.rs"]
+mod serie;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]

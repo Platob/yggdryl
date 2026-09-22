@@ -183,7 +183,7 @@ mod avro {
             assert_eq!(
                 rows[0]
                     .path("outer.0.by_name.legs.1.flag")
-                    .and_then(Scalar::as_bool),
+                    .and_then(|flag| flag.as_bool()),
                 Some(false)
             );
         }

@@ -339,11 +339,11 @@ pub(crate) fn keep_elements(
     list: &Scalar,
     holder: Option<&dyn Attributes>,
 ) -> Result<Scalar> {
-    let Some(items) = list.as_sequence() else {
+    let Some(items) = list.sequence_rows() else {
         return Ok(Scalar::Null);
     };
     let mut kept = Vec::new();
-    for item in items {
+    for item in items.iter() {
         if item.is_null() {
             continue;
         }
@@ -748,7 +748,7 @@ fn call(
         }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {
-            let Some(items) = first.as_sequence() else {
+            let Some(items) = first.sequence_rows() else {
                 return Ok(Scalar::Null);
             };
             let bound = |value: Option<&Scalar>| -> Result<Option<i64>> {

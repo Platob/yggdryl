@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{RecordBatch, RecordBatchOptions, StructArray};
+use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, StructArray};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::{Field, Scalar};
@@ -347,11 +347,17 @@ pub(super) fn batch_from_values(
 ) -> Result<RecordBatch> {
     let refs: Vec<&Scalar> = values.iter().collect();
     let array = super::value::array_from_values(field, &refs)?;
+    batch_from_record_array(schema, &array)
+}
+
+/// One batch under `schema` whose columns are a record array's children,
+/// shared.
+pub(super) fn batch_from_record_array(schema: SchemaRef, array: &ArrayRef) -> Result<RecordBatch> {
     let struct_array = array
         .as_any()
         .downcast_ref::<StructArray>()
-        .ok_or_else(|| Error::internal("arrow::rows::batch_from_values"))?;
-    let options = RecordBatchOptions::new().with_row_count(Some(values.len()));
+        .ok_or_else(|| Error::internal("arrow::rows::batch_from_record_array"))?;
+    let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
     Ok(RecordBatch::try_new_with_options(
         schema,
         struct_array.columns().to_vec(),
@@ -400,8 +406,14 @@ fn payload_bytes(value: &Scalar) -> u64 {
     if let Some(bytes) = value.as_bytes() {
         return bytes.len() as u64;
     }
-    if let Some(held) = value.as_sequence() {
-        return held.iter().map(payload_bytes).sum::<u64>() + ROW_OVERHEAD;
+    if let Some(held) = value.as_serie() {
+        return ROW_OVERHEAD
+            + match held.into_arrow_array() {
+                // A column's cost is its buffers, and no row is built to
+                // count it.
+                Some(array) => array.get_array_memory_size() as u64,
+                None => held.rows().iter().map(payload_bytes).sum::<u64>(),
+            };
     }
     if let Some(held) = value.as_mapping() {
         return held

@@ -980,13 +980,14 @@ fn value_from_array_at(
     }
 }
 
+/// A value's rows: lent by a run, built once by a column.
 fn sequence<'a>(
     value: &'a Scalar,
     path: impl FnOnce() -> SmolStr,
     expected: &str,
-) -> Result<&'a [Scalar]> {
+) -> Result<std::borrow::Cow<'a, [Scalar]>> {
     value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| invalid(path(), format_smolstr!("expected {expected}, got scalar")))
 }
 

@@ -1,5 +1,6 @@
 //! Schema-directed scalar/array conversion.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -753,47 +754,154 @@ trait Offset: arrow_array::OffsetSizeTrait + TryFrom<usize> {}
 impl Offset for i32 {}
 impl Offset for i64 {}
 
-type ListParts<'a, O> = (Vec<O>, Vec<O>, Vec<&'a Scalar>, Option<NullBuffer>);
+/// One list element's items: the rows to lay out, or the element's own
+/// array where it is a column of the item field itself.
+enum Items<'a> {
+    Rows(Cow<'a, [Scalar]>),
+    Column(ArrayRef),
+}
 
-fn list_parts<'a, O: Offset>(values: &'a [&Scalar]) -> Result<ListParts<'a, O>> {
+impl Items<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Rows(rows) => rows.len(),
+            Self::Column(array) => array.len(),
+        }
+    }
+}
+
+/// Each element's items read through the sequence door, `None` for a null
+/// row; a column of the item field itself is kept as its array, because
+/// its door proved every row and its buffers are the items.
+fn list_items<'a>(
+    child: &Field,
+    values: &[&'a Scalar],
+    what: &'static str,
+) -> Result<Vec<Option<Items<'a>>>> {
+    values
+        .iter()
+        .map(|value| {
+            if matches!(value, Scalar::Null) {
+                return Ok(None);
+            }
+            let serie = value
+                .as_serie()
+                .ok_or_else(|| invalid_value_kind(what, value))?;
+            let held = crate::value::column_fits_item(serie, child)
+                .then(|| serie.into_arrow_array())
+                .flatten()
+                .map_or_else(|| Items::Rows(serie.rows()), Items::Column);
+            Ok(Some(held))
+        })
+        .collect()
+}
+
+/// The child array under a list, assembled in element order: runs of rows
+/// are laid out together, a column's own array is appended as it is, and
+/// the segments are joined once at the end - one build, and no join, where
+/// every element lent rows.
+struct ItemsArray<'a, 'f> {
+    child: &'f Field,
+    segments: Vec<ArrayRef>,
+    pending: Vec<&'a Scalar>,
+}
+
+impl<'a, 'f> ItemsArray<'a, 'f> {
+    const fn new(child: &'f Field) -> Self {
+        Self {
+            child,
+            segments: Vec::new(),
+            pending: Vec::new(),
+        }
+    }
+
+    /// Reserve `slots` rows ahead of laying them out, refusing what memory
+    /// cannot hold rather than aborting on it.
+    fn reserve(&mut self, slots: usize, what: &'static str) -> Result<()> {
+        self.pending
+            .try_reserve_exact(slots)
+            .map_err(|error| allocation_error(what, slots, &error))
+    }
+
+    fn rows(&mut self, rows: impl IntoIterator<Item = &'a Scalar>) {
+        self.pending.extend(rows);
+    }
+
+    fn column(&mut self, array: &ArrayRef) -> Result<()> {
+        self.lay_out_pending()?;
+        self.segments.push(Arc::clone(array));
+        Ok(())
+    }
+
+    fn lay_out_pending(&mut self) -> Result<()> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        let segment = array_from_values(self.child, &self.pending)?;
+        self.pending.clear();
+        self.segments.push(segment);
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<ArrayRef> {
+        if self.segments.is_empty() {
+            return array_from_values(self.child, &self.pending);
+        }
+        self.lay_out_pending()?;
+        if let [segment] = &*self.segments {
+            return Ok(Arc::clone(segment));
+        }
+        let segments = self
+            .segments
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&dyn Array>>();
+        Ok(arrow_select::concat::concat(&segments)?)
+    }
+}
+
+type ListParts<O> = (Vec<O>, Vec<O>, ArrayRef, Option<NullBuffer>);
+
+fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<O>> {
+    let items = list_items(child, values, "a sequence for a list column")?;
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut sizes = Vec::with_capacity(values.len());
-    let mut flattened = Vec::new();
     let mut validity = Vec::with_capacity(values.len());
+    let mut array = ItemsArray::new(child);
+    let mut total = 0_usize;
     offsets.push(
         O::try_from(0).map_err(|_| invalid_value("a list offset within the offset type", 0))?,
     );
-    for value in values {
-        if matches!(value, Scalar::Null) {
-            validity.push(false);
-            sizes.push(
-                O::try_from(0)
-                    .map_err(|_| invalid_value("a list size within the offset type", 0))?,
-            );
-        } else {
-            let items = value
-                .as_sequence()
-                .ok_or_else(|| invalid_value_kind("a sequence for a list column", value))?;
-            validity.push(true);
-            sizes.push(
-                O::try_from(items.len()).map_err(|_| {
-                    invalid_value("a list size within the offset type", items.len())
-                })?,
-            );
-            flattened.extend(items);
-        }
+    for held in &items {
+        let size = match held {
+            None => {
+                validity.push(false);
+                0
+            }
+            Some(held) => {
+                validity.push(true);
+                match held {
+                    Items::Rows(rows) => array.rows(rows.iter()),
+                    Items::Column(column) => array.column(column)?,
+                }
+                held.len()
+            }
+        };
+        sizes.push(
+            O::try_from(size)
+                .map_err(|_| invalid_value("a list size within the offset type", size))?,
+        );
+        total += size;
         offsets.push(
-            O::try_from(flattened.len()).map_err(|_| {
-                invalid_value("a list offset within the offset type", flattened.len())
-            })?,
+            O::try_from(total)
+                .map_err(|_| invalid_value("a list offset within the offset type", total))?,
         );
     }
-    Ok((offsets, sizes, flattened, nulls(validity)))
+    Ok((offsets, sizes, array.finish()?, nulls(validity)))
 }
 
 fn list_array<O: Offset>(child: &Field, values: &[&Scalar], kind: ListKind) -> Result<ArrayRef> {
-    let (offsets, _, flattened, nulls) = list_parts::<O>(values)?;
-    let child_array = array_from_values(child, &flattened)?;
+    let (offsets, _, child_array, nulls) = list_parts::<O>(child, values)?;
     let child = child.clone().into_arrow_field_ref()?;
     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
     match kind {
@@ -818,9 +926,8 @@ fn list_view_array<O: Offset>(
     values: &[&Scalar],
     kind: ListKind,
 ) -> Result<ArrayRef> {
-    let (offsets, sizes, flattened, nulls) = list_parts::<O>(values)?;
+    let (offsets, sizes, child_array, nulls) = list_parts::<O>(child, values)?;
     let offsets = offsets.into_iter().take(values.len()).collect::<Vec<_>>();
-    let child_array = array_from_values(child, &flattened)?;
     let child = child.clone().into_arrow_field_ref()?;
     match kind {
         ListKind::ListView => Ok(Arc::new(ListViewArray::try_new(
@@ -890,33 +997,32 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     let placeholder = has_parent_null
         .then(|| physical_placeholder_for_field(child))
         .transpose()?;
-    let mut flattened = Vec::new();
-    flattened
-        .try_reserve_exact(physical_len)
-        .map_err(|error| allocation_error("fixed-size-list child slots", physical_len, &error))?;
+    let items = list_items(child, values, "a sequence for a fixed-size-list column")?;
+    let mut array = ItemsArray::new(child);
+    array.reserve(physical_len, "fixed-size-list child slots")?;
     let mut validity = Vec::with_capacity(values.len());
-    for value in values {
-        if matches!(value, Scalar::Null) {
+    for held in &items {
+        let Some(held) = held else {
             validity.push(false);
             let placeholder = placeholder
                 .as_ref()
                 .ok_or_else(|| Error::internal("fixed_size_list_array::null_placeholder"))?;
-            flattened.extend(std::iter::repeat_n(placeholder, size_usize));
-        } else {
-            let items = value.as_sequence().ok_or_else(|| {
-                invalid_value_kind("a sequence for a fixed-size-list column", value)
-            })?;
-            if items.len() != size_usize {
-                return Err(invalid_value(
-                    &format!("a fixed list of exactly {size_usize} items"),
-                    items.len(),
-                ));
-            }
-            validity.push(true);
-            flattened.extend(items);
+            array.rows(std::iter::repeat_n(placeholder, size_usize));
+            continue;
+        };
+        if held.len() != size_usize {
+            return Err(invalid_value(
+                &format!("a fixed list of exactly {size_usize} items"),
+                held.len(),
+            ));
+        }
+        validity.push(true);
+        match held {
+            Items::Rows(rows) => array.rows(rows.iter()),
+            Items::Column(column) => array.column(column)?,
         }
     }
-    let child_array = array_from_values(child, &flattened)?;
+    let child_array = array.finish()?;
     Ok(Arc::new(FixedSizeListArray::try_new_with_length(
         child.clone().into_arrow_field_ref()?,
         size,
@@ -938,10 +1044,19 @@ fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayR
         }
     }
     let has_parent_null = null_rows != 0;
-    let validity = values
+    let rows = values
         .iter()
-        .map(|value| !matches!(value, Scalar::Null))
-        .collect::<Vec<_>>();
+        .map(|value| {
+            if matches!(value, Scalar::Null) {
+                return Ok(None);
+            }
+            value
+                .sequence_rows()
+                .map(Some)
+                .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let validity = rows.iter().map(Option::is_some).collect::<Vec<_>>();
     let arrow_fields = fields
         .iter()
         .cloned()
@@ -960,21 +1075,16 @@ fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayR
             let placeholder = has_parent_null
                 .then(|| physical_placeholder_for_field(field))
                 .transpose()?;
-            let column_values = values
+            let column_values = rows
                 .iter()
-                .map(|value| {
-                    if matches!(value, Scalar::Null) {
-                        placeholder
-                            .as_ref()
-                            .ok_or_else(|| Error::internal("struct_array::null_placeholder"))
-                    } else {
-                        value
-                            .as_sequence()
-                            .and_then(|values| values.get(column))
-                            .ok_or_else(|| {
-                                invalid_value_kind("a sequence for a struct column", value)
-                            })
-                    }
+                .zip(values)
+                .map(|(row, value)| match row {
+                    None => placeholder
+                        .as_ref()
+                        .ok_or_else(|| Error::internal("struct_array::null_placeholder")),
+                    Some(row) => row
+                        .get(column)
+                        .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value)),
                 })
                 .collect::<Result<Vec<_>>>()?;
             array_from_values(field, &column_values)
@@ -1013,11 +1123,16 @@ fn union_array(
         .try_reserve_exact(values.len())
         .map_err(|error| allocation_error("union selections", values.len(), &error))?;
     let mut active_counts = vec![0_usize; fields.len()];
-    for value in values {
-        let pair = value
-            .as_sequence()
-            .ok_or_else(|| invalid_value_kind("a union [type_id, payload] sequence", value))?;
-        let [type_id, payload] = pair else {
+    let pairs = values
+        .iter()
+        .map(|value| {
+            value
+                .sequence_rows()
+                .ok_or_else(|| invalid_value_kind("a union [type_id, payload] sequence", value))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    for pair in &pairs {
+        let [type_id, payload] = &**pair else {
             return Err(invalid_value(
                 "a union [type_id, payload] sequence of exactly 2 items",
                 pair.len(),
