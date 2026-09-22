@@ -122,6 +122,9 @@ A URN names a resource without saying where it is. Reading the name as a path is
     assert!(located.to_string().ends_with("/lake/trades/2026/part.parquet"));
     assert_eq!(Uri::from_str("urn:lake:trades:2026:part.parquet")?.locator()?, located);
 
+    // The location door reads a name written as text the same way.
+    assert_eq!(Url::from_location("urn:lake:trades:2026:part.parquet")?, located);
+
     // Escapes cross as the name holds them, and an empty part spells no path.
     assert_eq!(Urn::from_str("urn:example:a%2Fb")?.locator_path()?.as_str(), "example/a%2Fb");
     assert!(Urn::from_str("urn:example:a::b")?.locator_path().is_err());
@@ -144,8 +147,10 @@ A URN names a resource without saying where it is. Reading the name as a path is
     assert str(located).endswith("/lake/trades/2026/part.parquet")
     assert Uri("urn:lake:trades:2026:part.parquet").locator() == located
 
-    # The location door takes a name; the strict `from_uri` door refuses it.
+    # The location door takes a name, written as a value or as text; the
+    # strict `from_uri` door refuses it.
     assert Url(urn) == located
+    assert Url("urn:lake:trades:2026:part.parquet") == located
     try:
         Url.from_uri(urn)
         raise AssertionError("expected a rejection")

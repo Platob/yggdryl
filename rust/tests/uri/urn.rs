@@ -100,6 +100,17 @@ mod location {
         );
         assert_eq!(located.file_name(), Some("part.parquet"));
 
+        // The directory crosses as the platform path it is and the name as the
+        // URI text it is, so an escape the name carries is not encoded twice.
+        assert!(
+            Urn::from_str("urn:example:a%2Fb")
+                .unwrap()
+                .locator()
+                .unwrap()
+                .to_string()
+                .ends_with("/example/a%2Fb")
+        );
+
         // The whole identifier answers the same location its narrowing does.
         assert_eq!(
             Uri::from_str("urn:lake:trades:part.parquet")

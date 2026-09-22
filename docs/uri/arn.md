@@ -18,7 +18,7 @@ An ARN is a [`Uri`](index.md) whose scheme is `arn`, so everything on this page 
 | `bucket`, `key` | only an Amazon S3 ARN with no region and no account names them; `key` is `""` for the bucket alone |
 | `locator` | an Amazon S3 bucket ARN answers the `s3:` URL it addresses; every other service is refused by name |
 | Filenames | [accessors](path.md) read the resource, not the whole path; setters leave the five fields alone |
-| Bindings | Rust, Python and JavaScript answer the whole surface. Python's `Arn` is a subclass of `Uri`, so `Uri("arn:…")` answers one |
+| Bindings | Rust, Python and JavaScript each answer the fields, the resource and `locator`. Python's `Arn` is a subclass of `Uri`, so `Uri("arn:…")` answers one; JavaScript has no class inheritance here, so `Uri.from("arn:…")` answers a `Uri` and `intoArn()` narrows it |
 | Errors | Rust `Err`, Python `ValueError`, JavaScript throw, each naming the field that refused |
 
 ## Use
@@ -185,6 +185,8 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
 
     let object = Arn::from_str("arn:aws:s3:::market-data/2026/part.parquet")?;
     assert_eq!(object.bucket(), Some("market-data"));
+    // The location door reads the same name written as text.
+    assert_eq!(Url::from_location("arn:aws:s3:::market-data/2026/part.parquet")?, object.locator()?);
     assert_eq!(object.key(), Some("2026/part.parquet"));
     assert_eq!(object.locator()?, Url::from_str("s3://market-data/2026/part.parquet")?);
 
@@ -212,6 +214,7 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
     from yggdryl import Arn, Uri, Url
 
     obj = Arn("arn:aws:s3:::market-data/2026/part.parquet")
+    assert Url("arn:aws:s3:::market-data/2026/part.parquet") == obj.locator()
     assert obj.bucket == "market-data"
     assert obj.key == "2026/part.parquet"
     assert obj.locator() == Url("s3://market-data/2026/part.parquet")

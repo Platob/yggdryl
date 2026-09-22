@@ -78,9 +78,20 @@ impl Url {
     }
 
     /// Validate and wrap an existing URI as a URL.
+    ///
+    /// This is the strict door: a name is refused as a name rather than
+    /// resolved. [`Uri::locator`] is what answers where a name is.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the URI is a name, or carries no
+    /// hierarchical authority.
     pub fn from_uri(value: Uri) -> Result<Self> {
         if value.scheme() == &Scheme::URN {
             return Err(parse_error("url", 0, "URN values are not URLs"));
+        }
+        if value.scheme() == &Scheme::ARN {
+            return Err(parse_error("url", 0, "ARN values are not URLs"));
         }
         let file_url = value.scheme() == &Scheme::FILE;
         if !value.has_authority() || (!file_url && value.authority().is_empty()) {
@@ -100,7 +111,26 @@ impl Url {
     /// [`Self::from_str`]. Text carrying a scheme is a URL and a malformed one
     /// is refused as a URL rather than read as a file named after it; text
     /// carrying none is a path and reaches [`Self::from_path`], working
-    /// directory and all.
+    /// directory and all. Text naming a resource rather than a place - a URN,
+    /// an ARN - resolves through [`Uri::locator`], because a caller saying
+    /// *where* by name is still saying where.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(
+    ///     Url::from_location("arn:aws:s3:::trades/2026/part.parquet")?.to_string(),
+    ///     "s3://trades/2026/part.parquet"
+    /// );
+    /// assert!(
+    ///     Url::from_location("urn:lake:trades:part.parquet")?
+    ///         .to_string()
+    ///         .ends_with("/lake/trades/part.parquet")
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// Stored data takes the other door. A `url` column holding `data/x` would
     /// otherwise name a different file on every machine that read it, so
@@ -121,10 +151,12 @@ impl Url {
     /// leaves it relative, so this is where a rootless one becomes a location:
     /// `path` is the text the URI was read from, joined onto the working
     /// directory rather than re-derived from the URI, which would have to undo
-    /// the percent-encoding the parser just applied.
+    /// the percent-encoding the parser just applied. Every other identifier
+    /// answers through [`Uri::locator`], so a name resolves here exactly as it
+    /// does anywhere else a location is asked for.
     fn rooted(uri: Uri, path: &Path) -> Result<Self> {
         if uri.has_authority() || uri.scheme() != &Scheme::FILE {
-            return Self::from_uri(uri);
+            return uri.locator();
         }
         Self::from_uri(Uri::from_path(std::env::current_dir()?.join(path))?)
     }

@@ -201,14 +201,28 @@ impl Urn {
     /// This is what makes a name openable with no base named: the path the
     /// name spells is relative, and the working directory is the root every
     /// relative path is read against - the same one [`Url::from_path`] roots a
-    /// relative path at.
+    /// relative path at. The directory is converted as the platform path it
+    /// is and the name joined onto it as the URI text it is, so an escape the
+    /// name carries stays the one escape it was rather than being encoded a
+    /// second time.
+    ///
+    /// ```
+    /// use yggdryl::Urn;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let urn = Urn::from_str("urn:example:a%2Fb")?;
+    /// assert!(urn.locator()?.to_string().ends_with("/example/a%2Fb"));
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`locator_path`](Self::locator_path)'s refusal, or the working
-    /// directory's own failure when the process cannot read one.
+    /// Returns [`locator_path`](Self::locator_path)'s refusal, the working
+    /// directory's own failure when the process cannot read one, or the joined
+    /// URL's.
     pub fn locator(&self) -> Result<Url> {
-        Url::from_path(std::env::current_dir()?.join(self.locator_path()?.as_str()))
+        self.resolve(&Url::from_path(std::env::current_dir()?)?)
     }
 
     /// Iterate over non-empty URN path segments without allocating.

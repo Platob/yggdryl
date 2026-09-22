@@ -2118,9 +2118,9 @@ class Arn(Uri):
     def from_parts(  # type: ignore[override]
         partition: str,
         service: str,
-        region: str = "",
-        account: str = "",
-        resource: str = "",
+        region: str,
+        account: str,
+        resource: str,
     ) -> Arn: ...
     @staticmethod
     def from_uri(value: Uri | str | PathLike[str]) -> Arn: ...

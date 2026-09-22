@@ -1343,9 +1343,9 @@ impl PyArn {
     /// Build a validated ARN from its five fields.
     ///
     /// `region` and `account` are written as the empty string when the service
-    /// names neither.
+    /// names neither, which is the value an ARN gives them rather than an
+    /// argument it leaves out.
     #[staticmethod]
-    #[pyo3(signature = (partition, service, region = "", account = "", resource = ""))]
     fn from_parts(
         py: Python<'_>,
         partition: &str,
