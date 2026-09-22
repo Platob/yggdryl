@@ -4,8 +4,6 @@
 import os
 from decimal import Decimal
 
-import pyarrow as pa
-
 from yggdryl import DataType, Field, MediaType, MimeType, Uri
 
 price = DataType.decimal("18", 4)
@@ -16,19 +14,19 @@ field.set_comment("closing price")
 field.set_parquet_field_id(17)
 field.set_location("s3://warehouse/bars/data.arrow")
 field.set_property("postgres", "type", "numeric(18,4)")
-scalar = field.arrow_scalar(Decimal("12.5000"))
+scalar = field.scalar(Decimal("12.5000"))
 file = Uri.from_path(r"C:\data\prices.arrow")
 encoded = Uri("https://example.test/prices.csv.gz")
 
-assert str(price) == "decimal128(18,4)"
+assert str(price) == "decimal64(18,4)"
 assert str(clock) == "time64(us)"
 assert text == DataType("utf8")
 assert field.into_arrow().name == "price"
 assert field.parquet_field_id == 17
-assert field["PARQUET:field_id"] == "17"
+assert field.metadata["PARQUET:field_id"] == "17"
 assert field.location.scheme == "s3"
 assert field.get_property("postgres", "type") == "numeric(18,4)"
-assert scalar == pa.scalar(Decimal("12.5000"), type=pa.decimal128(18, 4))
+assert scalar.as_py() == Decimal("12.5000")
 assert str(file) == "file:///C:/data/prices.arrow"
 assert os.fspath(file) == "C:/data/prices.arrow"
 assert encoded.media_type.base == MimeType("text/csv")
@@ -65,7 +63,7 @@ field.set_media_type(media)
 
 assert field.mime_type == MimeType.CSV
 assert field.content_encoding == "gzip, zstd"
-assert field.get("HTTPS:CONTENT-TYPE") == "text/csv"
+assert field.get_property("https", "content-type") == "text/csv"
 ```
 
 `MimeType` exposes the complete native known vocabulary as immutable class
@@ -105,14 +103,15 @@ assert price.parquet_field_id == 7
 ```
 
 ```python
-from yggdryl import Field, types
-from yggdryl import Int32Field, ListField
+from __future__ import annotations
 
-trade_id: Int32Field = types.int32("trade_id", nullable=False)
-tags: ListField[str] = types.list("tags", types.utf8("item"))
+from yggdryl import Field, Int32Field, ListField, integer, nested, utf8
+
+trade_id: Int32Field = integer.int32("trade_id", nullable=False)
+tags: ListField[str] = nested.list("tags", utf8("item"))
 
 assert type(trade_id) is Field
-assert tags.dtype.kind == "list"
+assert tags.dtype.kind == "nested"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```
 
@@ -126,7 +125,7 @@ lines and `show_diff` joins them.
 from decimal import Decimal
 
 from yggdryl import scalar
-from yggdryl.text import toml
+from yggdryl import toml
 
 @scalar
 class Order:
@@ -241,8 +240,8 @@ their operational state.
 Bare `DataType.variant()` is the self-describing semi-structured Variant
 datatype; `DataType.variant(fields)` stays the dense-union sugar building the
 canonical dense Union with sequential native type IDs - the parenthesis
-disambiguates. `types.variant` builds the bare Variant field,
-`types.dense_union` the union one, and explicit `types.union` remains
+disambiguates. `yggdryl.variant` builds the bare Variant field,
+`yggdryl.dense_union` the union one, and explicit `yggdryl.union` remains
 available for custom IDs or sparse layout.
 
 Every page of the [documentation](https://platob.github.io/yggdryl/) shows its
