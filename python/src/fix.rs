@@ -769,7 +769,7 @@ impl PyFixRegistry {
             report
                 .written
                 .iter()
-                .map(|path| path.as_str())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>(),
         )?;
         answer.set_item("skipped", report.skipped)?;
@@ -778,7 +778,7 @@ impl PyFixRegistry {
             report
                 .removed
                 .iter()
-                .map(|path| path.as_str())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>(),
         )?;
         Ok(answer)

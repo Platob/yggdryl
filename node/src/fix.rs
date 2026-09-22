@@ -409,6 +409,16 @@ impl JsFixRegistry {
         self.msgtype(spelling)
     }
 
+    /// Commit the store and answer nothing.
+    ///
+    /// The same work as [`Self::commit`] for a caller that does not read what
+    /// moved.
+    #[napi]
+    pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
+        let mut holder = folder_from_input(location)?;
+        self.inner.write_into(&mut holder).map_err(napi_error)
+    }
+
     /// Write every populated shard under `<location>/fields/<shard>.json` and
     /// every definition under `<location>/<category>/<name>.json`, removing
     /// the shards and trees no field populates any more. A shard is named by
@@ -426,23 +436,14 @@ impl JsFixRegistry {
     /// second commit of one registry writes nothing. The report is a plain
     /// object: `written` and `removed` name the documents, in the order a
     /// store lays them out, and `skipped` counts the ones a run left.
-    /// Commits the store and answers nothing.
-    ///
-    /// The same work as `commit` for a caller that does not read what moved.
-    #[napi]
-    pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
-        let mut holder = folder_from_input(location)?;
-        self.inner.write_into(&mut holder).map_err(napi_error)
-    }
-
     #[napi]
     pub fn commit(&self, location: LocationInput<'_>) -> Result<FixCommitReport> {
         let mut holder = folder_from_input(location)?;
         let report = self.inner.commit(&mut holder).map_err(napi_error)?;
         Ok(FixCommitReport {
-            written: report.written.iter().map(|path| path.to_string()).collect(),
+            written: report.written.iter().map(ToString::to_string).collect(),
             skipped: u32::try_from(report.skipped).unwrap_or(u32::MAX),
-            removed: report.removed.iter().map(|path| path.to_string()).collect(),
+            removed: report.removed.iter().map(ToString::to_string).collect(),
         })
     }
 

@@ -2145,6 +2145,13 @@ export declare class FixRegistry {
    */
   registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): MsgType
   /**
+   * Commit the store and answer nothing.
+   *
+   * The same work as [`Self::commit`] for a caller that does not read what
+   * moved.
+   */
+  writeInto(location: LocationInput): void
+  /**
    * Write every populated shard under `<location>/fields/<shard>.json` and
    * every definition under `<location>/<category>/<name>.json`, removing
    * the shards and trees no field populates any more. A shard is named by
@@ -2162,11 +2169,7 @@ export declare class FixRegistry {
    * second commit of one registry writes nothing. The report is a plain
    * object: `written` and `removed` name the documents, in the order a
    * store lays them out, and `skipped` counts the ones a run left.
-   * Commits the store and answers nothing.
-   *
-   * The same work as `commit` for a caller that does not read what moved.
    */
-  writeInto(location: LocationInput): void
   commit(location: LocationInput): FixCommitReport
   /**
    * How many fields are held: the scalar fields, then the components and
