@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::SmolStr;
 
 use crate::holder::Holder;
-use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Url};
+use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 use super::{Archive, Leaf, Node, name};
 
@@ -207,6 +207,10 @@ impl IOBase for Path {
             return self.as_node().truncate(size);
         }
         self.as_leaf_mut().truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

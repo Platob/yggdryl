@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use super::Charset;
 use crate::bytestream::SkipReader;
 use crate::holder::Holder;
-use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase, MediaType, Result, Url};
+use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase, MediaType, Result, Uri, Url};
 
 /// A transparent charset decode over one handle.
 ///
@@ -465,6 +465,10 @@ impl<H: IOBase> IOBase for Transcoded<H> {
         self.dirty = true;
         self.invalidate();
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.handle.uri()
     }
 
     fn url(&self) -> Option<&Url> {

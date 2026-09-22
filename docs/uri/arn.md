@@ -15,8 +15,10 @@ An ARN is a [`Uri`](index.md) whose scheme is `arn`, so everything on this page 
 | Field bytes | `partition`, `service`, `region`, `account`: ASCII letters, digits, hyphens, underscores, and the `*` and `?` a policy writes to match a set of them |
 | Resource | whatever the service writes, validated as URI path text; a `?` or `#` inside it must be percent-encoded, because an ARN carries no query and no fragment |
 | Resource split | `resource_type` / `resource_id` split at the resource's first `/` or `:`, and `resource_separator` reports which one the service wrote |
-| `bucket`, `key` | only an Amazon S3 ARN with no region and no account names them; `key` is `""` for the bucket alone |
-| `locator` | an Amazon S3 bucket ARN answers the `s3:` URL it addresses; every other service is refused by name |
+| `bucket` | the container, whichever store names one: the bucket on Amazon S3, the table bucket on Amazon S3 Tables |
+| `key` | Amazon S3 only, and only the bucket form — no region and no account; `""` for the bucket alone |
+| `table` | Amazon S3 Tables only: what `bucket/<table-bucket>/table/<table>` names below its container. `key` is `None` there, because a table is not an object |
+| `locator` | an Amazon S3 bucket ARN answers the `s3:` URL it addresses and an Amazon S3 Tables ARN the `s3tables:` one; every other service is refused by name |
 | Filenames | [accessors](path.md) read the resource, not the whole path; setters leave the five fields alone |
 | Bindings | Rust, Python and JavaScript each answer the fields, the resource and `locator`. Python's `Arn` is a subclass of `Uri`, so `Uri("arn:…")` answers one; JavaScript has no class inheritance here, so `Uri.from("arn:…")` answers a `Uri` and `intoArn()` narrows it |
 | Errors | Rust `Err`, Python `ValueError`, JavaScript throw, each naming the field that refused |
@@ -257,6 +259,80 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
     assert.throws(() => Arn.from('arn:aws:iam::123456789012:user/David').locator())
     ```
 
+## Amazon S3 Tables
+
+A table bucket holds tables rather than objects, and AWS addresses one only by ARN. It is still a container and a name below it — the same two positions every store writes — so `bucket` reads the table bucket, `table` reads the table, and `locator` answers the `s3tables:` URL those two spell. The [store accessors](index.md) read that URL back the way they read an `s3:` one.
+
+No byte backend opens an `s3tables:` location: `is_object_store` stays false for it, so a reader speaks the S3 Tables catalog rather than fetching a key.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Arn, Uri, Url};
+
+    let table = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")?;
+
+    assert_eq!(table.service(), "s3tables");
+    assert_eq!(table.bucket(), Some("lake"));
+    assert_eq!(table.table(), Some("t-a1"));
+    // A table is not an object, so it is not a key.
+    assert_eq!(table.key(), None);
+    assert_eq!(table.locator()?, Url::from_str("s3tables://lake/t-a1")?);
+
+    // The container alone locates the table bucket, and names no table.
+    let bucket = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake")?;
+    assert_eq!(bucket.table(), None);
+    assert_eq!(bucket.locator()?.to_string(), "s3tables://lake");
+
+    // The URL reads the same two positions back.
+    let located = Uri::from_str("s3tables://lake/t-a1")?;
+    assert_eq!(located.bucket(), Some("lake"));
+    assert_eq!(located.key(), Some("t-a1"));
+    assert!(!located.scheme().is_object_store());
+    assert!(located.scheme().has_container());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Arn, Uri, Url
+
+    table = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")
+
+    assert table.service == "s3tables"
+    assert table.bucket == "lake"
+    assert table.table == "t-a1"
+    assert table.key is None
+    assert table.locator() == Url("s3tables://lake/t-a1")
+
+    bucket = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake")
+    assert bucket.table is None
+    assert str(bucket.locator()) == "s3tables://lake"
+
+    located = Uri("s3tables://lake/t-a1")
+    assert located.bucket == "lake"
+    assert located.key == "t-a1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Arn, Uri } = require('yggdryl')
+
+    const table = Arn.from('arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1')
+
+    assert.equal(table.service, 's3tables')
+    assert.equal(table.bucket, 'lake')
+    assert.equal(table.table, 't-a1')
+    assert.equal(table.key, null)
+    assert.equal(table.locator().toString(), 's3tables://lake/t-a1')
+
+    const located = Uri.from('s3tables://lake/t-a1')
+    assert.equal(located.bucket, 'lake')
+    assert.equal(located.key, 't-a1')
+    ```
+
 ## Edges
 
 - `arn:aws:s3` or `arn:aws:s3::` → refused: an ARN carries five fields, and a missing one is not an empty one.
@@ -265,6 +341,8 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
 - `arn:aws:s3:::trades?versionId=1` → refused: an ARN carries no query, so a `?` the resource holds is percent-encoded.
 - `arn:aws:s3:::market-data` → `resource_type` is `None`: a resource with no separator is all identifier.
 - `arn:aws:s3:us-west-2:123456789012:accesspoint/reports` → `bucket` and `key` are `None`, because only the region-less, account-less form is the bucket form.
+- `arn:aws:s3tables:…:policy/deny` → `bucket` is `None` and `locator` refuses: only a `bucket/…` resource names a table bucket.
+- `arn:aws:s3tables:…:bucket/lake` → `table` is `None`: the container alone names no table.
 
 ## Commands
 

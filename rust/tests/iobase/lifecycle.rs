@@ -63,6 +63,10 @@ impl IOBase for Counted {
         self.bytes.truncate(size)
     }
 
+    fn uri(&self) -> Option<&yggdryl::Uri> {
+        self.bytes.uri()
+    }
+
     fn url(&self) -> Option<&yggdryl::Url> {
         self.bytes.url()
     }

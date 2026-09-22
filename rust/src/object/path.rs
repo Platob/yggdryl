@@ -6,7 +6,7 @@ use super::client::Client;
 use super::file::File;
 use super::folder::Folder;
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Url};
+use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 location that resolves to the implementation it turns out to need.
 ///
@@ -347,6 +347,10 @@ impl IOBase for Path {
         // container to the prefix handle, and asking the kind first would be
         // a second listing for the same answer.
         self.with_resolved_mut(|handle| handle.truncate(size))?
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

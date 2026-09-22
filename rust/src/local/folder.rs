@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::{Error, MediaType, Result, Url};
+use crate::{Error, MediaType, Result, Uri, Url};
 
 use crate::holder::Holder;
 use crate::{IOBase, IOFolder, Listing};
@@ -361,6 +361,10 @@ impl IOBase for Folder {
     fn truncate(&mut self, size: u64) -> Result<()> {
         // Truncating to zero is the write that brings a directory into being.
         self.folder_truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

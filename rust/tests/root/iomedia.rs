@@ -507,6 +507,10 @@ impl IOBase for PublicationProbe {
         self.handle.truncate(size)
     }
 
+    fn uri(&self) -> Option<&yggdryl::Uri> {
+        self.handle.uri()
+    }
+
     fn url(&self) -> Option<&Url> {
         self.handle.url()
     }

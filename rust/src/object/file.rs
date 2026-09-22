@@ -7,7 +7,7 @@ use super::answer::ObjectMeta;
 use super::client::Client;
 use super::folder::Folder;
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Url};
+use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 object addressed by offset.
 ///
@@ -680,6 +680,10 @@ impl IOBase for File {
         resize(&mut stage.bytes, size)?;
         stage.dirty = true;
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

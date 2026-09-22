@@ -299,6 +299,46 @@ mod location {
         assert_eq!(access_point.key(), None);
         assert!(access_point.locator().is_err());
 
+        // Amazon S3 Tables names a table bucket and a table below it, which is
+        // the same pair of positions an `s3tables:` URL locates.
+        let table = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")
+            .unwrap();
+        assert_eq!(table.bucket(), Some("lake"));
+        assert_eq!(table.table(), Some("t-a1"));
+        // A table is not an object, so it is not a key.
+        assert_eq!(table.key(), None);
+        assert_eq!(
+            table.locator().unwrap(),
+            Url::from_str("s3tables://lake/t-a1").unwrap()
+        );
+
+        // The container alone locates the table bucket, and names no table.
+        let table_bucket =
+            Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake").unwrap();
+        assert_eq!(table_bucket.bucket(), Some("lake"));
+        assert_eq!(table_bucket.table(), None);
+        assert_eq!(
+            table_bucket.locator().unwrap().to_string(),
+            "s3tables://lake"
+        );
+
+        // An S3 ARN names no table, and an S3 Tables resource that is not the
+        // `bucket/...` form names no container at all.
+        assert_eq!(object.table(), None);
+        let policy = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:policy/deny").unwrap();
+        assert_eq!(policy.bucket(), None);
+        assert!(policy.locator().is_err());
+
+        // The URL an ARN locates reads the same container back, whichever
+        // store it names.
+        for named in [
+            "arn:aws:s3:::market-data/2026/part.parquet",
+            "arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1",
+        ] {
+            let arn = Arn::from_str(named).unwrap();
+            assert_eq!(arn.locator().unwrap().bucket(), arn.bucket(), "{named}");
+        }
+
         let user = Arn::from_str("arn:aws:iam::123456789012:user/David").unwrap();
         assert!(user.bucket().is_none());
         let error = user.locator().expect_err("an IAM user locates nothing");

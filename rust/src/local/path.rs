@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use super::File;
 use super::Folder;
 use crate::holder::Holder;
-use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{Error, IOKind, MediaType, MimeType, Result, Uri, Url};
 use crate::{IOBase, IOPath, Listing};
 
 /// A local location that resolves to the implementation it turns out to need.
@@ -250,6 +250,10 @@ impl IOBase for Path {
             return self.as_directory()?.truncate(size);
         }
         self.with_resolved_mut(|handle| handle.truncate(size))?
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

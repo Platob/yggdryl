@@ -880,3 +880,38 @@ def test_a_shared_mutator_keeps_the_narrowing_its_class_names() -> None:
     url.set_stem("other")
     assert str(url) == "https://example.com/a/other.json?raw=true"
     assert type(url) is Url
+
+
+def test_an_s3_tables_arn_names_a_table_bucket_and_a_table() -> None:
+    table = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")
+
+    assert table.service == "s3tables"
+    assert table.region == "us-east-1"
+    assert table.account == "123456789012"
+    assert table.bucket == "lake"
+    assert table.table == "t-a1"
+    # A table is not an object, so it is not a key.
+    assert table.key is None
+    assert table.locator() == Url("s3tables://lake/t-a1")
+
+    # The container alone locates the table bucket, and names no table.
+    bucket = Arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake")
+    assert bucket.bucket == "lake"
+    assert bucket.table is None
+    assert str(bucket.locator()) == "s3tables://lake"
+
+    # An Amazon S3 ARN names no table, and a resource that is not the
+    # `bucket/...` form names no container at all.
+    assert Arn("arn:aws:s3:::market-data/part.parquet").table is None
+    policy = Arn("arn:aws:s3tables:us-east-1:123456789012:policy/deny")
+    assert policy.bucket is None
+    with pytest.raises(ValueError):
+        policy.locator()
+
+    # A table bucket is one position in a location, so the store accessors read
+    # an `s3tables:` URL the way they read an `s3:` one.
+    located = Uri("s3tables://lake/t-a1")
+    assert located.bucket == "lake"
+    assert located.key == "t-a1"
+    assert located.hostname is None
+    assert isinstance(located, Url)

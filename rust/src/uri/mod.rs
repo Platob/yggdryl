@@ -348,10 +348,11 @@ impl Uri {
         self.store_location().and_then(|location| location.endpoint)
     }
 
-    /// Return the container name when this URI addresses an object store.
+    /// Return the container name when this URI addresses a store.
     ///
     /// The bucket on Amazon S3 and Google Cloud Storage, the container on Azure
-    /// Blob Storage: one name, because it is one position in the location.
+    /// Blob Storage, the table bucket on Amazon S3 Tables: one name, because it
+    /// is one position in the location.
     pub fn bucket(&self) -> Option<&str> {
         self.store_location().and_then(|location| location.bucket)
     }

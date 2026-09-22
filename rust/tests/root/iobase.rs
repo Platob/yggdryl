@@ -631,3 +631,44 @@ mod positional {
         assert_eq!(buffer.size(), 5);
     }
 }
+
+mod identity {
+
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::buffered::BufferedOptions;
+    use yggdryl::local::Folder;
+    use yggdryl::{IOBase, Uri, Url};
+
+    /// A handle says what it is addressed by, and a location is one kind of
+    /// address rather than the only one: `uri` is what every backend answers,
+    /// and `url` is that identifier when it names a place.
+    #[test]
+    fn a_handle_is_addressed_by_an_identifier_and_a_location_is_one() {
+        let root = Folder::temporary().unwrap().path().unwrap();
+        let folder = Folder::new(&root).unwrap();
+
+        // The two accessors read one value, never two.
+        assert_eq!(
+            IOBase::uri(&folder),
+            IOBase::url(&folder).map(AsRef::<Uri>::as_ref),
+            "a located handle answers one identifier"
+        );
+        assert_eq!(IOBase::uri(&folder).unwrap().scheme().as_str(), "file");
+
+        // A buffer is not stored anywhere, so its address is an identity; it is
+        // still an identifier, and still the same one through both doors.
+        let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
+        let identity = buffer.uri().cloned().unwrap();
+        assert_eq!(identity.scheme().as_str(), "mem");
+        assert_eq!(buffer.url().map(Url::to_string), Some(identity.to_string()));
+
+        // Composition addresses the same thing it wrapped: a wrapper forwards
+        // the identity rather than inventing one.
+        let wrapped = buffer.buffered(BufferedOptions::default());
+        assert_eq!(wrapped.uri(), Some(&identity));
+        assert_eq!(
+            wrapped.url().map(Url::to_string),
+            Some(identity.to_string())
+        );
+    }
+}

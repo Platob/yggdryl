@@ -221,7 +221,7 @@ mod xxhash {
             impl IOBase for Failing {
                 // Everything but `pread`, so the stream reaches the failure below
                 // through the default `pstream_bytes` rather than around it.
-                yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
+                yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url,
                     media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
                     ls, kind, clear, remove, is_atomic, is_tabular, is_io);
 

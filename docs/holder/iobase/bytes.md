@@ -6,7 +6,8 @@ This page owns positional bytes over any handle: `pread`/`pwrite`, streams, lazi
 
 | Key | Rule |
 | --- | --- |
-| Required | `pread` and `pwrite`; every other byte method derives from them |
+| Required | `pread`, `pwrite`, and `uri`; every other byte method derives from the first two |
+| Identity | `uri` is what a handle is addressed by, because an address is not always a place: a name, or the ARN a service writes for one of its resources, addresses a handle exactly as a location does. `url` is that identifier when it names a location and `None` when it does not, and [`locator`](../../uri/url-urn.md) is what resolves a name to where it opens |
 | Invariants | `pread` short only at end of value; `pwrite` grows, zero-fills gaps; `size <= capacity`; `reserve` moves `capacity` only |
 | Lazy | Constructing touches nothing; reads of an absent resource yield nothing; writes, `truncate`, `reserve` create the resource and any missing parent |
 | Cached | Open caches, closed fetches; no ordinary read fills the cache |
@@ -67,6 +68,65 @@ Explicit offsets mean two readers never interfere and a footer-first container r
     // Two reads at different offsets, in any order: there is no shared cursor.
     assert.equal(handle.readRangeBytes(13, 4).toString(), 'AAPL')
     assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
+    ```
+
+## What a handle is addressed by
+
+`uri` is the one fact every backend owes: the identifier the bytes are reached through. A location is one kind of address rather than the only one, so `url` narrows that identifier when it names a place and answers nothing when it names a resource instead. A buffer is stored nowhere and still has an identity, which is why it answers a `mem:` address rather than no address at all.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::local::Folder;
+    use yggdryl::{IOBase, Uri};
+
+    let root = Folder::temporary()?.path()?;
+    let folder = Folder::new(&root)?;
+
+    // A located handle answers one identifier through both doors.
+    assert_eq!(IOBase::uri(&folder), IOBase::url(&folder).map(AsRef::<Uri>::as_ref));
+    assert_eq!(IOBase::uri(&folder).unwrap().scheme().as_str(), "file");
+
+    // A buffer is not stored anywhere, so its address is an identity.
+    let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
+    assert_eq!(buffer.uri().unwrap().scheme().as_str(), "mem");
+    ```
+
+=== "Python"
+
+    ```python
+    import tempfile, pathlib
+    from yggdryl import IOBase, Uri, Url
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    (root / "ticks.csv").write_text("symbol\n", encoding="utf-8")
+    handle = IOBase(root / "ticks.csv")
+
+    assert handle.uri == handle.url
+    assert isinstance(handle.uri, Url)
+    assert handle.uri.scheme == "file"
+
+    # A buffer is addressed by its identity rather than by a place.
+    assert IOBase.from_bytes(b"symbol\n").uri.scheme == "mem"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-uri-'))
+    fs.writeFileSync(path.join(root, 'ticks.csv'), 'symbol\n')
+    const handle = new IOBase(path.join(root, 'ticks.csv'))
+
+    assert.equal(handle.uri.toString(), handle.url.toString())
+    assert.equal(handle.uri.scheme, 'file')
+    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).uri.scheme, 'mem')
     ```
 
 ## Modification time

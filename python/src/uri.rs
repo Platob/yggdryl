@@ -1436,7 +1436,8 @@ impl PyArn {
         Ok(arn_of(&slf.as_super().borrow())?.resource_id().to_string())
     }
 
-    /// The bucket an Amazon S3 ARN names.
+    /// The container an ARN names: the bucket on Amazon S3, the table bucket
+    /// on Amazon S3 Tables.
     #[getter]
     fn bucket(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
         Ok(arn_of(&slf.as_super().borrow())?
@@ -1448,6 +1449,14 @@ impl PyArn {
     #[getter]
     fn key(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
         Ok(arn_of(&slf.as_super().borrow())?.key().map(str::to_string))
+    }
+
+    /// The table an Amazon S3 Tables ARN names, below its table bucket.
+    #[getter]
+    fn table(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .table()
+            .map(str::to_string))
     }
 
     #[getter]

@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::holder::Holder;
-use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Url};
+use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 use super::{BoundLocation, File, FileSystem, Folder};
 
@@ -146,6 +146,10 @@ impl IOBase for Path {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.as_file().truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url().as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

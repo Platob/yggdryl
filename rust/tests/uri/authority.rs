@@ -85,3 +85,38 @@ mod value {
         }
     }
 }
+
+mod store {
+
+    use yggdryl::{Arn, Uri, Url};
+
+    /// A table bucket is one position in a location, so the store accessors
+    /// read an `s3tables:` URL the way they read an `s3:` one.
+    #[test]
+    fn an_s3_tables_url_reads_as_the_container_and_the_name_below_it() {
+        let table = Uri::from_str("s3tables://lake/t-a1").unwrap();
+        assert_eq!(table.bucket(), Some("lake"));
+        assert_eq!(table.key(), Some("t-a1"));
+        assert_eq!(table.hostname(), None);
+        assert_eq!(table.store_endpoint(), None);
+        assert!(!table.is_virtual_hosted());
+        assert_eq!(table.region(), None);
+        assert_eq!(table.account(), None);
+
+        // The container alone is the whole location, with nothing below it.
+        let bucket = Uri::from_str("s3tables://lake").unwrap();
+        assert_eq!(bucket.bucket(), Some("lake"));
+        assert_eq!(bucket.key(), Some(""));
+
+        // It is a URL, so a reader can hold it; it is not an object store, so
+        // no byte backend is selected by it.
+        assert!(Url::from_str("s3tables://lake/t-a1").is_ok());
+        assert!(!table.scheme().is_object_store());
+        assert!(!table.scheme().is_storage());
+
+        // A URL and the ARN it came from name the same container.
+        let arn = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")
+            .unwrap();
+        assert_eq!(Uri::from(arn.locator().unwrap()), table);
+    }
+}

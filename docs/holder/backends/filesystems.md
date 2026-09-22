@@ -12,7 +12,7 @@
 | URIs | `from_uri` is the only boundary where a URI chooses and configures a filesystem |
 | Identity | `same_location` / `sameLocation` needs filesystem equality plus byte-for-byte path equality |
 | Streams | four opens, one retained backend stream each; output streams rather than buffering the whole object |
-| Secrets | `uri` may carry them; `masked_uri` / `maskedUri` is the credential-free spelling |
+| Secrets | `bound_uri` / `boundUri` may carry them; `masked_uri` / `maskedUri` is the credential-free spelling. `uri` is the identifier the handle is addressed by, which the bound location decides |
 | Ships | `MemoryFileSystem` and `LocalFileSystem`, complete references for the public object-safe `FileSystem` trait |
 | Roles | `fs::{Path, File, Folder}`, Python `FsPath` / `FsFile` / `FsFolder`; every wrapper over one keeps its bound location |
 | Bindings | Python over `pyarrow.fs` returning `NativeFile`; JavaScript over a synchronous handler protocol |
@@ -78,7 +78,7 @@ Pass the filesystem and its opaque path separately.
 
     assert handle.filesystem is filesystem
     assert handle.path == "bucket/v=a%2Fb.bin"
-    assert handle.uri == "s3://bucket/v=a%2Fb.bin"
+    assert handle.bound_uri == "s3://bucket/v=a%2Fb.bin"
     assert handle.masked_uri == "s3://bucket/v=a%2Fb.bin"
     ```
 
@@ -121,7 +121,7 @@ A name declaring a coding or a record encoding composes over that role, and the 
 
     assert handle.filesystem is filesystem
     assert handle.path == "bucket/trades.txt.gz"
-    assert handle.uri == "s3://bucket/trades.txt.gz"
+    assert handle.bound_uri == "s3://bucket/trades.txt.gz"
 
     stored = FsPath(filesystem, "bucket/trades.txt.gz")
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
@@ -177,7 +177,7 @@ Every parent, child, listing result, glob result, and wrapper the name composes 
 - the exact optional caller URI; and
 - a credential-free diagnostic URI.
 
-`uri` is explicit because it can carry secrets, so errors, logs, and snapshots use `masked_uri` or `maskedUri`. Repr and debug output never reveal user information, secret keys, or session tokens.
+`bound_uri` is explicit because it can carry secrets, so errors, logs, and snapshots use `masked_uri` or `maskedUri`. Repr and debug output never reveal user information, secret keys, or session tokens.
 
 ## Stream lifetime
 

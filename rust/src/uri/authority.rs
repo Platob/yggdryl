@@ -288,7 +288,7 @@ impl Uri {
     /// the container, and what is left is the key. Only *recognizing a
     /// hostname* differs, and that is what [`StoreHost`] answers per store.
     pub(super) fn store_location(&self) -> Option<StoreLocation<'_>> {
-        if !self.scheme.is_object_store() {
+        if !self.scheme.has_container() {
             return None;
         }
 

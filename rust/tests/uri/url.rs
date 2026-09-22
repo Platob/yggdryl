@@ -379,7 +379,7 @@ mod encoding {
 
 mod location {
 
-    use yggdryl::{Arn, Uri, Url, Urn};
+    use yggdryl::{Uri, Url, Urn};
 
     /// The location door reads every spelling of *where*: a URL, a bare path,
     /// and a name - while the strict door keeps refusing a name.

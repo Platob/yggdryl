@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Url};
+use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
 use super::{
     BoundLocation, ByteReader, ByteWriter, FileSystem, Folder, OutputMetadata, RandomAccessReader,
@@ -351,6 +351,10 @@ impl IOBase for File {
             "non-zero truncation",
             self.filesystem().type_name(),
         ))
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url().as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

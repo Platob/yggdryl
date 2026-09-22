@@ -19,7 +19,7 @@ use std::sync::{Mutex, OnceLock};
 
 use memmap2::MmapMut;
 
-use crate::{Error, MediaType, MimeType, Result, Url};
+use crate::{Error, MediaType, MimeType, Result, Uri, Url};
 
 use crate::holder::Holder;
 use crate::{IOBase, IOFile};
@@ -405,6 +405,10 @@ impl IOBase for File {
         mapped.size = size;
         mapped.dirty = true;
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

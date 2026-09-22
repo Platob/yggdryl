@@ -1579,6 +1579,8 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
+  fn uri(&self) -> Option<&Uri>
+  fn url(&self) -> Option<&Url>
   fn mtime(&self) -> Option<i64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>
@@ -2637,6 +2639,7 @@ pub struct Scheme(SchemeValue);
   pub const IDENTITY: Self = Self(SchemeValue::Identity);
   pub const PARTITION: Self = Self(SchemeValue::Partition);
   pub const S3: Self = Self(SchemeValue::S3);
+  pub const S3TABLES: Self = Self(SchemeValue::S3Tables);
   pub const GS: Self = Self(SchemeValue::Gs);
   pub const AZ: Self = Self(SchemeValue::Az);
   pub const SPARK: Self = Self(SchemeValue::Spark);
@@ -2648,6 +2651,8 @@ pub struct Scheme(SchemeValue);
   pub fn as_str(&self) -> &str
   pub const fn is_known(&self) -> bool
   pub const fn default_port(&self) -> Option<u16>
+  pub const fn is_s3_tables(&self) -> bool
+  pub const fn has_container(&self) -> bool
   pub const fn is_storage(&self) -> bool
   pub const fn is_compatibility_target(&self) -> bool
   pub fn stable_hash(&self) -> u64
@@ -4672,6 +4677,7 @@ pub struct Authority(SmolStr);
   pub fn resource_id(&self) -> &str
   pub fn bucket(&self) -> Option<&str>
   pub fn key(&self) -> Option<&str>
+  pub fn table(&self) -> Option<&str>
   pub fn locator(&self) -> Result<Url>
   pub fn path_segments(&self) -> PathSegments<'_>
   pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
+use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
 use super::{Archive, Leaf, Path, name};
 
@@ -211,6 +211,10 @@ impl IOBase for Node {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.folder_truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

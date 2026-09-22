@@ -1,7 +1,7 @@
 //! A directory over one bound Arrow filesystem location.
 
 use crate::holder::Holder;
-use crate::{IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
+use crate::{IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
 use super::{BoundLocation, File, FileSelector, FileSystem, Path};
 
@@ -171,6 +171,10 @@ impl IOBase for Folder {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.folder_truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url().as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

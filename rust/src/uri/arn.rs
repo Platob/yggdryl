@@ -15,6 +15,11 @@ use super::*;
 /// service - IAM, Amazon S3, CloudFront - spells "every region" and "no owning
 /// account". A policy wildcard (`*`, `?`) is a value a field may hold.
 ///
+/// Two services name a place rather than a thing, and those two
+/// [`locate`](Self::locator): Amazon S3, whose resource is a bucket and a key,
+/// and Amazon S3 Tables, whose resource is a table bucket and a
+/// [`table`](Self::table).
+///
 /// ```
 /// use yggdryl::Arn;
 ///
@@ -279,29 +284,65 @@ impl Arn {
             .map_or_else(|| self.resource(), |(_, _, resource_id)| resource_id)
     }
 
-    /// Return the bucket an Amazon S3 ARN names.
+    /// Return the container an ARN names, when its service has one.
     ///
-    /// Only the bucket form answers: an ARN naming an access point, a job, or
-    /// another service's resource has no bucket, and says so rather than
-    /// reading its first resource part as one.
+    /// The bucket on Amazon S3 and the table bucket on Amazon S3 Tables: one
+    /// name, because it is one position in the location, which is what
+    /// [`Uri::bucket`] reads it as. Only the container form answers - an ARN
+    /// naming an access point, a job, or another service's resource has none,
+    /// and says so rather than reading its first resource part as one.
     pub fn bucket(&self) -> Option<&str> {
-        self.s3_location().map(|(bucket, _)| bucket)
+        self.store_location().map(|(_, bucket, _)| bucket)
     }
 
     /// Return the object key an Amazon S3 ARN names, below its bucket.
     ///
     /// The key is spelled as the ARN spells it - escapes stay escaped and a
     /// trailing slash stays - for the reason [`Uri::key`] gives. An ARN naming
-    /// the bucket alone answers `""`.
+    /// the bucket alone answers `""`. An Amazon S3 Tables ARN holds a table
+    /// rather than an object below its container, which [`table`](Self::table)
+    /// is the door for.
     pub fn key(&self) -> Option<&str> {
-        self.s3_location().map(|(_, key)| key)
+        (self.service() == "s3")
+            .then(|| self.store_location().map(|(_, _, key)| key))
+            .flatten()
+    }
+
+    /// Return the table an Amazon S3 Tables ARN names, below its table bucket.
+    ///
+    /// A table bucket ARN names the container alone and answers `None`; the
+    /// table form is `bucket/<table-bucket>/table/<table>`, which is what the
+    /// S3 Tables catalog addresses one by.
+    ///
+    /// ```
+    /// use yggdryl::Arn;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let table = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")?;
+    /// assert_eq!(table.bucket(), Some("lake"));
+    /// assert_eq!(table.table(), Some("t-a1"));
+    /// assert_eq!(table.key(), None);
+    ///
+    /// let container = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake")?;
+    /// assert_eq!(container.bucket(), Some("lake"));
+    /// assert_eq!(container.table(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn table(&self) -> Option<&str> {
+        (self.service() == "s3tables")
+            .then(|| self.store_location().map(|(_, _, table)| table))
+            .flatten()
+            .filter(|table| !table.is_empty())
     }
 
     /// Return the location this name addresses, as a URL.
     ///
     /// An Amazon S3 ARN names a bucket and, below it, a key, which is exactly
-    /// what an `s3:` URL locates. Every other service addresses something no
-    /// URL locates, and is refused by name.
+    /// what an `s3:` URL locates; an Amazon S3 Tables ARN names a table bucket
+    /// and, below it, a table, which is what an `s3tables:` URL locates. Every
+    /// other service addresses something no URL locates, and is refused by
+    /// name.
     ///
     /// ```
     /// use yggdryl::Arn;
@@ -309,6 +350,9 @@ impl Arn {
     /// # fn main() -> yggdryl::Result<()> {
     /// let arn = Arn::from_str("arn:aws:s3:::trades/2026/part.parquet")?;
     /// assert_eq!(arn.locator()?.to_string(), "s3://trades/2026/part.parquet");
+    ///
+    /// let table = Arn::from_str("arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1")?;
+    /// assert_eq!(table.locator()?.to_string(), "s3tables://lake/t-a1");
     ///
     /// let user = Arn::from_str("arn:aws:iam::123456789012:user/David")?;
     /// assert!(user.locator().is_err());
@@ -319,23 +363,23 @@ impl Arn {
     /// # Errors
     ///
     /// Returns a parse error when the ARN names no location, or when its
-    /// bucket and key do not spell a valid URL.
+    /// container and what it holds do not spell a valid URL.
     pub fn locator(&self) -> Result<Url> {
-        let Some((bucket, key)) = self.s3_location() else {
+        let Some((scheme, container, name)) = self.store_location() else {
             return Err(parse_error(
                 "arn",
                 FIELDS_OFFSET,
-                "only an Amazon S3 bucket ARN names a location a URL can address",
+                "only an Amazon S3 bucket or an Amazon S3 Tables ARN names a location a URL can address",
             ));
         };
         let mut path = SmolStrBuilder::new();
-        if !key.is_empty() {
+        if !name.is_empty() {
             path.push('/');
-            path.push_str(key);
+            path.push_str(name);
         }
         Url::from_uri(Uri::from_parts(
-            Scheme::S3,
-            Authority::from_str(bucket)?,
+            scheme,
+            Authority::from_str(container)?,
             UriPath(path.into()),
             None,
             None,
@@ -499,17 +543,32 @@ impl Arn {
             .unwrap_or("")
     }
 
-    /// Return the bucket and key an Amazon S3 bucket ARN names.
+    /// Return the scheme, the container, and the name below it this ARN spells.
     ///
-    /// The bucket form carries no region and no account, which is what
-    /// separates it from an access point or a job ARN, whose resource is a
-    /// type and an identifier rather than a container and a key.
-    fn s3_location(&self) -> Option<(&str, &str)> {
-        if self.service() != "s3" || self.region().is_some() || self.account().is_some() {
-            return None;
+    /// Two services name a location. The Amazon S3 bucket form carries no
+    /// region and no account, which is what separates it from an access point
+    /// or a job ARN, whose resource is a type and an identifier rather than a
+    /// container and a key. The Amazon S3 Tables form writes the container
+    /// under a `bucket` resource type and the table under a `table` one, so
+    /// only a resource spelling both is a location.
+    fn store_location(&self) -> Option<(Scheme, &str, &str)> {
+        match self.service() {
+            "s3" if self.region().is_none() && self.account().is_none() => {
+                let resource = self.resource();
+                let (bucket, key) = resource.split_once('/').unwrap_or((resource, ""));
+                (!bucket.is_empty()).then_some((Scheme::S3, bucket, key))
+            }
+            "s3tables" => {
+                let below = self.resource().strip_prefix("bucket/")?;
+                let (bucket, below) = below.split_once('/').unwrap_or((below, ""));
+                if bucket.is_empty() {
+                    return None;
+                }
+                let table = below.strip_prefix("table/").unwrap_or(below);
+                Some((Scheme::S3TABLES, bucket, table))
+            }
+            _ => None,
         }
-        let resource = self.resource();
-        Some(resource.split_once('/').unwrap_or((resource, "")))
     }
 
     /// Answer the resource field as a path, for the accessors that edit one.

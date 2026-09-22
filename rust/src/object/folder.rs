@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::client::Client;
 use super::file::File;
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
+use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
 /// A key prefix on S3, addressed as a container.
 ///
@@ -420,6 +420,10 @@ impl IOBase for Folder {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.folder_truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

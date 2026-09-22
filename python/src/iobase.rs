@@ -878,7 +878,22 @@ impl PyIOBase {
         describe(py, Holder::Buffer(buffer))
     }
 
-    /// The location this handle addresses.
+    /// The identifier this handle is addressed by.
+    ///
+    /// Every handle answers one, because an address is not always a place: a
+    /// name, or the ARN a service writes for one of its resources, addresses a
+    /// handle exactly as a location does. `locator()` on what this answers is
+    /// where such a handle opens.
+    #[getter]
+    fn uri(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        self.inner()?
+            .uri()
+            .cloned()
+            .map(|value| crate::uri::describe(py, value))
+            .transpose()
+    }
+
+    /// The location this handle addresses, when its identifier names one.
     #[getter]
     fn url(&self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
         self.inner()?
@@ -910,9 +925,10 @@ impl PyIOBase {
             .map(|bound| bound.path().to_owned()))
     }
 
-    /// The caller's exact optional URI spelling. It may contain credentials.
+    /// The caller's exact optional URI spelling for the bound filesystem. It
+    /// may contain credentials.
     #[getter]
-    fn uri(&self) -> PyResult<Option<String>> {
+    fn bound_uri(&self) -> PyResult<Option<String>> {
         Ok(self
             .inner()?
             .bound_location()

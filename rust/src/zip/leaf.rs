@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::SmolStr;
 
 use crate::holder::Holder;
-use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Url};
+use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Uri, Url};
 
 use super::{Archive, Entry, Node, name};
 
@@ -419,6 +419,10 @@ impl IOBase for Leaf {
         }
         self.dirty = true;
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {

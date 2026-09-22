@@ -14,7 +14,7 @@ pub use buffer::Buffer;
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
 use crate::local::{File, Folder};
-use crate::{MediaType, Result, Url};
+use crate::{MediaType, Result, Uri, Url};
 
 use crate::IOBase;
 
@@ -777,6 +777,10 @@ impl IOBase for Holder {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.as_io_mut().truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.as_io().uri()
     }
 
     fn url(&self) -> Option<&Url> {

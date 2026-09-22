@@ -39,7 +39,7 @@
 
 use std::io::{Read as _, Write as _};
 
-use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Url};
+use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 use crate::{Codec, Level};
 
 use crate::holder::Holder;
@@ -166,8 +166,24 @@ pub trait IOBase: Send + IOMedia {
     /// Returns the backing store's resize failure.
     fn truncate(&mut self, size: u64) -> Result<()>;
 
-    /// Return the canonical location, when the bytes have one.
-    fn url(&self) -> Option<&Url>;
+    /// Return the identifier the bytes are addressed by, when they have one.
+    ///
+    /// This is what a handle *is* - the one fact every backend owes - and it
+    /// is an identifier rather than a location because not every address is a
+    /// place: a name, or the ARN a service writes for one of its resources,
+    /// addresses a handle exactly as a URL does. [`Uri::locator`] is what
+    /// answers where such a handle opens.
+    fn uri(&self) -> Option<&Uri>;
+
+    /// Return the canonical location, when the identifier is one.
+    ///
+    /// A handle addressed by a location holds one and answers it here. A
+    /// handle addressed by a name has none to borrow - resolving one would
+    /// build a value this accessor cannot lend out - so it keeps the default
+    /// and a caller reads [`uri`](Self::uri) instead.
+    fn url(&self) -> Option<&Url> {
+        None
+    }
 
     /// Return the filesystem/path binding when this handle has one.
     fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
