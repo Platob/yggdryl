@@ -915,3 +915,8 @@ def test_an_s3_tables_arn_names_a_table_bucket_and_a_table() -> None:
     assert located.key == "t-a1"
     assert located.hostname is None
     assert isinstance(located, Url)
+
+    # No byte backend speaks S3 Tables, so opening one is refused by its
+    # scheme rather than by the path conversion it is not.
+    with pytest.raises(ValueError, match='"s3tables" does not support'):
+        IOBase(table)

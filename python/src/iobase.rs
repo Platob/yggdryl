@@ -80,6 +80,17 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
         return yggdryl::object::located(&url.to_string())
             .map_err(crate::holder::fs::storage_error);
     }
+    if !url.is_local() {
+        // A location whose scheme no backend speaks is refused by that scheme,
+        // not by the path conversion it would otherwise fall through to: an
+        // Amazon S3 Tables table names a resource a catalog reads, and saying
+        // "only a file URI can be converted to a platform path" would name the
+        // wrong thing entirely.
+        return Err(value_error(yggdryl::Error::unsupported(
+            "holding a location of this scheme",
+            url.scheme().as_str(),
+        )));
+    }
     Holder::local(url.clone().into_path().map_err(value_error)?)
         .map_err(crate::holder::fs::storage_error)
 }
@@ -90,6 +101,12 @@ pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
         return yggdryl::object::folder(&url.to_string())
             .map(Holder::ObjectFolder)
             .map_err(crate::holder::fs::storage_error);
+    }
+    if !url.is_local() {
+        return Err(value_error(yggdryl::Error::unsupported(
+            "holding a location of this scheme",
+            url.scheme().as_str(),
+        )));
     }
     Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
 }

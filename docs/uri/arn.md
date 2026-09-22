@@ -343,6 +343,7 @@ No byte backend opens an `s3tables:` location: `is_object_store` stays false for
 - `arn:aws:s3:us-west-2:123456789012:accesspoint/reports` → `bucket` and `key` are `None`, because only the region-less, account-less form is the bucket form.
 - `arn:aws:s3tables:…:policy/deny` → `bucket` is `None` and `locator` refuses: only a `bucket/…` resource names a table bucket.
 - `arn:aws:s3tables:…:bucket/lake` → `table` is `None`: the container alone names no table.
+- Opening an `s3tables:` location → refused by its scheme (`filesystem "s3tables" does not support holding a location of this scheme`), because no byte backend speaks S3 Tables.
 
 ## Commands
 
