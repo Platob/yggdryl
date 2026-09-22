@@ -193,10 +193,9 @@ capture's own columns, carried in front, so the header dates neither its line
 nor its message: a caller who wants the line dated names that capture
 ``mtime`` in a header of their own, which costs the ``timestamp`` column and
 reads the clock at ``datetime64(ns, UTC)`` whatever the expression spells.
-Its clock matches a fraction of exactly three digits, so a bridge writing
-grouped microseconds needs a wider header - and a line a row header does not
-match carries no capture context, which is what the lifecycle folds
-deliveries on.
+Its clock reads both fractions the bridge writes, three digits and grouped
+microseconds - and a line a row header does not match carries no capture
+context, which is what the lifecycle folds deliveries on.
 """
 
 from __future__ import annotations

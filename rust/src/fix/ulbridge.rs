@@ -69,9 +69,11 @@
 /// still parses and every content digest still agrees. The count of lines a
 /// header matched is worth asserting next to the count of messages parsed.
 ///
-/// This one matches a fraction of exactly three digits, so it does not read
-/// a bridge that writes its microseconds grouped - `23:59:46.524_315` - and
-/// leaves those lines undated and unmerged.
+/// This one reads both fractions the bridge writes: three digits, and the
+/// grouped microseconds it writes as `23:59:46.524_315`. It admitted only
+/// the first until 0.1.10, which is why it could not read the last fifteen
+/// lines of the capture shipped beside it - and why a walk over that capture
+/// answered four events more than the same capture read whole.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -81,14 +83,16 @@
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
 /// assert!(names.ends_with(&["timestamp", "msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "level"]));
 /// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
-/// // The expression's own fraction types the capture it is part of, which
-/// // is what this pins; which lines the expression matches is the separate
-/// // and larger consequence the section above states.
+/// // The expression's own fraction types the capture it is part of, and
+/// // the widest fraction it admits is what names the unit - microseconds
+/// // here, from the grouped form, though most lines spell milliseconds.
+/// // Which lines the expression matches is the separate and larger
+/// // consequence the section above states.
 /// assert_eq!(
 ///     captures.field("timestamp")?.dtype(),
-///     &yggdryl::DataType::datetime64(yggdryl::TimeUnit::Millisecond, yggdryl::Timezone::NAIVE)?,
+///     &yggdryl::DataType::datetime64(yggdryl::TimeUnit::Microsecond, yggdryl::Timezone::NAIVE)?,
 /// );
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}(?:_\d{3})?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";

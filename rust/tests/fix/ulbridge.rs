@@ -113,9 +113,16 @@ mod dataset {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         // Complete four-part capture keys identify the bridge's repeated
-        // observations before the older content-key dedup runs: 31 deliveries
+        // observations before the older content-key dedup runs: 27 deliveries
         // and one expiry.
-        assert_eq!(direct.len(), 32);
+        //
+        // It was 32 while the row header's clock admitted three fractional
+        // digits and no more. The capture's last fifteen lines write grouped
+        // microseconds, so the header matched 129 of its 144 lines; the
+        // fifteen it missed arrived carrying no session, context or sequence,
+        // built no `msgsesseventid`, and so could not be folded onto the
+        // deliveries they are repeats of. Reading them is what folds them.
+        assert_eq!(direct.len(), 28);
         assert_eq!(
             direct
                 .iter()

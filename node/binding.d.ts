@@ -3351,9 +3351,10 @@ export interface Fix {
    * neither its line nor its message. A caller who wants the line dated
    * names that capture `mtime` in a header of their own, which costs the
    * `timestamp` column and reads the clock at nanoseconds UTC whatever the
-   * expression spells. Its clock matches a fraction of exactly three
-   * digits, and a line a row header does not match carries no capture
-   * context - which is what the lifecycle folds deliveries on.
+   * expression spells. Its clock reads both fractions the bridge writes,
+   * three digits and grouped microseconds, and a line a row header does not
+   * match carries no capture context - which is what the lifecycle folds
+   * deliveries on.
    */
   readonly ULBRIDGE_ROWHEADER: string
   /**
