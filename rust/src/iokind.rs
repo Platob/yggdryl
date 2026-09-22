@@ -13,7 +13,7 @@ use crate::{Error, Result};
 /// Every backend has the same three roles - bytes with no location, a leaf that
 /// holds bytes, a container that holds other resources - plus the honest answer
 /// for a location that does not exist yet. A generic handle such as
-/// [`crate::local::Path`] reads this to decide which specialized implementation
+/// [`crate::local::LocalPath`] reads this to decide which specialized implementation
 /// to work through, so adding a backend means answering this question rather
 /// than inventing new vocabulary.
 ///

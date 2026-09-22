@@ -33,21 +33,22 @@ role!(
      nameless stream is captured into."
 );
 role!(
-    PyFile,
-    "File",
+    PyLocalFile,
+    "LocalFile",
     "One memory-mapped local file. The mapping is created by the first \
      operation that needs it, not by naming the location."
 );
 role!(
-    PyFolder,
-    "Folder",
+    PyLocalFolder,
+    "LocalFolder",
     "One local directory, listed and walked without being opened."
 );
 role!(
-    PyPath,
-    "Path",
-    "One local location that resolves to `File` or `Folder` when an operation \
-     needs to know which it is - the role a name that says nothing takes."
+    PyLocalPath,
+    "LocalPath",
+    "One local location that resolves to `LocalFile` or `LocalFolder` when an \
+     operation needs to know which it is - the role a name that says nothing \
+     takes."
 );
 role!(
     PyFsFile,
@@ -138,7 +139,7 @@ fn fs_holder(
 }
 
 #[pymethods]
-impl PyPath {
+impl PyLocalPath {
     /// Describe a local location without deciding what it is.
     ///
     /// `IOBase(location)` answers with the coding and record implementation
@@ -151,14 +152,14 @@ impl PyPath {
 
     /// Read this location as a mapped file, whether or not it exists.
     ///
-    /// A name that says nothing is a `Path` until an operation needs to know
-    /// which role it is; this decides without asking the file system, and
-    /// carries any media type the `Path` declared across.
+    /// A name that says nothing is a `LocalPath` until an operation needs to
+    /// know which role it is; this decides without asking the file system, and
+    /// carries any media type the `LocalPath` declared across.
     fn as_file(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let base = slf.borrow();
         let holder = match base.as_super().inner()? {
-            Holder::Path(path) => Holder::File(path.as_file().map_err(value_error)?),
-            _ => return Err(PyValueError::new_err("this handle is no longer a Path")),
+            Holder::LocalPath(path) => Holder::LocalFile(path.as_file().map_err(value_error)?),
+            _ => return Err(PyValueError::new_err("this handle is no longer a LocalPath")),
         };
         crate::iobase::describe(py, holder)
     }
@@ -167,15 +168,17 @@ impl PyPath {
     fn as_directory(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let base = slf.borrow();
         let holder = match base.as_super().inner()? {
-            Holder::Path(path) => Holder::Folder(path.as_directory().map_err(value_error)?),
-            _ => return Err(PyValueError::new_err("this handle is no longer a Path")),
+            Holder::LocalPath(path) => {
+                Holder::LocalFolder(path.as_directory().map_err(value_error)?)
+            }
+            _ => return Err(PyValueError::new_err("this handle is no longer a LocalPath")),
         };
         crate::iobase::describe(py, holder)
     }
 }
 
 #[pymethods]
-impl PyFile {
+impl PyLocalFile {
     /// Describe a local file, whether or not it exists yet.
     #[new]
     fn new(location: &Bound<'_, PyAny>) -> PyResult<PyClassInitializer<Self>> {
@@ -184,7 +187,7 @@ impl PyFile {
 }
 
 #[pymethods]
-impl PyFolder {
+impl PyLocalFolder {
     /// Describe a local directory, whether or not it exists yet.
     ///
     /// Naming a location as a container is what tells a handle to resolve
@@ -197,26 +200,29 @@ impl PyFolder {
     /// The platform temporary directory, created by nothing.
     #[classmethod]
     fn temporary(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::temporary())
+        Self::root(py, yggdryl::local::LocalFolder::temporary())
     }
 
     /// The user's home directory, from `HOME` then `USERPROFILE`.
     #[classmethod]
     fn home(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::home())
+        Self::root(py, yggdryl::local::LocalFolder::home())
     }
 
     /// The user's configuration directory: `home` joined with `.config`.
     #[classmethod]
     fn config(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::local::Folder::config())
+        Self::root(py, yggdryl::local::LocalFolder::config())
     }
 }
 
-impl PyFolder {
+impl PyLocalFolder {
     /// Answer one well-known root as this class.
-    fn root(py: Python<'_>, folder: yggdryl::Result<yggdryl::local::Folder>) -> PyResult<Py<Self>> {
-        let holder = Holder::Folder(folder.map_err(value_error)?);
+    fn root(
+        py: Python<'_>,
+        folder: yggdryl::Result<yggdryl::local::LocalFolder>,
+    ) -> PyResult<Py<Self>> {
+        let holder = Holder::LocalFolder(folder.map_err(value_error)?);
         Py::new(
             py,
             PyClassInitializer::from(PyIOBase::from_core(holder)).add_subclass(Self),
@@ -275,7 +281,7 @@ impl PyFsFile {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFile(yggdryl::fs::File::new(bound));
+        let build = |bound| Holder::FsFile(yggdryl::fs::FsFile::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -290,7 +296,7 @@ impl PyFsFolder {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFolder(yggdryl::fs::Folder::new(bound));
+        let build = |bound| Holder::FsFolder(yggdryl::fs::FsFolder::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -548,9 +554,9 @@ impl PyBuffered {
 /// Register every storage role.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyBuffer>()?;
-    module.add_class::<PyFile>()?;
-    module.add_class::<PyFolder>()?;
-    module.add_class::<PyPath>()?;
+    module.add_class::<PyLocalFile>()?;
+    module.add_class::<PyLocalFolder>()?;
+    module.add_class::<PyLocalPath>()?;
     module.add_class::<PyFsFile>()?;
     module.add_class::<PyFsFolder>()?;
     module.add_class::<PyFsPath>()?;

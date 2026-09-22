@@ -56,13 +56,13 @@ fn options() -> ObjectOptions {
 }
 
 /// The blob `key` names in the exchange container.
-fn blob(key: &str) -> yggdryl::object::File {
+fn blob(key: &str) -> yggdryl::object::ObjectFile {
     yggdryl::object::file_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a blob handle")
 }
 
 /// The prefix `key` names in the exchange container.
-fn prefix(key: &str) -> yggdryl::object::Folder {
+fn prefix(key: &str) -> yggdryl::object::ObjectFolder {
     yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a prefix handle")
 }
@@ -74,7 +74,7 @@ fn skipped(what: &str) -> bool {
 }
 
 /// The container the exchange runs in, created if the driver did not.
-fn container() -> yggdryl::object::Folder {
+fn container() -> yggdryl::object::ObjectFolder {
     let root = yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, "", options())
         .expect("a container handle");
     if !root.folder_exists() {

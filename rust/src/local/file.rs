@@ -7,13 +7,13 @@
 //! wrapper can remove: a mapping aliases file bytes, so if another process
 //! truncates the file while a mapping is live, touching the lost pages raises
 //! SIGBUS rather than returning an error. Yggdryl cannot prevent that, so
-//! [`File`] documents the hazard
+//! [`LocalFile`] documents the hazard
 //! instead of pretending it away. Use [`super::Buffer`] when the file may
 //! change underneath you.
 
 #![allow(unsafe_code)]
 
-use std::fs::{File as StdFile, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -33,7 +33,7 @@ const MINIMUM_GROWTH: u64 = 64 * 1024;
 /// mapped section is open, so publishing the logical length must release it
 /// first. Any later access re-establishes it.
 struct Mapped {
-    file: StdFile,
+    file: File,
     mapping: Option<MmapMut>,
     size: u64,
     dirty: bool,
@@ -41,10 +41,10 @@ struct Mapped {
 
 /// A lazily mapped local file addressed by offset.
 ///
-/// Construction touches nothing: [`File::new`] only records the path. The file
-/// is opened and mapped on the first operation that needs it, and per the
-/// [`IOBase`] laziness contract a read of a missing file yields zero bytes
-/// while a write creates it along with any missing parent directory.
+/// Construction touches nothing: [`LocalFile::new`] only records the path.
+/// The file is opened and mapped on the first operation that needs it, and
+/// per the [`IOBase`] laziness contract a read of a missing file yields zero
+/// bytes while a write creates it along with any missing parent directory.
 ///
 /// The mapping covers the file's capacity, while [`IOBase::size`] tracks the
 /// logical length. Writing past the mapping remaps at a larger capacity, so
@@ -54,7 +54,7 @@ struct Mapped {
 ///
 /// See the module documentation: a concurrent external truncation of the
 /// mapped file can raise SIGBUS.
-pub struct File {
+pub struct LocalFile {
     path: PathBuf,
     url: Url,
     /// An explicit media type overrides inference from the location.
@@ -65,7 +65,7 @@ pub struct File {
     state: Mutex<Option<Mapped>>,
 }
 
-impl File {
+impl LocalFile {
     /// Describe a mapped file without touching it.
     ///
     /// The path need not exist. Reads before it does yield nothing; the first
@@ -182,7 +182,7 @@ impl File {
     }
 
     /// One open attempt, with no question asked first.
-    fn open_at(path: &Path, create: bool) -> std::io::Result<StdFile> {
+    fn open_at(path: &Path, create: bool) -> std::io::Result<File> {
         OpenOptions::new()
             .read(true)
             .write(true)
@@ -243,12 +243,13 @@ impl Mapped {
 }
 
 /// Map a file for shared read/write access.
-fn map_file(file: &StdFile) -> Result<MmapMut> {
+fn map_file(file: &File) -> Result<MmapMut> {
     // SAFETY: `memmap2` requires this to be `unsafe` because the mapping
     // aliases file bytes that another process could truncate, which would turn
     // a later access into SIGBUS. Yggdryl cannot rule that out, so the hazard is
-    // documented on `File` rather than hidden. Nothing else about the call is unsound: the file
-    // handle is owned alongside the mapping and outlives it.
+    // documented on `LocalFile` rather than hidden. Nothing else about the
+    // call is unsound: the file handle is owned alongside the mapping and
+    // outlives it.
     unsafe { MmapMut::map_mut(file) }.map_err(Error::Io)
 }
 
@@ -260,7 +261,7 @@ fn poisoned() -> Error {
 }
 
 /// A memory-mapped file is the leaf role over the local file system.
-impl IOFile for File {
+impl IOFile for LocalFile {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -299,11 +300,11 @@ impl IOFile for File {
     }
 }
 
-impl crate::IOMedia for File {
+impl crate::IOMedia for LocalFile {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for File {
+impl IOBase for LocalFile {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let mut state = self.state.lock().map_err(|_| poisoned())?;
         // A missing file reads as empty rather than failing.
@@ -495,7 +496,7 @@ impl IOBase for File {
     }
 }
 
-impl Drop for File {
+impl Drop for LocalFile {
     fn drop(&mut self) {
         // Publish the logical length; a failure here cannot be reported, and
         // callers who care call `flush` explicitly.
@@ -507,10 +508,10 @@ impl Drop for File {
     }
 }
 
-impl std::fmt::Debug for File {
+impl std::fmt::Debug for LocalFile {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("File")
+            .debug_struct("LocalFile")
             .field("url", &self.url)
             .field("size", &self.size())
             .finish()

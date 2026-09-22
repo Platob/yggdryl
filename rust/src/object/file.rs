@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use super::answer::ObjectMeta;
 use super::client::Client;
-use super::folder::Folder;
+use super::folder::ObjectFolder;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
@@ -49,7 +49,7 @@ use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Ur
 /// memory, and published as one upload on [`IOBase::flush`] or
 /// [`IOBase::close`]. Whole-value writes skip the load, because nothing of the
 /// old value survives them.
-pub struct File {
+pub struct ObjectFile {
     client: Arc<Client>,
     /// The location, with any credentials the caller wrote into it removed.
     url: Url,
@@ -82,7 +82,7 @@ struct Stage {
     dirty: bool,
 }
 
-impl File {
+impl ObjectFile {
     /// Describe the object `url` names on `client`, touching nothing.
     pub(super) fn new(client: Arc<Client>, url: Url) -> Result<Self> {
         let (bucket, key) = super::split_location(&url)?;
@@ -350,7 +350,7 @@ impl File {
 }
 
 /// An S3 object is the leaf role over the store.
-impl IOFile for File {
+impl IOFile for ObjectFile {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -387,11 +387,11 @@ impl IOFile for File {
     }
 }
 
-impl crate::IOMedia for File {
+impl crate::IOMedia for ObjectFile {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for File {
+impl IOBase for ObjectFile {
     /// Read into `buffer` from `offset` with one ranged `GET`.
     ///
     /// A staged write answers from memory instead, because it is what a later
@@ -774,7 +774,7 @@ impl IOBase for File {
 
     fn parent(&self) -> Option<Holder> {
         let parent = self.url.parent()?;
-        Folder::new(self.client.clone(), parent)
+        ObjectFolder::new(self.client.clone(), parent)
             .ok()
             .map(Holder::ObjectFolder)
     }
@@ -796,7 +796,7 @@ impl IOBase for File {
     }
 }
 
-impl Drop for File {
+impl Drop for ObjectFile {
     fn drop(&mut self) {
         // Publish a staged write; a failure here cannot be reported, and
         // callers who care call `flush` or `close` explicitly.
@@ -806,10 +806,10 @@ impl Drop for File {
     }
 }
 
-impl std::fmt::Debug for File {
+impl std::fmt::Debug for ObjectFile {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("File")
+            .debug_struct("ObjectFile")
             .field("url", &self.url)
             .finish()
     }
@@ -843,17 +843,21 @@ pub mod internals {
     //! A streaming upload is how a record writer reaches a store, so what it
     //! costs in round trips and how much of the source it holds at once are
     //! pinned counts; no caller spells it, because a caller writes through
-    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`File`] keeps the
-    //! surface it publishes.
+    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`ObjectFile`]
+    //! keeps the surface it publishes.
     use crate::Result;
-    use crate::object::File;
+    use crate::object::ObjectFile;
 
     /// Upload `length` bytes read from `source` as the object's whole value.
     ///
     /// # Errors
     ///
     /// Whatever the upload refuses, a source that ends early included.
-    pub fn upload_from(file: &mut File, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+    pub fn upload_from(
+        file: &mut ObjectFile,
+        source: &mut dyn std::io::Read,
+        length: u64,
+    ) -> Result<()> {
         file.upload_from(source, length)
     }
 }

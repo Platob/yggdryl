@@ -25,10 +25,10 @@
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, Expression, StructType, Url};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-docs-plans");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-docs-plans");
     std::fs::create_dir_all(&root)?;
     let url = Url::from_path(root.join("trades.arrow"))?;
 

@@ -393,11 +393,11 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
     use std::sync::Arc;
 
     use yggdryl::graph::Element;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
 
     let line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|9999=x|10=0|";
@@ -631,11 +631,11 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, Scalar, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
 
     // A cancelled partial fill (20=1, 150=1) of an agency order (47=A),

@@ -1347,14 +1347,14 @@ pub struct Buffer
   pub fn into_bytes(self) -> Vec<u8>
 
 ### yggdryl::local::file  [rust/src/local/file.rs]
-pub struct File
+pub struct LocalFile
   pub fn new(path: impl AsRef<Path>) -> Result<Self>
   pub fn create(path: impl AsRef<Path>) -> Result<Self>
   pub fn path(&self) -> &Path
   pub fn exists(&self) -> bool
 
 ### yggdryl::local::folder  [rust/src/local/folder.rs]
-pub struct Folder
+pub struct LocalFolder
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
   pub fn temporary() -> Result<Self>
@@ -1366,17 +1366,17 @@ pub struct Folder
   pub fn create(&self) -> Result<()>
 
 ### yggdryl::local::path  [rust/src/local/path.rs]
-pub struct Path
+pub struct LocalPath
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
   pub const fn url(&self) -> &Url
   pub fn path(&self) -> Result<std::path::PathBuf>
   pub fn exists(&self) -> bool
-  pub fn as_directory(&self) -> Result<Folder>
-  pub fn as_file(&self) -> Result<File>
+  pub fn as_directory(&self) -> Result<LocalFolder>
+  pub fn as_file(&self) -> Result<LocalFile>
 
 ### yggdryl::zip::archive  [rust/src/zip/archive.rs]
-pub struct Archive
+pub struct ZipArchive
   pub fn new(handle: Holder) -> Self
   pub fn from_path(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
@@ -1386,16 +1386,16 @@ pub struct Archive
   pub const fn level(&self) -> Level
   pub const fn restart_stride(&self) -> u64
   pub const fn url(&self) -> &Url
-  pub fn mount(self) -> Node
+  pub fn mount(self) -> ZipNode
   pub fn into_handle(self) -> Result<Holder>
-  pub fn entries(&self) -> Result<Vec<Entry>>
-  pub fn get_entry(&self, path: &str) -> Result<Option<Entry>>
+  pub fn entries(&self) -> Result<Vec<ZipEntry>>
+  pub fn get_entry(&self, path: &str) -> Result<Option<ZipEntry>>
   pub fn comment(&self) -> Result<Vec<u8>>
   pub fn set_comment(&self, comment: &[u8]) -> Result<()>
   pub fn read_member(self: &Arc<Self>, path: &str) -> Result<Vec<u8>>
-  pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<Entry>
-  pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<Entry>
-  pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry>
+  pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<ZipEntry>
+  pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<ZipEntry>
+  pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<ZipEntry>
   pub fn create_directory(&self, path: &str) -> Result<()>
   pub fn remove_member(&self, path: &str) -> Result<bool>
   pub fn remove_under(&self, path: &str) -> Result<usize>
@@ -1412,7 +1412,7 @@ pub struct Archive
   pub const DEFAULT_RESTART_STRIDE: u64
 
 ### yggdryl::zip::entry  [rust/src/zip/entry.rs]
-pub struct Entry
+pub struct ZipEntry
   pub fn name(&self) -> &str
   pub fn codec(&self) -> Result<Codec>
   pub const fn size(&self) -> u64
@@ -1427,48 +1427,48 @@ pub struct Entry
   pub const fn has_data_descriptor(&self) -> bool
 
 ### yggdryl::zip::leaf  [rust/src/zip/leaf.rs]
-pub struct Leaf
-  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
+pub struct ZipLeaf
+  pub fn new(archive: Arc<ZipArchive>, name: SmolStr) -> Self
   pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
-  pub const fn archive(&self) -> &Arc<Archive>
+  pub const fn archive(&self) -> &Arc<ZipArchive>
   pub fn name(&self) -> &str
   pub const fn url(&self) -> &Url
-  pub fn get_entry(&self) -> Result<Option<Entry>>
+  pub fn get_entry(&self) -> Result<Option<ZipEntry>>
 
 ### yggdryl::zip::node  [rust/src/zip/node.rs]
-pub struct Node
-  pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self
-  pub const fn archive(&self) -> &Arc<Archive>
+pub struct ZipNode
+  pub fn new(archive: Arc<ZipArchive>, base: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<ZipArchive>
   pub fn name(&self) -> &str
   pub const fn url(&self) -> &Url
   pub fn is_root(&self) -> bool
-  pub fn as_leaf(&self, path: &str) -> Result<Leaf>
+  pub fn as_leaf(&self, path: &str) -> Result<ZipLeaf>
   pub fn as_node(&self, path: &str) -> Result<Self>
 
 ### yggdryl::zip::path  [rust/src/zip/path.rs]
-pub struct Path
-  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
-  pub const fn archive(&self) -> &Arc<Archive>
+pub struct ZipPath
+  pub fn new(archive: Arc<ZipArchive>, name: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<ZipArchive>
   pub fn name(&self) -> &str
   pub const fn url(&self) -> &Url
-  pub fn as_node(&self) -> Node
-  pub fn as_leaf(&self) -> &Leaf
+  pub fn as_node(&self) -> ZipNode
+  pub fn as_leaf(&self) -> &ZipLeaf
 
 ### yggdryl::object  [rust/src/object/mod.rs]
   Behind the non-default `object` feature. Amazon S3, Google Cloud Storage,
   and Azure Blob Storage through one location/container/leaf trio.
   pub fn located(url: &str) -> Result<Holder>
   pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder>
-  pub fn file(url: &str) -> Result<File>
-  pub fn file_with(url: &str, options: ObjectOptions) -> Result<File>
-  pub fn folder(url: &str) -> Result<Folder>
-  pub fn folder_with(url: &str, options: ObjectOptions) -> Result<Folder>
-  pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<File>
-  pub fn file_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<File>
-  pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<Folder>
-  pub fn folder_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<Folder>
-  pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<Path>
-  pub fn path_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<Path>
+  pub fn file(url: &str) -> Result<ObjectFile>
+  pub fn file_with(url: &str, options: ObjectOptions) -> Result<ObjectFile>
+  pub fn folder(url: &str) -> Result<ObjectFolder>
+  pub fn folder_with(url: &str, options: ObjectOptions) -> Result<ObjectFolder>
+  pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFile>
+  pub fn file_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<ObjectFile>
+  pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFolder>
+  pub fn folder_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<ObjectFolder>
+  pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<ObjectPath>
+  pub fn path_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<ObjectPath>
 
   pub enum Provider { Aws, Google, Azure }
   pub const ALL: [Self; 3]
@@ -1488,10 +1488,10 @@ pub struct Path
   pub const fn defaults_to_virtual_hosting(&self) -> bool
   impl Display, FromStr
 
-  pub struct Path / Folder / File
-  Path: pub fn bucket, key, stats, exists, as_directory, as_file
-  Folder: pub fn bucket, prefix, stats, exists, create
-  File: pub fn bucket, key, stats, exists, with_known_size
+  pub struct ObjectPath / ObjectFolder / ObjectFile
+  ObjectPath: pub fn bucket, key, stats, exists, as_directory, as_file
+  ObjectFolder: pub fn bucket, prefix, stats, exists, create
+  ObjectFile: pub fn bucket, key, stats, exists, with_known_size
   pub struct StatsSnapshot { requests, heads, gets, puts, posts, deletes, lists, retries, retry_tokens }
 
   pub struct ObjectOptions

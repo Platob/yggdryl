@@ -5,16 +5,16 @@ use std::sync::OnceLock;
 use crate::holder::Holder;
 use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
-use super::{BoundLocation, File, FileSystem, Folder};
+use super::{BoundLocation, FileSystem, FsFile, FsFolder};
 
 /// A bound location whose current file/directory role is resolved per action.
-pub struct Path {
+pub struct FsPath {
     bound: BoundLocation,
     declared: Option<MediaType>,
     inferred: OnceLock<MediaType>,
 }
 
-impl Path {
+impl FsPath {
     /// Bind an unresolved location without touching the filesystem.
     pub fn new(bound: BoundLocation) -> Self {
         Self {
@@ -54,13 +54,13 @@ impl Path {
     }
 
     /// Treat this location as a directory without probing it.
-    pub fn as_directory(&self) -> Folder {
-        Folder::new(self.bound.clone())
+    pub fn as_directory(&self) -> FsFolder {
+        FsFolder::new(self.bound.clone())
     }
 
     /// Treat this location as a file without probing it.
-    pub fn as_file(&self) -> File {
-        let mut file = File::new(self.bound.clone());
+    pub fn as_file(&self) -> FsFile {
+        let mut file = FsFile::new(self.bound.clone());
         if let Some(media_type) = &self.declared {
             file.set_media_type(media_type.clone());
         }
@@ -74,7 +74,7 @@ impl Path {
     }
 }
 
-impl IOPath for Path {
+impl IOPath for FsPath {
     fn path_url(&self) -> &Url {
         self.url()
     }
@@ -88,11 +88,11 @@ impl IOPath for Path {
     }
 }
 
-impl crate::IOMedia for Path {
+impl crate::IOMedia for FsPath {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Path {
+impl IOBase for FsPath {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_file().pread(offset, buffer)
     }
@@ -187,11 +187,15 @@ impl IOBase for Path {
     }
 
     fn parent(&self) -> Option<Holder> {
-        self.bound.parent()?.ok().map(Path::new).map(Holder::FsPath)
+        self.bound
+            .parent()?
+            .ok()
+            .map(FsPath::new)
+            .map(Holder::FsPath)
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
-        self.bound.child(name).map(Path::new).map(Holder::FsPath)
+        self.bound.child(name).map(FsPath::new).map(Holder::FsPath)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
@@ -228,8 +232,8 @@ impl IOBase for Path {
     }
 }
 
-impl std::fmt::Debug for Path {
+impl std::fmt::Debug for FsPath {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_tuple("Path").field(&self.bound).finish()
+        formatter.debug_tuple("FsPath").field(&self.bound).finish()
     }
 }

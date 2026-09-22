@@ -183,10 +183,10 @@ fn length_of(bytes: &[u8]) -> [u8; 4] {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// # use std::sync::Arc;
-/// # use yggdryl::local::Folder;
+/// # use yggdryl::local::LocalFolder;
 /// # use yggdryl::{FixDedup, FixCodec, FixRegistry};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-/// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+/// # let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
 /// let reader = FixCodec::new(Arc::new(registry));
 /// let rows = [
 ///     "8=FIX.4.4|35=D|11=A|10=0|",

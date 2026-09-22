@@ -9,7 +9,7 @@
 //!
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-//! use yggdryl::local::Folder;
+//! use yggdryl::local::LocalFolder;
 //! use yggdryl::{DataType, Field, StructType};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +20,7 @@
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //!
-//! let folder = Folder::new(Folder::temporary()?.path()?.join("trades"))?;
+//! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
 //! let table = Table::create(folder, FormatVersion::V2, schema, spec)?;
 //!
@@ -430,7 +430,7 @@ impl<H: IOBase> Table<H> {
         Ok(match settings.staging {
             Some(staging) => staging,
             None if self.is_remote() => {
-                WriteStaging::Folder(crate::local::Folder::temporary()?.url().clone())
+                WriteStaging::Folder(crate::local::LocalFolder::temporary()?.url().clone())
             }
             None => WriteStaging::Off,
         })
@@ -728,7 +728,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// ```no_run
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let folder = yggdryl::local::Folder::new(yggdryl::local::Folder::temporary()?.path()?.join("t"))?;
+    /// # let folder = yggdryl::local::LocalFolder::new(yggdryl::local::LocalFolder::temporary()?.path()?.join("t"))?;
     /// # let mut table = yggdryl::iceberg::Table::open(folder)?;
     /// table.commit_metadata_changes(|metadata| {
     ///     metadata.set_property("commit.retry.num-retries", "4")?;
@@ -1032,10 +1032,10 @@ impl<H: IOBase> Table<H> {
     ///
     /// ```no_run
     /// use yggdryl::iceberg::Table;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let table = Table::open(Folder::new("/lake/trades")?)?;
+    /// let table = Table::open(LocalFolder::new("/lake/trades")?)?;
     /// let reader = table.scan_matching(
     ///     "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
     ///     None,

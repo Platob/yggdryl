@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::options::WriteStaging;
 use crate::holder::Holder;
-use crate::local::Folder;
+use crate::local::LocalFolder;
 use crate::{IOBase, MediaType, Result};
 
 /// The files one commit writes, staged locally and rolled back together.
@@ -61,7 +61,7 @@ impl Staging {
         let base = match staging {
             Some(WriteStaging::Off) => None,
             Some(WriteStaging::Folder(url)) => Some(url.clone().into_path()?),
-            None if remote => Some(Folder::temporary()?.path()?),
+            None if remote => Some(LocalFolder::temporary()?.path()?),
             None => None,
         };
         let directory = base.map(|base| {

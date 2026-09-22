@@ -13,7 +13,8 @@ use crate::{IOBase, IOFolder, Listing};
 /// A directory holds no bytes of its own: [`IOBase::size`] is zero and reads
 /// yield nothing. Its purpose is the hierarchy - [`IOBase::ls`],
 /// [`IOBase::child_by_path`], and [`IOBase::parent`] - which resolve children as
-/// further [`Folder`] values for subdirectories and mapped files for leaves.
+/// further [`LocalFolder`] values for subdirectories and mapped files for
+/// leaves.
 ///
 /// Its whole state is one [`Url`]. The platform path is derived from it on
 /// demand through [`Url::into_path`], so there is exactly one spelling of the
@@ -25,10 +26,10 @@ use crate::{IOBase, IOFolder, Listing};
 ///
 /// ```
 /// use yggdryl::IOBase;
-/// use yggdryl::local::Folder;
+/// use yggdryl::local::LocalFolder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Folder::temporary()?;
+/// let root = LocalFolder::temporary()?;
 /// assert!(root.is_container());
 /// assert_eq!(root.size(), 0);
 /// assert_eq!(root.media_type().base(), &yggdryl::MimeType::DIRECTORY);
@@ -40,11 +41,11 @@ use crate::{IOBase, IOFolder, Listing};
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Folder {
+pub struct LocalFolder {
     url: Url,
 }
 
-impl Folder {
+impl LocalFolder {
     /// Describe a local directory without touching it.
     ///
     /// # Errors
@@ -83,10 +84,10 @@ impl Folder {
     ///
     /// ```
     /// use yggdryl::IOBase;
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let temporary = Folder::temporary()?;
+    /// let temporary = LocalFolder::temporary()?;
     /// assert!(temporary.is_container());
     /// assert!(temporary.url().is_local());
     /// # Ok(())
@@ -111,10 +112,10 @@ impl Folder {
     /// the value cannot be expressed as a canonical `file:` URL.
     ///
     /// ```no_run
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let home = Folder::home()?;
+    /// let home = LocalFolder::home()?;
     /// assert!(home.url().is_local());
     /// # Ok(())
     /// # }
@@ -145,10 +146,10 @@ impl Folder {
     /// created or probed.
     ///
     /// ```
-    /// use yggdryl::local::Folder;
+    /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// match Folder::config() {
+    /// match LocalFolder::config() {
     ///     Ok(config) => assert_eq!(
     ///         config.path()?.file_name(),
     ///         Some(std::ffi::OsStr::new(".config"))
@@ -197,7 +198,7 @@ impl Folder {
     /// `lake/` has said what it is, whether or not it exists yet.
     fn hold(url: &Url) -> Result<Holder> {
         if url.has_trailing_slash() || url.is_dir() {
-            return Ok(Holder::Folder(Self { url: url.clone() }));
+            return Ok(Holder::LocalFolder(Self { url: url.clone() }));
         }
         Holder::file(url.clone().into_path()?)
     }
@@ -259,7 +260,7 @@ impl Folder {
 }
 
 /// A local directory is the container role over the file system.
-impl IOFolder for Folder {
+impl IOFolder for LocalFolder {
     fn folder_url(&self) -> &Url {
         &self.url
     }
@@ -325,11 +326,11 @@ impl IOFolder for Folder {
     }
 }
 
-impl crate::IOMedia for Folder {
+impl crate::IOMedia for LocalFolder {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Folder {
+impl IOBase for LocalFolder {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
     }
@@ -380,7 +381,7 @@ impl IOBase for Folder {
     }
 
     fn parent(&self) -> Option<Holder> {
-        self.url.parent().map(|url| Holder::Folder(Self { url }))
+        self.url.parent().map(|url| Holder::LocalFolder(Self { url }))
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {

@@ -24,7 +24,7 @@ Create in a folder, append, and reopen with no catalog in between.
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -37,12 +37,12 @@ Create in a folder, append, and reopen with no catalog in between.
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-lead");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-lead");
     let _ = std::fs::remove_dir_all(&path);
 
     // A table is created in a folder, and a folder is all it ever touches.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     // A table that has never been written to has no current snapshot.
     assert!(table.current_snapshot().is_none());
@@ -62,7 +62,7 @@ Create in a folder, append, and reopen with no catalog in between.
     assert_eq!(table.data_files()?.len(), 2, "one file per venue");
 
     // Reopening finds the table again, with no catalog in between.
-    let reopened = Table::open(Folder::new(&path)?)?;
+    let reopened = Table::open(LocalFolder::new(&path)?)?;
     let rows: usize = reopened.scan(None)?.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
     ```
@@ -177,7 +177,7 @@ The boundary follows the [Iceberg specification](https://iceberg.apache.org/spec
 
 ## Interoperability
 
-Both exchanges run in both directions and skip themselves, naming what is missing, rather than pass quietly.
+The two format exchanges run in both directions and fail when a half is missing, rather than pass quietly. The S3 Tables run is one direction - PyIceberg commits through the service, this crate reads the warehouse - and it is a benchmark rather than a check, so it reports `SKIPPED` and succeeds where it cannot run.
 
 | Exchange | Driver | Covers |
 | --- | --- | --- |

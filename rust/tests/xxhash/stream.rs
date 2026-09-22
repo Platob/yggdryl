@@ -13,7 +13,7 @@ mod xxhash {
 
         /// A temporary root, named so parallel tests never share one.
         fn root(label: &str) -> std::path::PathBuf {
-            let path = yggdryl::local::Folder::temporary()
+            let path = yggdryl::local::LocalFolder::temporary()
                 .unwrap()
                 .path()
                 .unwrap()
@@ -57,18 +57,21 @@ mod xxhash {
         fn a_memory_mapped_local_file_streams_the_same_digest_as_its_bytes() {
             let path = root("local").join("trades.csv");
             std::fs::write(&path, payload()).unwrap();
-            agrees("local file", &yggdryl::local::File::new(&path).unwrap());
+            agrees(
+                "local file",
+                &yggdryl::local::LocalFile::new(&path).unwrap(),
+            );
         }
 
         #[test]
         fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
             use std::sync::Arc;
 
-            use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
+            use yggdryl::fs::{FileSystem, FsFolder, MemoryFileSystem};
 
             let filesystem = Arc::new(MemoryFileSystem::new());
             filesystem.create_dir("lake", false).unwrap();
-            let lake = Folder::from_path(filesystem, "lake", None).unwrap();
+            let lake = FsFolder::from_path(filesystem, "lake", None).unwrap();
             let mut leaf = lake.child_by_path("trades.csv").unwrap();
             leaf.write_all_bytes(&payload()).unwrap();
             leaf.close().unwrap();
@@ -137,7 +140,7 @@ mod xxhash {
 
                 let missing = root("missing").join("never-written.csv");
                 assert_eq!(
-                    yggdryl::local::File::new(&missing)
+                    yggdryl::local::LocalFile::new(&missing)
                         .unwrap()
                         .read_digest(algorithm)
                         .unwrap(),
@@ -148,7 +151,7 @@ mod xxhash {
 
         #[test]
         fn a_container_is_refused_by_kind() {
-            let folder = yggdryl::local::Folder::new(root("container")).unwrap();
+            let folder = yggdryl::local::LocalFolder::new(root("container")).unwrap();
             let error = folder.read_digest(DigestAlgorithm::Xxh3).unwrap_err();
             assert!(
                 matches!(

@@ -23,7 +23,7 @@ use yggdryl::{FixCodec, FixMsg, FixRegistry, Timezone, Url};
 
 fn main() -> yggdryl::Result<()> {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::Folder::new(
+    let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
         manifest.join("../config/fix"),
     )?)?);
     let capture = Buffer::from_bytes(std::fs::read(manifest.join("tests/fix/ulbridge.log"))?)

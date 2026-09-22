@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Uri, Url};
 
-use super::{Archive, Entry, Node, name};
+use super::{ZipArchive, ZipEntry, ZipNode, name};
 
 /// One archive member's bytes, addressed positionally.
 ///
@@ -40,11 +40,11 @@ use super::{Archive, Entry, Node, name};
 ///
 /// ```
 /// use yggdryl::holder::{Buffer, Holder};
-/// use yggdryl::zip::Archive;
+/// use yggdryl::zip::ZipArchive;
 /// use yggdryl::IOBase;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+/// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 /// let mut member = root.child_by_path("trades/eu.csv")?;
 /// member.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
 ///
@@ -59,8 +59,8 @@ use super::{Archive, Entry, Node, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Leaf {
-    archive: Arc<Archive>,
+pub struct ZipLeaf {
+    archive: Arc<ZipArchive>,
     /// The member's canonical path inside the archive.
     name: SmolStr,
     /// The member's location, which is the archive's with the name under it.
@@ -96,14 +96,14 @@ enum Decoded {
 
 impl Decoded {
     /// What the archive says about the member now.
-    fn of(entry: Option<&Entry>) -> Self {
+    fn of(entry: Option<&ZipEntry>) -> Self {
         entry.map_or(Self::Absent, |entry| Self::Record(entry.header_offset()))
     }
 }
 
-impl Leaf {
+impl ZipLeaf {
     /// Address one member of `archive` without touching it.
-    pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self {
+    pub fn new(archive: Arc<ZipArchive>, name: SmolStr) -> Self {
         Self {
             url: archive.member_url(&name),
             archive,
@@ -134,7 +134,7 @@ impl Leaf {
     }
 
     /// Borrow the archive this member lives in.
-    pub const fn archive(&self) -> &Arc<Archive> {
+    pub const fn archive(&self) -> &Arc<ZipArchive> {
         &self.archive
     }
 
@@ -153,7 +153,7 @@ impl Leaf {
     /// # Errors
     ///
     /// Returns the read or format failure the index parse hit.
-    pub fn get_entry(&self) -> Result<Option<Entry>> {
+    pub fn get_entry(&self) -> Result<Option<ZipEntry>> {
         self.archive.entry(&self.name)
     }
 
@@ -240,7 +240,7 @@ impl Leaf {
     }
 }
 
-impl IOFile for Leaf {
+impl IOFile for ZipLeaf {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -275,11 +275,11 @@ impl IOFile for Leaf {
     }
 }
 
-impl crate::IOMedia for Leaf {
+impl crate::IOMedia for ZipLeaf {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Leaf {
+impl IOBase for ZipLeaf {
     /// Read the range out of the decoded member.
     ///
     /// A stored member reads straight out of the archive at its data offset;
@@ -474,7 +474,7 @@ impl IOBase for Leaf {
     /// out and belongs to the archive, not to its members.
     fn parent(&self) -> Option<Holder> {
         let base = name::parent(&self.name).unwrap_or_default();
-        Some(Holder::ZipNode(Node::new(
+        Some(Holder::ZipNode(ZipNode::new(
             Arc::clone(&self.archive),
             SmolStr::new(base),
         )))

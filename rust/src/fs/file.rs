@@ -6,17 +6,17 @@ use crate::holder::Holder;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
 use super::{
-    BoundLocation, ByteReader, ByteWriter, FileSystem, Folder, OutputMetadata, RandomAccessReader,
+    BoundLocation, ByteReader, ByteWriter, FileSystem, FsFolder, OutputMetadata, RandomAccessReader,
 };
 
 /// A file whose streams are supplied by its bound filesystem.
-pub struct File {
+pub struct FsFile {
     bound: BoundLocation,
     declared: Option<MediaType>,
     inferred: OnceLock<MediaType>,
 }
 
-impl File {
+impl FsFile {
     /// Bind a known file location without touching the filesystem.
     pub fn new(bound: BoundLocation) -> Self {
         Self {
@@ -169,7 +169,7 @@ impl File {
     }
 }
 
-impl IOFile for File {
+impl IOFile for FsFile {
     fn file_url(&self) -> &Url {
         self.url()
     }
@@ -199,11 +199,11 @@ impl IOFile for File {
     }
 }
 
-impl crate::IOMedia for File {
+impl crate::IOMedia for FsFile {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for File {
+impl IOBase for FsFile {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         let mut reader = match self.open_input_file() {
             Ok(reader) => reader,
@@ -392,7 +392,7 @@ impl IOBase for File {
         self.bound
             .parent()?
             .ok()
-            .map(Folder::new)
+            .map(FsFolder::new)
             .map(Holder::FsFolder)
     }
 
@@ -421,8 +421,8 @@ impl IOBase for File {
     }
 }
 
-impl std::fmt::Debug for File {
+impl std::fmt::Debug for FsFile {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_tuple("File").field(&self.bound).finish()
+        formatter.debug_tuple("FsFile").field(&self.bound).finish()
     }
 }

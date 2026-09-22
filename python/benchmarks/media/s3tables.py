@@ -132,22 +132,31 @@ def _catalog(bucket: Arn) -> Any:
     )
 
 
-def _create(catalog: Any, name: str) -> tuple[Any, float]:
-    """Create the partitioned table and append the rows through the catalog.
+def _create(catalog: Any, name: str) -> Any:
+    """Create the table this run fills, and nothing else.
 
-    Returns PyIceberg's table and how long the append took: a commit to S3
-    Tables has no other door, so this is the one write the benchmark reports
-    and it is reported as PyIceberg's alone.
+    Creating is separated from filling so the drop can guard every commit
+    that follows: the table exists the moment this returns, and a partition
+    or an append that fails afterwards must not leave one behind in somebody
+    else's billed bucket.
+    """
+    catalog.create_namespace_if_not_exists(NAMESPACE)
+    return catalog.create_table((NAMESPACE, name), schema=SCHEMA)
+
+
+def _fill(table: Any) -> float:
+    """Partition the table and append the rows, timing the append.
+
+    A commit to S3 Tables has no door but the catalog, so this is the one
+    write the benchmark reports, and it is reported as PyIceberg's alone.
     """
     from pyiceberg.transforms import IdentityTransform
 
-    catalog.create_namespace_if_not_exists(NAMESPACE)
-    table = catalog.create_table((NAMESPACE, name), schema=SCHEMA)
     with table.update_spec() as update:
         update.add_field("symbol", IdentityTransform(), "symbol")
     started = time.perf_counter()
     table.append(TABLE)
-    return table, time.perf_counter() - started
+    return time.perf_counter() - started
 
 
 def _root(table: Any, bucket: Arn) -> tuple[ObjectFolder, str]:
@@ -270,7 +279,7 @@ def main() -> int:
         return _skip(f"set {ARN_VARIABLE} to a table bucket ARN")
     try:
         import pyiceberg
-        import botocore  # noqa: F401 - what signs the REST requests
+        import boto3  # noqa: F401 - what PyIceberg's sigv4 adapter signs with
     except ImportError as error:
         return _skip(
             f"{error}; install "
@@ -290,8 +299,9 @@ def main() -> int:
     )
 
     catalog = _catalog(bucket)
-    theirs, appended = _create(catalog, name)
+    theirs = _create(catalog, name)
     try:
+        appended = _fill(theirs)
         print(f"pyiceberg appended {ROW_COUNT:,} rows through the catalog in {appended:.3f} s")
         root, signing = _root(theirs, bucket)
         print(f"yggdryl reads {theirs.location()} with {signing}")

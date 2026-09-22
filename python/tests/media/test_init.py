@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from yggdryl import DataType, Field, IOBase, MediaType, MimeType, RecordOptions
-from yggdryl.holder import Path
+from yggdryl.holder import LocalPath
 
 SCHEMA = pa.schema(
     [
@@ -80,7 +80,7 @@ class TestTheEncodingComesFromTheHandle:
         # Identical calls on both sides; only the name changed. The handle
         # presents the decoded stream, so the coded form is what the
         # stored-byte role reads.
-        assert Path(tmp_path / "trades.arrows.gz").read_bytes()[:2] == b"\x1f\x8b"
+        assert LocalPath(tmp_path / "trades.arrows.gz").read_bytes()[:2] == b"\x1f\x8b"
         assert compressed.read_arrow_reader().read_all().num_rows == 2
 
 

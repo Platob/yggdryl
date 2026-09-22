@@ -13,7 +13,10 @@ mod backends {
     /// one per backend; `IOBase` is implemented for the box, so the byte half
     /// of the contract forwards unchanged.
     fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
-        let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
@@ -27,16 +30,16 @@ mod backends {
         vec![
             ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
             (
-                "local::File",
+                "local::LocalFile",
                 Box::new(
-                    yggdryl::local::File::create(root.join(format!("{label}.bin")))
+                    yggdryl::local::LocalFile::create(root.join(format!("{label}.bin")))
                         .expect("a valid path"),
                 ),
             ),
             (
-                "fs::File",
+                "fs::FsFile",
                 Box::new(
-                    yggdryl::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
+                    yggdryl::fs::FsFile::from_path(memory, format!("bench/{label}.bin"), None)
                         .expect("a valid location"),
                 ),
             ),
@@ -59,20 +62,23 @@ mod backends {
     fn positional_backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
         backends(label)
             .into_iter()
-            .filter(|(name, _)| *name != "fs::File")
+            .filter(|(name, _)| *name != "fs::FsFile")
             .collect()
     }
 
     /// Remove whatever the local backend left behind.
     fn cleanup(label: &str) {
-        let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!(
             "yggdryl-conformance-{label}-{}",
             std::process::id()
         ));
         // Teardown goes through the abstraction, not around it: a folder
         // handle already addresses this tree, and absence is a no-op success.
-        if let Ok(mut folder) = yggdryl::local::Folder::new(&root) {
+        if let Ok(mut folder) = yggdryl::local::LocalFolder::new(&root) {
             folder.remove(true).expect("a removable tree");
         }
     }
@@ -131,19 +137,24 @@ mod backends {
         // The laziness contract: absence is emptiness on the read path, so a
         // caller probes a location without an existence check first.
         let memory = Arc::new(yggdryl::fs::MemoryFileSystem::new());
-        let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
         root.push(format!("yggdryl-conformance-absent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
 
         let absent: Vec<(&str, Box<dyn IOBase>)> = vec![
             (
-                "local::File",
-                Box::new(yggdryl::local::File::new(root.join("absent.bin")).expect("a valid path")),
+                "local::LocalFile",
+                Box::new(
+                    yggdryl::local::LocalFile::new(root.join("absent.bin")).expect("a valid path"),
+                ),
             ),
             (
-                "fs::File",
+                "fs::FsFile",
                 Box::new(
-                    yggdryl::fs::File::from_path(memory, "nowhere/absent.bin", None)
+                    yggdryl::fs::FsFile::from_path(memory, "nowhere/absent.bin", None)
                         .expect("a valid location"),
                 ),
             ),
@@ -248,7 +259,7 @@ mod backends {
         let filesystem = Arc::new(yggdryl::fs::MemoryFileSystem::new());
         yggdryl::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
             .expect("a writable memory root");
-        let mut handle = yggdryl::fs::File::from_path(filesystem, "bench/random.bin", None)
+        let mut handle = yggdryl::fs::FsFile::from_path(filesystem, "bench/random.bin", None)
             .expect("a valid location");
         handle
             .write_all_bytes(b"value")
@@ -636,7 +647,7 @@ mod identity {
 
     use yggdryl::holder::Buffer;
     use yggdryl::holder::buffered::BufferedOptions;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{IOBase, Uri, Url};
 
     /// A handle says what it is addressed by, and a location is one kind of
@@ -644,8 +655,8 @@ mod identity {
     /// and `url` is that identifier when it names a place.
     #[test]
     fn a_handle_is_addressed_by_an_identifier_and_a_location_is_one() {
-        let root = Folder::temporary().unwrap().path().unwrap();
-        let folder = Folder::new(&root).unwrap();
+        let root = LocalFolder::temporary().unwrap().path().unwrap();
+        let folder = LocalFolder::new(&root).unwrap();
 
         // The two accessors read one value, never two.
         assert_eq!(

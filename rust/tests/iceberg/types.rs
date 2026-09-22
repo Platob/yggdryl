@@ -14,12 +14,12 @@ mod iceberg {
     use yggdryl::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, schema_from_json, schema_into_json,
     };
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, Scalar};
 
     /// A scratch directory unique to this test and this process.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = Folder::temporary().unwrap().path().unwrap();
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
         path.push(format!(
             "yggdryl-iceberg-contract-{label}-{}",
             std::process::id()
@@ -75,7 +75,7 @@ mod iceberg {
         // A v2 table refuses either by name.
         let v2 = root("v3-types-v2");
         let message = Table::create(
-            Folder::new(&v2).unwrap(),
+            LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -90,7 +90,7 @@ mod iceberg {
         // A v3 table stores the variant, omits the unknown, and reads both back.
         let v3 = root("v3-types-v3");
         let mut table = Table::create(
-            Folder::new(&v3).unwrap(),
+            LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -139,7 +139,7 @@ mod iceberg {
         assert_eq!(read, batch);
         assert_eq!(read.column(1).logical_null_count(), 2);
 
-        let reopened = Table::open(Folder::new(&v3).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
         let stored = reopened.schema().unwrap();
         assert_eq!(stored.fields()[1].dtype(), &DataType::Null);
         assert_eq!(stored.fields()[2].dtype(), &DataType::Variant);

@@ -42,13 +42,13 @@ fn options() -> ObjectOptions {
 }
 
 /// The object `key` names in the exchange bucket.
-fn object(key: &str) -> yggdryl::object::File {
+fn object(key: &str) -> yggdryl::object::ObjectFile {
     yggdryl::object::file_at_with(Provider::Google, BUCKET, key, options())
         .expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
-fn prefix(key: &str) -> yggdryl::object::Folder {
+fn prefix(key: &str) -> yggdryl::object::ObjectFolder {
     yggdryl::object::folder_at_with(Provider::Google, BUCKET, key, options())
         .expect("a prefix handle")
 }
@@ -59,7 +59,7 @@ fn skipped(what: &str) {
 }
 
 /// The bucket the exchange runs in, created if the driver did not.
-fn bucket() -> yggdryl::object::Folder {
+fn bucket() -> yggdryl::object::ObjectFolder {
     let root = yggdryl::object::folder_at_with(Provider::Google, BUCKET, "", options())
         .expect("a bucket handle");
     if !root.folder_exists() {

@@ -1,14 +1,14 @@
 # Object stores
 
 Objects on Amazon S3, Google Cloud Storage, and Azure Blob Storage as three
-[`IOBase`](../iobase/bytes.md) handles: `Path` a location, `Folder` a prefix or
-container, `File` one object.
+[`IOBase`](../iobase/bytes.md) handles: `ObjectPath` a location, `ObjectFolder`
+a prefix or container, `ObjectFile` one object.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `yggdryl::object::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
+| Owns | `yggdryl::object::{ObjectPath, ObjectFolder, ObjectFile}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
 | Feature | `object`, not default: the signed client and its TLS stack are a cost a local consumer never pays |
 | Stores | Amazon S3 and every store answering its API, Google Cloud Storage, Azure Blob Storage and Data Lake Storage Gen2 |
 | Bindings | An `s3:`, `s3a:`, `s3n:`, `gs:`, `gcs:`, `az:`, `abfs:`, `abfss:`, `wasb:`, or `wasbs:` [`Url`](../../uri/index.md) selects this backend; Rust and Python also take the knobs |
@@ -30,8 +30,8 @@ container, `File` one object.
 ## What each operation costs
 
 This is the contract the backend exists for, so it is stated as a number and
-asserted by tests rather than intended. `Folder::stats`, `File::stats`, and
-`Path::stats` report what actually went out.
+asserted by tests rather than intended. `ObjectFolder::stats`,
+`ObjectFile::stats`, and `ObjectPath::stats` report what actually went out.
 
 | operation | Amazon S3 | Google Cloud Storage | Azure Blob Storage |
 | --- | --- | --- | --- |
@@ -70,9 +70,10 @@ A **ranged read learns the object's length** from the `Content-Range` it comes
 back with, so an open scope that reads and then asks the size pays nothing for
 the answer. A closed handle asks again, because a length is only true of the
 moment the store stated it - unless the caller already knew it: a listing
-states every entry's size, and `File::with_known_size` lets a caller hand over
-a size it holds from elsewhere, which is how an Iceberg scan reads each data
-file with one `GET` and no `HEAD`, the manifest having stated the length.
+states every entry's size, and `ObjectFile::with_known_size` lets a caller
+hand over a size it holds from elsewhere, which is how an Iceberg scan reads
+each data file with one `GET` and no `HEAD`, the manifest having stated the
+length.
 
 ### What an Iceberg table costs
 

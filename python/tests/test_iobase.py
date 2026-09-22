@@ -722,12 +722,12 @@ def test_a_cursor_goes_back_to_the_resource_it_rides() -> None:
 def test_a_location_that_says_nothing_is_read_as_the_role_a_caller_declares(
     tmp_path: pathlib.Path,
 ) -> None:
-    from yggdryl.holder import File, Folder, Path
+    from yggdryl.holder import LocalFile, LocalFolder, LocalPath
 
-    location = Path(tmp_path / "trades.parquet")
-    assert isinstance(location, Path)
-    assert isinstance(location.as_file(), File)
-    assert isinstance(Path(tmp_path / "lake").as_directory(), Folder)
+    location = LocalPath(tmp_path / "trades.parquet")
+    assert isinstance(location, LocalPath)
+    assert isinstance(location.as_file(), LocalFile)
+    assert isinstance(LocalPath(tmp_path / "lake").as_directory(), LocalFolder)
 
     # Neither call touches the file system: nothing exists yet.
     assert not (tmp_path / "trades.parquet").exists()

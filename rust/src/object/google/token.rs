@@ -587,7 +587,7 @@ fn well_known_path() -> Option<std::path::PathBuf> {
                 .join("application_default_credentials.json")
         });
     }
-    crate::local::Folder::config().ok().map(|config| {
+    crate::local::LocalFolder::config().ok().map(|config| {
         config
             .path()
             .unwrap_or_default()

@@ -8,11 +8,11 @@
 //! The handles fall into two families, and that is the whole argument:
 //!
 //! - **Already memory.** An in-memory [`Buffer`] is the floor a cache can
-//!   never beat, and a memory-mapped [`File`](yggdryl::local::File) is a
-//!   `memcpy` out of the page cache the *kernel* already keeps. Wrapping
+//!   never beat, and a memory-mapped [`LocalFile`](yggdryl::local::LocalFile)
+//!   is a `memcpy` out of the page cache the *kernel* already keeps. Wrapping
 //!   either can only add a lock, a clock read, a map lookup, and a second
 //!   copy. These rows measure that overhead honestly.
-//! - **A fetch per read.** An [`FsFile`](yggdryl::fs::File) answers
+//! - **A fetch per read.** An [`FsFile`](yggdryl::fs::FsFile) answers
 //!   every `pread` with one random-access input-file open and one positional
 //!   read through the filesystem vtable. Over [`MemoryFileSystem`] that is a
 //!   lock and a copy; over [`LocalFileSystem`] it is an `open`, a `seek`, and a
@@ -46,11 +46,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::fs::{File as FsFile, FileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::fs::{FileSystem, FsFile, LocalFileSystem, MemoryFileSystem};
 use yggdryl::gzip::Gzip;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::local::{File, Folder};
+use yggdryl::local::{LocalFile, LocalFolder};
 
 /// The fixture's size: twice the default byte budget, so a full scan evicts.
 const FIXTURE: u64 = 16 * 1024 * 1024;
@@ -157,7 +157,7 @@ fn pinning_holds_both_ends(payload: &[u8]) -> (usize, usize) {
 }
 
 pub(crate) fn buffered_benchmarks(criterion: &mut Criterion) {
-    let path = Folder::temporary()
+    let path = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
@@ -330,12 +330,12 @@ fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<d
         ),
         (
             "file",
-            Box::new(File::new(path).expect("a local fixture path")),
+            Box::new(LocalFile::new(path).expect("a local fixture path")),
         ),
         (
             "buffered",
             Box::new(
-                File::new(path)
+                LocalFile::new(path)
                     .expect("a local fixture path")
                     .buffered(BufferedOptions::default()),
             ),

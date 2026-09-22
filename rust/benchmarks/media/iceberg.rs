@@ -23,7 +23,7 @@ use yggdryl::iceberg::{
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::media::partition::partition_text;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType};
 
@@ -80,7 +80,7 @@ fn venue(index: usize) -> String {
 
 /// Build a scratch directory unique to this benchmark run.
 fn scratch(label: &str) -> PathBuf {
-    let mut path = Folder::temporary()
+    let mut path = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");
@@ -112,14 +112,14 @@ fn plan_schema() -> Field {
 /// one venue skips the manifests whose summaries exclude it outright, and in
 /// every manifest it does open, the other venue's file survives to be excluded
 /// by its partition tuple - so `files_skipped` cannot be zero.
-fn plan_table(label: &str, files: usize) -> Table<Folder> {
+fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
     assert!(files % 2 == 0, "expected an even file count, got {files}");
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
     let mut table = Table::create(
-        Folder::new(&path).expect("the scratch directory is addressable"),
+        LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
         spec,
@@ -600,12 +600,12 @@ fn compact_benchmarks(criterion: &mut Criterion) {
 /// One append is one commit is one file, so the merge benchmark gets a table
 /// whose per-file id bounds are as tight as bounds can be - which is exactly
 /// what lets the measured upsert carry most files unread.
-fn merge_table(label: &str, files: usize) -> Table<Folder> {
+fn merge_table(label: &str, files: usize) -> Table<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let mut table = Table::create(
-        Folder::new(&path).expect("the scratch directory is addressable"),
+        LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -690,13 +690,13 @@ fn merge_benchmarks(criterion: &mut Criterion) {
 /// One append per partition is one commit is one file, and every file holds
 /// the same id, so the id bounds cannot tell the partitions apart: only the
 /// partition isolation can keep the measured merge from reading them all.
-fn partitioned_merge_table(label: &str, partitions: usize) -> Table<Folder> {
+fn partitioned_merge_table(label: &str, partitions: usize) -> Table<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
     let mut table = Table::create(
-        Folder::new(&path).expect("the scratch directory is addressable"),
+        LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
         spec,
@@ -819,7 +819,7 @@ fn parallel_commit_benchmarks(criterion: &mut Criterion) {
                     || {
                         let _ = std::fs::remove_dir_all(&path);
                         let mut table = Table::create(
-                            Folder::new(&path).expect("the scratch directory is addressable"),
+                            LocalFolder::new(&path).expect("the scratch directory is addressable"),
                             FormatVersion::V2,
                             schema.clone(),
                             PartitionSpec::identity(1, &schema, &["venue"])
@@ -873,12 +873,12 @@ fn read_schema() -> Field {
 /// Each append is one commit is one file of (int64 id, float64 price, utf8
 /// venue from the eight-value pool, timestamp-like int64), so the parallel
 /// read gets files large enough that decode dominates the open.
-fn read_table(label: &str, files: usize, rows: usize) -> Table<Folder> {
+fn read_table(label: &str, files: usize, rows: usize) -> Table<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = read_schema();
     let mut table = Table::create(
-        Folder::new(&path).expect("the scratch directory is addressable"),
+        LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -917,7 +917,7 @@ fn read_table(label: &str, files: usize, rows: usize) -> Table<Folder> {
 }
 
 /// Drain one full scan, counting the rows it yields.
-fn scan_rows(table: &Table<Folder>) -> usize {
+fn scan_rows(table: &Table<LocalFolder>) -> usize {
     table
         .scan(None)
         .expect("the scan plans")
@@ -1003,7 +1003,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
             || {
                 let _ = std::fs::remove_dir_all(&path);
                 Table::create(
-                    Folder::new(&path).expect("the scratch directory is addressable"),
+                    LocalFolder::new(&path).expect("the scratch directory is addressable"),
                     FormatVersion::V2,
                     schema.clone(),
                     PartitionSpec::unpartitioned(),
@@ -1022,7 +1022,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
                             // equally stale and every commit but the first
                             // has to rebase.
                             let mut table = Table::open(
-                                Folder::new(path).expect("the table folder is addressable"),
+                                LocalFolder::new(path).expect("the table folder is addressable"),
                             )
                             .expect("the contended table opens");
                             table.set_options(
@@ -1190,7 +1190,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     };
     let counted = || {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = yggdryl::fs::Folder::from_path(
+        let warehouse = yggdryl::fs::FsFolder::from_path(
             Arc::clone(&filesystem) as Arc<dyn FileSystem>,
             "warehouse",
             None,
@@ -1301,9 +1301,11 @@ mod s3 {
     use criterion::{BatchSize, Criterion, Throughput};
     use yggdryl::arrow::BatchReader;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
-    use yggdryl::local::Folder as LocalFolder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::object::{Credentials, File, Folder, ObjectOptions, file_with, folder_with};
+    use yggdryl::object::{
+        Credentials, ObjectFile, ObjectFolder, ObjectOptions, file_with, folder_with,
+    };
     use yggdryl::text::TextOptions;
     use yggdryl::{
         DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
@@ -1345,11 +1347,11 @@ mod s3 {
             .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY))
     }
 
-    fn folder(store: &FakeS3, key: &str) -> Folder {
+    fn folder(store: &FakeS3, key: &str) -> ObjectFolder {
         folder_with(&format!("s3://{BUCKET}/{key}/"), options(store)).expect("a prefix handle")
     }
 
-    fn log_object(store: &FakeS3) -> File {
+    fn log_object(store: &FakeS3) -> ObjectFile {
         file_with(&format!("s3://{BUCKET}/logs/ulbridge.log"), options(store))
             .expect("an object handle")
     }
@@ -1396,7 +1398,7 @@ mod s3 {
     }
 
     /// A fresh venue-partitioned table under `key`.
-    fn table(store: &FakeS3, key: &str) -> Table<Folder> {
+    fn table(store: &FakeS3, key: &str) -> Table<ObjectFolder> {
         let schema = plan_schema();
         let spec =
             PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
@@ -1408,7 +1410,7 @@ mod s3 {
         yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
     }
 
-    fn scan_rows(table: &Table<Folder>, filters: &[(&str, &str)]) -> usize {
+    fn scan_rows(table: &Table<ObjectFolder>, filters: &[(&str, &str)]) -> usize {
         table
             .scan_where(filters, None)
             .expect("the scan plans")
@@ -1428,7 +1430,7 @@ mod s3 {
         options.into()
     }
 
-    fn text_rows(log: &File) -> usize {
+    fn text_rows(log: &ObjectFile) -> usize {
         log.read_arrow_reader(&text())
             .expect("a reader")
             .map(|batch| batch.expect("a batch").num_rows())
@@ -1622,7 +1624,7 @@ mod s3 {
             )
             .expect("the FIX table creates")
         };
-        let fix_rows = |table: &mut Table<Folder>| {
+        let fix_rows = |table: &mut Table<ObjectFolder>| {
             let read = log.read_arrow_reader(&text()).expect("a reader");
             let parsed = codec
                 .parse_text_arrow_reader(read)

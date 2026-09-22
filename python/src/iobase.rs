@@ -116,7 +116,7 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
         .bound_location()
         .cloned()
-        .map(yggdryl::fs::Folder::new)
+        .map(yggdryl::fs::FsFolder::new)
         .map(Holder::FsFolder)
 }
 
@@ -128,9 +128,9 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 #[derive(Clone, Copy)]
 pub(crate) enum Role {
     Buffer,
-    Folder,
-    Path,
-    File,
+    LocalFolder,
+    LocalPath,
+    LocalFile,
     FsFolder,
     FsPath,
     FsFile,
@@ -150,9 +150,9 @@ impl Role {
     fn of(holder: &Holder) -> Self {
         match holder {
             Holder::Buffer(_) => Self::Buffer,
-            Holder::Folder(_) => Self::Folder,
-            Holder::Path(_) => Self::Path,
-            Holder::File(_) => Self::File,
+            Holder::LocalFolder(_) => Self::LocalFolder,
+            Holder::LocalPath(_) => Self::LocalPath,
+            Holder::LocalFile(_) => Self::LocalFile,
             Holder::FsFolder(_) => Self::FsFolder,
             Holder::FsPath(_) => Self::FsPath,
             Holder::FsFile(_) => Self::FsFile,
@@ -176,9 +176,9 @@ impl Role {
         use crate::media::handles::Encoding;
         match self {
             Self::Buffer => "Buffer",
-            Self::Folder => "Folder",
-            Self::Path => "Path",
-            Self::File => "File",
+            Self::LocalFolder => "LocalFolder",
+            Self::LocalPath => "LocalPath",
+            Self::LocalFile => "LocalFile",
             Self::FsFolder => "FsFolder",
             Self::FsPath => "FsPath",
             Self::FsFile => "FsFile",
@@ -215,9 +215,9 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
     let base = PyClassInitializer::from(PyIOBase::from_core(holder));
     Ok(match role {
         Role::Buffer => Py::new(py, base.add_subclass(roles::PyBuffer))?.into_any(),
-        Role::Folder => Py::new(py, base.add_subclass(roles::PyFolder))?.into_any(),
-        Role::Path => Py::new(py, base.add_subclass(roles::PyPath))?.into_any(),
-        Role::File => Py::new(py, base.add_subclass(roles::PyFile))?.into_any(),
+        Role::LocalFolder => Py::new(py, base.add_subclass(roles::PyLocalFolder))?.into_any(),
+        Role::LocalPath => Py::new(py, base.add_subclass(roles::PyLocalPath))?.into_any(),
+        Role::LocalFile => Py::new(py, base.add_subclass(roles::PyLocalFile))?.into_any(),
         Role::FsFolder => Py::new(py, base.add_subclass(roles::PyFsFolder))?.into_any(),
         Role::FsPath => Py::new(py, base.add_subclass(roles::PyFsPath))?.into_any(),
         Role::FsFile => Py::new(py, base.add_subclass(roles::PyFsFile))?.into_any(),
@@ -276,7 +276,7 @@ fn require_stored(holder: &Holder, role: &str) -> PyResult<()> {
     Err(PyValueError::new_err(format!(
         "expected {role} presenting its stored bytes, got a {} view of {location}; a coded handle \
          codes what passes through it, so copy_into already stores the coded form - or address \
-         the stored bytes with the Path, File, FsPath, or FsFile role",
+         the stored bytes with the LocalPath, LocalFile, FsPath, or FsFile role",
         applied_codec(holder).as_str(),
     )))
 }
@@ -308,9 +308,9 @@ pub(crate) fn unwrapped(py: Python<'_>, base: &mut PyIOBase) -> PyResult<Py<PyAn
 
 /// Render the composition a handle stands on, outermost role first.
 ///
-/// `Text(Gzip(Path("file:///trades.txt.gz")))` says in one line what the class
-/// alone only says about the top: which wrappers are in play, in which order,
-/// and what they finally sit on.
+/// `Text(Gzip(LocalPath("file:///trades.txt.gz")))` says in one line what the
+/// class alone only says about the top: which wrappers are in play, in which
+/// order, and what they finally sit on.
 fn stack(holder: &Holder, location: &str) -> String {
     let name = Role::of(holder).name();
     match holder {
@@ -1796,7 +1796,7 @@ impl PyIOBase {
             .filesystem()
             .create_dir(bound.path(), recursive)
             .map_err(crate::holder::fs::storage_error)?;
-        describe(py, Holder::FsFolder(yggdryl::fs::Folder::new(bound)))
+        describe(py, Holder::FsFolder(yggdryl::fs::FsFolder::new(bound)))
     }
 
     /// Delete this empty directory itself.
@@ -1820,7 +1820,7 @@ impl PyIOBase {
 
     /// Delete all filesystem-root children while retaining its root.
     fn delete_root_dir_contents(&mut self) -> PyResult<()> {
-        yggdryl::fs::Folder::new(self.bound()?.clone())
+        yggdryl::fs::FsFolder::new(self.bound()?.clone())
             .delete_root_dir_contents()
             .map_err(crate::holder::fs::storage_error)
     }

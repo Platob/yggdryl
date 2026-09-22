@@ -25,11 +25,11 @@ One frame, read against the dictionary. A line can carry more than one, and
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
     let frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|";
     let mut messages = codec.parse_line(frame)?;
     let message = messages.next().expect("one frame")?;
@@ -107,11 +107,11 @@ a settled identity.
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let lines = [
         "8=FIX.4.4|35=0|112=TEST|10=0|",
         "8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
@@ -165,11 +165,11 @@ a line that stated no frame.
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
 
     // Two frames on one line are two messages, each re-emitting its own bytes.
     let both = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|";

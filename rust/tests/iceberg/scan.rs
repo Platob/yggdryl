@@ -318,7 +318,7 @@ mod iceberg {
     use yggdryl::arrow::BatchReader;
     use yggdryl::holder::Holder;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, Field, IOBase, IOMedia, StructType};
 
@@ -328,14 +328,14 @@ mod iceberg {
     /// so the paths recorded here are the files a read or a merge touched.
     #[derive(Debug)]
     struct Recording {
-        inner: Folder,
+        inner: LocalFolder,
         seen: Arc<Mutex<Vec<String>>>,
     }
 
     impl Recording {
         fn new(path: &std::path::Path) -> Self {
             Self {
-                inner: Folder::new(path).unwrap(),
+                inner: LocalFolder::new(path).unwrap(),
                 seen: Arc::new(Mutex::new(Vec::new())),
             }
         }
@@ -377,7 +377,7 @@ mod iceberg {
 
     /// A scratch directory unique to this test and this process.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = Folder::temporary().unwrap().path().unwrap();
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
         path.push(format!(
             "yggdryl-iceberg-contract-{label}-{}",
             std::process::id()
@@ -452,8 +452,13 @@ mod iceberg {
         let path = root(label);
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         for (id, symbol, venue) in [
             (1_i64, "AAPL", "XNAS"),
             (2, "MSFT", "XNYS"),
@@ -515,7 +520,7 @@ mod iceberg {
         assert!(opened.iter().all(|file| !file.contains("venue=XNYS")));
 
         // The folder route pushes the same clause down.
-        let folder = Folder::new(&path).unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
         let read = triples(folder.read_arrow_reader(&options).unwrap());
         assert_eq!(read.len(), 2);
         let _ = std::fs::remove_dir_all(&path);

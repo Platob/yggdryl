@@ -2161,7 +2161,7 @@ mod shape {
 
     /// A writable temporary root of this test's own.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = yggdryl::local::Folder::temporary()
+        let mut path = yggdryl::local::LocalFolder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path");
@@ -2221,19 +2221,19 @@ mod shape {
 
         // Nothing has been written, so the kind is undecided - and the name
         // still says which surface reads it, exactly as the media type does.
-        let missing = yggdryl::local::Path::new(path.join("trades.parquet")).unwrap();
+        let missing = yggdryl::local::LocalPath::new(path.join("trades.parquet")).unwrap();
         assert_eq!(missing.kind(), IOKind::Unknown);
         assert_eq!(missing.media_type().base(), &MimeType::PARQUET);
         assert!(missing.is_tabular());
         assert!(!missing.is_atomic());
 
-        let notes = yggdryl::local::Path::new(path.join("notes.txt")).unwrap();
+        let notes = yggdryl::local::LocalPath::new(path.join("notes.txt")).unwrap();
         assert_eq!(notes.kind(), IOKind::Unknown);
         assert!(notes.is_atomic());
         assert!(!notes.is_tabular());
 
         // The leaf implementation answers the same, existing or not.
-        let leaf = yggdryl::local::File::new(path.join("trades.arrows")).unwrap();
+        let leaf = yggdryl::local::LocalFile::new(path.join("trades.arrows")).unwrap();
         assert!(leaf.is_tabular());
         assert!(!leaf.is_atomic());
 
@@ -2247,7 +2247,7 @@ mod shape {
         std::fs::create_dir_all(lake.join("year=2024/month=01")).unwrap();
         std::fs::write(lake.join("year=2024/month=01/part-0.parquet"), b"PAR1").unwrap();
 
-        let folder = yggdryl::local::Folder::new(&lake).unwrap();
+        let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
         assert_eq!(folder.kind(), IOKind::Directory);
         assert!(folder.is_container());
         // The probe descends to the first leaf; a folder is never one whole
@@ -2260,19 +2260,19 @@ mod shape {
         let logs = path.join("logs");
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(logs.join("run.txt"), b"started").unwrap();
-        let folder = yggdryl::local::Folder::new(&logs).unwrap();
+        let folder = yggdryl::local::LocalFolder::new(&logs).unwrap();
         assert!(!folder.is_tabular());
         assert!(!folder.is_atomic());
         assert!(!folder.is_io());
 
         // So is an empty one, and so is a folder that does not exist yet.
-        let empty = yggdryl::local::Folder::new(path.join("empty")).unwrap();
+        let empty = yggdryl::local::LocalFolder::new(path.join("empty")).unwrap();
         assert!(!empty.is_tabular());
         assert!(!empty.is_atomic());
         assert!(!empty.is_io());
 
         // A location resolving to that lake answers exactly as the folder did.
-        let located = yggdryl::local::Path::new(&lake).unwrap();
+        let located = yggdryl::local::LocalPath::new(&lake).unwrap();
         assert_eq!(located.kind(), IOKind::Directory);
         assert!(located.is_tabular());
         assert!(!located.is_atomic());
@@ -2356,7 +2356,7 @@ mod shape {
         let path = root("dimensions");
         let lake = path.join("lake");
         for (name, values) in [("a.arrows", vec![1, 2]), ("b.arrows", vec![3])] {
-            let mut leaf = yggdryl::local::Path::new(lake.join(name)).expect("a lazy leaf");
+            let mut leaf = yggdryl::local::LocalPath::new(lake.join(name)).expect("a lazy leaf");
             let batch = rows(&values);
             let options = leaf.record_options().expect("IPC options");
             leaf.overwrite_arrow_reader(
@@ -2365,12 +2365,12 @@ mod shape {
             )
             .expect("a published IPC leaf");
         }
-        yggdryl::local::Path::new(lake.join("notes.txt"))
+        yggdryl::local::LocalPath::new(lake.join("notes.txt"))
             .expect("a text leaf")
             .write_all_bytes(b"not a table row")
             .expect("a published unrelated leaf");
 
-        let folder = yggdryl::local::Folder::new(&lake).expect("the lake folder");
+        let folder = yggdryl::local::LocalFolder::new(&lake).expect("the lake folder");
         assert_eq!(folder.row_size().expect("metadata row count"), 3);
         assert_eq!(folder.column_size().expect("metadata field width"), 1);
 

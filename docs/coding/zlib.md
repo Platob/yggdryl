@@ -203,7 +203,7 @@ assert_eq!(zlib::load_raw(&raw)?, plain);
     from yggdryl import IOBase
     from yggdryl import zlib
     from yggdryl.coding import Zlib
-    from yggdryl.holder import Buffer, Path
+    from yggdryl.holder import Buffer, LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     plain = b"symbol,price\n" + b"AAPL,1\n" * 64
@@ -218,8 +218,8 @@ assert_eq!(zlib::load_raw(&raw)?, plain);
     assert handle.read_bytes() == plain
     assert handle.size == len(plain)
 
-    # `Path` addresses the stored bytes: the compressed stream.
-    assert zlib.loads(Path(root / "trades.zz").read_bytes()) == plain
+    # `LocalPath` addresses the stored bytes: the compressed stream.
+    assert zlib.loads(LocalPath(root / "trades.zz").read_bytes()) == plain
 
     # No flush: into_handle publishes first.
     coded = IOBase.from_bytes(b"").into_coded("zlib", level=9)

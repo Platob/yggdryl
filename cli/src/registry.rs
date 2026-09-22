@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{Field, FixCategory, FixRegistry, Result};
 
 use crate::style;
@@ -47,7 +47,7 @@ impl Store {
     /// hold a dictionary.
     pub fn open(root: &Path) -> Result<Self> {
         let root = located(root)?;
-        let registry = FixRegistry::from_handle(&Folder::new(root.clone())?)?;
+        let registry = FixRegistry::from_handle(&LocalFolder::new(root.clone())?)?;
         Ok(Self {
             root,
             original: registry.clone(),
@@ -78,7 +78,7 @@ impl Store {
     ///
     /// Returns the store's own refusal when the folder cannot be written.
     pub fn save(&mut self) -> Result<()> {
-        let mut folder = Folder::new(self.root.clone())?;
+        let mut folder = LocalFolder::new(self.root.clone())?;
         self.registry.write_into(&mut folder)?;
         self.original = self.registry.clone();
         Ok(())

@@ -144,7 +144,7 @@ step is run, never which step is skipped.
 | string leaf | a `StringType` variant + `DataTypeId` appended + `string.rs` (spellings, the number rule, Arrow storage, grammar, value) + the charset's own root file - `utf8.rs`, `ascii.rs` or `cp1252.rs` - for the leaf's constructor, validation and reading -> tests -> bindings -> `docs/types/` |
 | byte leaf | a `BytesType` variant + `DataTypeId` appended + `bytes.rs` (spellings, the number rule, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/charset/` |
-| storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
+| storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `<Name>Path`, `<Name>Folder`, `<Name>File` over a host tree; `<Name>Path`, `<Name>Node`, `<Name>Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
@@ -332,7 +332,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
-| `local/`, `fs/`, `zip/`, `object/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `Path`, `Folder`, `File` in `local/`, `fs/` and `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `object/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, under the non-default `object` feature |
+| `local/`, `fs/`, `zip/`, `object/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `ObjectPath`, `ObjectFolder`, `ObjectFile` in `local/`, `fs/` and `object/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `object/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, under the non-default `object` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
@@ -687,7 +687,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   re-exported beside `Scalar`; it only coerces and redirects, byte-like input and
   strings are content rather than paths, and it parses, renders, validates, and
   bounds nothing.
-- `local::Folder` roots `temporary`, `home`, `config`: `home` reads
+- `local::LocalFolder` roots `temporary`, `home`, `config`: `home` reads
   `HOME`, then `USERPROFILE`, failing and naming both when neither is set;
   `config` = `home` + `.config`; `temporary` wraps the platform temporary
   directory. All three construct a handle and create nothing; nothing else
@@ -841,8 +841,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 ### ZIP (`zip/`)
 
 An archive is a file system inside one file, so it supplies the backend roles
-under the names its own index has: `Node` is a prefix of that index, `Leaf` is
-one entry in it, `Path` resolves to whichever is there.
+under the names its own index has: `ZipNode` is a prefix of that index,
+`ZipLeaf` is one entry in it, `ZipPath` resolves to whichever is there.
 
 - Codings are `Codec::Identity`, `Codec::Deflate`, `Codec::Zstd` and nothing
   else spells one; the archive adds no second coding dispatcher, and gzip and
@@ -860,7 +860,7 @@ one entry in it, `Path` resolves to whichever is there.
 - One member writer, and it streams: nothing holds a member whole, the header
   reserves the sizes a stream does not know yet, and the index learns about a
   member only once its bytes are in the handle.
-- `Archive::handle_reads`/`handle_writes` count what the backend asked of the
+- `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
   handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
   and asserted in those terms.
 

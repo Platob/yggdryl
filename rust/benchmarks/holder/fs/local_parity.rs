@@ -17,8 +17,8 @@ use criterion::Criterion;
 use yggdryl::IOBase;
 use yggdryl::Result;
 use yggdryl::fs::{
-    ByteReader, ByteWriter, File as FsFile, FileInfo, FileInfos, FileSelector, FileSystem,
-    LocalFileSystem, OutputMetadata, RandomAccessReader,
+    ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, FsFile, LocalFileSystem,
+    OutputMetadata, RandomAccessReader,
 };
 
 const PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
@@ -320,7 +320,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new() -> Self {
-        let mut root = yggdryl::local::Folder::temporary()
+        let mut root = yggdryl::local::LocalFolder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path");

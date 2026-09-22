@@ -281,10 +281,10 @@ impl Attributes for Url {
 ///
 /// ```no_run
 /// use yggdryl::expression::{Attributes, Handle, Attribute};
-/// use yggdryl::local::Folder;
+/// use yggdryl::local::LocalFolder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let folder = Folder::temporary()?;
+/// let folder = LocalFolder::temporary()?;
 /// let name = Handle(&folder).attribute(&Attribute::Name)?;
 /// # let _ = name;
 /// # Ok(())

@@ -188,7 +188,7 @@ Shown in Rust; Python answers `default_port`, `is_local` and `local_mime_type` u
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{MimeType, Uri, Url};
 
     // The port belongs to the scheme, not to the authority text.
@@ -196,7 +196,7 @@ Shown in Rust; Python answers `default_port`, `is_local` and `local_mime_type` u
     assert_eq!(Uri::from_str("postgres://host/db")?.default_port(), Some(5432));
     assert_eq!(Uri::from_str("s3://bucket/key")?.default_port(), None);
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-uri-{}", std::process::id()));
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-uri-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
     std::fs::write(root.join("ticks.csv"), b"symbol\n")?;

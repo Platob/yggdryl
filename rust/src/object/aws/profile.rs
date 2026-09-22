@@ -64,7 +64,7 @@ pub(crate) fn credentials(profile: Option<&str>) -> Option<Credentials> {
 
 /// `~/.aws/{name}`, through the one home-directory rule the crate has.
 fn home_file(name: &str) -> Option<PathBuf> {
-    let home = crate::local::Folder::home().ok()?.path().ok()?;
+    let home = crate::local::LocalFolder::home().ok()?.path().ok()?;
     Some(home.join(".aws").join(name))
 }
 

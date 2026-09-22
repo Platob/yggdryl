@@ -150,13 +150,13 @@ mod xxhash {
         fn filesystem_stream_writes_are_visible_without_staging() {
             use std::sync::Arc;
 
-            use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
+            use yggdryl::fs::{FileSystem, FsFolder, MemoryFileSystem};
 
             // An Arrow filesystem file forwards a completed positional write
             // through one output stream rather than retaining a second payload.
             let filesystem = Arc::new(MemoryFileSystem::new());
             filesystem.create_dir("lake", false).unwrap();
-            let lake = Folder::from_path(filesystem, "lake", None).unwrap();
+            let lake = FsFolder::from_path(filesystem, "lake", None).unwrap();
             let leaf = lake.child_by_path("trades.csv").unwrap();
             let mut handle = Hashed::new(leaf, DigestAlgorithm::Xxh3);
 
@@ -233,7 +233,7 @@ mod xxhash {
 
         #[test]
         fn a_container_is_still_refused_by_kind() {
-            let root = yggdryl::local::Folder::temporary()
+            let root = yggdryl::local::LocalFolder::temporary()
                 .unwrap()
                 .path()
                 .unwrap()
@@ -245,7 +245,7 @@ mod xxhash {
             let _ = std::fs::remove_dir_all(&root);
             std::fs::create_dir_all(&root).unwrap();
             let handle = Hashed::new(
-                yggdryl::local::Folder::new(&root).unwrap(),
+                yggdryl::local::LocalFolder::new(&root).unwrap(),
                 DigestAlgorithm::Xxh3,
             );
             // The running state starts live and empty and a folder's size is

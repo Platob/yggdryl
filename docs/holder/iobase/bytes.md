@@ -78,11 +78,11 @@ Explicit offsets mean two readers never interfere and a footer-first container r
 
     ```rust
     use yggdryl::holder::Buffer;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{IOBase, Uri};
 
-    let root = Folder::temporary()?.path()?;
-    let folder = Folder::new(&root)?;
+    let root = LocalFolder::temporary()?.path()?;
+    let folder = LocalFolder::new(&root)?;
 
     // A located handle answers one identifier through both doors.
     assert_eq!(IOBase::uri(&folder), IOBase::url(&folder).map(AsRef::<Uri>::as_ref));
@@ -237,7 +237,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     // Kinds that need no probe: bytes with no location, and a directory.
     assert_eq!(Buffer::new().kind(), IOKind::Memory);
     assert!(IOKind::Memory.is_leaf());
-    let folder = local::Folder::temporary()?;
+    let folder = local::LocalFolder::temporary()?;
     assert_eq!(folder.kind(), IOKind::Directory);
     assert!(folder.is_container());
 
@@ -245,7 +245,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     let _ = std::fs::remove_file(&path);
 
     // Constructing touches nothing: no file is created, opened, or mapped.
-    let mut handle = local::File::new(&path)?;
+    let mut handle = local::LocalFile::new(&path)?;
     assert!(!handle.exists());
 
     // Reading something absent yields nothing rather than failing, and nothing
@@ -358,13 +358,13 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
     assert!(!notes.is_tabular());
 
     // The name is enough: nothing has been written to this location yet.
-    let trades = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-shape.parquet"))?;
+    let trades = local::LocalFile::new(local::LocalFolder::temporary()?.path()?.join("yggdryl-docs-shape.parquet"))?;
     assert!(trades.is_tabular());
     assert!(!trades.is_atomic());
 
     // A container is neither one whole byte value nor - with nothing under
     // it - a table.
-    let folder = local::Folder::temporary()?;
+    let folder = local::LocalFolder::temporary()?;
     assert!(!folder.is_atomic());
     ```
 
@@ -572,7 +572,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     import tempfile
 
     from yggdryl import IOBase
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     plain = IOBase(root / "rows.json")
@@ -581,16 +581,16 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     # Nothing wraps these bytes, so there is nothing to undo.
     assert plain.codec is None
 
-    # `Path` addresses the stored bytes. `IOBase` would compose the gzip the
+    # `LocalPath` addresses the stored bytes. `IOBase` would compose the gzip the
     # name declares and present the decoded value, which is not what moves here.
-    stored = Path(root / "rows.json.gz")
+    stored = LocalPath(root / "rows.json.gz")
     assert stored.codec == "gzip"
 
     # The target's name already said gzip, so nothing here repeats it.
     assert plain.compress_into(stored) == stored.size
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
 
-    decoded = Path(root / "roundtrip.json")
+    decoded = LocalPath(root / "roundtrip.json")
     assert stored.decompress_into(decoded) == 17
     assert decoded.read_bytes() == plain.read_bytes()
     assert decoded.codec is None
@@ -599,7 +599,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     coded = IOBase(root / "copy.json.gz")
     assert plain.copy_into(coded) == 17
     assert coded.read_bytes() == plain.read_bytes()
-    assert Path(root / "copy.json.gz").read_bytes()[:2] == b"\x1f\x8b"
+    assert LocalPath(root / "copy.json.gz").read_bytes()[:2] == b"\x1f\x8b"
 
     # Which is why that handle is refused here: it codes what passes through it.
     try:
@@ -610,7 +610,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
 
     # A target declaring no coding is refused rather than copied unchanged.
     try:
-        plain.compress_into(Path(root / "copy.json"))
+        plain.compress_into(LocalPath(root / "copy.json"))
     except ValueError as error:
         reason = str(error)
     assert "expected a target declaring a content coding" in reason
@@ -679,7 +679,7 @@ A name declaring a [coding](../../coding/index.md) is composed at construction, 
 | Call | Presents |
 | --- | --- |
 | `IOBase(path)` | the decoded value; the name's coding sits composed underneath |
-| `Path(path)` | the stored bytes; `media_type` keeps the coding it carries |
+| `LocalPath(path)` | the stored bytes; `media_type` keeps the coding it carries |
 | `into_coded()` | the decoded value, answering a `Gzip`, `Zlib`, `Zstd`, or `Identity` and spending the handle it took |
 | `into_coded(codec, level)` | the same, for bytes whose name does not admit what they are |
 
@@ -692,7 +692,7 @@ A name declaring a [coding](../../coding/index.md) is composed at construction, 
 
     from yggdryl import IOBase
     from yggdryl.coding import Gzip
-    from yggdryl.holder import Path
+    from yggdryl.holder import LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp())
     path = root / "app.log.gz"
@@ -704,9 +704,9 @@ A name declaring a [coding](../../coding/index.md) is composed at construction, 
     assert str(handle.media_type) == "text/plain"
     assert handle.codec == "gzip"
 
-    # `Path` addresses the stored bytes instead, and `into_coded` puts the
+    # `LocalPath` addresses the stored bytes instead, and `into_coded` puts the
     # coding back on.
-    stored = Path(path)
+    stored = LocalPath(path)
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
     coded = stored.into_coded()
     assert isinstance(coded, Gzip)
@@ -822,7 +822,7 @@ A closed handle re-derives metadata on every ask; an open one holds what `open` 
 | Implementation | `open` caches |
 | --- | --- |
 | [`Buffer`](../backends/buffer.md) | nothing; `opened` stays `false` |
-| [`local::File`](../backends/local.md) | descriptor and memory mapping |
+| [`local::LocalFile`](../backends/local.md) | descriptor and memory mapping |
 | [`Coded`](../../coding/index.md) | the decoded value |
 | [IPC](../../media/ipc/index.md) | schema and dimensions |
 | [Parquet](../../media/parquet/index.md) | the footer |
@@ -845,10 +845,10 @@ A wrapping handle removes what it wraps, cached schema or footer included.
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
-    let mut folder = Folder::new(&root)?;
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
+    let mut folder = LocalFolder::new(&root)?;
     folder.truncate(0)?;
     folder.child_by_path("a.log")?.write_all_bytes(b"line\n")?;
 
@@ -861,7 +861,7 @@ A wrapping handle removes what it wraps, cached schema or footer included.
     // handle asked for as a container keeps answering `Directory`, because that
     // is what it was asked for - the parent's listing is what shows it gone.
     let leaf = root.join("nested");
-    let mut nested = Folder::new(&leaf)?;
+    let mut nested = LocalFolder::new(&leaf)?;
     nested.truncate(0)?;
     assert_eq!(folder.ls(false, false).count(), 1);
     nested.remove(false)?;
@@ -971,7 +971,7 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 - Bindings -> `codec` is a read-only property, `media_type` a settable one.
 - `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`, naming the target's media type; nothing is written.
 - `compress_into` to an in-memory target -> name the codec; the target has no name.
-- `compress_into`/`decompress_into` on a handle presenting a decoded view -> refused by name; address the stored bytes with [`Path`](../index.md), `File`, `FsPath`, or `FsFile`, or use `copy_into`, which writes through the coding.
+- `compress_into`/`decompress_into` on a handle presenting a decoded view -> refused by name; address the stored bytes with [`LocalPath`](../index.md), `LocalFile`, `FsPath`, or `FsFile`, or use `copy_into`, which writes through the coding.
 - Any call on a handle a conversion spent -> `this handle was consumed by a conversion`; use the handle the conversion returned.
 - `open` on an already-open handle -> no-op.
 - `open` on an absent resource -> succeeds without creating it; creation waits for the first write.

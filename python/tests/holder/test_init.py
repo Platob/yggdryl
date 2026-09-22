@@ -24,15 +24,15 @@ from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
 from yggdryl.holder import (
     Buffer,
     Buffered,
-    File,
-    Folder,
     FsFile,
     FsFolder,
     FsPath,
+    LocalFile,
+    LocalFolder,
+    LocalPath,
     ObjectFile,
     ObjectFolder,
     ObjectPath,
-    Path,
 )
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
@@ -63,7 +63,7 @@ class TestTheNameComposesTheHandle:
         # configuration describes the decoded rows; the coding underneath is
         # what decodes them, and the location is what holds the coded bytes.
         assert isinstance(handle, Text)
-        assert repr(handle) == f'Text(Gzip(Path("{handle.url}")))'
+        assert repr(handle) == f'Text(Gzip(LocalPath("{handle.url}")))'
         assert str(handle.media_type) == "text/plain"
         assert handle.codec == "gzip"
         assert handle.read_bytes() == PLAIN
@@ -82,20 +82,20 @@ class TestTheNameComposesTheHandle:
     @pytest.mark.parametrize(
         ("name", "expected"),
         [
-            ("trades.txt.gz", "Text(Gzip(Path))"),
-            ("trades.txt.zz", "Text(Zlib(Path))"),
-            ("trades.txt.zst", "Text(Zstd(Path))"),
-            ("trades.log", "Text(Path)"),
-            ("archive.bin.gz", "Gzip(Path)"),
-            ("trades.parquet", "Parquet(Path)"),
-            ("trades.arrows", "Ipc(Path)"),
-            ("trades.avro", "Avro(Path)"),
+            ("trades.txt.gz", "Text(Gzip(LocalPath))"),
+            ("trades.txt.zz", "Text(Zlib(LocalPath))"),
+            ("trades.txt.zst", "Text(Zstd(LocalPath))"),
+            ("trades.log", "Text(LocalPath)"),
+            ("archive.bin.gz", "Gzip(LocalPath)"),
+            ("trades.parquet", "Parquet(LocalPath)"),
+            ("trades.arrows", "Ipc(LocalPath)"),
+            ("trades.avro", "Avro(LocalPath)"),
             # Parquet compresses internally, so a coded name is left for the
             # writer to refuse rather than composed behind a decoded view.
-            ("trades.parquet.gz", "Path"),
+            ("trades.parquet.gz", "LocalPath"),
             # Nothing this build reads as rows, and no coding declared.
-            ("trades.json", "Path"),
-            ("trades", "Path"),
+            ("trades.json", "LocalPath"),
+            ("trades", "LocalPath"),
         ],
     )
     def test_each_name_composes_the_layers_it_declares(
@@ -131,7 +131,7 @@ class TestDescendingTheComposition:
         assert coding.read_bytes() == PLAIN
 
         location = coding.into_handle()
-        assert isinstance(location, Path)
+        assert isinstance(location, LocalPath)
         assert location.read_bytes()[:2] == b"\x1f\x8b"
 
         # A storage role stands on nothing, so it has no layer to descend to.
@@ -168,9 +168,9 @@ class TestTheExplicitRoles:
     def test_the_stored_byte_role_skips_the_composition(
         self, log: pathlib.Path
     ) -> None:
-        stored = Path(log)
+        stored = LocalPath(log)
 
-        assert isinstance(stored, Path)
+        assert isinstance(stored, LocalPath)
         assert stored.codec == "gzip"
         assert stored.read_bytes()[:2] == b"\x1f\x8b"
         assert str(stored.media_type) == "text/plain;encodings=application/gzip"
@@ -178,11 +178,11 @@ class TestTheExplicitRoles:
     def test_a_role_can_be_named_before_anything_is_there(
         self, tmp_path: pathlib.Path
     ) -> None:
-        leaf = File(tmp_path / "trades.bin")
-        container = Folder(tmp_path / "lake")
+        leaf = LocalFile(tmp_path / "trades.bin")
+        container = LocalFolder(tmp_path / "lake")
 
-        assert isinstance(leaf, File)
-        assert isinstance(container, Folder)
+        assert isinstance(leaf, LocalFile)
+        assert isinstance(container, LocalFolder)
         assert not leaf.exists()
         assert not (tmp_path / "lake").exists()
 
@@ -191,8 +191,8 @@ class TestTheExplicitRoles:
         assert (tmp_path / "lake").is_dir()
 
     def test_the_well_known_roots_are_containers_nothing_created(self) -> None:
-        for root in (Folder.temporary(), Folder.home(), Folder.config()):
-            assert isinstance(root, Folder)
+        for root in (LocalFolder.temporary(), LocalFolder.home(), LocalFolder.config()):
+            assert isinstance(root, LocalFolder)
             assert root.url is not None
 
     def test_an_in_memory_handle_is_the_buffer_role(self) -> None:
@@ -210,13 +210,13 @@ class TestRolesReachEveryHandleACallerGets:
         (tmp_path / "lake" / "part-0.parquet").write_bytes(b"parquet")
         (tmp_path / "lake" / "notes.txt").write_text("notes", encoding="utf-8")
 
-        root = Folder(tmp_path / "lake")
+        root = LocalFolder(tmp_path / "lake")
         listed = {entry.name: type(entry).__name__ for entry in root.iterdir()}
         assert listed == {"part-0.parquet": "Parquet", "notes.txt": "Text"}
 
         assert isinstance(root / "part-0.parquet", Parquet)
         assert isinstance(root.joinpath("notes.txt"), Text)
-        assert isinstance(IOBase(tmp_path / "lake" / "notes.txt").parent, Path)
+        assert isinstance(IOBase(tmp_path / "lake" / "notes.txt").parent, LocalPath)
 
     def test_a_foreign_filesystem_composes_over_its_own_role(
         self, log: pathlib.Path
@@ -234,12 +234,12 @@ class TestRolesReachEveryHandleACallerGets:
     def test_creating_a_container_answers_the_container(
         self, tmp_path: pathlib.Path
     ) -> None:
-        leaf = Folder(tmp_path) / "sub"
+        leaf = LocalFolder(tmp_path) / "sub"
         created = leaf.mkdir()
 
         # A byte write here would have made this location a file, so the
         # container is a different role - and a role is what a class says.
-        assert isinstance(created, Folder)
+        assert isinstance(created, LocalFolder)
         assert created.is_dir()
 
     def test_opening_never_changes_what_a_handle_is(
@@ -256,7 +256,7 @@ class TestRolesReachEveryHandleACallerGets:
     def test_every_role_is_an_iobase_and_the_wrappers_share_a_base(
         self, tmp_path: pathlib.Path
     ) -> None:
-        for role in (Buffer, Buffered, File, Folder, FsPath, Path, Text, Coded, Media):
+        for role in (Buffer, Buffered, FsPath, LocalFile, LocalFolder, LocalPath, Text, Coded, Media):
             assert issubclass(role, IOBase)
         for coding in (Gzip, Zlib, Zstd, Identity):
             assert issubclass(coding, Coded)

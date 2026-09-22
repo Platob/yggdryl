@@ -7,11 +7,11 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
-use super::{Archive, Leaf, Node, name};
+use super::{ZipArchive, ZipLeaf, ZipNode, name};
 
 /// A member location that resolves to the role it turns out to need.
 ///
-/// [`Node::child_by_path`](crate::IOBase::child_by_path) answers this,
+/// [`ZipNode::child_by_path`](crate::IOBase::child_by_path) answers this,
 /// because a name inside an archive says nothing about whether it holds bytes
 /// or holds other members until the index is asked. Resolution follows the
 /// laziness contract: construction touches nothing, reading a member that is
@@ -20,11 +20,11 @@ use super::{Archive, Leaf, Node, name};
 ///
 /// ```
 /// use yggdryl::holder::{Buffer, Holder};
-/// use yggdryl::zip::Archive;
+/// use yggdryl::zip::ZipArchive;
 /// use yggdryl::{IOBase, IOKind};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+/// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 ///
 /// // Nothing is there, so nothing has decided.
 /// let member = root.child_by_path("trades/eu.csv")?;
@@ -34,8 +34,8 @@ use super::{Archive, Leaf, Node, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Path {
-    archive: Arc<Archive>,
+pub struct ZipPath {
+    archive: Arc<ZipArchive>,
     /// The member's canonical path inside the archive.
     name: SmolStr,
     /// The location, which is the archive's with the name under it.
@@ -50,12 +50,12 @@ pub struct Path {
     /// member's location - a URL clone and a percent-encode. Holding it is
     /// also what lets a positional write stage rather than publish, which is
     /// what [`IOBase::pwrite`] means everywhere else.
-    leaf: OnceLock<Leaf>,
+    leaf: OnceLock<ZipLeaf>,
 }
 
-impl Path {
+impl ZipPath {
     /// Address one member location without touching the archive.
-    pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self {
+    pub fn new(archive: Arc<ZipArchive>, name: SmolStr) -> Self {
         Self {
             url: archive.member_url(&name),
             archive,
@@ -67,7 +67,7 @@ impl Path {
     }
 
     /// Borrow the archive this location is inside.
-    pub const fn archive(&self) -> &Arc<Archive> {
+    pub const fn archive(&self) -> &Arc<ZipArchive> {
         &self.archive
     }
 
@@ -82,14 +82,14 @@ impl Path {
     }
 
     /// Treat this location as a directory, whether or not it is one yet.
-    pub fn as_node(&self) -> Node {
-        Node::new(Arc::clone(&self.archive), self.name.clone())
+    pub fn as_node(&self) -> ZipNode {
+        ZipNode::new(Arc::clone(&self.archive), self.name.clone())
     }
 
     /// Treat this location as a byte member, whether or not it is one yet.
-    pub fn as_leaf(&self) -> &Leaf {
+    pub fn as_leaf(&self) -> &ZipLeaf {
         self.leaf.get_or_init(|| {
-            let mut leaf = Leaf::new(Arc::clone(&self.archive), self.name.clone());
+            let mut leaf = ZipLeaf::new(Arc::clone(&self.archive), self.name.clone());
             if let Some(media_type) = &self.declared {
                 leaf.set_media_type(media_type.clone());
             }
@@ -98,7 +98,7 @@ impl Path {
     }
 
     /// The byte role, borrowed for a call that changes it.
-    fn as_leaf_mut(&mut self) -> &mut Leaf {
+    fn as_leaf_mut(&mut self) -> &mut ZipLeaf {
         let _ = self.as_leaf();
         self.leaf
             .get_mut()
@@ -106,7 +106,7 @@ impl Path {
     }
 }
 
-impl IOPath for Path {
+impl IOPath for ZipPath {
     fn path_url(&self) -> &Url {
         &self.url
     }
@@ -126,11 +126,11 @@ impl IOPath for Path {
     }
 }
 
-impl crate::IOMedia for Path {
+impl crate::IOMedia for ZipPath {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Path {
+impl IOBase for ZipPath {
     /// Read the bytes of whichever role is there.
     ///
     /// A name a record marks as a directory and a member of the same name can
@@ -250,7 +250,7 @@ impl IOBase for Path {
         if self.name.is_empty() {
             return self.archive.archive_parent();
         }
-        Some(Holder::ZipNode(Node::new(
+        Some(Holder::ZipNode(ZipNode::new(
             Arc::clone(&self.archive),
             SmolStr::new(name::parent(&self.name).unwrap_or_default()),
         )))

@@ -21,7 +21,8 @@
 #![allow(dead_code)]
 
 use yggdryl::object::{
-    self, AzureOptions, Credentials, File, Folder, GoogleOptions, ObjectOptions, Path, Provider,
+    self, AzureOptions, Credentials, GoogleOptions, ObjectFile, ObjectFolder, ObjectOptions,
+    ObjectPath, Provider,
 };
 
 use crate::server::{self, FakeS3};
@@ -47,34 +48,34 @@ pub fn options(store: &FakeS3) -> ObjectOptions {
 }
 
 /// The object `key` on `store`.
-pub fn file(store: &FakeS3, key: &str) -> File {
+pub fn file(store: &FakeS3, key: &str) -> ObjectFile {
     file_with(key, options(store))
 }
 
 /// The object `key`, under options a test tightened.
 ///
 /// The options already name the endpoint, so the store is not passed again.
-pub fn file_with(key: &str, options: ObjectOptions) -> File {
+pub fn file_with(key: &str, options: ObjectOptions) -> ObjectFile {
     object::file_with(&location(key), options).expect("an object handle")
 }
 
 /// The prefix `key` on `store`.
-pub fn folder(store: &FakeS3, key: &str) -> Folder {
+pub fn folder(store: &FakeS3, key: &str) -> ObjectFolder {
     folder_with(key, options(store))
 }
 
 /// The prefix `key`, under options a test tightened.
-pub fn folder_with(key: &str, options: ObjectOptions) -> Folder {
+pub fn folder_with(key: &str, options: ObjectOptions) -> ObjectFolder {
     object::folder_with(&location(key), options).expect("a prefix handle")
 }
 
 /// The location `key` on `store`.
-pub fn path(store: &FakeS3, key: &str) -> Path {
+pub fn path(store: &FakeS3, key: &str) -> ObjectPath {
     path_with(key, options(store))
 }
 
 /// The location `key`, under options a test tightened.
-pub fn path_with(key: &str, options: ObjectOptions) -> Path {
+pub fn path_with(key: &str, options: ObjectOptions) -> ObjectPath {
     object::path_at_with(Provider::Aws, BUCKET, key, options).expect("a location handle")
 }
 
@@ -112,27 +113,27 @@ pub fn options_for(store: &FakeS3, provider: Provider) -> ObjectOptions {
 }
 
 /// The object `key` in the fixture container on `provider`.
-pub fn file_on(store: &FakeS3, provider: Provider, key: &str) -> File {
+pub fn file_on(store: &FakeS3, provider: Provider, key: &str) -> ObjectFile {
     file_on_with(provider, key, options_for(store, provider))
 }
 
 /// The object `key` on `provider`, under options a test tightened.
-pub fn file_on_with(provider: Provider, key: &str, options: ObjectOptions) -> File {
+pub fn file_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectFile {
     object::file_with(&location_on(provider, key), options).expect("an object handle")
 }
 
 /// The prefix `key` in the fixture container on `provider`.
-pub fn folder_on(store: &FakeS3, provider: Provider, key: &str) -> Folder {
+pub fn folder_on(store: &FakeS3, provider: Provider, key: &str) -> ObjectFolder {
     folder_on_with(provider, key, options_for(store, provider))
 }
 
 /// The prefix `key` on `provider`, under options a test tightened.
-pub fn folder_on_with(provider: Provider, key: &str, options: ObjectOptions) -> Folder {
+pub fn folder_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectFolder {
     object::folder_with(&location_on(provider, key), options).expect("a prefix handle")
 }
 
 /// The location `key` on `provider`, under options a test tightened.
-pub fn path_on_with(provider: Provider, key: &str, options: ObjectOptions) -> Path {
+pub fn path_on_with(provider: Provider, key: &str, options: ObjectOptions) -> ObjectPath {
     object::path_at_with(provider, BUCKET, key, options).expect("a location handle")
 }
 
@@ -227,7 +228,7 @@ mod accounting {
             FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
             read_manifest, write_manifest,
         };
-        use yggdryl::object::Folder;
+        use yggdryl::object::ObjectFolder;
         use yggdryl::{DataType, Field, IOBase};
 
         /// The requests the store handled since the last clear, by shape.
@@ -319,7 +320,7 @@ mod accounting {
         #[test]
         fn what_a_table_costs_over_the_store() {
             let store = crate::mod_::store();
-            let root: Folder = crate::mod_::folder(&store, "lake/trades/");
+            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
 
@@ -478,13 +479,13 @@ mod accounting {
         #[test]
         fn a_failed_upload_publishes_nothing_and_leaves_no_staged_file() {
             let store = crate::mod_::store();
-            let root: Folder = crate::mod_::folder(&store, "lake/trades/");
+            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table =
                 Table::create(root.clone(), FormatVersion::V2, schema, spec).expect("creates");
             let version = table.metadata_version();
-            let stage = yggdryl::local::Folder::temporary()
+            let stage = yggdryl::local::LocalFolder::temporary()
                 .expect("the temporary folder")
                 .path()
                 .expect("a platform path")
@@ -607,7 +608,7 @@ mod accounting {
         #[test]
         fn a_manifest_recording_no_length_is_not_believed() {
             let store = crate::mod_::store();
-            let root: Folder = crate::mod_::folder(&store, "lake/trades/");
+            let root: ObjectFolder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
             let mut table = Table::create(

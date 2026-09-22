@@ -147,8 +147,12 @@ fn non_local_scheme(url: &yggdryl::Url) -> Result<()> {
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
-        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::File::new(file.bound().clone()))),
-        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::fs::Path::new(path.bound().clone()))),
+        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::FsFile::new(
+            file.bound().clone(),
+        ))),
+        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::fs::FsPath::new(
+            path.bound().clone(),
+        ))),
         _ => None,
     }
 }
@@ -157,8 +161,8 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::FsFolder(folder) => folder.clone(),
-        Holder::FsFile(file) => yggdryl::fs::Folder::new(file.bound().clone()),
-        Holder::FsPath(path) => yggdryl::fs::Folder::new(path.bound().clone()),
+        Holder::FsFile(file) => yggdryl::fs::FsFolder::new(file.bound().clone()),
+        Holder::FsPath(path) => yggdryl::fs::FsFolder::new(path.bound().clone()),
         _ => return None,
     };
     Some(Holder::FsFolder(folder))
@@ -476,10 +480,10 @@ impl JsIOBase {
         self.inner.bound_location()
     }
 
-    fn bound_file(&self) -> Result<yggdryl::fs::File> {
+    fn bound_file(&self) -> Result<yggdryl::fs::FsFile> {
         self.bound_location()
             .cloned()
-            .map(yggdryl::fs::File::new)
+            .map(yggdryl::fs::FsFile::new)
             .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
     }
 
@@ -1251,7 +1255,7 @@ impl JsIOBase {
         let bound = self.bound_location().ok_or_else(|| {
             napi_error("deleteRootDirContents requires a bound filesystem location")
         })?;
-        yggdryl::fs::Folder::new(bound.clone())
+        yggdryl::fs::FsFolder::new(bound.clone())
             .delete_root_dir_contents()
             .map_err(napi_error)
     }

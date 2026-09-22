@@ -82,11 +82,11 @@
   refresh_logging: drops the cached Python log levels, so a level set after import applies
   coding: Coded, Gzip, Identity, Zlib, Zstd, gzip, zlib, zstd
   coding roles: Coded is the IOBase subclass presenting the decoded bytes of a coding; Identity, Gzip, Zlib and Zstd sit under it, and Codec.Deflate folds into Zlib. Coded: into_handle, level
-  holder: Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath, IOBase, IOCursor, ObjectFile, ObjectFolder, ObjectPath, Path
+  holder: Buffer, Buffered, FsFile, FsFolder, FsPath, IOBase, IOCursor, LocalFile, LocalFolder, LocalPath, ObjectFile, ObjectFolder, ObjectPath
   holder roles: every name above but IOBase and IOCursor is an IOBase subclass naming one core holder; construction answers the composition a name declares, so type(handle) says which implementation answers the contract
     Buffer: in-memory bytes; built with IOBase.from_bytes
-    Path / File / Folder: the local roles, each constructible from a location; Path is what a name declaring nothing takes, and what addresses the stored bytes of a coded name
-    Folder: classmethods temporary, home, config
+    LocalPath / LocalFile / LocalFolder: the local roles, each constructible from a location; LocalPath is what a name declaring nothing takes, and what addresses the stored bytes of a coded name
+    LocalFolder: classmethods temporary, home, config
     FsPath / FsFile / FsFolder: the same three roles on a foreign filesystem, each constructible as (filesystem, path, *, uri=None)
     ObjectPath / ObjectFile / ObjectFolder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized

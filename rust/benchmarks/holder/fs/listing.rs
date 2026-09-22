@@ -9,7 +9,7 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::IOBase;
-use yggdryl::fs::Folder;
+use yggdryl::fs::FsFolder;
 
 use super::{local, local_location, memory, tree};
 
@@ -18,7 +18,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
 
     let filesystem = memory();
     tree(filesystem.as_ref(), "lake");
-    let lake = Folder::from_path(filesystem, "lake", None).expect("a valid location");
+    let lake = FsFolder::from_path(filesystem, "lake", None).expect("a valid location");
 
     group.bench_function("ls_flat/fs_memory", |bencher| {
         bencher.iter(|| black_box(&lake).ls(false, false).count());
@@ -61,14 +61,14 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     let location = local_location(&root, "lake");
     tree(local_filesystem.as_ref(), &location);
     let local_lake =
-        Folder::from_path(local_filesystem, &location, None).expect("a valid location");
+        FsFolder::from_path(local_filesystem, &location, None).expect("a valid location");
 
     group.bench_function("ls_recursive/fs_local", |bencher| {
         bencher.iter(|| black_box(&local_lake).ls(true, false).count());
     });
 
     group.bench_function("ls_recursive/local_folder", |bencher| {
-        let folder = yggdryl::local::Folder::new(root.join("lake")).expect("a valid path");
+        let folder = yggdryl::local::LocalFolder::new(root.join("lake")).expect("a valid path");
         bencher.iter(|| black_box(&folder).ls(true, false).count());
     });
 

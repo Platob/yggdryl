@@ -5,10 +5,11 @@
 //! over its own REST API directly - no SDK, no async runtime, no object-store
 //! abstraction in between:
 //!
-//! - [`Path`] is the generic location, which resolves to whichever of the two
-//!   it turns out to name.
-//! - [`Folder`] is the container: a key prefix, or a whole bucket or container.
-//! - [`File`] is the leaf: one object, read by range and written whole.
+//! - [`ObjectPath`] is the generic location, which resolves to whichever of
+//!   the two it turns out to name.
+//! - [`ObjectFolder`] is the container: a key prefix, or a whole bucket or
+//!   container.
+//! - [`ObjectFile`] is the leaf: one object, read by range and written whole.
 //!
 //! Which store answers is the location's scheme. `s3`, `s3a`, and `s3n` name
 //! Amazon S3; `gs` and `gcs` name Google Cloud Storage; `az`, `abfs`, `abfss`,
@@ -54,9 +55,9 @@
 //! | listing a level, or a whole subtree | one listing per page |
 //! | emptying or removing a prefix | one listing and one bulk delete per batch |
 //!
-//! [`Folder::stats`], [`File::stats`], and [`Path::stats`] report what
-//! actually went out, so "this costs one request" is a thing a caller can
-//! check rather than take on trust.
+//! [`ObjectFolder::stats`], [`ObjectFile::stats`], and [`ObjectPath::stats`]
+//! report what actually went out, so "this costs one request" is a thing a
+//! caller can check rather than take on trust.
 //!
 //! # Reaching a store
 //!
@@ -121,11 +122,11 @@ pub use aws::{AssumedRole, AwsOptions, Checksum, Credentials};
 pub use azure::{AzureOptions, BlobType};
 pub use client::StatsSnapshot;
 pub use encryption::{CustomerKey, Encryption, KmsKey};
-pub use file::File;
-pub use folder::Folder;
+pub use file::ObjectFile;
+pub use folder::ObjectFolder;
 pub use google::GoogleOptions;
 pub use options::ObjectOptions;
-pub use path::Path;
+pub use path::ObjectPath;
 pub use provider::Provider;
 
 use client::Client;
@@ -152,7 +153,7 @@ pub fn located(url: &str) -> Result<Holder> {
 pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    Path::new(client, url).map(Holder::ObjectPath)
+    ObjectPath::new(client, url).map(Holder::ObjectPath)
 }
 
 /// Hold the object `url` names, whether or not it exists yet.
@@ -161,7 +162,7 @@ pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn file(url: &str) -> Result<File> {
+pub fn file(url: &str) -> Result<ObjectFile> {
     file_with(url, ObjectOptions::default())
 }
 
@@ -171,10 +172,10 @@ pub fn file(url: &str) -> Result<File> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn file_with(url: &str, options: ObjectOptions) -> Result<File> {
+pub fn file_with(url: &str, options: ObjectOptions) -> Result<ObjectFile> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    File::new(client, url)
+    ObjectFile::new(client, url)
 }
 
 /// Hold the prefix or container `url` names, whether or not anything is under
@@ -184,7 +185,7 @@ pub fn file_with(url: &str, options: ObjectOptions) -> Result<File> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn folder(url: &str) -> Result<Folder> {
+pub fn folder(url: &str) -> Result<ObjectFolder> {
     folder_with(url, ObjectOptions::default())
 }
 
@@ -194,10 +195,10 @@ pub fn folder(url: &str) -> Result<Folder> {
 ///
 /// Returns a refusal when `url` is not an object-store location naming a
 /// container.
-pub fn folder_with(url: &str, options: ObjectOptions) -> Result<Folder> {
+pub fn folder_with(url: &str, options: ObjectOptions) -> Result<ObjectFolder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    Folder::new(client, url)
+    ObjectFolder::new(client, url)
 }
 
 /// Hold the object `key` names in `container` on `provider`, whether or not it
@@ -231,7 +232,7 @@ pub fn folder_with(url: &str, options: ObjectOptions) -> Result<Folder> {
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<File> {
+pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFile> {
     file_at_with(provider, container, key, ObjectOptions::default())
 }
 
@@ -245,10 +246,10 @@ pub fn file_at_with(
     container: &str,
     key: &str,
     options: ObjectOptions,
-) -> Result<File> {
+) -> Result<ObjectFile> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    File::new(client, url)
+    ObjectFile::new(client, url)
 }
 
 /// Hold the prefix `key` names in `container` on `provider`, entries or not.
@@ -258,7 +259,7 @@ pub fn file_at_with(
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<Folder> {
+pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<ObjectFolder> {
     folder_at_with(provider, container, key, ObjectOptions::default())
 }
 
@@ -272,10 +273,10 @@ pub fn folder_at_with(
     container: &str,
     key: &str,
     options: ObjectOptions,
-) -> Result<Folder> {
+) -> Result<ObjectFolder> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    Folder::new(client, url)
+    ObjectFolder::new(client, url)
 }
 
 /// Hold the resource `key` names in `container`, resolving its role when asked.
@@ -285,7 +286,7 @@ pub fn folder_at_with(
 /// # Errors
 ///
 /// Returns a refusal when `container` is empty or cannot form a location.
-pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<Path> {
+pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<ObjectPath> {
     path_at_with(provider, container, key, ObjectOptions::default())
 }
 
@@ -299,10 +300,10 @@ pub fn path_at_with(
     container: &str,
     key: &str,
     options: ObjectOptions,
-) -> Result<Path> {
+) -> Result<ObjectPath> {
     let url = key_url(provider, container, key)?;
     let client = Arc::new(Client::new(&url, options)?);
-    Path::new(client, url)
+    ObjectPath::new(client, url)
 }
 
 /// The canonical location of a raw `key` in `container` on `provider`.
