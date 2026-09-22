@@ -1,0 +1,400 @@
+  ...
+# Subtest: the setter creates what is not there and the remover takes it
+ok 519 - the setter creates what is not there and the remover takes it
+  ---
+  duration_ms: 0.946662
+  type: 'test'
+  ...
+# Subtest: entries measure, index and list
+ok 520 - entries measure, index and list
+  ---
+  duration_ms: 0.973314
+  type: 'test'
+  ...
+# Subtest: an entry is text, and its bytes are beside it
+ok 521 - an entry is text, and its bytes are beside it
+  ---
+  duration_ms: 1.061044
+  type: 'test'
+  ...
+# Subtest: a string body round-trips as text
+ok 522 - a string body round-trips as text
+  ---
+  duration_ms: 0.233131
+  type: 'test'
+  ...
+# Subtest: a buffer body with one Latin-1 byte is decoded where the line is made
+ok 523 - a buffer body with one Latin-1 byte is decoded where the line is made
+  ---
+  duration_ms: 0.303816
+  type: 'test'
+  ...
+# Subtest: the five bytes the classic table leaves undefined read as their own code points
+ok 524 - the five bytes the classic table leaves undefined read as their own code points
+  ---
+  duration_ms: 0.29215
+  type: 'test'
+  ...
+# Subtest: a valid character is kept beside a lone byte on the same line
+ok 525 - a valid character is kept beside a lone byte on the same line
+  ---
+  duration_ms: 0.223318
+  type: 'test'
+  ...
+# Subtest: a byte that was not text reaches a lifted entry decoded, with its bytes beside it
+ok 526 - a byte that was not text reaches a lifted entry decoded, with its bytes beside it
+  ---
+  duration_ms: 0.987038
+  type: 'test'
+  ...
+# Subtest: a .log read through the reader carries body as a string column
+ok 527 - a .log read through the reader carries body as a string column
+  ---
+  duration_ms: 82.55534
+  type: 'test'
+  ...
+# Subtest: lift names and renames round-trip through the options
+ok 528 - lift names and renames round-trip through the options
+  ---
+  duration_ms: 0.997488
+  type: 'test'
+  ...
+# Subtest: a rename naming no column is refused when the schema is asked for
+ok 529 - a rename naming no column is refused when the schema is asked for
+  ---
+  duration_ms: 0.323256
+  type: 'test'
+  ...
+# Subtest: a trailing as names what the path reached
+ok 530 - a trailing as names what the path reached
+  ---
+  duration_ms: 0.208876
+  type: 'test'
+  ...
+# Subtest: without an alias the last segment names it
+ok 531 - without an alias the last segment names it
+  ---
+  duration_ms: 0.134506
+  type: 'test'
+  ...
+# Subtest: a segment may still be named as
+ok 532 - a segment may still be named as
+  ---
+  duration_ms: 0.136554
+  type: 'test'
+  ...
+# Subtest: a malformed alias is refused
+ok 533 - a malformed alias is refused
+  ---
+  duration_ms: 0.225067
+  type: 'test'
+  ...
+# Subtest: a lifted path names its column with its alias
+ok 534 - a lifted path names its column with its alias
+  ---
+  duration_ms: 0.782742
+  type: 'test'
+  ...
+# Subtest: a text read is shaped by select and where given as properties
+ok 535 - a text read is shaped by select and where given as properties
+  ---
+  duration_ms: 15.498804
+  type: 'test'
+  ...
+# Subtest: a name, an alias, and a fixed offset all arrive at one value
+ok 536 - a name, an alias, and a fixed offset all arrive at one value
+  ---
+  duration_ms: 15.965074
+  type: 'test'
+  ...
+# Subtest: every spelling of UTC is UTC
+ok 537 - every spelling of UTC is UTC
+  ---
+  duration_ms: 0.49909
+  type: 'test'
+  ...
+# Subtest: a bad name is refused rather than kept
+ok 538 - a bad name is refused rather than kept
+  ---
+  duration_ms: 0.504942
+  type: 'test'
+  ...
+# Subtest: a northern zone switches in March and November
+ok 539 - a northern zone switches in March and November
+  ---
+  duration_ms: 0.397658
+  type: 'test'
+  ...
+# Subtest: a southern zone is saving across the new year
+ok 540 - a southern zone is saving across the new year
+  ---
+  duration_ms: 0.183399
+  type: 'test'
+  ...
+# Subtest: the offsets agree with the runtime time zone database
+ok 541 - the offsets agree with the runtime time zone database
+  ---
+  duration_ms: 5.356024
+  type: 'test'
+  ...
+# Subtest: local and UTC readings convert in both directions
+ok 542 - local and UTC readings convert in both directions
+  ---
+  duration_ms: 0.777484
+  type: 'test'
+  ...
+# Subtest: a zone without rules declines to answer
+ok 543 - a zone without rules declines to answer
+  ---
+  duration_ms: 0.396184
+  type: 'test'
+  ...
+# Subtest: the registry needs no files, environment, or network
+ok 544 - the registry needs no files, environment, or network
+  ---
+  duration_ms: 2.886543
+  type: 'test'
+  ...
+# Subtest: a zone behaves like the rest of the native value types
+ok 545 - a zone behaves like the rest of the native value types
+  ---
+  duration_ms: 2.223285
+  type: 'test'
+  ...
+# Subtest: URI values expose canonical components and path collections
+ok 546 - URI values expose canonical components and path collections
+  ---
+  duration_ms: 3.459765
+  type: 'test'
+  ...
+# Subtest: generic URI path joining is variadic, normalized, and immutable
+ok 547 - generic URI path joining is variadic, normalized, and immutable
+  ---
+  duration_ms: 0.722673
+  type: 'test'
+  ...
+# Subtest: credentials and object store locations are parsed by the native core
+ok 548 - credentials and object store locations are parsed by the native core
+  ---
+  duration_ms: 0.715424
+  type: 'test'
+  ...
+# Subtest: fromPath normalizes Windows drives and UNC shares as file URIs
+ok 549 - fromPath normalizes Windows drives and UNC shares as file URIs
+  ---
+  duration_ms: 1.043272
+  type: 'test'
+  ...
+# Subtest: URL conversion is validated by the native URI core
+ok 550 - URL conversion is validated by the native URI core
+  ---
+  duration_ms: 1.163976
+  type: 'test'
+  ...
+# Subtest: URN values expose namespace and namespace-specific string
+ok 551 - URN values expose namespace and namespace-specific string
+  ---
+  duration_ms: 0.956389
+  type: 'test'
+  ...
+# Subtest: ARN values expose their AWS fields and resource split
+ok 552 - ARN values expose their AWS fields and resource split
+  ---
+  duration_ms: 1.285772
+  type: 'test'
+  ...
+# Subtest: an ARN locates only an Amazon S3 bucket
+ok 553 - an ARN locates only an Amazon S3 bucket
+  ---
+  duration_ms: 0.813102
+  type: 'test'
+  ...
+# Subtest: an Amazon S3 Tables ARN names a table bucket and a table
+ok 554 - an Amazon S3 Tables ARN names a table bucket and a table
+  ---
+  duration_ms: 0.765998
+  type: 'test'
+  ...
+# Subtest: a name resolves to where it is and opens there
+ok 555 - a name resolves to where it is and opens there
+  ---
+  duration_ms: 2.387912
+  type: 'test'
+  ...
+# Subtest: every identifier answers the location it names
+ok 556 - every identifier answers the location it names
+  ---
+  duration_ms: 0.56953
+  type: 'test'
+  ...
+# Subtest: a location argument reads a name as the place it names
+ok 557 - a location argument reads a name as the place it names
+  ---
+  duration_ms: 0.412023
+  type: 'test'
+  ...
+# Subtest: scheme-less input parses as a file URI instead of failing
+ok 558 - scheme-less input parses as a file URI instead of failing
+  ---
+  duration_ms: 0.230437
+  type: 'test'
+  ...
+# Subtest: URI parsing rejects malformed schemes, authorities, and escapes
+ok 559 - URI parsing rejects malformed schemes, authorities, and escapes
+  ---
+  duration_ms: 0.37151
+  type: 'test'
+  ...
+# Subtest: filename mutations stay native, atomic, and preserve URI components
+ok 560 - filename mutations stay native, atomic, and preserve URI components
+  ---
+  duration_ms: 0.733093
+  type: 'test'
+  ...
+# Subtest: URI MIME and media inference uses native compound suffix tables
+ok 561 - URI MIME and media inference uses native compound suffix tables
+  ---
+  duration_ms: 0.88602
+  type: 'test'
+  ...
+# Subtest: a URL answers the naming questions a path answers
+ok 562 - a URL answers the naming questions a path answers
+  ---
+  duration_ms: 0.296485
+  type: 'test'
+  ...
+# Subtest: joining and climbing a URL preserve every other component
+ok 563 - joining and climbing a URL preserve every other component
+  ---
+  duration_ms: 0.486776
+  type: 'test'
+  ...
+# Subtest: renaming a URL rewrites only the final component
+ok 564 - renaming a URL rewrites only the final component
+  ---
+  duration_ms: 0.341669
+  type: 'test'
+  ...
+# Subtest: matching a URL follows the gitignore rule
+ok 565 - matching a URL follows the gitignore rule
+  ---
+  duration_ms: 0.257545
+  type: 'test'
+  ...
+# Subtest: a URL says what it is relative to
+ok 566 - a URL says what it is relative to
+  ---
+  duration_ms: 0.304851
+  type: 'test'
+  ...
+# Subtest: the file system predicates answer for a local URL only
+ok 567 - the file system predicates answer for a local URL only
+  ---
+  duration_ms: 0.591393
+  type: 'test'
+  ...
+# Subtest: Hive partitions are read off the URL path
+ok 568 - Hive partitions are read off the URL path
+  ---
+  duration_ms: 0.282828
+  type: 'test'
+  ...
+# Subtest: codec loads can return the exact native Scalar
+ok 569 - codec loads can return the exact native Scalar
+  ---
+  duration_ms: 3.059274
+  type: 'test'
+  ...
+# Subtest: typed TOML keeps core struct canonicalization on the Scalar path
+ok 570 - typed TOML keeps core struct canonicalization on the Scalar path
+  ---
+  duration_ms: 2.311299
+  type: 'test'
+  ...
+# Subtest: collection, inferred, and streamed loads keep native Scalars
+ok 571 - collection, inferred, and streamed loads keep native Scalars
+  ---
+  duration_ms: 3.898378
+  type: 'test'
+  ...
+# Subtest: single path and stream loads return native Scalars
+ok 572 - single path and stream loads return native Scalars
+  ---
+  duration_ms: 2.956547
+  type: 'test'
+  ...
+# Subtest: IOBase.readScalar accepts an inferred field or explicit options
+ok 573 - IOBase.readScalar accepts an inferred field or explicit options
+  ---
+  duration_ms: 1.148834
+  type: 'test'
+  ...
+# Subtest: Version native integer parts use u8, u8, u16 and canonical numeric text
+ok 574 - Version native integer parts use u8, u8, u16 and canonical numeric text
+  ---
+  duration_ms: 2.569562
+  type: 'test'
+  ...
+# Subtest: Version rejects numeric coercion and width overflow at the native boundary
+ok 575 - Version rejects numeric coercion and width overflow at the native boundary
+  ---
+  duration_ms: 1.221979
+  type: 'test'
+  ...
+# Subtest: Version native parser rejects only the numeric components
+ok 576 - Version native parser rejects only the numeric components
+  ---
+  duration_ms: 1.933537
+  type: 'test'
+  ...
+# Subtest: the empty text is no Version, but reads as null at the datatype
+ok 577 - the empty text is no Version, but reads as null at the datatype
+  ---
+  duration_ms: 0.60214
+  type: 'test'
+  ...
+# Subtest: Version reads a compact FIX service pack as its numeric patch
+ok 578 - Version reads a compact FIX service pack as its numeric patch
+  ---
+  duration_ms: 0.395514
+  type: 'test'
+  ...
+# Subtest: Version folds a patch tail that states no number instead of failing
+ok 579 - Version folds a patch tail that states no number instead of failing
+  ---
+  duration_ms: 0.975824
+  type: 'test'
+  ...
+# Subtest: Version order, native hash, clone, and read-only parts share numeric identity
+ok 580 - Version order, native hash, clone, and read-only parts share numeric identity
+  ---
+  duration_ms: 0.579034
+  type: 'test'
+  ...
+# Subtest: Version survives Scalar, nested native values, and declared JSON boundaries
+ok 581 - Version survives Scalar, nested native values, and declared JSON boundaries
+  ---
+  duration_ms: 2.011935
+  type: 'test'
+  ...
+# Subtest: Version field defaults and hints expose the native value with Arrow string storage
+ok 582 - Version field defaults and hints expose the native value with Arrow string storage
+  ---
+  duration_ms: 16.126161
+  type: 'test'
+  ...
+# Subtest: generic MsgType datatype and field helpers are retired
+ok 583 - generic MsgType datatype and field helpers are retired
+  ---
+  duration_ms: 0.839461
+  type: 'test'
+  ...
+1..583
+# tests 583
+# suites 0
+# pass 583
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 130889.232579

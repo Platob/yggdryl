@@ -7079,7 +7079,7 @@ mod isolation {
 
     impl IOBase for Recording {
         yggdryl::delegate_iobase!(inner: pread, read_all_bytes, read_range_bytes, pstream_bytes,
-            pwrite, size, capacity, reserve, truncate, url, bound_location, mtime, media_type,
+            pwrite, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
             set_media_type, flush, open, opened, close, parent, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 

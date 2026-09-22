@@ -1639,6 +1639,10 @@ mod lazy_folder {
             Ok(())
         }
 
+        fn uri(&self) -> Option<&yggdryl::Uri> {
+            Some(self.url.as_ref())
+        }
+
         fn url(&self) -> Option<&Url> {
             Some(&self.url)
         }

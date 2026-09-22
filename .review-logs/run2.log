@@ -1,0 +1,55 @@
++ cd /home/user/yggdryl
++ echo '##### test:package:debug'
+##### test:package:debug
++ npm run --prefix node test:package:debug
++ tail -8
+
+> yggdryl@0.1.9 build:debug
+> napi build --platform && node scripts/local-binding-only.js && node scripts/hide-private-types.js
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.23s
+index.js: removed 54 sibling package require(s)
+index.js requires only its 26 shipped binaries
+package dry-run: 24 files, 1 native module(s), shasum fee0b7002fe9ca6fb6ed8249b22ee544dce79f9e
++ echo '##### clippy'
+##### clippy
++ cargo clippy -p yggdryl-node --all-targets
++ tail -12
+   Compiling yggdryl-node v0.1.9 (/home/user/yggdryl/node)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.67s
++ echo '##### fmt'
+##### fmt
++ cargo fmt -p yggdryl-node -- --check
++ tail -10
++ echo '##### npm test (tests + tsc)'
+##### npm test (tests + tsc)
++ npm test --prefix node
++ grep -E '^# (tests|pass|fail|duration)|^not ok|error TS'
++ head -20
+# tests 583
+# pass 583
+# fail 0
+# duration_ms 131494.613177
++ echo '##### playground'
+##### playground
++ node scripts/build_docs_playground.js --check
++ tail -3
+playground: 153 cases from 5 groups checked
++ echo '##### fix docs'
+##### fix docs
++ node scripts/build_docs_fix.js --check
++ tail -3
+fix: 6271 fields, 7751 codes in 736 sets read by 2027 fields, 181 messages, 128 columns, 18 frames checked
++ echo '##### docs examples javascript'
+##### docs examples javascript
++ python3 scripts/check_docs_examples.py --lang javascript
++ tail -12
+fences: 0 that would not highlight, from 154 pages
+javascript: 445 examples run on 4 workers, 2 skipped, 0 failed
++ echo '##### generated files vs HEAD'
+##### generated files vs HEAD
++ git diff --stat -- node/index.js node/index.d.ts
+ node/index.d.ts | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
++ echo '##### DONE'
+##### DONE
