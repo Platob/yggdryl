@@ -25,7 +25,7 @@ use yggdryl::iceberg::{
     ScanTask, Snapshot, SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform,
     assign_field_ids, schema_from_json, schema_into_json,
 };
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, DateTimeType, DecimalType, Field, Scalar, StructType, TimeType};
 
 #[test]
@@ -730,7 +730,7 @@ fn read_filesystem_bytes(filesystem: &dyn FileSystem, path: &str) -> yggdryl::Re
 }
 
 /// Every file under a filesystem folder, at any depth, by its location.
-fn listed_paths(folder: &yggdryl::fs::Folder) -> Vec<String> {
+fn listed_paths(folder: &yggdryl::fs::FsFolder) -> Vec<String> {
     let mut paths: Vec<String> = yggdryl::holder::Holder::from(folder.clone())
         .ls(true, false)
         .map(|entry| entry.unwrap())
@@ -1057,7 +1057,7 @@ fn array_from_values(
 
 /// Build a scratch directory unique to this test and this process.
 fn root(label: &str) -> std::path::PathBuf {
-    let mut path = Folder::temporary().unwrap().path().unwrap();
+    let mut path = LocalFolder::temporary().unwrap().path().unwrap();
     path.push(format!("yggdryl-iceberg-{label}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     path
@@ -2304,7 +2304,7 @@ mod tables {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::{
-        Folder, FormatVersion, IOBase, IcebergOptions, PartitionField, PartitionSpec, Table,
+        FormatVersion, IOBase, IcebergOptions, LocalFolder, PartitionField, PartitionSpec, Table,
         Transform, assign_field_ids, collect, root, trade_schema, trades,
     };
     use yggdryl::DateTimeType;
@@ -2326,7 +2326,7 @@ mod tables {
         .required_field("row");
 
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -2348,7 +2348,7 @@ mod tables {
         table
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 1);
     }
 
@@ -2363,7 +2363,7 @@ mod tables {
             .required_field("row");
 
         let table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -2386,7 +2386,7 @@ mod tables {
         let path = root("empty");
         let schema = trade_schema();
         let table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -2401,7 +2401,7 @@ mod tables {
         assert_eq!(collect(table.scan(None).unwrap()).len(), 0);
 
         // The document is on disk and reopening finds it.
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version(), 1);
         assert!(reopened.current_snapshot().is_none());
     }
@@ -2410,7 +2410,7 @@ mod tables {
     fn open_preserves_an_official_uuid_metadata_name_in_history() {
         let path = root("official-metadata-name");
         let table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2426,7 +2426,7 @@ mod tables {
         )
         .unwrap();
 
-        let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_file_name(), official_name);
         reopened
             .commit_metadata_changes(|metadata| {
@@ -2447,7 +2447,7 @@ mod tables {
     fn a_commit_publishes_the_name_a_version_hint_resolves() {
         let path = root("hint-resolvable-metadata-name");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2485,7 +2485,7 @@ mod tables {
     fn metadata_compression_uses_the_official_property_and_gzip_magic() {
         let path = root("gzip-metadata");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2504,7 +2504,7 @@ mod tables {
                 .unwrap()
                 .starts_with(&[0x1f, 0x8b])
         );
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_file_name(), table.metadata_file_name());
         assert_eq!(reopened.metadata().property("owner"), None);
     }
@@ -2513,14 +2513,14 @@ mod tables {
     fn direct_create_refuses_to_replace_an_existing_table() {
         let path = root("create-conflict");
         Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
         let error = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2528,7 +2528,7 @@ mod tables {
         .unwrap_err();
         assert!(error.is_conflict(), "{error}");
         assert_eq!(
-            Table::open(Folder::new(&path).unwrap())
+            Table::open(LocalFolder::new(&path).unwrap())
                 .unwrap()
                 .metadata_version(),
             1
@@ -2539,7 +2539,7 @@ mod tables {
     fn child_locations_require_a_table_path_boundary() {
         let path = root("location-boundary");
         let table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2554,7 +2554,7 @@ mod tables {
         let path = root("unpartitioned");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -2583,7 +2583,7 @@ mod tables {
         assert_eq!(rows[0].1.as_deref(), Some("AAPL"));
 
         // And a reopened table sees exactly the same thing.
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()), rows);
     }
 
@@ -2591,7 +2591,7 @@ mod tables {
     fn a_v1_snapshot_with_direct_manifests_scans_and_time_travels() {
         let path = root("v1-direct-manifests");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V1,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -2630,7 +2630,7 @@ mod tables {
         let metadata_path = path.join("metadata").join(table.metadata_file_name());
         std::fs::write(metadata_path, yggdryl::json::into_bytes(&document).unwrap()).unwrap();
 
-        let mut reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         let v1 = reopened.current_snapshot().unwrap();
         assert_eq!(v1.snapshot_id, snapshot_id);
         assert!(v1.manifest_list.is_empty());
@@ -2667,8 +2667,13 @@ mod tables {
         let path = root("partitioned");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
 
         let batch = trades(
             &[1, 2, 3],
@@ -2697,7 +2702,7 @@ mod tables {
         }
 
         // And `children_where` selects one partition's leaves from the folder.
-        let folder = Folder::new(&path).unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
         let selected: Vec<_> = folder
             .children_where(&[("venue", "XNAS")], false)
             .unwrap()
@@ -2763,7 +2768,7 @@ mod tables {
                 .collect(),
         };
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -2857,7 +2862,7 @@ mod tables {
             }],
         };
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -2888,8 +2893,13 @@ mod tables {
         let path = root("null-partition");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
 
         let batch = trades(
             &[1, 2],
@@ -2923,7 +2933,7 @@ mod tables {
         let path = root("append-overwrite");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -2968,7 +2978,7 @@ mod tables {
         let path = root("pushdown");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -2994,7 +3004,7 @@ mod tables {
         // one, which is what a projection mask does rather than a later drop.
         let file = table.data_files().unwrap()[0].0.file_path.clone();
         let relative = file.rsplit("/data/").next().unwrap().to_owned();
-        let handle = Folder::new(&path)
+        let handle = LocalFolder::new(&path)
             .unwrap()
             .child_by_path(&format!("data/{relative}"))
             .unwrap();
@@ -3016,7 +3026,7 @@ mod tables {
         let path = root("evolution");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -3072,7 +3082,7 @@ mod tables {
         let path = root("missing-file");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3089,7 +3099,7 @@ mod tables {
 
         // The metadata still reads: a manifest is metadata, and it still says
         // what it always said.
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.data_files().unwrap().len(), 1);
 
         // The read is where absence shows up, and a missing resource is empty
@@ -3102,7 +3112,7 @@ mod tables {
         let path = root("v1");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V1,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3118,7 +3128,7 @@ mod tables {
             None,
             "v1 snapshots carry no sequence number"
         );
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata().format_version(), FormatVersion::V1);
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
     }
@@ -3128,7 +3138,7 @@ mod tables {
         let path = root("v3");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3165,7 +3175,7 @@ mod tables {
         row_ids.sort_unstable();
         assert_eq!(row_ids, [0, 2]);
 
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata().next_row_id(), Some(3));
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 3);
     }
@@ -3174,7 +3184,7 @@ mod tables {
     fn v3_rewrites_are_rejected_before_reader_or_storage_mutation() {
         let path = root("v3-rewrite-lineage");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -3260,7 +3270,7 @@ mod tables {
     fn v2_still_permits_keyed_merge_and_compaction() {
         let path = root("v2-rewrite-lineage");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -3302,7 +3312,7 @@ mod tables {
         let path = root("v3-upgrade-lineage");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3344,9 +3354,14 @@ mod tables {
         let schema = trade_schema();
         let mut spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         spec.fields[0].transform = super::Transform::Bucket(8);
-        let message = Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec)
-            .unwrap_err()
-            .to_string();
+        let message = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(message.contains("venue"), "{message}");
         assert!(message.contains("conflicts"), "{message}");
     }
@@ -3355,7 +3370,7 @@ mod tables {
     fn a_folder_with_no_metadata_says_so_rather_than_pretending_to_be_a_table() {
         let path = root("not-a-table");
         std::fs::create_dir_all(&path).unwrap();
-        let message = Table::open(Folder::new(&path).unwrap())
+        let message = Table::open(LocalFolder::new(&path).unwrap())
             .unwrap_err()
             .to_string();
         assert!(message.contains("metadata document"), "{message}");
@@ -3367,7 +3382,7 @@ mod tables {
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             spec.clone(),
@@ -3385,7 +3400,7 @@ mod tables {
             .next()
             .unwrap()
             .to_owned();
-        let handle = Folder::new(&path)
+        let handle = LocalFolder::new(&path)
             .unwrap()
             .child_by_path(&format!("metadata/{name}"))
             .unwrap();
@@ -3420,18 +3435,23 @@ mod planning {
     };
     use yggdryl::DataType;
     use yggdryl::iceberg::assign_field_ids;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
     /// A table partitioned by venue, with one commit per venue.
     ///
     /// One commit is one manifest, so this is also the smallest table whose
     /// manifest list has something to prune.
-    fn venues(label: &str) -> (std::path::PathBuf, Table<Folder>) {
+    fn venues(label: &str) -> (std::path::PathBuf, Table<LocalFolder>) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         for (id, symbol, venue) in [
             (1_i64, "AAPL", "XNAS"),
             (2, "MSFT", "XNYS"),
@@ -3559,7 +3579,7 @@ mod planning {
         // Replacing the excluded file's bytes with nonsense is the one proof
         // that the read never reaches it.
         let relative = excluded.rsplit("/data/").next().unwrap().to_owned();
-        let mut handle = Folder::new(&path)
+        let mut handle = LocalFolder::new(&path)
             .unwrap()
             .child_by_path(&format!("data/{relative}"))
             .unwrap();
@@ -3580,7 +3600,7 @@ mod planning {
         let path = root("plan-statistics");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -3633,8 +3653,13 @@ mod planning {
         let path = root("plan-null");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         let batch = trades(
             &[1, 2],
             &[Some("AAPL"), Some("MSFT")],
@@ -3713,7 +3738,7 @@ mod planning {
         schema.insert_metadata("ICEBERG:schema-id", "0").unwrap();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -3802,22 +3827,28 @@ mod handles {
     };
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, MimeType};
 
     /// Create a venue-partitioned table and return the folder addressing it.
-    fn table(label: &str) -> (std::path::PathBuf, Folder) {
+    fn table(label: &str) -> (std::path::PathBuf, LocalFolder) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
-        let folder = Folder::new(&path).unwrap();
+        Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
         (path, folder)
     }
 
     /// The options an Iceberg folder is written through, with a declared schema.
-    fn options(folder: &Folder) -> RecordOptions {
+    fn options(folder: &LocalFolder) -> RecordOptions {
         folder.record_options().unwrap().with_field(trade_schema())
     }
 
@@ -3909,7 +3940,7 @@ mod handles {
         );
 
         // Every write was a snapshot, so the table has one commit per call.
-        let table = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(table.metadata().snapshots().len(), 3);
         assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
     }
@@ -3960,7 +3991,7 @@ mod handles {
         let path = root("handle-merge-plan");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -4032,7 +4063,7 @@ mod handles {
 
         // The same address a Hive lake would use, resolved through the table's
         // metadata rather than by listing the directory.
-        let partition = Folder::new(path.join("data").join("venue=XNYS")).unwrap();
+        let partition = LocalFolder::new(path.join("data").join("venue=XNYS")).unwrap();
         assert_eq!(
             collect(partition.read_arrow_reader(&options).unwrap()),
             vec![(2, Some("MSFT".to_owned()), Some("XNYS".to_owned()))]
@@ -4060,7 +4091,7 @@ mod handles {
     #[test]
     fn a_folder_that_is_not_a_table_still_reads_as_the_leaves_beneath_it() {
         let path = root("handle-plain");
-        let lake = Folder::new(&path).unwrap();
+        let lake = LocalFolder::new(&path).unwrap();
         let mut leaf = lake.child_by_path("part-0.parquet").unwrap();
         let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
         let options = RecordOptions::for_media_type(leaf.media_type())
@@ -4074,7 +4105,7 @@ mod handles {
         leaf.close().unwrap();
         drop(leaf);
 
-        let lake = Folder::new(&path).unwrap();
+        let lake = LocalFolder::new(&path).unwrap();
         assert_eq!(collect(lake.read_arrow_reader(&options).unwrap()).len(), 1);
     }
 
@@ -4083,8 +4114,13 @@ mod handles {
         let path = root("handle-table-value");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
 
         // The byte surface is the folder the table lives in, but the role is
         // the table's own: one tabular value, never a folder to be listed.
@@ -4095,7 +4131,7 @@ mod handles {
         assert_eq!(table.root().kind(), yggdryl::IOKind::Directory);
         assert_eq!(
             IOBase::url(&table).unwrap().to_string(),
-            Folder::new(&path).unwrap().url().to_string()
+            LocalFolder::new(&path).unwrap().url().to_string()
         );
         assert!(table.child_by_path("metadata").is_ok());
 
@@ -4163,7 +4199,7 @@ mod handles {
         assert!(table.read_arrow_reader(&unanswerable).is_err());
 
         // The folder route reads the same rows through the same snapshot.
-        let folder = Folder::new(&path).unwrap();
+        let folder = LocalFolder::new(&path).unwrap();
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             collect(folder.read_arrow_reader(&options).unwrap())
@@ -4175,8 +4211,13 @@ mod handles {
         let path = root("handle-table-write");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         let options = yggdryl::IOMedia::record_options(&table).unwrap();
 
         let batch = trades(
@@ -4232,7 +4273,7 @@ mod handles {
         );
 
         // Reopening reads the same history this value already reports.
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version(), table.metadata_version());
         assert_eq!(reopened.metadata().snapshots().len(), 3);
     }
@@ -4242,8 +4283,13 @@ mod handles {
         let path = root("handle-table-limit");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         let options = yggdryl::IOMedia::record_options(&table).unwrap();
 
         // A limited write truncates data the caller offered, so only the
@@ -4289,7 +4335,7 @@ mod handles {
         let path = root("handle-table-limit-preflight");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -4337,7 +4383,7 @@ mod handles {
 
         let path = root("handle-table-stored-completion");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             stored.clone(),
             PartitionSpec::unpartitioned(),
@@ -4406,7 +4452,7 @@ mod handles {
         let path = root("handle-table-commit-cadence");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -4477,7 +4523,7 @@ mod handles {
             )
             .unwrap();
 
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata().snapshots().len(), 3);
         assert_eq!(
             collect(reopened.read_arrow_reader(&options).unwrap()).len(),
@@ -4490,7 +4536,7 @@ mod handles {
         let path = root("handle-table-partial-commit");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -4525,7 +4571,7 @@ mod handles {
             collect(table.read_arrow_reader(&options).unwrap()),
             vec![(7, Some("NVDA".to_owned()), Some("XNAS".to_owned()))]
         );
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata().snapshots().len(), 1);
     }
 
@@ -4534,7 +4580,7 @@ mod handles {
         let path = root("handle-table-empty-write");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -4570,7 +4616,7 @@ mod handles {
 fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
     let path = root("time-travel");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -4622,7 +4668,7 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
 fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
     let path = root("metadata-commit");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -4651,7 +4697,7 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
     assert_eq!(table.metadata_version(), version + 1);
 
     // The written document reads back with the change applied.
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata().property("owner"), Some("desk"));
     assert_eq!(reopened.metadata_version(), version + 1);
 
@@ -4661,7 +4707,8 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
 #[test]
 fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let filesystem = Arc::new(PublishedHintFailure::default());
-    let folder = yggdryl::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -4696,7 +4743,8 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 #[test]
 fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
     let filesystem = Arc::new(PublishedHintFailure::default());
-    let folder = yggdryl::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
     let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
@@ -4749,7 +4797,8 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
 #[test]
 fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
     let filesystem = Arc::new(RefusedDocumentWrite::default());
-    let folder = yggdryl::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
     let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
@@ -4806,7 +4855,8 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
 #[test]
 fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
     let filesystem = Arc::new(MetadataOnlyWinner::default());
-    let folder = yggdryl::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -4871,7 +4921,8 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
 #[test]
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
-    let folder = yggdryl::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let folder =
+        yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -4916,7 +4967,7 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
 fn the_inspection_tables_report_history_snapshots_and_files() {
     let path = root("inspect");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::identity(0, &trade_schema(), &["venue"]).unwrap(),
@@ -4992,7 +5043,7 @@ fn the_inspection_tables_report_history_snapshots_and_files() {
 fn a_commit_refuses_metadata_that_does_not_hold_together() {
     let path = root("invalid-commit");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5017,7 +5068,7 @@ fn a_commit_refuses_metadata_that_does_not_hold_together() {
 fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
     let path = root("zero-row");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5049,7 +5100,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
     .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -5099,7 +5150,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
 fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
     let path = root("corrupt-manifest");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5122,7 +5173,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
         }
     }
 
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     let message = reopened.plan(&[]).unwrap_err().to_string();
     assert!(!message.is_empty());
 
@@ -5133,7 +5184,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
 fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
     let path = root("target-size");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5201,7 +5252,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
         .insert("write.target-file-size-bytes", "1")
         .unwrap();
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema,
         PartitionSpec::unpartitioned(),
@@ -5239,7 +5290,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
 fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
     let path = root("target-unparseable");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5285,7 +5336,7 @@ fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
 fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     let path = root("compact");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5352,8 +5403,13 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
     let path = root("compact-partitions");
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table =
-        Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+    let mut table = Table::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        schema,
+        spec,
+    )
+    .unwrap();
 
     // Two commits spanning two venues each: four small files, two per venue.
     for id in 0..2_i64 {
@@ -5438,7 +5494,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
     assert_eq!(schema.max_parquet_field_id().unwrap(), Some(300));
 
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -5454,7 +5510,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
         .unwrap();
 
     // Reopening parses the wide schema back and reads every column.
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.schema().unwrap().field_len(), 300);
     let read = reopened.scan(None).unwrap().next().unwrap().unwrap();
     assert_eq!(read.num_columns(), 300);
@@ -5511,7 +5567,7 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
 
     let path = root("options-layers");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5563,13 +5619,13 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
 
     let path = root("commit-total-timeout");
     let mut winner = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut stale = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let mut stale = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     winner.set_options(IcebergOptions::new().with_commit_total_timeout_ms(0));
     stale.set_options(
         IcebergOptions::new()
@@ -5592,7 +5648,7 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
         .unwrap();
     assert_eq!(stale.metadata_version(), 3);
 
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata().property("winner"), Some("visible"));
     assert_eq!(reopened.metadata().property("loser"), Some("hidden"));
 
@@ -5605,7 +5661,7 @@ fn an_unparseable_option_property_is_typed_and_an_explicit_option_shadows_it() {
 
     let path = root("options-unparseable");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5650,13 +5706,13 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
 
     let path = root("append-conflict");
     let mut first = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut second = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_min_backoff_ms(1)
@@ -5681,7 +5737,7 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
     );
 
     // Both rows, two snapshots, and the loser's snapshot parents the winner's.
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata_version(), 3);
     let rows = collect(reopened.scan(None).unwrap());
     assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), [1, 2]);
@@ -5704,13 +5760,13 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
 
     let path = root("changes-conflict");
     let mut first = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut second = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_min_backoff_ms(1)
@@ -5732,7 +5788,7 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
         })
         .unwrap();
 
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata_version(), 3);
     assert_eq!(reopened.metadata().property("owner"), Some("alpha"));
     assert_eq!(reopened.metadata().property("team"), Some("beta"));
@@ -5746,7 +5802,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
 
     let path = root("overwrite-conflict");
     let mut first = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5759,7 +5815,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
 
     // The second handle plans against version 2; the first then commits twice
     // more, so the overwrite's plan is two commits stale.
-    let mut second = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_retries(1)
@@ -5788,7 +5844,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
 
     // The failed overwrite restored its handle and left no visible change.
     assert_eq!(second.metadata_version(), 2);
-    let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.metadata_version(), 4);
     assert_eq!(
         collect(reopened.scan(None).unwrap())
@@ -5808,7 +5864,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
 
     let path = root("parallel-read");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5888,7 +5944,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
 fn branches_and_tags_round_trip_through_table_level_commits() {
     let path = root("table-refs");
     let mut table = Table::create(
-        Folder::new(&path).unwrap(),
+        LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
@@ -5974,7 +6030,7 @@ mod datatype_coverage {
             .unwrap()
             .required_field("row");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -5995,7 +6051,7 @@ mod datatype_coverage {
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         let mut records = Vec::new();
         for batch in reopened.scan(None).unwrap() {
             let value = yggdryl::arrow::batch_to_value(&batch.unwrap()).unwrap();
@@ -6160,7 +6216,7 @@ mod datatype_coverage {
             .unwrap()
             .required_field("row");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -6232,7 +6288,7 @@ mod concurrency_and_compaction {
         let path = root("threads");
         let schema = trade_schema();
         Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -6253,7 +6309,7 @@ mod concurrency_and_compaction {
                 let gate = std::sync::Arc::clone(&gate);
                 let opened = std::sync::Arc::clone(&opened);
                 std::thread::spawn(move || {
-                    let mut table = Table::open(Folder::new(&path).unwrap()).unwrap();
+                    let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
                     opened.wait();
                     let batch = trades(
                         &[writer * 10, writer * 10 + 1],
@@ -6271,7 +6327,7 @@ mod concurrency_and_compaction {
             handle.join().unwrap();
         }
 
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
             .into_iter()
             .map(|(id, _, _)| id)
@@ -6287,7 +6343,7 @@ mod concurrency_and_compaction {
         let path = root("beaten-merge");
         let schema = trade_schema();
         let mut writer = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -6299,7 +6355,7 @@ mod concurrency_and_compaction {
             .unwrap();
 
         // A second handle grows stale the moment the first commits again.
-        let mut stale = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut stale = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         stale.set_options(yggdryl::iceberg::IcebergOptions::default().with_commit_retries(1));
         let win = trades(&[3], &[Some("C")], &[Some("V")]);
         writer
@@ -6325,7 +6381,7 @@ mod concurrency_and_compaction {
         let path = root("auto-compact");
         let schema = trade_schema();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             PartitionSpec::unpartitioned(),
@@ -6410,7 +6466,8 @@ mod line_projection {
         );
         schema.assign_parquet_field_ids(1).unwrap();
 
-        let catalog = yggdryl::iceberg::Catalog::new(Folder::new(path.join("warehouse")).unwrap());
+        let catalog =
+            yggdryl::iceberg::Catalog::new(LocalFolder::new(path.join("warehouse")).unwrap());
         catalog.tables().create("logs.events", schema).unwrap();
         let table = catalog
             .tables()
@@ -6616,7 +6673,7 @@ mod data_mime_type {
     use yggdryl::iceberg::IcebergOptions;
 
     /// The manifests' `(mime_type, path)` pairs of the current snapshot.
-    fn formats(table: &Table<Folder>) -> Vec<(MimeType, String)> {
+    fn formats(table: &Table<LocalFolder>) -> Vec<(MimeType, String)> {
         table
             .data_files()
             .unwrap()
@@ -6642,7 +6699,7 @@ mod data_mime_type {
     fn the_default_mime_type_is_parquet_and_the_option_layers_resolve() {
         let path = root("format-layers");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -6676,7 +6733,7 @@ mod data_mime_type {
     fn an_unparseable_format_property_is_a_typed_error_naming_the_key() {
         let path = root("format-unparseable");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -6722,7 +6779,7 @@ mod data_mime_type {
             let name = mime_type.extension().unwrap();
             let path = root(&format!("format-{}", name.to_ascii_lowercase()));
             let mut table = Table::create(
-                Folder::new(&path).unwrap(),
+                LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 trade_schema(),
                 PartitionSpec::unpartitioned(),
@@ -6750,7 +6807,7 @@ mod data_mime_type {
     fn a_table_whose_files_mix_formats_writes_and_scans_as_one_shape() {
         let path = root("format-mixed");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -6816,7 +6873,7 @@ mod data_mime_type {
     fn an_avro_format_table_property_writes_avro_files_and_reads_back() {
         let path = root("format-avro-property");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -6843,7 +6900,7 @@ mod data_mime_type {
             "{recorded:?}"
         );
         // A fresh open reads the mixed chain from storage alone.
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
     }
 }
@@ -6860,7 +6917,7 @@ mod interop_regressions {
     fn a_scan_resolves_renamed_columns_by_field_id() {
         let path = root("rename-by-id");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -7018,7 +7075,7 @@ mod isolation {
     use yggdryl::DateTimeType;
     use yggdryl::holder::{Buffer, Holder};
     use yggdryl::internals::iceberg_table::child_at;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, TimeUnit, Timezone};
 
@@ -7031,7 +7088,7 @@ mod isolation {
     /// into a handle no file can be written through, which is how a worker
     /// failure is made deterministic.
     struct Recording {
-        inner: Folder,
+        inner: LocalFolder,
         seen: Arc<Mutex<Vec<String>>>,
         roots: Arc<Mutex<usize>>,
         fail_after: Option<usize>,
@@ -7040,7 +7097,7 @@ mod isolation {
     impl Recording {
         fn new(path: &std::path::Path) -> Self {
             Self {
-                inner: Folder::new(path).unwrap(),
+                inner: LocalFolder::new(path).unwrap(),
                 seen: Arc::new(Mutex::new(Vec::new())),
                 roots: Arc::new(Mutex::new(0)),
                 fail_after: None,
@@ -7079,7 +7136,7 @@ mod isolation {
 
     impl IOBase for Recording {
         yggdryl::delegate_iobase!(inner: pread, read_all_bytes, read_range_bytes, pstream_bytes,
-            pwrite, size, capacity, reserve, truncate, url, bound_location, mtime, media_type,
+            pwrite, size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type,
             set_media_type, flush, open, opened, close, parent, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 
@@ -7099,12 +7156,17 @@ mod isolation {
     }
 
     /// One row per venue, one commit per row: three partitions, three files.
-    fn venues(label: &str) -> (std::path::PathBuf, Table<Folder>) {
+    fn venues(label: &str) -> (std::path::PathBuf, Table<LocalFolder>) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         for (id, symbol, venue) in [
             (1_i64, "AAPL", "XNAS"),
             (2, "MSFT", "XNYS"),
@@ -7188,7 +7250,7 @@ mod isolation {
             .create_dir("isolation-timepartition", true)
             .unwrap();
         let folder =
-            yggdryl::fs::Folder::from_path(filesystem, "isolation-timepartition", None).unwrap();
+            yggdryl::fs::FsFolder::from_path(filesystem, "isolation-timepartition", None).unwrap();
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::DateTime(DateTimeType::DateTime64 {
@@ -7412,7 +7474,7 @@ mod isolation {
         // An unpartitioned table has no key at all without one named.
         let flat = root("isolation-keyless-flat");
         let mut flat_table = Table::create(
-            Folder::new(&flat).unwrap(),
+            LocalFolder::new(&flat).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -7465,7 +7527,7 @@ mod isolation {
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
@@ -7506,7 +7568,7 @@ mod isolation {
         // ascending across the files it writes.
         let sorted = root("isolation-sorted-explicit");
         let mut by_symbol = Table::create_sorted(
-            Folder::new(&sorted).unwrap(),
+            LocalFolder::new(&sorted).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
@@ -7572,7 +7634,7 @@ mod isolation {
         let reread = super::TableMetadata::from_json(&document).unwrap();
         assert_eq!(reread.default_sort_order_id(), 1);
         assert_eq!(reread.default_sort_order().unwrap().fields[0].source_id, 2);
-        let reopened = Table::open(Folder::new(&sorted).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&sorted).unwrap()).unwrap();
         assert_eq!(reopened.metadata().default_sort_order_id(), 1);
         reopened.metadata().validate().unwrap();
 
@@ -7586,7 +7648,7 @@ mod isolation {
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         let mut table = Table::create_sorted(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
             spec,
@@ -7608,7 +7670,7 @@ mod isolation {
         // An unpartitioned table's default is the unsorted order too.
         let flat = root("isolation-unsorted-flat");
         let flat_table = Table::create(
-            Folder::new(&flat).unwrap(),
+            LocalFolder::new(&flat).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -7642,7 +7704,7 @@ mod isolation {
 
         let path = root("isolation-write-parallelism");
         let mut table = Table::create(
-            Folder::new(&path).unwrap(),
+            LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
@@ -7701,9 +7763,13 @@ mod isolation {
             let path = root(&format!("isolation-parallel-{parallelism}"));
             let schema = trade_schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-            let mut table =
-                Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec)
-                    .unwrap();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema,
+                spec,
+            )
+            .unwrap();
             table.set_options(
                 IcebergOptions::new()
                     .try_with_write_parallelism(parallelism)
@@ -7735,7 +7801,13 @@ mod isolation {
         let path = root("isolation-worker-failure");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         let mut recording = Recording::new(&path);
         // The third partition group's writer gets a root it cannot write through.
         recording.fail_after = Some(2);
@@ -7754,7 +7826,7 @@ mod isolation {
         assert!(error.contains("container"), "{error}");
         assert_eq!(table.metadata_version(), version);
         assert!(table.current_snapshot().is_none());
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version(), version);
         assert!(reopened.current_snapshot().is_none());
         let _ = std::fs::remove_dir_all(&path);
@@ -7811,7 +7883,7 @@ mod isolation {
         // A v2 table refuses the type by name; a v3 table takes it.
         let v2 = root("isolation-unknown-v2");
         let message = Table::create(
-            Folder::new(&v2).unwrap(),
+            LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             unknown_schema(),
             PartitionSpec::unpartitioned(),
@@ -7826,7 +7898,7 @@ mod isolation {
         let v3 = root("isolation-unknown-v3");
         let schema = unknown_schema();
         let mut table = Table::create(
-            Folder::new(&v3).unwrap(),
+            LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -7866,7 +7938,7 @@ mod isolation {
 
         // The metadata document spells it and reads back through the
         // official validation of a reopened table.
-        let reopened = Table::open(Folder::new(&v3).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
         assert_eq!(
             reopened.schema().unwrap().fields()[1].dtype(),
             &DataType::Null
@@ -7884,7 +7956,7 @@ mod isolation {
     fn an_unknown_column_promotes_to_any_type_in_v3() {
         let v3 = root("isolation-unknown-promotion");
         let mut table = Table::create(
-            Folder::new(&v3).unwrap(),
+            LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             unknown_schema(),
             PartitionSpec::unpartitioned(),
@@ -7970,7 +8042,7 @@ mod isolation {
 
         let v2 = root("isolation-variant-v2");
         let message = Table::create(
-            Folder::new(&v2).unwrap(),
+            LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -7984,7 +8056,7 @@ mod isolation {
 
         let v3 = root("isolation-variant-v3");
         let mut table = Table::create(
-            Folder::new(&v3).unwrap(),
+            LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
             PartitionSpec::unpartitioned(),
@@ -8017,7 +8089,7 @@ mod isolation {
                 .map(String::as_str),
             Some(yggdryl::VARIANT_EXTENSION_NAME)
         );
-        let reopened = Table::open(Folder::new(&v3).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
         assert_eq!(
             reopened.schema().unwrap().fields()[1].dtype(),
             &DataType::Variant
@@ -8031,7 +8103,7 @@ mod isolation {
     #[test]
     fn the_record_surface_keys_a_merge_by_the_partition_and_the_options_key() {
         let (path, _) = venues("isolation-record-merge");
-        let mut table = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         let options: RecordOptions = IOMedia::record_options(&table)
             .unwrap()
             .with_field(trade_schema());
@@ -8077,7 +8149,7 @@ mod isolation {
 ///
 /// `Staging` is private to the module, so its drop, rollback and default
 /// rules are pinned here; what a staged commit costs over a store is
-/// pinned in `rust/tests/object/mod_.rs`.
+/// pinned in `rust/tests/s3/mod_.rs`.
 mod staging_transaction {
     use std::path::{Path, PathBuf};
 
@@ -8085,7 +8157,7 @@ mod staging_transaction {
     use yggdryl::holder::Holder;
     use yggdryl::iceberg::WriteStaging;
     use yggdryl::internals::iceberg_staging::Staging;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{IOBase, MediaType, MimeType, Url};
 
     fn staging_folder(label: &str) -> (PathBuf, WriteStaging) {
@@ -8135,7 +8207,7 @@ mod staging_transaction {
         );
         let remote = Staging::begin(None, true, 1).unwrap();
         let directory = remote.directory().unwrap().to_path_buf();
-        assert!(directory.starts_with(Folder::temporary().unwrap().path().unwrap()));
+        assert!(directory.starts_with(LocalFolder::temporary().unwrap().path().unwrap()));
         assert!(
             directory
                 .file_name()
@@ -8215,8 +8287,13 @@ mod staging_transaction {
         let path = root("staging-rollback-table");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
         // A regular file where the XNAS partition directory belongs: that
         // partition's file is staged, and its publication is what fails.
         std::fs::create_dir_all(path.join("data")).unwrap();
@@ -8255,7 +8332,7 @@ mod staging_transaction {
             "no manifest and no manifest list were published"
         );
         assert!(is_empty_dir(&base), "no staged file survives");
-        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.metadata_version(), version);
         assert!(reopened.current_snapshot().is_none());
         let _ = std::fs::remove_dir_all(&base);

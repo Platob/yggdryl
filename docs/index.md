@@ -73,7 +73,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charset](charset/index.md) |
 | Media | Arrow IPC, Parquet, Avro, plain-text records, and Iceberg tables | [media](media/index.md) |
 | Text | JSON, YAML, and TOML over the shared `Scalar` | [text](media/structured.md) |
-| URI | `Uri`, `Url`, `Urn`, paths, globs, and partitions | [uri](uri/index.md) |
+| URI | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, and partitions | [uri](uri/index.md) |
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
 | Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `DIGEST:time` holder | [hashing](hashing.md) |

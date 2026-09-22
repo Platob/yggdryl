@@ -11,7 +11,8 @@ src/metadata.rs        Shared immutable metadata map
 src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
 src/io/                The IOBase storage trait, Buffer, and Coded
 src/generic/           Scalar, enums, Holder, Media, and RecordOptions
-src/local/             Local Path, Folder, and memory-mapped File
+src/local/             LocalPath, LocalFolder, and memory-mapped LocalFile
+src/s3/                S3Path, S3Folder, and S3File over the S3 dialect
 src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
 src/{ipc,parquet,avro}/
                        Record encodings over any handle

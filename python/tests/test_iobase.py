@@ -722,12 +722,12 @@ def test_a_cursor_goes_back_to_the_resource_it_rides() -> None:
 def test_a_location_that_says_nothing_is_read_as_the_role_a_caller_declares(
     tmp_path: pathlib.Path,
 ) -> None:
-    from yggdryl.holder import File, Folder, Path
+    from yggdryl.holder import LocalFile, LocalFolder, LocalPath
 
-    location = Path(tmp_path / "trades.parquet")
-    assert isinstance(location, Path)
-    assert isinstance(location.as_file(), File)
-    assert isinstance(Path(tmp_path / "lake").as_directory(), Folder)
+    location = LocalPath(tmp_path / "trades.parquet")
+    assert isinstance(location, LocalPath)
+    assert isinstance(location.as_file(), LocalFile)
+    assert isinstance(LocalPath(tmp_path / "lake").as_directory(), LocalFolder)
 
     # Neither call touches the file system: nothing exists yet.
     assert not (tmp_path / "trades.parquet").exists()
@@ -806,3 +806,25 @@ def test_an_object_store_location_reaches_the_native_backend_without_touching_it
     child = IOBase(f"{scheme}://{authority}/lake/").joinpath("year=2026", "part.parquet")
     assert child.url is not None
     assert str(child.url) == f"{scheme}://{authority}/lake/year=2026/part.parquet"
+
+
+def test_a_handle_is_addressed_by_an_identifier_and_a_location_is_one(
+    tmp_path: pathlib.Path,
+) -> None:
+    target = tmp_path / "ticks.csv"
+    target.write_text("symbol\n", encoding="utf-8")
+    handle = IOBase(target)
+
+    # The two accessors read one value, never two.
+    assert handle.uri == handle.url
+    assert isinstance(handle.uri, Url)
+    assert handle.uri.scheme == "file"
+
+    # A buffer is not stored anywhere, so its address is an identity.
+    buffer = IOBase.from_bytes(b"symbol\n")
+    assert buffer.uri.scheme == "mem"
+    assert buffer.uri == buffer.url
+
+    # The bound filesystem's own spelling keeps its own name.
+    assert handle.bound_uri is None
+    assert handle.masked_uri is None

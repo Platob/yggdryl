@@ -32,11 +32,11 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixCode, FixRegistry, IOBase, FieldPath, StructType};
 
-    let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
-    let mut root = Folder::new(&path)?;
+    let path = LocalFolder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
+    let mut root = LocalFolder::new(&path)?;
     let mut count = DataType::Int32.nullable_field("NoPartyIDs");
     count.as_fix_mut().set_tag(453)?;
     let mut id = DataType::utf8().nullable_field("PartyID");
@@ -315,11 +315,11 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 === "Rust"
 
     ```rust
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
-    let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
+    let registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
 
     // Names are folded once, so a caller spells one however they have it and
     // the specification's own spelling stays on `display`.

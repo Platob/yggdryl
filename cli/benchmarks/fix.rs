@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, FixCategory, FixCode, FixRegistry, StructType};
 
 struct Fixture(PathBuf, PathBuf);
 
 impl Fixture {
     fn new() -> yggdryl::Result<Self> {
-        let temporary = std::fs::canonicalize(Folder::temporary()?.path()?)?;
+        let temporary = std::fs::canonicalize(LocalFolder::temporary()?.path()?)?;
         let path = temporary.join(format!("ygg-cli-fix-bench-{}", std::process::id()));
         std::fs::create_dir(&path)?;
         let fixture = Self(path, temporary);
@@ -44,7 +44,7 @@ impl Fixture {
         .required_field("Order");
         message.as_fix_mut().set_msgtype("D")?;
         registry.create_definition(FixCategory::Components, message)?;
-        registry.write_into(&mut Folder::new(fixture.0.clone())?)?;
+        registry.write_into(&mut LocalFolder::new(fixture.0.clone())?)?;
         Ok(fixture)
     }
 

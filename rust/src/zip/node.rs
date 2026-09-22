@@ -5,9 +5,9 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::holder::Holder;
-use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
+use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
-use super::{Archive, Leaf, Path, name};
+use super::{ZipArchive, ZipLeaf, ZipPath, name};
 
 /// A directory of archive members, addressed by the prefix its members share.
 ///
@@ -23,11 +23,11 @@ use super::{Archive, Leaf, Path, name};
 ///
 /// ```
 /// use yggdryl::holder::{Buffer, Holder};
-/// use yggdryl::zip::Archive;
+/// use yggdryl::zip::ZipArchive;
 /// use yggdryl::{IOBase, IOKind};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+/// let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 /// root.child_by_path("trades/eu.csv")?
 ///     .write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
 ///
@@ -39,8 +39,8 @@ use super::{Archive, Leaf, Path, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Node {
-    archive: Arc<Archive>,
+pub struct ZipNode {
+    archive: Arc<ZipArchive>,
     /// The prefix this directory holds, empty at the archive root.
     base: SmolStr,
     /// The directory's location, which is the archive's with the prefix under
@@ -48,9 +48,9 @@ pub struct Node {
     url: Url,
 }
 
-impl Node {
+impl ZipNode {
     /// Address one directory of `archive` without touching it.
-    pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self {
+    pub fn new(archive: Arc<ZipArchive>, base: SmolStr) -> Self {
         Self {
             url: archive.member_url(&base),
             archive,
@@ -59,7 +59,7 @@ impl Node {
     }
 
     /// Borrow the archive this directory lives in.
-    pub const fn archive(&self) -> &Arc<Archive> {
+    pub const fn archive(&self) -> &Arc<ZipArchive> {
         &self.archive
     }
 
@@ -83,8 +83,8 @@ impl Node {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when the path climbs above the archive root.
-    pub fn as_leaf(&self, path: &str) -> Result<Leaf> {
-        Ok(Leaf::new(
+    pub fn as_leaf(&self, path: &str) -> Result<ZipLeaf> {
+        Ok(ZipLeaf::new(
             Arc::clone(&self.archive),
             name::resolve(&self.base, path)?,
         ))
@@ -103,7 +103,12 @@ impl Node {
     }
 
     /// The names themselves, read when the listing is first polled.
-    fn level(archive: Arc<Archive>, base: &str, recursive: bool, include_private: bool) -> Listing {
+    fn level(
+        archive: Arc<ZipArchive>,
+        base: &str,
+        recursive: bool,
+        include_private: bool,
+    ) -> Listing {
         let names = match archive.names_under(base, recursive, include_private) {
             Ok(names) => names,
             Err(error) => return Listing::failing(error),
@@ -112,13 +117,13 @@ impl Node {
             Ok(if is_folder {
                 Holder::ZipNode(Self::new(Arc::clone(&archive), name))
             } else {
-                Holder::ZipLeaf(Leaf::new(Arc::clone(&archive), name))
+                Holder::ZipLeaf(ZipLeaf::new(Arc::clone(&archive), name))
             })
         }))
     }
 }
 
-impl IOFolder for Node {
+impl IOFolder for ZipNode {
     fn folder_url(&self) -> &Url {
         &self.url
     }
@@ -184,11 +189,11 @@ impl IOFolder for Node {
     }
 }
 
-impl crate::IOMedia for Node {
+impl crate::IOMedia for ZipNode {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Node {
+impl IOBase for ZipNode {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
     }
@@ -211,6 +216,10 @@ impl IOBase for Node {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.folder_truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url.as_ref())
     }
 
     fn url(&self) -> Option<&Url> {
@@ -256,7 +265,7 @@ impl IOBase for Node {
     }
 
     fn child_by_path(&self, path: &str) -> Result<Holder> {
-        Ok(Holder::ZipPath(Path::new(
+        Ok(Holder::ZipPath(ZipPath::new(
             Arc::clone(&self.archive),
             name::resolve(&self.base, path)?,
         )))

@@ -6,8 +6,8 @@ A file system that lives inside one file: the archive is the container, its memb
 
 | | |
 | --- | --- |
-| Owns | Rust `yggdryl::zip::{Archive, Entry, Node, Path, Leaf}`, `zip::mount`, `zip::from_url`; Rust-only |
-| Roles | `Node` is the archive root or any member prefix, `Leaf` is one member, `Path` resolves to whichever is there. A ZIP has no directories and no files - it has one flat index of names - so the roles are named for what they walk |
+| Owns | Rust `yggdryl::zip::{ZipArchive, ZipEntry, ZipNode, ZipPath, ZipLeaf}`, `zip::mount`, `zip::from_url`; Rust-only |
+| Roles | `ZipNode` is the archive root or any member prefix, `ZipLeaf` is one member, `ZipPath` resolves to whichever is there. A ZIP has no directories and no files - it has one flat index of names - so the roles are named for what they walk |
 | Nesting | An archive mounted over a member is a resource of its own: `day.zip#inner.zip//trades/eu.csv`. The marker with nothing after it is the mounted archive, the same fragment without it is the member holding its bytes |
 | Mounting | `zip::mount(handle)` or `Holder::zip(handle)` over any handle; a `.zip` leaf stays a leaf until it is mounted |
 | Member URL | The archive's URL with the member path as the **fragment**: `file:///lake/day.zip#trades/eu.csv` |
@@ -28,7 +28,7 @@ A file system that lives inside one file: the archive is the container, its memb
 | Refused too | An archive split across volumes, a member name longer than a record can state, and publishing a value staged over a member another handle has since replaced |
 | Names | UTF-8 when the bytes are UTF-8, the Info-ZIP Unicode Path extra when one describes the record, and IBM 437 otherwise - so one member named in a code page never costs the archive around it |
 | Handle calls | Mount 2 reads, warm stored `pread` 1, stored `read_all_bytes` 1, listing 0, publish `n` members `n` writes + trailer + flush |
-| Counters | `Archive::handle_reads` / `handle_writes` report every call the archive made into the handle |
+| Counters | `ZipArchive::handle_reads` / `handle_writes` report every call the archive made into the handle |
 | Interop | `python3 scripts/check_zip_interop.py` exchanges archives with Python's `zipfile`, both directions |
 
 ## Use
@@ -65,10 +65,10 @@ A file system that lives inside one file: the archive is the container, its memb
 A ZIP has no directory tree. It has a flat list of members whose names contain separators, and a directory record is optional metadata beside them. The tree is derived from both: a prefix is a directory when a record names it or when some member continues it.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{IOBase, IOKind};
 
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 root.child_by_path("2024/06/trades.csv")?.write_all_bytes(b"symbol")?;
 
 // Nothing recorded `2024` or `2024/06`, and both list as directories.
@@ -142,11 +142,11 @@ let _ = std::fs::remove_file(&path);
 A **stored** member is the archive's own bytes over a range, so a positional read is one positional read of the archive. Nothing is decompressed, nothing is copied beyond the caller's buffer, and nothing is retained between calls.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase};
 
 let payload: Vec<u8> = (0..=255_u8).cycle().take(4_096).collect();
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 root.archive().write_member_with("blob.bin", &payload, Codec::Identity)?;
 root.archive().flush()?;
 
@@ -163,11 +163,11 @@ A **compressed** member has no decoded seek. What it has instead is a map: a com
 A member **another writer** compressed carries no map, which reads honestly as an empty one: every positional read of it decodes from the member's first byte. A stride of zero writes such a solid member, which is what the second archive below holds.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase};
 
 let payload: Vec<u8> = b"symbol,price\nAAPL,187.23\n".repeat(2_048);
-let root = Archive::new(Holder::buffer(Buffer::new()))
+let root = ZipArchive::new(Holder::buffer(Buffer::new()))
     .with_restart_stride(4_096)
     .mount();
 root.archive().write_member("blob.bin", &payload)?;
@@ -190,7 +190,7 @@ member.close()?;
 
 // A solid member is what a writer that states no points produces: an empty map,
 // read from the member's first byte.
-let solid = Archive::new(Holder::buffer(Buffer::new()))
+let solid = ZipArchive::new(Holder::buffer(Buffer::new()))
     .with_restart_stride(0)
     .mount();
 solid.archive().write_member_with("blob.bin", &payload, Codec::Deflate)?;
@@ -215,10 +215,10 @@ The sizes and the digest are only known when the last byte is encoded, so a memb
 A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../coding/index.md) has. A whole write does not: it never decodes the member it replaces.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase};
 
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 let source = std::io::Cursor::new(b"symbol,price\nAAPL,187.23\n".repeat(4_096));
 let entry = root.archive().write_member_from("trades.csv", source, Codec::Deflate)?;
 root.archive().flush()?;
@@ -247,10 +247,10 @@ assert_eq!(root.archive().read_member("sparse.bin")?, b"\0\0\0\0tail");
 The coding a write uses is the member's own if it has one, then `Identity` for a representation that already carries a content coding, then the archive's default.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase, Level};
 
-let root = Archive::new(Holder::buffer(Buffer::new()))
+let root = ZipArchive::new(Holder::buffer(Buffer::new()))
     .try_with_codec(Codec::Zstd)?
     .with_level(Level::new(9))
     .mount();
@@ -307,10 +307,10 @@ Writing into an inner archive republishes the outer member that holds it, on tha
 A member write appends its record after the last member and updates the in-memory index; `flush` writes the central directory after it. Until that flush the stored archive still reads as its previous state, because the directory an unfinished write has not reached is still the one that indexes it.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase};
 
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 let archive = root.archive();
 
 archive.write_member_with("big.bin", &vec![7_u8; 4_096], Codec::Identity)?;
@@ -329,13 +329,13 @@ Replacing a member leaves its previous bytes behind as dead space, which is what
 
 ## The index is metadata
 
-`Entry` is what the central directory says about one member. Reading one costs no member byte, which is what lets an archive answer a listing, a size, or a digest check without decompressing anything.
+`ZipEntry` is what the central directory says about one member. Reading one costs no member byte, which is what lets an archive answer a listing, a size, or a digest check without decompressing anything.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::IOBase;
 
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 root.archive().write_member("trades/eu.csv", b"symbol,price\nAAPL,187.23\n")?;
 root.archive().set_comment(b"day one")?;
 root.archive().flush()?;
@@ -356,14 +356,14 @@ assert_eq!(root.archive().comment()?, b"day one");
 A call into the handle beneath the archive is a round trip against an object
 store, a syscall against a file, and a lock through every wrapper, so the
 backend's cost is its call count rather than its byte count.
-`Archive::handle_reads` and `handle_writes` report it, which is how the cost
+`ZipArchive::handle_reads` and `handle_writes` report it, which is how the cost
 model below is asserted rather than asserted-to.
 
 ```rust
-use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::ZipArchive};
 use yggdryl::{Codec, IOBase};
 
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
 root.archive().write_member_with("blob.bin", &vec![4_u8; 4_096], Codec::Identity)?;
 root.archive().write_member_with("notes.txt", b"symbol", Codec::Identity)?;
 
@@ -454,12 +454,12 @@ assert!(root.is_tabular());
 - A directory that still holds members -> `remove(false)` is refused; `remove(true)` empties it first.
 - A *positional* write republishes the member whole, so it costs the member's decoded size in memory; a whole write streams and costs one window.
 - A member another writer compressed carries no restart map, so every positional read of one decodes from its first byte. `IOBase::open` is the answer for many reads of one such member.
-- `Archive::write_member_from` holds the archive for the whole write, so its source must not read through *that* archive: a member copied inside one archive goes through its value, while one copied between two archives streams.
+- `ZipArchive::write_member_from` holds the archive for the whole write, so its source must not read through *that* archive: a member copied inside one archive goes through its value, while one copied between two archives streams.
 - A member's restart map rides an extra field this crate owns. Another reader skips it by its declared length, and another *writer* that rewrites the member while keeping the record would leave a map that lies - which is why a point is proven before it is used.
 - A self-extracting archive reads: the trailer says where the directory really ends, and every recorded offset is shifted by the difference.
 - A member another writer streamed states its digest and sizes after its bytes. Compaction moves the record but not that trailer, so the header it writes carries the values from the directory instead and drops the bit that promised them.
 - `flush` is not a write: an archive nothing has touched is not created by one.
-- A member handle publishes the directory when it flushes, because a member is only durably in the archive once the directory indexes it. Writing many members through many handles therefore publishes many times: for a batch, write them with `Archive::write_member` and flush once.
+- A member handle publishes the directory when it flushes, because a member is only durably in the archive once the directory indexes it. Writing many members through many handles therefore publishes many times: for a batch, write them with `ZipArchive::write_member` and flush once.
 - Two central records naming one member are legal and the index holds the last, which is what an append-style updater's archive means by them. The earlier record's bytes stay as dead space until a removal compacts.
 
 ## Commands

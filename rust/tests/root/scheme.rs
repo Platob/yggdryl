@@ -12,6 +12,7 @@ mod vocabulary {
             ("HTTPS", Scheme::HTTPS),
             ("FILE", Scheme::FILE),
             ("URN", Scheme::URN),
+            ("ARN", Scheme::ARN),
             ("POSTGRES", Scheme::POSTGRES),
             ("POSTGRESQL", Scheme::POSTGRESQL),
             ("MYSQL", Scheme::MYSQL),
@@ -27,6 +28,7 @@ mod vocabulary {
             ("S3", Scheme::S3),
             ("S3A", Scheme::S3A),
             ("S3N", Scheme::S3N),
+            ("S3TABLES", Scheme::S3TABLES),
             ("GS", Scheme::GS),
             ("AZ", Scheme::AZ),
             ("SPARK", Scheme::SPARK),
@@ -38,6 +40,26 @@ mod vocabulary {
             assert_eq!(parsed, expected);
             assert!(parsed.is_known());
             assert_eq!(parsed.as_str(), source.to_ascii_lowercase());
+        }
+    }
+
+    /// A table bucket is a container, so `bucket` and `key` read it - but no
+    /// byte backend opens one, so it is not an object store and not storage.
+    #[test]
+    fn s3_tables_names_a_container_without_being_an_object_store() {
+        assert!(Scheme::S3TABLES.is_s3_tables());
+        assert!(Scheme::S3TABLES.has_container());
+        assert!(!Scheme::S3TABLES.is_object_store());
+        assert!(!Scheme::S3TABLES.is_storage());
+        assert!(!Scheme::S3TABLES.is_s3());
+        assert_eq!(Scheme::S3TABLES.default_port(), None);
+
+        for scheme in [Scheme::S3, Scheme::GS, Scheme::AZ] {
+            assert!(scheme.has_container(), "{scheme}");
+            assert!(!scheme.is_s3_tables(), "{scheme}");
+        }
+        for scheme in [Scheme::FILE, Scheme::HTTPS, Scheme::URN, Scheme::ARN] {
+            assert!(!scheme.has_container(), "{scheme}");
         }
     }
 

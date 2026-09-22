@@ -343,7 +343,7 @@ mod text {
                 .with_framing(true)
         }
 
-        fn located(name: &str, bytes: &[u8]) -> (yggdryl::fs::File, Arc<Counting>) {
+        fn located(name: &str, bytes: &[u8]) -> (yggdryl::fs::FsFile, Arc<Counting>) {
             let filesystem = Arc::new(Counting {
                 inner: MemoryFileSystem::new(),
                 reads: Arc::new(Mutex::new(Vec::new())),
@@ -358,7 +358,7 @@ mod text {
             let bound =
                 BoundLocation::new(Arc::clone(&filesystem) as Arc<dyn FileSystem>, name, None)
                     .unwrap();
-            let mut handle = yggdryl::fs::File::new(bound);
+            let mut handle = yggdryl::fs::FsFile::new(bound);
             handle.set_media_type(
                 Url::from_str(&format!("file:///{name}"))
                     .unwrap()

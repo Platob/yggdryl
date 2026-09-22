@@ -162,10 +162,10 @@ mod fs {
         assert_eq!(absolute_root.uri(), Some("file:///"));
 
         filesystem.create_dir("bucket", false).unwrap();
-        let mut file = File::new(location.clone());
+        let mut file = FsFile::new(location.clone());
         file.write_all_bytes(b"literal").unwrap();
         assert_eq!(file.read_all_bytes().unwrap(), b"literal");
-        let folder = Folder::from_path(
+        let folder = FsFolder::from_path(
             Arc::clone(&filesystem),
             "bucket",
             Some("s3://access:secret@bucket?session_token=hidden".to_owned()),

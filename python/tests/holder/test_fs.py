@@ -751,7 +751,7 @@ def test_injected_path_is_opaque_and_retains_all_bound_facts() -> None:
     assert handle.open_input_file().read() == b"literal"
     assert handle.filesystem is filesystem
     assert handle.path == path
-    assert handle.uri == uri
+    assert handle.bound_uri == uri
     assert "secret" not in handle.masked_uri
     assert "hidden" not in handle.masked_uri
     assert "secret" not in repr(handle)
@@ -779,7 +779,7 @@ def test_s3_uri_resolution_needs_no_network(uri: str, path: str) -> None:
     handle = IOBase.from_uri(uri, options=options)
     assert isinstance(handle.filesystem, pafs.S3FileSystem)
     assert handle.path == path
-    assert handle.uri == uri
+    assert handle.bound_uri == uri
     assert "secret" not in repr(handle)
 
 
@@ -788,7 +788,7 @@ def test_file_uri_resolution_binds_a_local_filesystem(tmp_path: pathlib.Path) ->
     handle = IOBase.from_uri(target.as_uri())
 
     assert isinstance(handle.filesystem, pafs.LocalFileSystem)
-    assert handle.uri == target.as_uri()
+    assert handle.bound_uri == target.as_uri()
     with handle.open_output_stream(compression=None) as stream:
         stream.write(b"local")
     assert target.read_bytes() == b"local"

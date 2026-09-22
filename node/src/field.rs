@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either4, Env, Error, Reference, Result, Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either5, Env, Error, Reference, Result, Uint8Array,
     Unknown,
 };
 use napi_derive::napi;
@@ -20,7 +20,7 @@ use crate::{
         mime_type_from_input,
     },
     exact_i32, napi_error, napi_type_error, ordering_value,
-    uri::{JsUri, JsUrl, JsUrn, url_from_input},
+    uri::{JsArn, JsUri, JsUrl, JsUrn, url_from_input},
     value::arrow_scalar_to_ipc,
     value::field_value_to_js,
 };
@@ -851,10 +851,11 @@ impl JsField {
     #[napi]
     pub fn set_location(
         &mut self,
-        value: Either4<
+        value: Either5<
             ClassInstance<'_, JsUrl>,
             ClassInstance<'_, JsUri>,
             ClassInstance<'_, JsUrn>,
+            ClassInstance<'_, JsArn>,
             String,
         >,
     ) -> Result<()> {
@@ -1143,10 +1144,11 @@ impl JsField {
     #[napi]
     pub fn set_http_location(
         &mut self,
-        value: Either4<
+        value: Either5<
             ClassInstance<'_, JsUrl>,
             ClassInstance<'_, JsUri>,
             ClassInstance<'_, JsUrn>,
+            ClassInstance<'_, JsArn>,
             String,
         >,
     ) -> Result<()> {

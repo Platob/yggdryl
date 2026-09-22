@@ -81,7 +81,7 @@ impl yggdryl::IOMedia for Measured {
 }
 
 impl IOBase for Measured {
-    yggdryl::delegate_iobase!(inner: pwrite, capacity, reserve, truncate, url, media_type,
+    yggdryl::delegate_iobase!(inner: pwrite, capacity, reserve, truncate, uri, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
         is_tabular, is_io);
 

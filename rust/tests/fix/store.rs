@@ -8,16 +8,20 @@ use super::path as fpath;
 use std::path::PathBuf;
 use yggdryl::SequenceType;
 use yggdryl::fix::FixReplacement;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{
     DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructType,
 };
 
 fn scratch(label: &str) -> PathBuf {
-    let path = Folder::temporary().unwrap().path().unwrap().join(format!(
-        "yggdryl-fix-catalog-{label}-{}",
-        std::process::id()
-    ));
+    let path = LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!(
+            "yggdryl-fix-catalog-{label}-{}",
+            std::process::id()
+        ));
     let _ = std::fs::remove_dir_all(&path);
     path
 }
@@ -56,7 +60,7 @@ fn the_committed_store_carries_the_crate_dump() {
     let registry = super::committed_registry();
     let scratch = scratch("crate-dump");
     std::fs::create_dir_all(&scratch).unwrap();
-    let mut folder = Folder::new(scratch.clone()).unwrap();
+    let mut folder = LocalFolder::new(scratch.clone()).unwrap();
     registry.write_into(&mut folder).unwrap();
     for name in CRATE_DOCUMENTS {
         let written = std::fs::read(scratch.join(name)).unwrap();
@@ -155,7 +159,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     assert_eq!(loaded.get_field_by_counter(65_020), Some(map));
 
     let root = scratch("crate-map");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert!(root.join("groups/identifiers.json").exists());
     folder
@@ -183,7 +187,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     assert_eq!(loaded, registry);
 
     let root = scratch("crate-map-reference");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert!(root.join("groups/identifiers.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
@@ -270,7 +274,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
         } else {
             "map-members"
         });
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         registry.write_into(&mut folder).unwrap();
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
         std::fs::remove_dir_all(root).unwrap();
@@ -409,7 +413,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         } else {
             "map-component"
         });
-        let mut folder = Folder::new(&root).unwrap();
+        let mut folder = LocalFolder::new(&root).unwrap();
         registry.write_into(&mut folder).unwrap();
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
         std::fs::remove_dir_all(root).unwrap();
@@ -462,7 +466,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
-    let folder = Folder::new(&root).unwrap();
+    let folder = LocalFolder::new(&root).unwrap();
     folder
         .child_by_path("groups/identifiers.json")
         .unwrap()
@@ -747,7 +751,7 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
 #[test]
 fn categories_round_trip_compact_references_and_counter_fields() {
     let root = scratch("roundtrip");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     let registry = catalog();
     registry.write_into(&mut folder).unwrap();
     for file in [
@@ -814,7 +818,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
 #[test]
 fn code_sets_round_trip_through_their_own_folder_and_are_pruned_when_they_go() {
     let root = scratch("codesets");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     let mut registry = catalog();
     // A second vocabulary no field reads by: a set is the dictionary's, so
     // what takes one away is the dictionary rather than a field.
@@ -917,7 +921,7 @@ fn replacing_a_code_set_forgets_warm_typed_parse_memos() {
 #[test]
 fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
     let root = scratch("codeset-stem");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     catalog().write_into(&mut folder).unwrap();
     // The stem is how a set is addressed, so a file stating another name is
     // refused the way a definition's document is.
@@ -940,7 +944,7 @@ fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
 #[test]
 fn a_field_naming_a_code_set_the_store_does_not_hold_is_refused() {
     let root = scratch("codeset-absent");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     catalog().write_into(&mut folder).unwrap();
     // A field may not be left reading by a vocabulary nothing states, so
     // the field's own document is where the absence is named.
@@ -1145,7 +1149,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     );
 
     let root = scratch("two-on-one-tag");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert!(root.join("fields/000000004.json").is_file());
     let shard =
@@ -1178,7 +1182,7 @@ fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
 #[test]
 fn store_removes_empty_shards_and_named_documents() {
     let root = scratch("cleanup");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     let mut registry = catalog();
     registry
         .insert(tagged("Distant", 10000, DataType::utf8()))
@@ -1198,7 +1202,7 @@ fn store_removes_empty_shards_and_named_documents() {
 fn unresolved_and_cyclic_compact_references_name_the_failure() {
     for (label, reference) in [("missing", "Missing"), ("cycle", "Cycle")] {
         let root = scratch(label);
-        let folder = Folder::new(&root).unwrap();
+        let folder = LocalFolder::new(&root).unwrap();
         let mut child = DataType::Null.nullable_field("child");
         child.as_fix_mut().set_component(reference).unwrap();
         let field = StructType::from_fields([child])
@@ -1225,7 +1229,7 @@ fn unresolved_and_cyclic_compact_references_name_the_failure() {
 #[test]
 fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     let root = scratch("malformed");
-    let folder = Folder::new(&root).unwrap();
+    let folder = LocalFolder::new(&root).unwrap();
     for bytes in [
         b"not json".to_vec(),
         b"{}".to_vec(),
@@ -1284,7 +1288,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
 #[test]
 fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
     assert_eq!(
         registry.len(),
         super::scalars(&registry)
@@ -1603,7 +1607,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         Some("Reviewed parties")
     );
     let root = scratch("metadata-refresh");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
@@ -1626,7 +1630,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
 fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
     let mut registry = catalog();
     let root = scratch("canonical-case");
-    let mut folder = Folder::new(&root).unwrap();
+    let mut folder = LocalFolder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
     for (_, name) in [
         (FixCategory::Fields, "PartyID"),
@@ -1677,7 +1681,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
 #[test]
 fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
+    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
     let mut incoming = tagged("Symbol", 55, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[9001]).unwrap();
     incoming.as_fix_mut().set_names(["Sym"]).unwrap();
@@ -1709,7 +1713,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
 #[test]
 fn duplicate_persisted_field_declarations_are_refused() {
     let root = scratch("duplicates");
-    let folder = Folder::new(&root).unwrap();
+    let folder = LocalFolder::new(&root).unwrap();
     let field = tagged("Symbol", 55, DataType::utf8());
     let bytes = yggdryl::json::into_bytes(&Scalar::from_sequence([
         field.clone().into_value(),
@@ -1730,7 +1734,7 @@ fn duplicate_persisted_field_declarations_are_refused() {
 #[test]
 fn mixed_inline_and_reference_depth_has_one_bound() {
     let root = scratch("mixed-depth");
-    let folder = Folder::new(&root).unwrap();
+    let folder = LocalFolder::new(&root).unwrap();
     for index in (0..34).rev() {
         let mut child = DataType::Null.nullable_field("child");
         if index < 33 {
@@ -2208,7 +2212,7 @@ fn every_committed_field_document_round_trips_through_the_store_shape() {
     // The whole shipped dictionary, both directions: what the store writes
     // reads back as the same field, byte for byte in its metadata.
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
+    let registry = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
     let mut carried = 0_usize;
     for field in &registry {
         let document = yggdryl::into_fix_document(field.clone()).unwrap();
@@ -2243,7 +2247,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     std::fs::write(&path, source.into_json().unwrap()).unwrap();
 
     let mut registry = FixRegistry::new();
-    let file = yggdryl::local::File::new(&path).unwrap();
+    let file = yggdryl::local::LocalFile::new(&path).unwrap();
     let (added, merged) = registry.add_json_file(&file).unwrap();
     assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
@@ -2262,7 +2266,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     let before = registry.stable_hash();
     std::fs::write(&path, br#"{"fields":[],"components":[],"groups":"no"}"#).unwrap();
     let error = registry
-        .add_json_file(&yggdryl::local::File::new(&path).unwrap())
+        .add_json_file(&yggdryl::local::LocalFile::new(&path).unwrap())
         .expect_err("a category that is not an array");
     assert!(error.to_string().contains("venue.json"), "{error}");
     assert_eq!(registry.stable_hash(), before);
@@ -2326,7 +2330,7 @@ mod committed {
     use std::collections::BTreeSet;
 
     use yggdryl::SequenceType;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{
         DataType, DateTimeType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS,
         STANDARD_TRAILER_TAGS, Scalar, TimeType, TimeUnit, Timezone,
@@ -2629,12 +2633,12 @@ mod committed {
         let scratch = std::env::temp_dir().join("yggdryl-fix-roundtrip");
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(&scratch).expect("a scratch folder");
-        let mut folder = Folder::new(scratch.clone()).expect("a local folder");
+        let mut folder = LocalFolder::new(scratch.clone()).expect("a local folder");
         registry
             .write_into(&mut folder)
             .expect("the dictionary writes");
 
-        let written = FixRegistry::from_handle(&Folder::new(scratch.clone()).unwrap())
+        let written = FixRegistry::from_handle(&LocalFolder::new(scratch.clone()).unwrap())
             .expect("what was written loads");
         assert_eq!(written.len(), registry.len());
         assert_eq!(written, registry);

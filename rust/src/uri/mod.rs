@@ -1,9 +1,10 @@
 //! Resource identifiers, their shared component model, and the `uri` and
 //! `url` datatypes a column declares over them.
 //!
-//! [`Uri`] is every identifier; [`Url`] and [`Urn`] narrow it by what the
-//! scheme decides. `datatype` holds the `uri` family a column declares - its
-//! two leaves `url` and `urn`, the one field over them and their scalars.
+//! [`Uri`] is every identifier; [`Url`], [`Urn`], and [`Arn`] narrow it by
+//! what the scheme decides - a location, a name, and the name AWS writes for
+//! one of its resources. `datatype` holds the `uri` family a column declares -
+//! its two leaves `url` and `urn`, the one field over them and their scalars.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -21,6 +22,7 @@ use smol_str::{SmolStr, SmolStrBuilder};
 use crate::{Error, Result, hashing::stable_hash_display};
 use crate::{MediaType, MimeType, Scheme};
 
+mod arn;
 mod authority;
 mod datatype;
 mod extensions;
@@ -33,6 +35,7 @@ pub(crate) mod pattern;
 pub(crate) mod url;
 mod urn;
 
+pub use arn::Arn;
 pub use authority::Authority;
 pub use datatype::UriType;
 pub(crate) use datatype::{URL_EXTENSION_NAME, URN_EXTENSION_NAME, casts};
@@ -223,6 +226,52 @@ impl Uri {
         Urn::from_uri(self)
     }
 
+    /// Validate and consume this URI as an ARN without cloning.
+    ///
+    /// # Errors
+    ///
+    /// As [`Arn::from_uri`].
+    pub fn into_arn(self) -> Result<Arn> {
+        Arn::from_uri(self)
+    }
+
+    /// Return the location this identifier names, as a [`Url`].
+    ///
+    /// An identifier is either a location or a name, and this is the one door
+    /// that answers a location for both: a URL locates itself, a URN resolves
+    /// its name to a path under the process working directory, and an ARN maps
+    /// to the store URL its service addresses. That is what lets any URI be
+    /// handed to a reader as the thing to open.
+    ///
+    /// ```
+    /// use yggdryl::Uri;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let url = Uri::from_str("s3://trades/2026/part.parquet")?;
+    /// assert_eq!(url.locator()?.to_string(), "s3://trades/2026/part.parquet");
+    ///
+    /// let arn = Uri::from_str("arn:aws:s3:::trades/2026/part.parquet")?;
+    /// assert_eq!(arn.locator()?, url.locator()?);
+    ///
+    /// // A name carries no scheme to open, so it resolves to a path.
+    /// let name = Uri::from_str("urn:lake:trades:2026:part.parquet")?;
+    /// assert!(name.locator()?.to_string().ends_with("/lake/trades/2026/part.parquet"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the narrowed form's own refusal: a URN or an ARN that names no
+    /// location, or a URI that is not a URL.
+    pub fn locator(&self) -> Result<Url> {
+        match self.scheme() {
+            scheme if scheme == &Scheme::URN => Urn::from_uri(self.clone())?.locator(),
+            scheme if scheme == &Scheme::ARN => Arn::from_uri(self.clone())?.locator(),
+            _ => Url::from_uri(self.clone()),
+        }
+    }
+
     /// Consume a canonical `file:` URI and return its platform path.
     pub fn into_path(self) -> Result<PathBuf> {
         file_path_from_uri(&self)
@@ -299,10 +348,11 @@ impl Uri {
         self.store_location().and_then(|location| location.endpoint)
     }
 
-    /// Return the container name when this URI addresses an object store.
+    /// Return the container name when this URI addresses a store.
     ///
     /// The bucket on Amazon S3 and Google Cloud Storage, the container on Azure
-    /// Blob Storage: one name, because it is one position in the location.
+    /// Blob Storage, the table bucket on Amazon S3 Tables: one name, because it
+    /// is one position in the location.
     pub fn bucket(&self) -> Option<&str> {
         self.store_location().and_then(|location| location.bucket)
     }

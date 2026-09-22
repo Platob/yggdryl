@@ -562,6 +562,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     nativeBinding.Uri.prototype,
     nativeBinding.Url.prototype,
     nativeBinding.Urn.prototype,
+    nativeBinding.Arn.prototype,
     nativeBinding.Version.prototype,
   ]
   const rawRegExpSourceGetter = Object.getOwnPropertyDescriptor(
@@ -581,6 +582,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
   ]
 
   const {
+    Arn,
     DataType,
     Field,
     Uri,
@@ -683,6 +685,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       Uri.fromString('https://example.com/value'),
       Url.fromString('https://example.com/value'),
       Urn.fromString('urn:example:value'),
+      Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet'),
       new Version(5, 0, 300),
     ]) {
       assert.equal(json.loads(json.dumps(value)), value.toString())
@@ -696,6 +699,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       Uri.fromString('https://example.com/value'),
       Url.fromString('https://example.com/value'),
       Urn.fromString('urn:example:value'),
+      Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet'),
       new Version(5, 0, 300),
     ]
 
@@ -1290,6 +1294,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     const NativeUri = Uri
     const NativeUrl = Url
     const NativeUrn = Urn
+    const NativeArn = Arn
     const NativeVersion = Version
     const SubDataType = class DataType extends NativeDataType {
       constructor() {
@@ -1321,6 +1326,12 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
         this.applicationState = true
       }
     }
+    const SubArn = class Arn extends NativeArn {
+      constructor() {
+        super('arn:aws:s3:::market-data/2026/part.parquet')
+        this.applicationState = true
+      }
+    }
     const SubVersion = class Version extends NativeVersion {
       constructor() {
         super(5, 0, 300)
@@ -1334,6 +1345,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       [new SubUri(), 'Uri'],
       [new SubUrl(), 'Url'],
       [new SubUrn(), 'Urn'],
+      [new SubArn(), 'Arn'],
       [new SubVersion(), 'Version'],
     ]) {
       assert.throws(() => json.dumps(value), new RegExp(`${name} subclasses`))

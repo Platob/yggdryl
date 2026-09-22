@@ -37,7 +37,7 @@ use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarr
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
 use crate::timezone::core_timezone_from_value;
-use crate::uri::{PyUri, PyUrl, PyUrn};
+use crate::uri::PyUri;
 use crate::{compare, value_error};
 
 /// How deep a Python graph may nest before conversion refuses to recurse.
@@ -2306,13 +2306,9 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
         return Some(Scalar::from(&value.inner));
     }
+    // Every identifier - a `Uri` and the `Url`, `Urn`, and `Arn` that narrow
+    // it - crosses as the canonical text it spells.
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
-        return Some(Scalar::from(value.inner.to_string()));
-    }
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrl>>() {
-        return Some(Scalar::from(value.inner.to_string()));
-    }
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
         return Some(Scalar::from(value.inner.to_string()));
     }
     // An expression's scalar is its canonical text: the text parses back to

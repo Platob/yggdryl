@@ -12,9 +12,9 @@
 | URIs | `from_uri` is the only boundary where a URI chooses and configures a filesystem |
 | Identity | `same_location` / `sameLocation` needs filesystem equality plus byte-for-byte path equality |
 | Streams | four opens, one retained backend stream each; output streams rather than buffering the whole object |
-| Secrets | `uri` may carry them; `masked_uri` / `maskedUri` is the credential-free spelling |
+| Secrets | `bound_uri` / `boundUri` may carry them; `masked_uri` / `maskedUri` is the credential-free spelling. `uri` is the identifier the handle is addressed by, which the bound location decides |
 | Ships | `MemoryFileSystem` and `LocalFileSystem`, complete references for the public object-safe `FileSystem` trait |
-| Roles | `fs::{Path, File, Folder}`, Python `FsPath` / `FsFile` / `FsFolder`; every wrapper over one keeps its bound location |
+| Roles | `fs::{FsPath, FsFile, FsFolder}`, Python `FsPath` / `FsFile` / `FsFolder`; every wrapper over one keeps its bound location |
 | Bindings | Python over `pyarrow.fs` returning `NativeFile`; JavaScript over a synchronous handler protocol |
 | Feature flag | none; tests gate on `arrow` and `iceberg` |
 
@@ -29,13 +29,13 @@ Pass the filesystem and its opaque path separately.
 
     use yggdryl::IOBase;
     use yggdryl::fs::{
-        File, FileSystem, Folder, MemoryFileSystem, OutputMetadata,
+        FileSystem, FsFile, FsFolder, MemoryFileSystem, OutputMetadata,
     };
 
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     // The bucket is a directory to the filesystem, and an object write needs it.
-    Folder::from_path(Arc::clone(&filesystem), "bucket", None)?.create(false)?;
-    let file = File::from_path(
+    FsFolder::from_path(Arc::clone(&filesystem), "bucket", None)?.create(false)?;
+    let file = FsFile::from_path(
         filesystem,
         "bucket/v=a%2Fb.bin",
         Some("s3://bucket/v=a%2Fb.bin".to_owned()),
@@ -78,7 +78,7 @@ Pass the filesystem and its opaque path separately.
 
     assert handle.filesystem is filesystem
     assert handle.path == "bucket/v=a%2Fb.bin"
-    assert handle.uri == "s3://bucket/v=a%2Fb.bin"
+    assert handle.bound_uri == "s3://bucket/v=a%2Fb.bin"
     assert handle.masked_uri == "s3://bucket/v=a%2Fb.bin"
     ```
 
@@ -90,9 +90,9 @@ A bound location is one of three roles, and `from_fs` answers the one the name d
 
 | Rust | Python | Role |
 | --- | --- | --- |
-| `fs::Path` | `FsPath` | a location that resolves when an operation needs to know what is there |
-| `fs::File` | `FsFile` | a file, read and written through its four streams |
-| `fs::Folder` | `FsFolder` | a directory, listed and walked |
+| `fs::FsPath` | `FsPath` | a location that resolves when an operation needs to know what is there |
+| `fs::FsFile` | `FsFile` | a file, read and written through its four streams |
+| `fs::FsFolder` | `FsFolder` | a directory, listed and walked |
 
 A name declaring a coding or a record encoding composes over that role, and the composition keeps the bound location, so it still answers where it is. `FsPath(filesystem, path, uri=None)`, `FsFile`, and `FsFolder` commit to a role and skip the composition, which is how the stored bytes of a coded name are addressed.
 
@@ -121,7 +121,7 @@ A name declaring a coding or a record encoding composes over that role, and the 
 
     assert handle.filesystem is filesystem
     assert handle.path == "bucket/trades.txt.gz"
-    assert handle.uri == "s3://bucket/trades.txt.gz"
+    assert handle.bound_uri == "s3://bucket/trades.txt.gz"
 
     stored = FsPath(filesystem, "bucket/trades.txt.gz")
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
@@ -177,7 +177,7 @@ Every parent, child, listing result, glob result, and wrapper the name composes 
 - the exact optional caller URI; and
 - a credential-free diagnostic URI.
 
-`uri` is explicit because it can carry secrets, so errors, logs, and snapshots use `masked_uri` or `maskedUri`. Repr and debug output never reveal user information, secret keys, or session tokens.
+`bound_uri` is explicit because it can carry secrets, so errors, logs, and snapshots use `masked_uri` or `maskedUri`. Repr and debug output never reveal user information, secret keys, or session tokens.
 
 ## Stream lifetime
 

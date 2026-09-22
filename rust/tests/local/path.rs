@@ -5,13 +5,13 @@ mod local {
     mod generic_path {
         use yggdryl::IOBase;
         use yggdryl::holder::Holder;
-        use yggdryl::local::{Folder, Path};
+        use yggdryl::local::{LocalFolder, LocalPath};
         use yggdryl::{IOKind, MediaType, MimeType};
 
         fn root(label: &str) -> std::path::PathBuf {
-            let mut path = Folder::temporary().unwrap().path().unwrap();
+            let mut path = LocalFolder::temporary().unwrap().path().unwrap();
             path.push(format!("yggdryl-path-{label}-{}", std::process::id()));
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -23,19 +23,19 @@ mod local {
             let path = root("kind");
             std::fs::create_dir_all(&path).unwrap();
 
-            let directory = Path::new(&path).unwrap();
+            let directory = LocalPath::new(&path).unwrap();
             assert_eq!(directory.kind(), IOKind::Directory);
             assert!(directory.is_container());
             assert_eq!(directory.media_type().base(), &MimeType::DIRECTORY);
 
             // A location that does not exist has not decided what it is.
-            let missing = Path::new(path.join("absent.arrows")).unwrap();
+            let missing = LocalPath::new(path.join("absent.arrows")).unwrap();
             assert_eq!(missing.kind(), IOKind::Unknown);
             assert!(!missing.is_container());
             assert!(missing.read_all_bytes().unwrap().is_empty());
             assert_eq!(missing.size(), 0);
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -48,10 +48,10 @@ mod local {
             let existing = Holder::local(&path).unwrap();
             let missing = Holder::local(path.join("absent.arrows")).unwrap();
 
-            assert!(matches!(&existing, Holder::Path(_)));
-            assert!(matches!(&missing, Holder::Path(_)));
+            assert!(matches!(&existing, Holder::LocalPath(_)));
+            assert!(matches!(&missing, Holder::LocalPath(_)));
             assert_eq!(missing.media_type().base(), &MimeType::ARROW_STREAM);
-            Folder::new(&path).unwrap().remove(true).unwrap();
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
         }
 
         #[test]
@@ -59,7 +59,7 @@ mod local {
             let path = root("write");
             std::fs::create_dir_all(&path).unwrap();
 
-            let mut leaf = Path::new(path.join("trades.bin")).unwrap();
+            let mut leaf = LocalPath::new(path.join("trades.bin")).unwrap();
             assert_eq!(leaf.kind(), IOKind::Unknown);
 
             leaf.write_all_bytes(b"AAPL").unwrap();
@@ -69,7 +69,7 @@ mod local {
             assert_eq!(leaf.kind(), IOKind::File);
             assert_eq!(leaf.read_all_bytes().unwrap(), b"AAPL");
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -78,7 +78,7 @@ mod local {
         #[test]
         fn a_generic_leaf_keeps_media_inference_and_declared_overrides() {
             let path = root("media-type");
-            let mut leaf = Path::new(path.with_extension("arrows")).unwrap();
+            let mut leaf = LocalPath::new(path.with_extension("arrows")).unwrap();
 
             assert_eq!(leaf.media_type().base(), &MimeType::ARROW_STREAM);
             leaf.set_media_type(MediaType::from(MimeType::CSV));
@@ -93,14 +93,14 @@ mod local {
             let path = root("clear-retained");
             std::fs::create_dir_all(&path).unwrap();
             let file = path.join("staged.bin");
-            let mut leaf = Path::new(&file).unwrap();
+            let mut leaf = LocalPath::new(&file).unwrap();
 
             leaf.pwrite(0, b"must-not-return").unwrap();
             leaf.clear().unwrap();
             leaf.close().unwrap();
 
             assert_eq!(std::fs::read(&file).unwrap(), b"");
-            Folder::new(&path).unwrap().remove(true).unwrap();
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
         }
 
         #[test]
@@ -109,7 +109,7 @@ mod local {
             std::fs::create_dir_all(path.join("nested")).unwrap();
             std::fs::write(path.join("a.bin"), b"a").unwrap();
 
-            let directory = Path::new(&path).unwrap();
+            let directory = LocalPath::new(&path).unwrap();
             assert_eq!(
                 directory
                     .ls(false, false)
@@ -127,7 +127,7 @@ mod local {
                 2
             );
 
-            let leaf = Path::new(path.join("a.bin")).unwrap();
+            let leaf = LocalPath::new(path.join("a.bin")).unwrap();
             assert_eq!(leaf.kind(), IOKind::File);
             assert!(
                 leaf.ls(true, false)
@@ -139,10 +139,10 @@ mod local {
 
             // Children resolve as further generic locations.
             let child = directory.child_by_path("a.bin").unwrap();
-            assert!(matches!(&child, Holder::Path(_)));
+            assert!(matches!(&child, Holder::LocalPath(_)));
             assert_eq!(child.read_all_bytes().unwrap(), b"a");
             let parent = child.parent().unwrap();
-            assert!(matches!(&parent, Holder::Path(_)));
+            assert!(matches!(&parent, Holder::LocalPath(_)));
             assert_eq!(parent.kind(), IOKind::Directory);
 
             let message = leaf
@@ -151,7 +151,7 @@ mod local {
                 .to_string();
             assert!(message.contains("expected a container"), "{message}");
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -160,14 +160,14 @@ mod local {
         #[test]
         fn a_location_can_be_addressed_as_a_directory_before_it_exists() {
             let path = root("as-directory");
-            let location = Path::new(&path).unwrap();
+            let location = LocalPath::new(&path).unwrap();
             assert_eq!(location.kind(), IOKind::Unknown);
 
             // Truncating to zero is the write that brings a directory into being.
             location.as_directory().unwrap().create().unwrap();
             assert_eq!(location.kind(), IOKind::Directory);
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");

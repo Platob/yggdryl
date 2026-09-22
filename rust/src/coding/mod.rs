@@ -20,7 +20,7 @@ use std::io::{BufRead, BufReader, Read};
 use crate::bytestream::SkipReader;
 use crate::holder::Holder;
 use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
-use crate::{Codec, Level, MediaType, Result, Url};
+use crate::{Codec, Level, MediaType, Result, Uri, Url};
 
 /// A transparent compression buffer over one handle.
 ///
@@ -462,6 +462,10 @@ impl<H: IOBase> IOBase for Coding<H> {
         }
         self.dirty = true;
         Ok(())
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.handle.uri()
     }
 
     fn url(&self) -> Option<&Url> {
