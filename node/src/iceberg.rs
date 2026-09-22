@@ -2458,8 +2458,9 @@ pub struct JsCatalog {
 impl JsCatalog {
     /// Describe a catalog over a warehouse folder, touching nothing.
     ///
-    /// `warehouse` accepts whatever names a location - a path or URL string, a
-    /// native `Url`, or a handle - the same inputs `Table.create`'s root takes.
+    /// `warehouse` accepts whatever names a location - location text, a native
+    /// `Url` or any other identifier naming one, or a handle - the same inputs
+    /// `Table.create`'s root takes.
     #[napi(constructor)]
     pub fn new(warehouse: LocationInput<'_>) -> Result<Self> {
         Ok(Self {

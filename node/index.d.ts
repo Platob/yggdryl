@@ -15,8 +15,13 @@ export declare class Arn {
    * names neither.
    */
   static fromParts(partition: string, service: string, region?: string | undefined | null, account?: string | undefined | null, resource?: string | undefined | null): Arn
-  /** Validate and convert a native `Uri` into an ARN. */
-  static fromUri(value: Uri): Arn
+  /**
+   * Validate and convert any identifier, or URI text, into an ARN.
+   *
+   * The strict door, exactly as `Url.fromUri` is: what is not an ARN is
+   * refused in the core's own words rather than converted.
+   */
+  static fromUri(value: Arn | Uri | Url | Urn | string): Arn
   /** Deserialize the native structural JSON representation. */
   static fromJSON(value: any): Arn
   /** The fixed lowercase `arn` scheme. */
@@ -81,16 +86,23 @@ export declare class Arn {
   get resourceType(): string | null
   /** What follows the type, or the whole resource when it names no type. */
   get resourceId(): string
-  /** The bucket an Amazon S3 ARN names. */
+  /**
+   * The container an ARN names: the bucket on Amazon S3, the table bucket
+   * on Amazon S3 Tables.
+   */
   get bucket(): string | null
   /** The object key an Amazon S3 ARN names, below its bucket. */
   get key(): string | null
+  /** The table an Amazon S3 Tables ARN names, below its table bucket. */
+  get table(): string | null
   /**
    * The location this name addresses, as a `Url`.
    *
    * An Amazon S3 ARN names a bucket and, below it, a key, which is exactly
-   * what an `s3:` URL locates. Every other service addresses something no
-   * URL locates, and is refused by name.
+   * what an `s3:` URL locates; an Amazon S3 Tables ARN names a table bucket
+   * and, below it, a table, which is what an `s3tables:` URL locates. Every
+   * other service addresses something no URL locates, and is refused by
+   * name.
    */
   locator(): Url
   /** Convert this ARN to its general URI representation. */
@@ -309,8 +321,9 @@ export declare class Catalog {
   /**
    * Describe a catalog over a warehouse folder, touching nothing.
    *
-   * `warehouse` accepts whatever names a location - a path or URL string, a
-   * native `Url`, or a handle - the same inputs `Table.create`'s root takes.
+   * `warehouse` accepts whatever names a location - location text, a native
+   * `Url` or any other identifier naming one, or a handle - the same inputs
+   * `Table.create`'s root takes.
    */
   constructor(warehouse: LocationInput)
   /**
@@ -2541,8 +2554,11 @@ export declare class IOBase {
    * Describe a location without touching it.
    *
    * Accepts anything that names one: a path or URL string, a native
-   * [`Url`][crate::uri::JsUrl], or another handle. Per the laziness
-   * contract, nothing is opened, created, or read here.
+   * [`Url`][crate::uri::JsUrl], any other identifier - a `Uri`, a `Urn`, an
+   * `Arn` - naming a location, or another handle. A name is resolved the
+   * way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
+   * opens the path that name spells. Per the laziness contract, nothing is
+   * opened, created, or read here.
    *
    * An Arrow file system handler as the first argument names the *backend*
    * rather than the location, so the second says where on it:
@@ -2550,7 +2566,10 @@ export declare class IOBase {
    * same class - nothing file-system-specific leaks into the surface.
    */
   constructor(value: LocationOrFileSystemInput, path?: string | undefined | null)
-  /** Infer a handle from a native handle, a `Url`, or a location string. */
+  /**
+   * Infer a handle from a native handle, any identifier naming a location,
+   * or location text.
+   */
   static from(value: LocationInput): IOBase
   /**
    * Describe a resource on any Arrow file system a caller supplies.
@@ -2587,7 +2606,16 @@ export declare class IOBase {
   static fromUri(uri: string, options?: Record<string, any> | undefined | null): IOBase
   /** Describe an in-memory resource holding `data`. */
   static fromBytes(data?: Uint8Array | undefined | null): IOBase
-  /** The location this handle addresses. */
+  /**
+   * The identifier this handle is addressed by.
+   *
+   * Every handle answers one, because an address is not always a place: a
+   * name, or the ARN a service writes for one of its resources, addresses a
+   * handle exactly as a location does. `locator()` on what this answers is
+   * where such a handle opens.
+   */
+  get uri(): JsUri | null
+  /** The location this handle addresses, when its identifier names one. */
   get url(): JsUrl | null
   /**
    * The exact caller-supplied filesystem handler, when this is a
@@ -2596,8 +2624,11 @@ export declare class IOBase {
   get filesystem(): object | null
   /** The exact opaque path supplied to the bound filesystem. */
   get path(): string | null
-  /** The exact optional URI spelling supplied by the caller. */
-  get uri(): string | null
+  /**
+   * The caller's exact optional URI spelling for the bound filesystem. It
+   * may contain credentials.
+   */
+  get boundUri(): string | null
   /** A credential-free form suitable for diagnostics and logs. */
   get maskedUri(): string | null
   /** Inspect the exact bound path without suppressing backend failures. */
@@ -5611,12 +5642,13 @@ export declare class Url {
   /** Decode this file URL as a host-independent forward-slash path. */
   intoPath(): string
   /**
-   * Validate and convert a native `Uri` into a URL.
+   * Validate and convert any identifier, or URI text, into a URL.
    *
-   * This is the strict door: it answers the URL a URI already is, and
-   * refuses a name rather than resolving it the way the constructor does.
+   * This is the strict door: it answers the URL an identifier already is,
+   * and refuses a name rather than resolving it the way the constructor
+   * does - so a URN refused here is refused in the core's own words.
    */
-  static fromUri(value: Uri): Url
+  static fromUri(value: Url | Uri | JsUrn | JsArn | string): Url
   /** Deserialize the native structural JSON representation. */
   static fromJSON(value: any): Url
   /** Normalized, non-empty URL scheme. */
@@ -5784,8 +5816,13 @@ export declare class Urn {
   static from(value: Urn | Uri | Url | JsArn | string): Urn
   /** Parse and validate a URN. */
   static fromString(value: string): Urn
-  /** Validate and convert a native `Uri` into a URN. */
-  static fromUri(value: Uri): Urn
+  /**
+   * Validate and convert any identifier, or URI text, into a URN.
+   *
+   * The strict door, exactly as `Url.fromUri` is: what is not a URN is
+   * refused in the core's own words rather than converted.
+   */
+  static fromUri(value: Urn | Uri | Url | JsArn | string): Urn
   /** Deserialize the native structural JSON representation. */
   static fromJSON(value: any): Urn
   /** The fixed lowercase `urn` scheme. */

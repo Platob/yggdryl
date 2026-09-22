@@ -66,7 +66,7 @@ impl Clone for JsUri {
 }
 
 impl JsUri {
-    fn from_core(inner: CoreUri) -> Self {
+    pub(crate) fn from_core(inner: CoreUri) -> Self {
         Self { inner }
     }
 
@@ -539,13 +539,29 @@ impl JsUrl {
             .and_then(path_string_from_core)
     }
 
-    /// Validate and convert a native `Uri` into a URL.
+    /// Validate and convert any identifier, or URI text, into a URL.
     ///
-    /// This is the strict door: it answers the URL a URI already is, and
-    /// refuses a name rather than resolving it the way the constructor does.
+    /// This is the strict door: it answers the URL an identifier already is,
+    /// and refuses a name rather than resolving it the way the constructor
+    /// does - so a URN refused here is refused in the core's own words.
     #[napi(factory)]
-    pub fn from_uri(value: &JsUri) -> Result<Self> {
-        CoreUrl::from_uri(value.inner.clone())
+    pub fn from_uri(
+        value: Either5<
+            ClassInstance<'_, JsUrl>,
+            ClassInstance<'_, JsUri>,
+            ClassInstance<'_, JsUrn>,
+            ClassInstance<'_, JsArn>,
+            String,
+        >,
+    ) -> Result<Self> {
+        let value = match value {
+            Either5::A(value) => value.inner.clone().into_uri(),
+            Either5::B(value) => value.inner.clone(),
+            Either5::C(value) => value.inner.clone().into_uri(),
+            Either5::D(value) => value.inner.clone().into_uri(),
+            Either5::E(value) => CoreUri::from_str(&value).map_err(napi_error)?,
+        };
+        CoreUrl::from_uri(value)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1107,10 +1123,28 @@ impl JsUrn {
             .map_err(napi_error)
     }
 
-    /// Validate and convert a native `Uri` into a URN.
+    /// Validate and convert any identifier, or URI text, into a URN.
+    ///
+    /// The strict door, exactly as `Url.fromUri` is: what is not a URN is
+    /// refused in the core's own words rather than converted.
     #[napi(factory)]
-    pub fn from_uri(value: &JsUri) -> Result<Self> {
-        CoreUrn::from_uri(value.inner.clone())
+    pub fn from_uri(
+        value: Either5<
+            ClassInstance<'_, JsUrn>,
+            ClassInstance<'_, JsUri>,
+            ClassInstance<'_, JsUrl>,
+            ClassInstance<'_, JsArn>,
+            String,
+        >,
+    ) -> Result<Self> {
+        let value = match value {
+            Either5::A(value) => value.inner.clone().into_uri(),
+            Either5::B(value) => value.inner.clone(),
+            Either5::C(value) => value.inner.clone().into_uri(),
+            Either5::D(value) => value.inner.clone().into_uri(),
+            Either5::E(value) => CoreUri::from_str(&value).map_err(napi_error)?,
+        };
+        CoreUrn::from_uri(value)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1475,10 +1509,28 @@ impl JsArn {
         .map_err(napi_error)
     }
 
-    /// Validate and convert a native `Uri` into an ARN.
+    /// Validate and convert any identifier, or URI text, into an ARN.
+    ///
+    /// The strict door, exactly as `Url.fromUri` is: what is not an ARN is
+    /// refused in the core's own words rather than converted.
     #[napi(factory)]
-    pub fn from_uri(value: &JsUri) -> Result<Self> {
-        CoreArn::from_uri(value.inner.clone())
+    pub fn from_uri(
+        value: Either5<
+            ClassInstance<'_, JsArn>,
+            ClassInstance<'_, JsUri>,
+            ClassInstance<'_, JsUrl>,
+            ClassInstance<'_, JsUrn>,
+            String,
+        >,
+    ) -> Result<Self> {
+        let value = match value {
+            Either5::A(value) => value.inner.clone().into_uri(),
+            Either5::B(value) => value.inner.clone(),
+            Either5::C(value) => value.inner.clone().into_uri(),
+            Either5::D(value) => value.inner.clone().into_uri(),
+            Either5::E(value) => CoreUri::from_str(&value).map_err(napi_error)?,
+        };
+        CoreArn::from_uri(value)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1674,7 +1726,8 @@ impl JsArn {
         self.inner.resource_id().to_owned()
     }
 
-    /// The bucket an Amazon S3 ARN names.
+    /// The container an ARN names: the bucket on Amazon S3, the table bucket
+    /// on Amazon S3 Tables.
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
@@ -1686,11 +1739,19 @@ impl JsArn {
         self.inner.key().map(ToOwned::to_owned)
     }
 
+    /// The table an Amazon S3 Tables ARN names, below its table bucket.
+    #[napi(getter)]
+    pub fn table(&self) -> Option<String> {
+        self.inner.table().map(ToOwned::to_owned)
+    }
+
     /// The location this name addresses, as a `Url`.
     ///
     /// An Amazon S3 ARN names a bucket and, below it, a key, which is exactly
-    /// what an `s3:` URL locates. Every other service addresses something no
-    /// URL locates, and is refused by name.
+    /// what an `s3:` URL locates; an Amazon S3 Tables ARN names a table bucket
+    /// and, below it, a table, which is what an `s3tables:` URL locates. Every
+    /// other service addresses something no URL locates, and is refused by
+    /// name.
     #[napi]
     pub fn locator(&self) -> Result<JsUrl> {
         self.inner

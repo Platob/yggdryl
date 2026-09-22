@@ -193,8 +193,24 @@ test('URL conversion is validated by the native URI core', () => {
 
   assert.throws(() => Url.fromString('urn:isbn:9780131103627'))
   assert.throws(() => Url.fromUri(Uri.fromString('mailto:user@example.com')))
-  // `fromUri` is the strict door: a name is not a location.
-  assert.throws(() => Url.fromUri(Uri.fromString('urn:isbn:9780131103627')), /URL/)
+  // `fromUri` is the strict door: a name is not a location, and it refuses in
+  // the core's own words whichever identifier spells it.
+  assert.throws(
+    () => Url.fromUri(Urn.fromString('urn:isbn:9780131103627')),
+    /URN values are not URLs/,
+  )
+  assert.throws(
+    () => Url.fromUri(Arn.fromString('arn:aws:s3:::market-data/part.parquet')),
+    /ARN values are not URLs/,
+  )
+  assert.throws(() => Url.fromUri('urn:isbn:9780131103627'), /URN values are not URLs/)
+  // The constructor resolves what the strict door refuses.
+  assert.equal(
+    new Url(Arn.fromString('arn:aws:s3:::market-data/part.parquet')).toString(),
+    's3://market-data/part.parquet',
+  )
+  assert.ok(Url.fromUri(url).equals(url))
+  assert.ok(Url.fromUri(url.toString()).equals(url))
 })
 
 test('URN values expose namespace and namespace-specific string', () => {
@@ -223,6 +239,17 @@ test('URN values expose namespace and namespace-specific string', () => {
   assert.throws(() => Urn.fromString('https://example.com/resource'))
   assert.throws(() => Urn.fromString('urn::missing-namespace'))
   assert.throws(() => Urn.from(Url.fromString('https://example.com')), /URN/)
+  // The strict door takes every identifier and refuses in the core's words.
+  assert.ok(Urn.fromUri(urn).equals(urn))
+  assert.ok(Urn.fromUri(urn.toString()).equals(urn))
+  assert.throws(
+    () => Urn.fromUri(Url.fromString('https://example.com')),
+    /URN scheme must be `urn`/,
+  )
+  assert.throws(
+    () => Urn.fromUri(Arn.fromString('arn:aws:s3:::market-data')),
+    /URN scheme must be `urn`/,
+  )
   assert.throws(() => uri.intoUrl())
 })
 
@@ -276,6 +303,17 @@ test('ARN values expose their AWS fields and resource split', () => {
   assert.throws(() => Arn.fromString('arn::s3:::trades'))
   assert.throws(() => Arn.fromString('arn:aws:s3:::trades?download=1'))
   assert.throws(() => Arn.from(Urn.fromString('urn:isbn:9780131103627')), /ARN/)
+  // The strict door takes every identifier and refuses in the core's words.
+  assert.ok(Arn.fromUri(arn).equals(arn))
+  assert.ok(Arn.fromUri(arn.toString()).equals(arn))
+  assert.throws(
+    () => Arn.fromUri(Urn.fromString('urn:isbn:9780131103627')),
+    /ARN scheme must be `arn`/,
+  )
+  assert.throws(
+    () => Arn.fromUri(Url.fromString('s3://market-data/part.parquet')),
+    /ARN scheme must be `arn`/,
+  )
   assert.throws(() => uri.intoUrl())
 })
 
@@ -314,6 +352,46 @@ test('an ARN locates only an Amazon S3 bucket', () => {
   const unchanged = edited.toString()
   assert.throws(() => edited.setFileName(''))
   assert.equal(edited.toString(), unchanged)
+})
+
+test('an Amazon S3 Tables ARN names a table bucket and a table', () => {
+  const table = Arn.fromString(
+    'arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1',
+  )
+
+  assert.equal(table.service, 's3tables')
+  assert.equal(table.region, 'us-east-1')
+  assert.equal(table.account, '123456789012')
+  assert.equal(table.bucket, 'lake')
+  assert.equal(table.table, 't-a1')
+  // A table is not an object, so it is not a key.
+  assert.equal(table.key, null)
+  assert.ok(table.locator().equals(Url.fromString('s3tables://lake/t-a1')))
+
+  // The container alone locates the table bucket, and names no table.
+  const bucket = Arn.fromString('arn:aws:s3tables:us-east-1:123456789012:bucket/lake')
+  assert.equal(bucket.bucket, 'lake')
+  assert.equal(bucket.table, null)
+  assert.equal(bucket.locator().toString(), 's3tables://lake')
+
+  // An Amazon S3 ARN names no table, and a resource that is not the
+  // `bucket/...` form names no container at all.
+  assert.equal(Arn.fromString('arn:aws:s3:::market-data/part.parquet').table, null)
+  const policy = Arn.fromString('arn:aws:s3tables:us-east-1:123456789012:policy/deny')
+  assert.equal(policy.bucket, null)
+  assert.equal(policy.table, null)
+  assert.throws(() => policy.locator(), /names a location/)
+
+  // A table bucket is one position in a location, so the store accessors read
+  // an `s3tables:` URL the way they read an `s3:` one.
+  const located = Uri.fromString('s3tables://lake/t-a1')
+  assert.equal(located.bucket, 'lake')
+  assert.equal(located.key, 't-a1')
+  assert.equal(located.hostname, null)
+  const url = located.intoUrl()
+  assert.equal(url.bucket, 'lake')
+  assert.equal(url.key, 't-a1')
+  assert.ok(Url.from(table).equals(url))
 })
 
 test('a name resolves to where it is and opens there', () => {

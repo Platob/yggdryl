@@ -30,6 +30,8 @@ uri.setMediaType('text/csv;encodings=application/gzip')
 uri.setMediaType(MediaType.fromParts('text/csv', ['application/gzip']))
 
 const url = Url.fromUri(uri)
+const urlFromUrlStrict: Url = Url.fromUri(url)
+const urlFromTextStrict: Url = Url.fromUri('https://example.com/data.csv')
 const inferredUrl: Url = uri.intoUrl()
 const uriLocator: Url = uri.locator()
 const urlClone: Url = Url.from(url)
@@ -50,6 +52,10 @@ const urlLocator: Url = url.locator()
 url.setExtension('csv')
 
 const urn = Urn.fromString('urn:lake:trades:2026:part.csv')
+const urnFromUriStrict: Urn = Urn.fromUri(urn.intoUri())
+const urnFromTextStrict: Urn = Urn.fromUri('urn:lake:trades:2026:part.csv')
+// The strict door takes every identifier, and refuses this one at runtime.
+const invalidUrnFromUri: Urn = Urn.fromUri(url)
 const inferredUrn: Urn = urn.intoUri().intoUrn()
 const urnClone: Urn = Urn.from(urn)
 const resolvedUrn: Url = Url.from(urn)
@@ -69,6 +75,10 @@ const urnLocator: Url = urn.locator()
 urn.setFileName('value.json')
 
 const arn = Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet')
+const arnFromUriStrict: Arn = Arn.fromUri(arn.intoUri())
+const arnFromTextStrict: Arn = Arn.fromUri('arn:aws:s3:::market-data')
+// The strict door takes every identifier, and refuses this one at runtime.
+const invalidArnFromUri: Arn = Arn.fromUri(urn)
 const inferredArn: Arn = arn.intoUri().intoArn()
 const arnClone: Arn = Arn.from(arn)
 const arnParts: Arn = Arn.fromParts('aws', 's3', '', '', 'market-data/part.parquet')
@@ -87,6 +97,9 @@ const arnResourceType: string | null = arn.resourceType
 const arnResourceId: string = arn.resourceId
 const arnBucket: string | null = arn.bucket
 const arnKey: string | null = arn.key
+const arnTable: string | null = Arn.fromString(
+  'arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1',
+).table
 const arnLocator: Url = arn.locator()
 const arnSegments: string[] = [...arn]
 const arnStem: string | null = arn.stem
@@ -114,6 +127,8 @@ void clearedExtensions
 void uriMimeType
 void uriMediaType
 void urlClone
+void urlFromUrlStrict
+void urlFromTextStrict
 void inferredUrl
 void fileUrl
 void fileUrlPath
@@ -133,6 +148,9 @@ void uriLocator
 void urnClone
 void resolvedUrn
 void invalidUrnAtRuntime
+void urnFromUriStrict
+void urnFromTextStrict
+void invalidUrnFromUri
 void inferredUrn
 void urnUri
 void uriFromUrn
@@ -150,6 +168,9 @@ void arnClone
 void arnParts
 void arnOptionalParts
 void invalidArnAtRuntime
+void arnFromUriStrict
+void arnFromTextStrict
+void invalidArnFromUri
 void inferredArn
 void arnUri
 void uriFromArn
@@ -164,6 +185,7 @@ void arnResourceType
 void arnResourceId
 void arnBucket
 void arnKey
+void arnTable
 void arnLocator
 void arnSegments
 void arnStem

@@ -144,8 +144,8 @@ export type {
 export type MimeTypeInput = MimeType | string
 /** A native media/MIME wrapper or canonical media string. */
 export type MediaTypeInput = MediaType | MimeType | string
-/** A native handle, a native `Url`, or anything that names a location. */
-export type LocationInput = IOBase | Url | string
+/** A native handle, any identifier naming a location, or location text. */
+export type LocationInput = IOBase | Url | Uri | Urn | Arn | string
 /**
  * A class exposing its native struct shape through an actual static getter.
  *
@@ -2840,8 +2840,8 @@ declare module './index' {
   interface Urn extends Iterable<string> {}
   interface Arn extends Iterable<string> {}
 
-  /** A native handle, a native `Url`, or anything that names a location. */
-  type LocationInput = IOBase | Url | string
+  /** A native handle, any identifier naming a location, or location text. */
+  type LocationInput = IOBase | Url | Uri | Urn | Arn | string
   /** A caller-supplied Arrow-compatible file system as a plain object. */
   type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */
