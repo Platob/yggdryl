@@ -1,4 +1,5 @@
 export {
+  Arn,
   BatchReader,
   Bound,
   BoundSelector,
@@ -54,6 +55,7 @@ export {
 } from './index'
 
 import type {
+  Arn,
   BatchReader,
   Bound,
   BoundSelector,
@@ -2836,6 +2838,7 @@ declare module './index' {
     joinpath(...others: string[]): Url
   }
   interface Urn extends Iterable<string> {}
+  interface Arn extends Iterable<string> {}
 
   /** A native handle, a native `Url`, or anything that names a location. */
   type LocationInput = IOBase | Url | string

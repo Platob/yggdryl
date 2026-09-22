@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { MediaType, MimeType, Uri, Url, Urn } = require('yggdryl')
+const { Arn, MediaType, MimeType, Uri, Url, Urn } = require('yggdryl')
 
 test('URI values expose canonical components and path collections', () => {
   const uri = Uri.fromString(
@@ -193,7 +193,8 @@ test('URL conversion is validated by the native URI core', () => {
 
   assert.throws(() => Url.fromString('urn:isbn:9780131103627'))
   assert.throws(() => Url.fromUri(Uri.fromString('mailto:user@example.com')))
-  assert.throws(() => Url.from(Urn.fromString('urn:isbn:9780131103627')), /URL/)
+  // `fromUri` is the strict door: a name is not a location.
+  assert.throws(() => Url.fromUri(Uri.fromString('urn:isbn:9780131103627')), /URL/)
 })
 
 test('URN values expose namespace and namespace-specific string', () => {
@@ -223,6 +224,161 @@ test('URN values expose namespace and namespace-specific string', () => {
   assert.throws(() => Urn.fromString('urn::missing-namespace'))
   assert.throws(() => Urn.from(Url.fromString('https://example.com')), /URN/)
   assert.throws(() => uri.intoUrl())
+})
+
+test('ARN values expose their AWS fields and resource split', () => {
+  const uri = Uri.fromString('arn:aws:s3:::market-data/2026/part.parquet')
+  const arn = Arn.fromUri(uri)
+  const clone = Arn.from(arn)
+
+  assert.equal(arn.scheme, 'arn')
+  assert.equal(arn.authority, '')
+  assert.equal(arn.path, 'aws:s3:::market-data/2026/part.parquet')
+  assert.equal(arn.partition, 'aws')
+  assert.equal(arn.service, 's3')
+  assert.equal(arn.region, null)
+  assert.equal(arn.account, null)
+  assert.equal(arn.resource, 'market-data/2026/part.parquet')
+  assert.equal(arn.resourceType, 'market-data')
+  assert.equal(arn.resourceId, '2026/part.parquet')
+  assert.equal(arn.resourceSeparator, '/')
+  assert.equal(arn.fileName, 'part.parquet')
+  assert.equal(arn.stem, 'part')
+  assert.equal(arn.extension, 'parquet')
+  assert.deepEqual([...arn], arn.pathSegments)
+  assert.equal(arn.at(-1), 'part.parquet')
+  assert.ok(arn.equals(clone))
+  assert.equal(arn.compare(clone), 0)
+  assert.equal(typeof arn.stableHash(), 'bigint')
+  assert.ok(Uri.from(arn).equals(arn.intoUri()))
+  assert.ok(new Uri(arn).equals(arn.intoUri()))
+  assert.ok(arn.intoUri().equals(Uri.fromString(arn.toString())))
+  assert.ok(uri.intoArn().equals(arn))
+  assert.ok(Arn.fromString(arn.toString()).equals(arn))
+  assert.ok(Arn.fromJSON(JSON.parse(JSON.stringify(arn))).equals(arn))
+  assert.ok(
+    Arn.fromParts('aws', 's3', '', '', 'market-data/2026/part.parquet').equals(arn),
+  )
+  assert.equal(
+    Arn.fromParts('aws', 'iam', '', '123456789012', 'user/David').toString(),
+    'arn:aws:iam::123456789012:user/David',
+  )
+
+  // The three fields AWS decides fold to lower case; the rest stay as written.
+  const folded = Arn.fromString('ARN:AWS:S3:US-EAST-1:123456789012:Trades/Part.PARQUET')
+  assert.equal(folded.toString(), 'arn:aws:s3:us-east-1:123456789012:Trades/Part.PARQUET')
+  assert.equal(folded.region, 'us-east-1')
+  assert.equal(folded.account, '123456789012')
+  assert.equal(folded.resource, 'Trades/Part.PARQUET')
+
+  assert.throws(() => Arn.fromString('arn:aws:s3'))
+  assert.throws(() => Arn.fromString('arn:aws:s3:::'))
+  assert.throws(() => Arn.fromString('arn::s3:::trades'))
+  assert.throws(() => Arn.fromString('arn:aws:s3:::trades?download=1'))
+  assert.throws(() => Arn.from(Urn.fromString('urn:isbn:9780131103627')), /ARN/)
+  assert.throws(() => uri.intoUrl())
+})
+
+test('an ARN locates only an Amazon S3 bucket', () => {
+  const arn = Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet')
+
+  assert.equal(arn.bucket, 'market-data')
+  assert.equal(arn.key, '2026/part.parquet')
+  assert.ok(arn.locator().equals(Url.fromString('s3://market-data/2026/part.parquet')))
+  assert.ok(Url.from(arn).equals(arn.locator()))
+  assert.ok(arn.intoUri().locator().equals(arn.locator()))
+
+  const bucket = Arn.fromString('arn:aws:s3:::market-data')
+  assert.equal(bucket.key, '')
+  assert.equal(bucket.locator().toString(), 's3://market-data')
+
+  // Only the bucket form locates: an access point or another service does not.
+  for (const named of [
+    'arn:aws:s3:us-west-2:123456789012:accesspoint/reports',
+    'arn:aws:iam::123456789012:user/David',
+  ]) {
+    const other = Arn.fromString(named)
+    assert.equal(other.bucket, null)
+    assert.equal(other.key, null)
+    assert.throws(() => other.locator(), /names a location/)
+  }
+
+  // A resource edit rewrites the resource alone, and refuses atomically.
+  const edited = Arn.fromString('arn:aws:s3:::market-data/2026/part.tar.gz')
+  edited.setStem('renamed')
+  assert.equal(edited.toString(), 'arn:aws:s3:::market-data/2026/renamed.gz')
+  assert.equal(edited.removeExtension(), true)
+  assert.equal(edited.resource, 'market-data/2026/renamed')
+  edited.setMediaType('text/csv;encodings=application/gzip')
+  assert.equal(edited.toString(), 'arn:aws:s3:::market-data/2026/renamed.csv.gz')
+  const unchanged = edited.toString()
+  assert.throws(() => edited.setFileName(''))
+  assert.equal(edited.toString(), unchanged)
+})
+
+test('a name resolves to where it is and opens there', () => {
+  const urn = Urn.fromString('urn:lake:trades:2026:part.csv')
+
+  assert.equal(urn.locatorPath(), 'lake/trades/2026/part.csv')
+  assert.equal(
+    urn.resolve('s3://market-data/warehouse/').toString(),
+    's3://market-data/warehouse/lake/trades/2026/part.csv',
+  )
+  assert.ok(
+    urn
+      .resolve(Url.fromString('s3://market-data/warehouse/'))
+      .equals(urn.resolve('s3://market-data/warehouse/')),
+  )
+
+  // An empty name part would let two names spell one path, so it is refused.
+  assert.throws(() => Urn.fromString('urn:example:a::b').locatorPath(), /empty name part/)
+
+  // With no base named, a name resolves under the working directory, which is
+  // what lets a reader open it.
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-urn-')))
+  const previous = process.cwd()
+  try {
+    fs.mkdirSync(path.join(root, 'lake', 'trades', '2026'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'lake', 'trades', '2026', 'part.csv'), 'symbol\nMSFT\n')
+    process.chdir(root)
+
+    const located = urn.locator()
+    assert.ok(located.exists())
+    assert.ok(located.isFile())
+    assert.ok(Url.from(urn).equals(located))
+    assert.ok(urn.intoUri().locator().equals(located))
+  } finally {
+    process.chdir(previous)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('every identifier answers the location it names', () => {
+  const url = Url.fromString('s3://market-data/2026/part.parquet')
+
+  assert.ok(Uri.fromString('s3://market-data/2026/part.parquet').locator().equals(url))
+  assert.ok(Uri.fromString('arn:aws:s3:::market-data/2026/part.parquet').locator().equals(url))
+  assert.ok(Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet').locator().equals(url))
+  // A location locates itself, so `locator` answers on all four classes.
+  assert.ok(url.locator().equals(url))
+  assert.throws(() => Uri.fromString('mailto:user@example.com').locator(), /URL/)
+  assert.throws(() => Uri.fromString('arn:aws:iam::123456789012:user/David').locator())
+})
+
+test('a location argument reads a name as the place it names', () => {
+  const root = Url.fromString('s3://market-data')
+  const leaf = Url.fromString('s3://market-data/2026/part.parquet')
+  const arn = Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet')
+
+  assert.equal(leaf.relativeTo(arn.intoUri()), '')
+  assert.ok(root.isRelativeTo(Arn.fromString('arn:aws:s3:::market-data')))
+  assert.equal(leaf.relativeTo(Arn.fromString('arn:aws:s3:::market-data')), '2026/part.parquet')
+  assert.ok(!leaf.isRelativeTo(Arn.fromString('arn:aws:s3:::other')))
+  // A name that addresses no location refuses here exactly as `locator` does.
+  assert.throws(
+    () => leaf.isRelativeTo(Arn.fromString('arn:aws:iam::123456789012:user/David')),
+    /names a location/,
+  )
 })
 
 test('scheme-less input parses as a file URI instead of failing', () => {

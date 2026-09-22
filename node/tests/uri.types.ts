@@ -1,4 +1,4 @@
-import { MediaType, MimeType, Uri, Url, Urn, type PartitionEntry } from '..'
+import { Arn, MediaType, MimeType, Uri, Url, Urn, type PartitionEntry } from '..'
 
 const uri = Uri.from('https://example.com/data/file.tar.gz?q=1#part')
 const uriClone: Uri = Uri.from(uri)
@@ -31,6 +31,7 @@ uri.setMediaType(MediaType.fromParts('text/csv', ['application/gzip']))
 
 const url = Url.fromUri(uri)
 const inferredUrl: Url = uri.intoUrl()
+const uriLocator: Url = uri.locator()
 const urlClone: Url = Url.from(url)
 const fileUrl: Url = Url.fromPath('C:\\data\\file.parquet')
 const fileUrlPath: string = fileUrl.intoPath()
@@ -45,12 +46,13 @@ const urlBucket: string | null = url.bucket
 const urlRegion: string | null = url.region
 const urlMimeType: MimeType = url.mimeType
 const urlMediaType: MediaType = url.mediaType
+const urlLocator: Url = url.locator()
 url.setExtension('csv')
 
-const urn = Urn.fromString('urn:isbn:9780131103627')
+const urn = Urn.fromString('urn:lake:trades:2026:part.csv')
 const inferredUrn: Urn = urn.intoUri().intoUrn()
 const urnClone: Urn = Urn.from(urn)
-const invalidUrlAtRuntime: Url = Url.from(urn)
+const resolvedUrn: Url = Url.from(urn)
 const invalidUrnAtRuntime: Urn = Urn.from(url)
 const urnUri: Uri = urn.intoUri()
 const uriFromUrn: Uri = Uri.from(urn)
@@ -60,7 +62,37 @@ const urnSegments: string[] = [...urn]
 const urnStem: string | null = urn.stem
 const urnMimeType: MimeType = urn.mimeType
 const urnMediaType: MediaType = urn.mediaType
+const urnLocatorPath: string = urn.locatorPath()
+const urnResolved: Url = urn.resolve('s3://market-data/warehouse/')
+const urnResolvedUrl: Url = urn.resolve(Url.fromString('s3://market-data/warehouse/'))
+const urnLocator: Url = urn.locator()
 urn.setFileName('value.json')
+
+const arn = Arn.fromString('arn:aws:s3:::market-data/2026/part.parquet')
+const inferredArn: Arn = arn.intoUri().intoArn()
+const arnClone: Arn = Arn.from(arn)
+const arnParts: Arn = Arn.fromParts('aws', 's3', '', '', 'market-data/part.parquet')
+const arnOptionalParts: Arn = Arn.fromParts('aws', 's3', null, undefined, 'market-data')
+const invalidArnAtRuntime: Arn = Arn.from(urn)
+const arnUri: Uri = arn.intoUri()
+const uriFromArn: Uri = Uri.from(arn)
+const urlFromArn: Url = Url.from(arn)
+const arnPartition: string = arn.partition
+const arnService: string = arn.service
+const arnRegion: string | null = arn.region
+const arnAccount: string | null = arn.account
+const arnResource: string = arn.resource
+const arnResourceSeparator: string | null = arn.resourceSeparator
+const arnResourceType: string | null = arn.resourceType
+const arnResourceId: string = arn.resourceId
+const arnBucket: string | null = arn.bucket
+const arnKey: string | null = arn.key
+const arnLocator: Url = arn.locator()
+const arnSegments: string[] = [...arn]
+const arnStem: string | null = arn.stem
+const arnMimeType: MimeType = arn.mimeType
+const arnMediaType: MediaType = arn.mediaType
+arn.setFileName('value.json')
 
 void uriClone
 void fileUri
@@ -82,7 +114,6 @@ void clearedExtensions
 void uriMimeType
 void uriMediaType
 void urlClone
-void invalidUrlAtRuntime
 void inferredUrl
 void fileUrl
 void fileUrlPath
@@ -97,7 +128,10 @@ void urlBucket
 void urlRegion
 void urlMimeType
 void urlMediaType
+void urlLocator
+void uriLocator
 void urnClone
+void resolvedUrn
 void invalidUrnAtRuntime
 void inferredUrn
 void urnUri
@@ -108,6 +142,33 @@ void urnSegments
 void urnStem
 void urnMimeType
 void urnMediaType
+void urnLocatorPath
+void urnResolved
+void urnResolvedUrl
+void urnLocator
+void arnClone
+void arnParts
+void arnOptionalParts
+void invalidArnAtRuntime
+void inferredArn
+void arnUri
+void uriFromArn
+void urlFromArn
+void arnPartition
+void arnService
+void arnRegion
+void arnAccount
+void arnResource
+void arnResourceSeparator
+void arnResourceType
+void arnResourceId
+void arnBucket
+void arnKey
+void arnLocator
+void arnSegments
+void arnStem
+void arnMimeType
+void arnMediaType
 
 const pathlike = Url.fromString('file:///lake/trades/part-0.tar.gz')
 const urlName: string = pathlike.name
