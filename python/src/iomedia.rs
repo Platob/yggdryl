@@ -2354,7 +2354,7 @@ impl PyTextOptions {
     /// The columns a text read answers, built without reading anything.
     ///
     /// Every column is settled here - the fixed ones, the row header's
-    /// captures, and every lifted entry path - so a caller composing a text
+    /// captures - so a caller composing a text
     /// read with something that reads its payload has the schema before there
     /// is a resource to read.
     fn source_field(&self) -> PyResult<PyField> {
@@ -2368,7 +2368,7 @@ impl PyTextOptions {
     ///
     /// Renaming decides what a column is called and never whether one exists:
     /// a key naming no column is refused. Lifting an entry into a column of
-    /// its own is `lift_names`.
+    /// its own is the row header's own job.
     #[getter]
     fn rename_columns<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let renames = PyDict::new(py);
@@ -2397,33 +2397,6 @@ impl PyTextOptions {
             let to: String = pair.get_item(1)?.extract()?;
             self.inner.rename_columns.insert(from.into(), to.into());
         }
-        Ok(())
-    }
-
-    /// The entry paths lifted into columns of their own.
-    ///
-    /// `None` lifts nothing beyond the row header's own captures; an empty
-    /// list says the same thing explicitly.
-    #[getter]
-    fn lift_names<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
-        self.inner
-            .lift_names()
-            .map(|paths| PyTuple::new(py, paths.iter().map(ToString::to_string)))
-            .transpose()
-    }
-
-    #[setter]
-    fn set_lift_names(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.require_mutable()?;
-        let Some(value) = value else {
-            self.inner.set_lift_paths(None);
-            return Ok(());
-        };
-        let mut paths = Vec::new();
-        for held in value.try_iter()? {
-            paths.push(crate::text::line::core_path_from_value(&held?)?);
-        }
-        self.inner.set_lift_paths(Some(paths));
         Ok(())
     }
 

@@ -2266,8 +2266,9 @@ fn read_line_picks_the_reader_the_row_shape_names() {
 /// The batch readers, each over the one shape it takes.
 ///
 /// A capture arrives as lines - a text reader answers one per line, with the
-/// body beside the `url` and `rownum` it came from - so the codec takes that
-/// shape at two widths: one line at a time, and a stream of Arrow batches.
+/// body beside the `crosscode` and `seqnum` that say which object it came out
+/// of and where in it - so the codec takes that shape at two widths: one line
+/// at a time, and a stream of Arrow batches.
 /// Both are the same read, which is what these pin: the message a stream
 /// answers is the message a line answers.
 #[test]

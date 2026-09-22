@@ -458,7 +458,7 @@ impl JsTextOptions {
     /// The columns a text read answers, built without reading anything.
     ///
     /// Every column is settled here - the fixed ones, the row header's
-    /// captures, and every lifted entry path - so a caller has the schema
+    /// captures - so a caller has the schema
     /// before there is a resource to read.
     #[napi(ts_return_type = "Field")]
     pub fn source_field(&self) -> Result<JsField> {
@@ -471,8 +471,8 @@ impl JsTextOptions {
     /// The emitted name of each column, keyed by its default name.
     ///
     /// Renaming decides what a column is called and never whether one exists:
-    /// a key naming no column is refused. Lifting an entry into a column of
-    /// its own is `liftNames`.
+    /// a key naming no column is refused. Lifting a column out of a line is
+    /// the row header's own job.
     #[napi(getter, ts_return_type = "Record<string, string>")]
     pub fn rename_columns(&self) -> std::collections::HashMap<String, String> {
         self.inner
@@ -492,23 +492,6 @@ impl JsTextOptions {
         for (from, to) in renames.unwrap_or_default() {
             self.inner.rename_columns.insert(from.into(), to.into());
         }
-    }
-
-    /// The entry paths lifted into columns of their own.
-    ///
-    /// `null` lifts nothing beyond the row header's own captures; an empty
-    /// array says the same thing explicitly.
-    #[napi(getter)]
-    pub fn lift_names(&self) -> Option<Vec<String>> {
-        self.inner
-            .lift_names()
-            .map(|paths| paths.iter().map(ToString::to_string).collect())
-    }
-
-    /// Replace the lifted entry paths, resolving each exactly once.
-    #[napi(setter)]
-    pub fn set_lift_names(&mut self, paths: Option<Vec<String>>) -> Result<()> {
-        self.inner.set_lift_names(paths).map_err(napi_error)
     }
 
     /// Return the timezone for offset-free autotyped timestamps.

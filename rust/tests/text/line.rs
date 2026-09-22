@@ -70,7 +70,7 @@ mod internal {
     }
 
     #[test]
-    fn stated_captures_take_the_same_decode_and_make_the_body_the_payload() {
+    fn stated_captures_take_the_same_decode_and_leave_the_body_whole() {
         let mut read = line(b"body \xE9");
         read.set_captures(vec![
             Some(TextBytes::from_bytes(b"caf\xE9").expect("a page")),
@@ -84,8 +84,9 @@ mod internal {
         assert_eq!(read.capture(3), None);
         assert_eq!(read.decoded_byte_size(), 1, "the body's own count");
         assert_eq!(
-            read.payload_bytes().as_bytes(),
-            read.body_bytes().as_bytes()
+            read.body(),
+            "body \u{e9}",
+            "no header matched, so the body is the whole of the bytes"
         );
         read.set_body(TextBytes::from_bytes(b"clean").expect("a page"))
             .expect("a body");
@@ -150,8 +151,8 @@ mod charsets {
             .expect("a header")
     }
 
-    /// The record write's input: one `body` per row, under the `url` a text row
-    /// starts with.
+    /// The record write's input: one `body` per row, under a `url` the intake
+    /// resolves onto the `crosscode` the object is stated in.
     fn rows(bodies: &[&str]) -> RecordBatch {
         let schema = Arc::new(arrow_schema::Schema::new(vec![
             arrow_schema::Field::new("url", arrow_schema::DataType::Utf8, false),
@@ -183,13 +184,11 @@ mod charsets {
                 Some("London".to_owned())
             ]
         );
-        // The body is the whole line, the row header included, read as declared.
+        // The body is the line past the row header, read as declared: the
+        // header's own text is the capture's, and only what follows it is body.
         assert_eq!(
             strings(&batches, "body"),
-            [
-                Some("\u{41c}\u{43e}\u{441}\u{43a}\u{432}\u{430} first".to_owned()),
-                Some("London second".to_owned())
-            ]
+            [Some("first".to_owned()), Some("second".to_owned())]
         );
         for line in lines(&source, &city_header()) {
             assert_eq!(
@@ -202,21 +201,19 @@ mod charsets {
         // Undeclared: the same bytes are the wire, read by rule one - never
         // refused, each stray byte as the Windows-1252 character it is - and the
         // line matches its header over the text it is, so a class that matches
-        // no stray byte matches the characters they were read as. The line
-        // counts the six bytes it read that way.
+        // no stray byte matches the characters they were read as. The count is
+        // of the bytes as they were read, before the header came off, so the
+        // line still counts the six it repaired inside the capture.
         let source = declared("text/plain", wire);
         let read_lines = lines(&source, &city_header());
         assert_eq!(read_lines.len(), 2);
-        assert_eq!(
-            read_lines[0].body(),
-            "\u{cc}\u{ee}\u{f1}\u{ea}\u{e2}\u{e0} first"
-        );
+        assert_eq!(read_lines[0].body(), "first");
         assert_eq!(
             read_lines[0].capture(0),
             Some("\u{cc}\u{ee}\u{f1}\u{ea}\u{e2}\u{e0}")
         );
         assert_eq!(read_lines[0].decoded_byte_size(), 6);
-        assert_eq!(read_lines[1].body(), "London second");
+        assert_eq!(read_lines[1].body(), "second");
         assert_eq!(read_lines[1].capture(0), Some("London"));
         assert_eq!(read_lines[1].decoded_byte_size(), 0);
     }
@@ -255,11 +252,9 @@ mod charsets {
                 .data_type(),
             &arrow_schema::DataType::Utf8
         );
-        assert_eq!(
-            strings(&batches, "body"),
-            [Some("Z\u{fc}rich premi\u{e8}r".to_owned())]
-        );
+        assert_eq!(strings(&batches, "body"), [Some("premi\u{e8}r".to_owned())]);
         assert_eq!(strings(&batches, "city"), [Some("Z\u{fc}rich".to_owned())]);
+        // With no header to take off, the body is the whole declared line.
         let without_header = lines(&source, &TextOptions::new());
         assert_eq!(without_header[0].body(), "Z\u{fc}rich premi\u{e8}r");
         for line in without_header
@@ -302,10 +297,7 @@ mod charsets {
             );
             assert_eq!(
                 strings(&batches, "body"),
-                [
-                    Some("Z\u{fc}rich first".to_owned()),
-                    Some("London second".to_owned())
-                ]
+                [Some("first".to_owned()), Some("second".to_owned())]
             );
             for line in lines(&source, &TextOptions::new()) {
                 assert!(!line.body().contains('\u{feff}'), "{:?}", line.body());
@@ -785,9 +777,12 @@ mod text {
             .map(|line| line.unwrap())
             .collect();
         assert_eq!(lines.len(), 2);
-        // The header is retained whole and the limit bounds what follows it:
-        // `[café] ` then seven of the twelve wire bytes past it.
-        assert_eq!(lines[0].body(), "[caf\u{e9}] first \u{e9}");
+        // The header is retained whole through the cut and the limit bounds
+        // what follows it - `[café] `, then seven of the twelve wire bytes past
+        // it - and the header then comes off, so the body is what the limit
+        // kept of the payload. The decode counted both stray bytes, the one
+        // inside the header included, because it read the line as it was cut.
+        assert_eq!(lines[0].body(), "first \u{e9}");
         assert_eq!(lines[0].capture(0), Some("caf\u{e9}"));
         assert_eq!(lines[0].decoded_byte_size(), 2);
         assert_eq!(
@@ -795,16 +790,13 @@ mod text {
             Some(5),
             "the limit and the count are wire bytes past the header: 12 read, 7 kept"
         );
-        assert_eq!(lines[1].body(), "[plain] second");
+        assert_eq!(lines[1].body(), "second");
         assert_eq!(lines[1].decoded_byte_size(), 0);
 
         let batches = collect(&source, framed(r"^\[(?<kind>(?-u:[^\]]+))\] "));
         assert_eq!(
             bodies(&batches),
-            [
-                "[caf\u{e9}] first \u{e9} line".as_bytes().to_vec(),
-                b"[plain] second".to_vec()
-            ]
+            ["first \u{e9} line".as_bytes().to_vec(), b"second".to_vec()]
         );
         let batch = &batches[0];
         assert_eq!(
@@ -832,7 +824,7 @@ mod text {
             .unwrap()
             .map(|line| line.unwrap())
             .collect();
-        assert_eq!(lines[0].body(), "[A] x\u{e2}\u{201a}");
+        assert_eq!(lines[0].body(), "x\u{e2}\u{201a}");
         assert_eq!(lines[0].decoded_byte_size(), 2);
         assert_eq!(lines[0].dropped_byte_size(), Some(1));
     }
@@ -899,9 +891,10 @@ mod text {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [Filled] 7 {PREVIOUS} O-100 k=v|x=y");
             let line = line(&body, &options);
-            // The body is the whole line; the payload is what follows the header.
-            assert_eq!(line.body(), body);
-            assert_eq!(line.payload_bytes().as_str(), Some("k=v|x=y"));
+            // The body is the payload: the line past the row header, which
+            // came off at construction, through both doors onto it.
+            assert_eq!(line.body(), "k=v|x=y");
+            assert_eq!(line.body_bytes().as_str(), Some("k=v|x=y"));
             assert_eq!(line.entries().map(yggdryl::text::TextEntries::len), Some(2));
             // The captures, in the order the header declares them, and the
             // identifiers the named ones make.
@@ -938,17 +931,31 @@ mod text {
                 (None, None, None)
             );
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
-            // The identity: the instant beside the code of the cross code,
-            // the row and the body. This line names no source, so its code is
-            // the row and the body - and never the body alone, which would
-            // give two rows of one text one identity.
+            // The identity: the instant coupled with the content code, and no
+            // cross-hash seed on this unlocated line. The code is the event the
+            // line is - the names the header lifts out of it, its state, its
+            // place, the element it follows - with the body behind them, so the
+            // body alone does not digest to it.
             assert_ne!(
                 line.get_currhashcode(),
-                yggdryl::xxhash::xxh3(body.as_bytes()),
-                "the row is in the code"
+                yggdryl::xxhash::xxh3(line.body().as_bytes()),
+                "the header's facts are in the code, not the body alone"
             );
-            assert_eq!(line.get_currhashcode(), 10_736_466_920_538_629_996);
+            // Pinned as a number because no public door reproduces it: the
+            // code leaves the capture that dates the line out, which
+            // `digest_event` feeds. It last moved when the code became the
+            // event's own facts rather than the cross code, the row and the
+            // body - the header's captures, its parents, its state, its place
+            // and what it follows, with the body behind them.
+            assert_eq!(line.get_currhashcode(), 9_607_804_996_582_312_670);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+            // The one capture left out of the code is the one that dates the
+            // line, because the instant is coupled with the code rather than
+            // fed into it: the same line at another instant says the same thing
+            // and is another event.
+            let later = self::line(&body.replace("10:15:30Z", "10:15:31Z"), &options);
+            assert_eq!(later.get_currhashcode(), line.get_currhashcode());
+            assert_ne!(later.get_curruuid(), line.get_curruuid());
             // A line is read from a handle: no source, and no parent until a
             // walk states one.
             assert!(line.get_srcuuids().is_empty() && line.get_parentuuids().is_empty());
@@ -1032,8 +1039,10 @@ mod text {
                 (Some(7), Some(8), Some(9))
             );
 
-            // The capture feeds the event columns themselves, not duplicate text
-            // columns behind them, and a row read back states both facts again.
+            // The captures feed the event columns themselves, not duplicate
+            // text columns behind them: all three are consumed, so the row is
+            // the nineteen and the body, and nothing else. A row read back
+            // states every one of the facts again.
             let source = self::line(
                 "2026-01-02T10:15:31Z 2026-01-02T10:15:32Z 2026-01-02T10:15:33Z body",
                 &options,
@@ -1045,7 +1054,7 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            assert_eq!(names, super::with_event(&["sourceurl", "mtime", "body"]));
+            assert_eq!(names, super::with_event(&["body"]));
             for name in ["execunix", "recdunix", "refrecdunix"] {
                 assert_eq!(
                     schema.field_with_name(name).unwrap().data_type(),
@@ -1186,7 +1195,7 @@ mod text {
         }
 
         #[test]
-        fn changing_the_source_refreshes_derived_cross_facts_but_not_a_stated_code() {
+        fn the_object_states_the_cross_facts_and_a_stated_code_names_an_unlocated_line() {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
             let anonymous_uuid = line.get_curruuid();
@@ -1221,12 +1230,21 @@ mod text {
             assert_eq!(line.get_curruuid(), anonymous_uuid);
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
 
+            // A stated code names the chain of a line no object located - a
+            // buffer, a line built by hand - and nothing else: locate the line
+            // again and the object is the chain, exactly as it was, because a
+            // located line's chain is the object it was read from.
             line.set_crosscode("stated-chain".to_owned());
             let stated_uuid = line.get_curruuid();
             assert_ne!(stated_uuid, anonymous_uuid);
             line.set_sourceuri(Some(first));
-            assert_eq!(line.get_crosscode(), "stated-chain");
-            assert_eq!(line.get_curruuid(), stated_uuid);
+            assert_eq!(line.get_crosscode(), first_code.as_str());
+            assert_eq!(
+                line.get_crosshashcode(),
+                yggdryl::xxhash::xxh3(first_code.as_bytes())
+            );
+            assert_eq!(line.get_curruuid(), first_uuid);
+            assert_eq!(line.get_crossuuid(), first_crossuuid);
         }
 
         #[test]
@@ -1332,10 +1350,12 @@ mod text {
             line.set_body(TextBytes::from_bytes("plain").expect("a page"))
                 .expect("a body");
             assert_ne!(line.get_curruuid(), sequenced);
-            // The code is the cross code, the row and the body together; this
-            // line states row 9, so it is not the bare digest of "plain".
-            assert_ne!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
-            assert_eq!(line.get_currhashcode(), 14_379_716_494_988_528_252);
+            // The content code is the event's own facts - here the state and
+            // the sequence the caller stated, the header having matched nothing
+            // on the new body - with the body behind them.
+            let mut digest = line.digest_event();
+            digest.write_bytes(b"plain");
+            assert_eq!(line.get_currhashcode(), digest.as_u64());
             assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
             assert!(line.get_state().is_done(), "stated, so it stands");
             assert_eq!(line.get_seqnum(), 9);
@@ -1371,13 +1391,13 @@ mod text {
                 .expect("a line")
                 .expect("a line");
             assert_eq!(cut.capture(0), Some("INFO"));
-            assert_eq!(cut.payload_bytes().as_str(), Some("a=1|b=2"));
+            assert_eq!(cut.body_bytes().as_str(), Some("a=1|b=2"));
             cut.set_body(page("[DEBUG] c=3")).expect("a body");
             assert_eq!(cut.capture(0), Some("DEBUG"), "read off the new body");
-            assert_eq!(cut.payload_bytes().as_str(), Some("c=3"));
+            assert_eq!(cut.body_bytes().as_str(), Some("c=3"));
             assert_eq!(cut.entries().map(TextEntries::len), Some(1));
             // Captures a caller stated are the line's word, and stand over every
-            // body: the payload is then the whole of the new one.
+            // body: no header is taken off one, so the body is the whole of it.
             let options = Arc::new(options);
             let mut line = TextLine::from_bytes(0, page("[INFO] a=1|b=2"), Arc::clone(&options))
                 .expect("a line");
@@ -1388,7 +1408,7 @@ mod text {
             line.set_body(page("[DEBUG] c=3")).expect("a body");
             assert_eq!(line.capture(0), Some("WARN"), "stated, the captures stand");
             assert_eq!(line.body(), "[DEBUG] c=3");
-            assert_eq!(line.payload_bytes().as_str(), Some("[DEBUG] c=3"));
+            assert_eq!(line.body_bytes().as_str(), Some("[DEBUG] c=3"));
             assert_eq!(line.entries().map(TextEntries::len), Some(1));
             // A stated tree stands over every body, and so does a stated absence.
             line.set_entries(TextEntries::from_bytes(&page("z=9")));
@@ -1535,12 +1555,11 @@ mod text {
                 .map(|field| field.name().as_str())
                 .collect();
             // The batch opens with the nineteen event columns the line is stated
-            // in. Captured facts feed their own event columns, while `seqnum` and
-            // `crosscode` come from the line's row number and source URL.
-            assert_eq!(
-                names,
-                super::with_event(&["sourceurl", "rownum", "mtime", "body"])
-            );
+            // in, and the body closes it. Captured facts feed their own event
+            // columns - every capture this header declares is one, so no capture
+            // column is left - while `seqnum` and `crosscode` state the line's
+            // row number and the object it was read from.
+            assert_eq!(names, super::with_event(&["body"]));
             let cell = |name: &str| batch.column_by_name(name).expect(name).clone();
             assert_eq!(
                 cell("seqnum")
@@ -1582,7 +1601,7 @@ mod text {
         }
 
         #[test]
-        fn explicit_event_sequence_and_cross_code_win_over_arrow_base_facts() {
+        fn an_explicit_sequence_wins_over_the_row_number_and_the_object_states_the_code() {
             let mut options = TextOptions::new();
             options.start_rownum = Some(10);
             let mut lines: Vec<TextLine> =
@@ -1594,29 +1613,17 @@ mod text {
             assert_eq!(lines[0].get_seqnum(), 10);
             assert_eq!(lines[0].get_crosscode(), sourceurl.as_str());
 
+            // The row number and the object have no columns of their own to be
+            // stated in: `seqnum` and `crosscode` are where those facts live.
+            // A sequence the caller states wins over the row number there,
+            // while the object outranks a stated code, because a located line's
+            // chain is the object it was read from.
             lines[0].set_seqnum(77);
             lines[0].set_crosscode("explicit-chain".to_owned());
             let batch = into_arrow_batch(lines, &options).expect("a batch");
-            assert_eq!(
-                batch
-                    .column_by_name("rownum")
-                    .expect("rownum")
-                    .as_any()
-                    .downcast_ref::<arrow_array::Int64Array>()
-                    .expect("a signed row number")
-                    .value(0),
-                10
-            );
-            assert_eq!(
-                batch
-                    .column_by_name("sourceurl")
-                    .expect("sourceurl")
-                    .as_any()
-                    .downcast_ref::<arrow_array::StringArray>()
-                    .expect("a URL")
-                    .value(0),
-                sourceurl
-            );
+            for dropped in ["sourceurl", "rownum", "mtime"] {
+                assert!(batch.column_by_name(dropped).is_none(), "{dropped}");
+            }
             assert_eq!(
                 batch
                     .column_by_name("seqnum")
@@ -1635,17 +1642,20 @@ mod text {
                     .downcast_ref::<arrow_array::StringArray>()
                     .expect("a code")
                     .value(0),
-                "explicit-chain"
+                sourceurl
             );
 
+            // And the intake reads both facts back off those two columns: a
+            // code that reads as a URL locates the line again, and the sequence
+            // restores the index under the offset the read counted from.
             let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("lines read back");
-            assert_eq!(back[0].index(), 0);
+            assert_eq!(back[0].index(), 67);
             assert_eq!(
                 back[0].sourceurl().map(ToString::to_string),
-                Some(sourceurl)
+                Some(sourceurl.clone())
             );
             assert_eq!(back[0].get_seqnum(), 77);
-            assert_eq!(back[0].get_crosscode(), "explicit-chain");
+            assert_eq!(back[0].get_crosscode(), sourceurl.as_str());
         }
 
         #[test]
@@ -1661,14 +1671,14 @@ mod text {
                 .seqnum()
                 .expect_err("a negative row number is not a sequence")
                 .to_string();
-            assert!(refusal.contains("rownum"), "{refusal}");
+            assert!(refusal.contains("seqnum"), "{refusal}");
             assert!(refusal.contains("-1"), "{refusal}");
             // The infallible trait door falls back to the physical index.
             assert_eq!(lines[0].get_seqnum(), 0);
             let error = into_arrow_batch(lines, &options)
                 .expect_err("the event column refuses the negative sequence")
                 .to_string();
-            assert!(error.contains("rownum"), "{error}");
+            assert!(error.contains("seqnum"), "{error}");
             assert!(error.contains("-1"), "{error}");
             assert!(error.contains("physical line 1"), "{error}");
         }

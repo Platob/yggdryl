@@ -14,15 +14,11 @@ CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
 
 
 def lifted() -> TextOptions:
-    options = TextOptions()
-    options.lift_names = ["55"]
-    return options
+    return TextOptions()
 
 
 def lifted_58() -> TextOptions:
-    options = TextOptions()
-    options.lift_names = ["58"]
-    return options
+    return TextOptions()
 
 
 def source(payload: bytes = CAPTURE) -> Buffer:
@@ -99,8 +95,9 @@ class TestTextLine:
         options = TextOptions()
         options.rowheader = r"^\[(?P<level>[A-Z]+)\] "
         line = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
-        # The body is the whole line, and the header is read off it when asked.
-        assert line.body == "[INFO] 8=FIX|55=AAPL|35=D"
+        # The body is the line past its header, which comes off where the
+        # line is made; the captures are what the header named.
+        assert line.body == "8=FIX|55=AAPL|35=D"
         assert line.captures == ("INFO",)
         assert line.mtime is None
         assert line.currunix == 0
@@ -110,7 +107,9 @@ class TestTextLine:
         later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
         assert later.index == 7
         assert line.curruuid != later.curruuid
-        assert line.currhashcode == TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        # A line read under no header states the whole text as its body and
+        # names nothing, so it is a different event from this one.
+        assert line.currhashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
         # Another body is another code, and so another identity.
         other = TextLine(7, "[INFO] 8=FIX|55=MSFT|35=D", None, options)
         assert other.currhashcode != line.currhashcode
@@ -238,12 +237,6 @@ class TestTextIsDecodedWhereTheLineIsMade:
 
 
 class TestTextOptions:
-    def test_lift_names_round_trips(self) -> None:
-        options = lifted()
-        assert options.lift_names is not None
-        options.lift_names = None
-        assert options.lift_names is None
-
     def test_rename_columns_round_trips_and_renames(self) -> None:
         options = TextOptions()
         options.rename_columns = {"body": "payload"}
@@ -258,9 +251,11 @@ class TestTextOptions:
         with pytest.raises(ValueError, match="nosuch"):
             options.source_field()
 
-    def test_a_lifted_column_appears_in_the_schema_before_any_read(self) -> None:
-        names = [child.name for child in lifted().source_field()]
-        assert "55" in names
+    def test_a_capture_column_appears_in_the_schema_before_any_read(self) -> None:
+        options = TextOptions()
+        options.rowheader = r"^(?P<level>[A-Z]+) "
+        names = [child.name for child in options.source_field()]
+        assert "level" in names
 
     def test_the_options_stay_hashable_with_both_new_fields(self) -> None:
         options = lifted()
@@ -300,11 +295,3 @@ class TestFieldPathAlias:
             with pytest.raises(ValueError, match="field path"):
                 FieldPath(text)
 
-    def test_a_lifted_path_names_its_column_with_its_alias(self) -> None:
-        options = TextOptions()
-        options.lift_names = ['"55" as symbol']
-        names = [child.name for child in options.source_field()]
-        assert "symbol" in names
-        assert "55" not in names
-        line = next(iter(source(b"55=AAPL\n").read_text_lines(options=options)))
-        assert line.get_entry_by_path("55").value == "AAPL"

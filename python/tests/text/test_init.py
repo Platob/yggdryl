@@ -134,7 +134,7 @@ def test_text_options_are_flat_validated_values() -> None:
             constructor(incomplete)
 
     with pytest.raises(
-        ValueError, match="distinct from sourceurl, rownum, body, dropped_byte_size and the event columns"
+        ValueError, match="distinct from body, dropped_byte_size and the event columns"
     ):
         options.rowheader = r"(?<body>.+)"
     with pytest.raises(ValueError, match="expected one of keep, drop, error"):
@@ -182,32 +182,28 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
 
     reader = source.read_arrow_reader(options=options)
     assert isinstance(reader, pa.RecordBatchReader)
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "rownum", "mtime", "body", "level", "id"]
-    # A location is its own datatype over Utf8 storage, and it is nullable
-    # because a handle that is nowhere has none to state.
-    url_field = reader.schema.field("sourceurl")
-    assert url_field.type == pa.string()
-    assert url_field.nullable is True
-    assert url_field.metadata[b"ARROW:extension:name"] == b"yggdryl.url"
-    assert Field.from_arrow(url_field).dtype == DataType("url")
-    assert reader.schema.field("rownum").type == pa.int64()
-    assert reader.schema.field("mtime").type == pa.timestamp("ns", "UTC")
+    assert reader.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
+    # The object a line came from is the chain it stands in, so the read
+    # names it under `crosscode` rather than in a column of its own.
+    assert reader.schema.field("crosscode").type == pa.string()
+    assert reader.schema.field("seqnum").type == pa.uint64()
+    assert reader.schema.field("currunix").type == pa.timestamp("ns", "UTC")
     assert reader.schema.field("body").type == pa.string()
     assert reader.schema.field("level").type == pa.string()
     assert reader.schema.field("id").type == pa.int64()
 
     table = reader.read_all()
-    assert table.column("rownum").to_pylist() == [10, 11, 12]
-    assert table.column("mtime").to_pylist() == [MTIME, MTIME, MTIME]
-    # The body is the whole line, its row header included; the edges are
-    # what stripping removes.
-    assert table.column("body").to_pylist() == ["[INFO] id=7 first", "[WARN] id=9 second", "plain"]
+    assert table.column("seqnum").to_pylist() == [10, 11, 12]
+    assert table.column("currunix").to_pylist() == [MTIME, MTIME, MTIME]
+    # The body is the line past its row header; the edges are what stripping
+    # removes, and the header is what the reader took off.
+    assert table.column("body").to_pylist() == [" first", " second", "plain"]
     assert table.column("level").to_pylist() == ["INFO", "WARN", None]
     assert table.column("id").to_pylist() == [7, 9, None]
     # A located handle states the canonical URL of where it holds the bytes.
     located = str(source.url)
     assert located.startswith("file:///") and located.endswith("app.log")
-    assert table.column("sourceurl").to_pylist() == [located] * 3
+    assert table.column("crosscode").to_pylist() == [located] * 3
 
     # The nineteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
@@ -241,27 +237,18 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     assert list(source.read_records(options=options)) == [
         {
             **event(0, 10, {"id": "7", "level": "INFO"}),
-            "sourceurl": table.column("sourceurl")[0].as_py(),
-            "rownum": 10,
-            "mtime": MTIME,
-            "body": "[INFO] id=7 first",
+            "body": " first",
             "level": "INFO",
             "id": 7,
         },
         {
             **event(1, 11, {"id": "9", "level": "WARN"}),
-            "sourceurl": table.column("sourceurl")[1].as_py(),
-            "rownum": 11,
-            "mtime": MTIME,
-            "body": "[WARN] id=9 second",
+            "body": " second",
             "level": "WARN",
             "id": 9,
         },
         {
             **event(2, 12, None),
-            "sourceurl": table.column("sourceurl")[2].as_py(),
-            "rownum": 12,
-            "mtime": MTIME,
             "body": "plain",
             "level": None,
             "id": None,
@@ -289,14 +276,14 @@ def test_a_line_that_was_not_utf_8_reaches_the_body_column_as_text(
     # gives it: the lone byte is one character, and the UTF-8 pair beside it
     # is the same character it was.
     assert table.column("body").to_pylist() == [
-        "[INFO] id=7 caf\u00e9 caf\u00e9",
-        "[WARN] id=9 \u20ac \u201cquoted\u201d",
+        " caf\u00e9 caf\u00e9",
+        " \u20ac \u201cquoted\u201d",
         "plain",
     ]
     assert table.column("level").to_pylist() == ["INFO", "WARN", None]
     assert [row["body"] for row in source.read_records(options=options)] == [
-        "[INFO] id=7 caf\u00e9 caf\u00e9",
-        "[WARN] id=9 \u20ac \u201cquoted\u201d",
+        " caf\u00e9 caf\u00e9",
+        " \u20ac \u201cquoted\u201d",
         "plain",
     ]
 
@@ -311,7 +298,7 @@ def test_stripping_is_an_edge_operation_and_the_row_header_stays_in_the_body(
     options.rstrip = [r"\s+--$"]
 
     row = next(source.read_records(options=options))
-    assert row["body"] == "[INFO] id=7 right"
+    assert row["body"] == " right"
     assert row["level"] == "INFO"
     assert row["id"] == 7
 
@@ -341,7 +328,7 @@ def test_capture_types_come_from_regex_before_any_row_is_read(
     table = handle(tmp_path, b"1\nword\n", "broad.txt").read_arrow_reader(
         options=broad
     ).read_all()
-    assert table.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body", "value"]
+    assert table.schema.names == EVENT_COLUMNS + ["body", "value"]
     assert table.column("value").to_pylist() == ["1", "word"]
 
 
@@ -372,43 +359,36 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
     options.rowheader = ROWHEADER
     options.start_rownum = 1
 
-    # On by default, and pinned between the row number and the body.
+    # On by default, and the line's instant is where the event states it.
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "rownum", "mtime", "body", "level", "id"]
-    assert reader.schema.field("mtime") == pa.field(
-        "mtime", pa.timestamp("ns", "UTC"), nullable=True
+    assert reader.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
+    assert reader.schema.field("currunix") == pa.field(
+        "currunix", pa.timestamp("ns", "UTC"), nullable=False
     )
 
     # No capture is spelled `mtime`, so the handle's own modification time is
     # read once and dates every row it answers with.
-    assert reader.read_all().column("mtime").to_pylist() == [MTIME, MTIME]
-    assert [row["mtime"] for row in source.read_records(options=options)] == [
+    assert reader.read_all().column("currunix").to_pylist() == [MTIME, MTIME]
+    assert [row["currunix"] for row in source.read_records(options=options)] == [
         MTIME,
         MTIME,
     ]
 
-    # A buffer was never written anywhere, so it has no such time to answer.
+    # A buffer was never written anywhere, so it has no such time to answer,
+    # and an instant nothing states reads as the epoch.
     buffered = IOBase.from_bytes(b"[INFO] id=7 first\n[WARN] id=9 second\n")
     table = buffered.read_arrow_reader(options=options).read_all()
-    assert table.schema.names == EVENT_COLUMNS + ["sourceurl", "rownum", "mtime", "body", "level", "id"]
-    assert table.column("mtime").to_pylist() == [None, None]
-    # It is still somewhere - in memory - and that location is what it states.
+    assert table.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
+    epoch = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
+    assert table.column("currunix").to_pylist() == [epoch, epoch]
+    # It is still somewhere - in memory - and that location is the chain it
+    # stands in.
     assert str(buffered.url).startswith("mem://")
-    assert table.column("sourceurl").to_pylist() == [str(buffered.url)] * 2
-    assert [row["mtime"] for row in buffered.read_records(options=options)] == [
-        None,
-        None,
-    ]
+    assert table.column("crosscode").to_pylist() == [str(buffered.url)] * 2
 
-    # Off, the column is gone and the rest of the field keeps its order.
+    # Off, the capture name is free again and the field keeps its order.
     options.parse_mtime = False
-    assert source.read_arrow_reader(options=options).schema.names == EVENT_COLUMNS + [
-        "sourceurl",
-        "rownum",
-        "body",
-        "level",
-        "id",
-    ]
+    assert source.read_arrow_reader(options=options).schema.names == EVENT_COLUMNS + ["body", "level", "id"]
 
 
 def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> None:
@@ -422,19 +402,20 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
         2026, 8, 14, 9, 30, 15, tzinfo=datetime.timezone.utc
     )
 
-    # One column whichever answered: the capture fills the fixed column instead
-    # of trailing beside it, and the line the header missed falls back to the
+    # One instant whichever answered: the capture dates the line instead of
+    # trailing beside it, and the line the header missed falls back to the
     # handle's own modification time.
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body"]
-    assert reader.schema.field("mtime").type == pa.timestamp("ns", "UTC")
-    assert reader.read_all().column("mtime").to_pylist() == [captured, MTIME]
+    assert reader.schema.names == EVENT_COLUMNS + ["body"]
+    assert reader.schema.field("currunix").type == pa.timestamp("ns", "UTC")
+    assert reader.read_all().column("currunix").to_pylist() == [captured, MTIME]
 
-    # Off, the name is an ordinary capture again: it trails the body, keeps the
-    # resolution its own syntax declares, and is null wherever the header missed.
+    # Off, the name is an ordinary capture again: it trails the body in a
+    # column of its own, keeps the resolution its own syntax declares, and is
+    # null wherever the header missed.
     options.parse_mtime = False
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "body", "mtime"]
+    assert reader.schema.names == EVENT_COLUMNS + ["body", "mtime"]
     assert reader.schema.field("mtime").type == pa.timestamp("s", "UTC")
     assert reader.read_all().column("mtime").to_pylist() == [captured, None]
 
@@ -472,13 +453,11 @@ def test_retained_text_options_parse_the_real_execution_row(
     assert row["module"] == "ModuleFailFastFilterChecker"
     assert row["level"] == "DEBUG"
     assert row["body"] == (
-        "2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] "
-        "[ModuleFailFastFilterChecker] (DEBUG) Execution report "
-        "(execId: 20260828180000369318, from session:"
+        "Execution report (execId: 20260828180000369318, from session:"
     )
     # No capture is spelled `mtime`, so the file's own modification time dates
     # the row.
-    assert row["mtime"] == MTIME
+    assert row["currunix"] == MTIME
 
 
 def test_a_comma_fraction_is_a_timestamp_column_and_not_a_string(
@@ -588,28 +567,21 @@ def test_framing_normalizes_terminators_and_reports_record_caps(
     base.batch_row_size = 1
 
     for limit, expected_bodies, expected_dropped in (
-        # The header is always retained; the limit bounds what follows it.
-        (7, ["[A] abc\ndef", "[B] xyz"], [None, None]),
-        (6, ["[A] abc\nde", "[B] xyz"], [1, None]),
-        (0, ["[A] ", "[B] "], [7, 3]),
+        # The header comes off the body; the limit bounds what follows it.
+        (7, ["abc\ndef", "xyz"], [None, None]),
+        (6, ["abc\nde", "xyz"], [1, None]),
+        (0, ["", ""], [7, 3]),
     ):
         options = copy.copy(base)
         options.max_record_byte_size = limit
         reader = source.read_arrow_reader(options=options)
-        assert reader.schema.names == EVENT_COLUMNS + [
-            "sourceurl",
-            "rownum",
-            "mtime",
-            "body",
-            "dropped_byte_size",
-            "kind",
-        ]
+        assert reader.schema.names == EVENT_COLUMNS + ["body", "dropped_byte_size", "kind"]
         batches = list(reader)
         assert [batch.num_rows for batch in batches] == [1, 1]
         table = pa.Table.from_batches(batches)
         assert table.column("body").to_pylist() == expected_bodies
         assert table.column("dropped_byte_size").to_pylist() == expected_dropped
-        assert table.column("rownum").to_pylist() == [2, 4]
+        assert table.column("seqnum").to_pylist() == [2, 4]
         assert table.column("kind").to_pylist() == ["A", "B"]
 
     rejected = copy.copy(base)
@@ -633,13 +605,13 @@ def test_compressed_logs_stream_their_records_without_naming_the_coding(
     ):
         source = handle(tmp_path, encoded, name)
         reader = source.read_arrow_reader(options=options)
-        assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body", "kind"]
+        assert reader.schema.names == EVENT_COLUMNS + ["body", "kind"]
 
         # The coding decodes as the batches are pulled, one record at a time.
         batches = list(reader)
         assert [batch.num_rows for batch in batches] == [1, 1]
         table = pa.Table.from_batches(batches)
-        assert table.column("body").to_pylist() == ["[A] first\ncontinued", "[B] second"]
+        assert table.column("body").to_pylist() == ["first\ncontinued", "second"]
         assert table.column("kind").to_pylist() == ["A", "B"]
 
         # The property counts through the same decoded stream, under the
@@ -663,7 +635,7 @@ def test_an_empty_or_absent_compressed_log_keeps_its_schema(
         ("absent.log.zst", IOBase(tmp_path / "absent.log.zst")),
     ):
         reader = source.read_arrow_reader(options=options)
-        assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body", "kind"], name
+        assert reader.schema.names == EVENT_COLUMNS + ["body", "kind"], name
         assert reader.read_all().num_rows == 0, name
         assert source.row_size == 0, name
 
@@ -683,17 +655,17 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     options.lstrip = [r"^\s+"]
 
     rows = list(IOBase(root).read_records(options=options))
-    assert [row["rownum"] for row in rows] == [1, 1]
+    assert [row["seqnum"] for row in rows] == [1, 1]
     # Each leaf answers with its own modification time.
-    assert [row["mtime"] for row in rows] == [MTIME, MTIME]
-    assert [row["body"] for row in rows] == ["[INFO] id=1 from a", "[WARN] id=2 from b"]
+    assert [row["currunix"] for row in rows] == [MTIME, MTIME]
+    assert [row["body"] for row in rows] == [" from a", " from b"]
     assert [row["id"] for row in rows] == [1, 2]
-    assert [pathlib.PurePosixPath(row["sourceurl"]).name for row in rows] == [
+    assert [pathlib.PurePosixPath(row["crosscode"]).name for row in rows] == [
         "a.log",
         "b.log.gz",
     ]
     # Each leaf states the canonical `file:` URL of where it was read from.
-    assert [row["sourceurl"] for row in rows] == [
+    assert [row["crosscode"] for row in rows] == [
         (root / "a.log").as_uri(),
         (root / "b.log.gz").as_uri(),
     ]
@@ -706,14 +678,14 @@ def test_absence_and_zero_row_bounds_keep_the_regex_derived_schema(
     options.rowheader = ROWHEADER
     reader = IOBase(tmp_path / "missing.log").read_arrow_reader(options=options)
 
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body", "level", "id"]
+    assert reader.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
     assert reader.schema.field("level").type == pa.string()
     assert reader.schema.field("id").type == pa.int64()
     assert reader.read_all().num_rows == 0
 
     options.max_row_size = 0
     reader = handle(tmp_path, b"[INFO] id=1 hidden\n").read_arrow_reader(options=options)
-    assert reader.schema.names == EVENT_COLUMNS + ["sourceurl", "mtime", "body", "level", "id"]
+    assert reader.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
     assert reader.read_all().num_rows == 0
 
 
@@ -728,7 +700,7 @@ def test_declared_text_field_uses_the_shared_projection_and_cast(
 
     field = source.read_arrow_field(options=options)
     assert field.dtype == DataType("struct<body: binary not null, id: int64>")
-    assert list(source.read_records(options=options)) == [{"body": b"[INFO] id=7 body", "id": 7}]
+    assert list(source.read_records(options=options)) == [{"body": b" body", "id": 7}]
 
 
 def test_a_nanosecond_modification_time_reaches_a_record_floored(
@@ -751,10 +723,10 @@ def test_a_nanosecond_modification_time_reaches_a_record_floored(
     # The batch path keeps every nanosecond of it, which is why the count and
     # not the `datetime` is what proves it.
     table = source.read_arrow_reader(options=TextOptions()).read_all()
-    assert table.column("mtime").cast(pa.int64()).to_pylist() == [stored_stamp, stored_stamp]
+    assert table.column("currunix").cast(pa.int64()).to_pylist() == [stored_stamp, stored_stamp]
 
     # The record path hands back the microsecond `datetime` holds.
-    assert [row["mtime"] for row in source.read_records(options=TextOptions())] == [
+    assert [row["currunix"] for row in source.read_records(options=TextOptions())] == [
         MTIME,
         MTIME,
     ]
@@ -775,15 +747,15 @@ def test_a_text_read_is_shaped_by_select_and_where_given_as_properties(tmp_path)
     table = source.read_arrow_reader(
         rowheader=ROWHEADER,
         start_rownum=1,
-        select="sourceurl, cast(rownum as int32) as n, trim(body) as line, log.shout(trim(body)) as loud, level, id * 10 as tenfold",
+        select="crosscode, cast(seqnum as int32) as n, trim(body) as line, log.shout(trim(body)) as loud, level, id * 10 as tenfold",
         filter="n > 1 and line like '%d' and level is not null",
     ).read_all()
-    assert table.schema.names == ["sourceurl", "n", "line", "loud", "level", "tenfold"]
+    assert table.schema.names == ["crosscode", "n", "line", "loud", "level", "tenfold"]
     assert table.schema.field("n").type == pa.int32()
-    assert table.column("line").to_pylist() == ["[WARN] id=9 second", "[INFO] id=11 third"]
-    assert table.column("loud").to_pylist() == ["[WARN] ID=9 SECOND", "[INFO] ID=11 THIRD"]
+    assert table.column("line").to_pylist() == ["second", "third"]
+    assert table.column("loud").to_pylist() == ["SECOND", "THIRD"]
     assert table.column("tenfold").to_pylist() == [90, 110]
-    assert table.column("sourceurl").to_pylist() == [str(source.url)] * 2
+    assert table.column("crosscode").to_pylist() == [str(source.url)] * 2
 
     # An Ellipsis property is skipped, and the same read spelled as a plan
     # and as given options with one property on top agree.
@@ -794,9 +766,9 @@ def test_a_text_read_is_shaped_by_select_and_where_given_as_properties(tmp_path)
         options=options, select="body as line", filter=..., start_rownum=...
     ).read_all()
     assert same.column("line").to_pylist() == [
-        "[INFO] id=7 first",
-        "[WARN] id=9 second",
-        "[INFO] id=11 third",
+        " first",
+        " second",
+        " third",
         "plain",
     ]
     assert (

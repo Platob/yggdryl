@@ -11,6 +11,7 @@ Lines out of a handle - as native scalars, as Arrow batches - and the Rust conve
 | Row shape | a mapping per row in the bindings; an ordered `Scalar::Sequence` under the root in the [value model](../../types/scalar.md) |
 | Batches | an [`arrow::BatchReader`](../../arrow/readers.md) over the [row schema](index.md#row-schema); `read_arrow_field` answers it before any byte is read |
 | Lazy | one decode, `read_text_lines`, behind both surfaces: a batch is built as the reader is stepped and only the current one is alive |
+| Clauses | `read_records` and the Arrow reads answer the [`select` and `where` sections](options.md); `read_text_lines` answers every line, because a `where` may name a column the `select` builds and no line states one |
 | Intake | column names match exactly, then ignoring case, then against the spellings each column is commonly written under |
 | Charset | bodies and captures cross in the charset the handle's media type [declares](lines.md#declaring-a-charset) |
 | Absence | a location that holds nothing yields no rows, and the full schema still comes before iteration |
@@ -50,8 +51,9 @@ Native rows first: Python and JavaScript hand back one mapping per row, and Rust
 
     rows = list(IOBase(source).read_records(options=TextOptions()))
     assert [row["body"] for row in rows] == ["first", "second", "third"]
-    # `start_rownum` is unset, so there is no `rownum` column to read.
-    assert "rownum" not in rows[0]
+    # `start_rownum` is unset, so the first line's place is zero, which a
+    # `seqnum` states as nothing.
+    assert rows[0]["seqnum"] is None
     ```
 
 === "JavaScript"
@@ -142,28 +144,22 @@ The same records without the crossing: a read returns a reader, and stepping it 
 
 ## Row numbers and captures
 
-`start_rownum` numbers the first physical line of each record and adds the
-`rownum` column; unset, the column is absent. The event `seqnum` is the same
-row number, or the zero-based physical index when `start_rownum` is unset, and
-preserves gaps for blank lines the reader skipped. Likewise, the identifier the
-read was addressed by owns the event `crosscode`: the line is crossed with that
-identifier's canonical text, which on a located read - the common case - is the
-same text the `sourceurl` column holds. A line read under a name is crossed
-with that name, while its `sourceurl` holds where the name resolves to - the
-path it spells, rooted by default in the directory the process is running in -
-so the two columns say different things and each says the true one. A line
-read under no identifier has neither. The code's `crosshashcode` is what the cross identity
-is the UUIDv8 of, so changing the source refreshes that identity; the current
-one is the instant and the line's code, which digests that identifier text with
-the row number and the body, so a source reaches it too - through a name as
-through a location. A row header therefore cannot declare a `seqnum` or `crosscode`
-capture, in any case. An explicit non-null Event column read back from Arrow
-remains an override of the corresponding base fact.
+`start_rownum` numbers the first physical line of each record, and `seqnum` is
+where the row states it: the same row number, or the zero-based physical index
+when `start_rownum` is unset, preserving the gaps blank lines left. There is no
+second column beside it, and a count cannot hold a negative number, so a
+negative `start_rownum` is refused by name rather than counted down through
+zero. `crosscode` is the identifier the read was addressed by, as its canonical
+text - the URL where that identifier is a location, which is the common case,
+and the name itself where it is a name, never the place a name resolves to -
+and its `crosshashcode` seeds the line's current identity. So a line's chain is
+what it was read under, moving it refreshes both UUIDs, and a read through a
+name is crossed the same wherever the process happened to be running. A row
+header therefore cannot declare a `seqnum` or `crosscode` capture, in any case.
 
 A [row header](lines.md#lines) adds one column per other capture, typed from
-the regex when `autotype` is on, and a [lifted entry](lines.md#lifting-an-entry-into-a-column)
-adds one more. Every added column reaches a record row under the name it is
-emitted as.
+the regex when `autotype` is on. It is the only thing that adds one: every
+added column reaches a record row under the name it is emitted as.
 
 ## Reading Arrow back into lines
 
@@ -181,20 +177,20 @@ called.
 
 | column | also found as |
 | --- | --- |
-| `sourceurl` | `url`, `source`, `uri`, `path`, `file`, `location` |
-| `rownum` | `row_number`, `rownumber`, `line_number`, `lineno`, `row` |
-| `mtime` | `timestamp`, `time`, `ts`, `written_at`, `event_time` |
+| `crosscode` | `sourceurl`, `url`, `source`, `uri`, `path`, `file`, `location` |
+| `seqnum` | `rownum`, `row_number`, `rownumber`, `line_number`, `lineno`, `row` |
 | `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |
 | `body` | `payload`, `message`, `line`, `text`, `content`, `raw` |
 | `dropped_byte_size` | `dropped`, `dropped_bytes`, `truncated_bytes` |
-| the nineteen [event columns](../../graph.md#columns) | their own names only, exactly or ignoring case |
+| the other seventeen [event columns](../../graph.md#columns) | their own names only, exactly or ignoring case |
+
+The two spellings a producer wrote the object and the row number under resolve
+onto the columns that state them, so a batch written before they were event
+facts reads back into the same lines.
 
 A batch carrying the event columns restates their non-null values on each line
 read back - the identity a message named as its source survives the round trip -
-and a batch without them leaves each line to derive its own facts. In particular,
-an explicit event `seqnum` or `crosscode` wins over the same row's base
-`rownum` or `sourceurl`; without that explicit value, `rownum` and `sourceurl`
-remain the single sources of those event facts.
+and a batch without them leaves each line to derive its own facts.
 
 - The column plan is resolved once, at intake: a matched column whose Arrow
   datatype is not the one the options plan for it is refused there, at
@@ -204,26 +200,21 @@ remain the single sources of those event facts.
   when it is pulled. A batch whose schema differs from the reader's declared
   schema, a source error, or any row refusal is answered once and fuses the
   iterator. `from_arrow_batch` reads its one bounded batch into a `Vec`.
-- A persisted `rownum` is `start_rownum` plus the line's index; reading
-  subtracts the same configured start and refuses a row number before it.
-  That restored index supplies the default event `seqnum`; a non-null event
-  `seqnum` column remains an explicit override. Without a `rownum` column the
-  index is the row's stream ordinal, continuous across batches, so physical
-  gaps the read dropped are not recovered.
-- A persisted `sourceurl` restores the line's shared URL and the identifier it
-  was read under together - a row states its source as a location, so a row is
-  read back as one that was addressed by that location - and its canonical
-  text supplies the default event `crosscode`; a non-null event `crosscode`
-  column remains an explicit override, which is how a line read under a name
-  comes back crossed with that name while its `sourceurl` cell restores the
-  place the name resolved to when the row was written. The name itself is not
-  restored to `sourceuri`, because the row recorded where it was rather than
-  what it was called; the `crosscode` column is what carries the name across,
-  and the identity rests on that. Its `crosshashcode` is what the derived
-  `crossuuid` is taken from, so either value is applied before an unstated
-  identity is resolved. With neither source column nor override, the
-  identifier and code stay absent.
-- A null cell stays absent. A malformed present value - a `rownum` before the
+- A persisted `seqnum` is `start_rownum` plus the line's index; reading
+  subtracts the same configured start and refuses a sequence number before it.
+  Without a `seqnum` column - which is what a first line numbered zero states,
+  since a place of zero is null - the index is the row's stream ordinal,
+  continuous across batches, so physical gaps the read dropped are not
+  recovered.
+- A persisted `crosscode` that reads as an identifier restores what the line
+  was addressed by, so the source survives the round trip in the column that
+  names its chain: a URL restores as itself, and a `urn:` or `arn:` restores as
+  the name it was, locating itself again wherever it resolves to now. A code
+  that is no identifier is an ordinary code and addresses nothing - text
+  carrying no scheme is not read as a relative path here, or every stated code
+  would come back naming a file. Its `crosshashcode` seed participates in the
+  derived `curruuid`, so it is applied before an unstated identity is resolved.
+- A null cell stays absent. A malformed present value - a `seqnum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
   that does not parse, a null in the required `body` - is refused rather than
   read as zero or dropped. A null event `seqnum` or `crosscode` therefore does
@@ -253,7 +244,7 @@ let line = TextLine::from_bytes(2, TextBytes::from_bytes("first")?, Arc::new(opt
     .with_captures(vec![None, Some(TextBytes::from_bytes("0007")?)])?;
 let batch = into_arrow_batch([line], &options)?;
 
-// The stored rownum is 12, and reading subtracts the start again; the `id`
+// The stored seqnum is 12, and reading subtracts the start again; the `id`
 // capture is int64, so it comes back canonical, still at index 1.
 let lines = from_arrow_batch(&batch, &options)?;
 assert_eq!(lines[0].index(), 2);
@@ -263,9 +254,9 @@ assert_eq!((lines[0].capture(0), lines[0].capture(1)), (None, Some("7")));
 // stream ordinal and column.
 options.start_rownum = Some(13);
 let error = from_arrow_batch(&batch, &options).unwrap_err().to_string();
-assert!(error.contains("$[0].rownum"), "{error}");
+assert!(error.contains("$[0].seqnum"), "{error}");
 
-// No rownum column: indices are stream ordinals across batches, and a batch
+// No seqnum column: indices are stream ordinals across batches, and a batch
 // with another schema refuses once and fuses the stream.
 let bodies = |name: &str, values: Vec<&'static str>| {
     RecordBatch::try_from_iter([(name, Arc::new(StringArray::from(values)) as ArrayRef)])

@@ -1,7 +1,7 @@
 //! The compiled column plan one text read is answered by.
 //!
 //! Which columns exist, in what order, under which names, at which datatypes,
-//! whether a capture is consumed by a column the line already states - is
+//! whether a capture is consumed by a fact the line already states - is
 //! decided here, once, before a byte is read. The per-row path then reads
 //! each planned column off the line's own reading of it, which resolves on
 //! the first ask and once: a batch asks every row for every column of the
@@ -17,31 +17,23 @@ use std::collections::BTreeMap;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::EventColumn;
-use crate::{DataType, Error, Field, FieldPath, Result, StructType};
+use crate::{DataType, Error, Field, Result, StructType};
 
-use super::options::{MIMETYPE_COLUMN, MTIME_COLUMN, TextOptions, mtime_dtype};
+use super::options::{MIMETYPE_COLUMN, TextOptions};
 
 /// What fills one emitted column.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TextSource {
     /// One of the nineteen columns the line is stated in as an event.
     Event(EventColumn),
-    /// The object the line was read from.
-    Url,
-    /// The physical line number, offset by the configured first value.
-    Rownum,
-    /// When the record was written.
-    Timestamp,
     /// What the line was classified as.
     BodyType,
-    /// The line itself.
+    /// The line itself, past its row header.
     Body,
     /// How many bytes went over the retained limit.
     DroppedByteSize,
     /// One row-header capture, by position in the expression.
     Capture(usize),
-    /// One entry, by resolved path.
-    Entry(FieldPath),
 }
 
 /// One emitted column, fully resolved.
@@ -79,13 +71,13 @@ impl TextPlan {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] for a rename naming no column, two
-    /// columns renamed onto one name, or a lifted path colliding with a column.
-    /// The options are left exactly as they were.
+    /// Returns [`Error::InvalidRecord`] for a rename naming no column or two
+    /// columns renamed onto one name. The options are left exactly as they
+    /// were.
     pub(crate) fn compile(options: &TextOptions) -> Result<Self> {
         options.require_retained_body()?;
         let mut columns =
-            Vec::with_capacity(EventColumn::ALL.len() + 8 + options.capture_names().len());
+            Vec::with_capacity(EventColumn::ALL.len() + 3 + options.capture_names().len());
         // The event the line is, in the nineteen columns every graph event
         // is stated in - the same a FIX row opens with - so a message's
         // `srcuuids` joins the line's `curruuid` here, and a line read back
@@ -99,34 +91,6 @@ impl TextPlan {
                 column.datatype()?,
                 column.nullable(),
                 Some(column.description()),
-            );
-        }
-        push(
-            &mut columns,
-            TextSource::Url,
-            ("sourceurl", "SourceUrl"),
-            DataType::url(),
-            true,
-            "The URL of the object this line was read from.",
-        );
-        if options.start_rownum.is_some() {
-            push(
-                &mut columns,
-                TextSource::Rownum,
-                ("rownum", "RowNum"),
-                DataType::Int64,
-                false,
-                "The physical line number within that object.",
-            );
-        }
-        if options.parse_mtime {
-            push(
-                &mut columns,
-                TextSource::Timestamp,
-                (MTIME_COLUMN, "MTime"),
-                mtime_dtype(),
-                true,
-                "When the record was written: its own captured timestamp, or the handle's modification time when it declares none.",
             );
         }
         if options.parse_mimetype {
@@ -145,7 +109,7 @@ impl TextPlan {
             ("body", "Body"),
             DataType::utf8(),
             false,
-            "The line itself, as text: the row header included, the edges stripped, the byte limit applied; never empty, because a line with no body is no line.",
+            "The line past its row header, as text: the edges stripped, the byte limit applied; never empty, because a line with no body is no line.",
         );
         if options.max_record_byte_size().is_some() {
             push(
@@ -175,31 +139,6 @@ impl TextPlan {
                 true,
                 Some(
                     "One row-header capture, read at the datatype its syntax matches; empty on every line the header declared it for and did not match.",
-                ),
-            );
-        }
-        for path in options.lift_paths() {
-            // A lifted column takes the path's alias where it writes one, and
-            // the last segment's own name otherwise. `55 as symbol` therefore
-            // names its column in the same breath that selects it, and the
-            // rename map stays for columns that are already there.
-            let name = path.column_name().map(SmolStr::new).ok_or_else(|| {
-                Error::InvalidRecord {
-                    path: SmolStr::new_static("$.lift_names"),
-                    reason: format_smolstr!(
-                        "expected a lifted path ending in a name, or one aliased with `as`, got {path}"
-                    ),
-                }
-            })?;
-            push_named(
-                &mut columns,
-                TextSource::Entry(path.clone()),
-                name,
-                None,
-                DataType::utf8(),
-                true,
-                Some(
-                    "One entry lifted out of the payload by its path; empty on every line that stated nothing under it, which is what lifting a path out of a shape that varies is for.",
                 ),
             );
         }
@@ -295,7 +234,7 @@ fn rename(columns: &mut [TextColumn], renames: &BTreeMap<SmolStr, SmolStr>) -> R
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.rename_columns"),
                 reason: format_smolstr!(
-                    "expected a column name to rename, got {from:?}; lift an entry with lift_names instead"
+                    "expected a column name to rename, got {from:?}; only a row-header capture adds one"
                 ),
             });
         };

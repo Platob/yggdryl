@@ -160,13 +160,16 @@ mod text {
         let batches = collect(&source, options);
         assert_eq!(batches.len(), 2);
         let bodies = bodies(&batches);
+        // The body is the record past the `[A] ` its header matched: what is
+        // left is the header line's own payload, the window of filler, and the
+        // continuation the frame swept up behind it.
         assert_eq!(
             bodies[0].len(),
-            4 + 6 + yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
+            6 + yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
         );
-        assert!(bodies[0].starts_with(b"[A] first\nxxxxxxxx"));
+        assert!(bodies[0].starts_with(b"first\nxxxxxxxx"));
         assert!(bodies[0].ends_with(b"\nlast continuation"));
-        assert_eq!(bodies[1], b"[B] next\nend");
+        assert_eq!(bodies[1], b"next\nend");
     }
 
     /// What one text read costs the store underneath it.
@@ -331,7 +334,9 @@ mod text {
                 plain.extend_from_slice(b"[INFO] ");
                 plain.extend_from_slice(&body);
                 plain.push(b'\n');
-                bodies.push([b"[INFO] ".as_slice(), &body].concat());
+                // The row header is off the body the read hands back, so what
+                // is expected is the payload alone.
+                bodies.push(body);
             }
             (plain, bodies)
         }

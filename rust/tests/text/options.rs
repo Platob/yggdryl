@@ -2,7 +2,7 @@
 //! takes, and what they refuse.
 
 mod text {
-    use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
+    use arrow_array::{Array as _, StringArray, UInt64Array};
     use yggdryl::IOMedia as _;
     use yggdryl::Timezone;
     use yggdryl::holder::Buffer;
@@ -79,22 +79,6 @@ mod text {
             .collect()
     }
 
-    fn rownums(batches: &[arrow_array::RecordBatch]) -> Vec<i64> {
-        batches
-            .iter()
-            .flat_map(|batch| {
-                let index = batch.schema().index_of("rownum").unwrap();
-                batch
-                    .column(index)
-                    .as_any()
-                    .downcast_ref::<Int64Array>()
-                    .unwrap()
-                    .values()
-                    .to_vec()
-            })
-            .collect()
-    }
-
     fn uint64s(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<u64>> {
         batches
             .iter()
@@ -142,7 +126,9 @@ mod text {
             .with_leading_fragment(LeadingFragment::Drop)
             .with_max_record_byte_size(1_024)
             .with_autotype(false)
-            .with_timezone(Timezone::UTC);
+            .with_timezone(Timezone::UTC)
+            .with_filter("level = 'WARN'")
+            .unwrap();
         options.start_rownum = Some(-3);
         options.set_batch_row_size(Some(7));
 
@@ -160,14 +146,26 @@ mod text {
         assert_eq!(options.timezone(), Some(&Timezone::UTC));
         assert_eq!(options.start_rownum, Some(-3));
         assert_eq!(options.batch_row_size(), Some(7));
+        // The `where` section is stored flat beside them, and it is part of
+        // what one configuration is: two that differ only in their clause are
+        // two configurations.
+        assert_eq!(options.filter().to_string(), "level = 'WARN'");
+        assert_ne!(
+            options,
+            options.clone().with_filter("level = 'INFO'").unwrap()
+        );
 
         let error = TextOptions::new()
             .try_with_rowheader(r"(?<body>.+)")
             .unwrap_err()
             .to_string();
         assert!(error.contains(
-            "distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives"
+            "distinct from body, dropped_byte_size and the event columns the line derives"
         ));
+        // The row's place and the object it came from are stated by the event
+        // columns now, so those two names belong to the reader: a capture
+        // spelled as one is refused with the rest the line derives, in
+        // whatever case it is written.
         for name in ["seqnum", "CROSSCODE"] {
             let error = TextOptions::new()
                 .try_with_rowheader(&format!(r"(?<{name}>.+)"))
@@ -176,6 +174,38 @@ mod text {
             assert!(error.contains(name), "{name}: {error}");
             assert!(error.contains("event columns the line derives"), "{error}");
         }
+
+        // And the names the row schema no longer spends are the expression's
+        // to use: no column of the reader's answers to them any more, so a
+        // capture spelled as one is an ordinary capture with a column of its
+        // own, named as the caller named it.
+        let batches = collect(
+            &named("legacy.log", b"file:///elsewhere.log 7 alpha\n"),
+            TextOptions::new()
+                .try_with_rowheader(r"^(?<sourceurl>\S+) (?<rownum>\d+) ")
+                .unwrap(),
+        );
+        assert_eq!(
+            batches[0]
+                .schema()
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect::<Vec<_>>(),
+            with_event(&["body", "sourceurl", "rownum"])
+        );
+        assert_eq!(bodies(&batches), [b"alpha".to_vec()]);
+        assert_eq!(
+            strings(&batches, "sourceurl"),
+            [Some("file:///elsewhere.log".into())]
+        );
+        // Their values stay there, too: a capture wearing the old spelling
+        // states its own column and nothing of the event's. The object the
+        // line came from is the buffer it was read out of, whatever a capture
+        // spells - which is the whole of why the reader stopped spending the
+        // name on a column of its own.
+        let crosscode = strings(&batches, "crosscode").remove(0).expect("an object");
+        assert!(crosscode.starts_with("mem://"), "{crosscode}");
     }
 
     #[test]
@@ -314,11 +344,11 @@ mod text {
     /// read back as the line it came from. So the reader never cuts one - a
     /// blank line, or one the strips take whole, is a separator between records
     /// and not a record - the line's own doors refuse one, and a write refuses a
-    /// row that carries one.
+    /// row that carries one. The bytes as cut are what is weighed, before the
+    /// row header comes off them: a line that is all header is a line all the
+    /// same, stating itself in its capture columns with the body left empty.
     mod body {
-        use super::{
-            EVENT_COLUMNS, bodies, collect, named, options, rownums, strings, uint64s, with_event,
-        };
+        use super::{EVENT_COLUMNS, bodies, collect, named, options, strings, uint64s, with_event};
         use yggdryl::IOMedia as _;
         use yggdryl::text::{Text, TextBytes, TextLine, TextOptions};
 
@@ -337,10 +367,11 @@ mod text {
             read.start_rownum = Some(0);
             let batches = collect(&source, read);
             assert_eq!(bodies(&batches), [b"alpha".to_vec(), b"beta".to_vec()]);
-            // The numbering is the physical line's own, so the gap the blank
-            // line left is visible rather than closed over. The event sequence is
-            // the same numbering, with zero represented by its nullable cell.
-            assert_eq!(rownums(&batches), [0, 2]);
+            // The numbering `seqnum` states is the physical line's own, so the
+            // gap the blank line left is visible rather than closed over:
+            // `beta` is the third line and counts as two, from the zero this
+            // read starts at. Zero is no sequence at all, so the row that
+            // counts as zero states that by leaving its cell null.
             assert_eq!(uint64s(&batches, "seqnum"), [None, Some(2)]);
         }
 
@@ -352,7 +383,9 @@ mod text {
             read.start_rownum = Some(1);
             let batches = collect(&source, read);
             assert_eq!(bodies(&batches), [b"keep".to_vec()]);
-            assert_eq!(rownums(&batches), [2]);
+            // `keep` is the second physical line and counts as the second row:
+            // the lines the strips took are separators, not rows to renumber.
+            assert_eq!(uint64s(&batches, "seqnum"), [Some(2)]);
         }
 
         #[test]
@@ -398,12 +431,15 @@ mod text {
                 "{refusal}"
             );
             // Under a row header the header is always retained, so the same
-            // limit keeps the bytes the record is known by and reads.
+            // limit keeps the bytes the record is known by and reads. The body
+            // is the line past that header, and a limit of zero leaves none of
+            // it: each row states its capture over an empty body, which is what
+            // a header that consumes the line is for.
             let batches = collect(
                 &named("headed.log", b"[A] alpha\n[B] beta\n"),
                 options(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(0),
             );
-            assert_eq!(bodies(&batches), [b"[A] ".to_vec(), b"[B] ".to_vec()]);
+            assert_eq!(bodies(&batches), [b"".to_vec(), b"".to_vec()]);
             assert_eq!(
                 strings(&batches, "kind"),
                 [Some("A".into()), Some("B".into())]
@@ -438,10 +474,8 @@ mod text {
         #[test]
         fn every_emitted_column_states_its_nullability_and_says_what_it_holds() {
             let source = named("columns.log", b"2026-01-02T03:04:05Z INFO k=v hello\n");
-            let mut read = options(r"^(?<mtime>\S+) (?<level>\w+) ")
-                .with_max_record_byte_size(1_024)
-                .try_with_lift_names(["k"])
-                .expect("a lift");
+            let mut read =
+                options(r"^(?<mtime>\S+) (?<level>\w+) ").with_max_record_byte_size(1_024);
             read.start_rownum = Some(1);
             read.parse_mimetype = true;
             let batches = collect(&source, read);
@@ -452,21 +486,12 @@ mod text {
                     .iter()
                     .map(|field| field.name().as_str())
                     .collect::<Vec<_>>(),
-                with_event(&[
-                    "sourceurl",
-                    "rownum",
-                    "mtime",
-                    "mimetype",
-                    "body",
-                    "dropped_byte_size",
-                    "level",
-                    "k",
-                ])
+                with_event(&["mimetype", "body", "dropped_byte_size", "level"])
             );
             // The five facts every event settles are the five a line always
             // states; everything a line may leave unsaid is nullable, and the
-            // three the reader itself answers - which line it was, what it was
-            // classified as, and the line - are not.
+            // two the reader itself answers - what the line was classified as,
+            // and the line - are not.
             let required = [
                 "currunix",
                 "curruuid",
@@ -476,7 +501,7 @@ mod text {
             ];
             for field in schema.fields() {
                 let expected = !(required.contains(&field.name().as_str())
-                    || matches!(field.name().as_str(), "rownum" | "mimetype" | "body"));
+                    || matches!(field.name().as_str(), "mimetype" | "body"));
                 assert_eq!(
                     field.is_nullable(),
                     expected,

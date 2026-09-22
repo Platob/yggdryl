@@ -54,7 +54,6 @@ pub use leading::LeadingFragment;
 pub use limits::Limits;
 pub use line::TextLine;
 pub use loading::Loading;
-pub(crate) use options::MTIME_COLUMN;
 pub use options::{DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextOptions};
 pub use placeholder::Placeholders;
 pub use sep::LineSep;

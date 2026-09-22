@@ -37,8 +37,8 @@ tags['k'] as "the key"
 
 `alias` is what was written; `column_name` is the name the path gives what it
 reaches, which is the alias where there is one and the last segment's own name
-otherwise. A text read's `lift_names` takes `column_name`, so `"55" as symbol`
-names its column in the same breath that selects it.
+otherwise, so `"55" as symbol` names what it reaches in the same breath that
+selects it.
 
 The keyword is only looked for once a path has something to alias, which leaves
 `as` usable as an ordinary segment name: `order.as` is a child called `as`, and
@@ -132,8 +132,7 @@ paths already resolved. Applying a resolved path allocates nothing.
 - The [expression grammar](../expression/index.md) writes the same steps and
   shares the one segment type, which is why the path value lives beside it.
 - [Text lines](../media/text/lines.md#entries-and-paths) address one entry of a
-  decoded line, and `lift_names` names the entry paths that become columns,
-  each taking its alias where it writes one.
+  decoded line, each path taking its alias where it writes one.
 
 ## What it is not
 
