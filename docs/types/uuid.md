@@ -10,7 +10,7 @@ One 128-bit identifier over sixteen fixed bytes, spelled as the canonical 36-cha
 | Validated | one rule wherever a value arrives: sixteen bytes, 32 bare hexadecimal digits, or the 36-character hyphenated spelling, in either case - the same rule for [field](field.md) validation, Arrow ingest and every [cast](cast.md) tier |
 | Lazy | nothing; the value is `Copy` and sixteen bytes wide, and `render` writes its spelling into the caller's slot |
 | Cached | the [field](field.md)'s Arrow projection; the datatype takes no parameter and caches nothing |
-| Refused | a spelling that is neither text nor sixteen bytes, a wrong digit count, a misplaced hyphen, `uuid_packed` or `uuid_value` on another datatype, a UUIDv7 instant outside the 48-bit millisecond range, and a text bound the 36 characters outgrow |
+| Refused | a spelling that is neither text nor sixteen bytes, a wrong digit count, a misplaced hyphen, `uuid_packed` or `uuid_value` on another datatype, a UUIDv7 instant outside `0..=281474976710655999` Unix microseconds, and a text bound the 36 characters outgrow |
 
 ## DataType
 
@@ -383,18 +383,19 @@ One [cast](cast.md) tier reads both directions.
 
 The version is a fact about the value, never about the column: four bits, so
 every identifier answers one, and an identifier written by no version scheme
-answers whatever those bits hold. `Uuid::from_v7` packs a Unix millisecond
-instant, a sequence number and a 64-bit payload: the first 48 bits hold the
-millisecond, `rand_a` holds the low 12 sequence bits, and `rand_b` holds the
-low 62 bits of an XXH3-64 fingerprint over the complete big-endian
-`(seqnum, payload)` pair, so every bit of both inputs contributes instead of
-being truncated. Milliseconds sort first and sequences sort within one
-4,096-value low-bit window, never across its wrap; the 74 identity bits are a
-non-cryptographic fingerprint rather than an injective encoding of the 128
-that went in. `Uuid::from_v8` sets the version and variant bits over a payload
+answers whatever those bits hold. `Uuid::from_v7` packs a Unix microsecond
+instant and a 64-bit payload: the first 48 bits hold the millisecond it falls
+in, the ten bits under the version hold the microsecond within it, `0..=999`,
+and the payload takes the two bits `rand_a` has left over and the whole of
+`rand_b` - its top two above the variant, its low sixty-two below. Nothing is
+hashed, narrowed or combined, so the 128 bits are filled exactly and both
+facts read back out: two identifiers are equal only where the microsecond and
+all 64 payload bits are. The whole microsecond instant sorts first and the
+whole payload after it, because the two variant bits standing between the
+payload's halves are the same in every identifier. `Uuid::from_v8` sets the version and variant bits over a payload
 that is already resolved. Neither reads a clock, allocates, or supplies
 randomness of its own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection)
-is the one caller that projects an instant, a sequence and a digest through
+is the one caller that projects an instant and a digest through
 `from_v7`.
 
 The two constructors are Rust-only; a binding receives the identifier they made
@@ -405,11 +406,28 @@ as any other `uuid` value.
     ```rust
     use yggdryl::Uuid;
 
-    // A UUIDv7 carries its instant, so milliseconds order before the rest.
-    let value = Uuid::from_v7(1_645_557_742_000, 0x74b, 0xfedc_ba98_7654_3210)?;
-    assert_eq!(value.to_string(), "017f22e2-79b0-774b-baaf-e6545098617d");
+    // A UUIDv7 carries its instant, so microseconds order before the rest.
+    let value = Uuid::from_v7(1_645_557_742_000_123, 0xfedc_ba98_7654_3210)?;
+    assert_eq!(value.to_string(), "017f22e2-79b0-71ef-bedc-ba9876543210");
     assert_eq!(value.version(), 7);
-    assert!(Uuid::from_v7(999, u64::MAX, u64::MAX)? < Uuid::from_v7(1_000, 0, 0)?);
+    // The millisecond leads, then the microsecond within it, then the payload.
+    assert!(Uuid::from_v7(999, u64::MAX)? < Uuid::from_v7(1_000, 0)?);
+    assert!(Uuid::from_v7(1, u64::MAX)? < Uuid::from_v7(2, 0)?);
+
+    // The packing is exact rather than a fingerprint: every payload bit is
+    // stored, so one bit apart is one identifier apart and both facts come
+    // back out of the sixteen bytes.
+    assert_ne!(Uuid::from_v7(1, 1)?, Uuid::from_v7(1, 0)?);
+    assert_ne!(Uuid::from_v7(1, 1 << 63)?, Uuid::from_v7(1, 0)?);
+    let packed = value.get();
+    assert_eq!(
+        (packed >> 80) * 1_000 + ((packed >> 66) & 0x3ff),
+        1_645_557_742_000_123,
+    );
+    assert_eq!(
+        (((packed >> 64) & 0x3) << 62) | (packed & ((1 << 62) - 1)),
+        0xfedc_ba98_7654_3210,
+    );
 
     // A UUIDv8 replaces the six version and variant bits and keeps the other 122.
     let derived = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
@@ -420,9 +438,9 @@ as any other `uuid` value.
     assert!(Uuid::new(0).is_nil());
     assert!(!value.is_nil());
 
-    // An instant outside the 48-bit millisecond range has no UUIDv7.
-    assert!(Uuid::from_v7(-1, 0, 0).is_err());
-    assert!(Uuid::from_v7(281_474_976_710_656, 0, 0).is_err());
+    // An instant outside `0..=281474976710655999` microseconds has no UUIDv7.
+    assert!(Uuid::from_v7(-1, 0).is_err());
+    assert!(Uuid::from_v7(281_474_976_710_656_000, 0).is_err());
     ```
 
 ## Edges

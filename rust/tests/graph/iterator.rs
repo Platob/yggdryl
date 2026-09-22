@@ -11,8 +11,9 @@ use yggdryl::{State, Uuid};
 
 use super::element::filled;
 
-/// One nanosecond count per millisecond: the instants below are spaced so
-/// two of them never share the millisecond a derived identity opens with.
+/// One nanosecond count per millisecond: a derived identity opens with the
+/// microsecond its instant falls in, and the instants below are spaced a
+/// whole millisecond apart, so no two of them ever share one.
 const MS: i64 = 1_000_000;
 
 /// An instant a derived identity holds: `ms` milliseconds after one

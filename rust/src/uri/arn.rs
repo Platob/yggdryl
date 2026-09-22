@@ -177,7 +177,7 @@ impl Arn {
                     folded.push_str(field);
                 }
             }
-            value.path = UriPath(folded.into());
+            value.state_path(UriPath(folded.into()));
         }
         Ok(Self(value))
     }
@@ -585,7 +585,7 @@ impl Arn {
         }
         path.push_str(resource.as_str());
         let mut candidate = self.0.clone();
-        candidate.path = UriPath(path.into());
+        candidate.state_path(UriPath(path.into()));
         *self = Self::from_uri(candidate)?;
         Ok(())
     }

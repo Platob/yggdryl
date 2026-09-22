@@ -42,7 +42,7 @@ impl Urn {
             path.push_str(&namespace.to_ascii_lowercase());
             path.push(':');
             path.push_str(namespace_specific);
-            value.path = UriPath(path.into());
+            value.state_path(UriPath(path.into()));
         }
         Ok(Self(value))
     }
@@ -354,7 +354,7 @@ impl Urn {
         full_path.push(':');
         full_path.push_str(path.as_str());
         let mut candidate = self.0.clone();
-        candidate.path = UriPath(full_path.into());
+        candidate.state_path(UriPath(full_path.into()));
         *self = Self::from_uri(candidate)?;
         Ok(())
     }

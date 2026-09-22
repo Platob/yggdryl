@@ -149,9 +149,12 @@ where the row states it: the same row number, or the zero-based physical index
 when `start_rownum` is unset, preserving the gaps blank lines left. There is no
 second column beside it, and a count cannot hold a negative number, so a
 negative `start_rownum` is refused by name rather than counted down through
-zero. `crosscode` is the object the line came from, as the URL's canonical
-text, and its `crosshashcode` seeds the line's current identity - so a line's
-chain is the file it was read from, and moving it refreshes both UUIDs. A row
+zero. `crosscode` is the identifier the read was addressed by, as its canonical
+text - the URL where that identifier is a location, which is the common case,
+and the name itself where it is a name, never the place a name resolves to -
+and its `crosshashcode` seeds the line's current identity. So a line's chain is
+what it was read under, moving it refreshes both UUIDs, and a read through a
+name is crossed the same wherever the process happened to be running. A row
 header therefore cannot declare a `seqnum` or `crosscode` capture, in any case.
 
 A [row header](lines.md#lines) adds one column per other capture, typed from
@@ -203,11 +206,14 @@ and a batch without them leaves each line to derive its own facts.
   since a place of zero is null - the index is the row's stream ordinal,
   continuous across batches, so physical gaps the read dropped are not
   recovered.
-- A persisted `crosscode` that reads as a URL restores the line's shared URL,
-  so the object a line came from survives the round trip in the column that
-  names its chain; one that is not a URL is an ordinary code and locates
-  nothing. Its `crosshashcode` seed participates in the derived `curruuid`, so
-  it is applied before an unstated identity is resolved.
+- A persisted `crosscode` that reads as an identifier restores what the line
+  was addressed by, so the source survives the round trip in the column that
+  names its chain: a URL restores as itself, and a `urn:` or `arn:` restores as
+  the name it was, locating itself again wherever it resolves to now. A code
+  that is no identifier is an ordinary code and addresses nothing - text
+  carrying no scheme is not read as a relative path here, or every stated code
+  would come back naming a file. Its `crosshashcode` seed participates in the
+  derived `curruuid`, so it is applied before an unstated identity is resolved.
 - A null cell stays absent. A malformed present value - a `seqnum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
   that does not parse, a null in the required `body` - is refused rather than

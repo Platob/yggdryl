@@ -7,7 +7,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions
+from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions, Url
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
@@ -64,6 +64,25 @@ class TestTextLine:
         assert lines[0].body == "8=FIX|55=AAPL|35=D"
         assert lines[0].sourceurl is not None
 
+    def test_a_line_is_crossed_by_the_identifier_it_was_read_under(self) -> None:
+        handle = source()
+        lines = list(handle.read_text_lines(options=TextOptions()))
+        # A line carries what its read was addressed by, which is not always a
+        # place. A located read - the common case - narrows that identifier to
+        # a URL, so both answer and both spell the same text; a read under a
+        # name answers the name here and nothing at `sourceurl`.
+        assert isinstance(lines[0].sourceuri, Url)
+        assert str(lines[0].sourceuri) == str(handle.uri)
+        assert str(lines[0].sourceurl) == str(lines[0].sourceuri)
+        # The code that names the chain is that identifier rather than the
+        # location it narrows to.
+        assert lines[0].crosscode == str(lines[0].sourceuri)
+        assert lines[0].crosshashcode != 0
+        # Every row of one read is addressed the same way, so they cross alike.
+        assert str(lines[1].sourceuri) == str(lines[0].sourceuri)
+        assert lines[1].crossuuid == lines[0].crossuuid
+        assert lines[1].curruuid != lines[0].curruuid
+
     def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
         # Nothing asked for a tree while the line was read; the payload's own
@@ -82,7 +101,8 @@ class TestTextLine:
         assert line.captures == ("INFO",)
         assert line.mtime is None
         assert line.currunix == 0
-        # Its identity derives from its instant, physical sequence and bytes.
+        # Its identity derives from its instant and the whole code of its
+        # source, its row and its bytes, so one body on two rows is two.
         assert isinstance(line.curruuid, Scalar)
         later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
         assert later.index == 7
@@ -90,6 +110,10 @@ class TestTextLine:
         # A line read under no header states the whole text as its body and
         # names nothing, so it is a different event from this one.
         assert line.currhashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        # Another body is another code, and so another identity.
+        other = TextLine(7, "[INFO] 8=FIX|55=MSFT|35=D", None, options)
+        assert other.currhashcode != line.currhashcode
+        assert other.curruuid != line.curruuid
         assert line.crosscode == "" and line.crosshashcode == 0
         assert line.crossuuid != line.curruuid or line.crosscode == ""
         # Stated captures are the line's word over its own header.

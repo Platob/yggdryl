@@ -7,13 +7,13 @@
 | Key | Value |
 | --- | --- |
 | Owns | `TextLine`, `TextBytes`, `TextEntries`, `TextEntry`, and `read_text_lines`, the one decode entry point every record method routes through |
-| Holds | what the reader cut and nothing it derived: `index`, `sourceurl`, the `body` past the row header the cut took off it, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
-| Lazy | `mtime`, `bodytype`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceurl`, the rest off the body. The header is the exception: it comes off the body where the line is made, so the `captures` are already there |
+| Holds | what the reader cut and nothing it derived: `index`, the identifier the read was addressed by - read as `sourceuri` and as `sourceurl`, one value where it is a location and the name beside where it resolves to where it is a name - the `body` past the row header the cut took off it, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
+| Lazy | `mtime`, `bodytype`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceuri`, the rest off the body. The header is the exception: it comes off the body where the line is made, so the `captures` are already there |
 | Text | a body is text where the line is made: valid UTF-8 costs the validation, and every other byte reads as the character Windows-1252 gives it |
 | Validated | an empty body is refused wherever one is set; a capture named for an event fact that does not parse at the fact's datatype is a named refusal |
 | Owned | nothing: every key, value, body and capture is a range of the reader's own window, until a binding copies it across |
 | Refused | an `entry_by_path` miss, where `get_entry_by_path` answers `None` |
-| Bindings | Python and JavaScript take a `str` / `string` body beside bytes and the options as an optional last argument; `set_body`, `with_captures`, `body_bytes` and `marked` are Rust-only |
+| Bindings | Python and JavaScript take a `str` / `string` body beside bytes and the options as an optional last argument; `sourceuri` is read as the narrowing the scheme names in Python and as its canonical text in JavaScript, beside `sourceurl` in both, and neither binds a setter for either; `set_body`, `with_captures`, `body_bytes` and `marked` are Rust-only |
 
 ## Use
 
@@ -89,15 +89,17 @@ reading the result - a `where` may name a column the `select` builds, and no
 line states one, so the clauses are answered over the rows the lines become.
 
 A line is an [event](../../graph.md) of the graph, and a struct rather than a
-map. It holds the reader facts `index` and `sourceurl`, what the reader cut -
-the `body` past the row header taken off it - plus
+map. It holds the reader facts `index` and `sourceuri` - the identifier the
+read was addressed by, which `sourceurl` answers again where it is a location
+and, where it is a name, answers as the place that name resolves to - and what
+the reader cut, the `body` past the row header taken off it, plus
 `dropped_byte_size`, `decoded_byte_size`, and the options it reads itself by.
 Everything else is resolved on its first ask, once, and never before:
-`seqnum` from `index` under `start_rownum`, `crosscode` from the canonical
-`sourceurl`, and `mtime`, `bodytype`, the row header's
+`seqnum` from `index` under `start_rownum`, `crosscode` from the canonical text
+of `sourceuri`, and `mtime`, `bodytype`, the row header's
 `captures` in the order the expression declares them, the `entries` the payload
-carries, and the identity - `curruuid` from the instant, sequence, XXH3-64 of
-the bytes and its `crosshashcode` seed, `crossuuid`, `currhashcode`, `crosshashcode`,
+carries, and the identity - `curruuid` from the instant and the XXH3-64 of the
+cross code, the row and the body, `crossuuid`, `currhashcode`, `crosshashcode`,
 `currunix` - so a line handed on as a line resolves only what is asked of it,
 while a batch built from lines asks every row for the nineteen event columns it
 opens with, a projection reading fewer of them afterwards - and a message
@@ -115,11 +117,14 @@ set: the message's `srcuuids` to the line's `curruuid`, the chained message's
 over the line's own reading, including an explicit `seqnum` or `crosscode` from
 an event column read back out of Arrow. Stated captures are the line's word over
 its header; `set_body` drops body-derived readings, `set_index` refreshes the
-derived sequence, and `set_sourceurl` refreshes the derived cross code, hash,
+derived sequence, and `set_sourceuri` refreshes the derived cross code, hash,
 current identity, and cross identity without displacing an explicitly stated
-event value. The source URL and its lazily rendered cross code are one shared
-reader value: every line borrows the same spelling, and an Arrow event column
-clones its shared string handle rather than allocating that spelling per row.
+event value, narrowing the identifier once - and, where it is a name,
+resolving it once - so that no row pays for either. The identifier and its
+lazily rendered cross code are
+one shared reader value: every line borrows the same spelling, and an Arrow
+event column clones its shared string handle rather than allocating that
+spelling per row.
 
 `TextLine::from_bytes(index, body, options)` makes one from the bytes the
 reader cut and the shared `Arc<TextOptions>` it reads itself by, and is where
@@ -496,9 +501,11 @@ their bytes.
 Keeping the lines keeps the windows they name. A reader that drops each line
 as it reads it - a fold, the Arrow builder, the FIX codec - lets the reader
 write its window over again and allocates nothing per line at all - the
-source URL's canonical cross code is rendered once for the reader, when it is
-first asked, and every line borrows that one spelling; one that collects them
-holds one page per 64 KiB of object rather than one page per line of it.
+identifier's canonical cross code is rendered once for the reader, when it is
+first asked, and every line borrows that one spelling, a name as cheaply as a
+location because the rendering belongs to the [`Uri`](../../uri/index.md) each
+narrowing is one of; one that collects them holds one page per 64 KiB of object
+rather than one page per line of it.
 Where that matters, read the field off the line and drop the line, or read
 into Arrow, which copies each value into its column.
 

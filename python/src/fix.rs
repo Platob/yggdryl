@@ -1887,8 +1887,12 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The message's `UUIDv7` identity: its millisecond instant and full
-    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
+    /// The message's `UUIDv7` identity: its microsecond instant in front and
+    /// the whole 64-bit `currhashcode` stored behind, which already carries
+    /// the names the message goes by, its parents, its state, its `seqnum`
+    /// and its predecessor - so nothing of them is hashed into the identifier
+    /// again. The chain is not among them, because a cross code stays outside
+    /// a message's content digest: `crossuuid` is what carries it.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())
@@ -3229,8 +3233,12 @@ pub(crate) struct PyMarketEventData {
 
 #[pymethods]
 impl PyMarketEventData {
-    /// The event's `UUIDv7` identity: its millisecond instant and full
-    /// `seqnum`/`currhashcode` tuple, rehashed under `crosshashcode` as seed.
+    /// The event's `UUIDv7` identity: its microsecond instant in front and
+    /// the whole 64-bit `currhashcode` stored behind, which already carries
+    /// the names the event goes by, its parents, its state, its `seqnum` and
+    /// its predecessor - so nothing of them is hashed into the identifier
+    /// again. The chain is not among them, because a cross code stays outside
+    /// the message's content digest: `crossuuid` is what carries it.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())

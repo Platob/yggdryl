@@ -9,7 +9,7 @@ use std::sync::{Arc, OnceLock};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::{Element, Event};
-use crate::{DataType, FieldPath, MimeType, Result, Scalar, State, Str, Url, Uuid};
+use crate::{DataType, FieldPath, MimeType, Result, Scalar, State, Str, Uri, Url, Uuid};
 
 use super::arrow::{parse_capture, physical_rownum, row_error};
 use super::options::{MTIME_COLUMN, TextOptions, mtime_dtype};
@@ -37,12 +37,19 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_state` | a `state` capture, else `00UNKNOWN` |
 /// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_refrecdunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
-/// | `get_crosscode` | the source URL, else none |
-/// | `get_currhashcode` | the XXH3-64 of the body's bytes |
+/// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
+/// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
-/// | `get_curruuid` | [`Event::time_uuid`] over the instant, row number and body code seeded by the cross hash |
+/// | `get_curruuid` | [`Event::time_uuid`] over the instant and that code |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
 /// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
+///
+/// The identity is the instant beside that code, and the code is what tells
+/// two identical bodies apart: the source they were read under and the row
+/// they sat on are digested with the body, so two byte-identical lines of one
+/// handle that dates no row still answer two identities, and one line read
+/// from two objects answers two. A derived value is never digested, so a
+/// stated `crosshashcode`, cross element or source moves neither.
 ///
 /// A capture named for an [`Event`] fact that the line does not derive feeds
 /// that reading by its exact name, parsed at the fact's own datatype - an
@@ -50,7 +57,8 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// that does not parse as it is a named refusal on the inherent reading that
 /// owns it and on every column built from it; the trait door, which cannot
 /// refuse, answers the fact's default over a refused reading. `seqnum` and
-/// `crosscode` are reserved because row number and source URL own them. A
+/// `crosscode` are reserved because the row number and the identifier the
+/// line was read under own them. A
 /// `set_*` states a fact and wins over the resolved reading;
 /// [`set_body`](Self::set_body) drops every resolved slot, because every one
 /// of them read the body.
@@ -74,10 +82,113 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// was UTF-8 - every line of every capture this crate holds - stays the range
 /// of the page it was read into, so nothing is copied between the stream and
 /// the line, and a capture is a range of that same page.
+/// What a read was addressed by, as the one value it is.
+///
+/// A location is a *narrowing* of an identifier rather than a second fact
+/// beside it, so where the read was addressed by one the line keeps that one
+/// value and lends both readings off it: nothing can make them disagree, and
+/// a read shares one reference-counted value across its rows instead of one
+/// per reading.
+///
+/// A name is the case where the two really are two values, because where a
+/// name is is not what it says: it resolves, by default under the process
+/// working directory, and the line keeps that resolution beside the name so
+/// a read under a name still answers where its bytes were. The cross code is
+/// the identifier eitherway - the name, never where it resolved - so what a
+/// line is crossed by does not move with the directory it was read from.
+#[derive(Clone, Debug)]
+pub(crate) enum LineSource {
+    /// A location, which answers the identifier and the object alike.
+    Located(Arc<Url>),
+    /// A name, beside where it resolves to - nothing where it resolves
+    /// nowhere.
+    Named {
+        /// The name the read was addressed by, and the cross code.
+        uri: Arc<Uri>,
+        /// Where that name is, resolved once for the whole read.
+        at: Option<Arc<Url>>,
+    },
+}
+
+impl LineSource {
+    /// Narrow one identifier the way a handle is addressed by one: the
+    /// location where it is one, the name itself where it is not.
+    ///
+    /// The caller's reference count is kept where the identifier is a name,
+    /// because nothing else has to be built from it.
+    fn shared(uri: Arc<Uri>) -> Self {
+        match Url::from_uri(Uri::clone(&uri)) {
+            Ok(url) => Self::Located(Arc::new(url)),
+            Err(_) => Self::named(uri),
+        }
+    }
+
+    /// The same narrowing from the identifier a handle lends, which a read
+    /// does once and every row of it then shares.
+    pub(crate) fn narrowed(uri: &Uri) -> Self {
+        match Url::from_uri(uri.clone()) {
+            Ok(url) => Self::Located(Arc::new(url)),
+            Err(_) => Self::named(Arc::new(uri.clone())),
+        }
+    }
+
+    /// A name beside where it resolves to, by [`Uri::locator`].
+    ///
+    /// Resolved here, once for a read, rather than at each ask: the
+    /// resolution reads the process working directory, which is a syscall and
+    /// an allocation no row should repeat, and where a read's bytes came from
+    /// is settled when the read is. A name that resolves nowhere - an ARN
+    /// naming a service no location serves, a URN with an empty part, a
+    /// working directory the process cannot read - answers no location rather
+    /// than refusing the read: the line still has its name, which is what it
+    /// is crossed by.
+    fn named(uri: Arc<Uri>) -> Self {
+        let at = uri.locator().ok().map(Arc::new);
+        Self::Named { uri, at }
+    }
+
+    /// The identifier a cross code spells, where it spells one.
+    ///
+    /// The code a row carries *is* the identifier the line was read under,
+    /// so reading it back is reading that identifier: a location restores
+    /// itself, and a name restores as the name it was, locating itself again
+    /// where it resolves to now. Text carrying no scheme is deliberately not
+    /// read here as a relative path, though `Uri` would read one: a code a
+    /// caller stated is an ordinary code, and every one of them would
+    /// otherwise come back naming a file.
+    pub(crate) fn from_crosscode(text: &str) -> Option<Self> {
+        if let Ok(url) = Url::from_str(text) {
+            return Some(Self::Located(Arc::new(url)));
+        }
+        let name = crate::Urn::from_str(text)
+            .map(crate::Urn::into_uri)
+            .or_else(|_| crate::Arn::from_str(text).map(crate::Arn::into_uri))
+            .ok()?;
+        Some(Self::named(Arc::new(name)))
+    }
+
+    /// The identifier the read was addressed by, whichever narrowing it is.
+    pub(crate) fn uri(&self) -> &Uri {
+        match self {
+            Self::Located(url) => <Url as AsRef<Uri>>::as_ref(url),
+            Self::Named { uri, .. } => uri,
+        }
+    }
+
+    /// The object: the identifier itself where it is a location, else where
+    /// the name it is resolves to.
+    pub(crate) fn url(&self) -> Option<&Url> {
+        match self {
+            Self::Located(url) => Some(url),
+            Self::Named { at, .. } => at.as_deref(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TextLine {
     index: u64,
-    url: Option<Arc<Url>>,
+    source: Option<LineSource>,
     /// The handle's own modification time, nanoseconds since the Unix epoch,
     /// UTC: the instant a line its header does not date happened at.
     handle_mtime: Option<i64>,
@@ -193,7 +304,7 @@ struct Resolved {
 
 impl Resolved {
     /// Drops the four derived identity readings, so they resolve afresh from
-    /// the body, instant, sequence and cross code as they now are.
+    /// the body, instant and cross code as they now are.
     fn reset_identity(&mut self) {
         self.currhashcode = OnceLock::new();
         self.crosshashcode = OnceLock::new();
@@ -250,7 +361,7 @@ impl TextLine {
         let (body, decoded_body) = decoded(body)?;
         Ok(Self {
             index,
-            url: None,
+            source: None,
             handle_mtime: None,
             bodytype: None,
             body,
@@ -298,7 +409,7 @@ impl TextLine {
         let (body, decoded_body) = decoded(body)?;
         let mut line = Self {
             index,
-            url: None,
+            source: None,
             handle_mtime: None,
             bodytype: None,
             body,
@@ -362,14 +473,35 @@ impl TextLine {
         &self.options
     }
 
+    /// The identifier this line was read under.
+    ///
+    /// What a handle *is* addressed by, which is not always a place: a read
+    /// through a name or an ARN answers that name here, where
+    /// [`sourceurl`](Self::sourceurl) answers where the name resolved to.
+    /// This is what the line's cross code spells, so two reads of one body
+    /// under two identifiers stay two elements - and a read under a name is
+    /// crossed by the name however the directory it ran in resolved it.
+    ///
+    /// Shared rather than owned: every line of one handle carries the same
+    /// identifier, and a URI is several small strings that would otherwise be
+    /// rebuilt once per row.
+    #[must_use]
+    pub fn sourceuri(&self) -> Option<&Uri> {
+        self.source.as_ref().map(LineSource::uri)
+    }
+
     /// The object this line was read from.
     ///
-    /// Shared rather than owned: every line of one handle carries the same URL,
-    /// and a URL is several small strings that would otherwise be rebuilt once
-    /// per row.
+    /// Where the identifier is a location this is that same value, read as
+    /// the narrowing it is. Where it is a name, this is where the name
+    /// resolves to - by [`Uri::locator`], which spells a URN as a path and
+    /// roots it in the process working directory unless the name carries a
+    /// base of its own - resolved once for the read rather than at each ask.
+    /// A name that resolves nowhere answers nothing here and still answers
+    /// itself at [`sourceuri`](Self::sourceuri).
     #[must_use]
     pub fn sourceurl(&self) -> Option<&Url> {
-        self.url.as_deref()
+        self.source.as_ref().and_then(LineSource::url)
     }
 
     /// The object this line was read from, as the handle every line shares.
@@ -381,24 +513,39 @@ impl TextLine {
     /// rebuilding the strings once per row.
     #[must_use]
     pub const fn shared_url(&self) -> Option<&Arc<Url>> {
-        self.url.as_ref()
+        match &self.source {
+            Some(LineSource::Located(url)) => Some(url),
+            Some(LineSource::Named { at, .. }) => at.as_ref(),
+            None => None,
+        }
     }
 
-    /// Set or clear the object this line was read from.
+    /// Set or clear the identifier this line was read under.
     ///
-    /// Refreshes the derived cross code, cross hash, current identity and
-    /// cross identity. An explicitly stated event value continues to win.
-    pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
-        self.url = url;
-        self.resolved.crosshashcode = OnceLock::new();
-        self.resolved.curruuid = OnceLock::new();
-        self.resolved.crossuuid = OnceLock::new();
+    /// The identifier is narrowed once here rather than once per row, so
+    /// [`sourceurl`](Self::sourceurl) answers it where it is a location and
+    /// where it resolves to where it is a name. Refreshes the derived cross
+    /// code,
+    /// cross hash, current identity and cross identity. An explicitly stated
+    /// event value continues to win.
+    pub fn set_sourceuri(&mut self, uri: Option<Arc<Uri>>) {
+        self.state_source(uri.map(LineSource::shared));
     }
 
-    /// Return this line addressed to one object.
+    /// State the source a reader already narrowed, as the one value it is.
+    ///
+    /// A read narrows once and hands that value to every row it converts, so
+    /// no row pays for a narrowing.
+    pub(crate) fn state_source(&mut self, source: Option<LineSource>) {
+        self.source = source;
+        self.resolved.crosshashcode = OnceLock::new();
+        self.derive_uuids();
+    }
+
+    /// Return this line addressed by one identifier.
     #[must_use]
-    pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self {
-        self.set_sourceurl(Some(url));
+    pub fn with_sourceuri(mut self, uri: Arc<Uri>) -> Self {
+        self.set_sourceuri(Some(uri));
         self
     }
 
@@ -999,7 +1146,7 @@ impl TextLine {
 
     /// Drops what the identity derives - the code, the cross hash code, the
     /// identity and the cross element - stated or resolved, so each resolves
-    /// afresh from the body, instant, sequence and cross code as they now are.
+    /// afresh from the body, instant and cross code as they now are.
     fn derive_identity(&mut self) {
         self.stated.currhashcode = None;
         self.stated.crosshashcode = None;
@@ -1013,6 +1160,9 @@ impl TextLine {
     fn derive_uuids(&mut self) {
         self.stated.curruuid = None;
         self.stated.crossuuid = None;
+        // The code digests what the line states, so a stated fact drops it
+        // too; a code the caller stated outright is its word and survives.
+        self.resolved.currhashcode = OnceLock::new();
         self.resolved.curruuid = OnceLock::new();
         self.resolved.crossuuid = OnceLock::new();
     }
@@ -1092,15 +1242,19 @@ fn decoded_captures(mut captures: Vec<Option<TextBytes>>) -> Result<Vec<Option<T
 }
 
 impl TextLine {
-    /// The source URL's shared canonical text, else the stated cross code.
+    /// The identifier's shared canonical text, else the stated cross code.
     ///
-    /// The object wins: a line's chain is the object it was read from, and
-    /// that is what makes the URL a fact of the row rather than a column
-    /// beside it. A code a caller states names the chain of a line no object
-    /// located - a buffer, a line built by hand - and nothing else.
+    /// The identifier wins: a line's chain is what its read was addressed
+    /// by, and that is what makes it a fact of the row rather than a column
+    /// beside it. It is the identifier and never the location it resolves
+    /// to, so a line read under a name is crossed by that name - a read
+    /// through a name reaches the code at all, and the code does not move
+    /// with the directory the read ran in. A code a caller states names the
+    /// chain of a line nothing addressed - a buffer, a line built by hand -
+    /// and nothing else.
     fn crosscode_value(&self) -> Option<&Str> {
-        if let Some(url) = self.url.as_ref() {
-            return Some(url.shared_text());
+        if let Some(source) = self.source.as_ref() {
+            return Some(source.uri().shared_text());
         }
         self.stated.crosscode.as_ref()
     }
@@ -1180,9 +1334,10 @@ impl Element for TextLine {
         if let Some(stated) = self.stated.curruuid {
             return stated;
         }
-        // The UUIDv7 the instant, row number and cross-seeded code derive; an instant a UUIDv7
-        // cannot hold - before the epoch, past its 48-bit millisecond count -
-        // is the nil identity, never a truncated one.
+        // The UUIDv7 the instant and the line's code derive; an instant a
+        // UUIDv7 cannot hold - before the epoch, past the microsecond count
+        // its 48-bit millisecond timestamp reaches - is the nil identity,
+        // never a truncated one.
         *self
             .resolved
             .curruuid
@@ -1236,6 +1391,16 @@ impl Element for TextLine {
         }
         *self.resolved.currhashcode.get_or_init(|| {
             let mut state = crate::xxhash::Xxh3::new();
+            // The cross code is fed here, ahead of the facts that leave it
+            // out, in the order `digest_event` feeds it. A `TxHash` stores
+            // the whole digest and carries no seed any more, so the chain
+            // has nowhere else to reach the identity from: without this, two
+            // byte-identical lines read from two objects at one instant
+            // would be one event.
+            let crosscode = self.get_crosscode();
+            if !crosscode.is_empty() {
+                crate::graph::element::feed(&mut state, "crosscode", crosscode.as_bytes());
+            }
             crate::graph::element::feed_event_facts(&mut state, self, |name| name != MTIME_COLUMN);
             state.write(self.body.as_bytes());
             state.as_u64()
@@ -1308,9 +1473,9 @@ impl Element for TextLine {
         (self.get_currunix(), self.index) > (other.get_currunix(), other.index)
     }
 
-    /// The identity is what the instant, sequence and cross-seeded body code
-    /// derive: the code, cross hash code, identity and cross element resolve
-    /// afresh on their next ask.
+    /// The identity is what the instant and the line's code derive: the code,
+    /// cross hash code, identity and cross element resolve afresh on their
+    /// next ask.
     fn finalize(&mut self) {
         self.derive_identity();
     }
@@ -1460,7 +1625,7 @@ impl Event for TextLine {
 /// pay for the one shared value once per line.
 type Facts<'line> = (
     u64,
-    Option<&'line Url>,
+    Option<&'line Uri>,
     Option<i64>,
     Option<&'line MimeType>,
     &'line TextBytes,
@@ -1473,7 +1638,7 @@ impl TextLine {
     fn facts(&self) -> Facts<'_> {
         (
             self.index,
-            self.url.as_deref(),
+            self.sourceuri(),
             self.handle_mtime,
             self.bodytype.as_ref(),
             &self.body,

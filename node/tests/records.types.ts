@@ -144,6 +144,11 @@ const lineHashcode: bigint = textLine.currhashcode
 const lineCrosshash: bigint = textLine.crosshashcode
 const lineUnix: bigint = textLine.currunix
 void [lineMtime, lineBodytype, lineIdentity, lineCross, lineCrosscode, lineHashcode, lineCrosshash, lineUnix]
+// A located read answers one identifier at both; a read under a name answers
+// it at `sourceuri` alone.
+const lineSourceuri: string | null = textLine.sourceuri
+const lineSourceurl: string | null = textLine.sourceurl
+void [lineSourceuri, lineSourceurl]
 const entry = textLine.getEntryByPath('58')
 if (entry !== null) {
   const key: string = entry.key

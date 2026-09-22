@@ -309,17 +309,16 @@ fn version_parse_compare_and_render_allocate_nothing() {
 
 #[test]
 fn uuid_version_7_and_8_construction_allocate_nothing() {
-    let instants = [0, 1, 999, 281_474_976_710_655];
+    let instants = [0, 1, 999, 281_474_976_710_655_999];
     for count in [1, 32, 1_024] {
         free(&format!("constructing {count} UUIDv7 values"), || {
             for index in 0..count {
                 black_box(
                     Uuid::from_v7(
                         black_box(instants[index % instants.len()]),
-                        black_box(index as u64),
                         black_box(u64::MAX - index as u64),
                     )
-                    .expect("an in-range millisecond instant"),
+                    .expect("an in-range microsecond instant"),
                 );
             }
         });
@@ -364,8 +363,8 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
                 for index in 0..count {
                     black_box(
                         black_box(values[index % values.len()])
-                            .into_uuid(black_box(index as u64), black_box(index as u64 + 1))
-                            .expect("an in-range millisecond instant and a 64-bit digest"),
+                            .into_uuid()
+                            .expect("an in-range microsecond instant and a 64-bit digest"),
                     );
                 }
             },
@@ -2356,13 +2355,14 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let mut changed = held[0].clone();
         let original_uuid = changed.get_curruuid();
         let replacement = Arc::new(
-            yggdryl::Url::from_str("file:///replacement/location.log").expect("a replacement URL"),
+            yggdryl::Uri::from_str("file:///replacement/location.log")
+                .expect("a replacement identifier"),
         );
-        changed.set_sourceurl(Some(Arc::clone(&replacement)));
+        changed.set_sourceuri(Some(Arc::clone(&replacement)));
         assert_eq!(changed.get_crosscode(), replacement.to_string());
         assert_ne!(changed.get_curruuid(), original_uuid);
         assert_eq!(held[0].get_crosscode(), expected);
-        changed.set_sourceurl(None);
+        changed.set_sourceuri(None);
         assert_eq!(changed.get_crosscode(), "");
     }
 }
@@ -2396,6 +2396,11 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// Five of the fourteen are the nineteen event columns the plan compiles once
 /// per read: the two identity lists, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
+///
+/// A read now shares what it was addressed by rather than where that
+/// resolves to, and the count did not move: the location is a narrowing of
+/// the identifier rather than a second value beside it, so the read still
+/// holds one reference-counted source and a row still clones one handle.
 const TEXT_LINES_ONCE: usize = 14;
 
 /// What a reader that keeps its lines pays on top: two per window it had to

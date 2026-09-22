@@ -839,7 +839,7 @@ mod text {
             DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextBytes, TextEntries,
             TextLine, TextOptions, into_arrow_batch, read_text_lines,
         };
-        use yggdryl::{FieldPath, Scalar, Url, Uuid};
+        use yggdryl::{FieldPath, Scalar, Uri, Uuid};
 
         use super::named;
 
@@ -941,6 +941,13 @@ mod text {
                 yggdryl::xxhash::xxh3(line.body().as_bytes()),
                 "the header's facts are in the code, not the body alone"
             );
+            // Pinned as a number because no public door reproduces it: the
+            // code leaves the capture that dates the line out, which
+            // `digest_event` feeds. It last moved when the code became the
+            // event's own facts rather than the cross code, the row and the
+            // body - the header's captures, its parents, its state, its place
+            // and what it follows, with the body behind them.
+            assert_eq!(line.get_currhashcode(), 9_607_804_996_582_312_670);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
             // The one capture left out of the code is the one that dates the
             // line, because the instant is coupled with the code rather than
@@ -1129,13 +1136,71 @@ mod text {
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
         }
 
+        /// A read is addressed by an identifier, and only sometimes by a
+        /// place. Every backend shipped today locates itself, so its two
+        /// answers are one text; a handle addressed by a name is crossed by
+        /// that name and located where the name resolves to, which by default
+        /// is under the process working directory.
+        #[test]
+        fn a_line_read_under_a_name_is_crossed_by_it_and_located_where_it_resolves() {
+            let options = Arc::new(TextOptions::new());
+            let mut line = line("plain", &options);
+            let anonymous = line.get_curruuid();
+
+            let name = Arc::new(
+                Uri::from_str("urn:lake:trades:2026:part.log").expect("a source identifier"),
+            );
+            line.set_sourceuri(Some(Arc::clone(&name)));
+            // The name is the identifier, so it is the cross code - which the
+            // projection through a location could never have reached.
+            assert_eq!(line.sourceuri(), Some(name.as_ref()));
+            assert_eq!(line.get_crosscode(), name.to_string().as_str());
+            assert_eq!(
+                line.get_crosshashcode(),
+                yggdryl::xxhash::xxh3(name.to_string().as_bytes())
+            );
+            // A name is still somewhere: it spells a path, rooted by default
+            // in the directory the process runs in, and that is what the
+            // column holding a location holds.
+            let at = line.sourceurl().expect("a name resolves").to_string();
+            assert!(at.starts_with("file:///"), "{at}");
+            assert!(at.ends_with("/lake/trades/2026/part.log"), "{at}");
+            assert_eq!(at, name.locator().expect("the same resolution").to_string());
+            // Where it resolved is no part of what it is crossed by, so a
+            // read of this name in another directory crosses the same.
+            assert_ne!(line.get_crosscode(), at.as_str());
+            let named = line.get_curruuid();
+            assert_ne!(named, anonymous);
+
+            // A name that resolves nowhere is still a name: it crosses by
+            // itself and locates nothing, rather than refusing the line.
+            let mut unresolvable = line.clone();
+            let nowhere =
+                Arc::new(Uri::from_str("arn:aws:iam::1:user/dana").expect("a source identifier"));
+            unresolvable.set_sourceuri(Some(Arc::clone(&nowhere)));
+            assert_eq!(unresolvable.sourceuri(), Some(nowhere.as_ref()));
+            assert_eq!(unresolvable.get_crosscode(), nowhere.to_string().as_str());
+            assert_eq!(unresolvable.sourceurl(), None);
+
+            // A located read answers the same text from both, which is why
+            // every backend shipped today reads the same as it always did.
+            let located = Arc::new(Uri::from_str("file:///part.log").expect("a source identifier"));
+            line.set_sourceuri(Some(Arc::clone(&located)));
+            assert_eq!(
+                line.sourceurl().map(ToString::to_string),
+                Some(located.to_string())
+            );
+            assert_eq!(line.get_crosscode(), located.to_string().as_str());
+            assert_ne!(line.get_curruuid(), named);
+        }
+
         #[test]
         fn the_object_states_the_cross_facts_and_a_stated_code_names_an_unlocated_line() {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
             let anonymous_uuid = line.get_curruuid();
-            let first = Arc::new(Url::from_str("file:///first.log").expect("a source URL"));
-            line.set_sourceurl(Some(Arc::clone(&first)));
+            let first = Arc::new(Uri::from_str("file:///first.log").expect("a source identifier"));
+            line.set_sourceuri(Some(Arc::clone(&first)));
             let first_code = first.to_string();
             assert_eq!(line.get_crosscode(), first_code.as_str());
             assert_eq!(
@@ -1146,8 +1211,9 @@ mod text {
             assert_ne!(first_uuid, anonymous_uuid);
             let first_crossuuid = line.get_crossuuid();
 
-            let second = Arc::new(Url::from_str("file:///second.log").expect("a source URL"));
-            line.set_sourceurl(Some(Arc::clone(&second)));
+            let second =
+                Arc::new(Uri::from_str("file:///second.log").expect("a source identifier"));
+            line.set_sourceuri(Some(Arc::clone(&second)));
             let second_code = second.to_string();
             assert_eq!(line.get_crosscode(), second_code.as_str());
             assert_eq!(
@@ -1158,7 +1224,7 @@ mod text {
             assert_ne!(second_uuid, first_uuid);
             assert_ne!(line.get_crossuuid(), first_crossuuid);
 
-            line.set_sourceurl(None);
+            line.set_sourceuri(None);
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_curruuid(), anonymous_uuid);
@@ -1171,7 +1237,7 @@ mod text {
             line.set_crosscode("stated-chain".to_owned());
             let stated_uuid = line.get_curruuid();
             assert_ne!(stated_uuid, anonymous_uuid);
-            line.set_sourceurl(Some(first));
+            line.set_sourceuri(Some(first));
             assert_eq!(line.get_crosscode(), first_code.as_str());
             assert_eq!(
                 line.get_crosshashcode(),
@@ -1370,18 +1436,19 @@ mod text {
         }
 
         #[test]
-        fn the_identity_reads_the_cross_hash_but_not_a_stated_cross_element_or_source() {
+        fn the_identity_reads_the_cross_code_but_not_a_stated_cross_element_or_source() {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let stated = line(&body, &options);
+            // A cross hash, a cross element and sources are each derived or
+            // provenance, and the code digests none of them, so none of them
+            // reaches the identity the code and the instant derive.
             let mut crossed = line(&body, &options);
             crossed.set_crosshashcode(0xCD);
-            let crossed_identity = crossed.get_curruuid();
-            assert_ne!(crossed_identity, stated.get_curruuid());
             crossed.set_crossuuid(Uuid::from_v8(77));
             crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
-            assert_eq!(crossed.get_curruuid(), crossed_identity);
+            assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
             assert_eq!(
                 crossed.get_crossuuid(),
                 Uuid::from_v8(77),
@@ -1391,6 +1458,17 @@ mod text {
             assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
             assert_eq!(crossed.get_crosshashcode(), stated.get_crosshashcode());
             assert_eq!(crossed.get_crossuuid(), stated.get_crossuuid());
+
+            // The cross code is what the code digests, so it is what moves
+            // the identity - and finalizing derives the same one again rather
+            // than dropping it, because the code still states it.
+            let mut sourced = line(&body, &options);
+            sourced.set_crosscode("O-100".to_owned());
+            assert_ne!(sourced.get_currhashcode(), stated.get_currhashcode());
+            let moved = sourced.get_curruuid();
+            assert_ne!(moved, stated.get_curruuid());
+            sourced.finalize();
+            assert_eq!(sourced.get_curruuid(), moved);
         }
 
         #[test]
@@ -1415,10 +1493,11 @@ mod text {
                     .try_with_rowheader(CHAIN)
                     .expect("a header"),
             );
-            let source = Arc::new(Url::from_str("file:///events.log").expect("a source URL"));
+            let source =
+                Arc::new(Uri::from_str("file:///events.log").expect("a source identifier"));
             let read = |instant: &str, state: &str| {
                 line(&format!("{instant} [{state}] O-100 k=v"), &options)
-                    .with_sourceurl(Arc::clone(&source))
+                    .with_sourceuri(Arc::clone(&source))
             };
             let arrived = vec![
                 read("2026-01-02T10:15:30Z", "New"),

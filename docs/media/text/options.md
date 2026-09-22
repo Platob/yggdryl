@@ -108,7 +108,7 @@ closes the active record and starts the next one.
 | later nonmatching lines | appended to the same `body`, separated by one `\n` |
 | LF, CRLF, or CR terminator | normalized to that separator, adding no trailing byte |
 | EOF without a final terminator | the active record is still emitted |
-| end of a handle or folder leaf | framing state ends, so records never join across source objects; each leaf supplies its own `crosscode`, and numbering restarts |
+| end of a handle or folder leaf | framing state ends, so records never join across source objects; each leaf is read under its own identifier and so supplies its own `crosscode`, and numbering restarts |
 | `seqnum` | the record's first physical line number, a kept leading fragment included |
 | unbounded `body` | the exact source bytes after first-line header removal and normalization, [as text](lines.md#a-line-is-text) |
 | `lstrip`, `rstrip` | cut from each physical line before it is joined |

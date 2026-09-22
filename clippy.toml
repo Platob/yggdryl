@@ -1,0 +1,5 @@
+# A `Uri` caches its own canonical rendering, which is interior mutability the
+# value's identity does not read: every comparison, ordering and hash reads the
+# components alone, so a `Uri` is a sound map or set key and
+# `clippy::mutable_key_type` has nothing to warn about here.
+ignore-interior-mutability = ["yggdryl::Uri"]

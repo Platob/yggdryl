@@ -26,6 +26,7 @@ use crate::{Cursor, IOBase, charset};
 use crate::{DateTimeType, DateType};
 
 use super::leading::LeadingFragment;
+use super::line::LineSource;
 use super::options::TextOptions;
 use super::reader::Lines;
 use super::{TextBytes, TextLine};
@@ -37,12 +38,15 @@ pub(crate) fn read_arrow_reader(
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
     options.source_field()?;
-    let url = handle.url().cloned();
+    // One ask for one fact: the handle owes its identifier, and the location
+    // is that identifier narrowed - asking it for both would be two calls
+    // over one answer, and the narrowing is the read's, once, not each row's.
+    let source = handle.uri().map(LineSource::narrowed);
     // Read from the handle the caller gave, before `owned_handle` may answer
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_arrow_reader_at(owned_handle(handle)?, url, mtime, options)
+    read_owned_arrow_reader_at(owned_handle(handle)?, source, mtime, options)
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
@@ -58,14 +62,17 @@ pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
     handle: H,
     options: &TextOptions,
 ) -> Result<BatchReader> {
-    let url = handle.url().cloned();
+    // One ask for one fact: the handle owes its identifier, and the location
+    // is that identifier narrowed - asking it for both would be two calls
+    // over one answer, and the narrowing is the read's, once, not each row's.
+    let source = handle.uri().map(LineSource::narrowed);
     let mtime = handle_mtime(&handle, options);
-    read_owned_arrow_reader_at(handle, url, mtime, options)
+    read_owned_arrow_reader_at(handle, source, mtime, options)
 }
 
 fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     handle: H,
-    url: Option<Url>,
+    source: Option<LineSource>,
     mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<BatchReader> {
@@ -76,7 +83,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     let media_type = handle.media_type();
     let codings = media_type.encodings().to_vec();
     let charset = Charset::from_media_type(media_type);
-    let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
+    let bytes: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
         Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
         None => Box::new(NonemptySendDecodedReader::new(
             Box::new(Cursor::new(handle)),
@@ -85,7 +92,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
         )),
     };
 
-    let lines = text_lines(source, url, mtime, options)?;
+    let lines = text_lines(bytes, source, mtime, options)?;
     super::batch::into_arrow_reader(lines, options)
 }
 
@@ -95,8 +102,8 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 /// cuts: a line resolves its readings under them on its first ask, so
 /// nothing optional is paid for here.
 fn text_lines(
-    source: Box<dyn Read + Send + 'static>,
-    url: Option<Url>,
+    bytes: Box<dyn Read + Send + 'static>,
+    source: Option<LineSource>,
     mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<TextLines> {
@@ -104,11 +111,12 @@ fn text_lines(
     // name - before a byte is read.
     options.line_plan()?;
     let options = Arc::new(options.clone());
-    let raw = RawRows::new(source, url.clone(), Arc::clone(&options));
-    let url = url.map(Arc::new);
+    // The row errors want an owned location, which only a located read has.
+    let url = source.as_ref().and_then(LineSource::url).cloned();
+    let raw = RawRows::new(bytes, url, Arc::clone(&options));
     Ok(TextLines {
         raw,
-        url,
+        source,
         mtime,
         options,
     })
@@ -139,18 +147,21 @@ pub fn read_text_lines(
     options: &TextOptions,
 ) -> Result<TextLines> {
     options.require_framing_rowheader()?;
-    let url = handle.url().cloned();
+    // One ask for one fact: the handle owes its identifier, and the location
+    // is that identifier narrowed - asking it for both would be two calls
+    // over one answer, and the narrowing is the read's, once, not each row's.
+    let source = handle.uri().map(LineSource::narrowed);
     // Read from the handle the caller gave, before `owned_handle` may answer
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_text_lines_at(owned_handle(handle)?, url, mtime, options)
+    read_owned_text_lines_at(owned_handle(handle)?, source, mtime, options)
 }
 
 /// The same decode over a handle the iterator owns.
 fn read_owned_text_lines_at<H: IOBase + 'static>(
     handle: H,
-    url: Option<Url>,
+    source: Option<LineSource>,
     mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<TextLines> {
@@ -161,7 +172,7 @@ fn read_owned_text_lines_at<H: IOBase + 'static>(
     let media_type = handle.media_type();
     let codings = media_type.encodings().to_vec();
     let charset = Charset::from_media_type(media_type);
-    let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
+    let bytes: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
         Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
         None => Box::new(NonemptySendDecodedReader::new(
             Box::new(Cursor::new(handle)),
@@ -169,7 +180,7 @@ fn read_owned_text_lines_at<H: IOBase + 'static>(
             charset,
         )),
     };
-    text_lines(source, url, mtime, options)
+    text_lines(bytes, source, mtime, options)
 }
 
 /// Count emitted records without materializing rows or Arrow arrays.
@@ -218,7 +229,7 @@ fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
         return Ok(Holder::FsFile(file));
     }
     if let Some(parent) = handle.parent() {
-        if let Some(name) = handle.url().and_then(crate::Url::file_name) {
+        if let Some(name) = handle.uri().and_then(crate::Uri::file_name) {
             let mut child = parent.child_by_path(name)?;
             child.set_media_type(handle.media_type().clone());
             return Ok(child);
@@ -1280,8 +1291,9 @@ impl<R: Read> Iterator for RawRows<R> {
 /// [`read_text_lines`] states.
 pub struct TextLines {
     raw: RawRows<Box<dyn Read + Send + 'static>>,
-    /// The object every line of this read came from, shared rather than rebuilt.
-    url: Option<Arc<Url>>,
+    /// What every line of this read was addressed by, narrowed once for the
+    /// read rather than once per row and shared rather than rebuilt.
+    source: Option<LineSource>,
     /// The handle's own modification time, the instant every line its
     /// header does not date shares.
     mtime: Option<i64>,
@@ -1312,7 +1324,7 @@ impl TextLines {
     fn convert(&self, row: RawRow) -> Result<TextLine> {
         let mut line =
             TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
-        line.set_sourceurl(self.url.clone());
+        line.state_source(self.source.clone());
         line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
         Ok(line)

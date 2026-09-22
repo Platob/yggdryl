@@ -50,6 +50,21 @@ test('every line becomes one typed row', () => {
   assert.notEqual(lines[0].sourceurl, null)
 })
 
+test('a line is crossed by the identifier it was read under', () => {
+  const lines = [...source().readTextLines(new TextOptions())]
+  // A located read is the common case, and there the identifier a line was
+  // read under and the location it narrows to are the same text.
+  assert.notEqual(lines[0].sourceuri, null)
+  assert.equal(lines[0].sourceuri, lines[0].sourceurl)
+  // The cross code is that identifier, which is what names the chain.
+  assert.equal(lines[0].crosscode, lines[0].sourceuri)
+  assert.notEqual(lines[0].crosshashcode, 0n)
+  // Every row of one read is addressed the same way, so they cross alike.
+  assert.equal(lines[1].sourceuri, lines[0].sourceuri)
+  assert.equal(lines[1].crossuuid, lines[0].crossuuid)
+  assert.notEqual(lines[1].curruuid, lines[0].curruuid)
+})
+
 test('a line reads itself on the first ask', () => {
   const lines = [...source().readTextLines(new TextOptions())]
   // Nothing asked for a tree while the line was read; the payload's own
@@ -80,6 +95,10 @@ test('a line is an event under the options it reads itself by', () => {
     line.currhashcode,
     new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
   )
+  // A line a caller holds was read under no identifier, so both accessors
+  // answer null and nothing spells a cross code.
+  assert.equal(line.sourceuri, null)
+  assert.equal(line.sourceurl, null)
   assert.equal(line.crosscode, '')
   assert.equal(line.crosshashcode, 0n)
   assert.match(line.crossuuid, /^[0-9a-f-]{36}$/)

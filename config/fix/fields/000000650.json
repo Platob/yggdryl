@@ -172,7 +172,7 @@
     "metadata": {
       "FIX:tag": "65039",
       "FIX:transient": "false",
-      "description": "The message's identity: the UUIDv7 its millisecond instant, sequence and cross-seeded code derive.",
+      "description": "The message's identity: the UUIDv7 its microsecond instant and code derive.",
       "display": "CurrUuid"
     }
   },

@@ -11,9 +11,9 @@ use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions as _;
-use crate::{DataType, Result, Scalar, Url};
+use crate::{DataType, Result, Scalar};
 
-use super::line::TextLine;
+use super::line::{LineSource, TextLine};
 use super::options::TextOptions;
 use super::plan::{TextColumn, TextPlan, TextSource};
 
@@ -594,13 +594,15 @@ fn apply(
                 held.record(line, value);
             }
             match held {
-                // The chain is the object a line came from, so a cross code
-                // that reads as a URL locates the line again. One that does
-                // not is an ordinary code and locates nothing, which is the
-                // unlocated line it always was.
+                // The code is the identifier the line was read under, so a
+                // code that reads as one restores what the line was
+                // addressed by - a name as much as a location, and a name
+                // locates itself again where it resolves to. A code that is
+                // no identifier is an ordinary code and addresses nothing,
+                // which is the unaddressed line it always was.
                 crate::graph::EventColumn::CrossCode => {
-                    if let Some(url) = value.as_str().and_then(|text| Url::from_str(text).ok()) {
-                        line.set_sourceurl(Some(Arc::new(url)));
+                    if let Some(source) = value.as_str().and_then(LineSource::from_crosscode) {
+                        line.state_source(Some(source));
                     }
                 }
                 // The place in the chain is the row number, so it restores

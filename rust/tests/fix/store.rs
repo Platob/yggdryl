@@ -2994,10 +2994,18 @@ mod committed {
     /// and displays, while the other 103 retained an explicit `Grp` suffix.
     /// It moved when the crate identifier document replaced its partial two-part
     /// capture key with the complete length-prefixed `msgsesseventid` key.
+    /// It moved when `curruuid` said its instant is a microsecond one: the
+    /// UUIDv7 a message derives carries the microsecond within the
+    /// millisecond in `rand_a`, so that one definition's description hashes
+    /// differently and no other document in the store does.
+    /// It last moved when that identity stopped naming a sequence and a cross
+    /// seed: the code is stored whole in the identifier rather than rehashed
+    /// with them, and since the code already holds both, the same one
+    /// description is shorter by what it no longer has to say.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 3_303_944_819_954_890_747);
+        assert_eq!(registry.stable_hash(), 17_504_052_687_710_592_339);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

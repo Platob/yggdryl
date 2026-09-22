@@ -165,11 +165,11 @@ The source field is complete before any source bytes are read. It opens with the
 | `exprtime` | `datetime64(ns, UTC)` | nullable; an `exprtime` capture as an instant, else what a walk folded, else null |
 | `prevunix` | `datetime64(ns, UTC)` | nullable; a `prevunix` capture, else what a walk stamped, else null |
 | `snapunix` | `datetime64(ns, UTC)` | nullable; a `snapunix` capture, else what a grid stamped, else null |
-| `curruuid` | `uuid` | required; the line's identity, the UUIDv7 derived from `currunix`, `seqnum`, and `currhashcode`, with `crosshashcode` as its seed; the nil identity where the instant has no UUIDv7 |
+| `curruuid` | `uuid` | required; the line's identity, the UUIDv7 its microsecond `currunix` and `currhashcode` derive; the nil identity where the instant has no UUIDv7 |
 | `crossuuid` | `uuid` | required; the UUIDv8 of `crosshashcode`, or `curruuid` where the line names no cross code |
-| `crosscode` | `utf8` | nullable; the canonical text of the object the line was read from, else an explicit event value for an unlocated line, else null |
+| `crosscode` | `utf8` | nullable; the canonical text of the identifier the line was read under - the URL where that identifier is a location, which is the common case, and the name itself where it is a name - else an explicit event value for a line nothing addressed, else null |
 | `currhashcode` | `uint64` | required; the XXH3-64 of what the line states - the row header's captures, its parents, its state, its place and what it follows - and then its body; the capture that dates the line is left out, because `currunix` is coupled with this code rather than fed into it |
-| `crosshashcode` | `uint64` | required; the XXH3-64 of `crosscode` - the source URL's text for a located line - zero where none |
+| `crosshashcode` | `uint64` | required; the XXH3-64 of `crosscode` - the identifier's text for a line a read addressed - zero where none |
 | `prevuuid` | `uuid` | nullable; a `prevuuid` capture, else what a walk stamped, else null |
 | `seqnum` | `uint64` | nullable; the row number under `start_rownum`, else the zero-based physical index, unless an event value was stated explicitly; null where zero. This is where a text read states the row number, and there is no column beside it |
 | `parentuuids` | `list<uuid>` | nullable; what a walk stated, else null |
@@ -193,7 +193,7 @@ named for an event fact the line reads from its header - `state`, `prevuuid`,
 `snapunix` - feeds that column and appears beside nothing, as an `mtime`
 capture dates the line and feeds `currunix`. A capture named for a fact the
 line derives is refused: `seqnum` belongs to the row number, `crosscode` to the
-object the line came from, and `currunix`, `curruuid`, `crossuuid`,
+identifier the line was read under, and `currunix`, `curruuid`, `crossuuid`,
 `currhashcode`, `crosshashcode`, `parentuuids`, `srcuuids`, and `identifiers`
 are reserved the same way. The check ignores case.
 [`DataType::from_regex`](../../types/text/string.md#regex-captures) types captures constrained to
@@ -225,9 +225,10 @@ Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture)
 
 - keyed merge -> refused; a line has no row identity, so overwrite and append are the two intents.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
-- an unlocated buffer -> `crosscode` is null unless a caller states one, and `currunix` is the epoch: a buffer has no location and records no modification time; `crosshashcode` is zero and `crossuuid` is the line's own identity.
+- an unlocated buffer -> `crosscode` is null unless a caller states one, and `currunix` is the epoch: it is addressed by nothing at all, so no identifier reaches the cross code, and it records no modification time; `crosshashcode` is zero and `crossuuid` is the line's own identity.
+- a read addressed by a name - a `urn:` or an [`arn:`](../../uri/arn.md) -> `crosscode` is that name's canonical text, never the place the name [resolves](../../uri/url-urn.md#where-a-name-is) to, so `crosshashcode` and `crossuuid` do not move with the directory the read ran in; the line locates itself at `sourceurl`, which for a URN is the path the name spells rooted in the process working directory. A name that resolves nowhere - an ARN naming a service no location serves - locates nothing and keeps its code.
 - an event fact nothing states -> the column's null, but for the ones never null: `currunix` the epoch, `curruuid` the nil identity where the instant has no UUIDv7, `crossuuid` the line's own identity, `currhashcode` the code the line's content digests to, `crosshashcode` zero; and `state`, nullable, is written `00UNKNOWN` all the same.
-- a row-header capture named `seqnum` or `crosscode`, in any case -> refused when the header is set, because the reader owns those facts through the row number and the object the line came from.
+- a row-header capture named `seqnum` or `crosscode`, in any case -> refused when the header is set, because the reader owns those facts through the row number and the identifier the read was addressed by.
 - a `state`, `prevuuid`, or instant capture the line cannot read at the fact's datatype -> a refusal naming the row, the object and the fact, on the batch as on the reading.
 - a negative calculated row number -> cannot supply the event's unsigned `seqnum` and therefore refuses the read by name; the infallible event door falls back to the physical index.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax, with a column of its own.
