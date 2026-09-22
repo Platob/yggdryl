@@ -12,6 +12,7 @@ mod vocabulary {
             ("HTTPS", Scheme::HTTPS),
             ("FILE", Scheme::FILE),
             ("URN", Scheme::URN),
+            ("ARN", Scheme::ARN),
             ("POSTGRES", Scheme::POSTGRES),
             ("POSTGRESQL", Scheme::POSTGRESQL),
             ("MYSQL", Scheme::MYSQL),

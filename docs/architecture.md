@@ -33,7 +33,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | [Charset](charset/index.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
 | [Media](media/index.md) | `media_type.rs`, `mime_type.rs`, `media/` (record options, inference, magic, merge, partition) and one folder per medium - `ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` (plain-text records) |
 | [Structured documents](media/structured.md) | `json/`, `toml/`, `yaml/`: structured `Scalar` codecs over the machinery in `text/`, under the [Media](media/index.md) tab as three more schemes |
-| [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, path, glob, and partition syntax |
+| [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, ARN, path, glob, and partition syntax |
 | [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
 | [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown |
 | [Graph](graph.md) | `graph/element.rs`: the `Element`, `Event`, `MarketElement` and `MarketEvent` traits - an element's `Uuid`, the identity it has elsewhere, its parents' UUIDs, an event's instant and code, a market element's price, quantity and side - as signatures a value implements; `graph/event.rs` the two holders and `graph/iterator.rs` the one walk |

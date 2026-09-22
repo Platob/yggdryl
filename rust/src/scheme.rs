@@ -16,6 +16,7 @@ enum SchemeWire {
     Https,
     File,
     Urn,
+    Arn,
     Postgres,
     Postgresql,
     Mysql,
@@ -65,6 +66,8 @@ impl Scheme {
     pub const FILE: Self = Self(SchemeWire::File);
     /// The uniform resource name scheme.
     pub const URN: Self = Self(SchemeWire::Urn);
+    /// The Amazon Resource Name scheme.
+    pub const ARN: Self = Self(SchemeWire::Arn);
     /// The short PostgreSQL protocol spelling.
     pub const POSTGRES: Self = Self(SchemeWire::Postgres);
     /// The long PostgreSQL protocol spelling.
@@ -149,6 +152,7 @@ impl Scheme {
             SchemeWire::Http | SchemeWire::Https => "HTTP",
             SchemeWire::File => "FILE",
             SchemeWire::Urn => "URN",
+            SchemeWire::Arn => "ARN",
             SchemeWire::Postgres => "POSTGRES",
             SchemeWire::Postgresql => "POSTGRESQL",
             SchemeWire::Mysql => "MYSQL",
@@ -187,6 +191,7 @@ impl Scheme {
             SchemeWire::Https => "https",
             SchemeWire::File => "file",
             SchemeWire::Urn => "urn",
+            SchemeWire::Arn => "arn",
             SchemeWire::Postgres => "postgres",
             SchemeWire::Postgresql => "postgresql",
             SchemeWire::Mysql => "mysql",
@@ -363,6 +368,7 @@ impl FromStr for Scheme {
             3 if value.eq_ignore_ascii_case("s3a") => Some(Self::S3A),
             3 if value.eq_ignore_ascii_case("s3n") => Some(Self::S3N),
             3 if value.eq_ignore_ascii_case("urn") => Some(Self::URN),
+            3 if value.eq_ignore_ascii_case("arn") => Some(Self::ARN),
             3 if value.eq_ignore_ascii_case("sql") => Some(Self::SQL),
             3 if value.eq_ignore_ascii_case("fix") => Some(Self::FIX),
             4 if value.eq_ignore_ascii_case("http") => Some(Self::HTTP),

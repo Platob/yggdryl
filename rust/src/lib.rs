@@ -197,8 +197,8 @@ pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
 pub use uri::{
-    Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, UriType,
-    Url, UrlParents, Urn,
+    Arn, Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath,
+    UriType, Url, UrlParents, Urn,
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
 pub use xxhash::{DigestFieldNames, DigestFields};

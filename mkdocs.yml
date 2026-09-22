@@ -271,6 +271,7 @@ nav:
     - uri/index.md
     - Path: uri/path.md
     - URL and URN: uri/url-urn.md
+    - ARN: uri/arn.md
     - Query parameters: uri/parameters.md
     - Patterns: uri/patterns.md
   - Arrow:

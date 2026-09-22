@@ -2623,6 +2623,7 @@ pub struct Scheme(SchemeValue);
   pub const HTTPS: Self = Self(SchemeValue::Https);
   pub const FILE: Self = Self(SchemeValue::File);
   pub const URN: Self = Self(SchemeValue::Urn);
+  pub const ARN: Self = Self(SchemeValue::Arn);
   pub const POSTGRES: Self = Self(SchemeValue::Postgres);
   pub const POSTGRESQL: Self = Self(SchemeValue::Postgresql);
   pub const MYSQL: Self = Self(SchemeValue::Mysql);
@@ -4494,7 +4495,7 @@ pub enum UnionMode
   pub const fn as_str(self) -> &'static str
   impl FromStr: fn from_str(value: &str) -> Result<Self>  (ASCII case-insensitive, trims; the seven other vocabularies `Enum::from_parts` dispatches over all had one)
 
-### yggdryl::uri  [rust/src/uri/mod.rs]  (the URI, URL and URN values; the `uri` family over them is yggdryl::uri::datatype)
+### yggdryl::uri  [rust/src/uri/mod.rs]  (the URI, URL, URN and ARN values; the `uri` family over them is yggdryl::uri::datatype)
 pub struct Authority(SmolStr);
   pub fn from_str(value: &str) -> Result<Self>
   pub fn as_str(&self) -> &str
@@ -4541,6 +4542,8 @@ pub struct Authority(SmolStr);
   pub fn into_json(self) -> Result<String>
   pub fn into_url(self) -> Result<Url>
   pub fn into_urn(self) -> Result<Urn>
+  pub fn into_arn(self) -> Result<Arn>
+  pub fn locator(&self) -> Result<Url>
   pub fn into_path(self) -> Result<PathBuf>
   pub fn validate(&self) -> Result<()>
   pub fn scheme(&self) -> &Scheme
@@ -4628,6 +4631,48 @@ pub struct Authority(SmolStr);
   pub fn fragment(&self) -> Option<&str>
   pub fn namespace(&self) -> &str
   pub fn namespace_specific(&self) -> &str
+  pub fn locator_path(&self) -> Result<UriPath>
+  pub fn resolve(&self, base: &Url) -> Result<Url>
+  pub fn locator(&self) -> Result<Url>
+  pub fn path_segments(&self) -> PathSegments<'_>
+  pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>
+  pub fn file_name(&self) -> Option<&str>
+  pub fn stem(&self) -> Option<&str>
+  pub fn extension(&self) -> Option<&str>
+  pub fn extensions(&self) -> Extensions<'_>
+  pub fn mime_type(&self) -> MimeType
+  pub fn media_type(&self) -> MediaType
+  pub fn set_file_name(&mut self, value: &str) -> Result<()>
+  pub fn set_stem(&mut self, value: &str) -> Result<()>
+  pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
+  pub fn set_media_type(&mut self, value: MediaType) -> Result<()>
+  pub fn remove_extension(&mut self) -> bool
+  pub fn clear_extensions(&mut self) -> bool
+  pub fn stable_hash(&self) -> u64
+  pub struct Arn(Uri);
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn from_parts( partition: &str, service: &str, region: &str, account: &str, resource: &str, ) -> Result<Self>
+  pub fn from_uri(mut value: Uri) -> Result<Self>
+  pub fn from_json(value: &str) -> Result<Self>
+  pub fn into_json(self) -> Result<String>
+  pub fn into_uri(self) -> Uri
+  pub fn scheme(&self) -> &Scheme
+  pub fn authority(&self) -> &Authority
+  pub fn path(&self) -> &UriPath
+  pub fn path_text(&self, decode: bool) -> Result<Cow<'_, str>>
+  pub fn partition(&self) -> &str
+  pub fn service(&self) -> &str
+  pub fn region(&self) -> Option<&str>
+  pub fn account(&self) -> Option<&str>
+  pub fn resource(&self) -> &str
+  pub fn resource_separator(&self) -> Option<char>
+  pub fn resource_type(&self) -> Option<&str>
+  pub fn resource_id(&self) -> &str
+  pub fn bucket(&self) -> Option<&str>
+  pub fn key(&self) -> Option<&str>
+  pub fn locator(&self) -> Result<Url>
   pub fn path_segments(&self) -> PathSegments<'_>
   pub fn next_path_segment(&self, cursor: usize) -> Option<(usize, &str)>
   pub fn file_name(&self) -> Option<&str>

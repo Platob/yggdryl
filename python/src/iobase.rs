@@ -31,7 +31,7 @@ use crate::iomedia::{
 };
 use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::uri::{PyUrl, core_url_from_value};
+use crate::uri::{PyUrl, core_url_from_value, url_object};
 use crate::value_error;
 
 /// A random-access resource: a local file, a directory, or a memory buffer.
@@ -880,8 +880,12 @@ impl PyIOBase {
 
     /// The location this handle addresses.
     #[getter]
-    fn url(&self) -> PyResult<Option<PyUrl>> {
-        Ok(self.inner()?.url().cloned().map(PyUrl::from_core))
+    fn url(&self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
+        self.inner()?
+            .url()
+            .cloned()
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     /// The exact `pyarrow.fs.FileSystem` supplied at construction.

@@ -1,12 +1,19 @@
-//! Native Python views of Yggdryl URI, URL, and URN values.
+//! Native Python views of Yggdryl URI, URL, URN, and ARN values.
+//!
+//! `Uri` is the class every identifier is, and `Url`, `Urn`, and `Arn` are the
+//! three narrowings of it the scheme decides. They are Python subclasses of
+//! `Uri` because that is what they are: one canonical value, held once by the
+//! base, read by whichever class the scheme named. The shared vocabulary -
+//! components, path, suffixes, comparison, hashing, pickling - is therefore
+//! written once, and a narrowed class carries only what is its own.
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyString, PyTuple};
 use yggdryl::{
-    Authority as CoreAuthority, Parameters as CoreParameters, Scheme as CoreScheme, Uri as CoreUri,
-    UriPath as CoreUriPath, Url as CoreUrl, Urn as CoreUrn,
+    Arn as CoreArn, Authority as CoreAuthority, Parameters as CoreParameters, Scheme as CoreScheme,
+    Uri as CoreUri, UriPath as CoreUriPath, Url as CoreUrl, Urn as CoreUrn,
 };
 
 use crate::enums::{
@@ -54,15 +61,16 @@ where
 
 impl<I> ExactSizeIterator for ExactIterator<I> where I: Iterator {}
 
-fn core_uri_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUri> {
+// ---------------------------------------------------------------------------
+// Intake: every spelling of an identifier a caller may hand across.
+// ---------------------------------------------------------------------------
+
+/// Read any identifier a caller named as the canonical URI it is.
+///
+/// Every narrowed class is a `Uri`, so one borrow reads all four.
+pub(crate) fn core_uri_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUri> {
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
         return Ok(value.inner.clone());
-    }
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrl>>() {
-        return Ok(value.inner.clone().into_uri());
-    }
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
-        return Ok(value.inner.clone().into_uri());
     }
     if let Ok(value) = value.extract::<&str>() {
         return CoreUri::from_str(value).map_err(value_error);
@@ -71,19 +79,19 @@ fn core_uri_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUri> {
         return CoreUri::from_path(path_string_from_value(value)?).map_err(value_error);
     }
     Err(PyTypeError::new_err(
-        "expected a yggdryl.Uri, yggdryl.Url, yggdryl.Urn, or URI string",
+        "expected a yggdryl.Uri, yggdryl.Url, yggdryl.Urn, yggdryl.Arn, or URI string",
     ))
 }
 
+/// Read one location a caller named: a URL, a name, or a path to root.
+///
+/// An identifier crosses through `locator`, so a name opens as well as a
+/// location does: a URN resolves to the path it spells and an Amazon S3 ARN to
+/// the `s3:` URL it addresses. Text carrying a scheme is a URL and text
+/// carrying none is a path rooted at the working directory.
 pub(crate) fn core_url_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUrl> {
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrl>>() {
-        return Ok(value.inner.clone());
-    }
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {
-        return CoreUrl::from_uri(value.inner.clone()).map_err(value_error);
-    }
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
-        return CoreUrl::from_uri(value.inner.clone().into_uri()).map_err(value_error);
+        return value.inner.locator().map_err(value_error);
     }
     if let Ok(value) = value.extract::<&str>() {
         return CoreUrl::from_location(value).map_err(value_error);
@@ -92,23 +100,24 @@ pub(crate) fn core_url_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUrl>
         return CoreUrl::from_path(path_string_from_value(value)?).map_err(value_error);
     }
     Err(PyTypeError::new_err(
-        "expected a yggdryl.Url, yggdryl.Uri, yggdryl.Urn, URL string, or path-like value",
+        "expected a yggdryl.Url, yggdryl.Uri, yggdryl.Urn, yggdryl.Arn, URL string, or path-like value",
     ))
 }
 
+/// Read any identifier a caller named as the URN it is.
 fn core_urn_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUrn> {
-    if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
-        return Ok(value.inner.clone());
-    }
     if let Ok(value) = value.extract::<&str>() {
         return CoreUrn::from_str(value).map_err(value_error);
     }
-    if let Ok(value) = core_uri_from_value(value) {
-        return CoreUrn::from_uri(value).map_err(value_error);
+    CoreUrn::from_uri(core_uri_from_value(value)?).map_err(value_error)
+}
+
+/// Read any identifier a caller named as the ARN it is.
+fn core_arn_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreArn> {
+    if let Ok(value) = value.extract::<&str>() {
+        return CoreArn::from_str(value).map_err(value_error);
     }
-    Err(PyTypeError::new_err(
-        "expected a yggdryl.Urn, yggdryl.Uri, yggdryl.Url, or URN string",
-    ))
+    CoreArn::from_uri(core_uri_from_value(value)?).map_err(value_error)
 }
 
 pub(crate) fn path_string_from_value(value: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -144,11 +153,135 @@ fn path_string_from_core(value: std::path::PathBuf) -> PyResult<String> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Answering: the class an identifier turns out to be.
+// ---------------------------------------------------------------------------
+
+/// Answer `value` as the Python class its scheme names.
+///
+/// This is the one place a parsed identifier becomes a Python object, so a
+/// caller who wrote `Uri(...)` receives the narrowing that value is - a `Url`,
+/// a `Urn`, or an `Arn` - and a value that is none of them stays a `Uri`. Each
+/// narrowing is asked by its own core validator rather than by a reading this
+/// binding invents, and the value stored is the one that validator
+/// canonicalized.
+pub(crate) fn describe(py: Python<'_>, value: CoreUri) -> PyResult<Py<PyAny>> {
+    if let Ok(urn) = CoreUrn::from_uri(value.clone()) {
+        return Ok(urn_object(py, urn)?.into_any());
+    }
+    if let Ok(arn) = CoreArn::from_uri(value.clone()) {
+        return Ok(arn_object(py, arn)?.into_any());
+    }
+    if let Ok(url) = CoreUrl::from_uri(value.clone()) {
+        return Ok(url_object(py, url)?.into_any());
+    }
+    Ok(Py::new(py, PyUri::from_core(value))?.into_any())
+}
+
+/// Build the base every narrowed class carries.
+fn narrowed(value: CoreUri) -> PyClassInitializer<PyUri> {
+    PyClassInitializer::from(PyUri::from_core(value))
+}
+
+pub(crate) fn url_object(py: Python<'_>, value: CoreUrl) -> PyResult<Py<PyUrl>> {
+    Py::new(py, narrowed(value.into_uri()).add_subclass(PyUrl))
+}
+
+fn urn_object(py: Python<'_>, value: CoreUrn) -> PyResult<Py<PyUrn>> {
+    Py::new(py, narrowed(value.into_uri()).add_subclass(PyUrn))
+}
+
+fn arn_object(py: Python<'_>, value: CoreArn) -> PyResult<Py<PyArn>> {
+    Py::new(py, narrowed(value.into_uri()).add_subclass(PyArn))
+}
+
+/// Store `candidate` on `slf`, refusing what its class would no longer hold.
+///
+/// A narrowed class is a view of one canonical identifier, so an edit made
+/// through the vocabulary every identifier shares has to leave the value still
+/// being what the class says it is. This is the one place that is decided, and
+/// each narrowing is asked by its own core validator.
+fn hold_narrowed(slf: &Bound<'_, PyUri>, candidate: CoreUri) -> PyResult<()> {
+    let object = slf.as_any();
+    if object.is_instance_of::<PyUrn>() {
+        CoreUrn::from_uri(candidate.clone()).map_err(value_error)?;
+    } else if object.is_instance_of::<PyArn>() {
+        CoreArn::from_uri(candidate.clone()).map_err(value_error)?;
+    } else if object.is_instance_of::<PyUrl>() {
+        CoreUrl::from_uri(candidate.clone()).map_err(value_error)?;
+    }
+    slf.borrow_mut().inner = candidate;
+    Ok(())
+}
+
+/// Apply one core edit to the identifier `slf` holds, atomically.
+///
+/// The edit runs on a candidate, so a refusal - the core's own, or the
+/// narrowing's - leaves the value exactly as it was.
+fn edit_identifier(
+    slf: &Bound<'_, PyUri>,
+    edit: impl FnOnce(&mut CoreUri) -> yggdryl::Result<()>,
+) -> PyResult<()> {
+    let mut candidate = {
+        let held = slf.borrow();
+        held.require_mutable()?;
+        held.inner.clone()
+    };
+    edit(&mut candidate).map_err(value_error)?;
+    hold_narrowed(slf, candidate)
+}
+
+/// Apply one core edit that reports whether it changed anything.
+fn edit_identifier_if(
+    slf: &Bound<'_, PyUri>,
+    edit: impl FnOnce(&mut CoreUri) -> bool,
+) -> PyResult<bool> {
+    let mut candidate = {
+        let held = slf.borrow();
+        held.require_mutable()?;
+        held.inner.clone()
+    };
+    if !edit(&mut candidate) {
+        return Ok(false);
+    }
+    hold_narrowed(slf, candidate)?;
+    Ok(true)
+}
+
+/// Read the URL a narrowed view stands on, which its class already proved.
+fn url_of(base: &PyUri) -> PyResult<CoreUrl> {
+    CoreUrl::from_uri(base.inner.clone()).map_err(value_error)
+}
+
+/// Read the URN a narrowed view stands on, which its class already proved.
+fn urn_of(base: &PyUri) -> PyResult<CoreUrn> {
+    CoreUrn::from_uri(base.inner.clone()).map_err(value_error)
+}
+
+/// Read the ARN a narrowed view stands on, which its class already proved.
+fn arn_of(base: &PyUri) -> PyResult<CoreArn> {
+    CoreArn::from_uri(base.inner.clone()).map_err(value_error)
+}
+
+// ---------------------------------------------------------------------------
+// `Uri`: the identifier itself, and the base class of every narrowing.
+// ---------------------------------------------------------------------------
+
 /// A normalized URI with sequence access to its path segments.
 ///
 /// The Python view stays mutable until it is first hashed. Hashing locks that
 /// one wrapper so its canonical value remains stable as a mapping key.
-#[pyclass(name = "Uri", module = "yggdryl._native", skip_from_py_object)]
+///
+/// Calling `Uri(value)` answers the narrowing the scheme names - a `Url`, a
+/// `Urn`, or an `Arn` - and a `Uri` when the value is none of them. The named
+/// doors `from_str`, `from_path`, `from_parts` and `from_json` answer this
+/// class itself, which is what a round trip through `copy` and `pickle` needs.
+#[pyclass(
+    name = "Uri",
+    module = "yggdryl._native",
+    subclass,
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyUri {
     pub(crate) inner: CoreUri,
@@ -166,7 +299,7 @@ impl PyUri {
     fn require_mutable(&self) -> PyResult<()> {
         if self.hash_locked {
             Err(PyTypeError::new_err(
-                "a hashed Uri is frozen; copy it before mutation",
+                "a hashed identifier is frozen; copy it before mutation",
             ))
         } else {
             Ok(())
@@ -176,14 +309,17 @@ impl PyUri {
 
 #[pymethods]
 impl PyUri {
+    /// Read any identifier, answering the narrowing its scheme names.
     #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_uri_from_value(value).map(Self::from_core)
+    #[allow(clippy::new_ret_no_self)] // `Uri(...)` answers a `Url`, `Urn`, or `Arn`.
+    fn new(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        describe(py, core_uri_from_value(value)?)
     }
 
+    /// Read any identifier, answering the narrowing its scheme names.
     #[staticmethod]
-    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Self::new(value)
+    fn from_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        Self::new(py, value)
     }
 
     #[staticmethod]
@@ -234,7 +370,6 @@ impl PyUri {
             .map_err(value_error)
     }
 
-    /// Re-check every cross-component invariant, raising `ValueError` on one.
     fn validate(&self) -> PyResult<()> {
         self.inner.validate().map_err(value_error)
     }
@@ -245,21 +380,28 @@ impl PyUri {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    fn into_url(&self) -> PyResult<PyUrl> {
-        self.inner
-            .clone()
-            .into_url()
-            .map(PyUrl::from_core)
-            .map_err(value_error)
+    fn into_url(&self, py: Python<'_>) -> PyResult<Py<PyUrl>> {
+        url_object(py, url_of(self)?)
     }
 
     #[allow(clippy::wrong_self_convention)]
-    fn into_urn(&self) -> PyResult<PyUrn> {
-        self.inner
-            .clone()
-            .into_urn()
-            .map(PyUrn::from_core)
-            .map_err(value_error)
+    fn into_urn(&self, py: Python<'_>) -> PyResult<Py<PyUrn>> {
+        urn_object(py, urn_of(self)?)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arn(&self, py: Python<'_>) -> PyResult<Py<PyArn>> {
+        arn_object(py, arn_of(self)?)
+    }
+
+    /// The location this identifier names, as a `Url`.
+    ///
+    /// A location locates itself; a name resolves to where it is - a URN under
+    /// the process working directory, an Amazon S3 ARN to the `s3:` URL its
+    /// bucket and key address - which is what lets any identifier be handed to
+    /// a reader as the thing to open.
+    fn locator(&self, py: Python<'_>) -> PyResult<Py<PyUrl>> {
+        url_object(py, self.inner.locator().map_err(value_error)?)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -359,10 +501,6 @@ impl PyUri {
         self.inner.scheme().is_storage()
     }
 
-    /// Whether canonical syntax carries the `//` authority marker.
-    ///
-    /// This is the difference between an explicitly empty authority
-    /// (`file:///x`) and no authority at all (`mailto:a@b`).
     #[getter]
     fn has_authority(&self) -> bool {
         self.inner.has_authority()
@@ -401,7 +539,7 @@ impl PyUri {
     /// Address the query as the `key=value` pairs it spells.
     ///
     /// The view is live: it reads and writes this value's query rather than a
-    /// copy of it, so `parameters()["symbol"] = "MSFT"` changes this URI.
+    /// copy of it, so `parameters()["symbol"] = "MSFT"` changes this value.
     #[pyo3(signature = (decode = false))]
     fn parameters(slf: &Bound<'_, Self>, decode: bool) -> PyParameters {
         PyParameters::over_uri(slf.clone().unbind(), decode)
@@ -426,21 +564,17 @@ impl PyUri {
         PyTuple::new(py, ExactIterator::new(self.inner.path_segments()))
     }
 
-    /// The names the path addresses, with `.` and `..` resolved.
-    ///
-    /// `path_segments` is the literal text; this is what the path reaches.
+    /// The path components, with `.` dropped and `..` applied.
     #[getter]
     fn parts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, self.inner.parts())
     }
 
-    /// The containing location, which at the root is this location itself.
     #[getter]
     fn parent(&self) -> Self {
         Self::from_core(self.inner.parent().unwrap_or_else(|| self.inner.clone()))
     }
 
-    /// Every containing location, closest first.
     #[getter]
     fn parents<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         let parents: Vec<Self> = self.inner.parents().map(Self::from_core).collect();
@@ -472,41 +606,33 @@ impl PyUri {
     /// The value is the component itself, without `?`. An error leaves the
     /// value unchanged.
     #[pyo3(signature = (query, /))]
-    fn set_query(&mut self, query: Option<&str>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_query(query).map_err(value_error)
+    fn set_query(slf: &Bound<'_, Self>, query: Option<&str>) -> PyResult<()> {
+        edit_identifier(slf, |uri| uri.set_query(query))
     }
 
-    fn set_file_name(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_file_name(value).map_err(value_error)
+    fn set_file_name(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_identifier(slf, |uri| uri.set_file_name(value))
     }
 
-    fn set_stem(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_stem(value).map_err(value_error)
+    fn set_stem(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_identifier(slf, |uri| uri.set_stem(value))
     }
 
-    fn set_extension(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_extension(value).map_err(value_error)
+    fn set_extension(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_identifier(slf, |uri| uri.set_extension(value))
     }
 
-    fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_extensions(strings_from_iterable(values, "extensions")?)
-            .map_err(value_error)
+    fn set_extensions(slf: &Bound<'_, Self>, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        let values = strings_from_iterable(values, "extensions")?;
+        edit_identifier(slf, |uri| uri.set_extensions(values))
     }
 
-    fn remove_extension(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_extension())
+    fn remove_extension(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        edit_identifier_if(slf, CoreUri::remove_extension)
     }
 
-    fn clear_extensions(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.clear_extensions())
+    fn clear_extensions(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        edit_identifier_if(slf, CoreUri::clear_extensions)
     }
 
     #[getter]
@@ -519,25 +645,23 @@ impl PyUri {
         PyMediaType::from_core(self.inner.media_type())
     }
 
-    fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_mime_type(core_mime_type_from_value(value)?)
-            .map_err(value_error)
+    fn set_mime_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_mime_type_from_value(value)?;
+        edit_identifier(slf, |uri| uri.set_mime_type(value))
     }
 
-    fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_media_type(core_media_type_from_value(value)?)
-            .map_err(value_error)
+    fn set_media_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_media_type_from_value(value)?;
+        edit_identifier(slf, |uri| uri.set_media_type(value))
     }
 
-    /// Return this URI with path components joined by the core path resolver.
+    /// Return this identifier with path components joined by the core path
+    /// resolver.
     ///
     /// Scheme, authority, query, and fragment are preserved. Relative values
     /// extend the path with `.` and `..` resolved; an absolute value replaces
-    /// the path. The source is never mutated, including after it is hash-locked.
+    /// the path. The source is never mutated, including after it is
+    /// hash-locked.
     #[pyo3(signature = (*others))]
     fn joinpath(&self, others: &Bound<'_, PyTuple>) -> PyResult<Self> {
         let mut joined = self.inner.clone();
@@ -562,10 +686,9 @@ impl PyUri {
     }
 
     fn __iter__(&self) -> PyUriPathIterator {
-        let inner = self.inner.clone();
         PyUriPathIterator {
-            remaining: inner.path().segment_len(),
-            inner,
+            remaining: self.inner.path().segment_len(),
+            inner: self.inner.clone(),
             cursor: 0,
         }
     }
@@ -591,12 +714,25 @@ impl PyUri {
         self.inner.to_string()
     }
 
-    fn __repr__(&self) -> String {
-        format!("Uri.from_str({:?})", self.inner.to_string())
+    /// The expression that rebuilds this value, naming the class it is.
+    ///
+    /// The class is read off the value rather than written into each one, so a
+    /// narrowing can never report the base class by mistake.
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(format!(
+            "{}.from_str({:?})",
+            slf.get_type().name()?,
+            slf.borrow().inner.to_string()
+        ))
     }
 
+    /// Identifiers compare as the canonical URI they hold.
+    ///
+    /// A `Url` and the `Uri` it narrows are one identifier, so they compare and
+    /// hash as one; two schemes can never spell the same text, so a name and a
+    /// location still never meet.
     fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+        let Ok(other) = other.extract::<PyRef<'_, PyUri>>() else {
             return Ok(other.py().NotImplemented());
         };
         Ok(compare(self.inner.cmp(&other.inner), operation)
@@ -615,342 +751,78 @@ impl PyUri {
         crate::python_hash(self.inner.stable_hash())
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
-        Ok((callable, (self.inner.to_string(),)))
+    fn __reduce__(slf: &Bound<'_, Self>) -> PyResult<(Py<PyAny>, (String,))> {
+        let callable = slf.get_type().getattr("from_str")?.unbind();
+        let text = slf.borrow().inner.to_string();
+        Ok((callable, (text,)))
     }
 
-    fn __copy__(&self) -> Self {
-        Self::from_core(self.inner.clone())
+    fn __copy__(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let text = slf.borrow().inner.to_string();
+        Ok(slf.get_type().call_method1("from_str", (text,))?.unbind())
     }
 
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        Self::from_core(self.inner.clone())
+    fn __deepcopy__(slf: &Bound<'_, Self>, _memo: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        Self::__copy__(slf)
     }
 }
+
+// ---------------------------------------------------------------------------
+// `Url`: a location, and everything `pathlib` asks of one.
+// ---------------------------------------------------------------------------
 
 /// A URL view validated and normalized by the core URI model.
 ///
-/// The Python view stays mutable until it is first hashed. Hashing locks that
-/// one wrapper so its canonical value remains stable as a mapping key.
-#[pyclass(name = "Url", module = "yggdryl._native", skip_from_py_object)]
-#[derive(Clone)]
-pub(crate) struct PyUrl {
-    pub(crate) inner: CoreUrl,
-    hash_locked: bool,
-}
-
-impl PyUrl {
-    pub(crate) fn from_core(inner: CoreUrl) -> Self {
-        Self {
-            inner,
-            hash_locked: false,
-        }
-    }
-
-    fn require_mutable(&self) -> PyResult<()> {
-        if self.hash_locked {
-            Err(PyTypeError::new_err(
-                "a hashed Url is frozen; copy it before mutation",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
+/// A `Url` is a `Uri` whose scheme spells a location, so it reads every
+/// component through the base and adds what only a location answers: the
+/// `pathlib` vocabulary, glob matching, Hive partitions, and the local
+/// filesystem predicates.
+#[pyclass(
+    name = "Url",
+    module = "yggdryl._native",
+    extends = PyUri,
+    skip_from_py_object
+)]
+pub(crate) struct PyUrl;
 
 #[pymethods]
 impl PyUrl {
     #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_url_from_value(value).map(Self::from_core)
+    fn new(value: &Bound<'_, PyAny>) -> PyResult<PyClassInitializer<Self>> {
+        Ok(narrowed(core_url_from_value(value)?.into_uri()).add_subclass(Self))
     }
 
     #[staticmethod]
-    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Self::new(value)
+    fn from_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        url_object(py, core_url_from_value(value)?)
     }
 
     #[staticmethod]
-    fn from_str(value: &str) -> PyResult<Self> {
-        CoreUrl::from_str(value)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_str(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        url_object(py, CoreUrl::from_str(value).map_err(value_error)?)
     }
 
     #[staticmethod]
-    fn from_path(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let value = path_string_from_value(value)?;
-        CoreUrl::from_path(value)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_path(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let value = CoreUrl::from_path(path_string_from_value(value)?).map_err(value_error)?;
+        url_object(py, value)
     }
 
     #[staticmethod]
-    fn from_uri(value: PyRef<'_, PyUri>) -> PyResult<Self> {
-        let inner = value.inner.clone();
-        drop(value);
-        CoreUrl::from_uri(inner)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_uri(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let value = CoreUrl::from_uri(core_uri_from_value(value)?).map_err(value_error)?;
+        url_object(py, value)
     }
 
     #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        CoreUrl::from_json(value)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_json(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        url_object(py, CoreUrl::from_json(value).map_err(value_error)?)
     }
 
+    /// This location as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_uri(&self) -> PyUri {
-        PyUri::from_core(self.inner.clone().into_uri())
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    fn into_path(&self) -> PyResult<String> {
-        self.inner
-            .clone()
-            .into_path()
-            .map_err(value_error)
-            .and_then(path_string_from_core)
-    }
-
-    fn __fspath__(&self) -> PyResult<String> {
-        self.into_path()
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    fn into_json(&self) -> PyResult<String> {
-        self.inner.clone().into_json().map_err(value_error)
-    }
-
-    #[getter]
-    fn scheme(&self) -> &str {
-        self.inner.scheme().as_str()
-    }
-
-    #[getter]
-    fn authority(&self) -> &str {
-        self.inner.authority().as_str()
-    }
-
-    #[getter]
-    fn user(&self) -> Option<&str> {
-        self.inner.user()
-    }
-
-    #[getter]
-    fn password(&self) -> Option<&str> {
-        self.inner.password()
-    }
-
-    #[getter]
-    fn hostname(&self) -> Option<&str> {
-        self.inner.hostname()
-    }
-
-    #[getter]
-    fn bucket(&self) -> Option<&str> {
-        self.inner.bucket()
-    }
-
-    #[getter]
-    fn key(&self) -> Option<&str> {
-        self.inner.key()
-    }
-
-    #[getter]
-    fn region(&self) -> Option<&str> {
-        self.inner.region()
-    }
-
-    /// The Azure storage account this location names, when it names one.
-    #[getter]
-    fn account(&self) -> Option<&str> {
-        self.inner.account()
-    }
-
-    /// The store endpoint host with its explicit port, without a virtual
-    /// container.
-    #[getter]
-    fn store_endpoint(&self) -> Option<&str> {
-        self.inner.store_endpoint()
-    }
-
-    /// Return whether a store location writes its container into the hostname.
-    fn is_virtual_hosted(&self) -> bool {
-        self.inner.is_virtual_hosted()
-    }
-
-    /// The host with its optional port, without user information.
-    #[getter]
-    fn host_port(&self) -> &str {
-        self.inner.authority().host_port()
-    }
-
-    /// The explicit port written in the authority, when one was written.
-    #[getter]
-    fn port(&self) -> Option<u16> {
-        self.inner.authority().port()
-    }
-
-    /// The port a client dials when the authority omits one.
-    ///
-    /// This is the scheme's registered default, never a port written into the
-    /// authority, which `port` answers.
-    #[getter]
-    fn default_port(&self) -> Option<u16> {
-        self.inner.default_port()
-    }
-
-    /// Return whether the scheme addresses byte-oriented storage.
-    fn is_storage(&self) -> bool {
-        self.inner.scheme().is_storage()
-    }
-
-    #[getter]
-    fn path(&self) -> &str {
-        self.inner.path().as_str()
-    }
-
-    /// Return query text without `?`, decoding its escapes when asked.
-    ///
-    /// `decode` chooses which text: the component's own bytes, or the text its
-    /// percent escapes stand for. Decoding reads the component as text -
-    /// `%26` becomes a literal `&`, not a new pair - so `parameters` is what
-    /// reads a query as its pairs.
-    #[pyo3(signature = (decode = false))]
-    fn query(&self, decode: bool) -> PyResult<Option<String>> {
-        Ok(self
-            .inner
-            .query(decode)
-            .map_err(value_error)?
-            .map(std::borrow::Cow::into_owned))
-    }
-
-    /// Return fragment text without `#`, decoding its escapes when asked.
-    #[pyo3(signature = (decode = false))]
-    fn fragment(&self, decode: bool) -> PyResult<Option<String>> {
-        Ok(self
-            .inner
-            .fragment(decode)
-            .map_err(value_error)?
-            .map(std::borrow::Cow::into_owned))
-    }
-
-    /// Address the query as the `key=value` pairs it spells.
-    ///
-    /// The view is live: it reads and writes this value's query rather than a
-    /// copy of it, so `parameters()["symbol"] = "MSFT"` changes this URL.
-    #[pyo3(signature = (decode = false))]
-    fn parameters(slf: &Bound<'_, Self>, decode: bool) -> PyParameters {
-        PyParameters::over_url(slf.clone().unbind(), decode)
-    }
-
-    /// Return the path as text, decoding its escapes when asked.
-    ///
-    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
-    /// inside the segment that carried it, so `path_segments` stays the way to
-    /// walk structure.
-    #[pyo3(signature = (decode = false))]
-    fn path_text(&self, decode: bool) -> PyResult<String> {
-        Ok(self
-            .inner
-            .path_text(decode)
-            .map_err(value_error)?
-            .into_owned())
-    }
-
-    #[getter]
-    fn path_segments<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, ExactIterator::new(self.inner.path_segments()))
-    }
-
-    #[getter]
-    fn file_name(&self) -> Option<&str> {
-        self.inner.file_name()
-    }
-
-    #[getter]
-    fn extension(&self) -> Option<&str> {
-        self.inner.extension()
-    }
-
-    #[getter]
-    fn extensions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, ExactIterator::new(self.inner.extensions()))
-    }
-
-    #[getter]
-    fn stem(&self) -> Option<&str> {
-        self.inner.stem()
-    }
-
-    /// Replace the query text, or clear it with `None`.
-    ///
-    /// The value is the component itself, without `?`. An error leaves the
-    /// value unchanged.
-    #[pyo3(signature = (query, /))]
-    fn set_query(&mut self, query: Option<&str>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_query(query).map_err(value_error)
-    }
-
-    fn set_file_name(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_file_name(value).map_err(value_error)
-    }
-
-    fn set_stem(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_stem(value).map_err(value_error)
-    }
-
-    fn set_extension(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_extension(value).map_err(value_error)
-    }
-
-    fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_extensions(strings_from_iterable(values, "extensions")?)
-            .map_err(value_error)
-    }
-
-    fn remove_extension(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_extension())
-    }
-
-    fn clear_extensions(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.clear_extensions())
-    }
-
-    #[getter]
-    fn mime_type(&self) -> PyMimeType {
-        PyMimeType::from_core(self.inner.mime_type())
-    }
-
-    #[getter]
-    fn media_type(&self) -> PyMediaType {
-        PyMediaType::from_core(self.inner.media_type())
-    }
-
-    fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_mime_type(core_mime_type_from_value(value)?)
-            .map_err(value_error)
-    }
-
-    fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_media_type(core_media_type_from_value(value)?)
-            .map_err(value_error)
+    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
+        PyUri::from_core(slf.as_super().borrow().inner.clone())
     }
 
     // ---------------------------------------------------------------------
@@ -964,14 +836,21 @@ impl PyUrl {
 
     /// The final path component, as `pathlib.PurePath.name`.
     #[getter]
-    fn name(&self) -> &str {
-        self.inner.file_name().unwrap_or_default()
+    fn name(slf: &Bound<'_, Self>) -> String {
+        slf.as_super()
+            .borrow()
+            .inner
+            .file_name()
+            .unwrap_or_default()
+            .to_string()
     }
 
     /// The final extension with its leading dot, as `PurePath.suffix`.
     #[getter]
-    fn suffix(&self) -> String {
-        self.inner
+    fn suffix(slf: &Bound<'_, Self>) -> String {
+        slf.as_super()
+            .borrow()
+            .inner
             .extension()
             .map(|extension| format!(".{extension}"))
             .unwrap_or_default()
@@ -979,36 +858,35 @@ impl PyUrl {
 
     /// Every extension with leading dots, as `PurePath.suffixes`.
     #[getter]
-    fn suffixes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        let suffixes: Vec<String> = self
+    fn suffixes<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let suffixes: Vec<String> = slf
+            .as_super()
+            .borrow()
             .inner
             .extensions()
             .map(|extension| format!(".{extension}"))
             .collect();
-        PyTuple::new(py, suffixes)
-    }
-
-    /// The path components, as `PurePath.parts`.
-    ///
-    /// These are the names the path addresses, so `.` is dropped and `..`
-    /// pops the name before it; `path_segments` is the literal text.
-    #[getter]
-    fn parts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, self.inner.parts())
+        PyTuple::new(slf.py(), suffixes)
     }
 
     /// The containing location, as `PurePath.parent`.
     ///
     /// A location at the root is its own parent, which is what `pathlib` does.
     #[getter]
-    fn parent(&self) -> Self {
-        Self::from_core(self.inner.parent().unwrap_or_else(|| self.inner.clone()))
+    fn parent(slf: &Bound<'_, Self>) -> PyResult<Py<Self>> {
+        let url = url_of(&slf.as_super().borrow())?;
+        let parent = url.parent().unwrap_or(url);
+        url_object(slf.py(), parent)
     }
 
     /// Every containing location, closest first, as `PurePath.parents`.
     #[getter]
-    fn parents<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        let parents: Vec<Self> = self.inner.parents().map(Self::from_core).collect();
+    fn parents<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let py = slf.py();
+        let parents: Vec<Py<Self>> = url_of(&slf.as_super().borrow())?
+            .parents()
+            .map(|parent| url_object(py, parent))
+            .collect::<PyResult<_>>()?;
         PyTuple::new(py, parents)
     }
 
@@ -1017,45 +895,46 @@ impl PyUrl {
     /// A `str` is one URL path component; an `os.PathLike` is an operating
     /// system path, joined component by component with its own separators.
     #[pyo3(signature = (*others))]
-    fn joinpath(&self, others: &Bound<'_, PyTuple>) -> PyResult<Self> {
-        let mut joined = self.inner.clone();
+    fn joinpath(slf: &Bound<'_, Self>, others: &Bound<'_, PyTuple>) -> PyResult<Py<Self>> {
+        let mut joined = url_of(&slf.as_super().borrow())?;
         for other in others {
             joined = join_url_component(&joined, &other)?;
         }
-        Ok(Self::from_core(joined))
+        url_object(slf.py(), joined)
     }
 
     /// `url / "child"`, as `PurePath.__truediv__`.
-    fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        join_url_component(&self.inner, other).map(Self::from_core)
+    fn __truediv__(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let joined = join_url_component(&url_of(&slf.as_super().borrow())?, other)?;
+        url_object(slf.py(), joined)
     }
 
     /// This location with a different final component, as `with_name`.
-    fn with_name(&self, value: &str) -> PyResult<Self> {
-        let mut renamed = self.inner.clone();
+    fn with_name(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
+        let mut renamed = url_of(&slf.as_super().borrow())?;
         renamed.set_file_name(value).map_err(value_error)?;
-        Ok(Self::from_core(renamed))
+        url_object(slf.py(), renamed)
     }
 
     /// This location with a different stem, as `with_stem`.
-    fn with_stem(&self, value: &str) -> PyResult<Self> {
-        let mut renamed = self.inner.clone();
+    fn with_stem(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
+        let mut renamed = url_of(&slf.as_super().borrow())?;
         renamed.set_stem(value).map_err(value_error)?;
-        Ok(Self::from_core(renamed))
+        url_object(slf.py(), renamed)
     }
 
     /// This location with a different final extension, as `with_suffix`.
     ///
     /// The leading dot is optional, and an empty suffix removes the extension.
-    fn with_suffix(&self, value: &str) -> PyResult<Self> {
-        let mut renamed = self.inner.clone();
+    fn with_suffix(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
+        let mut renamed = url_of(&slf.as_super().borrow())?;
         let suffix = value.strip_prefix('.').unwrap_or(value);
         if suffix.is_empty() {
             renamed.remove_extension();
         } else {
             renamed.set_extension(suffix).map_err(value_error)?;
         }
-        Ok(Self::from_core(renamed))
+        url_object(slf.py(), renamed)
     }
 
     /// A URL path is always absolute, as `PurePath.is_absolute`.
@@ -1065,13 +944,13 @@ impl PyUrl {
     }
 
     /// The path in POSIX form, as `PurePath.as_posix`.
-    fn as_posix(&self) -> &str {
-        self.inner.path().as_str()
+    fn as_posix(slf: &Bound<'_, Self>) -> String {
+        slf.as_super().borrow().inner.path().as_str().to_string()
     }
 
     /// The whole location as text, as `PurePath.as_uri`.
-    fn as_uri(&self) -> String {
-        self.inner.to_string()
+    fn as_uri(slf: &Bound<'_, Self>) -> String {
+        slf.as_super().borrow().inner.to_string()
     }
 
     /// Return whether this location matches `pattern`, as `PurePath.match`.
@@ -1079,25 +958,25 @@ impl PyUrl {
     /// A pattern with no separator matches the name at any depth; one with a
     /// separator is anchored at the path root.
     #[pyo3(name = "match")]
-    fn matches(&self, pattern: &str) -> bool {
-        self.inner.matches_glob(pattern)
+    fn matches(slf: &Bound<'_, Self>, pattern: &str) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.matches_glob(pattern))
     }
 
     /// Return whether the whole path matches, as `PurePath.full_match`.
-    fn full_match(&self, pattern: &str) -> bool {
-        self.inner.matches_glob(pattern)
+    fn full_match(slf: &Bound<'_, Self>, pattern: &str) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.matches_glob(pattern))
     }
 
     /// Return whether this location is a glob pattern rather than one name.
-    fn is_glob(&self) -> bool {
-        self.inner.is_glob()
+    fn is_glob(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_glob())
     }
 
     /// Return whether the pattern crosses directory boundaries.
     ///
     /// A `**` segment is what makes a walk recurse rather than list one level.
-    fn is_recursive_glob(&self) -> bool {
-        self.inner.is_recursive_glob()
+    fn is_recursive_glob(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_recursive_glob())
     }
 
     /// Return whether `text` is a pattern rather than one plain name.
@@ -1114,9 +993,11 @@ impl PyUrl {
     /// The root is the deepest place a listing can start; the pattern is the
     /// rest, written relative to that root, which is what `full_match_under`
     /// takes. A location that is not a glob is its own root with no pattern.
-    fn glob_parts(&self) -> PyResult<(Self, Option<String>)> {
-        let (root, pattern) = self.inner.glob_parts().map_err(value_error)?;
-        Ok((Self::from_core(root), pattern))
+    fn glob_parts(slf: &Bound<'_, Self>) -> PyResult<(Py<Self>, Option<String>)> {
+        let (root, pattern) = url_of(&slf.as_super().borrow())?
+            .glob_parts()
+            .map_err(value_error)?;
+        Ok((url_object(slf.py(), root)?, pattern))
     }
 
     /// Return whether the path below `root` matches `pattern`.
@@ -1124,9 +1005,12 @@ impl PyUrl {
     /// The pattern is anchored at `root` rather than at the path root, which
     /// is how a listing filters what `glob_parts` handed it. A location
     /// outside `root` never matches.
-    fn full_match_under(&self, root: &Bound<'_, PyAny>, pattern: &str) -> PyResult<bool> {
-        Ok(self
-            .inner
+    fn full_match_under(
+        slf: &Bound<'_, Self>,
+        root: &Bound<'_, PyAny>,
+        pattern: &str,
+    ) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?
             .matches_glob_under(&core_url_from_value(root)?, pattern))
     }
 
@@ -1134,52 +1018,49 @@ impl PyUrl {
     ///
     /// Raises `ValueError` when this location is not below `other`, which is
     /// what `pathlib` does.
-    fn relative_to(&self, other: &Bound<'_, PyAny>) -> PyResult<String> {
+    fn relative_to(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<String> {
+        let value = url_of(&slf.as_super().borrow())?;
         let root = core_url_from_value(other)?;
-        self.inner
+        value
             .segments_under(&root)
             .map(|segments| segments.join("/"))
             .ok_or_else(|| {
-                pyo3::exceptions::PyValueError::new_err(format!(
-                    "{} is not in the subpath of {root}",
-                    self.inner
-                ))
+                PyValueError::new_err(format!("{value} is not in the subpath of {root}"))
             })
     }
 
     /// Return whether this location is below `other`, as `is_relative_to`.
-    fn is_relative_to(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        Ok(self
-            .inner
+    fn is_relative_to(slf: &Bound<'_, Self>, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?
             .segments_under(&core_url_from_value(other)?)
             .is_some())
     }
 
     /// Return whether something exists here now, as `Path.exists`.
-    fn exists(&self) -> bool {
-        self.inner.exists()
+    fn exists(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.exists())
     }
 
     /// Return whether this location is a directory, as `Path.is_dir`.
-    fn is_dir(&self) -> bool {
-        self.inner.is_dir()
+    fn is_dir(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_dir())
     }
 
     /// Return whether this location is a regular file, as `Path.is_file`.
-    fn is_file(&self) -> bool {
-        self.inner.is_file()
+    fn is_file(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_file())
     }
 
     /// Return whether the name begins with a dot, so a listing may skip it.
-    fn is_private(&self) -> bool {
-        self.inner.is_private()
+    fn is_private(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_private())
     }
 
     /// Return whether this location is on the local file system.
     ///
     /// Only a local URL converts to a path; every other scheme needs a client.
-    fn is_local(&self) -> bool {
-        self.inner.is_local()
+    fn is_local(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_local())
     }
 
     /// The MIME type of the local entry this location addresses.
@@ -1188,19 +1069,24 @@ impl PyUrl {
     /// is identified from its name, falling back to the generic file type. A
     /// remote location answers `mime_type`, with no network call.
     #[getter]
-    fn local_mime_type(&self) -> PyMimeType {
-        PyMimeType::from_core(self.inner.local_mime_type())
+    fn local_mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
+        Ok(PyMimeType::from_core(
+            url_of(&slf.as_super().borrow())?.local_mime_type(),
+        ))
     }
 
     /// The Hive partition pairs this location's path spells out.
     #[getter]
-    fn partitions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, self.inner.hive_partitions())
+    fn partitions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(
+            slf.py(),
+            url_of(&slf.as_super().borrow())?.hive_partitions(),
+        )
     }
 
     /// Return the value of one Hive partition column, when the path has it.
-    fn partition(&self, column: &str) -> Option<String> {
-        self.inner.hive_partition(column)
+    fn partition(slf: &Bound<'_, Self>, column: &str) -> PyResult<Option<String>> {
+        Ok(url_of(&slf.as_super().borrow())?.hive_partition(column))
     }
 
     /// The Hive partition pairs this location spells out below `root`.
@@ -1209,392 +1095,461 @@ impl PyUrl {
     /// it, so `/lake/year=2024` under `/lake/year=2024` spells out nothing. A
     /// location outside `root` spells out nothing either.
     fn partitions_under<'py>(
-        &self,
-        py: Python<'py>,
+        slf: &Bound<'py, Self>,
         root: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(
-            py,
-            self.inner
-                .hive_partitions_under(&core_url_from_value(root)?),
-        )
+        let pairs =
+            url_of(&slf.as_super().borrow())?.hive_partitions_under(&core_url_from_value(root)?);
+        PyTuple::new(slf.py(), pairs)
     }
 
     /// Return whether any path segment is a `column=value` partition.
-    fn is_partitioned(&self) -> bool {
-        self.inner.is_hive_partitioned()
+    fn is_partitioned(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Ok(url_of(&slf.as_super().borrow())?.is_hive_partitioned())
     }
 
     /// Extend this location with one `column=value` partition directory.
-    fn with_partition(&self, column: &str, value: &str) -> PyResult<Self> {
-        self.inner
+    fn with_partition(slf: &Bound<'_, Self>, column: &str, value: &str) -> PyResult<Py<Self>> {
+        let extended = url_of(&slf.as_super().borrow())?
             .with_hive_partition(column, value)
-            .map(Self::from_core)
-            .map_err(value_error)
-    }
-
-    fn __len__(&self) -> usize {
-        self.inner.path().segment_len()
-    }
-
-    fn __iter__(&self) -> PyUriPathIterator {
-        let inner = self.inner.clone().into_uri();
-        PyUriPathIterator {
-            remaining: inner.path().segment_len(),
-            inner,
-            cursor: 0,
-        }
-    }
-
-    fn __getitem__(&self, index: isize) -> PyResult<&str> {
-        let normalized = if index >= 0 {
-            usize::try_from(index).ok()
-        } else {
-            normalize_index(index, self.inner.path().segment_len())
-        };
-        normalized
-            .and_then(|index| self.inner.path().get_segment(index))
-            .ok_or_else(|| PyIndexError::new_err(index))
-    }
-
-    fn __contains__(&self, segment: &Bound<'_, PyAny>) -> bool {
-        segment
-            .extract::<&str>()
-            .is_ok_and(|segment| self.inner.path().contains_segment(segment))
-    }
-
-    fn __str__(&self) -> String {
-        self.inner.to_string()
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Url.from_str({:?})", self.inner.to_string())
-    }
-
-    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return Ok(other.py().NotImplemented());
-        };
-        Ok(compare(self.inner.cmp(&other.inner), operation)
-            .into_pyobject(other.py())?
-            .to_owned()
-            .into_any()
-            .unbind())
-    }
-
-    fn stable_hash(&self) -> u64 {
-        self.inner.stable_hash()
-    }
-
-    fn __hash__(&mut self) -> isize {
-        self.hash_locked = true;
-        crate::python_hash(self.inner.stable_hash())
-    }
-
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
-        Ok((callable, (self.inner.to_string(),)))
-    }
-
-    fn __copy__(&self) -> Self {
-        Self::from_core(self.inner.clone())
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        Self::from_core(self.inner.clone())
+            .map_err(value_error)?;
+        url_object(slf.py(), extended)
     }
 }
+
+// ---------------------------------------------------------------------------
+// `Urn`: a name, and where it resolves to.
+// ---------------------------------------------------------------------------
 
 /// A URN view with namespace-specific accessors.
 ///
-/// The Python view stays mutable until it is first hashed. Hashing locks that
-/// one wrapper so its canonical value remains stable as a mapping key.
-#[pyclass(name = "Urn", module = "yggdryl._native", skip_from_py_object)]
-#[derive(Clone)]
-pub(crate) struct PyUrn {
-    pub(crate) inner: CoreUrn,
-    hash_locked: bool,
-}
-
-impl PyUrn {
-    fn from_core(inner: CoreUrn) -> Self {
-        Self {
-            inner,
-            hash_locked: false,
-        }
-    }
-
-    fn require_mutable(&self) -> PyResult<()> {
-        if self.hash_locked {
-            Err(PyTypeError::new_err(
-                "a hashed Urn is frozen; copy it before mutation",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
+/// A `Urn` is a `Uri` whose scheme spells a name. Its filename accessors read
+/// the namespace-specific string rather than the whole path, and `locator`
+/// answers where the name resolves to, which is what makes a name openable.
+#[pyclass(
+    name = "Urn",
+    module = "yggdryl._native",
+    extends = PyUri,
+    skip_from_py_object
+)]
+pub(crate) struct PyUrn;
 
 #[pymethods]
 impl PyUrn {
     #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        core_urn_from_value(value).map(Self::from_core)
+    fn new(value: &Bound<'_, PyAny>) -> PyResult<PyClassInitializer<Self>> {
+        Ok(narrowed(core_urn_from_value(value)?.into_uri()).add_subclass(Self))
     }
 
     #[staticmethod]
-    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Self::new(value)
+    fn from_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        urn_object(py, core_urn_from_value(value)?)
     }
 
     #[staticmethod]
-    fn from_str(value: &str) -> PyResult<Self> {
-        CoreUrn::from_str(value)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_str(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        urn_object(py, CoreUrn::from_str(value).map_err(value_error)?)
     }
 
     #[staticmethod]
-    fn from_uri(value: PyRef<'_, PyUri>) -> PyResult<Self> {
-        let inner = value.inner.clone();
-        drop(value);
-        CoreUrn::from_uri(inner)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_uri(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let value = CoreUrn::from_uri(core_uri_from_value(value)?).map_err(value_error)?;
+        urn_object(py, value)
     }
 
     #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        CoreUrn::from_json(value)
-            .map(Self::from_core)
-            .map_err(value_error)
+    fn from_json(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        urn_object(py, CoreUrn::from_json(value).map_err(value_error)?)
     }
 
+    /// This name as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_uri(&self) -> PyUri {
-        PyUri::from_core(self.inner.clone().into_uri())
+    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
+        PyUri::from_core(slf.as_super().borrow().inner.clone())
     }
 
+    /// The canonical lowercase namespace identifier.
+    #[getter]
+    fn namespace(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(urn_of(&slf.as_super().borrow())?.namespace().to_string())
+    }
+
+    /// The namespace-specific string, exactly as it was written.
+    #[getter]
+    fn namespace_specific(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(urn_of(&slf.as_super().borrow())?
+            .namespace_specific()
+            .to_string())
+    }
+
+    /// The relative path this name spells.
+    ///
+    /// The namespace leads it and the namespace-specific string's `:`
+    /// separators are the ones after it, so `urn:lake:trades:2026:part.parquet`
+    /// spells `lake/trades/2026/part.parquet`.
+    fn locator_path(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(urn_of(&slf.as_super().borrow())?
+            .locator_path()
+            .map_err(value_error)?
+            .as_str()
+            .to_string())
+    }
+
+    /// Resolve this name under `base`, answering where it is.
+    fn resolve(slf: &Bound<'_, Self>, base: &Bound<'_, PyAny>) -> PyResult<Py<PyUrl>> {
+        let located = urn_of(&slf.as_super().borrow())?
+            .resolve(&core_url_from_value(base)?)
+            .map_err(value_error)?;
+        url_object(slf.py(), located)
+    }
+
+    #[getter]
+    fn file_name(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(urn_of(&slf.as_super().borrow())?
+            .file_name()
+            .map(str::to_string))
+    }
+
+    #[getter]
+    fn stem(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(urn_of(&slf.as_super().borrow())?.stem().map(str::to_string))
+    }
+
+    #[getter]
+    fn extension(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(urn_of(&slf.as_super().borrow())?
+            .extension()
+            .map(str::to_string))
+    }
+
+    #[getter]
+    fn extensions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let urn = urn_of(&slf.as_super().borrow())?;
+        let extensions: Vec<&str> = urn.extensions().collect();
+        PyTuple::new(slf.py(), extensions)
+    }
+
+    #[getter]
+    fn mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
+        Ok(PyMimeType::from_core(
+            urn_of(&slf.as_super().borrow())?.mime_type(),
+        ))
+    }
+
+    #[getter]
+    fn media_type(slf: &Bound<'_, Self>) -> PyResult<PyMediaType> {
+        Ok(PyMediaType::from_core(
+            urn_of(&slf.as_super().borrow())?.media_type(),
+        ))
+    }
+
+    fn set_file_name(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_urn(slf, |urn| urn.set_file_name(value))
+    }
+
+    fn set_stem(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_urn(slf, |urn| urn.set_stem(value))
+    }
+
+    fn set_extension(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_urn(slf, |urn| urn.set_extension(value))
+    }
+
+    fn set_extensions(slf: &Bound<'_, Self>, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        let values = strings_from_iterable(values, "extensions")?;
+        edit_urn(slf, |urn| urn.set_extensions(values))
+    }
+
+    fn set_mime_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_mime_type_from_value(value)?;
+        edit_urn(slf, |urn| urn.set_mime_type(value))
+    }
+
+    fn set_media_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_media_type_from_value(value)?;
+        edit_urn(slf, |urn| urn.set_media_type(value))
+    }
+
+    fn remove_extension(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let mut removed = false;
+        edit_urn(slf, |urn| {
+            removed = urn.remove_extension();
+            Ok(())
+        })?;
+        Ok(removed)
+    }
+
+    fn clear_extensions(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let mut removed = false;
+        edit_urn(slf, |urn| {
+            removed = urn.clear_extensions();
+            Ok(())
+        })?;
+        Ok(removed)
+    }
+}
+
+/// Apply one core edit to the name a view stands on, atomically.
+fn edit_urn(
+    slf: &Bound<'_, PyUrn>,
+    edit: impl FnOnce(&mut CoreUrn) -> yggdryl::Result<()>,
+) -> PyResult<()> {
+    let base = slf.as_super();
+    let mut urn = {
+        let held = base.borrow();
+        held.require_mutable()?;
+        urn_of(&held)?
+    };
+    edit(&mut urn).map_err(value_error)?;
+    base.borrow_mut().inner = urn.into_uri();
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `Arn`: the name AWS writes for one of its resources.
+// ---------------------------------------------------------------------------
+
+/// An AWS ARN view with field and resource accessors.
+///
+/// An `Arn` is a `Uri` whose scheme spells an AWS resource name. Its five
+/// fields - partition, service, region, account, resource - are what AWS
+/// decides, and its filename accessors read the resource rather than the whole
+/// path. `locator` answers the `s3:` URL an Amazon S3 ARN addresses.
+#[pyclass(
+    name = "Arn",
+    module = "yggdryl._native",
+    extends = PyUri,
+    skip_from_py_object
+)]
+pub(crate) struct PyArn;
+
+#[pymethods]
+impl PyArn {
+    #[new]
+    fn new(value: &Bound<'_, PyAny>) -> PyResult<PyClassInitializer<Self>> {
+        Ok(narrowed(core_arn_from_value(value)?.into_uri()).add_subclass(Self))
+    }
+
+    #[staticmethod]
+    fn from_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        arn_object(py, core_arn_from_value(value)?)
+    }
+
+    #[staticmethod]
+    fn from_str(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        arn_object(py, CoreArn::from_str(value).map_err(value_error)?)
+    }
+
+    /// Build a validated ARN from its five fields.
+    ///
+    /// `region` and `account` are written as the empty string when the service
+    /// names neither.
+    #[staticmethod]
+    #[pyo3(signature = (partition, service, region = "", account = "", resource = ""))]
+    fn from_parts(
+        py: Python<'_>,
+        partition: &str,
+        service: &str,
+        region: &str,
+        account: &str,
+        resource: &str,
+    ) -> PyResult<Py<Self>> {
+        let value = CoreArn::from_parts(partition, service, region, account, resource)
+            .map_err(value_error)?;
+        arn_object(py, value)
+    }
+
+    #[staticmethod]
+    fn from_uri(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let value = CoreArn::from_uri(core_uri_from_value(value)?).map_err(value_error)?;
+        arn_object(py, value)
+    }
+
+    #[staticmethod]
+    fn from_json(py: Python<'_>, value: &str) -> PyResult<Py<Self>> {
+        arn_object(py, CoreArn::from_json(value).map_err(value_error)?)
+    }
+
+    /// This name as the identifier it narrows.
     #[allow(clippy::wrong_self_convention)]
-    fn into_json(&self) -> PyResult<String> {
-        self.inner.clone().into_json().map_err(value_error)
+    fn into_uri(slf: &Bound<'_, Self>) -> PyUri {
+        PyUri::from_core(slf.as_super().borrow().inner.clone())
     }
 
+    /// The partition: `aws`, `aws-cn`, `aws-us-gov`, or another AWS names.
     #[getter]
-    fn scheme(&self) -> &str {
-        self.inner.scheme().as_str()
+    fn partition(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(arn_of(&slf.as_super().borrow())?.partition().to_string())
     }
 
+    /// The service namespace: `s3`, `iam`, `lambda`, and the rest.
     #[getter]
-    fn authority(&self) -> &str {
-        self.inner.authority().as_str()
+    fn service(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(arn_of(&slf.as_super().borrow())?.service().to_string())
     }
 
+    /// The region, or `None` for a service that spans every region.
     #[getter]
-    fn path(&self) -> &str {
-        self.inner.path().as_str()
+    fn region(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .region()
+            .map(str::to_string))
     }
 
-    /// Return query text without `?`, decoding its escapes when asked.
+    /// The owning account, or `None` when the ARN names none.
+    #[getter]
+    fn account(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .account()
+            .map(str::to_string))
+    }
+
+    /// The resource field whole, its own `/` and `:` structure kept.
+    #[getter]
+    fn resource(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(arn_of(&slf.as_super().borrow())?.resource().to_string())
+    }
+
+    /// The separator the resource field uses, if it carries one.
+    #[getter]
+    fn resource_separator(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .resource_separator()
+            .map(|separator| separator.to_string()))
+    }
+
+    /// The resource type, when the resource names one.
     ///
-    /// `decode` chooses which text: the component's own bytes, or the text its
-    /// percent escapes stand for. Decoding reads the component as text -
-    /// `%26` becomes a literal `&`, not a new pair - so `parameters` is what
-    /// reads a query as its pairs.
-    #[pyo3(signature = (decode = false))]
-    fn query(&self, decode: bool) -> PyResult<Option<String>> {
-        Ok(self
-            .inner
-            .query(decode)
-            .map_err(value_error)?
-            .map(std::borrow::Cow::into_owned))
+    /// This is the syntactic split at the resource's first `/` or `:`. What
+    /// that leading part means is the service's own business - for Amazon S3 it
+    /// is the bucket, which `bucket` is the door for.
+    #[getter]
+    fn resource_type(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .resource_type()
+            .map(str::to_string))
     }
 
-    /// Return fragment text without `#`, decoding its escapes when asked.
-    #[pyo3(signature = (decode = false))]
-    fn fragment(&self, decode: bool) -> PyResult<Option<String>> {
-        Ok(self
-            .inner
-            .fragment(decode)
-            .map_err(value_error)?
-            .map(std::borrow::Cow::into_owned))
+    /// What follows the type, or the whole resource when it names no type.
+    #[getter]
+    fn resource_id(slf: &Bound<'_, Self>) -> PyResult<String> {
+        Ok(arn_of(&slf.as_super().borrow())?.resource_id().to_string())
     }
 
-    /// Return the path as text, decoding its escapes when asked.
-    ///
-    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
-    /// inside the segment that carried it, so `path_segments` stays the way to
-    /// walk structure.
-    #[pyo3(signature = (decode = false))]
-    fn path_text(&self, decode: bool) -> PyResult<String> {
-        Ok(self
-            .inner
-            .path_text(decode)
-            .map_err(value_error)?
-            .into_owned())
+    /// The bucket an Amazon S3 ARN names.
+    #[getter]
+    fn bucket(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .bucket()
+            .map(str::to_string))
+    }
+
+    /// The object key an Amazon S3 ARN names, below its bucket.
+    #[getter]
+    fn key(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?.key().map(str::to_string))
     }
 
     #[getter]
-    fn namespace(&self) -> &str {
-        self.inner.namespace()
+    fn file_name(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .file_name()
+            .map(str::to_string))
     }
 
     #[getter]
-    fn namespace_specific(&self) -> &str {
-        self.inner.namespace_specific()
+    fn stem(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?.stem().map(str::to_string))
     }
 
     #[getter]
-    fn stem(&self) -> Option<&str> {
-        self.inner.stem()
-    }
-
-    fn set_file_name(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_file_name(value).map_err(value_error)
-    }
-
-    fn set_stem(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_stem(value).map_err(value_error)
-    }
-
-    fn set_extension(&mut self, value: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_extension(value).map_err(value_error)
-    }
-
-    fn set_extensions(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_extensions(strings_from_iterable(values, "extensions")?)
-            .map_err(value_error)
-    }
-
-    fn remove_extension(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.remove_extension())
-    }
-
-    fn clear_extensions(&mut self) -> PyResult<bool> {
-        self.require_mutable()?;
-        Ok(self.inner.clear_extensions())
+    fn extension(slf: &Bound<'_, Self>) -> PyResult<Option<String>> {
+        Ok(arn_of(&slf.as_super().borrow())?
+            .extension()
+            .map(str::to_string))
     }
 
     #[getter]
-    fn mime_type(&self) -> PyMimeType {
-        PyMimeType::from_core(self.inner.mime_type())
+    fn extensions<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let arn = arn_of(&slf.as_super().borrow())?;
+        let extensions: Vec<&str> = arn.extensions().collect();
+        PyTuple::new(slf.py(), extensions)
     }
 
     #[getter]
-    fn media_type(&self) -> PyMediaType {
-        PyMediaType::from_core(self.inner.media_type())
-    }
-
-    fn set_mime_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_mime_type(core_mime_type_from_value(value)?)
-            .map_err(value_error)
-    }
-
-    fn set_media_type(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_media_type(core_media_type_from_value(value)?)
-            .map_err(value_error)
+    fn mime_type(slf: &Bound<'_, Self>) -> PyResult<PyMimeType> {
+        Ok(PyMimeType::from_core(
+            arn_of(&slf.as_super().borrow())?.mime_type(),
+        ))
     }
 
     #[getter]
-    fn path_segments<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, ExactIterator::new(self.inner.path_segments()))
+    fn media_type(slf: &Bound<'_, Self>) -> PyResult<PyMediaType> {
+        Ok(PyMediaType::from_core(
+            arn_of(&slf.as_super().borrow())?.media_type(),
+        ))
     }
 
-    #[getter]
-    fn file_name(&self) -> Option<&str> {
-        self.inner.file_name()
+    fn set_file_name(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_arn(slf, |arn| arn.set_file_name(value))
     }
 
-    #[getter]
-    fn extension(&self) -> Option<&str> {
-        self.inner.extension()
+    fn set_stem(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_arn(slf, |arn| arn.set_stem(value))
     }
 
-    #[getter]
-    fn extensions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        PyTuple::new(py, ExactIterator::new(self.inner.extensions()))
+    fn set_extension(slf: &Bound<'_, Self>, value: &str) -> PyResult<()> {
+        edit_arn(slf, |arn| arn.set_extension(value))
     }
 
-    fn __len__(&self) -> usize {
-        self.inner.path().segment_len()
+    fn set_extensions(slf: &Bound<'_, Self>, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        let values = strings_from_iterable(values, "extensions")?;
+        edit_arn(slf, |arn| arn.set_extensions(values))
     }
 
-    fn __iter__(&self) -> PyUriPathIterator {
-        let inner = self.inner.clone().into_uri();
-        PyUriPathIterator {
-            remaining: inner.path().segment_len(),
-            inner,
-            cursor: 0,
-        }
+    fn set_mime_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_mime_type_from_value(value)?;
+        edit_arn(slf, |arn| arn.set_mime_type(value))
     }
 
-    fn __getitem__(&self, index: isize) -> PyResult<&str> {
-        let normalized = if index >= 0 {
-            usize::try_from(index).ok()
-        } else {
-            normalize_index(index, self.inner.path().segment_len())
-        };
-        normalized
-            .and_then(|index| self.inner.path().get_segment(index))
-            .ok_or_else(|| PyIndexError::new_err(index))
+    fn set_media_type(slf: &Bound<'_, Self>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        let value = core_media_type_from_value(value)?;
+        edit_arn(slf, |arn| arn.set_media_type(value))
     }
 
-    fn __contains__(&self, segment: &Bound<'_, PyAny>) -> bool {
-        segment
-            .extract::<&str>()
-            .is_ok_and(|segment| self.inner.path().contains_segment(segment))
+    fn remove_extension(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let mut removed = false;
+        edit_arn(slf, |arn| {
+            removed = arn.remove_extension();
+            Ok(())
+        })?;
+        Ok(removed)
     }
 
-    fn __str__(&self) -> String {
-        self.inner.to_string()
+    fn clear_extensions(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        let mut removed = false;
+        edit_arn(slf, |arn| {
+            removed = arn.clear_extensions();
+            Ok(())
+        })?;
+        Ok(removed)
     }
+}
 
-    fn __repr__(&self) -> String {
-        format!("Urn.from_str({:?})", self.inner.to_string())
-    }
-
-    fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return Ok(other.py().NotImplemented());
-        };
-        Ok(compare(self.inner.cmp(&other.inner), operation)
-            .into_pyobject(other.py())?
-            .to_owned()
-            .into_any()
-            .unbind())
-    }
-
-    fn stable_hash(&self) -> u64 {
-        self.inner.stable_hash()
-    }
-
-    fn __hash__(&mut self) -> isize {
-        self.hash_locked = true;
-        crate::python_hash(self.inner.stable_hash())
-    }
-
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
-        let callable = py.get_type::<Self>().getattr("from_str")?.unbind();
-        Ok((callable, (self.inner.to_string(),)))
-    }
-
-    fn __copy__(&self) -> Self {
-        Self::from_core(self.inner.clone())
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        Self::from_core(self.inner.clone())
-    }
+/// Apply one core edit to the ARN a view stands on, atomically.
+fn edit_arn(
+    slf: &Bound<'_, PyArn>,
+    edit: impl FnOnce(&mut CoreArn) -> yggdryl::Result<()>,
+) -> PyResult<()> {
+    let base = slf.as_super();
+    let mut arn = {
+        let held = base.borrow();
+        held.require_mutable()?;
+        arn_of(&held)?
+    };
+    edit(&mut arn).map_err(value_error)?;
+    base.borrow_mut().inner = arn.into_uri();
+    Ok(())
 }
 
 /// Iterator over a URI value's normalized path segments.
@@ -1627,15 +1582,6 @@ impl PyUriPathIterator {
     }
 }
 
-/// Which value a [`PyParameters`] view reads and writes through.
-///
-/// The view holds the Python object, not a copy of its query, so a write is
-/// visible on the URL a caller already has and a read never goes stale.
-enum ParametersOwner {
-    Uri(Py<PyUri>),
-    Url(Py<PyUrl>),
-}
-
 /// A URL query, addressed as the `key=value` pairs it spells.
 ///
 /// This is a live view of the value it was taken from - `url.parameters()` -
@@ -1655,23 +1601,18 @@ enum ParametersOwner {
 /// with the query's own bytes and refuses text the query syntax cannot carry.
 #[pyclass(name = "Parameters", module = "yggdryl._native")]
 pub(crate) struct PyParameters {
-    owner: ParametersOwner,
+    /// The identifier this view reads and writes through.
+    ///
+    /// The view holds the Python object, not a copy of its query, so a write
+    /// is visible on the value a caller already has and a read never goes
+    /// stale. Every narrowed class is a `Uri`, so one owner reads all four.
+    owner: Py<PyUri>,
     decode: bool,
 }
 
 impl PyParameters {
     pub(crate) const fn over_uri(owner: Py<PyUri>, decode: bool) -> Self {
-        Self {
-            owner: ParametersOwner::Uri(owner),
-            decode,
-        }
-    }
-
-    pub(crate) const fn over_url(owner: Py<PyUrl>, decode: bool) -> Self {
-        Self {
-            owner: ParametersOwner::Url(owner),
-            decode,
-        }
+        Self { owner, decode }
     }
 
     /// Read the pairs the owner's query holds right now.
@@ -1680,38 +1621,19 @@ impl PyParameters {
     /// this call, which is what lets an edited snapshot be written straight
     /// back to the same object.
     fn pairs(&self, py: Python<'_>) -> PyResult<CoreParameters<'static>> {
-        match &self.owner {
-            ParametersOwner::Uri(owner) => Ok(owner
-                .bind(py)
-                .try_borrow()?
-                .inner
-                .parameters(self.decode)
-                .map_err(value_error)?
-                .into_owned()),
-            ParametersOwner::Url(owner) => Ok(owner
-                .bind(py)
-                .try_borrow()?
-                .inner
-                .parameters(self.decode)
-                .map_err(value_error)?
-                .into_owned()),
-        }
+        Ok(self
+            .owner
+            .bind(py)
+            .try_borrow()?
+            .inner
+            .parameters(self.decode)
+            .map_err(value_error)?
+            .into_owned())
     }
 
     /// Replace the owner's query with these pairs, refusing a frozen value.
     fn write(&self, py: Python<'_>, pairs: &CoreParameters<'_>) -> PyResult<()> {
-        match &self.owner {
-            ParametersOwner::Uri(owner) => {
-                let mut owner = owner.bind(py).try_borrow_mut()?;
-                owner.require_mutable()?;
-                owner.inner.set_parameters(pairs).map_err(value_error)
-            }
-            ParametersOwner::Url(owner) => {
-                let mut owner = owner.bind(py).try_borrow_mut()?;
-                owner.require_mutable()?;
-                owner.inner.set_parameters(pairs).map_err(value_error)
-            }
-        }
+        edit_identifier(self.owner.bind(py), |uri| uri.set_parameters(pairs))
     }
 
     /// Read, edit, and write back in one step.

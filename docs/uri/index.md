@@ -8,7 +8,8 @@
 | --- | --- |
 | [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, object stores |
 | [Path](path.md) | Segments, compound filenames, media type, `std::path` bridge, navigation |
-| [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms; what the scheme decides |
+| [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms, and where a name resolves to; what the scheme decides |
+| [ARN](arn.md) | The narrowed `Arn` form: AWS's five fields, and the location an Amazon S3 name addresses |
 | [Query parameters](parameters.md) | The query read and written as its `key=value` pairs |
 | [Patterns](patterns.md) | Globs, `.gitignore` matching, Hive partitions |
 
@@ -16,7 +17,9 @@
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), the [`uri` family](#as-a-column) - the `url` and `urn` datatypes a column declares over them, `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
+| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md) and [`Arn`](arn.md), the [`uri` family](#as-a-column) - the `url` and `urn` datatypes a column declares over them, `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
+| Narrowings | Three, and the scheme decides which: a location, a name, and the name AWS writes for one of its resources. Python's `Url`, `Urn` and `Arn` are subclasses of `Uri`, so `Uri(value)` answers the one that value is; Rust and JavaScript answer a `Uri` and narrow through `into_url` / `into_urn` / `into_arn` |
+| Locating | `locator()` answers the [`Url`](url-urn.md) an identifier names: a location locates itself, a name resolves to the path it spells, an Amazon S3 [ARN](arn.md) maps to its `s3:` URL. It is what lets any identifier be handed to a reader as the thing to open |
 | Components | Scheme, authority, path: concrete, empty when absent; query, fragment: optional |
 | Validates | [`Scheme`](../types/index.md) and `UriPath` validate on construction |
 | Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`, the authority marker on every absolute `file:` path; re-parses to the same value |
