@@ -84,6 +84,12 @@
 through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
+One decode, two answers: the record methods keep the rows the `where` names and
+publish the columns the `select` names, and the line iterator yields every line
+it cuts under the same options. Reading lines is reading the resource, not
+reading the result - a `where` may name a column the `select` builds, and no
+line states one, so the clauses are answered over the rows the lines become.
+
 A line is an [event](../../graph.md) of the graph, and a struct rather than a
 map. It holds the reader facts `index` and `sourceurl`, what the reader cut -
 the whole `body` with its row header included - plus

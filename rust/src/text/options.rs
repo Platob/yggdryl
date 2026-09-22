@@ -144,7 +144,12 @@ pub struct TextOptions {
     pub name: smol_str::SmolStr,
     /// The declared root; `None` infers the shape.
     pub field: Option<crate::Field>,
-    /// The rows a read or write keeps.
+    /// The rows a read or write keeps: the `where` clause.
+    ///
+    /// Answered over the rows the lines become, by the record surface, and
+    /// never by the decode: [`read_text_lines`](super::read_text_lines) yields
+    /// every line whatever this says, because a `where` may name a column the
+    /// `select` builds.
     pub filter: crate::Filter,
     /// The columns a read or write publishes.
     pub select: crate::Selector,

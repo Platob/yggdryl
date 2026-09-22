@@ -11,6 +11,7 @@ Lines out of a handle - as native scalars, as Arrow batches - and the Rust conve
 | Row shape | a mapping per row in the bindings; an ordered `Scalar::Sequence` under the root in the [value model](../../types/scalar.md) |
 | Batches | an [`arrow::BatchReader`](../../arrow/readers.md) over the [row schema](index.md#row-schema); `read_arrow_field` answers it before any byte is read |
 | Lazy | one decode, `read_text_lines`, behind both surfaces: a batch is built as the reader is stepped and only the current one is alive |
+| Clauses | `read_records` and the Arrow reads answer the [`select` and `where` sections](options.md); `read_text_lines` answers every line, because a `where` may name a column the `select` builds and no line states one |
 | Intake | column names match exactly, then ignoring case, then against the spellings each column is commonly written under |
 | Charset | bodies and captures cross in the charset the handle's media type [declares](lines.md#declaring-a-charset) |
 | Absence | a location that holds nothing yields no rows, and the full schema still comes before iteration |

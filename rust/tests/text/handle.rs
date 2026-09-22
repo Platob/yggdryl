@@ -155,6 +155,167 @@ mod text {
     }
 
     #[test]
+    fn a_retained_where_clause_keeps_rows_on_the_read_and_nothing_on_the_decode() {
+        // The wrapper holds one configuration and every surface reads it, but
+        // they do not read the same part of it. The `where` clause is the
+        // read's: the count answers what the object holds, and the one decode
+        // answers every line, because neither is the result.
+        let text = Text::new(named("app.log", b"alpha\nbravo\ncharlie\n")).with_options(
+            TextOptions::new()
+                .with_filter("body like 'b%'")
+                .unwrap()
+                .with_select("body")
+                .unwrap()
+                .with_max_row_size(1),
+        );
+
+        // The count is the whole media, as it is for every encoding: the
+        // clause, the projection and the bound are the read's alone.
+        assert_eq!(text.row_size().unwrap(), 3);
+        assert_eq!(
+            text.read_text_lines()
+                .unwrap()
+                .map(|line| line.unwrap().body().to_owned())
+                .collect::<Vec<_>>(),
+            ["alpha", "bravo", "charlie"]
+        );
+        let batches = text
+            .read_arrow_reader(&text.record_options().unwrap())
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(bodies(&batches), [b"bravo".to_vec()]);
+    }
+
+    #[test]
+    fn adjacent_deduplication_runs_under_the_where_clause_and_not_over_it() {
+        // Dropping a repeated body is the decode's, and keeping a row is the
+        // read's, so the clause answers the deduplicated stream rather than the
+        // physical one: the second `alpha` is gone before the clause sees it.
+        let source = named("app.log", b"alpha\nalpha\nbravo\n");
+        let mut deduplicated = TextOptions::new().with_filter("body = 'alpha'").unwrap();
+        deduplicated.dedup_adjacent = true;
+        let mut repeated = deduplicated.clone();
+        repeated.dedup_adjacent = false;
+
+        assert_eq!(bodies(&collect(&source, deduplicated)), [b"alpha".to_vec()]);
+        assert_eq!(
+            bodies(&collect(&source, repeated)),
+            [b"alpha".to_vec(), b"alpha".to_vec()]
+        );
+    }
+
+    #[test]
+    fn a_where_clause_matching_no_line_answers_the_row_schema_and_no_rows() {
+        // An empty result is the columns and no rows, never an error and never
+        // a missing schema: the shape was settled before a byte was read.
+        let source = named("app.log", b"alpha\nbravo\n");
+        let options = TextOptions::new().with_filter("body = 'nothing'").unwrap();
+        let declared = source.read_arrow_field(&options.clone().into()).unwrap();
+
+        let reader = source.read_arrow_reader(&options.into()).unwrap();
+        let schema = arrow_array::RecordBatchReader::schema(&reader);
+        assert_eq!(schema.fields().len(), declared.field_len());
+        let rows: usize = reader.map(|batch| batch.unwrap().num_rows()).sum();
+        assert_eq!(rows, 0);
+    }
+
+    #[test]
+    fn a_where_clause_reads_the_name_a_column_is_emitted_under() {
+        // A rename decides what a column is called, and the clause binds
+        // against the schema a read publishes, so the new name is the name the
+        // clause has to use - and the old one names no column at all.
+        let source = named("app.log", b"alpha\nbravo\n");
+        let renamed = TextOptions::new().with_renamed_column("body", "payload");
+
+        let batches = collect(
+            &source,
+            renamed.clone().with_filter("payload = 'bravo'").unwrap(),
+        );
+        assert_eq!(strings(&batches, "payload"), [Some("bravo".to_owned())]);
+        let error = source
+            .read_arrow_reader(&renamed.with_filter("body = 'bravo'").unwrap().into())
+            .err()
+            .expect("a column no schema declares")
+            .to_string();
+        assert!(error.contains("body"), "{error}");
+    }
+
+    #[test]
+    fn a_where_clause_reads_the_typed_columns_a_line_states() {
+        // Not the body alone: the object a line came from, the instant it is
+        // dated by, and the bytes a bounded record dropped are columns the
+        // clause binds against at their own datatypes.
+        let mut options = TextOptions::new();
+        options.set_max_record_byte_size(Some(3));
+        let source = named("app.log", b"alpha\nbravo\n");
+
+        let clause = "sourceurl like 'mem://%' and mtime is null and dropped_byte_size = 2";
+        assert_eq!(
+            bodies(&collect(&source, options.with_filter(clause).unwrap())),
+            [b"alp".to_vec(), b"bra".to_vec()]
+        );
+    }
+
+    #[test]
+    fn a_row_bound_counts_the_rows_a_where_clause_kept() {
+        // The bound is the plan's `limit`, and it counts result rows: ten with
+        // a clause means the first ten matching lines, not the matches among
+        // the first ten lines.
+        let source = named("app.log", b"alpha\nbravo\nbronze\nbrass\n");
+        let options = TextOptions::new()
+            .with_filter("body like 'b%'")
+            .unwrap()
+            .with_max_row_size(2);
+
+        let batches = collect(&source, options);
+        assert_eq!(bodies(&batches), [b"bravo".to_vec(), b"bronze".to_vec()]);
+    }
+
+    #[test]
+    fn a_where_clause_reads_the_logical_record_framing_built() {
+        // Framing decides what a row is before the clause decides whether to
+        // keep it: the body the clause reads is the joined record, and the
+        // header's capture is the record's own.
+        let source = named("app.log", b"[A] first\ncontinued\n[B] second\n");
+        let options = framed(r"^\[(?<kind>[A-Z])\] ")
+            .with_filter("kind = 'A'")
+            .unwrap();
+
+        let batches = collect(&source, options);
+        assert_eq!(bodies(&batches), [b"[A] first\ncontinued".to_vec()]);
+    }
+
+    #[test]
+    fn a_coded_text_read_keeps_the_rows_its_where_clause_names() {
+        // A content coding is its own read seam, and it applies the clauses
+        // itself rather than handing back everything it decoded.
+        let source = named(
+            "app.log.gz",
+            &Codec::Gzip.dump(b"alpha\nbravo\ncharlie\n").unwrap(),
+        );
+        let options = TextOptions::new().with_filter("body like 'b%'").unwrap();
+
+        assert_eq!(
+            bodies(&collect(&source, options.clone())),
+            [b"bravo".to_vec()]
+        );
+        let coded = yggdryl::coding::Coding::new(
+            named(
+                "app.log",
+                &Codec::Gzip.dump(b"alpha\nbravo\ncharlie\n").unwrap(),
+            ),
+            Codec::Gzip,
+        );
+        let batches = coded
+            .read_arrow_reader(&options.into())
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(bodies(&batches), [b"bravo".to_vec()]);
+    }
+
+    #[test]
     fn gzip_and_zstd_framing_decode_the_same_logical_records() {
         let decoded = b"[A] first\ncontinued\n[B] second\n";
         for (name, codec) in [
@@ -168,6 +329,64 @@ mod text {
                 [b"[A] first\ncontinued".to_vec(), b"[B] second".to_vec()]
             );
         }
+    }
+
+    #[test]
+    fn a_folder_of_logs_answers_one_where_clause_across_its_leaves() {
+        use yggdryl::local::Folder;
+
+        let mut root = Folder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-clause-folder-{}", std::process::id()));
+        let mut folder = Folder::new(&root).unwrap();
+        folder.remove(true).unwrap();
+        folder
+            .child_by_path("a.log")
+            .unwrap()
+            .write_all_bytes(b"alpha\nbravo\n")
+            .unwrap();
+        folder
+            .child_by_path("b.log")
+            .unwrap()
+            .write_all_bytes(b"bronze\ncharlie\n")
+            .unwrap();
+
+        // One clause over the tree, not one per leaf: the rows come back in
+        // listing order with every leaf's non-matching lines already gone.
+        let batches = collect(
+            &folder,
+            TextOptions::new().with_filter("body like 'b%'").unwrap(),
+        );
+        assert_eq!(bodies(&batches), [b"bravo".to_vec(), b"bronze".to_vec()]);
+    }
+
+    #[test]
+    fn a_partition_equality_prunes_text_leaves_before_one_is_opened() {
+        use yggdryl::local::Folder;
+
+        let mut root = Folder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-clause-hive-{}", std::process::id()));
+        let mut folder = Folder::new(&root).unwrap();
+        folder.remove(true).unwrap();
+        folder
+            .child_by_path("year=2024/a.log")
+            .unwrap()
+            .write_all_bytes(b"first\n")
+            .unwrap();
+        folder
+            .child_by_path("year=2025/b.log")
+            .unwrap()
+            .write_all_bytes(b"second\n")
+            .unwrap();
+
+        // The directory name is a column of the row, and an equality over it
+        // is answered about the path: the 2025 leaf is never decoded, and the
+        // rest of the clause would still run over the rows.
+        let batches = collect(
+            &folder,
+            TextOptions::new().with_filter("year = '2024'").unwrap(),
+        );
+        assert_eq!(bodies(&batches), [b"first".to_vec()]);
+        assert_eq!(strings(&batches, "year"), [Some("2024".to_owned())]);
     }
 
     #[test]

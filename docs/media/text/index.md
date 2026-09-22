@@ -10,6 +10,7 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
 | Owns | `TextOptions`, [`TextLine`](lines.md), `read_text_lines`, `Text<H>`, and the Rust line/batch converters `into_arrow_batch` / `into_arrow_reader` / `from_arrow_batch` / `from_arrow_reader` |
 | Handle surface | `overwrite_*`, `append_*`, `read_arrow_reader`, `read_arrow_field` from [`IOMedia`](../../holder/iobase/records.md); `into_text` / `intoText` binds one `TextOptions` to a handle |
 | Surfaces | native rows through `*_records` and Arrow batches through `*_arrow_*`; `read_text_lines` is the one decode both go through |
+| Clauses | the `where`, the `select` and the row bounds are answered by the record surfaces, over the rows the lines become; the decode itself yields every line it cuts |
 | Record | one physical line, or one logical record where [`framing`](options.md#framing) joins them |
 | Row | the [row schema](#row-schema): the nineteen [event columns](../../graph.md#columns), then the enabled line columns - `sourceurl`, `rownum` under `start_rownum`, `mtime` under `parse_mtime`, `mimetype` under `parse_mimetype`, `body`, `dropped_byte_size` under `max_record_byte_size` - then every row-header capture and lifted entry |
 | Schema | complete before a byte is read: `autotype` types the captures from the regex and a [lifted path](lines.md#lifting-an-entry-into-a-column) declares its column whether or not a row carries it |

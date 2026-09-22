@@ -20,6 +20,12 @@ use super::plan::{TextColumn, TextPlan, TextSource};
 
 /// Turn decoded lines into one Arrow batch.
 ///
+/// Every line handed in becomes a row: the options are read for the column
+/// plan the rows take, never for the `where`, the `select` or the row bounds,
+/// which the record surface applies once over the batch this builds. A caller
+/// holding lines already past that seam shapes them with
+/// [`IORecordOptions::apply_arrow_batch`](crate::media::IORecordOptions::apply_arrow_batch).
+///
 /// # Errors
 ///
 /// Returns the plan's refusals, and any row-level failure the columns raise.
@@ -54,7 +60,10 @@ where
 
 /// Turn decoded lines into streamed Arrow batches.
 ///
-/// Lines are pulled one batch at a time and never all held at once.
+/// Lines are pulled one batch at a time and never all held at once, and every
+/// one of them becomes a row: as in [`into_arrow_batch`], the `where`, the
+/// `select` and the row bounds belong to the record surface that reads a
+/// handle, and only the batch shape is read from the options here.
 ///
 /// # Errors
 ///

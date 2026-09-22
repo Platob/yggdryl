@@ -12,6 +12,7 @@ use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema};
 
 use yggdryl::Result;
 use yggdryl::arrow::BatchReader;
+use yggdryl::media::IORecordOptions as _;
 use yggdryl::text::{
     TextBytes, TextLine, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
     into_arrow_reader,
@@ -80,6 +81,34 @@ fn forward_doors_accept_owned_and_fallible_lines_and_preserve_errors() {
         read.map(|held| held.expect("batch").num_rows())
             .sum::<usize>(),
         1
+    );
+}
+
+#[test]
+fn the_forward_converters_build_every_line_and_leave_the_clauses_above_them() {
+    // The converters are the decode's other half, never the query: they turn
+    // the lines they are handed into the plan's columns and stop there. The
+    // `where`, the `select` and the row bound are record clauses, applied once
+    // by the record surface that reads a handle - and they have to be, because
+    // a `where` may name what the `select` builds, which no line states.
+    let options = TextOptions::new()
+        .with_filter("body = 'two'")
+        .expect("a clause")
+        .with_select("body")
+        .expect("a projection")
+        .with_max_row_size(1);
+    let lines = [line(0, "one"), line(1, "two"), line(2, "three")];
+
+    let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+    assert_eq!(batch.num_rows(), 3);
+    // Nor did the projection run: the batch is the whole row schema.
+    assert!(batch.schema().index_of("sourceurl").is_ok());
+
+    let read = into_arrow_reader(lines, &options).expect("a reader");
+    assert_eq!(
+        read.map(|held| held.expect("batch").num_rows())
+            .sum::<usize>(),
+        3
     );
 }
 

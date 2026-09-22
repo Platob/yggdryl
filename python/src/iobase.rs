@@ -2320,6 +2320,11 @@ impl PyIOBase {
     /// through the same iterator, so a caller reading lines and a caller
     /// reading batches read one decode. Lines are pulled one at a time and
     /// never collected.
+    ///
+    /// One decode, two answers: this yields every line the resource holds,
+    /// and the options' `where`, `select` and row bounds are the record
+    /// surface's - a `where` may name a column the `select` builds, which no
+    /// line states. A caller wanting the clauses answered reads records.
     #[pyo3(signature = (*, options = None, **properties))]
     fn read_text_lines(
         &self,

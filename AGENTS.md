@@ -962,6 +962,11 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free
   datetime captures; writes consume only non-null, non-empty `utf8` `body`.
+  `read_text_lines` is the decode, not the query: it answers every line under
+  the options it is given, and the `where`, `select` and row bounds are the
+  record surface's - `apply_arrow_expressions` over the rows the lines become -
+  because a `where` may name a column the `select` builds and no line states
+  one. `into_arrow_batch`/`into_arrow_reader` sit on the same side of that seam.
 - Content coding belongs to the handle: reject outer compression for formats that
   compress internally, such as Parquet.
 

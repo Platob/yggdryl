@@ -10,9 +10,11 @@ use super::TextOptions;
 
 /// A byte handle retained with one flat plain-text record configuration.
 ///
-/// `Text` adds no line-specific read surface. Rows still flow through the
-/// ordinary [`IOMedia`] methods; the wrapper only retains the `TextOptions`
-/// returned by [`IOMedia::record_options`].
+/// Rows flow through the ordinary [`IOMedia`] methods, and the wrapper retains
+/// the `TextOptions` that [`IOMedia::record_options`] answers with. The one
+/// method beside them is [`read_text_lines`](Self::read_text_lines), the
+/// decode those methods already route through, reached under the retained
+/// configuration rather than a second one.
 #[derive(Debug)]
 pub struct Text<H: IOBase> {
     handle: H,
@@ -88,6 +90,12 @@ impl<H: IOBase> Text<H> {
     /// The one decode entry point, reached with the options this wrapper
     /// already holds. Every record method routes through the same iterator, so
     /// a caller reading lines and a caller reading batches read one decode.
+    ///
+    /// One decode, two answers: the record methods keep the rows the retained
+    /// `where` names and publish the columns its `select` names, and this
+    /// yields every line under it, exactly as
+    /// [`read_text_lines`](super::read_text_lines) states. A caller wanting the
+    /// clauses answered reads rows.
     ///
     /// # Errors
     ///

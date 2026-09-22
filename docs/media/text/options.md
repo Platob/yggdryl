@@ -166,7 +166,8 @@ a record by it would answer a line with no body on every row; under a
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - a rename onto a name another column already emits -> refused when the option is set, naming both.
 - a key of `rename_columns` naming no column -> refused.
-- `Text` handle -> options only, no line iterator or schema builder.
+- `Text` handle -> the retained options, and `read_text_lines` under them; no schema builder.
+- a `where`, a `select` or a row bound with `read_text_lines` -> every line, unfiltered and unprojected: the clauses are the record surfaces'.
 
 ## Commands
 

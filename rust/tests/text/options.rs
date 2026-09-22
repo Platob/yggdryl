@@ -142,7 +142,9 @@ mod text {
             .with_leading_fragment(LeadingFragment::Drop)
             .with_max_record_byte_size(1_024)
             .with_autotype(false)
-            .with_timezone(Timezone::UTC);
+            .with_timezone(Timezone::UTC)
+            .with_filter("level = 'WARN'")
+            .unwrap();
         options.start_rownum = Some(-3);
         options.set_batch_row_size(Some(7));
 
@@ -160,6 +162,14 @@ mod text {
         assert_eq!(options.timezone(), Some(&Timezone::UTC));
         assert_eq!(options.start_rownum, Some(-3));
         assert_eq!(options.batch_row_size(), Some(7));
+        // The `where` section is stored flat beside them, and it is part of
+        // what one configuration is: two that differ only in their clause are
+        // two configurations.
+        assert_eq!(options.filter().to_string(), "level = 'WARN'");
+        assert_ne!(
+            options,
+            options.clone().with_filter("level = 'INFO'").unwrap()
+        );
 
         let error = TextOptions::new()
             .try_with_rowheader(r"(?<body>.+)")

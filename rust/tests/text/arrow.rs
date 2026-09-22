@@ -216,4 +216,124 @@ mod text {
             assert_eq!(restated.get_currunix(), 7);
         }
     }
+
+    // --- The clauses and the one decode ---
+
+    mod clauses {
+
+        use arrow_array::StringArray;
+        use yggdryl::IOMedia as _;
+        use yggdryl::media::IORecordOptions as _;
+        use yggdryl::text::{TextOptions, read_text_lines};
+
+        use super::named;
+
+        const SOURCE: &[u8] = b"alpha\nbravo\ncharlie\ndelta\n";
+
+        /// Every body the one decode yields, in order.
+        fn decoded(source: &[u8], options: &TextOptions) -> Vec<String> {
+            read_text_lines(&named("app.log", source), options)
+                .expect("a settled configuration")
+                .map(|line| line.expect("a line").body().to_owned())
+                .collect()
+        }
+
+        /// Every value of one published column, in order.
+        fn published(source: &[u8], options: &TextOptions, column: &str) -> Vec<String> {
+            named("app.log", source)
+                .read_arrow_reader(&options.clone().into())
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch"))
+                .flat_map(|batch| {
+                    let index = batch.schema().index_of(column).expect("the column");
+                    batch
+                        .column(index)
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .expect("a text column")
+                        .iter()
+                        .map(|value| value.expect("a value").to_owned())
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        }
+
+        #[test]
+        fn the_one_decode_yields_every_line_and_the_where_clause_keeps_rows_above_it() {
+            // The decode is not the query. `read_text_lines` is the one parse
+            // both surfaces route through, so it answers every line the object
+            // holds; the `where` clause is a record clause, and the record
+            // surface is where it keeps rows. A caller holding the iterator
+            // holds the lines, not the result.
+            let options = TextOptions::new()
+                .with_filter("body like 'b%'")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            assert_eq!(published(SOURCE, &options, "body"), ["bravo"]);
+        }
+
+        #[test]
+        fn a_where_clause_naming_a_projection_alias_cannot_be_read_at_the_line() {
+            // Why the clause belongs above the decode rather than inside it: a
+            // `where` may name what the `select` made, and no line states a
+            // name the projection has not built yet. The clause runs after the
+            // projection here, and there is nothing at the line to run.
+            let options = TextOptions::new()
+                .with_select("trim(body) as line")
+                .expect("a projection")
+                .with_filter("line like 'b%'")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            assert_eq!(published(SOURCE, &options, "line"), ["bravo"]);
+        }
+
+        #[test]
+        fn a_where_clause_reads_every_column_the_row_schema_states() {
+            // The clause binds against the whole row a line becomes - the event
+            // columns it opens with, the row number, and the header's own
+            // captures - not against the body alone.
+            let mut options = TextOptions::new()
+                .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")
+                .expect("a header");
+            options.start_rownum = Some(1);
+            let options = options
+                .with_filter("level = 'WARN' and rownum > 1 and seqnum >= 1")
+                .expect("a clause");
+            let source = b"[WARN] first\n[INFO] second\n[WARN] third\n";
+
+            assert_eq!(
+                decoded(source, &options),
+                ["[WARN] first", "[INFO] second", "[WARN] third"]
+            );
+            assert_eq!(published(source, &options, "body"), ["[WARN] third"]);
+        }
+
+        #[test]
+        fn a_where_clause_naming_no_column_is_refused_by_the_read_and_not_by_the_decode() {
+            // `start_rownum` is unset, so the row schema states no `rownum`.
+            // The read refuses the clause by name, before a byte is pulled; the
+            // decode never binds it at all, because the decode is not the query.
+            let options = TextOptions::new()
+                .with_filter("rownum > 1")
+                .expect("a clause");
+
+            assert_eq!(
+                decoded(SOURCE, &options),
+                ["alpha", "bravo", "charlie", "delta"]
+            );
+            let error = match named("app.log", SOURCE).read_arrow_reader(&options.into()) {
+                Err(error) => error.to_string(),
+                Ok(_) => panic!("a column the schema does not state is refused"),
+            };
+            assert!(error.contains("rownum"), "{error}");
+        }
+    }
 }
