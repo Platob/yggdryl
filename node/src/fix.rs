@@ -2846,7 +2846,7 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
         .map_err(napi_error)
 }
 
-/// The row header a ULBridge log writes in front of every line, as the
+/// The row header a `ULBridge` log writes in front of every line, as the
 /// crate spells it: `fix.ULBRIDGE_ROWHEADER` is where a caller reads it,
 /// and this is the half that carries the text across.
 #[napi(js_name = "_fixUlbridgeRowheaderNative", skip_typescript)]
