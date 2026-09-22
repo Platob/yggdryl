@@ -40,8 +40,7 @@ impl Url {
     /// Returns [`Uri::from_path`]'s refusal, or the working directory's own
     /// failure when the process cannot read one.
     pub fn from_path(value: impl AsRef<Path>) -> Result<Self> {
-        let value = value.as_ref();
-        Self::rooted(Uri::from_path(value)?, value)
+        Uri::from_path(value.as_ref())?.locator()
     }
 
     /// Validate and wrap an existing URI as a URL.
@@ -108,24 +107,10 @@ impl Url {
     /// Returns the URL parse failure, or [`Self::from_path`]'s.
     pub fn from_location(value: &str) -> Result<Self> {
         // `Uri::from_str` already decides URL against path: text naming no
-        // usable scheme is read as a filesystem path and left relative.
-        Self::rooted(Uri::from_str(value)?, Path::new(value))
-    }
-
-    /// Answer a URI as a URL, rooting a `file:` path that names no root.
-    ///
-    /// The URI parser reads text carrying no scheme as a filesystem path and
-    /// leaves it relative, so this is where a rootless one becomes a location:
-    /// `path` is the text the URI was read from, joined onto the working
-    /// directory rather than re-derived from the URI, which would have to undo
-    /// the percent-encoding the parser just applied. Every other identifier
-    /// answers through [`Uri::locator`], so a name resolves here exactly as it
-    /// does anywhere else a location is asked for.
-    fn rooted(uri: Uri, path: &Path) -> Result<Self> {
-        if uri.has_authority() || uri.scheme() != &Scheme::FILE {
-            return uri.locator();
-        }
-        Self::from_uri(Uri::from_path(std::env::current_dir()?.join(path))?)
+        // usable scheme is read as a filesystem path and left relative, and
+        // `Uri::locator` is the one door that says where any identifier is -
+        // a name, a relative path, or a location that is already one.
+        Uri::from_str(value)?.locator()
     }
 
     /// Deserialize a URL from structural JSON.

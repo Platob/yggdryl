@@ -348,8 +348,35 @@ impl Uri {
         match self.scheme() {
             scheme if scheme == &Scheme::URN => Urn::from_uri(self.clone())?.locator(),
             scheme if scheme == &Scheme::ARN => Arn::from_uri(self.clone())?.locator(),
+            scheme if scheme == &Scheme::FILE && !self.has_authority => self.rooted(),
             _ => Url::from_uri(self.clone()),
         }
+    }
+
+    /// Answer a relative `file:` identifier as the location it names.
+    ///
+    /// The parser reads text carrying no usable scheme as a filesystem path
+    /// and leaves it relative, so `data/x` is `file:data/x` and names no root
+    /// of its own. The working directory is the root every relative path is
+    /// read against - the same one [`Url::from_path`] roots one at - and this
+    /// is where that reading happens: the directory is converted as the
+    /// platform path it is and this identifier's path joined onto it as the
+    /// URI text it is, so an escape the path carries stays the one escape it
+    /// was rather than being encoded a second time. The query and the
+    /// fragment are this identifier's own and are carried across, because the
+    /// directory contributes neither.
+    fn rooted(&self) -> Result<Url> {
+        let base = Self::from_path(std::env::current_dir()?)?;
+        let path = base.path.joinpath(self.path.as_str())?;
+        Self::from_parts_with_authority(
+            base.scheme,
+            base.authority,
+            path,
+            true,
+            self.query.clone(),
+            self.fragment.clone(),
+        )
+        .and_then(Url::from_uri)
     }
 
     /// Consume a canonical `file:` URI and return its platform path.
