@@ -82,8 +82,8 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 ///
 /// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
 /// like the rest, each exact and stated once. What a message is *about* is
-/// what [`get_px`](crate::graph::MarketElement::get_px) and
-/// [`get_qty`](crate::graph::MarketElement::get_qty) read off them, and no
+/// what [`get_price`](crate::graph::MarketElement::get_price) and
+/// [`get_quantity`](crate::graph::MarketElement::get_quantity) read off them, and no
 /// column of this crate's restates either, because a row carrying both
 /// would carry one fact twice.
 pub const BODY_TAGS: [i32; 50] = [
@@ -290,7 +290,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     //
     // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
     // and `Quantity(53)` are columns like the rest of the ladder, and what a
-    // message is *about* is what [`MarketElement::get_px`] reads off them
+    // message is *about* is what [`MarketElement::get_price`] reads off them
     // rather than a column restating one of them.
     band(
         &mut tags,

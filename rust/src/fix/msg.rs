@@ -41,6 +41,7 @@ const ROW_STATED_MIC: u16 = 1 << 6;
 const ROW_STATED_FIGI: u16 = 1 << 7;
 const ROW_STATED_EXECUTION: u16 = 1 << 8;
 const ROW_STATED_RECORDING: u16 = 1 << 9;
+const ROW_STATED_MARKET_OPERATION: u16 = 1 << 10;
 
 /// The row-owned facts whose non-null value must survive market derivation.
 fn row_stated_bit(tag: i32) -> Option<u16> {
@@ -64,9 +65,28 @@ fn row_stated_bit(tag: i32) -> Option<u16> {
         Some(ROW_STATED_EXECUTION)
     } else if tag == super::RECDUNIX_TAG_NAME.0 {
         Some(ROW_STATED_RECORDING)
+    } else if tag == super::MSGCAT_TAG_NAME.0 {
+        Some(ROW_STATED_MARKET_OPERATION)
     } else {
         None
     }
+}
+
+/// The stable graph operation identifier implied by one FIX message type.
+///
+/// A custom registry may assign any known business category to its own
+/// message type. The category-to-integer mapping itself is crate-owned: those
+/// identifiers cross the FIX boundary into generic graph rows and may not
+/// change with a dictionary.
+fn derived_marketoperationid(registry: &FixRegistry, msgtype: &str) -> i32 {
+    let category = registry
+        .get_msgtype(msgtype)
+        .and_then(super::MsgType::msgcat)
+        .or_else(|| super::constants::msgcat_of(msgtype))
+        .unwrap_or("UNKN");
+    super::constants::msgcat_code(category)
+        .or_else(|| super::constants::msgcat_code("UNKN"))
+        .expect("the fixed MsgCat table carries UNKN")
 }
 
 /// A FIX message: a market event with a FIX body around it.
@@ -99,8 +119,9 @@ fn row_stated_bit(tag: i32) -> Option<u16> {
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
 /// lifted and the named content of the row - everything but the standard
 /// header and trailer, less `MsgType`, and never the chain it is in - the
-/// identity the UUIDv7 the microsecond instant and the code derive, and the
-/// cross identity the UUIDv8 the cross code's digest derives - the first chain
+/// UUIDv7 identity ordered by millisecond and sequence with a content payload
+/// seeded by the cross hash, and the cross identity the UUIDv8 the cross code's
+/// digest derives - the first chain
 /// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
 /// bracketed `session:context` is retained among the message identifiers as
 /// capture provenance and never replaces that chain code. Every write settles it again, so a written code or identity
@@ -705,13 +726,11 @@ impl FixMsg {
                 header.set_sendingtime(unix);
             }
         }
-        if lifted.msgcat().is_none() {
-            let category = registry
-                .get_msgtype(header.msgtype())
-                .and_then(super::MsgType::msgcat)
-                .or_else(|| super::constants::msgcat_of(header.msgtype()))
-                .unwrap_or("UNKN");
-            lifted.set_msgcat(Some(category));
+        if event.get_marketoperationid().is_none() {
+            event.set_marketoperationid(Some(derived_marketoperationid(
+                &registry,
+                header.msgtype(),
+            )));
         }
         // The members are the planned root's children less the lifted
         // ones, named once as that root named them.
@@ -1120,6 +1139,31 @@ impl FixMsg {
             .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
     }
 
+    /// Whether this message reports an execution rather than merely carrying
+    /// execution-shaped fields. A TradeCaptureReport may omit `ExecType(150)`;
+    /// its initial `TradeReportTransType(487)` is then the execution signal.
+    /// Requests and acknowledgements never become executions, and a cancel,
+    /// replace, release or reverse report is a lifecycle action rather than a
+    /// new precise execution.
+    pub(super) fn reports_execution(&self) -> bool {
+        let msgtype = self.header.msgtype();
+        if msgtype == "AE" {
+            let new_report = self.get_by_tag(487).is_none_or(|held| {
+                held.is_null()
+                    || held.as_i64() == Some(0)
+                    || held.as_str().is_some_and(|value| {
+                        matches!(value, "0" | "N") || crate::folds_equal(value, "New")
+                    })
+            });
+            return new_report && self.explicit_execution_type() != Some(false);
+        }
+        if matches!(msgtype, "AD" | "AQ" | "AR") {
+            return false;
+        }
+        self.explicit_execution_type()
+            .unwrap_or_else(|| self.event.is_execution())
+    }
+
     /// One FIX or proprietary timestamp read as the event clock the graph
     /// keeps. Dictionary timestamps are already typed; an unresolved bridge
     /// key is read once through the crate execution field's FIX spelling.
@@ -1193,6 +1237,8 @@ impl FixMsg {
             return;
         }
         let row_stated = self.row_stated;
+        let marketoperationid = (row_stated & ROW_STATED_MARKET_OPERATION == 0)
+            .then(|| derived_marketoperationid(&self.registry, self.header.msgtype()));
         let text = |value: Option<Scalar>| {
             value
                 .and_then(|held| held.as_str().map(str::trim).map(str::to_owned))
@@ -1274,7 +1320,7 @@ impl FixMsg {
             .or_else(|| self.trdreg_execution_instant())
             .or_else(|| self.execution_instant(self.get_by_name("eventtimestamp")))
             .or_else(|| {
-                (self.explicit_execution_type() == Some(true))
+                self.reports_execution()
                     .then(|| self.execution_instant(by_tag(60)))
                     .flatten()
             });
@@ -1287,8 +1333,11 @@ impl FixMsg {
         // Assigned rather than filled: a write can change what the FIX
         // fields say, and a fact that no longer derives must stop being
         // answered. What a walk forced is kept by the early return above.
-        event.set_px(price.unwrap_or(Decimal18::ZERO));
-        event.set_qty(orderqty.or(quantity).unwrap_or(Decimal18::ZERO));
+        if let Some(marketoperationid) = marketoperationid {
+            event.set_marketoperationid(Some(marketoperationid));
+        }
+        event.set_price(price.unwrap_or(Decimal18::ZERO));
+        event.set_quantity(orderqty.or(quantity).unwrap_or(Decimal18::ZERO));
         event.set_lastpx(lastpx);
         event.set_lastqty(lastqty);
         event.set_avgpx(avgpx);
@@ -1425,10 +1474,11 @@ impl FixMsg {
     /// identifier records the complete delivery provenance and is excluded
     /// for the same reason as the frame and capture fields it combines.
     ///
-    /// The market is not here either: every market fact the event answers
-    /// is derived from a FIX field the content already digests, so feeding
-    /// it would digest one statement twice, and a walk that folded a fact
-    /// forward would move the code of a message whose line never named it.
+    /// The market is not here either, except for its operation ID: other
+    /// market facts derive from FIX fields the content already digests, while
+    /// MsgCat is also a generic fact callers may state or mutate directly.
+    /// Feeding that ID once makes the derived and serialized readings agree
+    /// and makes a category mutation move the generic event identity.
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
         crate::graph::element::feed_event_facts(&mut state, &*self.event, |identifier| {
@@ -1455,6 +1505,12 @@ impl FixMsg {
                 continue;
             };
             cells.push((name.clone(), fact));
+        }
+        if let Some(marketoperationid) = self.event.get_marketoperationid() {
+            cells.push((
+                SmolStr::new_static("msgcat"),
+                Scalar::from(marketoperationid),
+            ));
         }
         cells.sort_by(|left, right| left.0.cmp(&right.0));
         xxhash::write_named_bytes(
@@ -1543,7 +1599,7 @@ impl FixMsg {
     ///
     /// What the message *implies* about its market is the
     /// [`MarketElement`](crate::graph::MarketElement) getters' to answer -
-    /// `get_px` reads this ladder and the row - and a fact answered there
+    /// `get_price` reads this ladder and the row - and a fact answered there
     /// but absent here is derived, which is why it reaches neither the wire
     /// nor the code the message digests to.
     #[must_use]
@@ -1759,8 +1815,8 @@ impl FixMsg {
     /// // message is *about* is read off them.
     /// msg.set(44, Scalar::from("82.5"))?;
     /// msg.set(38, Scalar::from(100_i64))?;
-    /// assert_eq!(msg.get_px().to_string(), "82.5");
-    /// assert_eq!(msg.get_qty().to_string(), "100");
+    /// assert_eq!(msg.get_price().to_string(), "82.5");
+    /// assert_eq!(msg.get_quantity().to_string(), "100");
     /// assert_eq!(msg.as_field().fields().len(), 1);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
@@ -3008,8 +3064,7 @@ impl Event for FixMsg {
     }
 
     fn is_execution(&self) -> bool {
-        self.explicit_execution_type()
-            .unwrap_or_else(|| self.event.is_execution())
+        self.reports_execution()
     }
 
     fn get_seqnum(&self) -> u64 {
@@ -3097,13 +3152,22 @@ impl Event for FixMsg {
 }
 
 impl MarketElement for FixMsg {
-    fn get_px(&self) -> Decimal18 {
-        self.event.get_px()
+    fn get_marketoperationid(&self) -> Option<i32> {
+        self.event.get_marketoperationid()
     }
 
-    fn set_px(&mut self, px: Decimal18) {
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
         self.forced = true;
-        self.event.set_px(px);
+        self.event.set_marketoperationid(marketoperationid);
+    }
+
+    fn get_price(&self) -> Decimal18 {
+        self.event.get_price()
+    }
+
+    fn set_price(&mut self, px: Decimal18) {
+        self.forced = true;
+        self.event.set_price(px);
     }
 
     fn get_currency(&self) -> &Currency {
@@ -3115,13 +3179,13 @@ impl MarketElement for FixMsg {
         self.event.set_currency(currency);
     }
 
-    fn get_qty(&self) -> Decimal18 {
-        self.event.get_qty()
+    fn get_quantity(&self) -> Decimal18 {
+        self.event.get_quantity()
     }
 
-    fn set_qty(&mut self, qty: Decimal18) {
+    fn set_quantity(&mut self, qty: Decimal18) {
         self.forced = true;
-        self.event.set_qty(qty);
+        self.event.set_quantity(qty);
     }
 
     fn get_unit(&self) -> &str {

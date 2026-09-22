@@ -2,91 +2,91 @@
   "codes": [
     {
       "name": "ACCT",
-      "value": "ACCT"
+      "value": "1"
     },
     {
       "name": "ALLO",
-      "value": "ALLO"
+      "value": "2"
     },
     {
       "name": "BOOK",
-      "value": "BOOK"
+      "value": "3"
     },
     {
       "name": "CERT",
-      "value": "CERT"
+      "value": "4"
     },
     {
       "name": "COLL",
-      "value": "COLL"
+      "value": "5"
     },
     {
       "name": "COMM",
-      "value": "COMM"
+      "value": "6"
     },
     {
       "name": "CONF",
-      "value": "CONF"
+      "value": "7"
     },
     {
       "name": "EXEC",
-      "value": "EXEC"
+      "value": "8"
     },
     {
       "name": "MKST",
-      "value": "MKST"
+      "value": "9"
     },
     {
       "name": "ORDR",
-      "value": "ORDR"
+      "value": "10"
     },
     {
       "name": "PAYM",
-      "value": "PAYM"
+      "value": "11"
     },
     {
       "name": "POSN",
-      "value": "POSN"
+      "value": "12"
     },
     {
       "name": "PRTY",
-      "value": "PRTY"
+      "value": "13"
     },
     {
       "name": "QUOT",
-      "value": "QUOT"
+      "value": "14"
     },
     {
       "name": "REGI",
-      "value": "REGI"
+      "value": "15"
     },
     {
       "name": "RISK",
-      "value": "RISK"
+      "value": "16"
     },
     {
       "name": "SECU",
-      "value": "SECU"
+      "value": "17"
     },
     {
       "name": "SESS",
-      "value": "SESS"
+      "value": "18"
     },
     {
       "name": "SETL",
-      "value": "SETL"
+      "value": "19"
     },
     {
       "name": "STRM",
-      "value": "STRM"
+      "value": "20"
     },
     {
       "name": "TRAD",
-      "value": "TRAD"
+      "value": "21"
     },
     {
       "name": "UNKN",
-      "value": "UNKN"
+      "value": "0"
     }
   ],
   "name": "msgcatcodeset"

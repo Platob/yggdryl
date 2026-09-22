@@ -412,6 +412,12 @@ impl PyTextLine {
         self.inner.index()
     }
 
+    /// Change the physical line number and rederive its sequence and identity.
+    #[setter]
+    fn set_index(&mut self, index: u64) {
+        self.inner.set_index(index);
+    }
+
     /// The identifier this line was read under, as the narrowing it is.
     ///
     /// What the handle is addressed by, which is not always a place: a read
@@ -473,9 +479,9 @@ impl PyTextLine {
         self.inner.dropped_byte_size()
     }
 
-    /// The line's identity: `UUIDv7` with its microsecond instant in front and
-    /// the whole 64-bit XXH3-64 of its body stored behind, so two lines share
-    /// an identity only where both agree.
+    /// The line's identity: `UUIDv7` ordered by its millisecond and row number,
+    /// with an XXH3 payload over its content and full row number seeded by the
+    /// source cross hash.
     ///
     /// A line is an event of the graph, and a message parsed out of it
     /// states this among its `srcuuids`.
@@ -515,6 +521,12 @@ impl PyTextLine {
     #[getter]
     fn currunix(&self) -> i64 {
         self.inner.get_currunix()
+    }
+
+    /// The row number under `start_rownum`, else the physical line number.
+    #[getter]
+    fn seqnum(&self) -> u64 {
+        self.inner.get_seqnum()
     }
 
     /// The row header's named captures, in the order the expression declares

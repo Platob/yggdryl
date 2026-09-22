@@ -15,14 +15,16 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
-| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
+| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - including sided executions projected from an accepted initial TradeCaptureReport `35=AE` and its `NoSides(552)` - or back to the wire under bounded Arrow batches |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph.md)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
-`MsgType(35)` has a fixed four-byte `MsgCat(65054)` companion in the fixed
-row. Each committed message component carries its exhaustive `FIX:msgcat`
-metadata. The normalized instrument columns are `isincode(65055)`,
+`MsgType(35)` has an `int32` `MsgCat(65054)` companion in the fixed row: the
+stable numeric market-operation category. Each committed message component
+still carries its exhaustive four-character `FIX:msgcat` metadata, and the
+builtin `msgcatcodeset` maps those names to the row integers (`UNKN=0`,
+`ORDR=10`, `QUOT=14`, and so on). The normalized instrument columns are `isincode(65055)`,
 `cusipcode(65057)`, `sedolcode(65058)`, `bloombergcode(65059)` and
 `miccode(65060)`; CFI remains standard `CFICode(461)`, with no tag 65056.
 
@@ -30,8 +32,9 @@ The protocol view exposes the category beside the message type: Rust
 `field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
 `field.fix.msgcat`. Set it with Rust `field.as_fix_mut().set_msgcat("ORDR")?`
 or the corresponding Python/JavaScript property. The closed category set
-includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and `BOOK`; `MsgType.msgcat` and
-`FixMsg.msgcat` expose the resolved category in both bindings.
+includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and `BOOK`; `MsgType.msgcat` exposes
+that definition name, while `FixMsg.msgcat` and `marketoperationid` expose its
+resolved integer in both bindings.
 
 ## Contract
 
@@ -204,7 +207,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | fixed ASCII(4) | business category; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat` |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `msgcatcodeset` into the separate `int32` `MsgCat(65054)` field |
 | `replacements` | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the [specification's own retirements](registry.md#what-the-specification-retired) of the tag; see [Registry](registry.md#a-field-carries-what-replaced-it) |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 

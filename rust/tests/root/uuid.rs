@@ -191,6 +191,57 @@ fn version_7_stores_every_payload_bit_and_decodes_back() {
     }
 }
 
+fn decode_v7_sequence(value: Uuid) -> (i64, u16, u64) {
+    let packed = value.get();
+    (
+        i64::try_from(packed >> 80).unwrap(),
+        u16::try_from((packed >> 64) & 0xfff).unwrap(),
+        u64::try_from(packed & ((1 << 62) - 1)).unwrap(),
+    )
+}
+
+#[test]
+fn version_7_sequence_orders_millis_then_sequence_and_saturates_overflow() {
+    let first = Uuid::from_v7_sequence(1, 0, u64::MAX).unwrap();
+    let second = Uuid::from_v7_sequence(1, 1, 0).unwrap();
+    let next_millisecond = Uuid::from_v7_sequence(2, 0, 0).unwrap();
+    assert!(first < second, "the sequence lane precedes the payload");
+    assert!(
+        second < next_millisecond,
+        "the millisecond leads every lane"
+    );
+    assert_eq!(decode_v7_sequence(first), (1, 0, (1 << 62) - 1));
+    assert_eq!(first.version(), 7);
+
+    let last_exact = Uuid::from_v7_sequence(1, 4_094, 7).unwrap();
+    let terminal = Uuid::from_v7_sequence(1, 4_095, 7).unwrap();
+    let overflow = Uuid::from_v7_sequence(1, u64::MAX, 8).unwrap();
+    assert!(last_exact < terminal);
+    assert_eq!(decode_v7_sequence(terminal), (1, 4_095, 7));
+    assert_eq!(decode_v7_sequence(overflow), (1, 4_095, 8));
+    assert_ne!(
+        terminal, overflow,
+        "the payload distinguishes the overflow band"
+    );
+}
+
+#[test]
+fn version_7_sequence_refuses_millis_outside_its_timestamp() {
+    for millis in [i64::MIN, -1, 281_474_976_710_656, i64::MAX] {
+        let error = Uuid::from_v7_sequence(millis, 0, 0).unwrap_err();
+        let Error::InvalidRecord { path, reason } = error else {
+            panic!("expected a located UUID value refusal, got {error}");
+        };
+        assert_eq!(path, "$");
+        assert_eq!(
+            reason.as_str(),
+            format!(
+                "expected a UUIDv7 Unix millisecond instant in 0..=281474976710655, got {millis}"
+            )
+        );
+    }
+}
+
 #[test]
 fn version_7_refuses_negative_and_overflow_instants_at_the_value_root() {
     for micros in [i64::MIN, -1, 281_474_976_710_656_000, i64::MAX] {

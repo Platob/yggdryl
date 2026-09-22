@@ -476,7 +476,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let order = reader
         .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|")
         .unwrap();
-    let order_px = order.get_px();
+    let order_px = order.get_price();
     let row = order.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 35).as_str(), Some("D"));
     assert_eq!(at(&row, &schema, 11).as_str(), Some("ORDER-1"));

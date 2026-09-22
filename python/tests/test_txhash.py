@@ -44,6 +44,25 @@ def projected_uuid(unix_micros: int, digest: xxhash.Digest) -> uuid.UUID:
     return uuid.UUID(int=packed)
 
 
+def sequenced_uuid(
+    unix_millis: int,
+    digest: xxhash.Digest,
+    sequence: int,
+    seed: int,
+) -> uuid.UUID:
+    """The sequence projection independently assembled from public hashes."""
+    feed = int(digest).to_bytes(8, "little") + sequence.to_bytes(8, "little")
+    payload = xxhash.xxh3(feed, seed=seed) & V7_PAYLOAD_LOW_MASK
+    packed = (
+        (unix_millis << 80)
+        | (7 << 76)
+        | (min(sequence, 0xFFF) << 64)
+        | (0b10 << 62)
+        | payload
+    )
+    return uuid.UUID(int=packed)
+
+
 def decoded_parts(identifier: uuid.UUID) -> tuple[int, int]:
     """The microsecond instant and the whole 64-bit payload, read back out.
 
@@ -335,6 +354,43 @@ class TestValues:
                 assert message.endswith(
                     f"expected a 64-bit digest for UUIDv7, got {algorithm} ({bits} bits)"
                 )
+
+    def test_into_sequenced_uuid_orders_and_validates_the_full_u64_inputs(self) -> None:
+        digest = xxhash.Digest.from_int("xxh64", 0x0123_4567_89AB_CDEF)
+        value = txhash.TxHash.from_parts(1_234_567, digest, unit="ns")
+        projected = value.into_sequenced_uuid(7, 11)
+        expected = sequenced_uuid(1, digest, 7, 11)
+        assert isinstance(projected, Scalar)
+        assert projected.dtype == DataType("uuid")
+        assert projected.as_py() == str(expected)
+        assert uuid.UUID(projected.as_py()).version == 7
+
+        same_millisecond = txhash.TxHash.from_parts(1_999_999, digest, unit="ns")
+        assert same_millisecond.into_sequenced_uuid(7, 11) == projected
+        assert projected < value.into_sequenced_uuid(8, 0)
+        assert value.into_sequenced_uuid(7, 12) != projected
+
+        overflow = value.into_sequenced_uuid(4_096, 11)
+        farther = value.into_sequenced_uuid(8_192, 11)
+        assert overflow.as_py() == str(sequenced_uuid(1, digest, 4_096, 11))
+        assert (uuid.UUID(overflow.as_py()).int >> 64) & 0xFFF == 0xFFF
+        assert overflow != farther, "the full sequence reaches the payload"
+
+        maximum = 2**64 - 1
+        assert value.into_sequenced_uuid(maximum, maximum).as_py() == str(
+            sequenced_uuid(1, digest, maximum, maximum)
+        )
+        for invalid in [-1, 2**64]:
+            with pytest.raises(OverflowError):
+                value.into_sequenced_uuid(invalid, 0)
+            with pytest.raises(OverflowError):
+                value.into_sequenced_uuid(0, invalid)
+
+        narrow = txhash.TxHash.from_parts(
+            0, xxhash.Digest.from_int("xxh32", 7), unit="ns"
+        )
+        with pytest.raises(ValueError, match="64-bit digest"):
+            narrow.into_sequenced_uuid(0, 0)
 
     def test_instant_helpers_read_the_same_way_everywhere(self) -> None:
         aware = dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)

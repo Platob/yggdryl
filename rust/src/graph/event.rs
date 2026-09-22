@@ -36,8 +36,8 @@ use crate::{
 /// element.set_crosscode("O-100".to_owned());
 /// // Where the element was read from: provenance, beside its lineage.
 /// element.set_srcuuids(vec![Uuid::from_v8(7)]);
-/// element.set_px("82.5".parse()?);
-/// element.set_qty(Decimal18::from_int(1_000));
+/// element.set_price("82.5".parse()?);
+/// element.set_quantity(Decimal18::from_int(1_000));
 /// element.set_side(Side::read("Buy")?);
 /// element.finalize();
 /// assert_ne!(element.get_currhashcode(), 0);
@@ -46,7 +46,7 @@ use crate::{
 /// let mut event = MarketEventData::from(element.clone());
 /// event.set_currunix(1_700_000_000_000_000_000);
 /// event.finalize();
-/// assert_eq!(event.get_px(), element.get_px());
+/// assert_eq!(event.get_price(), element.get_price());
 /// assert_eq!(event.get_crosscode(), "O-100");
 /// assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7)], "the source survives");
 /// // And back, through the signatures the two share: the event's instants
@@ -71,9 +71,10 @@ pub struct MarketElementData {
     identifiers: BTreeMap<String, String>,
     parentuuids: Vec<Uuid>,
     srcuuids: Vec<Uuid>,
-    px: Decimal18,
+    marketoperationid: Option<i32>,
+    price: Decimal18,
     currency: Currency,
-    qty: Decimal18,
+    quantity: Decimal18,
     unit: String,
     side: Side,
     isincode: Option<IsinCode>,
@@ -115,7 +116,8 @@ impl Default for MarketElementData {
             identifiers: BTreeMap::new(),
             parentuuids: Vec::new(),
             srcuuids: Vec::new(),
-            px: Decimal18::ZERO,
+            marketoperationid: None,
+            price: Decimal18::ZERO,
             lastpx: None,
             lastqty: None,
             avgpx: None,
@@ -127,7 +129,7 @@ impl Default for MarketElementData {
             prevpx: None,
             prevqty: None,
             currency: Currency::none(),
-            qty: Decimal18::ZERO,
+            quantity: Decimal18::ZERO,
             unit: String::new(),
             side: Side::unknown(),
             isincode: None,
@@ -202,7 +204,8 @@ impl Element for MarketElementData {
         &self.parentuuids
     }
 
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
+    fn set_parentuuids(&mut self, mut parents: Vec<Uuid>) {
+        super::element::canonicalize_uuids(&mut parents);
         self.parentuuids = parents;
     }
 
@@ -210,12 +213,13 @@ impl Element for MarketElementData {
         &self.srcuuids
     }
 
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+    fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
+        super::element::canonicalize_uuids(&mut sources);
         self.srcuuids = sources;
     }
 
     fn is_after(&self, other: &Self) -> bool {
-        self.parentuuids.contains(&other.curruuid)
+        self.parentuuids.binary_search(&other.curruuid).is_ok()
     }
 
     fn finalize(&mut self) {
@@ -246,12 +250,20 @@ impl Element for MarketElementData {
 }
 
 impl MarketElement for MarketElementData {
-    fn get_px(&self) -> Decimal18 {
-        self.px
+    fn get_marketoperationid(&self) -> Option<i32> {
+        self.marketoperationid
     }
 
-    fn set_px(&mut self, px: Decimal18) {
-        self.px = px;
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+        self.marketoperationid = marketoperationid;
+    }
+
+    fn get_price(&self) -> Decimal18 {
+        self.price
+    }
+
+    fn set_price(&mut self, price: Decimal18) {
+        self.price = price;
     }
 
     fn get_currency(&self) -> &Currency {
@@ -262,12 +274,12 @@ impl MarketElement for MarketElementData {
         self.currency = currency;
     }
 
-    fn get_qty(&self) -> Decimal18 {
-        self.qty
+    fn get_quantity(&self) -> Decimal18 {
+        self.quantity
     }
 
-    fn set_qty(&mut self, qty: Decimal18) {
-        self.qty = qty;
+    fn set_quantity(&mut self, quantity: Decimal18) {
+        self.quantity = quantity;
     }
 
     fn get_unit(&self) -> &str {
@@ -521,8 +533,8 @@ impl MarketElement for MarketElementData {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
-/// event.set_px("82.5".parse()?);
-/// event.set_qty(Decimal18::from_int(1_000));
+/// event.set_price("82.5".parse()?);
+/// event.set_quantity(Decimal18::from_int(1_000));
 /// event.set_side(Side::read("Buy")?);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// // The lane the side implies fills from the event's own facts.
@@ -536,14 +548,14 @@ impl MarketElement for MarketElementData {
 /// assert_eq!(MarketElementData::from(event.clone()).get_srcuuids(), [Uuid::from_v8(7)]);
 /// // Restating the same facts is the same identity; a new price is not.
 /// let mut same = MarketEventData::at(1_700_000_000_000_000_000);
-/// same.set_px("82.5".parse()?);
-/// same.set_qty(Decimal18::from_int(1_000));
+/// same.set_price("82.5".parse()?);
+/// same.set_quantity(Decimal18::from_int(1_000));
 /// same.set_side(Side::read("Buy")?);
 /// same.set_srcuuids(vec![Uuid::from_v8(8)]);
 /// same.fill_lanes();
 /// same.finalize();
 /// assert_eq!(same.get_curruuid(), event.get_curruuid());
-/// same.set_px("83".parse()?);
+/// same.set_price("83".parse()?);
 /// same.finalize();
 /// assert_ne!(same.get_curruuid(), event.get_curruuid());
 /// # Ok(())
@@ -673,7 +685,8 @@ impl Element for MarketEventData {
         &self.element.parentuuids
     }
 
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
+    fn set_parentuuids(&mut self, mut parents: Vec<Uuid>) {
+        super::element::canonicalize_uuids(&mut parents);
         self.element.parentuuids = parents;
     }
 
@@ -681,7 +694,8 @@ impl Element for MarketEventData {
         &self.element.srcuuids
     }
 
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+    fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
+        super::element::canonicalize_uuids(&mut sources);
         self.element.srcuuids = sources;
     }
 
@@ -822,12 +836,20 @@ impl Event for MarketEventData {
 }
 
 impl MarketElement for MarketEventData {
-    fn get_px(&self) -> Decimal18 {
-        self.element.px
+    fn get_marketoperationid(&self) -> Option<i32> {
+        self.element.marketoperationid
     }
 
-    fn set_px(&mut self, px: Decimal18) {
-        self.element.px = px;
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+        self.element.marketoperationid = marketoperationid;
+    }
+
+    fn get_price(&self) -> Decimal18 {
+        self.element.price
+    }
+
+    fn set_price(&mut self, price: Decimal18) {
+        self.element.price = price;
     }
 
     fn get_currency(&self) -> &Currency {
@@ -838,12 +860,12 @@ impl MarketElement for MarketEventData {
         self.element.currency = currency;
     }
 
-    fn get_qty(&self) -> Decimal18 {
-        self.element.qty
+    fn get_quantity(&self) -> Decimal18 {
+        self.element.quantity
     }
 
-    fn set_qty(&mut self, qty: Decimal18) {
-        self.element.qty = qty;
+    fn set_quantity(&mut self, quantity: Decimal18) {
+        self.element.quantity = quantity;
     }
 
     fn get_unit(&self) -> &str {
@@ -1093,9 +1115,10 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
 
 /// Every fact [`MarketElement`] names, copied from `other` into `this`.
 fn copy_market<T: MarketElement + ?Sized, E: MarketElement + ?Sized>(this: &mut T, other: &E) {
-    this.set_px(other.get_px());
+    this.set_marketoperationid(other.get_marketoperationid());
+    this.set_price(other.get_price());
     this.set_currency(other.get_currency().clone());
-    this.set_qty(other.get_qty());
+    this.set_quantity(other.get_quantity());
     this.set_unit(other.get_unit().to_owned());
     this.set_side(other.get_side().clone());
     this.set_isincode(other.get_isincode().cloned());

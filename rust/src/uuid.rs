@@ -415,6 +415,8 @@ const V7_PAYLOAD_HIGH_BITS: u32 = 2;
 /// whole width, so nothing of it is dropped.
 const V7_PAYLOAD_LOW_BITS: u32 = 62;
 const V7_PAYLOAD_LOW_MASK: u64 = (1_u64 << V7_PAYLOAD_LOW_BITS) - 1;
+/// The whole of `rand_a`, used as an event's ordered sequence lane.
+const V7_SEQUENCE_MAX: u64 = (1_u64 << 12) - 1;
 /// The variant's own width, which the payload's two halves sit either side of.
 const V7_VARIANT_BITS: u32 = 2;
 /// Where the payload's high bits sit: just above the variant, in the two bits
@@ -506,6 +508,44 @@ impl Uuid {
                 | (high << V7_PAYLOAD_HIGH_SHIFT)
                 | RFC_VARIANT
                 | low,
+        ))
+    }
+
+    /// Pack a Unix millisecond, an ordered sequence and a 62-bit payload as
+    /// UUIDv7.
+    ///
+    /// The timestamp occupies UUIDv7's 48-bit millisecond field and the
+    /// sequence occupies `rand_a`, saturating in its terminal value `4095`.
+    /// Consequently identifiers order by millisecond and then sequence for
+    /// every sequence representable in `rand_a`; larger sequences stay in the
+    /// terminal sequence band. The low 62 bits of `payload` occupy `rand_b`.
+    /// Callers that can exceed the sequence lane should include the whole
+    /// sequence in that payload, so overflowed sequences remain distinct with
+    /// the payload's collision probability instead of becoming aliases.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$` when `unix_millis` is outside
+    /// the range UUIDv7's timestamp holds.
+    pub fn from_v7_sequence(unix_millis: i64, sequence: u64, payload: u64) -> Result<Self> {
+        if !(0..=MAX_V7_MILLIS).contains(&unix_millis) {
+            return Err(Error::InvalidRecord {
+                path: "$".into(),
+                reason: crate::text::expected_got(
+                    format_args!("a UUIDv7 Unix millisecond instant in 0..={MAX_V7_MILLIS}"),
+                    format_args!("{unix_millis}"),
+                ),
+            });
+        }
+        let milliseconds = u128::from(unix_millis.unsigned_abs());
+        let ordered_sequence = u128::from(sequence.min(V7_SEQUENCE_MAX));
+        let payload = u128::from(payload & V7_PAYLOAD_LOW_MASK);
+        Ok(Self(
+            (milliseconds << 80)
+                | (7_u128 << 76)
+                | (ordered_sequence << 64)
+                | RFC_VARIANT
+                | payload,
         ))
     }
 

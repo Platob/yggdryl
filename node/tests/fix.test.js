@@ -1341,10 +1341,12 @@
     assert.equal(message.prevuuid, null)
     assert.deepEqual(message.parentuuids, [])
     assert.deepEqual(message.srcuuids, [])
-    assert.equal(message.px, '0')
+    assert.equal(message.price, '0')
     // `OrderQty(38)` is the quantity the event is about, so the root's child
     // filled it rather than staying a column.
-    assert.equal(message.qty, '100')
+    assert.equal(message.quantity, '100')
+    assert.equal('px' in message, false)
+    assert.equal('qty' in message, false)
     assert.equal(message.currency, 'XXX')
     assert.equal(message.text, null)
     assert.deepEqual(message.metadata, {})
@@ -1408,6 +1410,32 @@
     assert.throws(() => message.byId(1.5), /id must be a signed 32-bit integer/)
     assert.throws(() => message.getById(2 ** 31), /id must be a signed 32-bit integer/)
     assert.throws(() => message.getById('55'), /into rust type `f64`/)
+  })
+
+  test('the event view exposes every precise clock and market fact', () => {
+    const message = fixedCodec(seed()).parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|52=20240102-10:15:30|11=A1|55=AAPL|54=1|15=USD|38=100|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|',
+    ))
+    const event = message.event()
+
+    assert.equal(event.currunix, SENDING_NS + 1_000_000_000n)
+    assert.equal(event.creaunix, event.currunix)
+    assert.equal(event.execunix, null)
+    assert.equal(event.recdunix, null)
+    assert.equal(event.refrecdunix, null)
+    assert.equal(event.marketoperationid, 10)
+    assert.equal(event.price, '10.5')
+    assert.equal(event.quantity, '100')
+    assert.equal(event.lastpx, '10.25')
+    assert.equal(event.lastqty, '40')
+    assert.equal(event.avgpx, '10.3')
+    assert.equal(event.cumqty, '40')
+    assert.equal(event.leavesqty, '60')
+    assert.equal(event.prevpx, '9.75')
+    assert.equal(event.prevqty, null)
+    assert.equal(event.tif, '0')
+    assert.equal(event.tradable, null)
+    assert.equal(event.symbolticker, 'AAPL')
   })
 
   test('the entries are the content row read as a tree, and the wire is the header before them', () => {
@@ -1497,6 +1525,11 @@
     assert.equal(event.state, message.state)
     assert.equal(event.seqnum, message.seqnum)
     assert.equal(event.prevuuid, message.prevuuid)
+    assert.equal(event.marketoperationid, message.marketoperationid)
+    assert.equal(event.price, message.price)
+    assert.equal(event.quantity, message.quantity)
+    assert.equal('px' in event, false)
+    assert.equal('qty' in event, false)
     // A buy of a hundred at no price fills the bid lane's size and nothing
     // else; the other lane is the other party's.
     assert.equal(event.bidqty, '100')
@@ -1957,6 +1990,14 @@
   })
 
   test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
+    const intrinsic = new fix.FixRegistry()
+    assert.throws(() => intrinsic.setCodeset('msgcatcodeset', []), /fixed MsgCat operation identifiers/)
+    assert.throws(
+      () => intrinsic.mergeCodeset('msgcatcodeset', [{ value: '99', name: 'ORDR' }]),
+      /fixed MsgCat operation identifiers/,
+    )
+    assert.throws(() => intrinsic.removeCodeset('msgcatcodeset'), /fixed MsgCat operation identifiers/)
+
     const registry = seed()
     assert.equal(new fix.FixCodec(registry).snapshotNs, null)
     assert.equal(new fix.FixCodec(registry, { snapshotNs: undefined }).snapshotNs, null)
@@ -1973,7 +2014,8 @@
     const original = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const replay = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
     const distinct = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|'))
-    assert.equal(original.msgcat, 'ORDR')
+    assert.equal(original.msgcat, 10)
+    assert.equal(original.marketoperationid, 10)
     const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
     assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
     assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 1])
@@ -2079,7 +2121,7 @@
     // The event reads the report: the last price, the venue's order
     // identifier as the cross code, the identifiers the message component
     // declares.
-    assert.equal(latest.px, '10.5')
+    assert.equal(latest.price, '10.5')
     assert.equal(latest.crosscode, 'O1')
     assert.deepEqual(latest.identifiers, { execid: 'E1', orderid: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
@@ -2101,7 +2143,7 @@
 
   test('a JSON document is one unknown message carrying only what the row stated', () => {
     const codec = fixedCodec(new fix.FixRegistry(), { captureNames: ['msgpluginid'] })
-    const messages = codec.parseTextLine(new TextLine(0, DOCUMENT, ['Router_OrderRouting']))
+    const messages = codec.parseTextLine(new TextLine(0n, DOCUMENT, ['Router_OrderRouting']))
     const message = messages.next().value
     assert.equal(messages.next().done, true)
     // The codec reads no document: the row is a message that stated no type
@@ -2567,7 +2609,7 @@
     function* lines() {
       for (const body of ['8=FIX.4.4|35=D|11=A|10=0|', '8=FIX.4.4|35=D|11=B|10=0|']) {
         pulled += 1
-        yield new TextLine(pulled - 1, Buffer.from(body))
+        yield new TextLine(BigInt(pulled - 1), Buffer.from(body))
       }
     }
     const messages = codec.parseTextLines(lines())
@@ -2580,13 +2622,13 @@
     // 32 is `lastshares`, and what it restates to is the quantity the event
     // last traded rather than a column beside it.
     const [old] = codec.parseTextLines([
-      new TextLine(0, Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'), ['FIX.4.2']),
+      new TextLine(0n, Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'), ['FIX.4.2']),
     ])
     assert.equal(old.field.indexOf('lastqty'), null, 'the event holds it')
     assert.equal(old.lastqty, '100')
     assert.notEqual(old.getByName('lastshares'), null)
     // A row of two frames is two messages, and the stream door yields each.
-    assert.equal([...codec.parseTextLines([new TextLine(0, Buffer.from(TWO_FRAMES))])].length, 2)
+    assert.equal([...codec.parseTextLines([new TextLine(0n, Buffer.from(TWO_FRAMES))])].length, 2)
   })
 
   test("a row's msgpluginid fills its own column and selects nothing", () => {
@@ -2605,7 +2647,7 @@
     const codec = reading(registry, { captureNames })
     const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
     // A line and the captures its header declared, in that order.
-    const lined = (plugin, previous = null, held = body) => new TextLine(0, held, [plugin, previous])
+    const lined = (plugin, previous = null, held = body) => new TextLine(0n, held, [plugin, previous])
 
     // A `msgpluginid` capture - a plugin named like a dictionary, one no
     // dictionary is named after, a null, an empty string - fills the crate's
@@ -2667,7 +2709,7 @@
     assert.throws(() => reading(registry, { batchByteSize: 1.5 }))
     // The payload column names a batch column; a line's body is its own, so
     // the line door reads the same frame without naming anything.
-    const [read] = pinned.parseTextLines([new TextLine(0, Buffer.from('8=FIX.4.2|35=D|11=A|10=0|'))])
+    const [read] = pinned.parseTextLines([new TextLine(0n, Buffer.from('8=FIX.4.2|35=D|11=A|10=0|'))])
     assert.equal(read.byTag(11).asJs(), 'A')
   })
 
@@ -2793,6 +2835,73 @@
 
     // A target of one byte is a batch a message.
     assert.equal(rowCounts(reading(registry, { batchByteSize: 1 }).arrowReader(schema, codec.parseLines(lines))).length, 200)
+  })
+
+  test('bookArrowReader streams messages through native books into nested batches', () => {
+    const codec = reading(seed(), { batchRowSize: 1 })
+    const snapshot = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
+    ))
+    const update = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
+    ))
+    const reader = codec.bookArrowReader([snapshot, update])
+    const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
+    assert.deepEqual(names.slice(-3), ['bid', 'ask', 'executions'])
+    assert.ok(names.includes('price') && names.includes('quantity'))
+    assert.ok(!names.includes('px') && !names.includes('qty'))
+    const books = reader.intoTable()
+    assert.equal(books.numRows, 2)
+    assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
+  })
+
+  test('a lifecycled two-sided trade streams executions without book depth', () => {
+    const codec = reading(seed(), { batchRowSize: 1 })
+    const trade = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|' +
+      '571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|' +
+      '54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|' +
+      '54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|',
+    ))
+    const books = codec.bookArrowReader(codec.lifecycle([trade])).intoTable()
+    const executions = books.getChild('executions').get(0)
+    const bid = books.getChild('bid').get(0)
+    const ask = books.getChild('ask').get(0)
+    const bySide = new Map(Array.from(executions, (execution) => [execution.side, execution]))
+    const buy = bySide.get('BUY')
+    const sell = bySide.get('SELL')
+
+    assert.equal(books.numRows, 1)
+    assert.deepEqual([...bySide.keys()].sort(), ['BUY', 'SELL'])
+    assert.equal(buy.marketoperationid, 21)
+    assert.equal(sell.marketoperationid, 21)
+    assert.equal(BigInt(buy.price.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(sell.price.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(buy.quantity.toString()), 4n * 10n ** 18n)
+    assert.equal(BigInt(sell.quantity.toString()), 6n * 10n ** 18n)
+    assert.equal(new Map(buy.identifiers).get('SideExecID'), 'BUY-EXEC')
+    assert.equal(new Map(sell.identifiers).get('SideExecID'), 'SELL-EXEC')
+    assert.notDeepEqual(buy.curruuid, sell.curruuid)
+    assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
+    assert.notEqual(buy.crosscode, sell.crosscode)
+    assert.equal(bid.live.length, 0)
+    assert.equal(ask.live.length, 0)
+    assert.equal(bid.deltas.length, 0)
+    assert.equal(ask.deltas.length, 0)
+  })
+
+  test('a trade side without Side refuses at its exact occurrence through the book reader', () => {
+    const codec = reading(seed(), { batchRowSize: 1 })
+    const missing = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
+      '32=4|31=101.25|60=20260921-10:00:00|552=1|' +
+      '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
+    ))
+
+    assert.throws(
+      () => codec.bookArrowReader([missing]).intoTable(),
+      /\$\.NoSides\(552\)\[0\]\.Side\(54\)/,
+    )
   })
 
   test('a parse fills what the dictionary derives, through both doors', () => {
@@ -2999,7 +3108,7 @@
     assert.equal(message.size, held)
     assert.equal(message.header().msgseqnum, 7)
     assert.equal(message.byTag(34).asJs(), 7)
-    assert.equal(message.px, '10.5')
+    assert.equal(message.price, '10.5')
     assert.ok(message.byTag(44).equals(Scalar.decimal(105n, 1)))
   })
 
@@ -3042,7 +3151,7 @@
     // child and adds no entry.
     message.set(38, '100')
     assert.deepEqual(message.entries().length, parsed.entries().length)
-    assert.equal(message.qty, '100')
+    assert.equal(message.quantity, '100')
     assert.ok(message.byTag(38).equals(Scalar.decimal(100n)))
     // A null is stored as a stated null.
     message.set(55, null)
@@ -3408,7 +3517,7 @@
     // A message read from a line states the line as its one source, and the
     // source is no part of the code: the same bytes are the same content,
     // whether the walk dated the message by its transaction or not.
-    const line = new TextLine(0, lines[0])
+    const line = new TextLine(0n, lines[0])
     const [sourced] = codec.parseTextLine(line)
     assert.deepEqual(sourced.srcuuids, [line.curruuid])
     assert.deepEqual(sourced.event().srcuuids, [line.curruuid])

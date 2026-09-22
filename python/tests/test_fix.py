@@ -384,6 +384,114 @@ def test_messages_and_arrow_reader_invert_each_other(seed_batch: FixRegistry) ->
     assert first.equals(second)
 
 
+def test_book_arrow_reader_streams_native_nested_books(seed_batch: FixRegistry) -> None:
+    codec = _fixed_batch(seed_batch, batch_row_size=1)
+    snapshot = codec.parse_fix_line(
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|"
+        b"269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|"
+    )
+    update = codec.parse_fix_line(
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|"
+        b"279=1|269=0|278=B1|270=101|271=11|"
+        b"279=0|269=2|278=T1|270=101|271=2|10=0|"
+    )
+
+    reader = codec.book_arrow_reader([snapshot, update], snapshot_millis=0, global_=False)
+    assert isinstance(reader, pa.RecordBatchReader)
+    assert reader.schema.names[-3:] == ["bid", "ask", "executions"]
+    assert "price" in reader.schema.names and "quantity" in reader.schema.names
+    assert "px" not in reader.schema.names and "qty" not in reader.schema.names
+
+    rows = reader.read_all().to_pylist()
+    assert len(rows) == 2
+    assert [row["symbolticker"] for row in rows] == ["AAPL", "AAPL"]
+    assert [row["price"] for row in rows] == [decimal.Decimal("101"), decimal.Decimal("101.5")]
+    assert rows[0]["bid"]["live"][0]["price"] == decimal.Decimal("100")
+    assert rows[1]["bid"]["live"][0]["price"] == decimal.Decimal("101")
+    assert rows[1]["bid"]["live"][0]["marketoperationid"] == 3
+    assert len(rows[1]["executions"]) == 1
+    assert rows[1]["executions"][0]["marketoperationid"] == 3
+
+
+def test_lifecycled_two_sided_trade_streams_executions_without_depth(
+    seed_batch: FixRegistry,
+) -> None:
+    codec = _fixed_batch(seed_batch, batch_row_size=1)
+    trade = codec.parse_fix_line(
+        b"8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|"
+        b"571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|"
+        b"54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|"
+        b"54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|"
+    )
+
+    rows = codec.book_arrow_reader(
+        codec.lifecycle([trade]), snapshot_millis=0, global_=False
+    ).read_all().to_pylist()
+
+    assert len(rows) == 1
+    book = rows[0]
+    by_side = {execution["side"]: execution for execution in book["executions"]}
+    assert set(by_side) == {"BUY", "SELL"}
+    buy, sell = by_side["BUY"], by_side["SELL"]
+    assert (buy["price"], sell["price"]) == (
+        decimal.Decimal("101.25"),
+        decimal.Decimal("101.25"),
+    )
+    assert (buy["quantity"], sell["quantity"]) == (
+        decimal.Decimal("4"),
+        decimal.Decimal("6"),
+    )
+    assert (buy["lastqty"], sell["lastqty"]) == (
+        decimal.Decimal("4"),
+        decimal.Decimal("6"),
+    )
+    assert all(
+        execution["marketoperationid"] == 21
+        and execution["symbolticker"] == "AAPL"
+        and execution["currunix"] == book["currunix"]
+        for execution in by_side.values()
+    )
+    buy_ids, sell_ids = dict(buy["identifiers"]), dict(sell["identifiers"])
+    assert buy_ids["SideExecID"] == "BUY-EXEC"
+    assert sell_ids["SideExecID"] == "SELL-EXEC"
+    assert buy_ids["OrderID"] == "BUY-ORDER"
+    assert sell_ids["OrderID"] == "SELL-ORDER"
+    assert buy_ids["ClOrdID"] == "BUY-CLIENT"
+    assert sell_ids["ClOrdID"] == "SELL-CLIENT"
+    assert buy["curruuid"] != sell["curruuid"]
+    assert buy["crossuuid"] != sell["crossuuid"]
+    assert buy["crosscode"] != sell["crosscode"]
+    assert book["bid"]["live"] == book["ask"]["live"] == []
+    assert book["bid"]["deltas"] == book["ask"]["deltas"] == []
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        (
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
+            b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
+            r"NoSides\(552\)\[0\]\.Side\(54\)",
+        ),
+        (
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
+            "at least one sided execution",
+        ),
+    ],
+)
+def test_trade_book_reader_surfaces_native_sided_refusals(
+    seed_batch: FixRegistry, body: bytes, reason: str
+) -> None:
+    codec = _fixed_batch(seed_batch)
+    trade = codec.parse_fix_line(body)
+    reader = codec.book_arrow_reader([trade], snapshot_millis=0, global_=False)
+
+    with pytest.raises(Exception, match=reason):
+        reader.read_all()
+
+
 def test_messages_pull_from_the_reader_one_batch_at_a_time(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch)
     source = codec.parse_text_arrow_reader(_capture(CARRYING, 3))
@@ -1557,7 +1665,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
-    assert fields["msgcat"].dtype == DataType.fixed_ascii(4)
+    assert fields["msgcat"].dtype == DataType("int32")
     for name, dtype in (
         ("isincode", "isin"),
         ("cusipcode", "cusip"),
@@ -2058,7 +2166,8 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     codec = _fixed(seed)
     wire = (
         b"8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|52=20240102-10:15:30|"
-        b"11=A1|55=AAPL|54=1|15=USD|38=100|44=10.5|58=note|60=20240102-10:15:31|10=0|"
+        b"11=A1|55=AAPL|54=1|15=USD|38=100|44=10.5|31=10.25|32=40|"
+        b"6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|"
     )
     message = codec.parse_fix_line(wire)
 
@@ -2096,8 +2205,24 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # twice and the more exact saying of it dates the message.
     assert event.currunix == CLOCK_NS + 1_000_000_000
     assert event.creaunix == event.currunix
-    assert event.px.as_py() == 10.5
-    assert event.qty.as_py() == 100
+    assert event.execunix is None
+    assert event.recdunix is None
+    assert event.refrecdunix is None
+    assert event.marketoperationid == 10
+    assert event.price.as_py() == 10.5
+    assert event.quantity.as_py() == 100
+    assert event.lastpx is not None and event.lastpx.as_py() == decimal.Decimal("10.25")
+    assert event.lastqty is not None and event.lastqty.as_py() == 40
+    assert event.avgpx is not None and event.avgpx.as_py() == decimal.Decimal("10.3")
+    assert event.cumqty is not None and event.cumqty.as_py() == 40
+    assert event.leavesqty is not None and event.leavesqty.as_py() == 60
+    assert event.prevpx is not None and event.prevpx.as_py() == decimal.Decimal("9.75")
+    assert event.prevqty is None
+    assert event.tif == "0"
+    assert event.tradable is None
+    assert event.symbolticker == "AAPL"
+    assert not hasattr(event, "px")
+    assert not hasattr(event, "qty")
     assert event.currency.as_py() == "USD"
     assert event.side.as_py() == "BUY"
     assert event.crosscode == "A1"
@@ -2118,13 +2243,16 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.currhashcode == event.currhashcode
     assert message.crosshashcode == event.crosshashcode
     assert message.identifiers == event.identifiers
+    assert message.msgcat == message.marketoperationid == event.marketoperationid == 10
     assert message.parentuuids == event.parentuuids == []
     assert message.srcuuids == event.srcuuids == []
     assert message.state == event.state
     assert message.seqnum == event.seqnum
     assert message.prevuuid is None
-    assert message.px == event.px
-    assert message.qty == event.qty
+    assert message.price == event.price
+    assert message.quantity == event.quantity
+    assert not hasattr(message, "px")
+    assert not hasattr(message, "qty")
     assert message.side == event.side
     assert message.currency == event.currency
     # The identities are uuid scalars, the codes uint64.
@@ -2160,10 +2288,11 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # None of them is a row child: the content row holds the rest, the side
     # and the currency among it, and the day order the dictionary derived.
     assert [child.name for child in message.field] == [
-        "symbol",
-        "side",
-        "currency",
-        "transacttime",
+            "symbol",
+            "side",
+            "currency",
+            "prevclosepx",
+            "transacttime",
         "timeinforce",
         "settlcurrency",
         "currencycodesource",
@@ -2285,11 +2414,11 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
     # *about* is read off them.
     before = len(message)
     message.set(38, decimal.Decimal("100"))
-    assert message.qty.as_py() == 100
+    assert message.quantity.as_py() == 100
     assert message.by_tag(38).as_py() == decimal.Decimal("100")
     assert len(message) == before
     message.set(44, "12.5")
-    assert message.px.as_py() == decimal.Decimal("12.5")
+    assert message.price.as_py() == decimal.Decimal("12.5")
     assert len(message) == before
     # The side is an ordinary child, so writing it grows the row once.
     message.set(54, "2")
@@ -2510,8 +2639,8 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     )
     assert inferred == bridge
     assert bridge.by_tag(55).as_py() == "TTF"
-    assert bridge.px.as_py() == 41.25
-    assert bridge.qty.as_py() == 1200
+    assert bridge.price.as_py() == 41.25
+    assert bridge.quantity.as_py() == 1200
     assert bridge.side.as_py() == "BUY"
     assert bridge.by_path("parties[0].partyid").as_py() == "BUYSIDE"
 
@@ -2702,7 +2831,7 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     for earlier, later in zip(walked, walked[1:]):
         assert later.prevuuid == earlier.curruuid
         assert later.event().prevunix == earlier.currunix
-    # A walked message descends from the whole chain before it, oldest first.
+    # A walked message descends from the chain's sorted identity set.
     for at, later in enumerate(walked):
         assert later.parentuuids == [held.curruuid for held in walked[:at]]
     # The lifecycle's own creation instant is carried forward.
@@ -2822,6 +2951,14 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
 
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
     """Python forwards the settled lifecycle contract without changing sources."""
+    intrinsic = FixRegistry()
+    with pytest.raises(ValueError, match="fixed MsgCat operation identifiers"):
+        intrinsic.set_codeset("msgcatcodeset", [])
+    with pytest.raises(ValueError, match="fixed MsgCat operation identifiers"):
+        intrinsic.merge_codeset("msgcatcodeset", [{"value": "99", "name": "ORDR"}])
+    with pytest.raises(ValueError, match="fixed MsgCat operation identifiers"):
+        intrinsic.remove_codeset("msgcatcodeset")
+
     assert FixCodec(seed).snapshot_ns is None
     assert FixCodec(seed, snapshot_ns=None).snapshot_ns is None
     assert FixCodec(seed, snapshot_ns=0).snapshot_ns is None
@@ -2841,7 +2978,7 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     distinct = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|"
     )
-    assert original.msgcat == "ORDR"
+    assert original.msgcat == original.marketoperationid == 10
     deduplicated = list(codec.lifecycle([original, copy.copy(original), replay, distinct]))
     assert [held.header().msgseqnum for held in deduplicated] == [7, 8]
     assert [held.seqnum for held in deduplicated] == [0, 1]
@@ -2943,7 +3080,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert len(row) == len(columns)
     assert row[schema.index_of("beginstring")] == "FIX.4.4"
     assert row[schema.index_of("msgtype")] == "D"
-    assert row[schema.index_of("msgcat")] == "ORDR"
+    assert row[schema.index_of("msgcat")] == 10
     assert row[schema.index_of("clordid")] == "A"
     assert row[schema.index_of("currunix")] == CLOCK_INSTANT
     assert row[schema.index_of("creaunix")] == CLOCK_INSTANT

@@ -164,14 +164,29 @@ macro_rules! delegate_market_value {
     };
     ($type:ty, $holder:ty, market_only) => {
         impl $crate::graph::MarketElement for $type {
-            fn get_px(&self) -> $crate::Decimal18 {
-                <$holder as $crate::graph::MarketElement>::get_px(<Self as AsRef<$holder>>::as_ref(
-                    self,
+            fn get_marketoperationid(&self) -> Option<i32> {
+                <$holder as $crate::graph::MarketElement>::get_marketoperationid(<Self as AsRef<
+                    $holder,
+                >>::as_ref(
+                    self
                 ))
             }
 
-            fn set_px(&mut self, px: $crate::Decimal18) {
-                <$holder as $crate::graph::MarketElement>::set_px(
+            fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+                <$holder as $crate::graph::MarketElement>::set_marketoperationid(
+                    <Self as AsMut<$holder>>::as_mut(self),
+                    marketoperationid,
+                );
+            }
+
+            fn get_price(&self) -> $crate::Decimal18 {
+                <$holder as $crate::graph::MarketElement>::get_price(
+                    <Self as AsRef<$holder>>::as_ref(self),
+                )
+            }
+
+            fn set_price(&mut self, px: $crate::Decimal18) {
+                <$holder as $crate::graph::MarketElement>::set_price(
                     <Self as AsMut<$holder>>::as_mut(self),
                     px,
                 );
@@ -190,14 +205,14 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_qty(&self) -> $crate::Decimal18 {
-                <$holder as $crate::graph::MarketElement>::get_qty(
+            fn get_quantity(&self) -> $crate::Decimal18 {
+                <$holder as $crate::graph::MarketElement>::get_quantity(
                     <Self as AsRef<$holder>>::as_ref(self),
                 )
             }
 
-            fn set_qty(&mut self, qty: $crate::Decimal18) {
-                <$holder as $crate::graph::MarketElement>::set_qty(
+            fn set_quantity(&mut self, qty: $crate::Decimal18) {
+                <$holder as $crate::graph::MarketElement>::set_quantity(
                     <Self as AsMut<$holder>>::as_mut(self),
                     qty,
                 );
@@ -559,9 +574,53 @@ macro_rules! delegate_market_value {
     };
     ($type:ty, $holder:ty, event, $is_execution:expr) => {
         delegate_market_value!($type, $holder, element);
-        delegate_market_value!($type, $holder, event_only, $is_execution);
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            |this: &mut $type, unix: i64| {
+                <$holder as $crate::graph::Event>::set_currunix(
+                    <Self as AsMut<$holder>>::as_mut(this),
+                    unix,
+                );
+            },
+            |_: &mut $type| {}
+        );
     };
     ($type:ty, $holder:ty, event_only, $is_execution:expr) => {
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            |this: &mut $type, unix: i64| {
+                <$holder as $crate::graph::Event>::set_currunix(
+                    <Self as AsMut<$holder>>::as_mut(this),
+                    unix,
+                );
+            },
+            |this: &mut $type| <$type as $crate::graph::Element>::finalize(this)
+        );
+    };
+    ($type:ty, $holder:ty, event_only, $is_execution:expr, $set_currunix:expr) => {
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            $set_currunix,
+            |this: &mut $type| <$type as $crate::graph::Element>::finalize(this)
+        );
+    };
+    (
+        $type:ty,
+        $holder:ty,
+        @event_impl,
+        $is_execution:expr,
+        $set_currunix:expr,
+        $finish_restatement:expr
+    ) => {
         impl $crate::graph::Event for $type {
             fn get_currunix(&self) -> i64 {
                 <$holder as $crate::graph::Event>::get_currunix(<Self as AsRef<$holder>>::as_ref(
@@ -570,10 +629,7 @@ macro_rules! delegate_market_value {
             }
 
             fn set_currunix(&mut self, unix: i64) {
-                <$holder as $crate::graph::Event>::set_currunix(
-                    <Self as AsMut<$holder>>::as_mut(self),
-                    unix,
-                );
+                ($set_currunix)(self, unix);
             }
 
             fn get_state(&self) -> &$crate::State {
@@ -713,6 +769,7 @@ macro_rules! delegate_market_value {
                 let holder = std::mem::take(<Self as AsMut<$holder>>::as_mut(&mut self));
                 let holder = <$holder as $crate::graph::Event>::restating(holder, live);
                 *<Self as AsMut<$holder>>::as_mut(&mut self) = holder;
+                ($finish_restatement)(&mut self);
                 self
             }
 
@@ -783,6 +840,15 @@ macro_rules! delegate_market_event {
             |_: &Self| $is_execution
         );
     };
+    ($type:ty, $field:ident, event_only, $is_execution:expr, $set_currunix:expr) => {
+        delegate_market_value!(
+            $type,
+            $crate::graph::MarketEventData,
+            event_only,
+            |_: &Self| $is_execution,
+            $set_currunix
+        );
+    };
     ($type:ty, $field:ident, $is_execution:expr) => {
         delegate_market_event!(@impl $type, $field, |_: &Self| $is_execution);
     };
@@ -822,6 +888,7 @@ pub mod iterator;
 pub mod market_column;
 pub mod order;
 pub mod quote;
+pub mod trade;
 
 pub use book::{
     Book, BookIterator, BookSide, GLOBAL_SYMBOL, MarketEntry, MarketOperation, MarketOperationKind,
@@ -836,3 +903,4 @@ pub use iterator::EventIterator;
 pub use market_column::MarketColumn;
 pub use order::{Order, OrderEntry};
 pub use quote::{Quote, QuoteEntry};
+pub use trade::Trade;

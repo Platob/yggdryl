@@ -84,7 +84,7 @@ pub enum EventColumn {
     /// The event's place in its chain: how many came before it; none where
     /// none did.
     SeqNum,
-    /// The identities this event descends from, oldest first.
+    /// The identities this event descends from, sorted and unique.
     ParentUuids,
     /// The identities this event was read from: provenance, never lineage.
     SrcUuids,
@@ -198,7 +198,7 @@ impl EventColumn {
                 "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
             }
             Self::CurrUuid => {
-                "The event's identity: the UUIDv7 its microsecond instant and code derive."
+                "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
             }
             Self::CrossUuid => {
                 "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
@@ -213,10 +213,10 @@ impl EventColumn {
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
             Self::SeqNum => "The event's place in its chain: how many came before it.",
             Self::ParentUuids => {
-                "The identities of the events this one descends from, oldest first, each once."
+                "The identities of the events this one descends from, sorted and unique."
             }
             Self::SrcUuids => {
-                "The identities of the elements this event was read from: provenance, never lineage - no walk moves it."
+                "The sorted unique identities of the elements this event was read from: provenance, never lineage - no walk moves it."
             }
             Self::Identifiers => {
                 "The names this event goes by, each under the scheme that issued it, in sorted order."

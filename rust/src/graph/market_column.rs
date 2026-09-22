@@ -8,12 +8,13 @@ use crate::{
 
 use super::MarketElement;
 
-/// One column of the thirty facts every market element answers.
+/// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MarketColumn {
-    Px,
+    MarketOperationId,
+    Price,
     Currency,
-    Qty,
+    Quantity,
     Unit,
     Side,
     IsinCode,
@@ -45,10 +46,11 @@ pub enum MarketColumn {
 
 impl MarketColumn {
     /// Every market column in canonical row order.
-    pub const ALL: [Self; 30] = [
-        Self::Px,
+    pub const ALL: [Self; 31] = [
+        Self::MarketOperationId,
+        Self::Price,
         Self::Currency,
-        Self::Qty,
+        Self::Quantity,
         Self::Unit,
         Self::Side,
         Self::IsinCode,
@@ -82,9 +84,10 @@ impl MarketColumn {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Px => "px",
+            Self::MarketOperationId => "marketoperationid",
+            Self::Price => "price",
             Self::Currency => "currency",
-            Self::Qty => "qty",
+            Self::Quantity => "quantity",
             Self::Unit => "unit",
             Self::Side => "side",
             Self::IsinCode => "isincode",
@@ -119,9 +122,10 @@ impl MarketColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::Px => "Price",
+            Self::MarketOperationId => "Market Operation ID",
+            Self::Price => "Price",
             Self::Currency => "Currency",
-            Self::Qty => "Quantity",
+            Self::Quantity => "Quantity",
             Self::Unit => "Unit",
             Self::Side => "Side",
             Self::IsinCode => "ISIN",
@@ -155,8 +159,9 @@ impl MarketColumn {
     /// The exact datatype of this market fact.
     pub fn datatype(self) -> DataType {
         match self {
-            Self::Px
-            | Self::Qty
+            Self::MarketOperationId => DataType::Int32,
+            Self::Price
+            | Self::Quantity
             | Self::LastPx
             | Self::LastQty
             | Self::AvgPx
@@ -189,7 +194,7 @@ impl MarketColumn {
     pub const fn nullable(self) -> bool {
         !matches!(
             self,
-            Self::Px | Self::Currency | Self::Qty | Self::Unit | Self::Side
+            Self::Price | Self::Currency | Self::Quantity | Self::Unit | Self::Side
         )
     }
 
@@ -216,9 +221,10 @@ impl MarketColumn {
     /// What an element states under this column.
     pub fn fact<E: MarketElement + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
-            Self::Px => Some(element.get_px().into()),
+            Self::MarketOperationId => element.get_marketoperationid().map(Scalar::from),
+            Self::Price => Some(element.get_price().into()),
             Self::Currency => Some(element.get_currency().clone().into()),
-            Self::Qty => Some(element.get_qty().into()),
+            Self::Quantity => Some(element.get_quantity().into()),
             Self::Unit => Some(Scalar::from(element.get_unit())),
             Self::Side => Some(element.get_side().clone().into()),
             Self::IsinCode => element.get_isincode().cloned().map(Scalar::from),
@@ -263,9 +269,11 @@ impl MarketColumn {
         }
         let decimal = || Decimal18::from_scalar(value);
         match self {
-            Self::Px => {
+            Self::MarketOperationId => element
+                .set_marketoperationid(value.as_i128().and_then(|held| i32::try_from(held).ok())),
+            Self::Price => {
                 if let Some(held) = decimal() {
-                    element.set_px(held);
+                    element.set_price(held);
                 }
             }
             Self::Currency => {
@@ -276,9 +284,9 @@ impl MarketColumn {
                     element.set_currency(held);
                 }
             }
-            Self::Qty => {
+            Self::Quantity => {
                 if let Some(held) = decimal() {
-                    element.set_qty(held);
+                    element.set_quantity(held);
                 }
             }
             Self::Unit => {

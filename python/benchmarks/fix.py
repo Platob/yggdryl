@@ -263,7 +263,7 @@ ORDER_TYPE = SEED_REGISTRY.msgtype("D")
 ORDER_DECLARATION = ORDER_TYPE.field
 SNAPSHOT_CODEC = FixCodec(SEED_REGISTRY, snapshot_ns=1_000_000_000)
 assert ORDER_TYPE.msgcat == "ORDR"
-assert PARSED.msgcat == "ORDR"
+assert PARSED.msgcat == 10
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the identifiers are on the message
 # the parse answered rather than behind a pass of its own.

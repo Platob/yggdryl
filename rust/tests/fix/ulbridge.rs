@@ -537,7 +537,7 @@ mod dataset {
             "the price the line stated, exact"
         );
         assert_eq!(
-            fill.get_px().to_string(),
+            fill.get_price().to_string(),
             "83.08",
             "and the price the message is about, read off it"
         );

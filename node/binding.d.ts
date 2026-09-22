@@ -627,6 +627,12 @@ declare module './index' {
      */
     arrowReader(schema: Field, messages: Iterable<FixMsg>): BatchReader
     /**
+     * Stream sorted messages through native market operations and books into
+     * nested Arrow batches. A positive snapshot width is epoch aligned;
+     * `global` consolidates symbols into one `GLOBAL` book.
+     */
+    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number, global?: boolean): BatchReader
+    /**
      * A stream of messages as the rows one message field holds them.
      *
      * The third verb, and the one a consumer reads by: `parse*` turns a

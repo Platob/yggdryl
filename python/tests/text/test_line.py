@@ -120,6 +120,24 @@ class TestTextLine:
         stated = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", ["WARN"], options)
         assert stated.captures == ("WARN",)
 
+    def test_rownum_is_the_full_sequence_and_mutating_it_rederives_the_uuid(self) -> None:
+        options = TextOptions()
+        options.start_rownum = 10
+        line = TextLine(0, "8=FIX|55=AAPL|35=D", None, options)
+        initial_uuid = line.curruuid
+        assert line.seqnum == 10
+
+        line.index = 7
+        assert line.index == 7
+        assert line.seqnum == 17
+        assert line.curruuid != initial_uuid
+
+        maximum = (1 << 64) - 1
+        widest = TextLine(maximum, "8=FIX|55=AAPL|35=D")
+        assert widest.index == maximum
+        assert widest.seqnum == maximum
+        assert widest.curruuid != TextLine(maximum - 1, widest.body).curruuid
+
     def test_a_line_with_no_body_is_no_line(self) -> None:
         # A line is the line it holds, so the door that makes one refuses a
         # body stating nothing - which is what lets a read's `body` column
@@ -294,4 +312,3 @@ class TestFieldPathAlias:
         for text in ("price as", "price as one two", "as name"):
             with pytest.raises(ValueError, match="field path"):
                 FieldPath(text)
-

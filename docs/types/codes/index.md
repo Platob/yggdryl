@@ -478,9 +478,10 @@ one over any fixed width.
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
 The [FIX registry](../../fix/registry.md)
 owns `MsgType`: the registry's immutable message Struct definition, a component
-carrying `FIX:msgtype` and optional fixed `FIX:msgcat`, obtained through registry
+carrying `FIX:msgtype` and optional symbolic four-character `FIX:msgcat` metadata, obtained through registry
 lookup. Its wire code stays intact; message definitions have no generic datatype
-or code field helper. A fixed row carries `msgcat` at crate tag 65054 and its
+or code field helper. A fixed row carries the corresponding `int32` `msgcat`
+market-operation ID at crate tag 65054 and its
 six normalized identifier columns: `isincode(65055)`, `cusipcode(65057)`,
 `sedolcode(65058)`, `bloombergcode(65059)`, `miccode(65060)` and
 `figicode(65061)`. `CFICode(461)` is the standard classification field, so no

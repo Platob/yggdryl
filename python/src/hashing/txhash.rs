@@ -248,6 +248,25 @@ impl PyTxHash {
         })
     }
 
+    /// Project this value to a sequence-ordered RFC 9562 `UUIDv7` scalar.
+    ///
+    /// The instant is floored to Unix milliseconds, `sequence` occupies the
+    /// twelve-bit ordering lane (saturating at `4095`), and the UUID payload
+    /// is XXH3 over the digest and the full unsigned 64-bit sequence, seeded
+    /// by the unsigned 64-bit `seed`. Raises `OverflowError` where either
+    /// integer is negative or wider than `u64`, and `ValueError` where the
+    /// digest or instant cannot be projected.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
+    fn into_sequenced_uuid(&self, sequence: u64, seed: u64) -> PyResult<PyScalar> {
+        let uuid = self
+            .inner
+            .into_sequenced_uuid(sequence, seed)
+            .map_err(value_error)?;
+        Ok(PyScalar {
+            inner: Scalar::Uuid(uuid),
+        })
+    }
+
     /// A deterministic cross-language hash of this value.
     fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
