@@ -343,7 +343,7 @@ impl Bound {
 
     /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::sequence::Sequence`] of column values in
+    /// The row is a [`crate::sequence::Run`] of column values in
     /// schema order.
     ///
     /// # Errors

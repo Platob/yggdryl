@@ -38,7 +38,7 @@ impl Scalar {
     /// it never allocates and never copies a string or a byte payload.
     ///
     /// `None` is the answer for [`Self::Null`], which has no payload, and for
-    /// [`crate::sequence::Sequence`], [`crate::mapping::Mapping`], and
+    /// [`crate::sequence::Run`], [`crate::mapping::Mapping`], and
     /// [`crate::structure::Struct`], whose
     /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
     ///
