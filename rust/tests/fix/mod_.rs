@@ -825,6 +825,49 @@ mod internal {
         );
     }
 
+    /// Registering both cases of one letter registers two messages.
+    ///
+    /// An unnamed code is named after its wire value, and a name is folded
+    /// where a wire value is not - so deriving a definition's name from the
+    /// fold of `B` produced `b`, which is the spelling the *other* FIX
+    /// message answers to, and the next registration found that entry and
+    /// added nothing.
+    #[test]
+    fn registering_both_cases_of_one_message_code_registers_two_messages() {
+        let mut registry =
+            FixRegistry::from_fields([tagged("msgtype", yggdryl::fix::MSGTYPE_TAG_NAME.0)])
+                .unwrap();
+        for code in ["B", "b", "C", "c", "S", "s"] {
+            assert_eq!(
+                registry
+                    .register_msgtype(code, None, None)
+                    .unwrap()
+                    .as_str(),
+                code
+            );
+        }
+        let mut names = Vec::new();
+        for code in ["B", "b", "C", "c", "S", "s"] {
+            let held = registry.msgtype(code).unwrap();
+            assert_eq!(held.as_str(), code, "{code:?}");
+            names.push(held.name().to_owned());
+        }
+        // Six codes are six messages, each under a name of its own.
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), 6, "{names:?}");
+        // And a named registration still names the message it reaches.
+        let named = registry
+            .register_msgtype("b", Some("MassQuoteAcknowledgement"), None)
+            .unwrap();
+        assert_eq!(named.as_str(), "b");
+        assert!(std::ptr::eq(
+            registry.msgtype("MassQuoteAcknowledgement").unwrap(),
+            registry.msgtype("b").unwrap(),
+        ));
+        assert_eq!(registry.msgtype("B").unwrap().as_str(), "B");
+    }
+
     #[test]
     fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         let mut registry =

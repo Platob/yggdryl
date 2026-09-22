@@ -837,7 +837,14 @@ impl super::FixRegistry {
         }
         if next.get_msgtype(&value).is_none() {
             let normalized = crate::normalized(codes[at].name());
-            let canonical = if !normalized.is_empty()
+            // A code carrying no name of its own is named after its wire
+            // value, and a wire value folded is not a name: `B` would derive
+            // `b`, which is the spelling the *other* FIX message answers to,
+            // so the next registration of `b` would find that entry and add
+            // nothing. A placeholder therefore takes the value-derived name
+            // below, which no spelling can contend.
+            let canonical = if codes[at].name() != value.as_str()
+                && !normalized.is_empty()
                 && !matches!(normalized.as_str(), "." | "..")
                 && normalized
                     .bytes()

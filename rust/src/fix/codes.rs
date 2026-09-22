@@ -94,6 +94,26 @@ const NEEDLE_CAPACITY: usize = 64;
 /// one key per record and stops.
 pub(super) const KEYS: [&str; 5] = [VALUE, NAME, GROUP, ALIASES, DOC];
 
+/// Whether the spelling `held` - one a code carries, as its name or as an
+/// alias - is the spelling `text`, under the one rule every code set answers
+/// spellings by.
+///
+/// The fold reaches every spelling but one: a spelling that *is* the code's
+/// own wire value is matched exactly. A wire value is the code's identity
+/// rather than a name a person chose for it, and the values a FIX dialect
+/// states are case-bearing - `b` and `B` are two messages, `c` and `C` are
+/// two more - so folding them together would answer one code for another.
+/// Every other spelling folds, because that is what a name is for.
+///
+/// Free rather than a method so the owned [`FixCode`] and the borrowed
+/// [`FixCodeValue`] answer one rule rather than two that drift.
+fn spelled_as(held: &str, value: &str, text: &str) -> bool {
+    if held == value {
+        return held == text;
+    }
+    folds_equal(held, text)
+}
+
 /// One member of a FIX code set, as a caller states it.
 ///
 /// The borrowed [`FixCodeValue`] is what a read answers; this is what a writer
@@ -203,7 +223,9 @@ impl FixCode {
         &self.aliases
     }
 
-    /// Whether `text` is this code's name or one of its aliases, folded.
+    /// Whether `text` is this code's name or one of its aliases, folded -
+    /// except for the spelling that *is* this code's wire value, which is
+    /// matched exactly.
     ///
     /// The same fold a stored set answers spellings by, so a set answers the
     /// same ones before it is rendered as after. A
@@ -212,9 +234,24 @@ impl FixCode {
     /// fold rather than ASCII case - because rendering only has to keep a
     /// document readable, while two codes one spelling reaches resolve to
     /// nothing rather than to whichever was met first.
+    ///
+    /// **The one spelling the fold does not reach is the code's own wire
+    /// value.** A wire value is the code's identity rather than a name for
+    /// it, and tag 35 is case-bearing: `b` is MassQuoteAcknowledgement and
+    /// `B` is News, `c` is SecurityDefinitionRequest and `C` is Email. A
+    /// source stating both states two messages, so folding the two values
+    /// together would answer one message for the other - which is the fold
+    /// deciding what a counterparty meant by a byte it was explicit about.
+    /// A code carrying no name of its own is named after its value, so
+    /// without this a dialect's whole lower-case half is unreachable.
+    ///
+    /// Every other spelling still folds, which is what a name is for:
+    /// `NewOrderSingle`, `new_order_single` and `NEW ORDER SINGLE` are one
+    /// spelling, and `b Inbound` reaches `b` however it is punctuated.
     #[must_use]
     pub fn is_spelled(&self, text: &str) -> bool {
-        folds_equal(&self.name, text) || self.aliases.iter().any(|alias| folds_equal(alias, text))
+        let spelled = |held: &str| spelled_as(held, self.value.as_str(), text);
+        spelled(&self.name) || self.aliases.iter().any(|alias| spelled(alias))
     }
 
     /// Returns the group the specification files this code under.
@@ -310,9 +347,12 @@ impl<'field> FixCodeValue<'field> {
         decode_text(TARGET, GROUP, self.group())
     }
 
-    /// Whether `text` is this code's name or one of its aliases, folded.
+    /// Whether `text` is this code's name or one of its aliases, under the
+    /// rule [`FixCode::is_spelled`] states: folded, except for the spelling
+    /// that is this code's own wire value, which is matched exactly.
     pub(super) fn is_spelled(self, text: &str) -> bool {
-        folds_equal(self.name, text) || self.aliases().any(|alias| folds_equal(alias, text))
+        let spelled = |held: &str| spelled_as(held, self.value, text);
+        spelled(self.name) || self.aliases().any(spelled)
     }
 
     /// The leading parenthesized abbreviation of the description, when it has
@@ -384,10 +424,19 @@ impl<'field> FixCodes<'field> {
                     ),
                 });
             }
-            if ordered[..index]
-                .iter()
-                .any(|held| folds_equal(&held.name, &code.name))
-            {
+            // Names against names, as before, and under the rule
+            // [`spelled_as`] states: two whose names are their own wire
+            // values - `b` and `B` - are two codes rather than one name
+            // twice, because a wire value is matched exactly. Aliases stay
+            // out of it. A set is refused here only for what rendering
+            // itself cannot represent, and widening this to the spellings a
+            // code also answers to would refuse documents that have always
+            // been legal; an alias two codes share still names neither, which
+            // is [`FixCodes::merge`]'s rule and a lookup's, not a write's.
+            if ordered[..index].iter().any(|held| {
+                spelled_as(&held.name, &held.value, &code.name)
+                    || spelled_as(&code.name, &code.value, &held.name)
+            }) {
                 return Err(Error::Parse {
                     target: TARGET,
                     position: 0,

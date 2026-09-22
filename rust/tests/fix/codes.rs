@@ -269,3 +269,85 @@ mod party_source {
         );
     }
 }
+
+/// A code whose name is its own wire value is matched exactly, so two codes
+/// differing only in case are two codes.
+///
+/// The crate's one fold serves names - `NewOrderSingle`, `new_order_single`
+/// and `NEW ORDER SINGLE` are one spelling - and a code carrying no name of
+/// its own is named after its value. Folding there would make the fold decide
+/// what a counterparty meant by a byte it was explicit about: tag 35 `b` is
+/// MassQuoteAcknowledgement and `B` is News.
+#[test]
+fn a_codes_own_wire_value_is_the_one_spelling_the_fold_does_not_reach() {
+    let pairs = [
+        FixCode::new("b", "b"),
+        FixCode::new("B", "B"),
+        FixCode::new("c", "c"),
+        FixCode::new("C", "C"),
+    ];
+    let (registry, field) = dictionary("msgtypecodeset", 35, &pairs);
+    let set = registry.codeset_of(&field).expect("the set");
+    assert_eq!(set.codes().count(), 4);
+    for value in ["b", "B", "c", "C"] {
+        assert_eq!(set.code_value(value), Some(value), "{value:?}");
+        assert_eq!(set.code_name(value), Some(value), "{value:?}");
+        assert_eq!(
+            set.code_by_name(value).map(|code| code.value()),
+            Some(value),
+            "{value:?}"
+        );
+    }
+    // A real name still folds, which is what a name is for.
+    let named = [
+        FixCode::new("MassQuoteAcknowledgement", "b"),
+        FixCode::new("News", "B"),
+    ];
+    let (registry, field) = dictionary("namedcodeset", 35, &named);
+    let set = registry.codeset_of(&field).expect("the set");
+    for spelling in [
+        "MassQuoteAcknowledgement",
+        "massquoteacknowledgement",
+        "MASS_QUOTE-ACKNOWLEDGEMENT",
+    ] {
+        assert_eq!(set.code_value(spelling), Some("b"), "{spelling:?}");
+    }
+    assert_eq!(set.code_value("news"), Some("B"));
+    // And two real names one fold reaches are still refused, because two
+    // codes one spelling reaches resolve to neither.
+    let mut contended = FixRegistry::new();
+    let error = contended
+        .set_codeset(
+            "contendedcodeset",
+            &[FixCode::new("News", "B"), FixCode::new("n e w s", "b")],
+        )
+        .expect_err("two names one fold reaches");
+    assert!(error.to_string().contains("twice"), "{error}");
+}
+
+/// Two dictionaries each holding one case of a letter fold to a set holding
+/// both, with the members only the second states appended.
+#[test]
+fn folding_two_dictionaries_keeps_both_cases_of_one_message_code() {
+    let (mut held, _) = dictionary("msgtypecodeset", 35, &[FixCode::new("News", "B")]);
+    let (incoming, _) = dictionary(
+        "msgtypecodeset",
+        35,
+        &[
+            FixCode::new("News", "B"),
+            FixCode::new("MassQuoteAcknowledgement", "b"),
+        ],
+    );
+    held.merge_with(&incoming).expect("the two sets fold");
+    let set = held.codeset("msgtypecodeset").expect("the folded set");
+    assert_eq!(
+        set.codes()
+            .map(|code| code.unwrap().value())
+            .collect::<Vec<_>>(),
+        ["B", "b"]
+    );
+    assert_eq!(set.code_value("b"), Some("b"));
+    assert_eq!(set.code_value("B"), Some("B"));
+    assert_eq!(set.code_value("massquoteacknowledgement"), Some("b"));
+    assert_eq!(set.code_value("news"), Some("B"));
+}

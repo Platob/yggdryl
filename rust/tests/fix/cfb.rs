@@ -2800,3 +2800,259 @@ fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
     assert_eq!(registry.stable_hash(), before);
     assert!(registry.get_field_by_tag(9001).is_none());
 }
+
+/// A CBlock declaring both cases of one letter declares two message types.
+///
+/// FIX tag 35 is case-bearing - `b` is MassQuoteAcknowledgement and `B` is
+/// News, `c` is SecurityDefinitionRequest and `C` is Email - so a dialect
+/// stating both states two messages. The reader used to fold the two into
+/// one and drop the second, which took a counterparty's whole lower-case
+/// half of the protocol with it and then failed every mapping entry that
+/// named one.
+#[test]
+fn a_cblock_declaring_both_cases_of_one_letter_keeps_two_message_types() {
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types>
+		<message-type value="B" description="News" />
+		<message-type value="b Inbound" description="Mass Quote Acknowledgement" />
+		<message-type value="c SDR" description="Security Definition Request" />
+		<message-type value="C" description="Email" />
+		<message-type value="j Outbound" description="Business Message Reject" />
+		<message-type value="J" description="Allocation" />
+	</message-types>
+	<outbound-message-type-mappings>
+		<entry key="massquoteacknowledgement" value="b Inbound" />
+		<entry key="businessmessagereject" value="j Outbound" />
+	</outbound-message-type-mappings>
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
+	<grammar-binding type="b Inbound"><grammar><tag-constraint name="35" part="body" /></grammar></grammar-binding>
+	<grammar-binding type="B"><grammar><tag-constraint name="35" part="body" /></grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let (registry, _) = parse(body);
+    let set = registry
+        .codeset_of(registry.field_by_tag(35).expect("tag 35"))
+        .expect("tag 35's vocabulary");
+    let held: Vec<&str> = set.codes().map(|code| code.unwrap().value()).collect();
+    assert_eq!(held, ["B", "b", "c", "C", "j", "J"]);
+    // Every value answers itself and never its other case.
+    for value in held {
+        assert_eq!(set.code_value(value), Some(value), "{value:?}");
+    }
+    // A qualified spelling is still a spelling of the value it qualifies, and
+    // the mapping tables' UlMessage keys still reach their own type.
+    for (spelling, value) in [
+        ("b Inbound", "b"),
+        ("c SDR", "c"),
+        ("j Outbound", "j"),
+        ("massquoteacknowledgement", "b"),
+        ("businessmessagereject", "j"),
+    ] {
+        assert_eq!(set.code_value(spelling), Some(value), "{spelling:?}");
+    }
+    // The described wording follows the type it was written beside.
+    assert_eq!(
+        set.code("b").and_then(|code| code.parse_doc().unwrap()),
+        Some("Mass Quote Acknowledgement".to_owned())
+    );
+    assert_eq!(
+        set.code("B").and_then(|code| code.parse_doc().unwrap()),
+        Some("News".to_owned())
+    );
+    // The two bound grammars are two messages in the catalog, not one.
+    let (lower, upper) = (
+        registry.msgtype("b").expect("tag 35 b"),
+        registry.msgtype("B").expect("tag 35 B"),
+    );
+    assert_eq!(lower.as_str(), "b");
+    assert_eq!(upper.as_str(), "B");
+    assert_ne!(lower.name(), upper.name());
+}
+
+/// One wire type is one message, however many grammars are bound under it,
+/// and the members only a later binding declares are appended to the first.
+#[test]
+fn every_grammar_bound_under_one_wire_type_folds_into_one_message() {
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types>
+		<message-type value="s" description="New Order Cross" />
+		<message-type value="S" description="Quote" />
+	</message-types>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="11" alt="ClOrdID" type="string" />
+		<vocabulary-tag name="38" alt="OrderQty" type="float" />
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="55" alt="Symbol" type="string" />
+	</vocabulary>
+	<grammar-binding type="s Inbound"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="11" part="body" />
+	</grammar></grammar-binding>
+	<grammar-binding type="s Outbound"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="38" part="body" /><tag-constraint name="44" part="body" />
+	</grammar></grammar-binding>
+	<grammar-binding type="S"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="55" part="body" />
+	</grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let (registry, roots) = parse(body);
+    // The caller is handed one root per binding, because that is what the
+    // file bound.
+    assert_eq!(
+        roots.iter().map(Field::name).collect::<Vec<_>>(),
+        ["s Inbound", "s Outbound", "S"]
+    );
+    // The dictionary holds the union: the first binding's members in their
+    // order, then every member only the second declares.
+    let cross = registry.msgtype("s").expect("tag 35 s");
+    assert_eq!(
+        children(cross.as_field()),
+        ["msgtype", "clordid", "orderqty", "price"]
+    );
+    // And the other case is its own message, untouched by that fold.
+    let quote = registry.msgtype("S").expect("tag 35 S");
+    assert_eq!(children(quote.as_field()), ["msgtype", "symbol"]);
+}
+
+/// The same fold across two files: a second CBlock adds the members its own
+/// grammar declares to the message the first one already stated.
+#[test]
+fn a_second_cblock_adds_the_members_only_it_declares_to_a_held_message() {
+    let first = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types><message-type value="b" description="Mass Quote Acknowledgement" /></message-types>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="11" alt="ClOrdID" type="string" />
+	</vocabulary>
+	<grammar-binding type="b"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="11" part="body" />
+	</grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let second = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types>
+		<message-type value="b" description="Mass Quote Acknowledgement" />
+		<message-type value="B" description="News" />
+	</message-types>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="55" alt="Symbol" type="string" />
+	</vocabulary>
+	<grammar-binding type="b"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="44" part="body" />
+	</grammar></grammar-binding>
+	<grammar-binding type="B"><grammar>
+		<tag-constraint name="35" part="body" /><tag-constraint name="55" part="body" />
+	</grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let (mut registry, _) = parse(first);
+    assert_eq!(
+        children(registry.msgtype("b").expect("tag 35 b").as_field()),
+        ["msgtype", "clordid"]
+    );
+    registry
+        .add_cfb_file(&handle(second), Some(DIALECT))
+        .expect("the second file folds");
+    // The delta the second file declared is appended, in its own order, and
+    // the members the first file declared keep theirs.
+    assert_eq!(
+        children(registry.msgtype("b").expect("tag 35 b").as_field()),
+        ["msgtype", "clordid", "price"]
+    );
+    // The type the second file added alone arrives whole, and is not the
+    // message the first file's lower-case type already named.
+    assert_eq!(
+        children(registry.msgtype("B").expect("tag 35 B").as_field()),
+        ["msgtype", "symbol"]
+    );
+    let set = registry
+        .codeset_of(registry.field_by_tag(35).expect("tag 35"))
+        .expect("tag 35's vocabulary");
+    assert_eq!(set.code_value("b"), Some("b"));
+    assert_eq!(set.code_value("B"), Some("B"));
+}
+
+/// A dialect stating every case-bearing FIX 4.4 letter reads without one
+/// warning, and holds each letter twice.
+///
+/// This is the whole of the reported defect: a real counterparty CBlock
+/// declares `b`, `c`, `d`, `g`, `h`, `j`, `q`, `r` and `s` beside `B`, `C`,
+/// `D`, `G`, `H`, `J`, `Q`, `R` and `S`, and the reader used to fold each
+/// pair, warn once per lower-case type it dropped, and then warn again for
+/// every mapping entry that named one of them. Nothing is dropped and
+/// nothing is warned about: eighteen declared types are eighteen codes.
+#[test]
+fn a_dialect_stating_both_cases_of_every_letter_reads_without_a_warning() {
+    const PAIRS: [(&str, &str); 9] = [
+        ("b", "B"),
+        ("c", "C"),
+        ("d", "D"),
+        ("g", "G"),
+        ("h", "H"),
+        ("j", "J"),
+        ("q", "Q"),
+        ("r", "R"),
+        ("s", "S"),
+    ];
+    let mut body = String::from(
+        "<?xml version=\"1.0\"?>\n<cplugin-configuration fix-version=\"4.4\">\n\t<message-types>\n",
+    );
+    for (lower, upper) in PAIRS {
+        body.push_str(&format!(
+            "\t\t<message-type value=\"{lower} Inbound\" description=\"Lower {lower}\" />\n\
+             \t\t<message-type value=\"{upper}\" description=\"Upper {upper}\" />\n"
+        ));
+    }
+    body.push_str("\t</message-types>\n\t<outbound-message-type-mappings>\n");
+    for (lower, upper) in PAIRS {
+        body.push_str(&format!(
+            "\t\t<entry key=\"lower{lower}\" value=\"{lower} Inbound\" />\n\
+             \t\t<entry key=\"upper{upper}\" value=\"{upper}\" />\n"
+        ));
+    }
+    body.push_str(
+        "\t</outbound-message-type-mappings>\n\
+         \t<vocabulary><vocabulary-tag name=\"35\" alt=\"MsgType\" type=\"string\" /></vocabulary>\n",
+    );
+    for (lower, upper) in PAIRS {
+        body.push_str(&format!(
+            "\t<grammar-binding type=\"{lower} Inbound\"><grammar><tag-constraint name=\"35\" part=\"body\" /></grammar></grammar-binding>\n\
+             \t<grammar-binding type=\"{upper}\"><grammar><tag-constraint name=\"35\" part=\"body\" /></grammar></grammar-binding>\n"
+        ));
+    }
+    body.push_str("</cplugin-configuration>");
+
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(&body), Some(DIALECT)));
+    assert!(warnings.is_empty(), "{warnings:#?}");
+    let (registry, roots) = read.expect("a readable CBlock");
+    assert_eq!(roots.len(), 18);
+    let set = registry
+        .codeset_of(registry.field_by_tag(35).expect("tag 35"))
+        .expect("tag 35's vocabulary");
+    assert_eq!(set.codes().count(), 18);
+    for (lower, upper) in PAIRS {
+        // Each letter answers itself on both sides of the case.
+        assert_eq!(set.code_value(lower), Some(lower));
+        assert_eq!(set.code_value(upper), Some(upper));
+        // The wording stayed with the type it was written beside.
+        assert_eq!(
+            set.code(lower).and_then(|code| code.parse_doc().unwrap()),
+            Some(format!("Lower {lower}"))
+        );
+        assert_eq!(
+            set.code(upper).and_then(|code| code.parse_doc().unwrap()),
+            Some(format!("Upper {upper}"))
+        );
+        // The qualifier and the UlMessage key both reach their own type.
+        assert_eq!(set.code_value(&format!("{lower} Inbound")), Some(lower));
+        assert_eq!(set.code_value(&format!("lower{lower}")), Some(lower));
+        assert_eq!(set.code_value(&format!("upper{upper}")), Some(upper));
+        // And each is its own message in the catalog.
+        assert_eq!(registry.msgtype(lower).expect(lower).as_str(), lower);
+        assert_eq!(registry.msgtype(upper).expect(upper).as_str(), upper);
+    }
+}
