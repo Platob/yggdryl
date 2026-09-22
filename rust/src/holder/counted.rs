@@ -65,7 +65,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::holder::Holder;
-use crate::{ByteStream, IOBase, IOKind, Listing, MediaType, Result, Url};
+use crate::{ByteStream, IOBase, IOKind, Listing, MediaType, Result, Uri, Url};
 
 /// One [`IOBase`] method, as a tally names it.
 ///
@@ -578,6 +578,10 @@ impl<H: IOBase> IOBase for Counted<H> {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.record_mut(Call::Truncate).truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.record(Call::Url).uri()
     }
 
     fn url(&self) -> Option<&Url> {

@@ -248,11 +248,11 @@ mod columns {
 
     #[test]
     fn url_column_is_rendered_from_the_handlers_real_url() {
-        use yggdryl::local::{File, Folder};
+        use yggdryl::local::{LocalFile, LocalFolder};
 
-        let mut path = Folder::temporary().unwrap().path().unwrap();
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
         path.push(format!("yggdryl-text-url-{}.log", std::process::id()));
-        let mut source = File::new(&path).unwrap();
+        let mut source = LocalFile::new(&path).unwrap();
         source.remove(false).unwrap();
         source.write_all_bytes(b"body\n").unwrap();
         let expected = source.url().unwrap().to_string();
@@ -441,7 +441,7 @@ mod columns {
 
     #[test]
     fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
-        use yggdryl::local::File;
+        use yggdryl::local::LocalFile;
 
         let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(10);
         let record_options: RecordOptions = options.clone().into();
@@ -471,7 +471,7 @@ mod columns {
                 hash_of(&path),
                 suffix
             ));
-            let mut absent = File::new(&path).unwrap();
+            let mut absent = LocalFile::new(&path).unwrap();
             absent.remove(false).unwrap();
             let reader = absent.read_arrow_reader(&options.clone().into()).unwrap();
             assert_eq!(
@@ -647,13 +647,13 @@ mod columns {
     #[test]
     fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
         use arrow_array::TimestampNanosecondArray;
-        use yggdryl::local::File;
+        use yggdryl::local::LocalFile;
 
         let directory = std::env::temp_dir().join("yggdryl_text_mtime");
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("undated.log");
         std::fs::write(&path, b"first\nsecond\n").unwrap();
-        let handle = File::new(&path).unwrap();
+        let handle = LocalFile::new(&path).unwrap();
         let expected = handle.mtime().expect("a filesystem modification time");
 
         let batch = collect(&handle, TextOptions::new()).pop().unwrap();

@@ -111,7 +111,7 @@ impl yggdryl::IOMedia for OversizedHandle {
 /// A handle holding `declared_size` bytes of filler, counting every
 /// byte read out of it.
 impl IOBase for OversizedHandle {
-    yggdryl::delegate_iobase!(handle: pwrite, capacity, reserve, truncate, url,
+    yggdryl::delegate_iobase!(handle: pwrite, capacity, reserve, truncate, uri, url,
         media_type, set_media_type);
 
     fn size(&self) -> u64 {
@@ -133,7 +133,7 @@ impl yggdryl::IOMedia for CountingHandle {
 }
 
 impl IOBase for CountingHandle {
-    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
+    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url,
         media_type, set_media_type);
 
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {

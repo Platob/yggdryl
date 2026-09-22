@@ -340,8 +340,9 @@ class TestCreatingAndOpening:
         assert same.scan().read_all().num_rows == 3
 
     def test_a_buffer_is_not_a_table(self, numbered: object) -> None:
-        # A table is a folder, and an in-memory buffer names no folder.
-        with pytest.raises(ValueError, match="file URI"):
+        # A table is a folder, and an in-memory buffer names no folder: its
+        # address is an identity, and no backend holds a `mem:` location.
+        with pytest.raises(ValueError, match='"mem" does not support'):
             Table.create(IOBase.from_bytes(), numbered)
 
 

@@ -414,6 +414,8 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.Arn = nativeBinding.Arn
+module.exports.JsArn = nativeBinding.JsArn
 module.exports.AvroBlock = nativeBinding.AvroBlock
 module.exports.JsAvroBlock = nativeBinding.JsAvroBlock
 module.exports.AvroBlocks = nativeBinding.AvroBlocks

@@ -4,16 +4,16 @@
 use yggdryl::IOBase;
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
-use yggdryl::local::{File, Folder, Path};
+use yggdryl::local::{LocalFile, LocalFolder, LocalPath};
 
 /// A temp root nothing else in this file uses.
 fn root(label: &str) -> std::path::PathBuf {
-    let mut root = Folder::temporary()
+    let mut root = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");
     root.push(format!("yggdryl-lifecycle-{label}-{}", std::process::id()));
-    let mut folder = Folder::new(&root).expect("a local container");
+    let mut folder = LocalFolder::new(&root).expect("a local container");
     folder.remove(true).expect("a removable tree");
     root
 }
@@ -61,6 +61,10 @@ impl IOBase for Counted {
 
     fn truncate(&mut self, size: u64) -> yggdryl::Result<()> {
         self.bytes.truncate(size)
+    }
+
+    fn uri(&self) -> Option<&yggdryl::Uri> {
+        self.bytes.uri()
     }
 
     fn url(&self) -> Option<&yggdryl::Url> {
@@ -123,7 +127,7 @@ fn removing_an_absent_resource_issues_one_delete_and_no_probe() {
 fn a_leaf_clears_empty_and_removes_gone() {
     let root = root("leaf");
     let path = root.join("trades.csv");
-    let mut leaf = File::new(&path).expect("a local leaf");
+    let mut leaf = LocalFile::new(&path).expect("a local leaf");
     leaf.write_all_bytes(b"symbol,price\n").expect("a write");
     leaf.flush().expect("a flush");
 
@@ -144,13 +148,16 @@ fn a_leaf_clears_empty_and_removes_gone() {
     leaf.flush().expect("a flush");
     assert_eq!(leaf.read_all_bytes().expect("a read"), b"MSFT,2");
 
-    Folder::new(&root).expect("a container").remove(true).ok();
+    LocalFolder::new(&root)
+        .expect("a container")
+        .remove(true)
+        .ok();
 }
 
 #[test]
 fn a_container_clears_empty_and_removes_by_recursion() {
     let root = root("container");
-    let mut folder = Folder::new(&root).expect("a local container");
+    let mut folder = LocalFolder::new(&root).expect("a local container");
     folder.truncate(0).expect("a created container");
     for name in ["a.log", "b.log"] {
         folder
@@ -159,7 +166,7 @@ fn a_container_clears_empty_and_removes_by_recursion() {
             .write_all_bytes(b"line\n")
             .expect("a write");
     }
-    let mut nested = Folder::new(root.join("deep")).expect("a local container");
+    let mut nested = LocalFolder::new(root.join("deep")).expect("a local container");
     nested.truncate(0).expect("a created container");
     nested
         .child_by_path("c.log")
@@ -206,29 +213,29 @@ fn a_container_clears_empty_and_removes_by_recursion() {
 #[test]
 fn a_generic_path_routes_on_the_kind_it_already_resolved() {
     let root = root("path");
-    Folder::new(&root)
+    LocalFolder::new(&root)
         .expect("a container")
         .truncate(0)
         .expect("a created container");
 
     let leaf = root.join("one.log");
-    Path::new(&leaf)
+    LocalPath::new(&leaf)
         .expect("a location")
         .write_all_bytes(b"line\n")
         .expect("a write");
 
-    let mut path = Path::new(&leaf).expect("a location");
+    let mut path = LocalPath::new(&leaf).expect("a location");
     assert_eq!(path.kind(), yggdryl::IOKind::File);
     path.remove(false).expect("a removable leaf");
     assert!(!leaf.exists());
 
-    let mut container = Path::new(&root).expect("a location");
+    let mut container = LocalPath::new(&root).expect("a location");
     assert_eq!(container.kind(), yggdryl::IOKind::Directory);
     container.remove(true).expect("a removable container");
     assert!(!root.exists());
 
     // Undecided is absence, which is a no-op success.
-    let mut absent = Path::new(root.join("never")).expect("a location");
+    let mut absent = LocalPath::new(root.join("never")).expect("a location");
     assert_eq!(absent.kind(), yggdryl::IOKind::Unknown);
     absent.clear().expect("a no-op clear");
     absent.remove(true).expect("a no-op removal");
@@ -238,7 +245,7 @@ fn a_generic_path_routes_on_the_kind_it_already_resolved() {
 fn a_pending_write_cannot_survive_a_removal() {
     let root = root("pending");
     let path = root.join("staged.bin");
-    let mut leaf = File::new(&path).expect("a local leaf");
+    let mut leaf = LocalFile::new(&path).expect("a local leaf");
 
     // Write, do not flush, remove, then flush.
     leaf.pwrite(0, b"unflushed").expect("a write");
@@ -249,7 +256,10 @@ fn a_pending_write_cannot_survive_a_removal() {
         !path.exists(),
         "a flush after a removal must not recreate the resource"
     );
-    Folder::new(&root).expect("a container").remove(true).ok();
+    LocalFolder::new(&root)
+        .expect("a container")
+        .remove(true)
+        .ok();
 }
 
 #[test]
@@ -275,7 +285,7 @@ fn a_buffer_gives_its_allocation_back() {
 fn a_coding_handle_removes_the_encoded_resource() {
     let root = root("coded");
     let path = root.join("trades.csv.gz");
-    let mut coded = yggdryl::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
+    let mut coded = yggdryl::gzip::Gzip::new(LocalFile::new(&path).expect("a local leaf"));
     coded
         .write_all_bytes(b"symbol,price\n")
         .expect("a decoded write");
@@ -290,7 +300,10 @@ fn a_coding_handle_removes_the_encoded_resource() {
     coded.flush().expect("a flush after removal");
     assert!(!path.exists());
 
-    Folder::new(&root).expect("a container").remove(true).ok();
+    LocalFolder::new(&root)
+        .expect("a container")
+        .remove(true)
+        .ok();
 }
 
 #[test]

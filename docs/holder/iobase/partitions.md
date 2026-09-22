@@ -26,9 +26,9 @@ A fixed prefix is descended, not listed and filtered.
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-lake");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-lake");
     let _ = std::fs::remove_dir_all(&root);
     for year in ["2024", "2025"] {
         let leaf = root.join(format!("year={year}")).join("month=01");
@@ -36,7 +36,7 @@ A fixed prefix is descended, not listed and filtered.
         std::fs::write(leaf.join("part-0.parquet"), b"parquet")?;
     }
 
-    let lake = Folder::new(&root)?;
+    let lake = LocalFolder::new(&root)?;
 
     // A fixed prefix is descended, not listed and filtered.
     assert_eq!(lake.glob("year=2024/**/*.parquet", false)?.count(), 1);
@@ -209,10 +209,10 @@ Addressing the folder restores the columns its directories spell and routes each
     use yggdryl::holder::Holder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, MimeType, StructType};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-partitioned");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-partitioned");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("year=2024").join("month=01"))?;
 
@@ -350,10 +350,10 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
     use yggdryl::holder::Holder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, MimeType, StructType};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-declared-layout");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-declared-layout");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
 

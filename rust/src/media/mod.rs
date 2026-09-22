@@ -391,6 +391,10 @@ impl IOBase for Media {
         self.as_io_mut().truncate(size)
     }
 
+    fn uri(&self) -> Option<&crate::Uri> {
+        self.as_io().uri()
+    }
+
     fn url(&self) -> Option<&crate::Url> {
         self.as_io().url()
     }

@@ -1,5 +1,7 @@
 //! Resource-identifier integration tests.
 
+#[path = "uri/arn.rs"]
+mod arn;
 #[path = "uri/authority.rs"]
 mod authority;
 #[path = "uri/datatype.rs"]

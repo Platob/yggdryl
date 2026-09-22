@@ -83,7 +83,7 @@ from .media import Avro, Ipc, Media, Parquet, RecordOptions, Text
 from .mediatype import MediaType
 from .mimetype import MimeType
 from .text import TextEntries, TextEntry, TextLine, TextLines, TextOptions
-from .uri import Parameters, Uri, Url, Urn
+from .uri import Arn, Parameters, Uri, Url, Urn
 
 from ._classes import field
 from ._typing import TypedDataType, TypedField
@@ -249,6 +249,7 @@ from .version import Version, VersionField, version
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
+    "Arn",
     "ArrowCastPlan",
     "ArrowScalar",
     "Avro",

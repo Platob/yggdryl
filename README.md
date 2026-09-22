@@ -52,7 +52,7 @@ rust/                    The core crate
   src/*.rs               One type with its datatype, field and scalar, or
                          one shared trait, enum or value, per root file
   src/holder/            What every storage backend shares; local/, fs/,
-                         zip/ and object/ are one root folder each
+                         zip/ and s3/ are one root folder each
   src/coding/            What every codec shares; gzip.rs, zlib.rs and
                          zstd.rs are one root file each
   src/charset/           What every code page shares; utf8.rs, ascii.rs
@@ -159,7 +159,7 @@ query and fragment are optional. Canonical display round-trips without
 platform-dependent behavior:
 
 ```rust
-use yggdryl::{MediaType, MimeType, Uri, Urn, Url};
+use yggdryl::{Arn, MediaType, MimeType, Uri, Urn, Url};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let windows = Uri::from_path(r"C:\Users\Ada\orders.parquet")?;
@@ -176,9 +176,27 @@ assert_eq!(network.authority().as_str(), "example.test");
 
 let name = Urn::from_str("urn:isbn:9780131103627")?;
 assert_eq!(name.namespace(), "isbn");
+
+let resource = Arn::from_str("arn:aws:s3:::market-data/2026/trades.parquet")?;
+assert_eq!(resource.service(), "s3");
+assert_eq!(resource.bucket(), Some("market-data"));
+
+// A name says where it is: `locator` answers the URL any identifier names.
+assert_eq!(resource.locator()?.to_string(), "s3://market-data/2026/trades.parquet");
+assert_eq!(
+    Urn::from_str("urn:lake:trades:2026:part.parquet")?.locator_path()?.as_str(),
+    "lake/trades/2026/part.parquet"
+);
 # Ok(())
 # }
 ```
+
+`Url`, `Urn` and `Arn` are the three narrowings of one canonical `Uri`, and the
+scheme decides which: a location, a name, and the name AWS writes for one of its
+resources. `locator()` answers the `Url` any of them names — a location locates
+itself, a URN resolves to the path it spells, an Amazon S3 ARN maps to its `s3:`
+URL — so everything that takes a location takes a name too. In Python the three
+are subclasses of `Uri`, so `Uri(value)` answers the one that value is.
 
 Windows drive paths and UNC paths normalize to `file:` URIs with forward slashes
 regardless of the host operating system. Path segments, file names, stems, and

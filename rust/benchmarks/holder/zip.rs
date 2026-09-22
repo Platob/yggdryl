@@ -11,7 +11,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::holder::{Buffer, Holder};
-use yggdryl::zip::{Archive, Node};
+use yggdryl::zip::{ZipArchive, ZipNode};
 use yggdryl::{Codec, IOBase};
 
 /// The member size the read legs are measured at.
@@ -43,8 +43,8 @@ fn payload(len: usize) -> Vec<u8> {
 }
 
 /// An in-memory archive holding one member under `codec`.
-fn one_member(codec: Codec) -> Node {
-    let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+fn one_member(codec: Codec) -> ZipNode {
+    let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
     root.archive()
         .write_member_with("blob.bin", &payload(MEMBER_LEN), codec)
         .expect("the member writes");
@@ -53,8 +53,8 @@ fn one_member(codec: Codec) -> Node {
 }
 
 /// An in-memory archive of `count` members across ten directories.
-fn many_members(count: usize) -> Node {
-    let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+fn many_members(count: usize) -> ZipNode {
+    let root = ZipArchive::new(Holder::buffer(Buffer::new())).mount();
     let payload = payload(64);
     for member in 0..count {
         root.archive()
@@ -108,7 +108,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     // A member written solid, which is what another writer's member is: every
     // read of one decodes from its first byte.
     let solid = {
-        let root = Archive::new(Holder::buffer(Buffer::new()))
+        let root = ZipArchive::new(Holder::buffer(Buffer::new()))
             .with_restart_stride(0)
             .mount();
         root.archive()
@@ -200,7 +200,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     for (name, stride) in [("mapped", STRIDE), ("solid", 0)] {
         group.bench_function(BenchmarkId::new("write/stream", name), |bencher| {
             bencher.iter(|| {
-                let root = Archive::new(Holder::buffer(Buffer::new()))
+                let root = ZipArchive::new(Holder::buffer(Buffer::new()))
                     .with_restart_stride(stride)
                     .mount();
                 root.archive()
@@ -220,7 +220,9 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     let image = {
         let path = std::env::temp_dir().join(format!("yggdryl-bench-zip-{MEMBERS}.zip"));
         let _ = std::fs::remove_file(&path);
-        let lake = Archive::from_path(&path).expect("a local archive").mount();
+        let lake = ZipArchive::from_path(&path)
+            .expect("a local archive")
+            .mount();
         let payload = payload(64);
         for member in 0..MEMBERS {
             lake.archive()
@@ -238,7 +240,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(MEMBERS as u64));
     group.bench_function("mount/index", |bencher| {
         bencher.iter(|| {
-            let root = Archive::new(Holder::buffer(Buffer::from_bytes(image.clone()))).mount();
+            let root = ZipArchive::new(Holder::buffer(Buffer::from_bytes(image.clone()))).mount();
             root.archive().open().expect("the index");
             black_box(root.archive().handle_reads())
         });

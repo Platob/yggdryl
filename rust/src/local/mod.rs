@@ -3,13 +3,13 @@
 //! Three implementations cover a local tree, and every file system backend is
 //! expected to supply the same three roles:
 //!
-//! - [`Path`] is the generic location. It answers
+//! - [`LocalPath`] is the generic location. It answers
 //!   [`IOBase::kind`](crate::IOBase::kind) by looking at what is actually
 //!   there, and runs every operation through the specialized implementation
 //!   that fits, so a caller who does not yet know what a location is can still
 //!   use it.
-//! - [`Folder`] is the container: it lists and resolves children.
-//! - [`File`] is the leaf: its bytes are a memory mapping of one file.
+//! - [`LocalFolder`] is the container: it lists and resolves children.
+//! - [`LocalFile`] is the leaf: its bytes are a memory mapping of one file.
 //!
 //! All three follow the shared [`IOBase`](crate::IOBase) laziness contract:
 //! constructing one touches nothing, reading something that does not exist
@@ -21,10 +21,10 @@
 //!
 //! ```no_run
 //! use yggdryl::IOBase;
-//! use yggdryl::local::Folder;
+//! use yggdryl::local::LocalFolder;
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let root = Folder::temporary()?;
+//! let root = LocalFolder::temporary()?;
 //!
 //! // Children resolve by name, and a listing is stable in sort order.
 //! let mut leaf = root.child_by_path("trades.arrows")?;
@@ -37,9 +37,9 @@ mod file;
 mod folder;
 mod path;
 
-pub use file::File;
-pub use folder::Folder;
-pub use path::Path;
+pub use file::LocalFile;
+pub use folder::LocalFolder;
+pub use path::LocalPath;
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]
@@ -54,11 +54,11 @@ pub mod internals {
     use std::ffi::OsString;
 
     use crate::Result;
-    use crate::local::Folder;
+    use crate::local::LocalFolder;
 
     /// Resolve the home container from the two environment values, `HOME`
     /// first, an empty value counting as unset.
-    pub fn home_from(home: Option<OsString>, profile: Option<OsString>) -> Result<Folder> {
-        Folder::home_from(home, profile)
+    pub fn home_from(home: Option<OsString>, profile: Option<OsString>) -> Result<LocalFolder> {
+        LocalFolder::home_from(home, profile)
     }
 }

@@ -5,12 +5,12 @@ mod local {
     mod hierarchy {
         use yggdryl::IOBase;
         use yggdryl::holder::Holder;
-        use yggdryl::local::Folder;
+        use yggdryl::local::LocalFolder;
 
         fn root(label: &str) -> std::path::PathBuf {
-            let mut path = Folder::temporary().unwrap().path().unwrap();
+            let mut path = LocalFolder::temporary().unwrap().path().unwrap();
             path.push(format!("yggdryl-tree-{label}-{}", std::process::id()));
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -20,7 +20,7 @@ mod local {
         #[test]
         fn a_directory_handle_touches_nothing_until_used() {
             let path = root("lazy");
-            let directory = Folder::new(&path).unwrap();
+            let directory = LocalFolder::new(&path).unwrap();
 
             assert!(!path.exists());
             assert!(!directory.exists());
@@ -48,14 +48,14 @@ mod local {
         #[test]
         fn children_resolve_to_directories_and_mapped_leaves() {
             let path = root("children");
-            let directory = Folder::new(&path).unwrap();
+            let directory = LocalFolder::new(&path).unwrap();
             directory.create().unwrap();
 
             // A write through a child creates the leaf.
             let mut leaf = directory.child_by_path("trades.arrows").unwrap();
             leaf.pwrite(0, b"payload").unwrap();
             leaf.flush().unwrap();
-            assert!(matches!(leaf, Holder::File(_)));
+            assert!(matches!(leaf, Holder::LocalFile(_)));
             assert!(!leaf.is_container());
 
             // A nested child creates its parent directory on write.
@@ -78,7 +78,7 @@ mod local {
                 .unwrap();
             assert_eq!(deep.len(), 3, "{deep:?}");
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -87,7 +87,7 @@ mod local {
         #[test]
         fn parents_walk_back_up_the_tree() {
             let path = root("parents");
-            let directory = Folder::new(&path).unwrap();
+            let directory = LocalFolder::new(&path).unwrap();
             directory.create().unwrap();
 
             let mut leaf = directory.child_by_path("leaf.bin").unwrap();
@@ -106,7 +106,7 @@ mod local {
         #[test]
         fn a_relative_child_resolves_dot_segments() {
             let path = root("relative");
-            let directory = Folder::new(&path).unwrap();
+            let directory = LocalFolder::new(&path).unwrap();
             let sideways = directory.child_by_path("sub/../beside.bin").unwrap();
 
             let url = sideways.url().unwrap().to_string();
@@ -117,7 +117,7 @@ mod local {
         #[test]
         fn a_directory_rejects_byte_writes_with_the_reason() {
             let path = root("bytes");
-            let mut directory = Folder::new(&path).unwrap();
+            let mut directory = LocalFolder::new(&path).unwrap();
 
             let message = directory.pwrite(0, b"nope").unwrap_err().to_string();
             assert!(message.contains("expected a file"), "{message}");
@@ -127,7 +127,7 @@ mod local {
             // Truncating to zero is how a directory is brought into being.
             directory.truncate(0).unwrap();
             assert!(path.exists());
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -136,7 +136,7 @@ mod local {
         #[test]
         fn open_and_close_bracket_cached_state() {
             let path = root("context");
-            let directory = Folder::new(&path).unwrap();
+            let directory = LocalFolder::new(&path).unwrap();
             directory.create().unwrap();
 
             let mut leaf = directory.child_by_path("cached.bin").unwrap();
@@ -155,7 +155,7 @@ mod local {
             absent.open().unwrap();
             assert!(!absent.opened());
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -165,13 +165,13 @@ mod local {
     /// A listing skips private names unless a caller asks for them.
     mod privacy {
         use yggdryl::holder::Holder;
-        use yggdryl::local::{Folder, Path};
+        use yggdryl::local::{LocalFolder, LocalPath};
         use yggdryl::{IOBase, IOKind, MimeType, Url};
 
         fn root(label: &str) -> std::path::PathBuf {
-            let mut path = Folder::temporary().unwrap().path().unwrap();
+            let mut path = LocalFolder::temporary().unwrap().path().unwrap();
             path.push(format!("yggdryl-private-{label}-{}", std::process::id()));
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -206,9 +206,9 @@ mod local {
             let path = root("trailing");
             let absent = path.join("not-yet");
             // Nothing exists, so a plain name is undecided...
-            assert_eq!(Path::new(&absent).unwrap().kind(), IOKind::Unknown);
+            assert_eq!(LocalPath::new(&absent).unwrap().kind(), IOKind::Unknown);
             // ...while the same name with a slash is a container, with no probe.
-            let spelled = Path::new(format!("{}/", absent.display())).unwrap();
+            let spelled = LocalPath::new(format!("{}/", absent.display())).unwrap();
             assert_eq!(spelled.kind(), IOKind::Directory);
             assert!(spelled.is_container());
             assert!(!spelled.is_atomic());
@@ -216,14 +216,14 @@ mod local {
             assert!(!absent.exists(), "asking created nothing");
 
             // A child resolved with a slash is a folder handle outright.
-            let folder = Folder::new(&path).unwrap();
+            let folder = LocalFolder::new(&path).unwrap();
             assert!(matches!(
                 folder.child_by_path("sub/").unwrap(),
-                Holder::Folder(_)
+                Holder::LocalFolder(_)
             ));
             assert!(matches!(
                 folder.child_by_path("sub").unwrap(),
-                Holder::File(_)
+                Holder::LocalFile(_)
             ));
             assert!(!path.join("sub").exists(), "resolving created nothing");
 
@@ -232,7 +232,7 @@ mod local {
             let mut spelled = spelled;
             spelled.truncate(0).unwrap();
             assert!(absent.is_dir());
-            Folder::new(&path).unwrap().remove(true).unwrap();
+            LocalFolder::new(&path).unwrap().remove(true).unwrap();
         }
 
         #[test]
@@ -244,7 +244,7 @@ mod local {
             std::fs::write(path.join("trades.arrows"), b"x").unwrap();
             std::fs::write(path.join(".git").join("HEAD"), b"ref").unwrap();
 
-            let folder = Folder::new(&path).unwrap();
+            let folder = LocalFolder::new(&path).unwrap();
 
             let public = folder
                 .ls(false, false)
@@ -270,7 +270,7 @@ mod local {
                 .unwrap();
             assert!(deep_all.len() >= 5, "{deep_all:?}");
 
-            Folder::new(&path)
+            LocalFolder::new(&path)
                 .expect("a local container")
                 .remove(true)
                 .expect("a removable tree");
@@ -280,12 +280,12 @@ mod local {
     /// A pattern is a location, so listing one expands it.
     mod globbing {
         use yggdryl::IOBase;
-        use yggdryl::local::{Folder, Path};
+        use yggdryl::local::{LocalFolder, LocalPath};
         use yggdryl::{IOKind, Url};
 
         /// Build a small lake: two years, two months each, one part per month.
         fn lake(label: &str) -> std::path::PathBuf {
-            let mut root = Folder::temporary().unwrap().path().unwrap();
+            let mut root = LocalFolder::temporary().unwrap().path().unwrap();
             root.push(format!("yggdryl-glob-{label}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
             for year in ["2024", "2025"] {
@@ -313,7 +313,7 @@ mod local {
         #[test]
         fn a_pattern_selects_the_leaves_it_names() {
             let root = lake("select");
-            let folder = Folder::new(&root).unwrap();
+            let folder = LocalFolder::new(&root).unwrap();
 
             let parts = folder
                 .glob("**/*.parquet", false)
@@ -332,7 +332,7 @@ mod local {
         #[test]
         fn a_fixed_prefix_is_descended_rather_than_filtered() {
             let root = lake("prefix");
-            let folder = Folder::new(&root).unwrap();
+            let folder = LocalFolder::new(&root).unwrap();
 
             let selected = folder
                 .glob("year=2024/**/*.parquet", false)
@@ -358,7 +358,7 @@ mod local {
         #[test]
         fn a_pattern_without_wildcards_names_one_existing_location() {
             let root = lake("exact");
-            let folder = Folder::new(&root).unwrap();
+            let folder = LocalFolder::new(&root).unwrap();
 
             let found = folder
                 .glob("year=2025/month=02/part-0.parquet", false)
@@ -381,7 +381,7 @@ mod local {
         #[test]
         fn a_glob_listing_honours_the_privacy_filter() {
             let root = lake("privacy");
-            let folder = Folder::new(&root).unwrap();
+            let folder = LocalFolder::new(&root).unwrap();
 
             let public = folder
                 .glob("**/*.parquet", false)
@@ -411,7 +411,7 @@ mod local {
                 .unwrap();
 
             // The pattern is folder-like before anything touches the file system.
-            let path = Path::from_url(url.clone()).unwrap();
+            let path = LocalPath::from_url(url.clone()).unwrap();
             assert_eq!(path.kind(), IOKind::Directory);
             assert!(path.is_container());
 
@@ -422,7 +422,7 @@ mod local {
             assert_eq!(listed.len(), 4, "{:?}", names(&listed));
 
             // The same holds for a folder handle built straight on the pattern.
-            let folder = Folder::from_url(url).unwrap();
+            let folder = LocalFolder::from_url(url).unwrap();
             assert_eq!(
                 folder
                     .ls(true, false)
@@ -438,7 +438,7 @@ mod local {
         #[test]
         fn partition_filters_select_the_leaves_that_carry_them() {
             let root = lake("partitions");
-            let folder = Folder::new(&root).unwrap();
+            let folder = LocalFolder::new(&root).unwrap();
 
             let year: Vec<_> = folder
                 .children_where(&[("year", "2024")], false)
@@ -482,7 +482,7 @@ mod roots {
     use std::ffi::OsString;
 
     use yggdryl::IOBase;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
     #[test]
     fn home_and_config_follow_the_environment_and_create_nothing() {
@@ -490,7 +490,7 @@ mod roots {
             (std::env::var_os("HOME"), std::env::var_os("USERPROFILE"));
 
         // A fresh directory of this test's own, never the developer's real home.
-        let home = Folder::temporary()
+        let home = LocalFolder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path")
@@ -506,10 +506,10 @@ mod roots {
             std::env::set_var("USERPROFILE", &home);
         }
 
-        let resolved = Folder::home().expect("a home from the environment");
+        let resolved = LocalFolder::home().expect("a home from the environment");
         assert_eq!(resolved.path().expect("a platform path"), home);
 
-        let config = Folder::config().expect("a configuration directory");
+        let config = LocalFolder::config().expect("a configuration directory");
         assert_eq!(
             config.path().expect("a platform path"),
             home.join(".config")
@@ -519,7 +519,7 @@ mod roots {
         assert!(!config.exists());
         assert!(!home.join(".config").exists());
         assert_eq!(
-            Folder::new(&home)
+            LocalFolder::new(&home)
                 .expect("a local folder")
                 .ls(false, true)
                 .count(),
@@ -532,13 +532,13 @@ mod roots {
             std::env::remove_var("USERPROFILE");
         }
 
-        let error = Folder::home().expect_err("no home without either variable");
+        let error = LocalFolder::home().expect_err("no home without either variable");
         assert!(error.is_absent());
         let message = error.to_string();
         assert!(message.contains("HOME"), "{message}");
         assert!(message.contains("USERPROFILE"), "{message}");
         assert!(
-            Folder::config()
+            LocalFolder::config()
                 .expect_err("no config without a home")
                 .is_absent()
         );

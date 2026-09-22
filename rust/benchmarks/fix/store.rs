@@ -1,14 +1,14 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, FixRegistry, Url};
 
 use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects};
 
 /// A folder holding `shards` shards of ten fields each, built outside the
 /// timer.
-fn sharded(shards: i32) -> (std::path::PathBuf, Folder) {
+fn sharded(shards: i32) -> (std::path::PathBuf, LocalFolder) {
     let fields = (0..shards).flat_map(|shard| {
         (0..10).map(move |offset| {
             // Registry tags start at 1; zero is unresolved arrival provenance.
@@ -20,7 +20,7 @@ fn sharded(shards: i32) -> (std::path::PathBuf, Folder) {
     });
     let registry = FixRegistry::from_fields(fields).expect("distinct generated tags");
     let path = scratch(&format!("shards-{shards}"));
-    let mut folder = Folder::new(&path).expect("a local folder");
+    let mut folder = LocalFolder::new(&path).expect("a local folder");
     registry
         .write_into(&mut folder)
         .expect("the shards written");
@@ -47,14 +47,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
     }
 
     // The tracked seed, and the whole write of a hundred shards.
-    let seed_folder = Folder::new(seed_root()).expect("the seed folder");
+    let seed_folder = LocalFolder::new(seed_root()).expect("the seed folder");
     group.throughput(Throughput::Elements(u64::try_from(seed().len()).unwrap()));
     group.bench_function("from_handle_seed", |bencher| {
         bencher.iter(|| black_box(FixRegistry::from_handle(black_box(&seed_folder)).unwrap()));
     });
-    let hundred = FixRegistry::from_handle(&Folder::new(&built[2]).unwrap()).unwrap();
+    let hundred = FixRegistry::from_handle(&LocalFolder::new(&built[2]).unwrap()).unwrap();
     let target = scratch("write");
-    let mut target_folder = Folder::new(&target).expect("a local folder");
+    let mut target_folder = LocalFolder::new(&target).expect("a local folder");
     group.throughput(Throughput::Elements(u64::try_from(hundred.len()).unwrap()));
     group.bench_function(
         format!("write_into_{}_shards", shard_counts[2]),
@@ -68,7 +68,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // with it, nothing keyed by dialect.
     let mixed = two_dialects(DIALECT_FIELDS);
     let mixed_root = scratch("two-branches");
-    let mut mixed_folder = Folder::new(&mixed_root).expect("a local folder");
+    let mut mixed_folder = LocalFolder::new(&mixed_root).expect("a local folder");
     mixed
         .write_into(&mut mixed_folder)
         .expect("the shards written");
@@ -87,7 +87,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(FixRegistry::from_handle(black_box(&mixed_folder)).unwrap()));
     });
     let mixed_target = scratch("two-branches-write");
-    let mut mixed_target_folder = Folder::new(&mixed_target).expect("a local folder");
+    let mut mixed_target_folder = LocalFolder::new(&mixed_target).expect("a local folder");
     group.bench_function("write_into_two_dialects", |bencher| {
         bencher.iter(|| {
             black_box(&mixed)
@@ -106,7 +106,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             let url = Url::from_str(location)
                 .or_else(|_| Url::from_path(location))
                 .unwrap();
-            let folder = Folder::from_url(url).unwrap();
+            let folder = LocalFolder::from_url(url).unwrap();
             assert!(folder.exists());
             black_box(FixRegistry::from_handle(&folder).unwrap())
         });

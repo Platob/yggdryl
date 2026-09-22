@@ -9,18 +9,18 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
 use yggdryl::IOBase;
 use yggdryl::iceberg::{Catalog, Catalogs, Names, Transform};
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, Field, IOKind, StructType};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
-fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
-    let mut path = Folder::temporary().unwrap().path().unwrap();
+fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<LocalFolder>) {
+    let mut path = LocalFolder::temporary().unwrap().path().unwrap();
     path.push(format!(
         "yggdryl-iceberg-catalog-{label}-{}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&path);
-    let catalog = Catalog::new(Folder::new(&path).unwrap());
+    let catalog = Catalog::new(LocalFolder::new(&path).unwrap());
     (path, catalog)
 }
 
@@ -542,7 +542,7 @@ fn an_empty_namespace_is_durable_and_survives_a_reopen() {
     assert!(path.join("sales/metadata/namespace.json").is_file());
 
     // A second catalog over the same folder sees it, holding no tables.
-    let reopened = Catalog::new(Folder::new(&path).unwrap());
+    let reopened = Catalog::new(LocalFolder::new(&path).unwrap());
     assert!(reopened.namespaces().contains("sales").unwrap());
     let sales = reopened.namespaces().get("sales").unwrap();
     assert!(sales.tables().is_empty().unwrap());
@@ -554,12 +554,12 @@ fn an_empty_namespace_is_durable_and_survives_a_reopen() {
 
 #[test]
 fn properties_round_trip_at_all_three_levels() {
-    let mut root = Folder::temporary().unwrap().path().unwrap();
+    let mut root = LocalFolder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-iceberg-catalogs-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
     // The catalogs level: a folder of warehouses.
-    let catalogs = Catalogs::new(Folder::new(&root).unwrap());
+    let catalogs = Catalogs::new(LocalFolder::new(&root).unwrap());
     let lake = catalogs.create("lake").unwrap();
     assert!(catalogs.contains("lake").unwrap());
     assert_eq!(
@@ -720,7 +720,7 @@ fn two_creators_of_one_table_converge_or_one_gets_the_typed_conflict() {
     // gets the typed conflict - never corruption, never a silent third state.
     let barrier = std::sync::Barrier::new(2);
     fn make(path: &std::path::Path, barrier: &std::sync::Barrier) -> yggdryl::Result<()> {
-        let catalog = Catalog::new(Folder::new(path).unwrap());
+        let catalog = Catalog::new(LocalFolder::new(path).unwrap());
         barrier.wait();
         catalog
             .tables()
@@ -754,7 +754,7 @@ fn two_creators_of_one_table_converge_or_one_gets_the_typed_conflict() {
     }
 
     // Whoever won, the table is whole and opens.
-    let catalog = Catalog::new(Folder::new(&path).unwrap());
+    let catalog = Catalog::new(LocalFolder::new(&path).unwrap());
     let table = catalog.table("race.orders").unwrap();
     assert!(table.current_snapshot().is_none());
 }
@@ -805,7 +805,7 @@ mod call_counts {
     use super::{Catalog, taxi_schema};
     use yggdryl::Result;
     use yggdryl::fs::{
-        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, Folder,
+        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, FsFolder,
         MemoryFileSystem, OutputMetadata, RandomAccessReader,
     };
 
@@ -923,9 +923,9 @@ mod call_counts {
     }
 
     /// A catalog over a counting warehouse, with the counter beside it.
-    fn counted() -> (Arc<Counting>, Catalog<Folder>) {
+    fn counted() -> (Arc<Counting>, Catalog<FsFolder>) {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = Folder::from_path(
+        let warehouse = FsFolder::from_path(
             Arc::clone(&filesystem) as Arc<dyn FileSystem>,
             "warehouse",
             None,

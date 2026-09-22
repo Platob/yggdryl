@@ -21,7 +21,9 @@ use crate::text::codec::{
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
     codec_infer_text, codec_normalize_format,
 };
-use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
+use crate::uri::{
+    PyArn, PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn,
+};
 
 mod arrow;
 mod avro;
@@ -477,6 +479,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUri>()?;
     module.add_class::<PyUrl>()?;
     module.add_class::<PyUrn>()?;
+    module.add_class::<PyArn>()?;
     module.add_class::<PyUriPathIterator>()?;
     module.add_class::<PyParameters>()?;
     module.add_class::<PyParameterIterator>()?;

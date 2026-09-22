@@ -5,7 +5,7 @@ use crate::gzip::Gzip;
 use crate::holder::Holder;
 use crate::zlib::Zlib;
 use crate::zstd::Zstd;
-use crate::{Error, Level, MediaType, Result, Url};
+use crate::{Error, Level, MediaType, Result, Uri, Url};
 
 /// A handle wrapped in the content coding its media type names.
 ///
@@ -283,6 +283,10 @@ impl IOBase for Coded {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         self.as_io_mut().truncate(size)
+    }
+
+    fn uri(&self) -> Option<&Uri> {
+        self.as_io().uri()
     }
 
     fn url(&self) -> Option<&Url> {

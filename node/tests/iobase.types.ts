@@ -14,6 +14,9 @@ import {
   type Field,
   type LocationInput,
   type PartitionEntry,
+  Arn,
+  Uri,
+  Urn,
   type PartitionFilters,
   type ParquetFileStatistics,
   type ParquetGeospatialStatistics,
@@ -24,10 +27,19 @@ const location: LocationInput = 'file:///lake'
 const handle = new IOBase(location)
 const inferred: IOBase = IOBase.from(Url.fromString('file:///lake'))
 const rebuilt: IOBase = IOBase.from(handle)
+// Every identifier names a location, so every one is a location argument.
+const namedUri: LocationInput = Uri.fromString('file:///lake')
+const namedUrn: LocationInput = Urn.fromString('urn:lake:trades')
+const namedArn: LocationInput = Arn.fromString('arn:aws:s3:::market-data')
+const fromArn: IOBase = IOBase.from(namedArn)
+const overUrn: IOBase = new IOBase(namedUrn)
 const memory: IOBase = IOBase.fromBytes(Buffer.from('symbol,price\n'))
 const empty: IOBase = IOBase.fromBytes()
 
+const identifier: Uri | null = handle.uri
 const url: Url | null = handle.url
+const boundUri: string | null = handle.boundUri
+const maskedUri: string | null = handle.maskedUri
 const name: string = handle.name
 const mediaType: MediaType = handle.mediaType
 const size: number = handle.size
@@ -118,7 +130,13 @@ handle.flush()
 void inferred
 void rebuilt
 void empty
+void namedUri
+void fromArn
+void overUrn
+void identifier
 void url
+void boundUri
+void maskedUri
 void name
 void mediaType
 void size

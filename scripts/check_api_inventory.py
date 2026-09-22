@@ -6,7 +6,7 @@ header says "there is no generator" - so nothing verified them for a long
 time. The paths were authored on Windows and carried backslashes, which no
 POSIX check could resolve even if one had existed.
 
-Two guards, cheapest first:
+Four guards, cheapest first:
 
 1. A section header naming a source file that is gone: the names under it
    describe something the crate no longer has.
@@ -16,11 +16,20 @@ Two guards, cheapest first:
    `DataTypeKind::is_wrapper`, `Scalar::as_enum` and twenty-seven `XField`
    aliases were all listed after they stopped existing, because an edit
    appended the new spelling instead of replacing the old one.
+3. A *type* a Rust entry names in the signature it documents. Guard 2 reads
+   the name an entry declares and nothing else, so a wrapper's inner type, a
+   return type, or an alias's right-hand side could rot untouched: 146 lines
+   still said `MimeTypeValue`, `SchemeValue`, `TypedField` and `ValueIter`
+   long after all four became `MimeTypeWire`, `SchemeWire`, `FieldOf` and
+   `ScalarIter`. Only the code part of a line is read - the prose after two
+   spaces and an open parenthesis is prose - and only a name that appears
+   nowhere in the crate is reported.
 
 The reverse direction - a public item the inventory omits - is deliberately
-reported as a count rather than an error. The inventories have never been
-complete, and failing CI on that would mean transcribing hundreds of
-signatures before any other work could land.
+reported as a count rather than an error, and now actually is one. The
+inventories have never been complete, and failing CI on that would mean
+transcribing hundreds of signatures before any other work could land; a
+number says how far off they are without blocking the work that noticed.
 
 `.api-bindings.txt` was read by this script and checked by none of it. Its
 headers carried no `[path]`, so `SECTION` never matched, `crate` stayed `None`
@@ -30,7 +39,7 @@ went a release describing `yggdryl.types`, `yggdryl.hashing`,
 `yggdryl.media.iceberg` and `yggdryl.text.toml` - every one of them deleted -
 and stated outright that `yggdryl.xxhash` does not exist, which it does.
 
-So the bindings file names its tree too, and a third guard reads it: an entry
+So the bindings file names its tree too, and a fourth guard reads it: an entry
 key is a dotted path from that tree's root, and each segment must be a module
 beside its parent or a name that parent's namespace binds. Python is resolved
 through `ast` over the package's own sources - the names a module imports,
@@ -60,6 +69,12 @@ ENTRY = re.compile(
     r"^\s+(?:pub(?:\([^)]*\))?\s+)?(?:default\s+)?(?:const\s+)?(?:async\s+)?"
     r"(?:unsafe\s+)?(?:extern\s+\"[^\"]*\"\s+)?(fn|type|const|static)\s+([A-Za-z_][A-Za-z0-9_]*)"
 )
+# A type named in the signature an entry documents. Only the code part of a
+# line is read, so this never sees the prose a line ends with.
+TYPE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
+# The inventories end a line's code and begin its prose with two spaces and an
+# open parenthesis, which is also how a tuple struct would never be written.
+PROSE = "  ("
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -275,7 +290,45 @@ def check(inventory: Path) -> list[str]:
                 f"{inventory.name}:{number}: {entry.group(1)} {entry.group(2)!r} "
                 f"(listed under {section}) appears nowhere in {crate.relative_to(ROOT)}"
             )
+        for named in TYPE.findall(line.split(PROSE)[0]):
+            if named not in tokens(crate):
+                problems.append(
+                    f"{inventory.name}:{number}: type {named!r} "
+                    f"(named under {section}) appears nowhere in {crate.relative_to(ROOT)}"
+                )
     return problems
+
+
+def omitted(inventory: Path) -> tuple[int, int]:
+    """How far short of the crate the Rust inventory falls.
+
+    Two numbers, neither an error: source files no section names, and `pub`
+    items whose name the inventory never spells. Both are approximations - a
+    `pub` item inside a private module is not public API, and a name shared
+    with a documented one counts as present - so they are reported as a
+    direction of travel, not a target to reach.
+    """
+    text = inventory.read_text()
+    listed = {
+        match.group(2).replace("\\", "/")
+        for match in (SECTION.match(line) for line in text.splitlines())
+        if match
+    }
+    spelled = set(WORD.findall(text))
+    declaration = re.compile(
+        r"^\s*pub\s+(?:unsafe\s+)?(?:const\s+)?(?:async\s+)?"
+        r"(?:fn|struct|enum|trait|type|union)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    )
+    files = 0
+    names: set[str] = set()
+    for path in sorted((ROOT / "rust" / "src").rglob("*.rs")):
+        if path.relative_to(ROOT).as_posix() not in listed:
+            files += 1
+        for line in path.read_text(errors="replace").splitlines():
+            found = declaration.match(line)
+            if found and found.group(1) not in spelled:
+                names.add(found.group(1))
+    return files, len(names)
 
 
 def main() -> int:
@@ -289,6 +342,13 @@ def main() -> int:
     if problems:
         print(f"{len(problems)} stale inventory reference(s)", file=sys.stderr)
         return 1
+    rust = ROOT / ".api-inventory.txt"
+    if rust.is_file():
+        files, names = omitted(rust)
+        print(
+            f"inventories are current; {files} source file(s) and {names} "
+            f"`pub` name(s) are not described yet"
+        )
     return 0
 
 

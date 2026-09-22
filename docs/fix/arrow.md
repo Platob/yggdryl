@@ -31,11 +31,11 @@ One column of frames in, batches out, the capture's own columns still in front o
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
 
     // A capture shaped the way a log reader shapes one: where the line was
     // read from, which line it was, and the frame itself.
@@ -199,11 +199,11 @@ Lines to batches, with a lifecycle stage that sorts the finite capture: the walk
     use std::sync::Arc;
 
     use arrow_array::Array;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix")?;
 
@@ -339,11 +339,11 @@ A source row is read for every message it carries, so a capture answers one row 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
 
     // Row 7 carries two frames; row 8 is a sentence, which is no row at all.
     let body = "8=FIX.4.4|35=D|11=A|10=0|8=FIX.4.4|35=D|11=B|10=0|";
@@ -426,11 +426,11 @@ A source row is read for every message it carries, so a capture answers one row 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(Arc::clone(&registry)).with_separator(b'|');
     let schema = fix_schema(&registry, "fix")?;
 
@@ -540,11 +540,11 @@ A carried column returns to its place because the message carries it: a message 
     use std::sync::Arc;
 
     use arrow_array::Array;
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(registry);
 
     // An order and the fill that answers it, on two lines of one capture.

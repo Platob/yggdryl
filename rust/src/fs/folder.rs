@@ -1,17 +1,17 @@
 //! A directory over one bound Arrow filesystem location.
 
 use crate::holder::Holder;
-use crate::{IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
+use crate::{IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
-use super::{BoundLocation, File, FileSelector, FileSystem, Path};
+use super::{BoundLocation, FileSelector, FileSystem, FsFile, FsPath};
 
 /// A directory whose lifecycle and listing are supplied by its filesystem.
 #[derive(Clone)]
-pub struct Folder {
+pub struct FsFolder {
     bound: BoundLocation,
 }
 
-impl Folder {
+impl FsFolder {
     /// Bind a known directory location without touching the filesystem.
     pub const fn new(bound: BoundLocation) -> Self {
         Self { bound }
@@ -67,7 +67,7 @@ fn relative_to<'path>(base: &str, path: &'path str) -> Option<&'path str> {
     crate::iobase::hierarchy::raw_relative(base, path).filter(|relative| !relative.is_empty())
 }
 
-impl IOFolder for Folder {
+impl IOFolder for FsFolder {
     fn folder_url(&self) -> &Url {
         self.url()
     }
@@ -100,9 +100,9 @@ impl IOFolder for Folder {
                 Err(error) => return Some(Err(error)),
             };
             Some(Ok(match entry.kind {
-                IOKind::Directory => Holder::FsFolder(Folder::new(bound)),
-                IOKind::File => Holder::FsFile(File::new(bound)),
-                _ => Holder::FsPath(Path::new(bound)),
+                IOKind::Directory => Holder::FsFolder(FsFolder::new(bound)),
+                IOKind::File => Holder::FsFile(FsFile::new(bound)),
+                _ => Holder::FsPath(FsPath::new(bound)),
             }))
         }))
     }
@@ -144,11 +144,11 @@ impl IOFolder for Folder {
     }
 }
 
-impl crate::IOMedia for Folder {
+impl crate::IOMedia for FsFolder {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Folder {
+impl IOBase for FsFolder {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
     }
@@ -173,6 +173,10 @@ impl IOBase for Folder {
         self.folder_truncate(size)
     }
 
+    fn uri(&self) -> Option<&Uri> {
+        Some(self.url().as_ref())
+    }
+
     fn url(&self) -> Option<&Url> {
         Some(self.url())
     }
@@ -191,12 +195,12 @@ impl IOBase for Folder {
         self.bound
             .parent()?
             .ok()
-            .map(Folder::new)
+            .map(FsFolder::new)
             .map(Holder::FsFolder)
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
-        self.bound.child(name).map(Path::new).map(Holder::FsPath)
+        self.bound.child(name).map(FsPath::new).map(Holder::FsPath)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
@@ -224,8 +228,11 @@ impl IOBase for Folder {
     }
 }
 
-impl std::fmt::Debug for Folder {
+impl std::fmt::Debug for FsFolder {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_tuple("Folder").field(&self.bound).finish()
+        formatter
+            .debug_tuple("FsFolder")
+            .field(&self.bound)
+            .finish()
     }
 }

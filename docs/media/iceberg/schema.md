@@ -26,7 +26,7 @@ Add a column, then read the earlier file back with the new column null.
 
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
@@ -35,10 +35,10 @@ Add a column, then read the earlier file back with the new column null.
     let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
 
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolution");
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolution");
     let _ = std::fs::remove_dir_all(&path);
     let mut table = Table::create(
-        Folder::new(&path)?,
+        LocalFolder::new(&path)?,
         FormatVersion::V2,
         schema.clone(),
         PartitionSpec::unpartitioned(),
@@ -235,10 +235,10 @@ Add a column, then read the earlier file back with the new column null.
 
     ```rust
     use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, StructType};
 
-    let root = Folder::temporary()?.path()?.join("yggdryl-doc-evolution");
+    let root = LocalFolder::temporary()?.path()?.join("yggdryl-doc-evolution");
     let _ = std::fs::remove_dir_all(&root);
     let schema = DataType::from(StructType::from_fields([
         DataType::Int32.required_field("id"),
@@ -246,7 +246,7 @@ Add a column, then read the earlier file back with the new column null.
     ])?)
     .required_field("row");
     let mut table = Table::create(
-        Folder::new(&root)?,
+        LocalFolder::new(&root)?,
         FormatVersion::V2,
         schema,
         PartitionSpec::unpartitioned(),

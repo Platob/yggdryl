@@ -105,10 +105,10 @@ impl FixRegistry {
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
-    /// # use yggdryl::local::Folder;
+    /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl::FixRegistry;
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_default_aliases()?;
+    /// let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?.with_default_aliases()?;
     ///
     /// // One field, reached by every spelling a desk writes.
     /// for spelled in ["offerpx", "askpx", "offerprice", "askprice"] {

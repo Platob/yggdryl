@@ -15,13 +15,13 @@ mod iceberg {
     use yggdryl::iceberg::{
         FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
     };
-    use yggdryl::local::Folder;
+    use yggdryl::local::LocalFolder;
 
     use yggdryl::{DataType, Field, IOBase, StructType};
 
     /// A scratch directory unique to this test and this process.
     fn root(label: &str) -> std::path::PathBuf {
-        let mut path = Folder::temporary().unwrap().path().unwrap();
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
         path.push(format!(
             "yggdryl-iceberg-contract-{label}-{}",
             std::process::id()
@@ -107,8 +107,13 @@ mod iceberg {
         let path = root("write-parallelism");
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
 
         // The property layer, the explicit layer, and the default.
         assert_eq!(
@@ -157,8 +162,13 @@ mod iceberg {
         let stage = root("write-staging-folder");
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table =
-            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
 
         // The spellings: `off`, a local folder URL, a local path; never a
         // remote folder, because a staging file is a local file.

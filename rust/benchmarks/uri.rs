@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use yggdryl::{MediaType, MimeType, Scheme, Uri, Url, Urn};
+use yggdryl::{Arn, MediaType, MimeType, Scheme, Uri, Url, Urn};
 
 const NETWORK_URI: &str =
     "https://user@example.test:8443/archive/2026/report.tar.zst?download=1#summary";
@@ -9,6 +9,8 @@ const WINDOWS_PATH: &str = r"C:\Users\Ada Lovelace\market data\trades.parquet";
 const UNC_PATH: &str = r"\\market-data\shared\prices\2026\ticks.arrow";
 const S3_URI: &str = "s3://market-data.s3.eu-west-3.amazonaws.com/2026/trades.parquet";
 const ESCAPED_URI: &str = "https://example.test/archive/Ada%20Lovelace/report.csv?as%20of=2026-01-02&note=a%26b&venue=XNAS";
+const S3_ARN: &str = "arn:aws:s3:::market-data/2026/trades.parquet";
+const RESOLVABLE_URN: &str = "urn:lake:market-data:2026:trades.parquet";
 /// A platform name every byte of which the segment syntax has to escape.
 const ESCAPING_NAME: &str = "Ada Lovelace 100% caf\u{e9}/report #1?draft.csv";
 
@@ -25,6 +27,9 @@ fn parsing_benchmarks(criterion: &mut Criterion) {
             Urn::from_str(black_box("urn:uuid:123e4567-e89b-12d3-a456-426614174000"))
                 .expect("the static URN must parse")
         });
+    });
+    group.bench_function("arn_canonical", |bencher| {
+        bencher.iter(|| Arn::from_str(black_box(S3_ARN)).expect("the static ARN must parse"));
     });
     group.bench_function("known_scheme", |bencher| {
         bencher.iter(|| {
@@ -43,6 +48,22 @@ fn parsing_benchmarks(criterion: &mut Criterion) {
     group.bench_function("windows_unc_normalization", |bencher| {
         bencher.iter(|| {
             Uri::from_path(black_box(UNC_PATH)).expect("the static UNC path must normalize")
+        });
+    });
+    group.bench_function("arn_locator", |bencher| {
+        let arn = Arn::from_str(S3_ARN).expect("the static ARN must parse");
+        bencher.iter(|| {
+            black_box(&arn)
+                .locator()
+                .expect("an Amazon S3 ARN must locate")
+        });
+    });
+    group.bench_function("urn_locator_path", |bencher| {
+        let urn = Urn::from_str(RESOLVABLE_URN).expect("the static URN must parse");
+        bencher.iter(|| {
+            black_box(&urn)
+                .locator_path()
+                .expect("a URN with no empty part must spell a path")
         });
     });
     group.bench_function("display_parse_round_trip", |bencher| {

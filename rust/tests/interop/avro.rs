@@ -8,7 +8,7 @@
 
 use yggdryl::TimeUnit;
 use yggdryl::avro;
-use yggdryl::local::File;
+use yggdryl::local::LocalFile;
 use yggdryl::{DataType, Scalar, Timezone};
 
 /// Where the exchange files live, shared with the Python driver.
@@ -115,7 +115,7 @@ fn expected_rows() -> Vec<Scalar> {
 fn writes_a_container_for_the_external_reader() {
     let dir = exchange_dir();
     std::fs::create_dir_all(&dir).expect("the exchange directory");
-    let mut handle = File::new(dir.join("from-rust.avro")).expect("a file handle");
+    let mut handle = LocalFile::new(dir.join("from-rust.avro")).expect("a file handle");
     avro::write_container(
         &mut handle,
         &schema(),
@@ -133,7 +133,7 @@ fn reads_the_container_the_external_writer_produced() {
         println!("avro-interop: SKIPPED (no {})", path.display());
         return;
     }
-    let handle = File::new(&path).expect("a file handle");
+    let handle = LocalFile::new(&path).expect("a file handle");
     let container = avro::read_container(&handle).expect("the external container reads");
     assert_eq!(container.rows, expected_rows());
     // The resolved path over the same file must agree with the direct one.
@@ -154,7 +154,7 @@ fn reads_the_container_the_apache_avro_crate_produced() {
         println!("avro-interop: absent from-apache.avro");
         return;
     }
-    let handle = File::new(&path).expect("a file handle");
+    let handle = LocalFile::new(&path).expect("a file handle");
     let container = avro::read_container(&handle).expect("the apache-avro container reads");
     assert_eq!(container.rows, expected_rows());
     println!("avro-interop: read apache");

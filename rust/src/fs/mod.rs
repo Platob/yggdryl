@@ -9,9 +9,9 @@
 //! [`BoundLocation`] retains the filesystem equality domain, the exact opaque
 //! filesystem path, the caller's optional URI spelling, and a masked
 //! diagnostic form as separate facts. Injected paths are never parsed as URLs;
-//! only [`ResolvedFileSystemUri`] crosses the URI boundary. [`Path`], [`File`],
-//! [`Folder`], their parents and children, listings, and globs all carry that
-//! same binding.
+//! only [`ResolvedFileSystemUri`] crosses the URI boundary. [`FsPath`],
+//! [`FsFile`], [`FsFolder`], their parents and children, listings, and globs
+//! all carry that same binding.
 //!
 //! [`MemoryFileSystem`] and [`LocalFileSystem`] are complete reference
 //! implementations. Language bindings adapt their native Arrow filesystem to
@@ -20,13 +20,13 @@
 //! ```
 //! use std::sync::Arc;
 //!
-//! use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
+//! use yggdryl::fs::{FileSystem, FsFolder, MemoryFileSystem};
 //! use yggdryl::IOBase;
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
 //! filesystem.create_dir("lake", true)?;
-//! let lake = Folder::from_path(filesystem, "lake", None)?;
+//! let lake = FsFolder::from_path(filesystem, "lake", None)?;
 //!
 //! let mut leaf = lake.child_by_path("trades.bin")?;
 //! leaf.write_all_bytes(b"AAPL")?;
@@ -52,12 +52,12 @@ mod system;
 mod transfer;
 mod uri;
 
-pub use file::File;
-pub use folder::Folder;
+pub use file::FsFile;
+pub use folder::FsFolder;
 pub use local::LocalFileSystem;
 pub use location::{BoundLocation, BoundLocationIdentity, mask_uri};
 pub use memory::MemoryFileSystem;
-pub use path::Path;
+pub use path::FsPath;
 pub use stream::{ByteReader, ByteWriter, RandomAccessReader};
 pub use system::{FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata};
 pub use transfer::{copy_bound, move_bound};
@@ -67,8 +67,8 @@ pub use uri::{ResolvedFileSystem, ResolvedFileSystemUri, S3AddressingStyle, S3Fi
 ///
 /// The returned [`Holder::FsPath`] performs no filesystem call during
 /// construction and resolves only when an operation needs the resource's
-/// role. A caller that knows the role can construct [`Folder`] or [`File`]
+/// role. A caller that knows the role can construct [`FsFolder`] or [`FsFile`]
 /// explicitly.
 pub fn located(location: BoundLocation) -> Holder {
-    Holder::FsPath(Path::new(location))
+    Holder::FsPath(FsPath::new(location))
 }

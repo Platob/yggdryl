@@ -290,7 +290,7 @@ mod vocabulary {
         }
 
         impl IOBase for Counted {
-            yggdryl::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, url,
+            yggdryl::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, uri, url,
                 media_type, set_media_type, flush, kind);
 
             fn pstream_bytes(

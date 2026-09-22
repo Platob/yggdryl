@@ -362,18 +362,18 @@ Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::IOBase;
-use yggdryl::local::{File, Folder};
+use yggdryl::local::{LocalFile, LocalFolder};
 
-let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
+let path = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
 std::fs::write(&path, vec![9_u8; 4_096])?;
 
-let handle = File::new(&path)?.buffered(BufferedOptions::default().with_page_size(1_024));
+let handle = LocalFile::new(&path)?.buffered(BufferedOptions::default().with_page_size(1_024));
 assert_eq!(handle.size(), 4_096);
 assert_eq!(handle.read_range_bytes(2_000, 8)?, [9_u8; 8]);
 assert_eq!(handle.cached_pages(), 1);
 
 // The wrapper is the file for every purpose but the reading.
-let bare = File::new(&path)?;
+let bare = LocalFile::new(&path)?;
 assert_eq!(handle.url(), bare.url());
 
 drop(handle);

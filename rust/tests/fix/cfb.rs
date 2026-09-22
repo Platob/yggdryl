@@ -6,10 +6,10 @@ use super::path;
 use std::path::PathBuf;
 
 use std::sync::Arc;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 
 use yggdryl::SequenceType;
-use yggdryl::fs::{File, FileSystem, MemoryFileSystem};
+use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase};
 
@@ -350,7 +350,7 @@ fn named_handle(body: &str, name: &str) -> impl IOBase {
         .create_dir("cblock", true)
         .expect("a container to write into");
     let mut file =
-        File::from_path(filesystem, format!("cblock/{name}"), None).expect("a path under it");
+        FsFile::from_path(filesystem, format!("cblock/{name}"), None).expect("a path under it");
     file.write_all_bytes(body.as_bytes()).expect("the document");
     file
 }
@@ -595,7 +595,7 @@ fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace
         .join("..")
         .join("config")
         .join("fix");
-    let mut seeded = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
+    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
     let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), None).unwrap();
     let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
     let before = seeded.clone();
@@ -1700,8 +1700,8 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         .join("..")
         .join("config")
         .join("fix");
-    let mut seeded =
-        FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
+    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
+        .expect("the seed");
     let before = seeded.clone();
 
     // The imported AvgPx datatype disagrees with its committed physical width.
@@ -2045,8 +2045,8 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         .join("..")
         .join("config")
         .join("fix");
-    let mut seeded =
-        FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
+    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
+        .expect("the seed");
     assert!(seeded.dialects().is_empty());
     let symbol = seeded.field_by_tag(55).unwrap().clone();
     assert!(symbol.description().is_some());
@@ -2158,8 +2158,8 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
         .join("..")
         .join("config")
         .join("fix");
-    let mut seeded =
-        FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
+    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
+        .expect("the seed");
     let before = seeded.clone();
 
     let error = seeded
@@ -2723,12 +2723,12 @@ fn cblock_tree(files: &[(&str, &str)]) -> yggdryl::holder::Holder {
         .create_dir("cblocks", true)
         .expect("a container to write into");
     for (name, body) in files {
-        let mut file = File::from_path(Arc::clone(&filesystem), format!("cblocks/{name}"), None)
+        let mut file = FsFile::from_path(Arc::clone(&filesystem), format!("cblocks/{name}"), None)
             .expect("a path under it");
         file.write_all_bytes(body.as_bytes()).expect("the document");
     }
     yggdryl::holder::Holder::from(
-        yggdryl::fs::Folder::from_path(filesystem, "cblocks", None)
+        yggdryl::fs::FsFolder::from_path(filesystem, "cblocks", None)
             .expect("the folder holding them"),
     )
 }

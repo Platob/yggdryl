@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, Field, FixDirection, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -13,7 +13,7 @@ struct Workspace(PathBuf, PathBuf);
 
 impl Workspace {
     fn new() -> Self {
-        let temporary = Folder::temporary()
+        let temporary = LocalFolder::temporary()
             .expect("native temporary folder")
             .path()
             .expect("native temporary path");
@@ -440,7 +440,7 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     );
 
     // What the tool wrote is what the registry reads back.
-    let stored = FixRegistry::from_handle(&Folder::new(workspace.root()).expect("root"))
+    let stored = FixRegistry::from_handle(&LocalFolder::new(workspace.root()).expect("root"))
         .expect("stored dictionary");
     assert_eq!(stored.dialects(), ["alpha", "beta"]);
     assert!(
@@ -488,7 +488,7 @@ fn a_field_identity_is_its_tag_and_name_as_one_int() {
         .expect("identity entry")
         .trim();
     assert_eq!(identity, expected.digest().to_string());
-    let stored = FixRegistry::from_handle(&Folder::new(workspace.root()).expect("root"))
+    let stored = FixRegistry::from_handle(&LocalFolder::new(workspace.root()).expect("root"))
         .expect("stored dictionary");
     assert_eq!(
         stored.field_by_id(expected).expect("by id").name(),

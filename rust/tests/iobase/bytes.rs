@@ -25,7 +25,7 @@ mod positional {
 
         impl IOBase for Probe {
             yggdryl::delegate_iobase!(bytes: pread, pstream_bytes, pwrite, size, capacity, reserve,
-                truncate, url, media_type, set_media_type, flush, clear, remove);
+                truncate, uri, url, media_type, set_media_type, flush, clear, remove);
 
             fn open(&mut self) -> Result<()> {
                 self.opened.store(true, Ordering::SeqCst);

@@ -26,7 +26,7 @@ use crate::fix::FixTag;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::protocol::{PyPythonMetadata, core_python_metadata_from_value};
 use crate::scalar::{PyScalar, from_py as scalar_from_py};
-use crate::uri::{PyUrl, core_url_from_value};
+use crate::uri::{PyUrl, core_url_from_value, url_object};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
 pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
@@ -1114,11 +1114,12 @@ impl PyField {
     }
 
     #[getter]
-    fn location(&self) -> PyResult<Option<PyUrl>> {
+    fn location(&self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
         self.inner
             .location()
-            .map(|value| value.map(PyUrl::from_core))
-            .map_err(value_error)
+            .map_err(value_error)?
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     #[getter]
@@ -1215,12 +1216,13 @@ impl PyField {
     }
 
     #[getter]
-    fn http_location(&self) -> PyResult<Option<PyUrl>> {
+    fn http_location(&self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
         self.inner
             .as_http()
             .location()
-            .map(|value| value.map(PyUrl::from_core))
-            .map_err(value_error)
+            .map_err(value_error)?
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     #[getter]
@@ -1367,12 +1369,13 @@ impl PyField {
         Ok(())
     }
 
-    fn remove_location(&mut self) -> PyResult<Option<PyUrl>> {
+    fn remove_location(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
         self.require_mutable()?;
         self.inner
             .remove_location()
-            .map(|value| value.map(PyUrl::from_core))
-            .map_err(value_error)
+            .map_err(value_error)?
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     fn set_accept(&mut self, value: String) -> PyResult<()> {
@@ -1613,13 +1616,14 @@ impl PyField {
         Ok(())
     }
 
-    fn remove_http_location(&mut self) -> PyResult<Option<PyUrl>> {
+    fn remove_http_location(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyUrl>>> {
         self.require_mutable()?;
         self.inner
             .as_http_mut()
             .remove_location()
-            .map(|value| value.map(PyUrl::from_core))
-            .map_err(value_error)
+            .map_err(value_error)?
+            .map(|value| url_object(py, value))
+            .transpose()
     }
 
     fn set_range(&mut self, value: String) -> PyResult<()> {

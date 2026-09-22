@@ -10,7 +10,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::local::Folder;
+use yggdryl::local::LocalFolder;
 
 /// The folder widths the two legs are measured at.
 const WIDTHS: [usize; 3] = [
@@ -20,13 +20,13 @@ const WIDTHS: [usize; 3] = [
 ];
 
 /// Build a folder of `width` leaves, and return it with its root path.
-fn wide(width: usize) -> (std::path::PathBuf, Folder) {
-    let root = Folder::temporary()
+fn wide(width: usize) -> (std::path::PathBuf, LocalFolder) {
+    let root = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-bench-listing-{width}"));
-    let mut folder = Folder::new(&root).expect("a valid path");
+    let mut folder = LocalFolder::new(&root).expect("a valid path");
     folder.remove(true).ok();
     folder.create().expect("a creatable folder");
     for leaf in 0..width {
@@ -39,13 +39,13 @@ fn wide(width: usize) -> (std::path::PathBuf, Folder) {
 }
 
 /// Build a folder of `width` leaves split across ten subdirectories.
-fn deep(width: usize) -> (std::path::PathBuf, Folder) {
-    let root = Folder::temporary()
+fn deep(width: usize) -> (std::path::PathBuf, LocalFolder) {
+    let root = LocalFolder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-bench-listing-deep-{width}"));
-    let mut folder = Folder::new(&root).expect("a valid path");
+    let mut folder = LocalFolder::new(&root).expect("a valid path");
     folder.remove(true).ok();
     folder.create().expect("a creatable folder");
     for leaf in 0..width {

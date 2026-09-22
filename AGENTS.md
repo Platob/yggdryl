@@ -144,7 +144,7 @@ step is run, never which step is skipped.
 | string leaf | a `StringType` variant + `DataTypeId` appended + `string.rs` (spellings, the number rule, Arrow storage, grammar, value) + the charset's own root file - `utf8.rs`, `ascii.rs` or `cp1252.rs` - for the leaf's constructor, validation and reading -> tests -> bindings -> `docs/types/` |
 | byte leaf | a `BytesType` variant + `DataTypeId` appended + `bytes.rs` (spellings, the number rule, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/charset/` |
-| storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
+| storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `<Name>Path`, `<Name>Folder`, `<Name>File` over a host tree; `<Name>Path`, `<Name>Node`, `<Name>Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
@@ -166,10 +166,10 @@ passes.
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
-| a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
+| a gated path works | the loop above plus `--features "parquet iceberg"` or `--features s3` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
-| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds; an omitted name is counted, never failed |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 | the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
 
@@ -285,7 +285,7 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
-`iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/`
+`iceberg` (implies `parquet`), `s3`. Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
 root file, and `value/` - the contracts a datatype, a field and a value each
 owe the root that holds them - is the one folder among them; every
@@ -333,7 +333,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
-| `local/`, `fs/`, `zip/`, `object/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `Path`, `Folder`, `File` in `local/`, `fs/` and `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `object/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, under the non-default `object` feature |
+| `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
@@ -341,7 +341,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
 | `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - `TextLine` an `Event` of the graph holding the whole line, row header included, and the `Arc<TextOptions>` it reads itself by, every reading resolved once on its first ask and a `set_` stated over it - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
 | `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
-| `uri/` | the URI, URL and URN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
+| `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
 | `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names, its parents' UUIDs (the whole lineage, oldest first) and its sources' UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants plus the persisted recording clock of its merge reference, a state and a place in its chain, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the nineteen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
@@ -688,7 +688,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   re-exported beside `Scalar`; it only coerces and redirects, byte-like input and
   strings are content rather than paths, and it parses, renders, validates, and
   bounds nothing.
-- `local::Folder` roots `temporary`, `home`, `config`: `home` reads
+- `local::LocalFolder` roots `temporary`, `home`, `config`: `home` reads
   `HOME`, then `USERPROFILE`, failing and naming both when neither is set;
   `config` = `home` + `.config`; `temporary` wraps the platform temporary
   directory. All three construct a handle and create nothing; nothing else
@@ -842,8 +842,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 ### ZIP (`zip/`)
 
 An archive is a file system inside one file, so it supplies the backend roles
-under the names its own index has: `Node` is a prefix of that index, `Leaf` is
-one entry in it, `Path` resolves to whichever is there.
+under the names its own index has: `ZipNode` is a prefix of that index,
+`ZipLeaf` is one entry in it, `ZipPath` resolves to whichever is there.
 
 - Codings are `Codec::Identity`, `Codec::Deflate`, `Codec::Zstd` and nothing
   else spells one; the archive adds no second coding dispatcher, and gzip and
@@ -861,11 +861,11 @@ one entry in it, `Path` resolves to whichever is there.
 - One member writer, and it streams: nothing holds a member whole, the header
   reserves the sizes a stream does not know yet, and the index learns about a
   member only once its bytes are in the handle.
-- `Archive::handle_reads`/`handle_writes` count what the backend asked of the
+- `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
   handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
   and asserted in those terms.
 
-### Object stores (`object/`, non-default `object` feature)
+### Object stores (`s3/`, non-default `s3` feature)
 
 One backend, one location/container/leaf trio, three stores: Amazon S3, Google
 Cloud Storage, Azure Blob Storage. Each REST API is spoken directly - SigV4,
@@ -883,7 +883,7 @@ alone; `answer.rs` holds what an answer *says* in shapes no store owns, so the
 transport, the retry, the staging model, the listing pipeline and the three
 roles are written once.
 
-`ObjectOptions` holds what all three stores have; `AwsOptions`, `GoogleOptions`
+`S3Options` holds what all three stores have; `AwsOptions`, `GoogleOptions`
 and `AzureOptions` hold what one has, so a knob has exactly one owner. A
 property name two stores both have is applied to both, because only the store
 that answers reads its own options.
@@ -1391,7 +1391,7 @@ and not a silent update.
 | Job | Proves | The one command that reproduces it |
 | --- | --- | --- |
 | Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
-| Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features object --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
+| Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features s3 --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
 | Iceberg Rust 1.94 | the official Iceberg boundary at its own, later MSRV | `cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg` |
 | S3 / Azure / Google exchange | the object stores against MinIO with boto3, Azurite with azure-storage-blob, fake-gcs-server with google-cloud-storage - signatures and dialects against implementations that answer 403 | `python scripts/check_object_interop.py`, `check_azure_interop.py`, `check_gcs_interop.py`; each fetches its own server |
 | ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
@@ -1417,6 +1417,7 @@ python scripts/check_charset_interop.py             # every code page against Py
 cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
 npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>
 python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
+YGGDRYL_S3TABLES_ARN=<table bucket ARN> python python/benchmarks/media/s3tables.py  # a real table bucket and pyiceberg; SKIPPED otherwise
 ```
 
 CI compiles the benchmark targets and executes them at smoke corpus; it never
@@ -1642,7 +1643,7 @@ stay responsive). Run the language whose examples were edited, once, before
 pushing; CI runs all three.
 
 ```bash
-python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg object
+python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg s3
 python scripts/check_docs_examples.py --lang python       # runs under python/.venv
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 ```
