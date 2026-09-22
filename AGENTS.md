@@ -169,8 +169,9 @@ passes.
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
-| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
+| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
 
 The measured costs that shape the loop: an already-built harness is under a
 second (`--test root` is 946 tests in 0.6s), the first build of a
@@ -1476,11 +1477,11 @@ Python-only:
   schemas merely to import them again; the behavior is Python-only, while schema
   and scalar semantics stay native.
 - Public decorator `@scalar` (beside the Python `Scalar` boundary), pure field
-  builder `field(value, name=None)`, typed field factories below
-  `yggdryl/types/`. `@scalar` forwards every stdlib dataclass option, installs
-  one cached argument-free `staticmethod into_field()`, rejects a pre-existing
-  `into_field` member, leaves every other member name - `field` included - to the
-  caller, and reserves no static metadata constant.
+  builder `field(value, name=None)`, typed field factories at the package root,
+  one module per type. `@scalar` forwards every stdlib dataclass option,
+  installs one cached argument-free `staticmethod into_field()`, rejects a
+  pre-existing `into_field` member, leaves every other member name - `field`
+  included - to the caller, and reserves no static metadata constant.
 - `Class.into_field()` returns one frozen non-null Struct `Field`, preserving
   dataclass order and metadata, excluding `ClassVar`/`InitVar`/private working
   annotations, resolving forward and generic annotations once, detecting

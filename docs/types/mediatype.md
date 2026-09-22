@@ -92,7 +92,7 @@ under their canonical name.
 
 `MimeTypeField` and `MediaTypeField` are the typed markers, and there is
 nothing to pass: `unit(name, nullable)` is the whole constructor. The bindings
-declare the same two columns with `types.mimetype` / `types.mediatype` and
+declare the same two columns with `yggdryl.mimetype` / `yggdryl.mediatype` and
 `fields.mimetype` / `fields.mediatype`.
 
 === "Rust"
@@ -327,7 +327,7 @@ intake is total by construction.
 
 | rule | behaviour |
 | --- | --- |
-| Kind | `text`; the aliases are `MimeTypeField` and `MediaTypeField`, `types.mimetype` / `fields.mimetype` and `types.mediatype` / `fields.mediatype` |
+| Kind | `text`; the aliases are `MimeTypeField` and `MediaTypeField`, `yggdryl.mimetype` / `fields.mimetype` and `yggdryl.mediatype` / `fields.mediatype` |
 | Value | `crate::MimeType` inline; `crate::MediaType` behind one shared pointer, because a base, a charset and a coding list are wider than the scalar |
 | Storage | `Utf8` holding the canonical text, extension names `yggdryl.mimetype` and `yggdryl.mediatype` |
 | Intake | a MIME type refuses a name that is not `type/subtype`; a media type infers, so every text has an answer |

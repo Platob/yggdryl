@@ -424,7 +424,7 @@ assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
 - [Merged](../field.md#merging-two-schemas) widening -> the widest backing either side declared: `decimal128(10,2)` beside `int16` stays `decimal128(10,2)`. Narrowing takes the backing the merged precision needs.
 - A decimal beside a float -> refused; an exact number and an approximate one have no meeting point that is not a re-encoding.
 - `Decimal18::MAX.checked_add(Decimal18::ONE)` -> `None`; the operator form refuses as the integers' do.
-- Python has no `DataType.decimal128`: `DataType.decimal(precision, scale)` is the one constructor, and the exact widths are field factories (`types.decimal128`). JavaScript has no `DataType.decimal` at all, only `fields.decimal*`.
+- Python has no `DataType.decimal128`: `DataType.decimal(precision, scale)` is the one constructor, and the exact widths are field factories (`yggdryl.decimal128`). JavaScript has no `DataType.decimal` at all, only `fields.decimal*`.
 
 ## Commands
 

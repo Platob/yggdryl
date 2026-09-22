@@ -459,10 +459,10 @@ impl JsXxh64 {
 impl JsXxh3 {
     /// Start a state, optionally seeded and with a custom secret.
     ///
-    /// A secret shorter than `hashing.xxhash.SECRET_MINIMUM_LENGTH` is
-    /// rejected by length whatever the payload: the reference only consults a
-    /// secret past its 240-byte cutoff, and a secret that is sometimes used is
-    /// worse than one that is refused.
+    /// A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
+    /// length whatever the payload: the reference only consults a secret past
+    /// its 240-byte cutoff, and a secret that is sometimes used is worse than
+    /// one that is refused.
     #[napi(constructor)]
     pub fn new(seed: Option<BigInt>, secret: Option<Uint8Array>) -> Result<Self> {
         let seed = seed_from_bigint(seed)?;
@@ -494,8 +494,8 @@ impl JsXxh3 {
 impl JsXxh128 {
     /// Start a state, optionally seeded and with a custom secret.
     ///
-    /// A secret shorter than `hashing.xxhash.SECRET_MINIMUM_LENGTH` is
-    /// rejected by length whatever the payload, for the reason `Xxh3` states.
+    /// A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
+    /// length whatever the payload, for the reason `Xxh3` states.
     #[napi(constructor)]
     pub fn new(seed: Option<BigInt>, secret: Option<Uint8Array>) -> Result<Self> {
         let seed = seed_from_bigint(seed)?;

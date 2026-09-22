@@ -185,7 +185,7 @@ underscores, hyphens and spaces, so `large_utf8`, `largeutf8` and
 `StringField` is the typed marker: one field carrying `StringType` itself, so
 the leaf is read off the payload rather than matched out of a root datatype.
 `new` takes the payload, `try_new` a root `DataType` and refuses another family
-by name. The bindings have one factory per leaf plus `types.string` /
+by name. The bindings have one factory per leaf plus `yggdryl.string` /
 `fields.string` for the whole declaration, nullable unless the call says
 otherwise; metadata rides beside the datatype, never inside it. A column of
 locations or names is not a string at all - it declares `url` or `urn`

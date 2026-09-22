@@ -111,6 +111,25 @@ The first command compiles every `rust` block under `docs/` as a test, runs ever
 
 A block that cannot stand alone is tagged `{ .rust .ignore }`, `{ .python .ignore }`, or `{ .javascript .ignore }`; the checker reports those instead of hiding them.
 
+## The wheel is tested as installed
+
+```bash
+python scripts/check_wheel_smoke.py
+```
+
+What `pip install yggdryl` gives a reader, and nothing else asks: the extension
+module loads, a handle opens a folder, and an Iceberg table takes rows and
+gives them back. It imports `yggdryl` from the environment and never
+`python/yggdryl`, so it reports on an installed distribution rather than the
+source tree beside it - install a wheel first, which `maturin develop` also
+satisfies.
+
+The release runs it against every wheel it is about to publish, and CI's Python
+lane runs it against the wheel that job builds, under both PyArrow versions the
+binding supports. It lived in a `release.yml` heredoc until a renamed module
+reached 0.1.9 and stopped the release there, which is why it is a file both
+sides share.
+
 ## Exchange formats meet an outside implementation
 
 ```bash
