@@ -5074,11 +5074,15 @@ export declare class TextLine {
    * The identifier this line was read under, as its canonical text.
    *
    * What the handle is addressed by, which is not always a place: a read
-   * through a name answers that name here and nothing at `sourceurl`. This
-   * is what the line's cross code spells.
+   * through a name answers that name here and where it resolves to at
+   * `sourceurl`. This is what the line's cross code spells, so the code
+   * does not move with the directory a name resolved in.
    */
   get sourceuri(): string | null
-  /** The object this line was read from, where the identifier is a location. */
+  /**
+   * The object this line was read from: the identifier itself where it
+   * is a location, else where the name it is resolves to.
+   */
   get sourceurl(): string | null
   /**
    * When the record was written, in nanoseconds UTC: the row header's own

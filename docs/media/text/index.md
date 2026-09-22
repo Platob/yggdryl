@@ -163,7 +163,7 @@ The source field is complete before any source bytes are read. It opens with the
 | `snapunix` | `datetime64(ns, UTC)` | nullable; a `snapunix` capture, else what a grid stamped, else null |
 | `curruuid` | `uuid` | required; the line's identity, the UUIDv7 its microsecond `currunix` and `currhashcode` derive; the nil identity where the instant has no UUIDv7 |
 | `crossuuid` | `uuid` | required; the UUIDv8 of `crosshashcode`, or `curruuid` where the line names no cross code |
-| `crosscode` | `utf8` | nullable; an explicit event value, else the canonical text of the identifier the line was read under - the text `sourceurl` holds where that identifier is a location, which is the common case - else null for a line read under no identifier |
+| `crosscode` | `utf8` | nullable; an explicit event value, else the canonical text of the identifier the line was read under - the text `sourceurl` holds where that identifier is a location, which is the common case, and the name itself where it is a name - else null for a line read under no identifier |
 | `currhashcode` | `uint64` | required; the XXH3-64 of the cross code, the row number and the body |
 | `crosshashcode` | `uint64` | required; the XXH3-64 of `crosscode`, zero where none |
 | `prevuuid` | `uuid` | nullable; a `prevuuid` capture, else what a walk stamped, else null |
@@ -172,7 +172,7 @@ The source field is complete before any source bytes are read. It opens with the
 | `srcuuids` | `list<uuid>` | nullable; what was stated, else null: a line read from a handle has no source |
 | `identifiers` | `map<utf8, utf8>` | nullable; every named capture the line matched, under its name, sorted; null where none |
 | `state` | `state` | nullable, and never null on a row the reader wrote: a `state` capture, else `00UNKNOWN` |
-| `sourceurl` | `url` | nullable; the object the line was read from, and null where the read was addressed by a name rather than a location, or by nothing at all, as an unlocated buffer is |
+| `sourceurl` | `url` | nullable; the object the line was read from - the identifier itself where that is a location, else where the name it is resolves to - and null where the read was addressed by nothing at all, as an unlocated buffer is, or by a name that resolves nowhere |
 | `rownum` | `int64` | required, and present only when `start_rownum` is set; first value is exactly that setting |
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `mimetype` | `utf8` | required, and present only with `parse_mimetype` |
@@ -225,7 +225,7 @@ Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture)
 - keyed merge -> refused; a line has no row identity, so overwrite and append are the two intents.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
 - an unlocated buffer -> `sourceurl`, `crosscode`, and `mtime` are null: it is addressed by nothing at all, so no identifier reaches the cross code, and it records no modification time; `crosshashcode` is zero and `crossuuid` is the line's own identity.
-- a read addressed by a name - a `urn:` or an [`arn:`](../../uri/arn.md) -> `sourceurl` is null, because the identifier is not a location, while `crosscode` is that name's canonical text: the line is crossed with what it was read under, so `crosshashcode` and `crossuuid` follow from the name as they do from a URL.
+- a read addressed by a name - a `urn:` or an [`arn:`](../../uri/arn.md) -> `crosscode` is that name's canonical text and `sourceurl` is where the name [resolves](../../uri/urn.md) to, which for a URN is the path it spells rooted in the process working directory: the line is crossed by what it was read under and located where its bytes were, and because the code is the name and not the resolution, `crosshashcode` and `crossuuid` do not move with the directory the read ran in. A name that resolves nowhere - an ARN naming a service no location serves - leaves `sourceurl` null and keeps its code.
 - an event fact nothing states -> the column's null, but for the ones never null: `currunix` the epoch, `curruuid` the nil identity where the instant has no UUIDv7, `crossuuid` the line's own identity, `currhashcode` the code of the cross code, the row and the body, `crosshashcode` zero; and `state`, nullable, is written `00UNKNOWN` all the same.
 - a row-header capture named `seqnum` or `crosscode`, in any case -> refused when the header is set, because the reader owns those facts through `rownum` / `index` and the identifier the read was addressed by.
 - a `state`, `prevuuid`, or instant capture the line cannot read at the fact's datatype -> a refusal naming the row, the object and the fact, on the batch as on the reading.

@@ -7,7 +7,7 @@
 | Key | Value |
 | --- | --- |
 | Owns | `TextLine`, `TextBytes`, `TextEntries`, `TextEntry`, and `read_text_lines`, the one decode entry point every record method routes through |
-| Holds | what the reader cut and nothing it derived: `index`, the identifier the read was addressed by - one value, read as `sourceuri` and, where it is a location, as `sourceurl` - the whole `body` with its row header included, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
+| Holds | what the reader cut and nothing it derived: `index`, the identifier the read was addressed by, read as `sourceuri` and as `sourceurl` - one value where it is a location, and the name beside where it resolves to where it is a name - the whole `body` with its row header included, `dropped_byte_size`, `decoded_byte_size`, and the `Arc<TextOptions>` it reads itself by |
 | Lazy | `mtime`, `bodytype`, the `captures`, the `entries` and the nineteen event facts are readings resolved on the first ask, once, and never before: `seqnum` off `index`, `crosscode` off `sourceuri`, the rest off the body |
 | Text | a body is text where the line is made: valid UTF-8 costs the validation, and every other byte reads as the character Windows-1252 gives it |
 | Validated | an empty body is refused wherever one is set; a capture named for an event fact that does not parse at the fact's datatype is a named refusal |
@@ -87,7 +87,8 @@ decode rather than two.
 A line is an [event](../../graph.md) of the graph, and a struct rather than a
 map. It holds the reader facts `index` and `sourceuri` - the identifier the
 read was addressed by, which `sourceurl` answers again where it is a location
-and not at all where it is a name - and what the reader cut, the whole `body`
+and, where it is a name, answers as the place that name resolves to - and what
+the reader cut, the whole `body`
 with its row header included, plus
 `dropped_byte_size`, `decoded_byte_size`, and the options it reads itself by.
 Everything else is resolved on its first ask, once, and never before:
@@ -115,8 +116,9 @@ an event column read back out of Arrow. Stated captures are the line's word over
 its header; `set_body` drops body-derived readings, `set_index` refreshes the
 derived sequence, and `set_sourceuri` refreshes the derived cross code, hash,
 current identity, and cross identity without displacing an explicitly stated
-event value, narrowing the location once so that `sourceurl` answers it where
-the identifier is one. The identifier and its lazily rendered cross code are
+event value, narrowing the identifier once - and, where it is a name,
+resolving it once - so that no row pays for either. The identifier and its
+lazily rendered cross code are
 one shared reader value: every line borrows the same spelling, and an Arrow
 event column clones its shared string handle rather than allocating that
 spelling per row.

@@ -365,14 +365,16 @@ impl JsTextLine {
     /// The identifier this line was read under, as its canonical text.
     ///
     /// What the handle is addressed by, which is not always a place: a read
-    /// through a name answers that name here and nothing at `sourceurl`. This
-    /// is what the line's cross code spells.
+    /// through a name answers that name here and where it resolves to at
+    /// `sourceurl`. This is what the line's cross code spells, so the code
+    /// does not move with the directory a name resolved in.
     #[napi(getter)]
     pub fn sourceuri(&self) -> Option<String> {
         self.inner.sourceuri().map(ToString::to_string)
     }
 
-    /// The object this line was read from, where the identifier is a location.
+    /// The object this line was read from: the identifier itself where it
+    /// is a location, else where the name it is resolves to.
     #[napi(getter)]
     pub fn sourceurl(&self) -> Option<String> {
         self.inner.sourceurl().map(ToString::to_string)

@@ -86,18 +86,29 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// What a read was addressed by, as the one value it is.
 ///
 /// A location is a *narrowing* of an identifier rather than a second fact
-/// beside it, so a line keeps whichever narrowing the read was addressed by
-/// and lends both readings off it: nothing can make the two disagree, and a
-/// read shares one reference-counted value across its rows instead of one per
-/// reading. Which narrowing it is decides only whether
-/// [`sourceurl`](TextLine::sourceurl) has an answer - the cross code is the
-/// identifier either way.
+/// beside it, so where the read was addressed by one the line keeps that one
+/// value and lends both readings off it: nothing can make them disagree, and
+/// a read shares one reference-counted value across its rows instead of one
+/// per reading.
+///
+/// A name is the case where the two really are two values, because where a
+/// name is is not what it says: it resolves, by default under the process
+/// working directory, and the line keeps that resolution beside the name so
+/// a read under a name still answers where its bytes were. The cross code is
+/// the identifier eitherway - the name, never where it resolved - so what a
+/// line is crossed by does not move with the directory it was read from.
 #[derive(Clone, Debug)]
 pub(crate) enum LineSource {
     /// A location, which answers the identifier and the object alike.
     Located(Arc<Url>),
-    /// A name, which answers the identifier alone.
-    Named(Arc<Uri>),
+    /// A name, beside where it resolves to - nothing where it resolves
+    /// nowhere.
+    Named {
+        /// The name the read was addressed by, and the cross code.
+        uri: Arc<Uri>,
+        /// Where that name is, resolved once for the whole read.
+        at: Option<Arc<Url>>,
+    },
 }
 
 impl LineSource {
@@ -109,7 +120,7 @@ impl LineSource {
     fn shared(uri: Arc<Uri>) -> Self {
         match Url::from_uri(Uri::clone(&uri)) {
             Ok(url) => Self::Located(Arc::new(url)),
-            Err(_) => Self::Named(uri),
+            Err(_) => Self::named(uri),
         }
     }
 
@@ -118,23 +129,39 @@ impl LineSource {
     pub(crate) fn narrowed(uri: &Uri) -> Self {
         match Url::from_uri(uri.clone()) {
             Ok(url) => Self::Located(Arc::new(url)),
-            Err(_) => Self::Named(Arc::new(uri.clone())),
+            Err(_) => Self::named(Arc::new(uri.clone())),
         }
+    }
+
+    /// A name beside where it resolves to, by [`Uri::locator`].
+    ///
+    /// Resolved here, once for a read, rather than at each ask: the
+    /// resolution reads the process working directory, which is a syscall and
+    /// an allocation no row should repeat, and where a read's bytes came from
+    /// is settled when the read is. A name that resolves nowhere - an ARN
+    /// naming a service no location serves, a URN with an empty part, a
+    /// working directory the process cannot read - answers no location rather
+    /// than refusing the read: the line still has its name, which is what it
+    /// is crossed by.
+    fn named(uri: Arc<Uri>) -> Self {
+        let at = uri.locator().ok().map(Arc::new);
+        Self::Named { uri, at }
     }
 
     /// The identifier the read was addressed by, whichever narrowing it is.
     pub(crate) fn uri(&self) -> &Uri {
         match self {
             Self::Located(url) => <Url as AsRef<Uri>>::as_ref(url),
-            Self::Named(uri) => uri,
+            Self::Named { uri, .. } => uri,
         }
     }
 
-    /// The object, where the identifier is a location.
+    /// The object: the identifier itself where it is a location, else where
+    /// the name it is resolves to.
     pub(crate) fn url(&self) -> Option<&Url> {
         match self {
             Self::Located(url) => Some(url),
-            Self::Named(_) => None,
+            Self::Named { at, .. } => at.as_deref(),
         }
     }
 }
@@ -340,9 +367,10 @@ impl TextLine {
     ///
     /// What a handle *is* addressed by, which is not always a place: a read
     /// through a name or an ARN answers that name here, where
-    /// [`sourceurl`](Self::sourceurl) has none to answer. This is what the
-    /// line's cross code spells, so two reads of one body under two
-    /// identifiers stay two elements.
+    /// [`sourceurl`](Self::sourceurl) answers where the name resolved to.
+    /// This is what the line's cross code spells, so two reads of one body
+    /// under two identifiers stay two elements - and a read under a name is
+    /// crossed by the name however the directory it ran in resolved it.
     ///
     /// Shared rather than owned: every line of one handle carries the same
     /// identifier, and a URI is several small strings that would otherwise be
@@ -352,11 +380,15 @@ impl TextLine {
         self.source.as_ref().map(LineSource::uri)
     }
 
-    /// The object this line was read from, where the identifier is a location.
+    /// The object this line was read from.
     ///
-    /// The same value [`sourceuri`](Self::sourceuri) answers, read as the
-    /// narrowing it is: a line read under a name answers nothing here and
-    /// that name there, exactly as the handle it came from does.
+    /// Where the identifier is a location this is that same value, read as
+    /// the narrowing it is. Where it is a name, this is where the name
+    /// resolves to - by [`Uri::locator`], which spells a URN as a path and
+    /// roots it in the process working directory unless the name carries a
+    /// base of its own - resolved once for the read rather than at each ask.
+    /// A name that resolves nowhere answers nothing here and still answers
+    /// itself at [`sourceuri`](Self::sourceuri).
     #[must_use]
     pub fn sourceurl(&self) -> Option<&Url> {
         self.source.as_ref().and_then(LineSource::url)
@@ -373,7 +405,8 @@ impl TextLine {
     pub const fn shared_url(&self) -> Option<&Arc<Url>> {
         match &self.source {
             Some(LineSource::Located(url)) => Some(url),
-            Some(LineSource::Named(_)) | None => None,
+            Some(LineSource::Named { at, .. }) => at.as_ref(),
+            None => None,
         }
     }
 
@@ -381,7 +414,8 @@ impl TextLine {
     ///
     /// The identifier is narrowed once here rather than once per row, so
     /// [`sourceurl`](Self::sourceurl) answers it where it is a location and
-    /// nothing where it is a name. Refreshes the derived cross code,
+    /// where it resolves to where it is a name. Refreshes the derived cross
+    /// code,
     /// cross hash, current identity and cross identity. An explicitly stated
     /// event value continues to win.
     pub fn set_sourceuri(&mut self, uri: Option<Arc<Uri>>) {

@@ -148,9 +148,11 @@ row number, or the zero-based physical index when `start_rownum` is unset, and
 preserves gaps for blank lines the reader skipped. Likewise, the identifier the
 read was addressed by owns the event `crosscode`: the line is crossed with that
 identifier's canonical text, which on a located read - the common case - is the
-same text the `sourceurl` column holds, while a line read under a name is
-crossed with that name and holds no `sourceurl` at all. A line read under no
-identifier has neither. The code's `crosshashcode` is what the cross identity
+same text the `sourceurl` column holds. A line read under a name is crossed
+with that name, while its `sourceurl` holds where the name resolves to - the
+path it spells, rooted by default in the directory the process is running in -
+so the two columns say different things and each says the true one. A line
+read under no identifier has neither. The code's `crosshashcode` is what the cross identity
 is the UUIDv8 of, so changing the source refreshes that identity; the current
 one is the instant and the line's code, which digests that identifier text with
 the row number and the body, so a source reaches it too - through a name as
@@ -209,13 +211,17 @@ remain the single sources of those event facts.
   index is the row's stream ordinal, continuous across batches, so physical
   gaps the read dropped are not recovered.
 - A persisted `sourceurl` restores the line's shared URL and the identifier it
-  was read under together - a row states its source as a location, so there the
-  two are one value - and that identifier's canonical text supplies the default
-  event `crosscode`; a non-null event `crosscode` column remains an explicit
-  override, which is how a line read under a name comes back crossed with that
-  name while its own `sourceurl` cell is null. Its `crosshashcode` is what the
-  derived `crossuuid` is taken from, so either value is applied before an
-  unstated identity is resolved. With neither source column nor override, the
+  was read under together - a row states its source as a location, so a row is
+  read back as one that was addressed by that location - and its canonical
+  text supplies the default event `crosscode`; a non-null event `crosscode`
+  column remains an explicit override, which is how a line read under a name
+  comes back crossed with that name while its `sourceurl` cell restores the
+  place the name resolved to when the row was written. The name itself is not
+  restored to `sourceuri`, because the row recorded where it was rather than
+  what it was called; the `crosscode` column is what carries the name across,
+  and the identity rests on that. Its `crosshashcode` is what the derived
+  `crossuuid` is taken from, so either value is applied before an unstated
+  identity is resolved. With neither source column nor override, the
   identifier and code stay absent.
 - A null cell stays absent. A malformed present value - a `rownum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`

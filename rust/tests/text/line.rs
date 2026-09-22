@@ -1129,10 +1129,11 @@ mod text {
 
         /// A read is addressed by an identifier, and only sometimes by a
         /// place. Every backend shipped today locates itself, so its two
-        /// answers are one text; a handle addressed by a name answers the
-        /// name alone, and this is what the line does with it.
+        /// answers are one text; a handle addressed by a name is crossed by
+        /// that name and located where the name resolves to, which by default
+        /// is under the process working directory.
         #[test]
-        fn a_line_read_under_a_name_is_crossed_by_that_name_and_locates_nothing() {
+        fn a_line_read_under_a_name_is_crossed_by_it_and_located_where_it_resolves() {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
             let anonymous = line.get_curruuid();
@@ -1149,10 +1150,31 @@ mod text {
                 line.get_crosshashcode(),
                 yggdryl::xxhash::xxh3(name.to_string().as_bytes())
             );
-            // A name is no place, so the column that holds one holds nothing.
-            assert_eq!(line.sourceurl(), None);
+            // A name is still somewhere: it spells a path, rooted by default
+            // in the directory the process runs in, and that is what the
+            // column holding a location holds.
+            let at = line.sourceurl().expect("a name resolves").to_string();
+            assert!(at.starts_with("file:///"), "{at}");
+            assert!(at.ends_with("/lake/trades/2026/part.log"), "{at}");
+            assert_eq!(
+                at,
+                name.locator().expect("the same resolution").to_string()
+            );
+            // Where it resolved is no part of what it is crossed by, so a
+            // read of this name in another directory crosses the same.
+            assert_ne!(line.get_crosscode(), at.as_str());
             let named = line.get_curruuid();
             assert_ne!(named, anonymous);
+
+            // A name that resolves nowhere is still a name: it crosses by
+            // itself and locates nothing, rather than refusing the line.
+            let mut unresolvable = line.clone();
+            let nowhere =
+                Arc::new(Uri::from_str("arn:aws:iam::1:user/dana").expect("a source identifier"));
+            unresolvable.set_sourceuri(Some(Arc::clone(&nowhere)));
+            assert_eq!(unresolvable.sourceuri(), Some(nowhere.as_ref()));
+            assert_eq!(unresolvable.get_crosscode(), nowhere.to_string().as_str());
+            assert_eq!(unresolvable.sourceurl(), None);
 
             // A located read answers the same text from both, which is why
             // every backend shipped today reads the same as it always did.
