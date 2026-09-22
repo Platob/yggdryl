@@ -1156,10 +1156,7 @@ mod text {
             let at = line.sourceurl().expect("a name resolves").to_string();
             assert!(at.starts_with("file:///"), "{at}");
             assert!(at.ends_with("/lake/trades/2026/part.log"), "{at}");
-            assert_eq!(
-                at,
-                name.locator().expect("the same resolution").to_string()
-            );
+            assert_eq!(at, name.locator().expect("the same resolution").to_string());
             // Where it resolved is no part of what it is crossed by, so a
             // read of this name in another directory crosses the same.
             assert_ne!(line.get_crosscode(), at.as_str());
