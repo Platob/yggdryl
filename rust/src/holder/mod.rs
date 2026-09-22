@@ -81,14 +81,14 @@ pub enum Holder {
     /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::fs::FsFile),
     /// A key prefix, or a whole container, on an object store.
-    #[cfg(feature = "object")]
-    S3Folder(crate::object::S3Folder),
+    #[cfg(feature = "s3")]
+    S3Folder(crate::s3::S3Folder),
     /// An object-store location that resolves to whatever it turns out to be.
-    #[cfg(feature = "object")]
-    S3Path(crate::object::S3Path),
+    #[cfg(feature = "s3")]
+    S3Path(crate::s3::S3Path),
     /// One object on an object store.
-    #[cfg(feature = "object")]
-    S3File(crate::object::S3File),
+    #[cfg(feature = "s3")]
+    S3File(crate::s3::S3File),
     /// A prefix of one ZIP archive's members, or the archive root.
     ZipNode(crate::zip::ZipNode),
     /// A location inside a ZIP archive that resolves to whatever it holds.
@@ -166,7 +166,7 @@ impl Holder {
     /// target opens: a `file:` URL is a local path, resolved to a folder or a
     /// file when an operation needs to know; a `file:` URL with a fragment is
     /// a member of a ZIP archive; an object-store URL - `s3:`, `gs:`, `az:`
-    /// and their aliases - is held through the `object` feature, configured
+    /// and their aliases - is held through the `s3` feature, configured
     /// by the properties the store's own tooling names, read the way the
     /// object store options read them.
     ///
@@ -210,14 +210,14 @@ impl Holder {
                 Self::LocalPath(crate::local::LocalPath::from_url(url.clone())?)
             }
         } else if url.scheme().is_object_store() {
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             {
-                let options = crate::object::S3Options::from_properties(
+                let options = crate::s3::S3Options::from_properties(
                     properties.iter().map(|(name, value)| (name, value)),
                 )?;
-                crate::object::located_with(&url.to_string(), options)?
+                crate::s3::located_with(&url.to_string(), options)?
             }
-            #[cfg(not(feature = "object"))]
+            #[cfg(not(feature = "s3"))]
             {
                 return Err(crate::Error::unsupported(
                     "holding an object store location without the object feature",
@@ -545,11 +545,11 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Folder(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Path(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
@@ -571,11 +571,11 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Folder(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Path(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
@@ -597,11 +597,11 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Folder(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Path(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
@@ -623,11 +623,11 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Folder(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3Path(inner) => inner,
-            #[cfg(feature = "object")]
+            #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,

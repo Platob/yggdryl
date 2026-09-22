@@ -166,7 +166,7 @@ passes.
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
 | it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
 | it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
-| a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
+| a gated path works | the loop above plus `--features "parquet iceberg"` or `--features s3` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
@@ -284,7 +284,7 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
-`iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/`
+`iceberg` (implies `parquet`), `s3`. Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
 root file, and `value/` - the contracts a datatype, a field and a value each
 owe the root that holds them - is the one folder among them; every
@@ -332,7 +332,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
-| `local/`, `fs/`, `zip/`, `object/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `object/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `object/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, under the non-default `object` feature |
+| `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
@@ -864,7 +864,7 @@ under the names its own index has: `ZipNode` is a prefix of that index,
   handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
   and asserted in those terms.
 
-### Object stores (`object/`, non-default `object` feature)
+### Object stores (`s3/`, non-default `s3` feature)
 
 One backend, one location/container/leaf trio, three stores: Amazon S3, Google
 Cloud Storage, Azure Blob Storage. Each REST API is spoken directly - SigV4,
@@ -1390,7 +1390,7 @@ and not a silent update.
 | Job | Proves | The one command that reproduces it |
 | --- | --- | --- |
 | Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
-| Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features object --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
+| Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features s3 --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
 | Iceberg Rust 1.94 | the official Iceberg boundary at its own, later MSRV | `cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg` |
 | S3 / Azure / Google exchange | the object stores against MinIO with boto3, Azurite with azure-storage-blob, fake-gcs-server with google-cloud-storage - signatures and dialects against implementations that answer 403 | `python scripts/check_object_interop.py`, `check_azure_interop.py`, `check_gcs_interop.py`; each fetches its own server |
 | ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
@@ -1642,7 +1642,7 @@ stay responsive). Run the language whose examples were edited, once, before
 pushing; CI runs all three.
 
 ```bash
-python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg object
+python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg s3
 python scripts/check_docs_examples.py --lang python       # runs under python/.venv
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 ```

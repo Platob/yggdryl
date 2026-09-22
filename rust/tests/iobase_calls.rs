@@ -11,7 +11,7 @@
 //! call unchanged, and tallies it, so the stack built on top of it is measured
 //! rather than argued about. The counts here are what a *layer* asks of
 //! storage; how many requests a backend then makes of the network is the object
-//! client's own `Stats`, asserted in `rust/tests/object/`.
+//! client's own `Stats`, asserted in `rust/tests/s3/`.
 
 use std::sync::Arc;
 

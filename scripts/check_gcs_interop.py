@@ -19,7 +19,7 @@ and says so rather than implying more.
    ``YGGDRYL_GCS_ENDPOINT`` already points at - and the exchange bucket made;
 2. ``google-cloud-storage`` writes objects under ``from-google/``, including
    the names whose separators the JSON API escapes into one segment;
-3. ``cargo test --features object --test interop object::gcs::`` writes its own
+3. ``cargo test --features s3 --test interop s3::gcs::`` writes its own
    objects under ``from-rust/`` and reads back what the reference client wrote.
    Its reading half prints ``SKIPPED`` when the external objects are missing,
    and this driver fails on that word, so a skipped half can never read as a
@@ -210,10 +210,10 @@ def run_cargo(endpoint: str) -> str:
         "--manifest-path",
         str(REPO / "rust" / "Cargo.toml"),
         "--features",
-        "object",
+        "s3",
         "--test",
         "interop",
-        "object::gcs::",
+        "s3::gcs::",
         "--",
         "--nocapture",
         "--test-threads=1",

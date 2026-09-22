@@ -86,8 +86,8 @@ mod merge;
 mod metadata;
 pub mod mic_code;
 mod mime_type;
-#[cfg(feature = "object")]
-pub mod object;
+#[cfg(feature = "s3")]
+pub mod s3;
 mod parallel;
 #[cfg(feature = "parquet")]
 pub mod parquet;
@@ -354,30 +354,30 @@ pub mod internals {
     pub use crate::merge::internals as merge;
     pub use crate::metadata::internals as metadata;
     pub use crate::mime_type::line::internals as mime_type_line;
-    #[cfg(feature = "object")]
-    pub use crate::object::answer::internals as object_answer;
-    #[cfg(feature = "object")]
-    pub use crate::object::aws::credentials::internals as object_aws_credentials;
-    #[cfg(feature = "object")]
-    pub use crate::object::aws::profile::internals as object_aws_profile;
-    #[cfg(feature = "object")]
-    pub use crate::object::aws::xml::internals as object_aws_xml;
-    #[cfg(feature = "object")]
-    pub use crate::object::azure::dialect::internals as object_azure_dialect;
-    #[cfg(feature = "object")]
-    pub use crate::object::azure::sign::internals as object_azure_sign;
-    #[cfg(feature = "object")]
-    pub use crate::object::azure::xml::internals as object_azure_xml;
-    #[cfg(feature = "object")]
-    pub use crate::object::client::internals as object_client;
-    #[cfg(feature = "object")]
-    pub use crate::object::file::internals as object_file;
-    #[cfg(feature = "object")]
-    pub use crate::object::options::internals as object_options;
-    #[cfg(feature = "object")]
-    pub use crate::object::sigv4::internals as object_sigv4;
-    #[cfg(feature = "object")]
-    pub use crate::object::xml::internals as object_xml;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::answer::internals as s3_answer;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::aws::credentials::internals as s3_aws_credentials;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::aws::profile::internals as s3_aws_profile;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::aws::xml::internals as s3_aws_xml;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::azure::dialect::internals as s3_azure_dialect;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::azure::sign::internals as s3_azure_sign;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::azure::xml::internals as s3_azure_xml;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::client::internals as s3_client;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::file::internals as s3_file;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::options::internals as s3_options;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::sigv4::internals as s3_sigv4;
+    #[cfg(feature = "s3")]
+    pub use crate::s3::xml::internals as s3_xml;
     pub use crate::parallel::internals as parallel;
     #[cfg(feature = "parquet")]
     pub use crate::parquet::geospatial::internals as parquet_geospatial;

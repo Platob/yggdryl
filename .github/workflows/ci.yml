@@ -87,7 +87,7 @@ jobs:
         run: |
           cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
           cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
-          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features object --lib
+          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features s3 --lib
 
   iceberg-msrv:
     name: Iceberg Rust 1.94
@@ -188,7 +188,7 @@ jobs:
           python-version: "3.12"
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
-      # The driver builds the `interop` target with `--features object`, and every
+      # The driver builds the `interop` target with `--features s3`, and every
       # other cargo-building job restores a cache; this one compiled the crate
       # and the whole signed-HTTPS stack from scratch on every run. The full
       # lane is the leg that has `object` compiled.
@@ -398,7 +398,7 @@ jobs:
     #
     # The three halves need three toolchains, which is why the job is one and
     # not three: the Rust half generates an integration target and compiles it
-    # against `parquet iceberg object`, the Python half runs under `python/.venv`
+    # against `parquet iceberg s3`, the Python half runs under `python/.venv`
     # where the script looks for its interpreter, and the JavaScript half
     # needs the built addon and the Arrow package beside it.
     name: Documentation examples

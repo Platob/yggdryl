@@ -15,7 +15,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | [Buffer](backends/buffer.md) | in-memory bytes |
 | [Buffered](backends/buffered.md) | the page cache |
 | [Filesystems](backends/filesystems.md) | Arrow-style `FileSystem` |
-| [Object stores](backends/object.md) | `S3Path`, `S3Folder`, `S3File` over the Amazon S3, Google Cloud Storage, and Azure Blob Storage REST APIs |
+| [Object stores](backends/s3.md) | `S3Path`, `S3Folder`, `S3File` over the Amazon S3, Google Cloud Storage, and Azure Blob Storage REST APIs |
 | [ZIP](backends/zip.md) | `ZipPath`, `ZipNode`, `ZipLeaf` inside one archive, nested archives included |
 
 ## Contract
@@ -23,7 +23,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | key | value |
 | --- | --- |
 | Owns | one enum over every `IOBase` implementation |
-| Variants | one in memory, three local, three foreign, three on object stores (`object` feature), three inside a ZIP archive, four wrapping another `Holder` |
+| Variants | one in memory, three local, three foreign, three on object stores (`s3` feature), three inside a ZIP archive, four wrapping another `Holder` |
 | `Holder::local` | `Holder::LocalPath`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
 | Lazy | construction touches no filesystem; a role resolves only when an operation needs it |
@@ -89,7 +89,7 @@ Construction records a location without probing it, and the enum answers the who
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
 | `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three on an Arrow `FileSystem` | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile` |
-| `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](backends/object.md) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
+| `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](backends/s3.md) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](backends/zip.md) | Rust only |
 | `Buffered` | any of the others behind the page cache | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |

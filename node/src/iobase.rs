@@ -108,7 +108,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     // backend; everything else stays local. Construction touches nothing on
     // either.
     if url.scheme().is_object_store() {
-        return yggdryl::object::located(&url.to_string()).map_err(napi_error);
+        return yggdryl::s3::located(&url.to_string()).map_err(napi_error);
     }
     non_local_scheme(url)?;
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
@@ -117,7 +117,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 /// Hold `url` as a container, on the store its scheme selects.
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::folder(&url.to_string())
+        return yggdryl::s3::folder(&url.to_string())
             .map(Holder::S3Folder)
             .map_err(napi_error);
     }

@@ -19,7 +19,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
-| Holder | [Object stores](holder/backends/object.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
+| Holder | [Object stores](holder/backends/s3.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
 | Holder | [Bytes](holder/iobase/bytes.md) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
 | Holder | [Records](holder/iobase/records.md) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
 | Holder | [Values](holder/iobase/values.md) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |

@@ -52,7 +52,7 @@ rust/                    The core crate
   src/*.rs               One type with its datatype, field and scalar, or
                          one shared trait, enum or value, per root file
   src/holder/            What every storage backend shares; local/, fs/,
-                         zip/ and object/ are one root folder each
+                         zip/ and s3/ are one root folder each
   src/coding/            What every codec shares; gzip.rs, zlib.rs and
                          zstd.rs are one root file each
   src/charset/           What every code page shares; utf8.rs, ascii.rs

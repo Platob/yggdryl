@@ -8149,7 +8149,7 @@ mod isolation {
 ///
 /// `Staging` is private to the module, so its drop, rollback and default
 /// rules are pinned here; what a staged commit costs over a store is
-/// pinned in `rust/tests/object/mod_.rs`.
+/// pinned in `rust/tests/s3/mod_.rs`.
 mod staging_transaction {
     use std::path::{Path, PathBuf};
 

@@ -255,7 +255,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 ### Iceberg over S3
 
-The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/object/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/s3/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
 
 | operation | requests before | requests after | median before | median after |
 | --- | ---: | ---: | ---: | ---: |
@@ -270,7 +270,7 @@ The same table over the in-process S3 the object backend's own suites run on, ev
 Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
 
 ```bash
-cargo bench --features "iceberg object" -p yggdryl --bench media -- 's3/' --quick
+cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
 ```
 
 ### Iceberg on Amazon S3 Tables

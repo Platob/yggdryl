@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::object::{Provider, S3Options};
+use yggdryl::s3::{Provider, S3Options};
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -316,7 +316,7 @@ fn object_holder(
     from_key: impl FnOnce(Provider, &str, &str, S3Options) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
-    let options = object_options(options)?;
+    let options = s3_options(options)?;
     let holder = match key {
         Some(key) => {
             let provider = provider.ok_or_else(|| {
@@ -350,7 +350,7 @@ fn object_holder(
 /// anything else is ignored, so a catalog's properties can be handed over
 /// whole. Values are taken as their text, so `True` and `30` are as good as
 /// `"true"` and `"30"`.
-fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
+fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
     let Some(options) = options else {
         return Ok(S3Options::default());
     };
@@ -392,9 +392,9 @@ impl PyS3Path {
             key,
             provider,
             options,
-            yggdryl::object::located_with,
+            yggdryl::s3::located_with,
             |provider, container, key, options| {
-                yggdryl::object::path_at_with(provider, container, key, options)
+                yggdryl::s3::path_at_with(provider, container, key, options)
                     .map(Holder::S3Path)
             },
         )?
@@ -420,9 +420,9 @@ impl PyS3File {
             key,
             provider,
             options,
-            |url, options| yggdryl::object::file_with(url, options).map(Holder::S3File),
+            |url, options| yggdryl::s3::file_with(url, options).map(Holder::S3File),
             |provider, container, key, options| {
-                yggdryl::object::file_at_with(provider, container, key, options)
+                yggdryl::s3::file_at_with(provider, container, key, options)
                     .map(Holder::S3File)
             },
         )?
@@ -448,9 +448,9 @@ impl PyS3Folder {
             key,
             provider,
             options,
-            |url, options| yggdryl::object::folder_with(url, options).map(Holder::S3Folder),
+            |url, options| yggdryl::s3::folder_with(url, options).map(Holder::S3Folder),
             |provider, container, key, options| {
-                yggdryl::object::folder_at_with(provider, container, key, options)
+                yggdryl::s3::folder_at_with(provider, container, key, options)
                     .map(Holder::S3Folder)
             },
         )?

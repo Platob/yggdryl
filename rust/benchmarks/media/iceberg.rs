@@ -31,8 +31,8 @@ use crate::bench_profile;
 
 /// The in-process S3 the object backend's own suites run on, shared with the
 /// `holder` benchmark: one fixture, so the counts printed here are the counts
-/// pinned in `rust/tests/object/mod_.rs`.
-#[cfg(feature = "object")]
+/// pinned in `rust/tests/s3/mod_.rs`.
+#[cfg(feature = "s3")]
 #[path = "../../tests/support/server.rs"]
 mod server;
 
@@ -1287,8 +1287,8 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
 /// request count is printed once, by shape, beside Criterion's wall time:
 /// on a real store the round trips *are* the cost, and the loopback timing
 /// only shows that nothing else is hiding in them. The counts are the ones
-/// `rust/tests/object/mod_.rs` pins.
-#[cfg(feature = "object")]
+/// `rust/tests/s3/mod_.rs` pins.
+#[cfg(feature = "s3")]
 mod s3 {
 
     use std::cell::Cell;
@@ -1303,7 +1303,7 @@ mod s3 {
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::object::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
+    use yggdryl::s3::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
     use yggdryl::text::TextOptions;
     use yggdryl::{
         DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
@@ -1653,7 +1653,7 @@ mod s3 {
 }
 
 pub(crate) fn benchmarks(criterion: &mut Criterion) {
-    #[cfg(feature = "object")]
+    #[cfg(feature = "s3")]
     s3::benchmarks(criterion);
     plan_benchmarks(criterion);
     metadata_benchmarks(criterion);

@@ -229,12 +229,12 @@ impl Drop for Staging {
 // no object backend compiled in there is nothing to plan and the file is
 // read whole.
 #[cfg_attr(
-    not(feature = "object"),
+    not(feature = "s3"),
     expect(unused_variables, reason = "object-only")
 )]
 fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
     match target {
-        #[cfg(feature = "object")]
+        #[cfg(feature = "s3")]
         Holder::S3File(file) => {
             let mut source = std::fs::File::open(path)?;
             file.upload_from(&mut source, size)
@@ -255,7 +255,7 @@ fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
 /// leaf publishes what it holds when it is dropped, so it is removed first.
 fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
     match target {
-        #[cfg(feature = "object")]
+        #[cfg(feature = "s3")]
         Holder::S3File(file) => {
             let _ = file.discard();
         }
@@ -274,7 +274,7 @@ fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
 /// listing would ask. Every other handle is what it already was.
 pub(super) fn leaf(holder: Holder) -> Result<Holder> {
     match holder {
-        #[cfg(feature = "object")]
+        #[cfg(feature = "s3")]
         Holder::S3Path(path) => Ok(Holder::S3File(path.as_file()?)),
         other => Ok(other),
     }
@@ -287,7 +287,7 @@ pub(super) fn leaf(holder: Holder) -> Result<Holder> {
 /// that would ask the store what the layout already says.
 pub(super) fn container(holder: Holder) -> Result<Holder> {
     match holder {
-        #[cfg(feature = "object")]
+        #[cfg(feature = "s3")]
         Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
         other => Ok(other),
     }
@@ -304,12 +304,12 @@ pub(super) fn container(holder: Holder) -> Result<Holder> {
 /// which is one request more and the truth. A handle with no such memory is
 /// returned as it was.
 #[cfg_attr(
-    not(feature = "object"),
+    not(feature = "s3"),
     expect(unused_variables, reason = "object-only")
 )]
 pub(super) fn sized(holder: Holder, size: u64) -> Holder {
     match holder {
-        #[cfg(feature = "object")]
+        #[cfg(feature = "s3")]
         Holder::S3File(file) if size > 0 => Holder::S3File(file.with_known_size(size)),
         other => other,
     }

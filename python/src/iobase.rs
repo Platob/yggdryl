@@ -77,7 +77,7 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 /// touches nothing on either.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::located(&url.to_string())
+        return yggdryl::s3::located(&url.to_string())
             .map_err(crate::holder::fs::storage_error);
     }
     if !url.is_local() {
@@ -98,7 +98,7 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
 /// Hold `url` as a container, on the store its scheme selects.
 pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::object::folder(&url.to_string())
+        return yggdryl::s3::folder(&url.to_string())
             .map(Holder::S3Folder)
             .map_err(crate::holder::fs::storage_error);
     }

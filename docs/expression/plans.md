@@ -173,7 +173,7 @@
 | `catalog."my schema".[tbl.x].` `` `odd-one` `` | the same parts, each quoted a way an engine quotes it |
 | `t with (media_type = 'application/vnd.apache.arrow.stream', batch_row_size = '1024')` | a target with properties: the holder is opened with them, and the read or write knobs are read from them |
 
-`Holder::from_url(url, properties)` is the one builder every target goes through: a `file:` URL is a local path or, with a fragment, a ZIP member; an object-store scheme needs the `object` feature and reads its credentials from the properties; `media_type` and `codec` type an extensionless resource.
+`Holder::from_url(url, properties)` is the one builder every target goes through: a `file:` URL is a local path or, with a fragment, a ZIP member; an object-store scheme needs the `s3` feature and reads its credentials from the properties; `media_type` and `codec` type an extensionless resource.
 
 ## Verbs and their aliases
 

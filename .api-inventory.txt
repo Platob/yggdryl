@@ -1454,8 +1454,8 @@ pub struct ZipPath
   pub fn as_node(&self) -> ZipNode
   pub fn as_leaf(&self) -> &ZipLeaf
 
-### yggdryl::object  [rust/src/object/mod.rs]
-  Behind the non-default `object` feature. Amazon S3, Google Cloud Storage,
+### yggdryl::s3  [rust/src/s3/mod.rs]
+  Behind the non-default `s3` feature. Amazon S3, Google Cloud Storage,
   and Azure Blob Storage through one location/container/leaf trio.
   pub fn located(url: &str) -> Result<Holder>
   pub fn located_with(url: &str, options: S3Options) -> Result<Holder>
