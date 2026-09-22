@@ -147,11 +147,12 @@ The same records without the crossing: a read returns a reader, and stepping it 
 row number, or the zero-based physical index when `start_rownum` is unset, and
 preserves gaps for blank lines the reader skipped. Likewise, `sourceurl` owns
 the event `crosscode`: a located line uses the URL's canonical text and an
-unlocated line has neither. The code's `crosshashcode` seeds the line's current
-identity, so changing the source refreshes both the current and cross UUIDs. A
-row header therefore cannot declare a `seqnum` or `crosscode` capture, in any
-case. An explicit non-null Event column read back from Arrow remains an
-override of the corresponding base fact.
+unlocated line has neither. The code's `crosshashcode` is what the cross
+identity is the UUIDv8 of, so changing the source refreshes that identity; the
+current one is the instant and the line's code, which digests that source
+text with the row number and the body, so a source URL reaches it too. A row header therefore cannot declare a `seqnum` or `crosscode`
+capture, in any case. An explicit non-null Event column read back from Arrow
+remains an override of the corresponding base fact.
 
 A [row header](lines.md#lines) adds one column per other capture, typed from
 the regex when `autotype` is on, and a [lifted entry](lines.md#lifting-an-entry-into-a-column)
@@ -205,10 +206,10 @@ remain the single sources of those event facts.
   gaps the read dropped are not recovered.
 - A persisted `sourceurl` restores the line's shared URL, whose canonical text
   supplies the default event `crosscode`; a non-null event `crosscode` column
-  remains an explicit override. Its `crosshashcode` seed participates in the
-  derived `curruuid`, so either value is applied before an unstated identity is
-  resolved. With neither source column nor override, the URL and code stay
-  absent.
+  remains an explicit override. Its `crosshashcode` is what the derived
+  `crossuuid` is taken from, so either value is applied before an unstated
+  identity is resolved. With neither source column nor override, the URL and
+  code stay absent.
 - A null cell stays absent. A malformed present value - a `rownum` before the
   start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
   that does not parse, a null in the required `body` - is refused rather than

@@ -27,12 +27,7 @@ fn root(field: Field) -> Field {
 /// The `index`th identifier of the corpus: time-ordered, so the column is
 /// what a stored one looks like.
 fn identifier(index: usize) -> Uuid {
-    Uuid::from_v7(
-        1_645_557_742_000_000 + index as i64,
-        index as u64,
-        index as u64,
-    )
-    .expect("an in-range instant")
+    Uuid::from_v7(1_645_557_742_000_000 + index as i64, index as u64).expect("an in-range instant")
 }
 
 pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
@@ -41,7 +36,6 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             Uuid::from_v7(
                 black_box(1_645_557_742_000_123),
-                black_box(0x74b),
                 black_box(0xfedc_ba98_7654_3210),
             )
             .expect("an in-range microsecond instant")

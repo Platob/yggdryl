@@ -19,7 +19,7 @@ use yggdryl::{Scalar, TimeUnit};
 
 use super::xxhash::{
     JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
-    content_bytes, seed_from_bigint, u64_from_bigint,
+    content_bytes, seed_from_bigint,
 };
 use crate::datatype::JsDataType;
 use crate::field::JsField;
@@ -223,27 +223,30 @@ impl JsTxHash {
         JsScalar::from_core(self.inner.into_scalar())
     }
 
-    /// Project this value, `seqnum`, and `seed` to RFC 9562 `UUIDv7` as a
-    /// `uuid` `Scalar`.
+    /// Project this value to RFC 9562 `UUIDv7` as a `uuid` `Scalar`.
     ///
     /// The instant is floored directly to Unix microseconds: the millisecond
-    /// it falls in leads, and `rand_a` carries the microsecond within it,
-    /// `0..=999`. XXH3-64 hashes the complete 16-byte big-endian
-    /// `(seqnum, digest-u64)` tuple under `seed`; `rand_b` takes the low 12
-    /// sequence bits and then that fingerprint's low 50. This is a lossy,
-    /// non-cryptographic identity - a twelve-bit sequence window over a
-    /// fifty-bit content fingerprint - not a uniqueness guarantee: neither
-    /// the unit nor the algorithm survives, and sequence ordering wraps with
-    /// its low 12 bits.
+    /// it falls in leads, the ten bits under the version carry the
+    /// microsecond within it, `0..=999`, and the digest is stored whole - its
+    /// top two bits above the RFC variant and its low sixty-two below, which
+    /// is what `rand_a` has left over and the whole of `rand_b`. Nothing is
+    /// hashed a second time and nothing is narrowed, so both facts read back
+    /// out: two values project to one identifier only where their microsecond
+    /// and all 64 digest bits agree, and identifiers order by microsecond and
+    /// then by the whole digest. Neither the unit nor the algorithm survives.
+    ///
+    /// The digest is the only content this needs, because whatever else an
+    /// identity rests on is already inside it: a graph event digests its
+    /// cross code, its names, its parents, its state, its sequence and its
+    /// predecessor into `currhashcode` before coupling it here, so rehashing
+    /// them into the identifier would only spend bits restating them.
     /// Throws for a digest that is not 64 bits wide, or an instant outside the
     /// `UUIDv7` range.
     #[napi]
     #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
-    pub fn into_uuid(&self, seqnum: BigInt, seed: BigInt) -> Result<JsScalar> {
-        let seqnum = u64_from_bigint(&seqnum, "seqnum")?;
-        let seed = u64_from_bigint(&seed, "seed")?;
+    pub fn into_uuid(&self) -> Result<JsScalar> {
         self.inner
-            .into_uuid(seqnum, seed)
+            .into_uuid()
             .map(|uuid| JsScalar::from_core(Scalar::Uuid(uuid)))
             .map_err(napi_error)
     }

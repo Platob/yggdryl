@@ -92,8 +92,8 @@ Everything else is resolved on its first ask, once, and never before:
 `seqnum` from `index` under `start_rownum`, `crosscode` from the canonical
 `sourceurl`, and `mtime`, `bodytype`, the row header's
 `captures` in the order the expression declares them, the `entries` the payload
-carries, and the identity - `curruuid` from the instant, sequence, XXH3-64 of
-the bytes and its `crosshashcode` seed, `crossuuid`, `currhashcode`, `crosshashcode`,
+carries, and the identity - `curruuid` from the instant and the XXH3-64 of
+the bytes, `crossuuid`, `currhashcode`, `crosshashcode`,
 `currunix` - so a line handed on as a line resolves only what is asked of it,
 while a batch built from lines asks every row for the nineteen event columns it
 opens with, a projection reading fewer of them afterwards - and a message

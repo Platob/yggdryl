@@ -1262,9 +1262,9 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
 /// over it, the `currhashcode` over everything the message says but the
 /// standard header and trailer, the `curruuid` from its microsecond instant
-/// and full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
-/// seed, and the `crossuuid` over the cross hash - or the `curruuid` itself
-/// when no cross code names a chain. Every write settles it again.
+/// and its whole `currhashcode`, and the `crossuuid` over the cross hash - or
+/// the `curruuid` itself when no cross code names a chain. Every write settles
+/// it again.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
     inner: CoreFixMsg,
@@ -1414,8 +1414,7 @@ impl JsFixMsg {
     }
 
     /// This message's own `UUIDv7` identity, from its microsecond instant and
-    /// full `seqnum`/`currhashcode` tuple rehashed under `crosshashcode` as
-    /// seed, as hyphenated text.
+    /// its whole `currhashcode`, as hyphenated text.
     #[napi(getter)]
     pub fn curruuid(&self) -> String {
         self.inner.get_curruuid().to_string()

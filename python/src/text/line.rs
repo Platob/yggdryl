@@ -456,8 +456,9 @@ impl PyTextLine {
         self.inner.dropped_byte_size()
     }
 
-    /// The line's identity: `UUIDv7` over its microsecond instant, row-derived
-    /// sequence and body hash, with the source URL's cross hash as seed.
+    /// The line's identity: `UUIDv7` with its microsecond instant in front and
+    /// the whole 64-bit XXH3-64 of its body stored behind, so two lines share
+    /// an identity only where both agree.
     ///
     /// A line is an event of the graph, and a message parsed out of it
     /// states this among its `srcuuids`.

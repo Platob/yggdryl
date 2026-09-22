@@ -329,8 +329,8 @@ pub trait Element {
     /// cross codes in step with [`Self::sync_cross`], digests what it says
     /// from [`Self::digest`] or the continuation its traits provide, and
     /// hands the code to [`Self::set_currhashcode`] - or, for an event, to
-    /// [`Event::finalized`], which sets the identity the instant, sequence
-    /// and cross-seeded code derive; an element whose identity is assigned
+    /// [`Event::finalized`], which sets the identity the instant and the code
+    /// derive; an element whose identity is assigned
     /// keeps it. Every
     /// provided reading that changes an element calls this once it has, so
     /// a followed or merged element never carries the code of what it was.
@@ -620,7 +620,7 @@ pub(crate) fn crosshash(crosscode: &str) -> u64 {
 
 /// Feeds one named fact to a digest: the name, the bytes, each closed by a
 /// byte no name or value holds, so two facts never read as one.
-fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
+pub(crate) fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
     state.write(name.as_bytes());
     state.write(&[0]);
     state.write(bytes);
@@ -867,8 +867,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// [`Element::get_currhashcode`], it is the event's identity: [`Self::txhash`]
 /// is the crate's own [`TxHash`] of the two, and [`Self::time_uuid`] the
 /// UUID it answers - RFC 9562 UUIDv7 with the microsecond instant in front
-/// and the low twelve sequence bits over a 50-bit content fingerprint
-/// rehashed under the cross hash code as seed behind -
+/// and the whole code stored behind it, nothing hashed a second time -
 /// which is what an implementor's [`Element::get_curruuid`]
 /// answers where the event's identity is when it happened and what it says.
 ///
@@ -887,10 +886,13 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// snapshot of, where a walk over a grid took one of it.
 ///
 /// An event whose current identity is [`Self::time_uuid`] keeps that identity
-/// in step when its cross code or cross hash changes, because the cross hash
-/// seeds the content fingerprint. The crate's concrete event holders do this
-/// eagerly or invalidate their lazy UUID; an event with an assigned identity
-/// keeps the assignment.
+/// in step with its content, because the identity is the instant beside the
+/// code and nothing else. A cross code therefore moves the identity exactly
+/// where it moves the code - [`Element::digest`] feeds it, so an event
+/// digesting through that reading moves; one that states its own code decides
+/// for itself, as [`crate::FixMsg`] does in leaving the chain out. The crate's
+/// concrete event holders reset eagerly or invalidate their lazy UUID; an
+/// event with an assigned identity keeps the assignment.
 ///
 /// Two readings are provided. [`Self::following`] is what following means
 /// for an event, which an implementor's [`Element::with_previous`]
@@ -1125,7 +1127,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// assert_eq!(held.get_currunix(), 20_000);
 /// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
-/// // The identity its microsecond instant, sequence and cross-seeded code derive.
+/// // The identity its microsecond instant and its whole code derive.
 /// let earlier = first.time_uuid().expect("an instant a TxHash holds");
 /// let later = second.time_uuid().expect("an instant a TxHash holds");
 /// assert!(earlier < later);
@@ -1371,8 +1373,8 @@ pub trait Event: Element {
     }
 
     /// Records the code this event's content digests to and resets the
-    /// identity the instant, sequence and cross-seeded code derive, and the
-    /// cross element behind it.
+    /// identity the instant and that code derive, and the cross element
+    /// behind it.
     ///
     /// Provided, and what an implementor's [`Element::finalize`] hands the
     /// digest of its content to. The identity is [`Self::time_uuid`], and
@@ -1419,15 +1421,20 @@ pub trait Event: Element {
         coupled(self.get_currunix(), self.get_currhashcode())
     }
 
-    /// The identity the instant, sequence, cross hash and code derive: the UUID
+    /// The identity the instant and the code derive: the UUID
     /// [`TxHash::into_uuid`] answers for [`Self::txhash`], RFC 9562 UUIDv7
     /// with the instant floored to microseconds in front - the millisecond it
     /// falls in leads, and `rand_a` carries the microsecond within that
-    /// millisecond - and the complete big-endian sequence/content pair
-    /// rehashed under [`Element::get_crosshashcode`] as seed. Its low twelve
-    /// sequence bits lead the joint fingerprint, so identities sort by
-    /// microsecond first and, within one microsecond, by that low sequence
-    /// window, which wraps every 4,096 values.
+    /// millisecond - and [`Element::get_currhashcode`] stored whole behind it.
+    /// Identities therefore sort by microsecond first and by the code within
+    /// one, and two events share an identity only where both agree.
+    ///
+    /// The code is the only content the identifier needs, because the chain,
+    /// the sequence and the lifecycle are already in it:
+    /// [`Element::digest`] feeds the cross code, the names and the parents,
+    /// and [`Self::digest_event`] feeds the state, the place in the chain and
+    /// the predecessor's identity. Rehashing any of them here would spend
+    /// bits restating what the code already says.
     ///
     /// Provided: an implementor whose identity is when it happened and what
     /// it says answers this from [`Element::get_curruuid`], and one whose
@@ -1437,8 +1444,7 @@ pub trait Event: Element {
     ///
     /// Returns what [`Self::txhash`] returns.
     fn time_uuid(&self) -> Result<Uuid> {
-        self.txhash()?
-            .into_uuid(self.get_seqnum(), self.get_crosshashcode())
+        self.txhash()?.into_uuid()
     }
 }
 

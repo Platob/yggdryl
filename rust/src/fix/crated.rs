@@ -163,7 +163,7 @@ pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");
 
 /// The tag and name carrying the message's identity: the UUIDv7 its microsecond
-/// instant, sequence and cross-seeded code derive.
+/// instant and code derive.
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
@@ -563,7 +563,7 @@ fn build() -> Result<Vec<Field>> {
         event(
             EventColumn::CurrUuid,
             "CurrUuid",
-            "The message's identity: the UUIDv7 its microsecond instant, sequence and cross-seeded code derive.",
+            "The message's identity: the UUIDv7 its microsecond instant and code derive.",
         )?,
         event(
             EventColumn::CrossUuid,

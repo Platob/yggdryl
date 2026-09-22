@@ -161,10 +161,10 @@ The source field is complete before any source bytes are read. It opens with the
 | `exprtime` | `datetime64(ns, UTC)` | nullable; an `exprtime` capture as an instant, else what a walk folded, else null |
 | `prevunix` | `datetime64(ns, UTC)` | nullable; a `prevunix` capture, else what a walk stamped, else null |
 | `snapunix` | `datetime64(ns, UTC)` | nullable; a `snapunix` capture, else what a grid stamped, else null |
-| `curruuid` | `uuid` | required; the line's identity, the UUIDv7 derived from `currunix`, `seqnum`, and `currhashcode`, with `crosshashcode` as its seed; the nil identity where the instant has no UUIDv7 |
+| `curruuid` | `uuid` | required; the line's identity, the UUIDv7 its microsecond `currunix` and `currhashcode` derive; the nil identity where the instant has no UUIDv7 |
 | `crossuuid` | `uuid` | required; the UUIDv8 of `crosshashcode`, or `curruuid` where the line names no cross code |
 | `crosscode` | `utf8` | nullable; an explicit event value, else the canonical text of `sourceurl`, else null for an unlocated line |
-| `currhashcode` | `uint64` | required; the XXH3-64 of the body's bytes |
+| `currhashcode` | `uint64` | required; the XXH3-64 of the cross code, the row number and the body |
 | `crosshashcode` | `uint64` | required; the XXH3-64 of `crosscode`, zero where none |
 | `prevuuid` | `uuid` | nullable; a `prevuuid` capture, else what a walk stamped, else null |
 | `seqnum` | `uint64` | nullable; the row number under `start_rownum`, else the zero-based physical index, unless an event value was stated explicitly; null where zero |
@@ -225,7 +225,7 @@ Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture)
 - keyed merge -> refused; a line has no row identity, so overwrite and append are the two intents.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
 - an unlocated buffer -> `sourceurl`, `crosscode`, and `mtime` are null: a buffer has no location and records no modification time; `crosshashcode` is zero and `crossuuid` is the line's own identity.
-- an event fact nothing states -> the column's null, but for the ones never null: `currunix` the epoch, `curruuid` the nil identity where the instant has no UUIDv7, `crossuuid` the line's own identity, `currhashcode` the body hash, `crosshashcode` zero; and `state`, nullable, is written `00UNKNOWN` all the same.
+- an event fact nothing states -> the column's null, but for the ones never null: `currunix` the epoch, `curruuid` the nil identity where the instant has no UUIDv7, `crossuuid` the line's own identity, `currhashcode` the code of the cross code, the row and the body, `crosshashcode` zero; and `state`, nullable, is written `00UNKNOWN` all the same.
 - a row-header capture named `seqnum` or `crosscode`, in any case -> refused when the header is set, because the reader owns those facts through `rownum` / `index` and `sourceurl`.
 - a `state`, `prevuuid`, or instant capture the line cannot read at the fact's datatype -> a refusal naming the row, the object and the fact, on the batch as on the reading.
 - a negative calculated `rownum` -> cannot supply the event's unsigned `seqnum` and therefore refuses a line batch; the infallible event door falls back to the physical index.

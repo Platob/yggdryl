@@ -64,19 +64,17 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("into_bytes", |bencher| {
         bencher.iter(|| black_box(value).into_bytes());
     });
-    let projected = value
-        .into_uuid(7, 0)
-        .expect("the instant fits microseconds");
+    let projected = value.into_uuid().expect("the instant fits microseconds");
     // `into_uuid` projects a TxHash as a UUIDv7: the microsecond instant in
     // front - the millisecond, the version, then the microsecond within it -
-    // the RFC variant next, and under it the low sequence window over a
-    // fingerprint of the sequence and the digest.
+    // and the whole 64-bit digest behind, its top two bits above the RFC
+    // variant and its low sixty-two below. Nothing is hashed a second time.
     assert_eq!(projected.into_bytes()[6] >> 4, 7);
     assert_eq!(projected.into_bytes()[8] >> 6, 2);
     group.bench_function("into_uuid", |bencher| {
         bencher.iter(|| {
             black_box(value)
-                .into_uuid(black_box(7), black_box(11))
+                .into_uuid()
                 .expect("a 64-bit digest and in-range instant")
         });
     });

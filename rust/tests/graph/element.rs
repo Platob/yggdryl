@@ -44,9 +44,9 @@ struct Report {
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
-    /// Whether the identity derives from the instant, sequence, cross seed and
-    /// content code, which is what finalizing resets it to; an assigned
-    /// identity stays assigned.
+    /// Whether the identity derives from the instant and the content code,
+    /// which is what finalizing resets it to; an assigned identity stays
+    /// assigned.
     derived: bool,
 }
 
@@ -276,6 +276,23 @@ fn identifiers<const N: usize>(pairs: [(&str, &str); N]) -> BTreeMap<String, Str
         .into_iter()
         .map(|(scheme, identifier)| (scheme.to_owned(), identifier.to_owned()))
         .collect()
+}
+
+/// The microsecond instant and the whole 64-bit code one derived identity
+/// carries, read back out of its 128 bits.
+///
+/// The projection stores both facts and hashes neither, so a case states what
+/// it expects them to be rather than a hex literal nothing can check. The
+/// code's top two bits ride above the RFC variant and its low sixty-two
+/// below, which is why reading it back takes two pieces.
+fn decoded(uuid: Uuid) -> (i64, u64) {
+    let packed = uuid.get();
+    let micros = (packed >> 80) * 1_000 + ((packed >> 66) & 0x3ff);
+    let code = (((packed >> 64) & 0x3) << 62) | (packed & ((1 << 62) - 1));
+    (
+        i64::try_from(micros).expect("a microsecond count an i64 holds"),
+        u64::try_from(code).expect("sixty-four code bits"),
+    )
 }
 
 /// The XXH3-64 of one cross code, as the trait derives it.
@@ -1211,34 +1228,59 @@ fn a_walk_over_elements_reaches_a_root_by_identity() {
 }
 
 #[test]
-fn the_instant_sequence_seed_and_code_derive_one_time_ordered_identity() {
+fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     let mut event = Report::at(1, at(0));
     event.set_currhashcode(0xCAFE);
     let held = event.txhash().expect("an instant a TxHash holds");
     assert_eq!(held.unix(), at(0));
     assert_eq!(held.digest().as_u64(), Some(0xCAFE));
 
-    // The same instant, sequence, cross seed and code derive the same identity.
+    // The same instant and the same code derive the same identity.
     let identity = event.time_uuid().expect("an identity");
     assert_eq!(event.time_uuid().expect("an identity"), identity);
-    assert_eq!(
-        identity,
-        held.into_uuid(0, 0).expect("the TxHash's own UUID")
-    );
+    assert_eq!(identity, held.into_uuid().expect("the TxHash's own UUID"));
 
-    // A later microsecond sorts later whatever the sequence or code. Within
-    // one microsecond the low sequence bits lead the content fingerprint.
+    // Nothing is hashed a second time and nothing is narrowed, so both facts
+    // read back out of the identifier whole - the instant at the microsecond
+    // the projection floors it to, a thousand nanoseconds to each.
+    assert_eq!(identity.version(), 7);
+    assert_eq!(decoded(identity), (at(0) / 1_000, 0xCAFE));
+
+    // A later microsecond sorts later whatever the code. Within one
+    // microsecond the whole code orders, all 64 bits of it, and it is
+    // stored rather than fingerprinted, so the order is the code's own.
     let mut later = event.clone();
     later.set_currunix(at(0) + MS);
     later.set_currhashcode(0);
     assert!(later.time_uuid().expect("an identity") > identity);
-    let mut sequenced = event.clone();
-    sequenced.set_seqnum(1);
-    sequenced.set_currhashcode(0);
-    assert!(sequenced.time_uuid().expect("an identity") > identity);
+    let mut quieter = event.clone();
+    quieter.set_currhashcode(0);
+    assert!(quieter.time_uuid().expect("an identity") < identity);
     let mut sibling = event.clone();
     sibling.set_currhashcode(0xCAFF);
-    assert_ne!(sibling.time_uuid().expect("an identity"), identity);
+    assert!(sibling.time_uuid().expect("an identity") > identity);
+
+    // The code's top two bits sit above the RFC variant and the rest below
+    // it, so a code with every bit set is the case that proves the split
+    // drops none of them and still orders above every smaller one.
+    let mut loudest = event.clone();
+    loudest.set_currhashcode(u64::MAX);
+    let loud = loudest.time_uuid().expect("an identity");
+    assert_eq!(decoded(loud), (at(0) / 1_000, u64::MAX));
+    assert_eq!(loud.version(), 7);
+    assert!(loud > sibling.time_uuid().expect("an identity"));
+
+    // The place in the chain reaches the identity only through the code,
+    // which `digest_event` feeds it into; the identifier spends no bits on
+    // it. Two events of one chain still differ, because their codes do.
+    let mut sequenced = event.clone();
+    sequenced.set_seqnum(1);
+    assert_eq!(sequenced.time_uuid().expect("an identity"), identity);
+    assert_ne!(
+        sequenced.digest_event().as_u64(),
+        event.digest_event().as_u64(),
+        "the place is inside the code"
+    );
 
     // Every instant the count holds - the last one is in 2262 - a UUIDv7
     // holds too; one before the epoch has no UUIDv7 to derive.
@@ -1251,9 +1293,9 @@ fn the_instant_sequence_seed_and_code_derive_one_time_ordered_identity() {
     assert!(before.txhash().is_ok());
     assert!(before.time_uuid().is_err());
 
-    // Finalized with a code, an event's identity is the one its instant,
-    // sequence, cross seed and code derive. Its cross element is that identity
-    // where it states no cross code, and the cross code's own identity otherwise.
+    // Finalized with a code, an event's identity is the one its instant and
+    // its code derive. Its cross element is that identity where it states no
+    // cross code, and the cross code's own identity otherwise.
     let mut finalized = event.clone();
     finalized.finalized(0xCAFE);
     assert_eq!(finalized.get_currhashcode(), 0xCAFE);
@@ -1262,12 +1304,11 @@ fn the_instant_sequence_seed_and_code_derive_one_time_ordered_identity() {
     finalized.set_crosscode("O-1".to_owned());
     finalized.sync_cross();
     finalized.finalized(0xCAFE);
-    assert_ne!(finalized.get_curruuid(), identity);
+    // The cross code moves the cross element and nothing else: the identity
+    // is the instant beside the code it was handed, with no seed over it.
+    assert_eq!(finalized.get_curruuid(), identity);
     assert_eq!(finalized.get_curruuid(), finalized.time_uuid().unwrap());
-    assert_eq!(
-        finalized.get_curruuid(),
-        held.into_uuid(0, crosshash("O-1")).unwrap()
-    );
+    assert_eq!(finalized.get_curruuid(), held.into_uuid().unwrap());
     assert_eq!(
         finalized.get_crossuuid(),
         Uuid::from_v8(u128::from(crosshash("O-1")))
@@ -1291,15 +1332,26 @@ fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
     event.set_currunix(at(0));
     assert_eq!(event.get_curruuid(), uncrossed);
 
+    // The place in the chain is inside the content code, not beside it in
+    // the identifier, so setting it reprojects from an unchanged code and
+    // the identity stands until the code is recomputed.
+    let placed = event.digest_market_event().as_u64();
     event.set_seqnum(1);
     assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
-    assert_ne!(event.get_curruuid(), uncrossed);
+    assert_eq!(event.get_curruuid(), uncrossed);
+    assert_ne!(
+        event.digest_market_event().as_u64(),
+        placed,
+        "the place is inside the code"
+    );
     event.set_seqnum(0);
     assert_eq!(event.get_curruuid(), uncrossed);
 
+    // The cross hash code moves the cross element alone: the identity holds
+    // the content code whole and is seeded by nothing.
     event.set_crosshashcode(0xBEEF);
     assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
-    assert_ne!(event.get_curruuid(), uncrossed);
+    assert_eq!(event.get_curruuid(), uncrossed);
     assert_eq!(event.get_crossuuid(), Uuid::from_v8(0xBEEF));
     event.set_crosshashcode(0);
     assert_eq!(event.get_curruuid(), uncrossed);
@@ -1308,14 +1360,14 @@ fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
     event.finalized(0xCAFF);
     assert_eq!(event.get_currhashcode(), 0xCAFF);
     assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_ne!(event.get_curruuid(), uncrossed);
     assert_eq!(event.get_crossuuid(), event.get_curruuid());
     event.finalized(0xCAFE);
     assert_eq!(event.get_curruuid(), uncrossed);
 
     event.set_crosscode("O-100".to_owned());
-    let crossed = event.get_curruuid();
-    assert_ne!(crossed, uncrossed);
-    assert_eq!(crossed, event.time_uuid().unwrap());
+    assert_eq!(event.get_curruuid(), event.time_uuid().unwrap());
+    assert_eq!(event.get_curruuid(), uncrossed, "the code did not move");
     assert_eq!(event.get_crosshashcode(), crosshash("O-100"));
     assert_eq!(
         event.get_crossuuid(),
@@ -1607,7 +1659,7 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
     assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
 
     // An identity assigned stays through a change; one derived from the
-    // instant, sequence, cross seed and content is reset from those inputs.
+    // instant and the content code is reset from those inputs.
     assert_eq!(second.get_curruuid(), Uuid::from_v8(2));
     let mut derived = Report::at(3, at(30));
     derived.derived = true;
@@ -1777,10 +1829,11 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
 }
 
 #[test]
-fn the_content_code_ignores_derived_cross_facts_but_identity_uses_the_cross_hash_seed() {
-    // The content code excludes all derived cross facts and provenance. The
-    // time identity deliberately uses the cross hash as its projection seed;
-    // the cross UUID and source identities remain outside both.
+fn the_content_code_and_the_time_identity_both_ignore_derived_cross_facts() {
+    // The content code excludes all derived cross facts and provenance, and
+    // so does the identity: the code is carried whole rather than reprojected
+    // under a cross-derived seed, so the cross hash, the cross UUID and the
+    // source identities stay outside both.
     let stated = trade(10);
     let mut crossed = stated.clone();
     crossed.set_crosshashcode(0xCD);
@@ -1790,7 +1843,7 @@ fn the_content_code_ignores_derived_cross_facts_but_identity_uses_the_cross_hash
         crossed.digest_market_event().as_u64(),
         stated.digest_market_event().as_u64()
     );
-    assert_ne!(
+    assert_eq!(
         crossed.time_uuid().expect("an identity"),
         stated.time_uuid().expect("an identity")
     );
@@ -1817,7 +1870,7 @@ fn the_content_code_ignores_derived_cross_facts_but_identity_uses_the_cross_hash
         crossed.digest_event().as_u64(),
         report.digest_event().as_u64()
     );
-    assert_ne!(
+    assert_eq!(
         crossed.time_uuid().expect("an identity"),
         report.time_uuid().expect("an identity")
     );
@@ -1889,8 +1942,8 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     assert_eq!(alone.get_crossuuid(), alone.get_curruuid());
     assert_ne!(alone.get_curruuid(), Uuid::default());
 
-    // A market event's identity is UUIDv7 over its instant, sequence and
-    // cross-seeded content, so the same facts at another instant differ.
+    // A market event's identity is UUIDv7 over its instant and the code its
+    // content digests to, so the same facts at another instant differ.
     let event = trade(10);
     assert_eq!(
         event.get_curruuid(),

@@ -316,7 +316,6 @@ fn uuid_version_7_and_8_construction_allocate_nothing() {
                 black_box(
                     Uuid::from_v7(
                         black_box(instants[index % instants.len()]),
-                        black_box(index as u64),
                         black_box(u64::MAX - index as u64),
                     )
                     .expect("an in-range microsecond instant"),
@@ -364,7 +363,7 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
                 for index in 0..count {
                     black_box(
                         black_box(values[index % values.len()])
-                            .into_uuid(black_box(index as u64), black_box(index as u64 + 1))
+                            .into_uuid()
                             .expect("an in-range microsecond instant and a 64-bit digest"),
                     );
                 }

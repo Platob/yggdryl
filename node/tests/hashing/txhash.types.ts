@@ -36,7 +36,7 @@ const bytes: Uint8Array = narrow.bytes()
 const restated: TxHash = narrow.withUnit('s')
 const datetime: Scalar = narrow.intoDatetime()
 const cell: Scalar = narrow.intoScalar()
-const projected: Scalar = wide.intoUuid(0n, 0n)
+const projected: Scalar = wide.intoUuid()
 const same: boolean = narrow.equals(TxHash.from(narrow.toString()))
 const order: number = narrow.compare(wide)
 const stable: bigint = narrow.stableHash()
@@ -61,6 +61,8 @@ void rendered
 void parts
 void rebuilt
 void new TxHash(narrow.toString())
+// @ts-expect-error the sequence and the seed are gone from the projection
+void wide.intoUuid(0n, 0n)
 
 // The configuration.
 const hasher: TxHasher = new TxHasher('xxh64', 's', 7n)

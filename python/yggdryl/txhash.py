@@ -6,9 +6,10 @@ after it, at its algorithm's exact width. The instant is always UTC and
 counted in microseconds unless a resolution is named, and the digest is what
 :mod:`yggdryl.xxhash` answers for the same bytes - the coupled value
 defines no second content digest. :meth:`TxHash.into_uuid` projects a value
-with a 64-bit digest to a lossy RFC 9562 UUIDv7 ``uuid`` scalar: the whole
-microsecond instant leads, and the complete sequence/digest tuple hashed under
-the caller's seed fills what the instant leaves.
+with a 64-bit digest to an RFC 9562 UUIDv7 ``uuid`` scalar: the whole
+microsecond instant leads, and all 64 digest bits fill what it leaves. Nothing
+is hashed a second time and nothing is narrowed, so both facts read back out of
+the identifier and it orders by microsecond, then by the whole digest.
 
 Every ``unix`` argument reads the same way: an ``int`` is the count already,
 and a ``datetime``, a ``date``, timestamp text, or a native ``Scalar`` is read

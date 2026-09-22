@@ -938,12 +938,16 @@ mod text {
                 (None, None, None)
             );
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
-            // The identity: instant, physical sequence and body digest, with no
-            // cross-hash seed on this unlocated line.
-            assert_eq!(
+            // The identity: the instant beside the code of the cross code,
+            // the row and the body. This line names no source, so its code is
+            // the row and the body - and never the body alone, which would
+            // give two rows of one text one identity.
+            assert_ne!(
                 line.get_currhashcode(),
-                yggdryl::xxhash::xxh3(body.as_bytes())
+                yggdryl::xxhash::xxh3(body.as_bytes()),
+                "the row is in the code"
             );
+            assert_eq!(line.get_currhashcode(), 10_736_466_920_538_629_996);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
             // A line is read from a handle: no source, and no parent until a
             // walk states one.
@@ -1269,7 +1273,10 @@ mod text {
             line.set_body(TextBytes::from_bytes("plain").expect("a page"))
                 .expect("a body");
             assert_ne!(line.get_curruuid(), sequenced);
-            assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
+            // The code is the cross code, the row and the body together; this
+            // line states row 9, so it is not the bare digest of "plain".
+            assert_ne!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
+            assert_eq!(line.get_currhashcode(), 14_379_716_494_988_528_252);
             assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
             assert!(line.get_state().is_done(), "stated, so it stands");
             assert_eq!(line.get_seqnum(), 9);
@@ -1350,18 +1357,19 @@ mod text {
         }
 
         #[test]
-        fn the_identity_reads_the_cross_hash_but_not_a_stated_cross_element_or_source() {
+        fn the_identity_reads_the_cross_code_but_not_a_stated_cross_element_or_source() {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let stated = line(&body, &options);
+            // A cross hash, a cross element and sources are each derived or
+            // provenance, and the code digests none of them, so none of them
+            // reaches the identity the code and the instant derive.
             let mut crossed = line(&body, &options);
             crossed.set_crosshashcode(0xCD);
-            let crossed_identity = crossed.get_curruuid();
-            assert_ne!(crossed_identity, stated.get_curruuid());
             crossed.set_crossuuid(Uuid::from_v8(77));
             crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
-            assert_eq!(crossed.get_curruuid(), crossed_identity);
+            assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
             assert_eq!(
                 crossed.get_crossuuid(),
                 Uuid::from_v8(77),
@@ -1371,6 +1379,17 @@ mod text {
             assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
             assert_eq!(crossed.get_crosshashcode(), stated.get_crosshashcode());
             assert_eq!(crossed.get_crossuuid(), stated.get_crossuuid());
+
+            // The cross code is what the code digests, so it is what moves
+            // the identity - and finalizing derives the same one again rather
+            // than dropping it, because the code still states it.
+            let mut sourced = line(&body, &options);
+            sourced.set_crosscode("O-100".to_owned());
+            assert_ne!(sourced.get_currhashcode(), stated.get_currhashcode());
+            let moved = sourced.get_curruuid();
+            assert_ne!(moved, stated.get_curruuid());
+            sourced.finalize();
+            assert_eq!(sourced.get_curruuid(), moved);
         }
 
         #[test]

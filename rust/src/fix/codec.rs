@@ -1468,7 +1468,7 @@ impl FixCodec {
             Err(error) => return FixMessages::from_result(Err(error)),
         };
         // The row's own identity where the carrier stated one, else the
-        // identity its bytes, instant, sequence and source-derived seed derive.
+        // identity its bytes and its instant derive.
         let extras = RowExtras {
             source: extras.source.or_else(|| source_of(&line)),
             recdunix: mtime,

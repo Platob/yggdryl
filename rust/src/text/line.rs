@@ -39,11 +39,18 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_refrecdunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | the source URL, else none |
-/// | `get_currhashcode` | the XXH3-64 of the body's bytes |
+/// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
-/// | `get_curruuid` | [`Event::time_uuid`] over the instant, row number and body code seeded by the cross hash |
+/// | `get_curruuid` | [`Event::time_uuid`] over the instant and that code |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
 /// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
+///
+/// The identity is the instant beside that code, and the code is what tells
+/// two identical bodies apart: the source they were read under and the row
+/// they sat on are digested with the body, so two byte-identical lines of one
+/// handle that dates no row still answer two identities, and one line read
+/// from two objects answers two. A derived value is never digested, so a
+/// stated `crosshashcode`, cross element or source moves neither.
 ///
 /// A capture named for an [`Event`] fact that the line does not derive feeds
 /// that reading by its exact name, parsed at the fact's own datatype - an
@@ -194,7 +201,7 @@ struct Resolved {
 
 impl Resolved {
     /// Drops the four derived identity readings, so they resolve afresh from
-    /// the body, instant, sequence and cross code as they now are.
+    /// the body, instant and cross code as they now are.
     fn reset_identity(&mut self) {
         self.currhashcode = OnceLock::new();
         self.crosshashcode = OnceLock::new();
@@ -301,8 +308,7 @@ impl TextLine {
     pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
         self.url = url;
         self.resolved.crosshashcode = OnceLock::new();
-        self.resolved.curruuid = OnceLock::new();
-        self.resolved.crossuuid = OnceLock::new();
+        self.derive_uuids();
     }
 
     /// Return this line addressed to one object.
@@ -937,7 +943,7 @@ impl TextLine {
 
     /// Drops what the identity derives - the code, the cross hash code, the
     /// identity and the cross element - stated or resolved, so each resolves
-    /// afresh from the body, instant, sequence and cross code as they now are.
+    /// afresh from the body, instant and cross code as they now are.
     fn derive_identity(&mut self) {
         self.stated.currhashcode = None;
         self.stated.crosshashcode = None;
@@ -951,6 +957,9 @@ impl TextLine {
     fn derive_uuids(&mut self) {
         self.stated.curruuid = None;
         self.stated.crossuuid = None;
+        // The code digests what the line states, so a stated fact drops it
+        // too; a code the caller stated outright is its word and survives.
+        self.resolved.currhashcode = OnceLock::new();
         self.resolved.curruuid = OnceLock::new();
         self.resolved.crossuuid = OnceLock::new();
     }
@@ -1097,10 +1106,10 @@ impl Element for TextLine {
         if let Some(stated) = self.stated.curruuid {
             return stated;
         }
-        // The UUIDv7 the instant, row number and cross-seeded code derive; an instant a UUIDv7
-        // cannot hold - before the epoch, past the microsecond count its
-        // 48-bit millisecond timestamp reaches - is the nil identity, never a
-        // truncated one.
+        // The UUIDv7 the instant and the line's code derive; an instant a
+        // UUIDv7 cannot hold - before the epoch, past the microsecond count
+        // its 48-bit millisecond timestamp reaches - is the nil identity,
+        // never a truncated one.
         *self
             .resolved
             .curruuid
@@ -1141,10 +1150,23 @@ impl Element for TextLine {
         if let Some(stated) = self.stated.currhashcode {
             return stated;
         }
-        *self
-            .resolved
-            .currhashcode
-            .get_or_init(|| crate::xxhash::xxh3(self.body.as_bytes()))
+        *self.resolved.currhashcode.get_or_init(|| {
+            // The body is what a line says, and the cross code it was read
+            // under and the row it sat on are what tell two identical bodies
+            // apart - so the code carries all three and the identity keeps
+            // them without the projection having to carry them separately.
+            // `digest_event` would feed the identifiers too, and resolving
+            // that map costs a line eight allocations it never used to pay,
+            // so the three facts are fed directly under the same framing.
+            let mut state = crate::xxhash::Xxh3::new();
+            let crosscode = self.get_crosscode();
+            if !crosscode.is_empty() {
+                crate::graph::element::feed(&mut state, "crosscode", crosscode.as_bytes());
+            }
+            crate::graph::element::feed(&mut state, "seqnum", &self.get_seqnum().to_le_bytes());
+            crate::graph::element::feed(&mut state, "body", self.body.as_bytes());
+            state.as_u64()
+        })
     }
 
     fn set_currhashcode(&mut self, hashcode: u64) {
@@ -1211,9 +1233,9 @@ impl Element for TextLine {
         (self.get_currunix(), self.index) > (other.get_currunix(), other.index)
     }
 
-    /// The identity is what the instant, sequence and cross-seeded body code
-    /// derive: the code, cross hash code, identity and cross element resolve
-    /// afresh on their next ask.
+    /// The identity is what the instant and the line's code derive: the code,
+    /// cross hash code, identity and cross element resolve afresh on their
+    /// next ask.
     fn finalize(&mut self) {
         self.derive_identity();
     }
