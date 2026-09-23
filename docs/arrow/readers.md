@@ -8,7 +8,7 @@
 | --- | --- |
 | Owns | `BatchReader`, `batch_reader`, `combined`, `combined_as`, `cast_reader` |
 | Shape | `Box<dyn arrow_array::RecordBatchReader + Send>`; owns what it reads from |
-| Paths | Every read path returns one; `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` consume one ([../holder/iobase/records.md](../holder/iobase/records.md)) |
+| Paths | Every read path returns one; `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` consume one ([../holder/index.md#records](../holder/index.md#records)) |
 | Feature flag | `parquet::read_batch_reader` needs the non-default `parquet` feature |
 | Roots | `combined` merges both schemas into the root; `combined_as` casts both onto the caller's |
 | Lazy | Schema before any batch; `combined` pulls no row and collects nothing |
