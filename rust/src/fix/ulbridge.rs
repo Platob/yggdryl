@@ -33,9 +33,11 @@
 /// through this header falls back to the handle's own modification time and
 /// an unlocated handle leaves every line at the epoch. It is not the
 /// message's clock either: a message is dated by the `SendingTime(52)` it
-/// states, else the `TransactTime(60)` it states, else the codec's
-/// `default_sending_time`. A caller who wants this header to date its lines
-/// renames the capture `mtime`, and pays two prices for it: an `mtime`
+/// states, else the `TransactTime(60)` it states, else the line's
+/// `currunix` - through this header, the handle's time where it has one -
+/// else the codec's `default_sending_time`. A caller who wants this header
+/// to date its lines, and the undated messages on them, renames the
+/// capture `mtime`, and pays two prices for it: an `mtime`
 /// capture is consumed into `currunix` instead of being carried beside it,
 /// so the `timestamp` column goes; and it is read at `datetime64(ns, UTC)`
 /// whatever fraction the expression spells, so the syntax no longer types
@@ -62,7 +64,8 @@
 /// than failing the row, so it keeps its body, settles at the epoch pin, and
 /// arrives at [`FixCodec::lifecycle`](super::FixCodec::lifecycle)
 /// carrying no session instance, no message context and no sequence. Those
-/// three with the message type are what build `msgsesseventid`, and that is
+/// three with the message type are what the capture's
+/// [`MsgSessEventId`](super::MSGSESSEVENTID_TAG_NAME) joins, and that is
 /// the key two observations of one session event are merged on, so a line
 /// this expression misses is a line the walk cannot fold. Editing the
 /// fraction, the bracket or any other part of it therefore changes how many

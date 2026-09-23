@@ -124,8 +124,10 @@ fn derived_marketoperationid(registry: &FixRegistry, msgtype: &str) -> i32 {
 /// seeded by the cross hash, and the cross identity the UUIDv8 the cross code's
 /// digest derives - the first chain
 /// identifier the message spells, `OrderID` before `ClOrdID`. A bridge's
-/// bracketed `session:context` is retained among the message identifiers as
-/// capture provenance and never replaces that chain code. Every write settles it again, so a written code or identity
+/// bracketed session and context, joined with the message's type and
+/// sequence, are the session event it was delivered as,
+/// [`FixCapture::msgsesseventid`]: capture provenance that never replaces
+/// that chain code. Every write settles it again, so a written code or identity
 /// is overwritten by the settled one. [`Self::entries`] is the row read as a tree, for a
 /// consumer that walks one shape, and [`Self::into_bytes`] re-emits the
 /// message from it.
@@ -240,29 +242,33 @@ pub struct FixMsg {
     carried: Vec<(SmolStr, Scalar)>,
 }
 
-/// The complete bridge/FIX delivery identity retained outside message content.
-const MSGSESSEVENTID_IDENTIFIER: &str = "msgsesseventid";
+/// The name the session event was kept under among the identifiers before
+/// it had a column of its own: a row written then still states it there,
+/// and the column is now its one owner.
+const MSGSESSEVENTID_IDENTIFIER: &str = super::MSGSESSEVENTID_TAG_NAME.1;
 
-/// Whether an unsigned decimal is in its one canonical spelling.
-fn is_canonical_unsigned(encoded: &str) -> bool {
-    !encoded.is_empty()
-        && (encoded.len() == 1 || !encoded.starts_with('0'))
-        && encoded.bytes().all(|byte| byte.is_ascii_digit())
-}
-
-/// Removes one byte-length-prefixed identity component and its separator.
-/// A malformed externally supplied identifier simply does not match and is
-/// replaced when the message next settles.
-fn strip_session_event_part<'a>(encoded: &'a str, expected: &str) -> Option<&'a str> {
-    let (length, encoded) = encoded.split_once(':')?;
-    if !is_canonical_unsigned(length) || length.parse::<usize>().ok()? != expected.len() {
-        return None;
+/// Whether `held` is the four parts of a session event joined by `:`,
+/// compared in place rather than joined again.
+fn is_session_event(
+    held: &str,
+    msgtype: &str,
+    session: &str,
+    context: &str,
+    sequence: u64,
+) -> bool {
+    let mut rest = held;
+    for part in [msgtype, session, context] {
+        let Some(after) = rest
+            .strip_prefix(part)
+            .and_then(|after| after.strip_prefix(':'))
+        else {
+            return false;
+        };
+        rest = after;
     }
-    let actual = encoded.get(..expected.len())?;
-    if actual != expected {
-        return None;
-    }
-    encoded.get(expected.len()..)?.strip_prefix('|')
+    rest.parse::<u64>().is_ok_and(|held| held == sequence)
+        && rest.bytes().all(|byte| byte.is_ascii_digit())
+        && (rest.len() == 1 || !rest.starts_with('0'))
 }
 
 /// One child a write lands: replaced at `at`, appended when there is none,
@@ -572,8 +578,9 @@ impl FixMsg {
     ///
     /// Every value in the row went through the contract of the field it
     /// lands under, so the row is canonical by construction. The sending
-    /// clock is what the message stated, else `fallback_sending_time`, else
-    /// now: initial intake settles clocks, and replay never reads now.
+    /// clock is what the message stated, else `fallback_sending_time` - its
+    /// carrier's, else the codec's default - else now: initial intake
+    /// settles clocks, and replay never reads now.
     /// `official_time_delay_ns` is how far from that clock an official
     /// transaction may stand and still date the message, which the codec
     /// states for the whole run. The identity is not settled here: the
@@ -1020,8 +1027,8 @@ impl FixMsg {
     /// identifier in [`identity::CROSS_TAGS`], `OrderID(37)` first. The
     /// message type, capture session/context and message sequence name where
     /// a bridge observed the message instead: when all four are present,
-    /// `sync_session_event_identifier` retains their joined spelling under
-    /// `msgsesseventid` without making it content.
+    /// `sync_session_event_identifier` states their joined values as the
+    /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
@@ -1043,11 +1050,13 @@ impl FixMsg {
         self.event.finalized(currhashcode);
     }
 
-    /// Synchronizes the complete FIX session event into the identifier map.
-    /// Text parts carry byte lengths, making the authoritative merge key
-    /// unambiguous even when a capture value contains its separators. Existing
-    /// component identifiers stay in place; any missing part removes only this
-    /// derived capture name.
+    /// Derives the complete FIX session event onto the capture: the four
+    /// values joined by `:`, exactly as stated, and nothing where one is
+    /// missing - a stale key never outlives the parts it was joined from.
+    /// `:` is how a bridge's own row header brackets a session, its context
+    /// and its sequence, so the key reads as the header does; values holding
+    /// a `:` of their own can join to one key from two splits, and a bridge
+    /// names none of its sessions or contexts that way.
     fn sync_session_event_identifier(&mut self) {
         let identity = match (
             self.header.msgtype(),
@@ -1062,47 +1071,42 @@ impl FixMsg {
             }
             _ => None,
         };
-        let identifiers = self.event.identifiers_mut();
-        let Some((msgtype, session, context, sequence)) = identity else {
-            identifiers.remove(MSGSESSEVENTID_IDENTIFIER);
-            return;
-        };
-        if identifiers
-            .get(MSGSESSEVENTID_IDENTIFIER)
-            .is_some_and(|held| {
-                strip_session_event_part(held, msgtype)
-                    .and_then(|held| strip_session_event_part(held, session))
-                    .and_then(|held| strip_session_event_part(held, context))
-                    .filter(|held| is_canonical_unsigned(held))
-                    .and_then(|held| held.parse::<u64>().ok())
-                    == Some(sequence)
-            })
+        // The name among the identifiers a row written before the column
+        // existed states the key under: the column is its one owner now.
+        if self
+            .event
+            .get_identifiers()
+            .contains_key(MSGSESSEVENTID_IDENTIFIER)
         {
-            return;
+            self.event
+                .identifiers_mut()
+                .remove(MSGSESSEVENTID_IDENTIFIER);
         }
-        let mut joined =
-            String::with_capacity(msgtype.len() + session.len() + context.len() + 3 * 21 + 3 + 20);
-        write!(
-            joined,
-            "{}:{msgtype}|{}:{session}|{}:{context}|{sequence}",
-            msgtype.len(),
-            session.len(),
-            context.len(),
-        )
-        .expect("writing into a String cannot fail");
-        if let Some(held) = identifiers.get_mut(MSGSESSEVENTID_IDENTIFIER) {
-            *held = joined;
-        } else {
-            identifiers.insert(MSGSESSEVENTID_IDENTIFIER.to_owned(), joined);
+        let joined = identity.map(|(msgtype, session, context, sequence)| {
+            if self
+                .capture
+                .msgsesseventid()
+                .is_some_and(|held| is_session_event(held, msgtype, session, context, sequence))
+            {
+                return None;
+            }
+            let mut joined =
+                String::with_capacity(msgtype.len() + session.len() + context.len() + 3 + 20);
+            write!(joined, "{msgtype}:{session}:{context}:{sequence}")
+                .expect("writing into a String cannot fail");
+            Some(SmolStr::from(joined))
+        });
+        match joined {
+            // Already the key the four parts join to.
+            Some(None) => {}
+            Some(Some(joined)) => self.capture.set_msgsesseventid(Some(joined)),
+            None => self.capture.set_msgsesseventid(None),
         }
     }
 
     /// The complete prebuilt session-event delivery identity, where present.
     pub(super) fn session_event_identifier(&self) -> Option<&str> {
-        self.event
-            .get_identifiers()
-            .get(MSGSESSEVENTID_IDENTIFIER)
-            .map(String::as_str)
+        self.capture.msgsesseventid()
     }
 
     /// Whether two observations state one complete session event.
@@ -1117,7 +1121,6 @@ impl FixMsg {
     fn is_synthetic_expiry(&self) -> bool {
         self.get_state().as_str() == "95EXPIRED"
             && self.get_recdunix().is_none()
-            && self.get_refrecdunix().is_none()
             && self.get_exprtime() == Some(self.get_currunix())
     }
 
@@ -1129,20 +1132,27 @@ impl FixMsg {
 
     /// Fully merge another observation of this session event, retaining the
     /// latest recording as the reference row and the earliest precise facts.
-    pub(super) fn merge_session_event(mut self, other: &Self) -> Result<Self> {
+    pub(super) fn merge_session_event(self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
         let other_leads = crate::graph::element::right_is_reference(
-            crate::graph::element::reference_recdunix(&self),
+            self.get_recdunix(),
             self.get_currunix(),
-            crate::graph::element::reference_recdunix(other),
+            other.get_recdunix(),
             other.get_currunix(),
         );
         if other_leads {
-            let mut reference = other.clone();
-            super::latest::merge_content(&mut reference, &self)?;
-            crate::graph::element::merge_market_event_into_reference(&mut reference, &self);
-            return Ok(reference);
+            return other.clone().fold_session_event(&self);
         }
+        self.fold_session_event(other)
+    }
+
+    /// Fully merge another observation of this session event into this one,
+    /// which stays the reference whatever the two recording clocks say: for
+    /// a caller that already chose it, as a run of observations sorted
+    /// latest recording first does, where re-deciding at every pair would
+    /// let a later one lead against the earliest recording a fold keeps.
+    pub(super) fn fold_session_event(mut self, other: &Self) -> Result<Self> {
+        debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
         crate::graph::element::merge_market_event_into_reference(&mut self, other);
         Ok(self)
@@ -1239,6 +1249,14 @@ impl FixMsg {
     /// is where the ladder that decides what the message is *about* lives -
     /// [`MarketElement::fill_market`], called straight after through the
     /// FIX-specific guard below.
+    ///
+    /// The execution clock is the one the message's own fields state, and a
+    /// raw observation reporting an execution - [`Event::is_execution`] as
+    /// this message reads it - that states none executed when it happened,
+    /// so its `execunix` is its own `currunix` from intake on rather than
+    /// from the first walk. A message following another that states none
+    /// keeps the execution its chain reached: that is the walk's to state,
+    /// and its state may be one it inherited rather than one it reported.
     ///
     /// What a lifecycle walk forced - the state it reached, what a price
     /// moved from, the instrument the chain is about - survives being
@@ -1364,11 +1382,16 @@ impl FixMsg {
         event.set_bidqty(bidqty);
         event.set_askpx(askpx);
         event.set_askqty(askqty);
+        // FIX states no currency and no unit of its own for a lane: both are
+        // read off the side by `fill_market`, so they are cleared here with
+        // the rest of what derives, or one read under a side a write has
+        // since taken away would outlive it - and name that side again.
+        event.set_bidcurrency(None);
+        event.set_bidunit(None);
+        event.set_askcurrency(None);
+        event.set_askunit(None);
         if row_stated & ROW_STATED_EXPIRY == 0 {
             event.set_exprtime(exprtime);
-        }
-        if row_stated & ROW_STATED_EXECUTION == 0 {
-            event.set_execunix(execunix);
         }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
@@ -1391,6 +1414,23 @@ impl FixMsg {
         }
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
+        }
+        // A clock the fields state is the execution's. Where they state none,
+        // a raw execution report executed when it happened, so intake dates
+        // it rather than leaving that to a walk; a message a walk placed
+        // keeps the latest execution its chain reached, which is the walk's
+        // to state - a walk that carried the same instant states nothing new
+        // - and its state may be one it inherited, which read as its own
+        // report would date an execution it never made.
+        if row_stated & ROW_STATED_EXECUTION == 0 {
+            let execunix = execunix.or_else(|| {
+                if self.event.get_prevuuid().is_some() {
+                    self.event.get_execunix()
+                } else {
+                    self.reports_execution().then(|| self.event.get_currunix())
+                }
+            });
+            self.event.set_execunix(execunix);
         }
     }
 
@@ -1485,8 +1525,9 @@ impl FixMsg {
     /// unlifted `OrigSendingTime(122)`, `PossResend(97)`, or `BodyLength(9)`
     /// cannot change this canonical code. The cross code names a chain and
     /// stays outside the content digest too. The derived `msgsesseventid`
-    /// identifier records the complete delivery provenance and is excluded
-    /// for the same reason as the frame and capture fields it combines.
+    /// records the complete delivery provenance on the capture, and is
+    /// excluded - under its former identifier name too - for the same reason
+    /// as the frame and capture fields it combines.
     ///
     /// The market is not here either, except for its operation ID: other
     /// market facts derive from FIX fields the content already digests, while
@@ -1638,7 +1679,8 @@ impl FixMsg {
 
     /// What the line said about the capture it was written for, typed: the
     /// plugin a bridge logged it under, the message context and the session
-    /// instance, all read off the line's own bytes.
+    /// instance, all read off the line's own bytes, and the session event
+    /// the last two join to with the message's type and sequence.
     ///
     /// Not where the line was read from and not when it was recorded: those
     /// are the reader's statements, and they are [the capture's own
@@ -3121,14 +3163,6 @@ impl Event for FixMsg {
             self.row_stated &= !ROW_STATED_RECORDING;
         }
         self.event.set_recdunix(unix);
-    }
-
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.event.get_refrecdunix()
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.event.set_refrecdunix(unix);
     }
 
     fn get_exprtime(&self) -> Option<i64> {

@@ -39,7 +39,7 @@ live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``identifiers``, ``currunix``,
 ``state``, ``seqnum``, the lifecycle's ``creaunix``, ``exprtime``,
-``execunix``, ``recdunix``, ``refrecdunix``, ``prevunix``, ``prevuuid`` and
+``execunix``, ``recdunix``, ``prevunix``, ``prevuuid`` and
 ``snapunix``, the market's integer ``marketoperationid``, ``price``, ``quantity``,
 last, average, cumulative, remaining and previous values, time in force,
 tradability, ticker, ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL,
@@ -52,8 +52,9 @@ stable integer business category exposed by both ``msgcat`` and
 four-byte ``MsgType.msgcat``);
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
-``msgsessionid``) - never what a *reader* said about the line, which is
-held nowhere on a message; the free
+``msgsessionid``, and the ``msgsesseventid`` the message type, session,
+context and ``MsgSeqNum`` join to by ``:``) - never what a *reader* said
+about the line, which is held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
@@ -82,18 +83,25 @@ row-header captures that state its ``msgpluginid``, ``msgsessionid``,
 capture is which, once for the whole run, and a ``msgdirection`` capture or
 column states the direction FIX's own tag 385 carries, filled from the verb
 in front of the payload where the row states none. A line's ``timestamp``
-is capture context and stamps nothing. A parse builds the message, lifts
+capture is context and stamps nothing; the line's own ``currunix`` - an
+``mtime`` capture, else its handle's modification time - is the message's
+``recdunix``. A parse builds the message, lifts
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
 fields to their latest aliases, runs the dictionary's ``FIX:derivation``
 rules, fills the identifiers the message component declares and an order's
 lanes, and settles the identity: ``SendingTime`` is the message's own, else
-the carrier's, else the codec's ``default_sending_time``, else UTC now
-read once, and the instant ``currunix`` is the stated one, else the official
+a row cell reaching tag 52, else the ``currunix`` of the line it was read out
+of, else the codec's ``default_sending_time``, else UTC now
+read once - a clock the parse supplied is never the message's own, so the
+wire and the ``sendingtime`` column state none - and the instant
+``currunix`` is the stated one, else the official
 transaction clock standing within ``official_time_delay_ms`` of that
 ``SendingTime`` - a ``TransactTime``, else the ``TrdRegTimestamp`` its
 ``TrdRegTimestampType`` says is about the event or a hop - else that
 ``SendingTime``; what ``OrigSendingTime`` says is the lifecycle's to read off
-the structured message. No clock is read after that intake,
+the structured message. A message reporting an execution that states no
+execution clock executed at that instant: its ``execunix`` is its
+``currunix``. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
 it implied.

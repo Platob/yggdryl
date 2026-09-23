@@ -10,8 +10,8 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    BloombergCode, CusipCode, DataType, FIGICode, Field, FixCodec, FixEntry, FixMsg, FixRegistry,
-    IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
+    BloombergCode, CusipCode, DataType, Decimal18, FIGICode, Field, FixCodec, FixEntry, FixMsg,
+    FixRegistry, IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -114,6 +114,8 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         .unwrap();
 
     assert_eq!(message.get_crosscode(), "ORDER-1", "FIX priority wins");
+    // The names the message goes by are its own; where the bridge delivered
+    // it is the capture's word, so the session event is no identifier.
     assert_eq!(
         message
             .get_identifiers()
@@ -122,11 +124,22 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
             .collect::<Vec<_>>(),
         [
             ("clordid", "CLIENT-1"),
-            ("msgsesseventid", "1:8|9:SESSION-1|9:CONTEXT-1|7"),
             ("orderid", "ORDER-1"),
             ("origclordid", "CLIENT-0"),
         ],
-        "the component names remain beside the capture context"
+        "the component names stand without the capture context"
+    );
+    assert_eq!(
+        message.capture().msgsesseventid(),
+        Some("8:SESSION-1:CONTEXT-1:7")
+    );
+    assert_eq!(
+        message
+            .by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("8:SESSION-1:CONTEXT-1:7"),
+        "answered by its tag like any capture fact"
     );
 
     let fallback = reader
@@ -145,12 +158,10 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         "capture is not a chain id"
     );
     assert_eq!(
-        capture_only
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("2:ZZ|9:SESSION-1|9:CONTEXT-1|7")
+        capture_only.capture().msgsesseventid(),
+        Some("ZZ:SESSION-1:CONTEXT-1:7")
     );
+    assert!(capture_only.get_identifiers().is_empty());
 
     for partial in [
         b"MSGTYPE=ZZ|MSGSEQNUM=7|MSGSESSIONID=SESSION-1".as_slice(),
@@ -158,7 +169,9 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         b"MSGTYPE=ZZ|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1".as_slice(),
     ] {
         let partial = reader.sole_line(partial).unwrap();
-        assert!(partial.get_identifiers().get("msgsesseventid").is_none());
+        assert_eq!(partial.capture().msgsesseventid(), None);
+        assert!(partial.by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0).is_err());
+        assert!(!partial.get_identifiers().contains_key("msgsesseventid"));
         assert_eq!(partial.get_crosscode(), "");
     }
 
@@ -167,7 +180,14 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
             b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|CLORDID=CLIENT-1|ORIGCLORDID=CLIENT-0|QUOTEID=QUOTE-1|QUOTEREQID=REQUEST-1|MDREQID=MARKET-1|MSGSESSIONID=SESSION-2|MSGCTXID=CONTEXT-2",
         )
         .unwrap();
-    assert_ne!(message.get_identifiers(), other_capture.get_identifiers());
+    // Two deliveries of one message go by the same names and are one
+    // content; only the session event they were delivered as tells them
+    // apart.
+    assert_eq!(message.get_identifiers(), other_capture.get_identifiers());
+    assert_eq!(
+        other_capture.capture().msgsesseventid(),
+        Some("8:SESSION-2:CONTEXT-2:7")
+    );
     assert_eq!(
         message.get_currhashcode(),
         other_capture.get_currhashcode(),
@@ -175,11 +195,23 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     );
     assert_eq!(message.get_curruuid(), other_capture.get_curruuid());
 
+    // The fixed row states it at its own column, and reads it back.
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
+    let at = schema
+        .index_of(yggdryl::MSGSESSEVENTID_TAG_NAME.1)
+        .expect("a msgsesseventid column");
+    assert_eq!(
+        row.as_sequence().expect("a row")[at].as_str(),
+        Some("8:SESSION-1:CONTEXT-1:7")
+    );
     let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(rebuilt.get_crosscode(), "ORDER-1");
     assert_eq!(rebuilt.get_identifiers(), message.get_identifiers());
+    assert_eq!(
+        rebuilt.capture().msgsesseventid(),
+        Some("8:SESSION-1:CONTEXT-1:7")
+    );
     assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
 }
 
@@ -196,11 +228,8 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("SESSION-2"))
         .unwrap();
     assert_eq!(
-        message
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:8|9:SESSION-2|9:CONTEXT-1|7")
+        message.capture().msgsesseventid(),
+        Some("8:SESSION-2:CONTEXT-1:7")
     );
     assert_eq!(
         message.get_identifiers().get("clordid").map(String::as_str),
@@ -211,10 +240,11 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         Some("ORDER-1")
     );
 
+    // A missing part unsays the key rather than leaving a stale one.
     message
         .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::Null)
         .unwrap();
-    assert!(message.get_identifiers().get("msgsesseventid").is_none());
+    assert_eq!(message.capture().msgsesseventid(), None);
     assert_eq!(
         message.get_identifiers().get("clordid").map(String::as_str),
         Some("CLIENT-1")
@@ -224,21 +254,15 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("CONTEXT-2"))
         .unwrap();
     assert_eq!(
-        message
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:8|9:SESSION-2|9:CONTEXT-2|7")
+        message.capture().msgsesseventid(),
+        Some("8:SESSION-2:CONTEXT-2:7")
     );
 
     message.set(34, Scalar::from(8_u64)).unwrap();
     message.set(35, Scalar::from("F")).unwrap();
     assert_eq!(
-        message
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:F|9:SESSION-2|9:CONTEXT-2|8"),
+        message.capture().msgsesseventid(),
+        Some("F:SESSION-2:CONTEXT-2:8"),
         "header mutations resettle the complete delivery key"
     );
 
@@ -262,64 +286,377 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         .unwrap();
     assert_eq!(message.get_crosscode(), "EXPLICIT");
     assert_eq!(
-        message
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:F|9:SESSION-3|9:CONTEXT-2|8")
+        message.capture().msgsesseventid(),
+        Some("F:SESSION-3:CONTEXT-2:8")
     );
+    assert!(!message.get_identifiers().contains_key("msgsesseventid"));
 }
 
+/// The key is the four values joined by `:` and nothing else: no length
+/// prefixes, each value exactly as stated. What that gives up is said here
+/// too - a value holding a `:` of its own joins to the key of another
+/// split - because a bridge names none of its sessions or contexts that way.
 #[test]
-fn session_event_identifier_is_canonical_and_separator_collision_safe() {
-    let (_, reader) = reader();
+fn session_event_identifier_is_the_plain_join_of_its_four_values() {
+    let (registry, reader) = reader();
     let base = reader
         .sole_line(
             b"MSGTYPE=8|MSGSEQNUM=7|ORDERID=ORDER-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
         )
         .unwrap();
-    let mut left = base.clone();
-    left.set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("A:B"))
-        .unwrap();
-    left.set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("C|D"))
-        .unwrap();
-    let mut right = base;
-    right
-        .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from("A"))
-        .unwrap();
-    right
-        .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("B:C|D"))
-        .unwrap();
+    let with = |session: &str, context: &str| {
+        let mut message = base.clone();
+        message
+            .set(yggdryl::MSGSESSIONID_TAG_NAME.0, Scalar::from(session))
+            .unwrap();
+        message
+            .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from(context))
+            .unwrap();
+        message
+    };
 
+    // A `|` is an ordinary byte of a value: no part is length-prefixed.
+    let left = with("A|B", "C");
+    let right = with("A", "B|C");
+    assert_eq!(left.capture().msgsesseventid(), Some("8:A|B:C:7"));
+    assert_eq!(right.capture().msgsesseventid(), Some("8:A:B|C:7"));
+    // The documented ambiguity: two splits of a `:` join to one key.
+    let first = with("A:B", "C");
+    let second = with("A", "B:C");
+    assert_eq!(first.capture().msgsesseventid(), Some("8:A:B:C:7"));
     assert_eq!(
-        left.get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:8|3:A:B|3:C|D|7")
+        first.capture().msgsesseventid(),
+        second.capture().msgsesseventid()
     );
+    // The sequence is its canonical decimal whatever spelled it.
+    let padded = reader
+        .sole_line(
+            b"MSGTYPE=8|MSGSEQNUM=007|ORDERID=ORDER-1|MSGSESSIONID=SESSION-1|MSGCTXID=CONTEXT-1",
+        )
+        .unwrap();
     assert_eq!(
-        right
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:8|1:A|5:B:C|D|7")
+        padded.capture().msgsesseventid(),
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
-    assert_ne!(left.get_identifiers(), right.get_identifiers());
 
-    let mut identifiers = left.get_identifiers().clone();
+    // A value stated for the key itself is never the message's word: it is
+    // derived again from the four parts whenever the message settles.
+    let mut stated = base.clone();
+    stated
+        .set(
+            yggdryl::MSGSESSEVENTID_TAG_NAME.0,
+            Scalar::from("1:8|9:SESSION-1|9:CONTEXT-1|7"),
+        )
+        .unwrap();
+    assert_eq!(
+        stated.capture().msgsesseventid(),
+        Some("8:SESSION-1:CONTEXT-1:7")
+    );
+
+    // A row written while the key was an identifier still states it there:
+    // the column owns it now, so settling removes the legacy entry, and the
+    // content it was never part of does not move.
+    let mut legacy = base.clone();
+    let code = legacy.get_currhashcode();
+    let mut identifiers = legacy.get_identifiers().clone();
     identifiers.insert(
         "msgsesseventid".to_owned(),
-        "01:8|03:A:B|03:C|D|007".to_owned(),
+        "1:8|9:SESSION-1|9:CONTEXT-1|7".to_owned(),
     );
-    left.set_identifiers(identifiers);
-    left.finalize();
+    legacy.set_identifiers(identifiers);
+    legacy.finalize();
+    assert!(!legacy.get_identifiers().contains_key("msgsesseventid"));
+    assert_eq!(legacy.get_identifiers(), base.get_identifiers());
     assert_eq!(
-        left.get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:8|3:A:B|3:C|D|7"),
-        "settling rewrites an externally supplied equivalent to one spelling"
+        legacy.capture().msgsesseventid(),
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
+    assert_eq!(legacy.get_currhashcode(), code);
+
+    // A row is read the same way: a stale cell is derived over, a null cell
+    // is derived into, and the row written back states the one key.
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let at = schema
+        .index_of(yggdryl::MSGSESSEVENTID_TAG_NAME.1)
+        .expect("a msgsesseventid column");
+    let row = base.into_row(&schema).unwrap();
+    for cell in [Scalar::from("8:SESSION-9:CONTEXT-1:7"), Scalar::Null] {
+        let mut columns = row.as_sequence().expect("a row").to_vec();
+        columns[at] = cell;
+        let read = FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &Scalar::from_sequence(columns),
+        )
+        .unwrap();
+        assert_eq!(
+            read.capture().msgsesseventid(),
+            Some("8:SESSION-1:CONTEXT-1:7")
+        );
+        assert_eq!(read.into_row(&schema).unwrap(), row);
+    }
+    // And a row missing a part states no key, whatever its cell said.
+    let context_at = schema
+        .index_of(yggdryl::MSGCTXID_TAG_NAME.1)
+        .expect("a msgctxid column");
+    let mut columns = row.as_sequence().expect("a row").to_vec();
+    columns[context_at] = Scalar::Null;
+    let read = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &Scalar::from_sequence(columns),
+    )
+    .unwrap();
+    assert_eq!(read.capture().msgsesseventid(), None);
+    assert!(
+        read.into_row(&schema)
+            .unwrap()
+            .as_sequence()
+            .expect("a row")[at]
+            .is_null(),
+        "a partial delivery writes no key"
+    );
+}
+
+/// A line's captures name the session and context a bridge delivered the
+/// message over, its frame the type and the sequence: the four join, on the
+/// capture and at the fixed row's own column, into the key two observations
+/// of one delivery merge on - and into no identifier.
+#[test]
+fn a_captured_line_states_its_session_event_at_its_own_column() {
+    let (registry, reader) = reader();
+    let codec = reader.with_capture_names(["msgsessionid", "msgctxid"]);
+    let options = Arc::new(yggdryl::text::TextOptions::new());
+    let line = |body: &[u8], session: Option<&[u8]>, context: Option<&[u8]>| {
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            Arc::clone(&options),
+        )
+        .unwrap()
+        .with_captures(vec![
+            session.map(|held| TextBytes::from_bytes(held).unwrap()),
+            context.map(|held| TextBytes::from_bytes(held).unwrap()),
+        ])
+        .unwrap()
+        .with_handle_mtime(1_704_190_530_900_000_000)
+    };
+    let sole = |line: &TextLine| {
+        codec
+            .parse_text_line(line)
+            .unwrap()
+            .next()
+            .expect("one message")
+            .unwrap()
+    };
+    const WIRE: &[u8] = b"8=FIX.4.4|35=8|34=1094|37=O|11=C|10=0|";
+    let captured = line(WIRE, Some(b"e7256476"), Some(b"9effef3e6a"));
+    let message = sole(&captured);
+    assert_eq!(message.capture().msgsessionid(), Some("e7256476"));
+    assert_eq!(message.capture().msgctxid(), Some("9effef3e6a"));
+    assert_eq!(
+        message.capture().msgsesseventid(),
+        Some("8:e7256476:9effef3e6a:1094")
+    );
+    assert_eq!(
+        message
+            .by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("8:e7256476:9effef3e6a:1094")
+    );
+    assert!(!message.get_identifiers().contains_key("msgsesseventid"));
+    // Delivery provenance, never content: the key is no byte of the wire.
+    let wire = message.into_bytes(b'|');
+    assert!(
+        !String::from_utf8_lossy(&wire).contains("e7256476"),
+        "{}",
+        String::from_utf8_lossy(&wire)
+    );
+
+    // The row states it at its column, and a row read back holds it again.
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let at = schema
+        .index_of(yggdryl::MSGSESSEVENTID_TAG_NAME.1)
+        .expect("a msgsesseventid column");
+    let row = message.into_row(&schema).unwrap();
+    assert_eq!(
+        row.as_sequence().expect("a row")[at].as_str(),
+        Some("8:e7256476:9effef3e6a:1094")
+    );
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(
+        held.capture().msgsesseventid(),
+        message.capture().msgsesseventid()
+    );
+    assert_eq!(held.into_row(&schema).unwrap(), row);
+
+    // The batch door states the same key at the same column, the captures
+    // arriving as the batch's columns of those names - here a row header's.
+    let headed = yggdryl::text::TextOptions::new()
+        .try_with_rowheader(r"^(?P<msgsessionid>\w+) (?P<msgctxid>\w+) ")
+        .unwrap();
+    let headed_line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"e7256476 9effef3e6a 8=FIX.4.4|35=8|34=1094|37=O|11=C|10=0|")
+            .unwrap(),
+        Arc::new(headed.clone()),
+    )
+    .unwrap();
+    assert_eq!(
+        sole(&headed_line).capture().msgsesseventid(),
+        Some("8:e7256476:9effef3e6a:1094"),
+        "the line door reads a row header's captures alike"
+    );
+    let batch = yggdryl::text::into_arrow_batch(vec![headed_line], &headed).unwrap();
+    let parsed = codec
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
+            batch.schema(),
+            [batch.clone()],
+        ))
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    let rows =
+        yggdryl::Serie::from_arrow_batch(None, &parsed, yggdryl::ArrowCastOptions::default())
+            .expect("the rows");
+    let cell = rows
+        .scalar(0)
+        .expect("the first row")
+        .as_sequence()
+        .expect("columns")[super::tag_index(&parsed, yggdryl::MSGSESSEVENTID_TAG_NAME.0)]
+    .clone();
+    assert_eq!(cell.as_str(), Some("8:e7256476:9effef3e6a:1094"));
+
+    // A missing part states no key: no session, no context, or no sequence.
+    for partial in [
+        line(WIRE, None, Some(b"9effef3e6a")),
+        line(WIRE, Some(b"e7256476"), None),
+        line(
+            b"8=FIX.4.4|35=8|37=O|11=C|10=0|",
+            Some(b"e7256476"),
+            Some(b"9effef3e6a"),
+        ),
+    ] {
+        let partial = sole(&partial);
+        assert_eq!(partial.capture().msgsesseventid(), None);
+        assert!(!partial.get_identifiers().contains_key("msgsesseventid"));
+        assert!(
+            partial
+                .into_row(&schema)
+                .unwrap()
+                .as_sequence()
+                .expect("a row")[at]
+                .is_null()
+        );
+    }
+}
+
+/// An execution report that states no execution clock executed when it
+/// happened, and says so from the moment it is parsed: its `execunix` is its
+/// `currunix`, rather than waiting for a lifecycle walk to date it. Only a
+/// report of an execution is dated, and only a raw observation - a clock the
+/// message states is its own, and a lifecycle output's state may be one it
+/// inherited.
+#[test]
+fn a_parsed_execution_report_states_its_execution_at_its_instant() {
+    const SENT: i64 = 1_704_190_530_100_000_000;
+    const TRANSACTED: i64 = 1_704_190_530_050_000_000;
+    const EXECUTED: i64 = 1_704_190_530_020_000_000;
+    const FILL: &[u8] =
+        b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|37=O|17=E|150=F|39=2|14=100|151=0|10=0|";
+
+    let (registry, reader) = reader();
+    let fill = reader.sole_line(FILL).unwrap();
+    assert!(fill.get_prevuuid().is_none(), "a raw observation");
+    assert_eq!(fill.get_currunix(), SENT);
+    assert_eq!(fill.get_execunix(), Some(SENT));
+
+    // A request and an acknowledgement report no execution, so nothing
+    // dates one.
+    for line in [
+        b"8=FIX.4.4|35=D|52=20240102-10:15:30.100|11=C|55=AAPL|54=1|38=100|10=0|".as_slice(),
+        b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|37=O|17=A|150=0|39=0|14=0|151=100|10=0|",
+    ] {
+        let held = reader.sole_line(line).unwrap();
+        assert_eq!(held.get_currunix(), SENT);
+        assert_eq!(
+            held.get_execunix(),
+            None,
+            "{}",
+            String::from_utf8_lossy(line)
+        );
+    }
+
+    // A clock the report states is the one it executed at.
+    let transacted = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|60=20240102-10:15:30.050|37=O|17=E|150=F|39=2|14=100|151=0|10=0|",
+        )
+        .unwrap();
+    // TransactTime within the official delay of the sending clock is also
+    // the report's instant.
+    assert_eq!(transacted.get_currunix(), TRANSACTED);
+    assert_eq!(transacted.get_execunix(), Some(TRANSACTED));
+    let executed = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|2749=20240102-10:15:30.020|37=O|17=E|150=F|39=2|14=100|151=0|10=0|",
+        )
+        .unwrap();
+    assert_eq!(executed.get_currunix(), SENT);
+    assert_eq!(executed.get_execunix(), Some(EXECUTED));
+
+    // The filled clock is a fact the row states, read back as stated, and
+    // one a walk leaves where it is.
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let at = schema
+        .index_of(yggdryl::EXECUNIX_TAG_NAME.1)
+        .expect("an execunix column");
+    let row = fill.into_row(&schema).unwrap();
+    assert_eq!(
+        row.as_sequence().expect("a row")[at].temporal_count_at(yggdryl::TimeUnit::Nanosecond),
+        Some(SENT)
+    );
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(held.get_execunix(), Some(SENT));
+    let walked = reader
+        .lifecycle([fill.clone()])
+        .next()
+        .expect("one walked message")
+        .unwrap();
+    assert_eq!(walked.get_execunix(), Some(SENT));
+
+    // A lifecycle output read back off a row stating no execution clock is
+    // not dated again: its state may be what it followed, not what it did.
+    let acked = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.000|37=O|17=A|150=0|39=0|14=0|151=100|10=0|",
+        )
+        .unwrap();
+    let chained = reader
+        .lifecycle([acked, fill])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(chained.len(), 2);
+    let output = &chained[1];
+    assert_eq!(output.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(output.get_execunix(), Some(SENT));
+    let mut columns = output
+        .into_row(&schema)
+        .unwrap()
+        .as_sequence()
+        .expect("a row")
+        .to_vec();
+    columns[at] = Scalar::Null;
+    let unstated = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &Scalar::from_sequence(columns),
+    )
+    .unwrap();
+    assert!(unstated.get_prevuuid().is_some());
+    assert_eq!(unstated.get_execunix(), None);
 }
 
 const ORDER: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|";
@@ -587,7 +924,7 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     let schema = fix_schema(&registry, "fix").unwrap();
     let mut parsed = reader.sole_line(ORDER).unwrap();
     parsed.set_recdunix(Some(100));
-    parsed.set_refrecdunix(Some(200));
+    parsed.set_execunix(Some(200));
     let row = parsed.into_row(&schema).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -620,7 +957,7 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
     assert_eq!(held.get_crosshashcode(), parsed.get_crosshashcode());
     assert_eq!(held.get_recdunix(), Some(100));
-    assert_eq!(held.get_refrecdunix(), Some(200));
+    assert_eq!(held.get_execunix(), Some(200));
 }
 
 #[test]
@@ -1084,6 +1421,33 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
     assert_eq!(message.into_row(&schema).unwrap(), original);
 }
 
+/// The execution intake dates survives the walk that places it: a successor
+/// whose own execution is the later one carries it unchanged, so the walk
+/// states nothing new and the settle behind it must not read the placed
+/// message's fields over what the chain reached.
+#[test]
+fn a_walk_keeps_the_execution_intake_dated_on_a_successor() {
+    const PARTIAL: i64 = 1_704_190_531_000_000_000;
+    const FILLED: i64 = 1_704_190_532_000_000_000;
+    let (_registry, reader) = reader();
+    let partial = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=O1|150=F|39=1|52=20240102-10:15:31|10=0|")
+        .unwrap();
+    let filled = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=O1|150=F|39=2|52=20240102-10:15:32|10=0|")
+        .unwrap();
+    assert_eq!(partial.get_execunix(), Some(PARTIAL));
+    assert_eq!(filled.get_execunix(), Some(FILLED));
+    let walked = reader
+        .lifecycle([partial, filled])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[0].get_execunix(), Some(PARTIAL));
+    assert_eq!(walked[1].get_execunix(), Some(FILLED));
+}
+
 /// A group a row holds as a column - what a row read out of Arrow carries -
 /// answers every reading the run the parse built answers: the alternate
 /// identifier it names, the entry it is, and the path into its occurrences.
@@ -1148,4 +1512,82 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
     assert_eq!(column.get_execunix(), Some(EXECUTION));
     assert_eq!(run.get_currunix(), EXECUTION);
     assert_eq!(column.get_currunix(), EXECUTION);
+}
+
+/// A quote stating one of its lanes and no `Side(54)` is that lane's side:
+/// `BidPx(132)`/`BidSize(134)` alone read as a buy at the bid, and
+/// `OfferPx(133)`/`OfferSize(135)` alone as a sell at the offer, so the
+/// price, the quantity and the lane's currency fill from it. What is read
+/// is derived - nothing of it reaches the wire.
+#[test]
+fn a_single_sided_quote_reads_as_its_lanes_side() {
+    let (_registry, reader) = reader();
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+
+    let bid = reader
+        .sole_line(
+            b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|",
+        )
+        .unwrap();
+    assert_eq!(bid.get_side().as_str(), "BUY");
+    assert_eq!(bid.get_price(), decimal("101.5"));
+    assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
+    assert_eq!(bid.get_currency().as_str(), "USD");
+    assert_eq!(bid.get_bidcurrency().map(|held| held.as_str()), Some("USD"));
+    assert_eq!(bid.get_askpx(), None);
+    let wire = bid.into_bytes(b'|');
+    assert!(
+        !wire.windows(4).any(|held| held == b"|54="),
+        "{}",
+        String::from_utf8_lossy(&wire)
+    );
+
+    let offer = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q2|55=AAPL|133=102|135=50|10=0|")
+        .unwrap();
+    assert_eq!(offer.get_side().as_str(), "SELL");
+    assert_eq!(offer.get_price(), decimal("102"));
+    assert_eq!(offer.get_quantity(), Decimal18::from_int(50));
+
+    // Both lanes name no side, and nothing reads off either.
+    let two = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q3|55=AAPL|132=101|133=102|134=10|135=20|10=0|")
+        .unwrap();
+    assert_eq!(two.get_side().as_str(), "UNKNOWN");
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    // A stated side is the message's own: a sell quoting only a bid keeps
+    // its side, and its own lane quotes nothing to read.
+    let stated = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q4|55=AAPL|54=2|132=101|134=10|10=0|")
+        .unwrap();
+    assert_eq!(stated.get_side().as_str(), "SELL");
+    assert_eq!(stated.get_price(), Decimal18::ZERO);
+
+    // A report pricing itself is not a quote: a fill at its last price
+    // beside a lone bid is about the fill, and names no side.
+    let fill = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
+        )
+        .unwrap();
+    assert_eq!(fill.get_side().as_str(), "UNKNOWN");
+    assert_eq!(fill.get_price(), decimal("100"));
+
+    // A lane read under a side is the side's, not a statement of its own: a
+    // buy whose side a write takes away quotes no lane any more, so it names
+    // no side either.
+    let mut order = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=C1|55=AAPL|15=USD|54=1|44=100|38=10|10=0|",
+        )
+        .unwrap();
+    assert_eq!(
+        order.get_bidcurrency().map(|held| held.as_str()),
+        Some("USD")
+    );
+    order.remove(54).unwrap();
+    assert_eq!(order.get_side().as_str(), "UNKNOWN");
+    assert_eq!(order.get_bidpx(), None);
+    assert_eq!(order.get_bidcurrency(), None);
 }

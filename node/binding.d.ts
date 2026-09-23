@@ -3424,13 +3424,14 @@ export interface Fix {
    * the fields they fill - `msgsessionid`, `msgctxid`, `msgseqnum` and
    * `msgpluginid`; `timestamp`, `msgthreadid` and `level` name none and are
    * the capture's own columns, carried in front, so the header dates
-   * neither its line nor its message. A caller who wants the line dated
-   * names that capture `mtime` in a header of their own, which costs the
-   * `timestamp` column and reads the clock at nanoseconds UTC whatever the
-   * expression spells. Its clock reads both fractions the bridge writes,
-   * three digits and grouped microseconds, and a line a row header does not
-   * match carries no capture context - which is what the lifecycle folds
-   * deliveries on.
+   * neither its line nor its message. A caller who wants the line dated -
+   * and with it the `recdunix` of its messages and the sending clock of one
+   * stating no `SendingTime(52)` - names that capture `mtime` in a header of
+   * their own, which costs the `timestamp` column and reads the clock at
+   * nanoseconds UTC whatever the expression spells. Its clock reads both
+   * fractions the bridge writes, three digits and grouped microseconds, and
+   * a line a row header does not match carries no capture context - which
+   * is what the lifecycle folds deliveries on.
    */
   readonly ULBRIDGE_ROWHEADER: string
   /**

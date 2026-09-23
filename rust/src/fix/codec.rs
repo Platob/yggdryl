@@ -424,7 +424,7 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it. A capture named for one of the eighteen event columns
+    /// whoever read it. A capture named for one of the seventeen event columns
     /// is silent too: it is the line's own fact - the place, the state, the
     /// instant the line reads off it - and the line states its identity as
     /// the message's source, which is all a line says about a message; the
@@ -644,7 +644,9 @@ impl FixCodec {
     }
 
     /// The exact nanosecond/UTC clock used when neither message nor carrier
-    /// states SendingTime. `None` reads UTC now lazily at fresh intake.
+    /// states SendingTime - a carrier being a row cell reaching tag 52, or
+    /// the `currunix` of the [`TextLine`] the message was read out of.
+    /// `None` reads UTC now lazily at fresh intake.
     #[must_use]
     pub const fn default_sending_time(&self) -> Option<&Scalar> {
         self.default_sending_time.as_ref()
@@ -1331,12 +1333,17 @@ impl FixCodec {
     /// the line derives from its instant and its bytes - as its one source,
     /// [`Element::get_srcuuids`](crate::graph::Element::get_srcuuids): the
     /// same line parsed again states the same source, and a message parsed
-    /// from raw bytes states none. The line's `mtime` fills the message's
-    /// `recdunix` as the carrier's recording clock. Nothing else a
-    /// [`TextLine`] holds is communicated: not the object it names, not its
-    /// event instant, media type, or place in that object, not the body
-    /// itself as a value - and a capture named for one of [the capture's
-    /// own columns](FixMsg::from_row) fills nothing either. The answer is
+    /// from raw bytes states none. The line's `mtime` - its `currunix` -
+    /// fills the message's `recdunix` as the carrier's recording clock, and
+    /// dates a message stating no `SendingTime(52)` that no capture reaching
+    /// tag 52 dated either: it is the sending clock such a message is read
+    /// against, ahead of [`Self::default_sending_time`] and of now, and is
+    /// never a fact of the message, so it reaches neither the wire nor the
+    /// row's tag-52 column. Nothing else a [`TextLine`] holds is
+    /// communicated: not the object it names, not its media type or its
+    /// place in that object, not the body itself as a value - and a capture
+    /// named for one of [the capture's own columns](FixMsg::from_row) fills
+    /// nothing either. The answer is
     /// the message the line's bytes parsed to and no more. Where a line came
     /// from is the reader's to state, on the row, which is what
     /// [`Self::parse_text_arrow_reader`] does with the columns the batch
@@ -1440,8 +1447,9 @@ impl FixCodec {
     /// The payload is the line: it is read into a [`TextLine`] dated by the
     /// row's own `mtime`, so what the messages state as their source is the
     /// identity the line door states for the same line, their `recdunix` is
-    /// that recording clock, and the text the codec reads is the text a line
-    /// is. A row's content can never fail
+    /// that recording clock - and the sending clock of a message stating
+    /// none, as the line door reads it - and the text the codec reads is the
+    /// text a line is. A row's content can never fail
     /// the batch it arrives in: a payload nobody could read is a row
     /// holding an empty message, dated and versioned by what the row itself
     /// said. A row that carried no message to read is a different fact and
@@ -2140,15 +2148,17 @@ impl FixCodec {
     /// fused.
     ///
     /// Two observations with the same complete nonempty capture
-    /// `(msgtype, msgsessionid, msgctxid, msgseqnum)` are fully merged before
-    /// the walk rather than stated as successive events. The greatest
-    /// merge-reference recording clock is the reference message; a raw
-    /// observation uses `recdunix`, while a previously merged observation
-    /// persists that choice in `refrecdunix`. The graph merge unions the other
+    /// `(msgtype, msgsessionid, msgctxid, msgseqnum)` - one
+    /// [`FixCapture::msgsesseventid`](super::FixCapture::msgsesseventid) -
+    /// are fully merged before the walk rather than stated as successive
+    /// events. The observation with the latest `recdunix` is the reference
+    /// message, a stated one leading an unstated one and the later `currunix`
+    /// closing a tie; it is chosen once over every observation of the event,
+    /// because a merge keeps the earliest recording either side knows and
+    /// would rank what it folded by that. The graph merge unions the other
     /// observations into it, while `execunix` and `recdunix` retain the
-    /// earliest precise facts, `refrecdunix` retains the latest reference
-    /// clock, and the reference source leads provenance order. An incomplete
-    /// key proves no equivalence.
+    /// earliest precise facts, and the reference source leads provenance
+    /// order. An incomplete key proves no equivalence.
     ///
     /// Exact republications and flagged FIX retransmissions are removed by a
     /// delivery set over session, sequence, original time and the recorded
@@ -2332,10 +2342,14 @@ impl FixCodec {
             .index_of_tag(52, &self.registry)
             .and_then(|at| built.value.get(at))
             .is_some_and(|value| !value.is_null());
+        // A message stating no sending clock is dated by its carrier: a row
+        // cell reaching `SendingTime(52)`, else the line's own `currunix` -
+        // the instant the line was recorded at, which is nearer the send
+        // than any pin - and only then by the codec's default or now.
         let carrier = if stated {
             None
         } else {
-            extras
+            let filled = extras
                 .fills
                 .iter()
                 .find(|fill| fill.tag == 52 && !fill.value.is_null())
@@ -2343,14 +2357,24 @@ impl FixCodec {
                     super::build::typed_fill(&self.registry, fill.field, fill.tag, fill.value)
                 })
                 .transpose()?
+                .filter(|value| !value.is_null());
+            // The epoch is silence here as on the batch door, where a line
+            // nothing dated reads as the epoch: an undated carrier dates no
+            // message, on either door.
+            match (filled, extras.recdunix.filter(|unix| *unix != 0)) {
+                (Some(value), _) => Some(value),
+                (None, Some(unix)) => Some(Scalar::datetime64(
+                    unix,
+                    crate::TimeUnit::Nanosecond,
+                    crate::Timezone::UTC,
+                )?),
+                (None, None) => None,
+            }
         };
         let message = FixMsg::from_built(
             Arc::clone(&self.registry),
             built,
-            carrier
-                .as_ref()
-                .filter(|value| !value.is_null())
-                .or(self.default_sending_time.as_ref()),
+            carrier.as_ref().or(self.default_sending_time.as_ref()),
             extras.source,
             self.official_time_delay_ns(),
         )?;

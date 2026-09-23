@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "refrecdunix",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "refrecdunix",
-          "FIX:tag": "65064"
-        }
-      },
-      {
         "name": "creaunix",
         "dtype": {
           "type": "null"
@@ -396,6 +385,17 @@
         "metadata": {
           "FIX:field": "msgsessionid",
           "FIX:tag": "65032"
+        }
+      },
+      {
+        "name": "msgsesseventid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "msgsesseventid",
+          "FIX:tag": "65065"
         }
       },
       {

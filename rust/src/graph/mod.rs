@@ -16,7 +16,7 @@
 //! [`MarketEventData`] hold the facts as plain fields for the holder that
 //! wants nothing more. The one walk, [`EventIterator`], reads events in
 //! their order and states each as the one after the live element it
-//! follows. [`EventColumn`] is the eighteen columns every generated schema
+//! follows. [`EventColumn`] is the seventeen columns every generated schema
 //! of an event states - one per fact the traits answer, under one name and
 //! one datatype each - so a text line's batch, a FIX row and a chained
 //! message join on them without a mapping. Event-native schemas use
@@ -682,19 +682,6 @@ macro_rules! delegate_market_value {
 
             fn set_recdunix(&mut self, unix: Option<i64>) {
                 <$holder as $crate::graph::Event>::set_recdunix(
-                    <Self as AsMut<$holder>>::as_mut(self),
-                    unix,
-                );
-            }
-
-            fn get_refrecdunix(&self) -> Option<i64> {
-                <$holder as $crate::graph::Event>::get_refrecdunix(
-                    <Self as AsRef<$holder>>::as_ref(self),
-                )
-            }
-
-            fn set_refrecdunix(&mut self, unix: Option<i64>) {
-                <$holder as $crate::graph::Event>::set_refrecdunix(
                     <Self as AsMut<$holder>>::as_mut(self),
                     unix,
                 );

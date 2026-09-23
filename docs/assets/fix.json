@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1926
+        1927
       ],
       [
         "decimal128(38,18)",
@@ -144,7 +144,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        76
+        75
       ],
       [
         "time64(ns)",
@@ -79690,7 +79690,7 @@
         "metadata": {
           "FIX:tag": "65062",
           "FIX:transient": "false",
-          "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated.",
+          "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed.",
           "display": "ExecUnix"
         },
         "name": "execunix",
@@ -79713,17 +79713,15 @@
       },
       {
         "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
+          "type": "string"
         },
         "metadata": {
-          "FIX:tag": "65064",
+          "FIX:tag": "65065",
           "FIX:transient": "false",
-          "description": "The recording clock of the observation selected as this event's merge reference; the latest its statements know.",
-          "display": "RefRecdUnix"
+          "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
+          "display": "MsgSessEventId"
         },
-        "name": "refrecdunix",
+        "name": "msgsesseventid",
         "nullable": true
       }
     ],
@@ -235290,7 +235288,7 @@
         "metadata": {
           "FIX:counter": "65020",
           "FIX:tag": "65020",
-          "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; complete message type, session, context and sequence provenance adds `msgsesseventid` with each text part byte-length-prefixed; repeating-group members are not flattened.",
+          "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened.",
           "display": "Identifiers"
         },
         "name": "identifiers",
@@ -291318,7 +291316,7 @@
         "t": 65062,
         "n": "ExecUnix",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated."
+        "x": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed."
       },
       {
         "c": "recdunix",
@@ -291326,13 +291324,6 @@
         "n": "RecdUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message was recorded by its carrier, where the carrier states one; the earliest its statements know."
-      },
-      {
-        "c": "refrecdunix",
-        "t": 65064,
-        "n": "RefRecdUnix",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The recording clock of the observation selected as this event's merge reference; the latest its statements know."
       },
       {
         "c": "creaunix",
@@ -291479,7 +291470,7 @@
         "t": 65020,
         "n": "Identifiers",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; complete message type, session, context and sequence provenance adds `msgsesseventid` with each text part byte-length-prefixed; repeating-group members are not flattened."
+        "x": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened."
       },
       {
         "c": "beginstring",
@@ -291557,6 +291548,13 @@
         "n": "MsgSessionId",
         "y": "utf8",
         "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
+      },
+      {
+        "c": "msgsesseventid",
+        "t": 65065,
+        "n": "MsgSessEventId",
+        "y": "utf8",
+        "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "symbol",
@@ -292397,7 +292395,6 @@
         "creaunix": "1706790896123000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -292450,7 +292447,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -292731,7 +292729,6 @@
         "creaunix": "1706790897900000000",
         "execunix": "1706790897900000000",
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -292784,7 +292781,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -293171,7 +293169,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -293224,7 +293221,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -296278,7 +296276,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -296331,7 +296328,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -296581,7 +296579,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -296634,7 +296631,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -296815,7 +296813,6 @@
         "creaunix": "1706788800000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -296868,7 +296865,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -296982,7 +296980,6 @@
         "creaunix": "1706790901000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -297035,7 +297032,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -297179,7 +297177,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -297232,7 +297229,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": "Incorrect data format for value",
       "metadata": {},
@@ -297447,7 +297445,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -297500,7 +297497,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -297768,7 +297766,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -297821,7 +297818,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -298074,7 +298072,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -298127,7 +298124,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -298477,7 +298475,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -298530,7 +298527,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -298801,7 +298799,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -298854,7 +298851,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -299027,7 +299025,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -299080,7 +299077,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -299240,7 +299238,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -299293,7 +299290,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -299444,7 +299442,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -299497,7 +299494,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -299670,7 +299668,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -299723,7 +299720,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},
@@ -299900,7 +299898,6 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "refrecdunix": null,
         "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
@@ -299953,7 +299950,8 @@
       "capture": {
         "msgpluginid": null,
         "msgctxid": null,
-        "msgsessionid": null
+        "msgsessionid": null,
+        "msgsesseventid": null
       },
       "text": null,
       "metadata": {},

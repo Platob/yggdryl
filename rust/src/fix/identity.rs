@@ -13,7 +13,7 @@ use crate::{
 use super::schema::CLOCK_DATATYPE;
 use super::{
     FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
+    MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -215,9 +215,10 @@ impl FixHeader {
 /// FIX and none of it is content, so none of it is an entry or a byte on
 /// the wire, and none of it reaches the code the message's content digests
 /// to. Where message type, session instance, message context and sequence are
-/// all present, they are retained together under the message identifier
-/// `msgsesseventid`; they remain delivery provenance and do not become the
-/// message's content identity or its chain code.
+/// all present, their `:`-joined values are the session event the message
+/// was delivered as, [`Self::msgsesseventid`], a column of the fixed row of
+/// its own; it remains delivery provenance and is neither the message's
+/// content identity nor its chain code.
 ///
 /// What the *reader* says about the line is not here: the object the line
 /// was read from, the body it was cut from, its place in that object are
@@ -230,6 +231,7 @@ pub struct FixCapture {
     msgpluginid: Option<SmolStr>,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
+    msgsesseventid: Option<SmolStr>,
 }
 
 impl FixCapture {
@@ -252,6 +254,21 @@ impl FixCapture {
         self.msgsessionid.as_deref()
     }
 
+    /// The session event the message was delivered as: its `MsgType(35)`,
+    /// [`Self::msgsessionid`], [`Self::msgctxid`] and `MsgSeqNum(34)`
+    /// joined by `:` - `8:e7256476:9effef3e6a:1094` - where all four are
+    /// stated, and nothing where one is missing. Derived by the message
+    /// from those four whenever it settles, never read off a row.
+    #[must_use]
+    pub fn msgsesseventid(&self) -> Option<&str> {
+        self.msgsesseventid.as_deref()
+    }
+
+    /// States the derived session event, or unsays it.
+    pub(super) fn set_msgsesseventid(&mut self, value: Option<SmolStr>) {
+        self.msgsesseventid = value;
+    }
+
     fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         let is = |held: (i32, &str)| held.0 == tag;
@@ -261,6 +278,8 @@ impl FixCapture {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {
             text(&self.msgsessionid)
+        } else if is(MSGSESSEVENTID_TAG_NAME) {
+            text(&self.msgsesseventid)
         } else {
             None
         }
@@ -280,6 +299,8 @@ impl FixCapture {
             self.msgctxid = text();
         } else if is(MSGSESSIONID_TAG_NAME) {
             self.msgsessionid = text();
+        } else if is(MSGSESSEVENTID_TAG_NAME) {
+            self.msgsesseventid = text();
         } else {
             return false;
         }

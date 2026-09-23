@@ -273,10 +273,11 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Thirty-one definitions: the event and capture facts, the execution,
-    // recording and merge-reference clocks, MsgCat, and six normalized identifiers whose standard
-    // FIX representation is contextual. CFI already has its own standard tag,
-    // so it adds no crate definition.
+    // Thirty-one definitions: the event and capture facts, the execution and
+    // recording clocks, the session event a bridge delivered the message as,
+    // MsgCat, and six normalized identifiers whose standard FIX
+    // representation is contextual. CFI already has its own standard tag, so
+    // it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -310,7 +311,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "figicode",
             "execunix",
             "recdunix",
-            "refrecdunix",
+            "msgsesseventid",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -347,7 +348,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("FIGICode"),
             Some("ExecUnix"),
             Some("RecdUnix"),
-            Some("RefRecdUnix"),
+            Some("MsgSessEventId"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -370,10 +371,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
-    for name in ["execunix", "recdunix", "refrecdunix"] {
+    for name in ["execunix", "recdunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
+    // The session event a bridge delivered the message as is the text its
+    // four parts join to, and null where one of them is missing.
+    assert_eq!(typed(yggdryl::MSGSESSEVENTID_TAG_NAME.1), &DataType::utf8());
+    assert!(field(yggdryl::MSGSESSEVENTID_TAG_NAME.1).is_nullable());
     // The identities a message was read from are a serie of UUIDs, each item
     // stated.
     assert_eq!(
@@ -433,7 +438,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
         .collect();
-    for retired in [65_000, 65_004, 65_016, 65_019, 65_024, 65_028, 65_036] {
+    // 65064 held the merge reference's recording clock until the reference
+    // became the latest `recdunix` alone.
+    for retired in [
+        65_000, 65_004, 65_016, 65_019, 65_024, 65_028, 65_036, 65_064,
+    ] {
         assert!(!tags.contains(&retired), "{retired} stays retired");
     }
     let mut last = yggdryl::CRATE_TAG_MIN;
@@ -455,7 +464,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
-    assert_eq!(yggdryl::REFRECDUNIX_TAG_NAME, (65_064, "refrecdunix"));
+    assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_065, "msgsesseventid"));
     assert_eq!(
         [
             yggdryl::CURRHASHCODE_TAG_NAME,
@@ -513,6 +522,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         "code",
         "bridgesessionid",
         "sendersessionid",
+        "refrecdunix",
     ] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }

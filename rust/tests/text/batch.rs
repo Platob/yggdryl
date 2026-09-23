@@ -110,7 +110,7 @@ fn the_forward_converters_build_every_line_and_leave_the_clauses_above_them() {
     let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
     assert_eq!(batch.num_rows(), 3);
     // Nor did the projection run: the batch is the whole row schema, the
-    // eighteen event columns it opens with included.
+    // seventeen event columns it opens with included.
     assert!(batch.schema().index_of("crosscode").is_ok());
 
     let read = into_arrow_reader(lines, &options).expect("a reader");

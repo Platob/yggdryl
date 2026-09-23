@@ -10,9 +10,10 @@
 //! them stand the facts a capture states
 //! about the line - where it was read from and how many pairs it carried -
 //! and the ones a bridge's own log states about the line it wrote: the
-//! session instance, the message context and the plugin that logged it.
-//! Each belongs in a column: a scalar registers as a field, and the
-//! identifiers Map as a group of entries.
+//! session instance, the message context and the plugin that logged it,
+//! and the session event the first two join to with the message's own type
+//! and sequence. Each belongs in a column: a scalar registers as a field,
+//! and the identifiers Map as a group of entries.
 //!
 //! The standard owns prices, quantities and classification. Six normalized
 //! instrument identifiers have crate columns because their FIX sources depend
@@ -31,7 +32,7 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the eighteen say more than the column
+//! sentence, and join on it. Nine of the seventeen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
 //! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
@@ -77,7 +78,7 @@
 //! copies over: the crate's own definition is the one that types a row.
 //! Folding another dictionary in never counts them either.
 //!
-//! Thirty scalar fields and two Map groups, each registered by its shape,
+//! Twenty-nine scalar fields and two Map groups, each registered by its shape,
 //! and every one of them a row of [`CRATED`].
 
 use std::sync::{Arc, LazyLock};
@@ -271,18 +272,20 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");
 pub const FIGICODE_TAG_NAME: (i32, &str) = (65_061, "figicode");
 
 /// The tag and name carrying when the message's execution happened, where
-/// one of its FIX facts states it.
+/// one of its FIX facts states it, else - on an execution report stating
+/// none - when the message happened.
 pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_062, "execunix");
 
 /// The tag and name carrying when the message was recorded by its carrier,
 /// where a carrier states one.
 pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 
-/// The tag and name carrying the recording clock of the observation selected
-/// as the message's merge reference.
-pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
+/// The tag and name carrying the session event a bridge delivered the
+/// message as: its `MsgType(35)`, session instance, message context and
+/// `MsgSeqNum(34)` joined by `:`, where all four are stated.
+pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_065, "msgsesseventid");
 
-/// The graph event column one crate tag is, for the eighteen that are one.
+/// The graph event column one crate tag is, for the seventeen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -334,8 +337,10 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// the codes, because they are computed from the message that carries them;
 /// the place in the chain and the element it follows, because a walk states
 /// them per message; the state it reached and when it expires, because a
-/// walk folds them per message; `nofixentries`, `sourceurl` and
-/// `srcuuids`, because they are facts about the line this row was read from.
+/// walk folds them per message; the session event it was delivered as,
+/// because it joins this message's own type and sequence; `nofixentries`,
+/// `sourceurl` and `srcuuids`, because they are facts about the line this
+/// row was read from.
 ///
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
@@ -344,7 +349,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 19] = [
     CURRUNIX_TAG_NAME.0,
     EXECUNIX_TAG_NAME.0,
     RECDUNIX_TAG_NAME.0,
-    REFRECDUNIX_TAG_NAME.0,
+    MSGSESSEVENTID_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
@@ -380,7 +385,7 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the eighteen [`EventColumn`]s, which owns all three: a text
+    /// One of the seventeen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
@@ -389,9 +394,10 @@ enum Holds {
         column: MarketColumn,
         display: &'static str,
     },
-    /// A fact no graph event states - what a bridge's row header said, where
-    /// the line was read from, the residual counter and the six normalized
-    /// identifiers - which therefore spells its own.
+    /// A fact no graph event states - what a bridge's row header said and
+    /// the session event it joins to, where the line was read from, the
+    /// residual counter and the six normalized identifiers - which therefore
+    /// spells its own.
     Own {
         datatype: fn() -> Result<DataType>,
         display: &'static str,
@@ -562,9 +568,8 @@ const CRATED: [Crated; 31] = [
     Crated::event(CROSSHASHCODE_TAG_NAME, EventColumn::CrossHashCode),
     Crated::event(IDENTIFIERS_TAG_NAME, EventColumn::Identifiers).saying(
         "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; complete message type, session, \
-         context and sequence provenance adds `msgsesseventid` with each text \
-         part byte-length-prefixed; repeating-group members are not flattened.",
+         field that stated it, in sorted order; repeating-group members are \
+         not flattened.",
     ),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
@@ -669,13 +674,23 @@ const CRATED: [Crated; 31] = [
     Crated::event(EXECUNIX_TAG_NAME, EventColumn::ExecUnix).saying(
         "When the message's execution happened: ExecutionTimestamp, an \
          execution TrdRegTimestamp, a proprietary EventTimestamp, or a \
-         trade's TransactTime, the first one stated.",
+         trade's TransactTime, the first one stated; an execution report \
+         stating none executed at its currunix; the latest its chain \
+         reached once followed.",
     ),
     Crated::event(RECDUNIX_TAG_NAME, EventColumn::RecdUnix).saying(
         "When the message was recorded by its carrier, where the carrier \
          states one; the earliest its statements know.",
     ),
-    Crated::event(REFRECDUNIX_TAG_NAME, EventColumn::RefRecdUnix),
+    Crated::own(
+        MSGSESSEVENTID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "MsgSessEventId",
+        "The session event a bridge delivered the message as: MsgType, the \
+         session instance, the message context and MsgSeqNum joined by `:`, \
+         where all four are stated. Derived and never content: the key two \
+         observations of one delivery merge on.",
+    ),
 ];
 
 /// Builds every field this crate defines, in tag order.

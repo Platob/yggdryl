@@ -34,7 +34,7 @@
   "metadata": {
     "FIX:counter": "65020",
     "FIX:tag": "65020",
-    "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; complete message type, session, context and sequence provenance adds `msgsesseventid` with each text part byte-length-prefixed; repeating-group members are not flattened.",
+    "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened.",
     "display": "Identifiers"
   }
 }

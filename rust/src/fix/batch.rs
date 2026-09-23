@@ -163,8 +163,10 @@ impl FixCodec {
     /// through the same funnel as a line: the payload as
     /// [`Self::parse_line`] reads it, the `beginstring` column as
     /// [`Self::parse_text_line`] reads the captures of those names, the
-    /// `msgdirection` column as the direction the row states, the `mtime`
-    /// column as when the row's line was written, and every other column
+    /// `msgdirection` column as the direction the row states, the
+    /// `currunix` column - the text reader's `mtime` - as when the row's
+    /// line was written, which dates a message stating no `SendingTime(52)`
+    /// as that door dates it, and every other column
     /// named after a field the dictionary knows, `msgpluginid` among them,
     /// filling that field where the line left it unsaid. Where each column
     /// sits and which field it fills is decided once from the schema, so no
@@ -176,7 +178,7 @@ impl FixCodec {
     /// the row and carried by every message parsed out of it, under the
     /// column's name, so whoever writes the messages back as rows states
     /// them again at their columns. Every message states the row's line,
-    /// dated by its `mtime` cell, as its one source.
+    /// dated by its `currunix` cell, as its one source.
     ///
     /// A line the reader cannot classify yields no message; malformed-body
     /// recovery still obeys the mandatory field contract. A bulk

@@ -1349,12 +1349,14 @@
     assert.equal(message.currency, 'XXX')
     assert.equal(message.text, null)
     assert.deepEqual(message.metadata, {})
-    // Nothing was captured: no plugin, no context, no session. Where the line
-    // came from is the reader's statement, on the row, and never here.
+    // Nothing was captured: no plugin, no context, no session, so no session
+    // event either. Where the line came from is the reader's statement, on
+    // the row, and never here.
     assert.deepEqual(message.capture(), {
       msgpluginid: null,
       msgctxid: null,
       msgsessionid: null,
+      msgsesseventid: null,
     })
 
     // A lookup reaches the row and the holders alike, always as a Scalar: a
@@ -1421,7 +1423,8 @@
     assert.equal(event.creaunix, event.currunix)
     assert.equal(event.execunix, null)
     assert.equal(event.recdunix, null)
-    assert.equal(event.refrecdunix, null)
+    // A merge keeps no clock of the reference it chose.
+    assert.equal('refrecdunix' in event, false)
     assert.equal(event.marketoperationid, 10)
     assert.equal(event.price, '10.5')
     assert.equal(event.quantity, '100')
@@ -1556,45 +1559,100 @@
     assert.equal(heartbeat.intoText('|'), '35=0|52=20240102-10:15:30|')
   })
 
-  test('bridge capture context is an identifier but never the crosscode or content', () => {
+  test('the bridge session event is captured but never the crosscode or content', () => {
+    // FIX names the chain; a complete bridge bracket names its delivery.
     const registry = seed()
     const message = fixedCodec(registry).parseUllinkLine(Buffer.from(
       'MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|' +
       '#MSGCTXID=CONTEXT-1|#MSGSEQNUM=7|#SYMBOL=n/A|#VENUEOWNTHING=n/A|',
     ))
 
+    // The message type, session, context and sequence joined as they are
+    // stated, on the capture: delivery provenance, never a name the message
+    // goes by.
     assert.equal(message.crosscode, 'ORDER-1')
-    assert.deepEqual(message.identifiers, {
-      clordid: 'CLIENT-1',
-      msgsesseventid: '1:8|9:SESSION-1|9:CONTEXT-1|7',
-      orderid: 'ORDER-1',
-    })
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
+    assert.equal(message.byTag(65065).asJs(), '8:SESSION-1:CONTEXT-1:7')
+    assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
     const contentHash = message.currhashcode
     const contentUuid = message.curruuid
 
+    // Every write settles it again, and none of it is content.
     message.set('msgsessionid', 'SESSION-2')
     assert.equal(message.capture().msgsessionid, 'SESSION-2')
-    assert.deepEqual(message.identifiers, {
-      clordid: 'CLIENT-1',
-      msgsesseventid: '1:8|9:SESSION-2|9:CONTEXT-1|7',
-      orderid: 'ORDER-1',
-    })
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-1:7')
+    assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.currhashcode, contentHash)
     assert.equal(message.curruuid, contentUuid)
 
+    // A missing part unsays it rather than leaving a stale key behind.
     message.set('msgctxid', null)
     assert.equal(message.capture().msgctxid, null)
-    assert.deepEqual(message.identifiers, {
-      clordid: 'CLIENT-1',
-      orderid: 'ORDER-1',
-    })
+    assert.equal(message.capture().msgsesseventid, null)
+    assert.equal(message.getByTag(65065), null)
     assert.equal(message.currhashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
-    assert.equal(message.identifiers.msgsesseventid, '1:8|9:SESSION-2|9:CONTEXT-2|7')
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
     assert.equal(message.currhashcode, contentHash)
+
+    // It is a column of the fixed row, closing the session band it is joined
+    // from, and a row read back states it again. The merge reference's
+    // recording clock is a column no longer.
+    const schema = fix.schema(registry)
+    const at = schema.indexOf('msgsesseventid')
+    assert.equal(at, schema.indexOf('msgsessionid') + 1)
+    assert.equal(schema.fieldAt(at).fix.tag, 65065)
+    assert.equal(schema.indexOf('refrecdunix'), null)
+    const row = message.intoRow(schema)
+    assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
+    const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
+    assert.equal(rebuilt.crosscode, message.crosscode)
+    assert.deepEqual(rebuilt.identifiers, message.identifiers)
+    assert.deepEqual(rebuilt.capture(), message.capture())
+    assert.ok(rebuilt.intoRow(schema).equals(row))
+
+    // A row written before the column existed states the key among the
+    // identifiers, length-prefixed: the column is its one owner now, so the
+    // settle drops that entry and derives the plain key again.
+    const legacy = row.asJs()
+    legacy[schema.indexOf('identifiers')] = new Map([
+      ['clordid', 'CLIENT-1'],
+      ['msgsesseventid', '1:8|9:SESSION-2|9:CONTEXT-2|7'],
+      ['orderid', 'ORDER-1'],
+    ])
+    legacy[at] = null
+    const upgraded = fix.FixMsg.fromRow(schema, legacy, registry)
+    assert.deepEqual(upgraded.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
+    assert.equal(upgraded.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
+    assert.equal(upgraded.currhashcode, message.currhashcode)
+  })
+
+  test("a line's session event joins its four values as stated", () => {
+    // The bridge's session and context captures, the type and the sequence.
+    const codec = fixedCodec(seed(), { captureNames: ['msgsessionid', 'msgctxid'] })
+    const line = new TextLine(0n, '8=FIX.4.4|35=8|34=1094|10=0|', ['e7256476', '9effef3e6a'])
+    const [message] = codec.parseTextLine(line)
+
+    const capture = message.capture()
+    assert.equal(capture.msgsessionid, 'e7256476')
+    assert.equal(capture.msgctxid, '9effef3e6a')
+    // Joined by `:` with nothing in front of a part, and held by the capture
+    // rather than among the names the message goes by.
+    assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
+    assert.equal(message.byTag(65065).asJs(), '8:e7256476:9effef3e6a:1094')
+    assert.equal('msgsesseventid' in message.identifiers, false)
+
+    // A part missing is no session event at all.
+    for (const [body, captures] of [
+      ['8=FIX.4.4|35=8|10=0|', ['e7256476', '9effef3e6a']],
+      ['8=FIX.4.4|35=8|34=1094|10=0|', ['e7256476', null]],
+    ]) {
+      const [partial] = codec.parseTextLine(new TextLine(0n, body, captures))
+      assert.equal(partial.capture().msgsesseventid, null, body)
+    }
   })
 
   test('a message is a value: equality, hash, clone and JSON', () => {
@@ -1986,6 +2044,61 @@
       ).currunix,
       SENT,
     )
+  })
+
+  test("a single-sided quote reads as its lane's side", () => {
+    const codec = fixedCodec(seed())
+
+    // A bid alone is a buy at the bid: the price, the quantity and the lane's
+    // currency read off it, and none of it reaches the wire.
+    const bid = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|'))
+    assert.equal(bid.side, 'BUY')
+    assert.equal(bid.price, '101.5')
+    assert.equal(bid.quantity, '200')
+    assert.equal(bid.currency, 'USD')
+    assert.ok(!bid.intoText('|').includes('|54='))
+
+    // An offer alone is a sell at the offer.
+    const offer = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|'))
+    assert.equal(offer.side, 'SELL')
+    assert.equal(offer.price, '102')
+    assert.equal(offer.quantity, '50')
+
+    // Both lanes name no side; a stated side stands whatever lane it quotes.
+    const two = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
+    assert.equal(two.side, 'UNKNOWN')
+    const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))
+    assert.equal(stated.side, 'SELL')
+  })
+
+  test('an execution report stating no execution clock executed at its instant', () => {
+    // Intake dates the execution a report states, rather than a later walk.
+    const registry = seed()
+    const codec = fixedCodec(registry)
+
+    // A fill stating no ExecutionTimestamp, no execution TrdRegTimestamp and
+    // no TransactTime executed when it happened, and is a raw observation.
+    const fill = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|'))
+    assert.equal(fill.currunix, SENDING_NS)
+    assert.equal(fill.event().execunix, SENDING_NS)
+    assert.equal(fill.prevuuid, null)
+    // The row states it, and a row read back keeps it.
+    const schema = fix.schema(registry)
+    const row = fill.intoRow(schema)
+    assert.ok(row.at(schema.indexOf('execunix')).equals(SENDING))
+    assert.equal(fix.FixMsg.fromRow(schema, row, registry).event().execunix, SENDING_NS)
+
+    // A trade's own TransactTime is its execution clock.
+    const traded = codec.parseFixLine(
+      Buffer.from('8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=2|60=20240102-10:15:30.5|10=0|'),
+    )
+    assert.equal(traded.event().execunix, SENDING_NS + 500_000_000n)
+
+    // An acknowledgement and an order report no execution.
+    const acknowledged = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=8|37=O1|17=E0|150=0|39=0|10=0|'))
+    assert.equal(acknowledged.event().execunix, null)
+    const order = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|10=0|'))
+    assert.equal(order.event().execunix, null)
   })
 
   test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
@@ -2437,7 +2550,7 @@
 
   const arrow = require('apache-arrow')
 
-  const { BatchReader, DataType, Field, Scalar, TextLine, fields, fix } = require('yggdryl')
+  const { BatchReader, DataType, Field, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 
@@ -2710,6 +2823,79 @@
     // the line door reads the same frame without naming anything.
     const [read] = pinned.parseTextLines([new TextLine(0n, Buffer.from('8=FIX.4.2|35=D|11=A|10=0|'))])
     assert.equal(read.byTag(11).asJs(), 'A')
+  })
+
+  // A row header dating each line by an `mtime` capture, the line's own clock.
+  const DATED = String.raw`^(?<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) `
+  const RECORDED = '2024-03-05 10:15:30.250'
+  const RECORDED_NS = 1_709_633_730_250_000_000n
+  const SENDING_NS = 1_704_190_530_000_000_000n
+
+  /** `body` as a line the header dated at `RECORDED`, in UTC. */
+  function datedLine(body) {
+    const options = new TextOptions()
+    options.rowheader = DATED
+    options.timezone = 'UTC'
+    return new TextLine(0n, body, [RECORDED], options)
+  }
+
+  test("a line's own clock dates a message stating no sending time", () => {
+    // The line was recorded as its message went by: nearer the send than
+    // any pin.
+    const registry = seed()
+    const schema = fix.schema(registry)
+    const line = datedLine('8=FIX.4.4|35=8|10=0|')
+    assert.equal(line.mtime, RECORDED_NS)
+    assert.equal(line.currunix, RECORDED_NS)
+
+    // Unpinned and pinned alike, the line's clock is the sending clock an
+    // undated frame on it is read against - ahead of the default and of now -
+    // and so the instant, the creation and the recording.
+    for (const codec of [reading(registry), reading(registry, { defaultSendingTime: SENDING })]) {
+      const [message] = codec.parseTextLine(line)
+      assert.equal(message.header().sendingtime, RECORDED_NS)
+      assert.equal(message.currunix, RECORDED_NS)
+      assert.equal(message.event().creaunix, RECORDED_NS)
+      assert.equal(message.event().recdunix, RECORDED_NS)
+      // Supplied, never stated: neither the wire nor the row's own column
+      // says what the frame did not.
+      assert.ok(!message.intoText('|').includes('52='))
+      assert.equal(message.intoRow(schema).asJs()[schema.indexOf('sendingtime')], null)
+    }
+
+    // A frame stating its own SendingTime keeps it; the line still says when
+    // it was recorded.
+    const [stated] = reading(registry).parseTextLine(datedLine('8=FIX.4.4|35=8|52=20240102-10:15:30|10=0|'))
+    assert.equal(stated.header().sendingtime, SENDING_NS)
+    assert.equal(stated.currunix, SENDING_NS)
+    assert.equal(stated.event().recdunix, RECORDED_NS)
+    assert.ok(stated.intoText('|').includes('|52=20240102-10:15:30|'))
+
+    // An execution report on it executed at that instant.
+    const [filled] = reading(registry, { defaultSendingTime: SENDING })
+      .parseTextLine(datedLine('8=FIX.4.4|35=8|150=F|39=2|10=0|'))
+    assert.equal(filled.event().execunix, RECORDED_NS)
+
+    // The Arrow door reads the same clock off a row's `currunix` cell.
+    const source = new arrow.Table({
+      currunix: arrow.makeVector(arrow.makeData({
+        type: new arrow.TimestampNanosecond('UTC'),
+        length: 1,
+        data: BigInt64Array.from([RECORDED_NS]),
+      })),
+      body: arrow.vectorFromArray([encoder.encode('8=FIX.4.4|35=8|10=0|')], new arrow.Binary()),
+    })
+    const parsed = reading(registry, { defaultSendingTime: SENDING })
+      .parseTextArrowReader(BatchReader.from(source))
+      .intoTable()
+    assert.deepEqual([...parsed.getChild('currunix').toArray()], [RECORDED_NS])
+    assert.deepEqual([...parsed.getChild('recdunix').toArray()], [RECORDED_NS])
+    assert.deepEqual(column(parsed, 'sendingtime'), [null])
+
+    // A raw-byte door holds no line, so the same frame there takes the pin.
+    const raw = reading(registry, { defaultSendingTime: SENDING }).parseFixLine(Buffer.from('8=FIX.4.4|35=8|10=0|'))
+    assert.equal(raw.currunix, SENDING_NS)
+    assert.equal(raw.event().recdunix, null)
   })
 
   test("threads preserve ordered multi-batch rows and a message carries its row's cells", () => {

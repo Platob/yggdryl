@@ -985,38 +985,49 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
 
 #[test]
 fn merging_books_uses_the_latest_recording_as_reference_and_keeps_earliest_clocks() {
-    let mut older = Book::new(100, "IBM");
-    older
-        .add_operations([operation(
-            "quote", "IBM", "B-1", 100, "Buy", "100", 2, "New",
+    let book = |identity: &str, side: &str, price: &str, recdunix: i64, feed: &str| {
+        let mut book = Book::new(100, "IBM");
+        book.add_operations([operation(
+            "quote", "IBM", identity, 100, side, price, 2, "New",
         )])
         .unwrap();
+        book.set_recdunix(Some(recdunix));
+        book.set_identifiers(BTreeMap::from([("Feed".to_owned(), feed.to_owned())]));
+        book.finalize();
+        book
+    };
+    let mut older = book("B-1", "Buy", "100", 20, "OLDER");
     older.set_execunix(Some(7));
-    older.set_recdunix(Some(20));
-    older.set_refrecdunix(Some(20));
     older.finalize();
-
-    let mut latest = Book::new(100, "IBM");
-    latest
-        .add_operations([operation(
-            "quote", "IBM", "A-1", 100, "Sell", "102", 4, "New",
-        )])
-        .unwrap();
+    let mut latest = book("A-1", "Sell", "102", 30, "LATEST");
     latest.set_execunix(Some(9));
-    latest.set_recdunix(Some(30));
-    latest.set_refrecdunix(Some(30));
     latest.finalize();
 
     let left = older.clone().merge_with(&latest).unwrap();
-    let right = latest.merge_with(&older).unwrap();
+    let right = latest.clone().merge_with(&older).unwrap();
     for merged in [&left, &right] {
         assert_eq!(merged.bid().len(), 1);
         assert_eq!(merged.ask().len(), 1);
+        // The later recording (30) is the reference and has the word on a
+        // conflict; the clocks fold to the earliest either book knows.
+        assert_eq!(merged.get_identifiers()["Feed"], "LATEST");
         assert_eq!(merged.get_execunix(), Some(7));
         assert_eq!(merged.get_recdunix(), Some(20));
-        assert_eq!(merged.get_refrecdunix(), Some(30));
     }
     assert_eq!(left.get_curruuid(), right.get_curruuid());
+
+    // No clock keeps the reference's own 30, so the merged book ranks by the
+    // earliest recording (20) it holds: a third book recorded at 25 leads
+    // it, although it would not lead `latest` alone.
+    let between = book("B-2", "Buy", "99", 25, "BETWEEN");
+    let alone = latest.merge_with(&between).unwrap();
+    assert_eq!(alone.get_identifiers()["Feed"], "LATEST");
+    assert_eq!(alone.get_recdunix(), Some(25));
+    let folded = left.merge_with(&between).unwrap();
+    assert_eq!(folded.get_identifiers()["Feed"], "BETWEEN");
+    assert_eq!(folded.get_recdunix(), Some(20));
+    assert_eq!(folded.bid().len(), 2);
+    assert_eq!(folded.ask().len(), 1);
 }
 
 #[test]
@@ -1074,7 +1085,6 @@ fn restating_rederives_the_book_identity_after_holder_restatement() {
     ])
     .unwrap();
     live.set_recdunix(Some(12));
-    live.set_refrecdunix(Some(12));
     live.finalize();
     let mut repeated = live.clone();
     repeated.set_recdunix(Some(8));
@@ -1364,7 +1374,6 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
     let mut reference = views[1].clone();
     assert!(reference.bid().deltas().is_empty());
     reference.set_recdunix(Some(20));
-    reference.set_refrecdunix(Some(20));
     reference.finalize();
 
     let mut supplement = Book::new(2_000_000, "IBM");
@@ -1374,7 +1383,6 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
         )])
         .unwrap();
     supplement.set_recdunix(Some(10));
-    supplement.set_refrecdunix(Some(10));
     supplement.finalize();
     let merged = supplement.merge_with(&reference).unwrap();
     assert_eq!(merged.bid().len(), 1);
@@ -1398,7 +1406,6 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
         ])
         .unwrap();
     older.set_recdunix(Some(10));
-    older.set_refrecdunix(Some(10));
     older.finalize();
 
     let mut reset = MarketEventData::at(2);
@@ -1415,7 +1422,6 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
         .add_operations([MarketOperation::Snapshot(reset)])
         .unwrap();
     latest.set_recdunix(Some(20));
-    latest.set_refrecdunix(Some(20));
     latest.finalize();
 
     let continued = latest.clone().with_previous(&older).unwrap();
@@ -1456,6 +1462,12 @@ fn decimal_means_do_not_overflow_representable_results() {
 fn a_failed_iterator_group_emits_only_the_error() {
     let mut invalid = operation("quote", "IBM", "BAD", 1, "Buy", "99", 1, "New");
     invalid.set_side(Side::unknown());
+    // The bid lane its buy filled would name that side again: an operation
+    // with no side is one quoting no single lane either.
+    invalid.set_bidpx(None);
+    invalid.set_bidqty(None);
+    invalid.set_bidcurrency(None);
+    invalid.set_bidunit(None);
     invalid.finalize();
     let results = BookIterator::new(
         [

@@ -363,7 +363,7 @@ mod text {
         #[test]
         fn a_where_clause_reads_every_column_the_row_schema_states() {
             // The clause binds against the whole row a line becomes - the
-            // eighteen event columns it opens with, the place they state, and
+            // seventeen event columns it opens with, the place they state, and
             // the header's own captures - not against the body alone.
             let mut options = TextOptions::new()
                 .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")

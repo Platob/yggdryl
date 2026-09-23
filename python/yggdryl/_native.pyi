@@ -5179,10 +5179,14 @@ class FixCapture:
     What a bridge's own row header states about the line it wrote - the
     plugin, the message context and the session instance - read off the
     line's own bytes like every other fact a message holds. None of it is
-    FIX and none is content, so none of it is an entry or on the wire; where
-    the row header brackets both a session instance and a message context,
-    the two name the chain through the cross code, which is the chain's
-    identity and not the message's, and which the content code leaves out.
+    FIX and none is content, so none of it is an entry or on the wire, and
+    none of it reaches the code the content digests to. Where the message
+    type, the session instance, the message context and ``MsgSeqNum`` are
+    all stated, their values joined by ``:`` are ``msgsesseventid``, the
+    session event the message was delivered as -
+    ``8:e7256476:9effef3e6a:1094`` - derived whenever the message settles,
+    delivery provenance rather than the message's content identity or its
+    chain code, and the key two observations of one delivery merge on.
 
     What the *reader* said about the line is not here: the object it was
     read from, and whatever else the reader carried, are the capture's own
@@ -5199,6 +5203,8 @@ class FixCapture:
     def msgctxid(self) -> str | None: ...
     @property
     def msgsessionid(self) -> str | None: ...
+    @property
+    def msgsesseventid(self) -> str | None: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __ne__(self, other: object, /) -> bool: ...
     def __hash__(self) -> int: ...
@@ -5246,8 +5252,6 @@ class MarketEventData:
     def execunix(self) -> int | None: ...
     @property
     def recdunix(self) -> int | None: ...
-    @property
-    def refrecdunix(self) -> int | None: ...
     @property
     def exprtime(self) -> int | None: ...
     @property
@@ -5353,8 +5357,7 @@ class FixMsg:
     ``set`` and ``remove`` write both the same way - a typed key its holder,
     with ``None`` clearing it, any other key the row, typed by the field the
     key resolves to - and every write settles the identity again: the cross
-    code from the bridge's ``msgsessionid:msgctxid`` where the row header
-    stated both, else the first stated of ``OrderID``, ``ClOrdID``,
+    code from the first stated of ``OrderID``, ``ClOrdID``,
     ``OrigClOrdID``, ``QuoteID``, ``QuoteReqID`` and ``MDReqID``; the hash
     code over the facts, the lifted fields and the row, the standard header
     and trailer left out; ``curruuid`` and ``crossuuid`` from both. ``entries``
@@ -5530,12 +5533,21 @@ class FixCodec:
     else the line implies it.
 
     ``default_sending_time`` is the ``SendingTime`` a genuinely new message
-    takes when neither it nor its carrier states a valid one: a ``Scalar``
-    must already be a nanosecond UTC ``datetime64``, an aware UTC
-    ``datetime`` is read once into that clock, and any other value is the
-    core's ``ValueError``. Unstated, each undated new message reads UTC now
-    once, so a parse of undated bytes repeats only under a pinned default. A
-    line's own ``timestamp`` is capture context and stamps nothing.
+    takes when it states no valid one and nothing it was read with dates it,
+    neither a capture reaching tag 52 nor the ``currunix`` of the line it
+    was read out of: a ``Scalar`` must already be a nanosecond UTC
+    ``datetime64``, an aware UTC ``datetime`` is read once into that clock,
+    and any other value is the core's ``ValueError``. Unstated, each undated
+    new message reads UTC now once, so a parse of undated bytes repeats only
+    under a pinned default. A line's ``timestamp`` capture is context and
+    stamps nothing; the line's own clock does. Its ``currunix`` - an
+    ``mtime`` capture, else its handle's modification time, and on
+    ``parse_text_arrow_reader`` the row's ``currunix`` cell - is the
+    message's ``recdunix`` and the sending clock of a message stating none,
+    ahead of the pin: never the message's own, so
+    ``header().stated_sendingtime`` is false and neither the wire nor the
+    row's ``sendingtime`` column states it. The raw-byte doors read no line,
+    so an undated frame there takes the pin, else UTC now.
     """
 
     def __init__(

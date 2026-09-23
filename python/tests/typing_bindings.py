@@ -1504,6 +1504,7 @@ fix_header_msgdirection: str | None = fix_message_header.msgdirection
 fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
+fix_capture_msgsesseventid: str | None = fix_message_capture.msgsesseventid
 
 fix_event_curruuid: Scalar = fix_message_event.curruuid
 fix_event_crossuuid: Scalar = fix_message_event.crossuuid
@@ -1518,7 +1519,6 @@ fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_execunix: int | None = fix_message_event.execunix
 fix_event_recdunix: int | None = fix_message_event.recdunix
-fix_event_refrecdunix: int | None = fix_message_event.refrecdunix
 fix_event_exprtime: int | None = fix_message_event.exprtime
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
@@ -1806,13 +1806,13 @@ assert fix_header_msgdirection is None or fix_header_msgdirection
 assert fix_capture_msgpluginid is None or fix_capture_msgpluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
+assert fix_capture_msgsesseventid is None or fix_capture_msgsesseventid
 assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
 assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
 assert fix_event_creaunix is None or isinstance(fix_event_creaunix, int)
 assert fix_event_execunix is None or isinstance(fix_event_execunix, int)
 assert fix_event_recdunix is None or isinstance(fix_event_recdunix, int)
-assert fix_event_refrecdunix is None or isinstance(fix_event_refrecdunix, int)
 assert fix_event_exprtime is None or isinstance(fix_event_exprtime, int)
 assert fix_event_prevunix is None or isinstance(fix_event_prevunix, int)
 assert fix_event_snapunix is None or isinstance(fix_event_snapunix, int)
