@@ -116,7 +116,7 @@ The record surface is one streaming read and three explicit write intents:
 media type rather than an argument, `options.field` selects and casts in one
 pass, and a handle addressing a folder reads and writes across the partitions
 beneath it. The canonical signatures and intent rules live on the
-[records page](docs/holder/iobase/records.md).
+[records page](docs/holder/index.md#records).
 
 ```rust
 use yggdryl::IOMedia;

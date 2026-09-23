@@ -253,7 +253,7 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 
 ## Platform paths
 
-[`local`](../holder/backends/local.md) stores this canonical `file:` URL as a handle's whole state.
+[`local`](../holder/index.md#local) stores this canonical `file:` URL as a handle's whole state.
 
 === "Rust"
 

@@ -112,7 +112,7 @@ The view remembers the scheme; the caller writes the bare name.
         `tag`, `tags`, `aliases`, `branches`, `identifiers`, `description`, `nulls`, `directions`
         and the catalog references on the first; `is_holder`, `algorithm`, `sources`, `time`,
         `unit`, `is_coupled` and `apply_arrow_batch` on the second; `sources`, `transform` and
-        [`apply_arrow_batch`](../holder/iobase/partitions.md#derived-partition-columns) on the
+        [`apply_arrow_batch`](../holder/index.md#derived-partition-columns) on the
         third; `class_metadata` and its three parts on the fourth, each answered only by its own
         view.
 
@@ -293,7 +293,7 @@ depend on.
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
-| [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `term`, `is_derived`, and the two setters; the declaration is applied through the [transform](../expression/selectors.md#a-selector-declares-a-schema) view, `as_transform().apply_arrow_batch` |
+| [`PartitionField`, `PartitionFieldMut`](../holder/index.md#derived-partition-columns) | `sources`, `transform`, `term`, `is_derived`, and the two setters; the declaration is applied through the [transform](../expression/selectors.md#a-selector-declares-a-schema) view, `as_transform().apply_arrow_batch` |
 | `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their sources
@@ -477,7 +477,7 @@ The reserved `FIELD:partition` key marks partition columns on the fields themsel
     assert.equal(schema.onlyPartitionFields().dtype.length, 2)
     ```
 
-Folder writes and reads and Iceberg identity specs read the mark: [Partitions](../holder/iobase/partitions.md), [Iceberg](../media/index.md#iceberg).
+Folder writes and reads and Iceberg identity specs read the mark: [Partitions](../holder/index.md#partitions), [Iceberg](../media/index.md#iceberg).
 
 ## Edges
 

@@ -12,7 +12,7 @@
 | Pruning | `false` only when no row can match |
 | Split | Sound because dropping conjuncts only widens what is kept |
 | Grammar | [Grammar](grammar.md) |
-| Partition columns | [Partitions](../holder/iobase/partitions.md) |
+| Partition columns | [Partitions](../holder/index.md#partitions) |
 
 ## Use
 
