@@ -2053,7 +2053,9 @@ impl PyFixMsg {
         PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
     }
 
-    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    /// The side, as the `side` code it is: the one stated, else the lane a
+    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
+    /// else `UNKNOWN`.
     #[getter]
     fn side(&self) -> PyScalar {
         code_scalar(self.inner.get_side())
@@ -3533,7 +3535,9 @@ impl PyMarketEventData {
         self.inner.get_unit()
     }
 
-    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    /// The side, as the `side` code it is: the one stated, else the lane a
+    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
+    /// else `UNKNOWN`.
     #[getter]
     fn side(&self) -> PyScalar {
         code_scalar(self.inner.get_side())

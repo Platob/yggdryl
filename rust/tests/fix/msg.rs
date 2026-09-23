@@ -10,8 +10,8 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    BloombergCode, CusipCode, DataType, FIGICode, Field, FixCodec, FixEntry, FixMsg, FixRegistry,
-    IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
+    BloombergCode, CusipCode, DataType, Decimal18, FIGICode, Field, FixCodec, FixEntry, FixMsg,
+    FixRegistry, IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -1508,4 +1508,82 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
     assert_eq!(column.get_execunix(), Some(EXECUTION));
     assert_eq!(run.get_currunix(), EXECUTION);
     assert_eq!(column.get_currunix(), EXECUTION);
+}
+
+/// A quote stating one of its lanes and no `Side(54)` is that lane's side:
+/// `BidPx(132)`/`BidSize(134)` alone read as a buy at the bid, and
+/// `OfferPx(133)`/`OfferSize(135)` alone as a sell at the offer, so the
+/// price, the quantity and the lane's currency fill from it. What is read
+/// is derived - nothing of it reaches the wire.
+#[test]
+fn a_single_sided_quote_reads_as_its_lanes_side() {
+    let (_registry, reader) = reader();
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+
+    let bid = reader
+        .sole_line(
+            b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|",
+        )
+        .unwrap();
+    assert_eq!(bid.get_side().as_str(), "BUY");
+    assert_eq!(bid.get_price(), decimal("101.5"));
+    assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
+    assert_eq!(bid.get_currency().as_str(), "USD");
+    assert_eq!(bid.get_bidcurrency().map(|held| held.as_str()), Some("USD"));
+    assert_eq!(bid.get_askpx(), None);
+    let wire = bid.into_bytes(b'|');
+    assert!(
+        !wire.windows(4).any(|held| held == b"|54="),
+        "{}",
+        String::from_utf8_lossy(&wire)
+    );
+
+    let offer = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q2|55=AAPL|133=102|135=50|10=0|")
+        .unwrap();
+    assert_eq!(offer.get_side().as_str(), "SELL");
+    assert_eq!(offer.get_price(), decimal("102"));
+    assert_eq!(offer.get_quantity(), Decimal18::from_int(50));
+
+    // Both lanes name no side, and nothing reads off either.
+    let two = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q3|55=AAPL|132=101|133=102|134=10|135=20|10=0|")
+        .unwrap();
+    assert_eq!(two.get_side().as_str(), "UNKNOWN");
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    // A stated side is the message's own: a sell quoting only a bid keeps
+    // its side, and its own lane quotes nothing to read.
+    let stated = reader
+        .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q4|55=AAPL|54=2|132=101|134=10|10=0|")
+        .unwrap();
+    assert_eq!(stated.get_side().as_str(), "SELL");
+    assert_eq!(stated.get_price(), Decimal18::ZERO);
+
+    // A report pricing itself is not a quote: a fill at its last price
+    // beside a lone bid is about the fill, and names no side.
+    let fill = reader
+        .sole_line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
+        )
+        .unwrap();
+    assert_eq!(fill.get_side().as_str(), "UNKNOWN");
+    assert_eq!(fill.get_price(), decimal("100"));
+
+    // A lane read under a side is the side's, not a statement of its own: a
+    // buy whose side a write takes away quotes no lane any more, so it names
+    // no side either.
+    let mut order = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=C1|55=AAPL|15=USD|54=1|44=100|38=10|10=0|",
+        )
+        .unwrap();
+    assert_eq!(
+        order.get_bidcurrency().map(|held| held.as_str()),
+        Some("USD")
+    );
+    order.remove(54).unwrap();
+    assert_eq!(order.get_side().as_str(), "UNKNOWN");
+    assert_eq!(order.get_bidpx(), None);
+    assert_eq!(order.get_bidcurrency(), None);
 }

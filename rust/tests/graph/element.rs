@@ -2111,6 +2111,118 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
     assert_eq!(once, twice);
 }
 
+/// A quote stating one lane and no side is that lane's side, and the ladder
+/// then reads the price, the quantity, the currency and the unit off it.
+#[test]
+fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+    let currency = |code: &str| Currency::new(code).expect("a currency");
+
+    // A bid alone is a party willing to pay: a buy at the bid.
+    let mut bid = MarketEventData::at(at(10));
+    assert_eq!(bid.get_side(), &Side::unknown());
+    bid.set_bidpx(Some(decimal("101.5")));
+    bid.set_bidqty(Some(Decimal18::from_int(200)));
+    bid.set_bidcurrency(Some(currency("USD")));
+    bid.set_bidunit(Some("shares".to_owned()));
+    bid.fill_market();
+    assert_eq!(bid.get_side().as_str(), "BUY");
+    assert_eq!(bid.get_price(), decimal("101.5"));
+    assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
+    assert_eq!(bid.get_currency().as_str(), "USD");
+    assert_eq!(bid.get_unit(), "shares");
+    assert_eq!(bid.get_askpx(), None, "the other lane stays empty");
+
+    // An offer alone is a party willing to be paid: a sell at the offer.
+    let mut ask = MarketEventData::at(at(20));
+    ask.set_askpx(Some(decimal("102")));
+    ask.set_askqty(Some(Decimal18::from_int(50)));
+    ask.fill_market();
+    assert_eq!(ask.get_side().as_str(), "SELL");
+    assert_eq!(ask.get_price(), decimal("102"));
+    assert_eq!(ask.get_quantity(), Decimal18::from_int(50));
+    assert_eq!(ask.get_bidpx(), None);
+
+    // Any fact of a lane states it: a currency alone names the side and
+    // prices the element in it, and invents no price.
+    let mut priced = MarketEventData::at(at(30));
+    priced.set_askcurrency(Some(currency("EUR")));
+    priced.fill_market();
+    assert_eq!(priced.get_side().as_str(), "SELL");
+    assert_eq!(priced.get_currency().as_str(), "EUR");
+    assert_eq!(priced.get_price(), Decimal18::ZERO);
+
+    // Two lanes name no side, so nothing reads off either.
+    let mut two = MarketEventData::at(at(40));
+    two.set_bidpx(Some(decimal("101")));
+    two.set_askpx(Some(decimal("102")));
+    two.fill_market();
+    assert_eq!(two.get_side(), &Side::unknown());
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    // A side the element states is its own, whatever lane it quotes: a
+    // cross takes no lane, so the offer it carries dates nothing either.
+    let mut cross = MarketEventData::at(at(50));
+    cross.set_side(Side::read("Cross").expect("a side"));
+    cross.set_askpx(Some(decimal("102")));
+    cross.fill_market();
+    assert_eq!(cross.get_side().as_str(), "CROSS");
+    assert_eq!(cross.get_price(), Decimal18::ZERO);
+
+    // An element pricing itself is not a quote: a trade at its last price
+    // beside a lone bid is about the trade, and names no side.
+    let mut traded = MarketEventData::at(at(60));
+    traded.set_lastpx(Some(decimal("100")));
+    traded.set_bidpx(Some(decimal("99")));
+    traded.fill_market();
+    assert_eq!(traded.get_side(), &Side::unknown());
+    assert_eq!(traded.get_price(), decimal("100"));
+
+    // Filling twice changes nothing the first run did not.
+    let twice = {
+        let mut held = bid.clone();
+        held.fill_market();
+        held
+    };
+    assert_eq!(bid, twice);
+}
+
+/// A chain's side reaches only an element quoting no lane of its own: one
+/// lane names the element's side itself, and two name none, whatever side
+/// the quote before it named.
+#[test]
+fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+    let quote = |ms: i64, bid: Option<&str>, ask: Option<&str>| {
+        let mut held = MarketEventData::at(at(ms));
+        held.set_crosscode("Q1".to_owned());
+        held.set_bidpx(bid.map(decimal));
+        held.set_askpx(ask.map(decimal));
+        held.finalize();
+        held
+    };
+    let first = quote(10, Some("101"), None);
+    assert_eq!(first.get_side().as_str(), "BUY");
+
+    let two = quote(20, Some("102"), Some("103"))
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(two.get_side(), &Side::unknown(), "two lanes name no side");
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    let offer = quote(30, None, Some("104"))
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(offer.get_side().as_str(), "SELL", "its own lane names it");
+    assert_eq!(offer.get_price(), decimal("104"));
+
+    // A statement quoting nothing is about the side the chain took.
+    let silent = quote(40, None, None)
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(silent.get_side().as_str(), "BUY");
+}
+
 #[test]
 fn a_linked_market_event_still_inherits_a_missing_symbolticker() {
     let mut previous = MarketEventData::at(at(10));

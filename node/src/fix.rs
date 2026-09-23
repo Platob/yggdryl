@@ -1082,7 +1082,8 @@ pub struct FixEventView {
     pub currency: String,
     /// The unit the quantity is counted in, empty where none is stated.
     pub unit: String,
-    /// The side: `BUY`, `SELL`, or `UNKNOWN`.
+    /// The side: the one stated, else the lane a single-sided quote states -
+    /// `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
     pub side: String,
     /// The instrument's ISIN, where stated.
     #[napi(ts_type = "string | null")]
@@ -1610,7 +1611,8 @@ impl JsFixMsg {
         self.inner.get_quantity().to_string()
     }
 
-    /// The side: `BUY`, `SELL`, or `UNKNOWN`.
+    /// The side: the one stated, else the lane a single-sided quote states -
+    /// `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
     #[napi(getter)]
     pub fn side(&self) -> String {
         self.inner.get_side().as_str().to_owned()

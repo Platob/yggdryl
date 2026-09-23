@@ -1737,6 +1737,14 @@ pub trait MarketElement: Element {
     /// reads them, in one order, each rule filling only what is still
     /// unstated:
     ///
+    /// 0. A quote stating one lane and no side is that lane's side: a bid
+    ///    alone - any of `bidpx`, `bidcurrency`, `bidqty` or `bidunit` - is
+    ///    a party willing to pay, so the element is a buy, and an ask alone
+    ///    one willing to be paid, a sell. A quote is an element the lane is
+    ///    the only price of: one stating a price, a last trade or an average
+    ///    of its own is about that, and a lane beside it is context. A side
+    ///    the element states, a cross or `OPPOSITE` included, is its own and
+    ///    stands, and a quote stating both lanes or neither names no side.
     /// 1. The price is what the element is about, else what it last traded,
     ///    else what it averaged, else what its own side's lane quotes - a
     ///    report stating only `LastPx` is about that price, and a quote
@@ -1754,7 +1762,8 @@ pub trait MarketElement: Element {
     ///
     /// Nothing is invented: a price of nothing, a quantity of nothing, no
     /// currency and no unit fill nothing, an element that states no side
-    /// fills no lane, and a fact the element stated is never overwritten.
+    /// and quotes no single lane fills no lane, and a fact the element
+    /// stated is never overwritten.
     /// Running it twice changes nothing the first run did not.
     ///
     /// Provided, and what an implementor's [`Element::finalize`] runs before
@@ -1770,6 +1779,22 @@ pub trait MarketElement: Element {
                 .and_then(super::instrument::embedded_cusip)
             {
                 self.set_cusipcode(Some(cusip));
+            }
+        }
+        // Only a quote: an element pricing itself - an order at its price, a
+        // trade at its last - is about that, and a lane beside it is context.
+        if self.get_side() == &Side::unknown()
+            && self.get_price() == Decimal18::ZERO
+            && self.get_lastpx().is_none()
+            && self.get_avgpx().is_none()
+        {
+            let named = match lanes_stated(self) {
+                (true, false) => Some("Buy"),
+                (false, true) => Some("Sell"),
+                _ => None,
+            };
+            if let Some(spelling) = named {
+                self.set_side(Side::read(spelling).expect("a shipped side"));
             }
         }
         let side = self.get_side();
@@ -2257,18 +2282,24 @@ fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
 /// statement beside it named. This statement always leads - a code it
 /// spells better is never replaced by a weaker one - and nothing here is
 /// about a step: the price and the quantity a predecessor settled on reach
-/// an element as `prevpx` and `prevqty`, never as its own.
+/// an element as `prevpx` and `prevqty`, never as its own. The side is the
+/// chain's only for an element quoting no lane: one quoting a lane says its
+/// side itself, one lane naming it and two naming none.
 fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(
         this.get_currency().clone(),
         better(this.get_currency().clone(), previous.get_currency(), false),
         |currency| this.set_currency(currency),
     );
-    changed |= moved(
-        this.get_side().clone(),
-        better(this.get_side().clone(), previous.get_side(), false),
-        |side| this.set_side(side),
-    );
+    // An element quoting a lane of its own says its side itself - one lane
+    // names it and two name none - so the chain's is not its to take.
+    if lanes_stated(this) == (false, false) {
+        changed |= moved(
+            this.get_side().clone(),
+            better(this.get_side().clone(), previous.get_side(), false),
+            |side| this.set_side(side),
+        );
+    }
     if this.get_unit().is_empty() {
         changed |= moved(
             this.get_unit().to_owned(),
@@ -2563,6 +2594,20 @@ fn feed_lane(
 
 /// The better of two statements of one code: the selected statement leading,
 /// the other filling what it leaves unknown.
+/// Whether an element's bid lane and its ask lane each state anything, a
+/// lane any of its price, currency, quantity and unit.
+fn lanes_stated<E: MarketElement + ?Sized>(this: &E) -> (bool, bool) {
+    let bid = this.get_bidpx().is_some()
+        || this.get_bidcurrency().is_some()
+        || this.get_bidqty().is_some()
+        || this.get_bidunit().is_some();
+    let ask = this.get_askpx().is_some()
+        || this.get_askcurrency().is_some()
+        || this.get_askqty().is_some()
+        || this.get_askunit().is_some();
+    (bid, ask)
+}
+
 fn better<C: CodeValue>(this: C, other: &C, later: bool) -> C {
     if later {
         other.clone().merge_with(&this)

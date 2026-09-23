@@ -2046,6 +2046,31 @@
     )
   })
 
+  test("a single-sided quote reads as its lane's side", () => {
+    const codec = fixedCodec(seed())
+
+    // A bid alone is a buy at the bid: the price, the quantity and the lane's
+    // currency read off it, and none of it reaches the wire.
+    const bid = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|'))
+    assert.equal(bid.side, 'BUY')
+    assert.equal(bid.price, '101.5')
+    assert.equal(bid.quantity, '200')
+    assert.equal(bid.currency, 'USD')
+    assert.ok(!bid.intoText('|').includes('|54='))
+
+    // An offer alone is a sell at the offer.
+    const offer = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|'))
+    assert.equal(offer.side, 'SELL')
+    assert.equal(offer.price, '102')
+    assert.equal(offer.quantity, '50')
+
+    // Both lanes name no side; a stated side stands whatever lane it quotes.
+    const two = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
+    assert.equal(two.side, 'UNKNOWN')
+    const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))
+    assert.equal(stated.side, 'SELL')
+  })
+
   test('an execution report stating no execution clock executed at its instant', () => {
     // Intake dates the execution a report states, rather than a later walk.
     const registry = seed()

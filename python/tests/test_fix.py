@@ -2801,6 +2801,32 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
     assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").currunix == CLOCK_NS
 
 
+def test_a_single_sided_quote_reads_as_its_lanes_side(seed: FixRegistry) -> None:
+    """A quote stating one lane and no ``Side`` is that lane's side."""
+    codec = _fixed(seed)
+
+    # A bid alone is a buy at the bid: the price, the quantity and the lane's
+    # currency read off it, and none of it reaches the wire.
+    bid = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=101.5|134=200|10=0|")
+    assert bid.side.as_py() == "BUY"
+    assert bid.price.as_py() == decimal.Decimal("101.5")
+    assert bid.quantity.as_py() == 200
+    assert bid.currency.as_py() == "USD"
+    assert b"|54=" not in bid.into_bytes(ord("|"))
+
+    # An offer alone is a sell at the offer.
+    offer = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|")
+    assert offer.side.as_py() == "SELL"
+    assert offer.price.as_py() == 102
+    assert offer.quantity.as_py() == 50
+
+    # Both lanes name no side; a stated side stands whatever lane it quotes.
+    two = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
+    assert two.side.as_py() == "UNKNOWN"
+    stated = codec.parse_fix_line(b"8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|")
+    assert stated.side.as_py() == "SELL"
+
+
 def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
     seed: FixRegistry,
 ) -> None:

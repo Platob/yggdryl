@@ -1382,6 +1382,14 @@ impl FixMsg {
         event.set_bidqty(bidqty);
         event.set_askpx(askpx);
         event.set_askqty(askqty);
+        // FIX states no currency and no unit of its own for a lane: both are
+        // read off the side by `fill_market`, so they are cleared here with
+        // the rest of what derives, or one read under a side a write has
+        // since taken away would outlive it - and name that side again.
+        event.set_bidcurrency(None);
+        event.set_bidunit(None);
+        event.set_askcurrency(None);
+        event.set_askunit(None);
         if row_stated & ROW_STATED_EXPIRY == 0 {
             event.set_exprtime(exprtime);
         }

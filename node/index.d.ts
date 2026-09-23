@@ -1869,7 +1869,10 @@ export declare class FixMsg {
   get price(): string
   /** The quantity, as decimal text; `0` where none is stated. */
   get quantity(): string
-  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  /**
+   * The side: the one stated, else the lane a single-sided quote states -
+   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   */
   get side(): string
   /** The currency; `XXX` where none is stated. */
   get currency(): string
@@ -6676,7 +6679,10 @@ export interface FixEventView {
   currency: string
   /** The unit the quantity is counted in, empty where none is stated. */
   unit: string
-  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  /**
+   * The side: the one stated, else the lane a single-sided quote states -
+   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   */
   side: string
   /** The instrument's ISIN, where stated. */
   isincode: string | null
