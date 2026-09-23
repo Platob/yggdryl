@@ -567,12 +567,11 @@ fn body_of(
     };
     // Text whose layout is its whole contract lends its run where it lies;
     // any other reads, and so proves, its value.
-    if let Some(text) = held
-        .as_string()
-        .filter(|text| !matches!(text, crate::StringSerie::Fixed(_)))
-        .filter(|_| child.dtype().layout_is_contract())
+    if held.is_string_storage()
+        && !matches!(held, Serie::FixedString(_))
+        && child.dtype().layout_is_contract()
     {
-        if let Some(run) = text.value_bytes(row) {
+        if let Some(run) = held.value_bytes(row) {
             return super::TextBytes::from_bytes(run).map_err(|error| {
                 refused(smol_str::format_smolstr!(
                     "{}",

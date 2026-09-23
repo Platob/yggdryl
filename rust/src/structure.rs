@@ -15,7 +15,7 @@ use crate::invalid;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, FieldPath, FieldSegment, Result};
+use crate::{DataType, DataTypeId, Error, Field, FieldPath, FieldSegment, Result};
 use std::collections::{BTreeMap, HashSet};
 
 /// One failed borrowed schema traversal, before a public wrapper owns its error.
@@ -1584,10 +1584,6 @@ impl DataTypeValue for StructType {
 
     fn id(&self) -> DataTypeId {
         DataTypeId::Struct
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
     }
 
     fn validate(&self) -> Result<()> {

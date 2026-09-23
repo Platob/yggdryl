@@ -6,7 +6,7 @@ One calendar day, held either as a count of days or as the milliseconds of its m
 
 | | |
 | --- | --- |
-| Owned | `DateType` and its two leaves, `DataType::Date32` and `DataType::Date64` - `DateType` the family's view over them - the `DateField` marker, and the `Date32` and `Date64` values |
+| Owned | `DateType` and its two leaves, `DataType::Date32` and `DataType::Date64` - `DateType` the typed field's payload over them - the `DateField` marker, and the `Date32` and `Date64` values |
 | Validated | nothing at the datatype: a date takes no parameter, so `date32()` and `date64()` are `const` and `DateType::validate` never refuses. The value is where the rules live - a `Date32` counts days, a `Date64` milliseconds, and both are naive |
 | Lazy | nothing; the leaf is `Copy` and the value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -51,7 +51,7 @@ logical vocabulary.
     assert_eq!(DateType::Date32.unit(), TimeUnit::Day);
     assert_eq!(DateType::Date64.unit(), TimeUnit::Millisecond);
     assert_eq!(DateType::Date64.bit_width(), 64);
-    assert_eq!(DateType::ALL.map(DateType::family), ["date"; 2]);
+    assert_eq!(DateType::ALL.map(|leaf| leaf.id().temporal_family()), [Some("date"); 2]);
     assert_eq!(DateType::Date32.id(), DataTypeId::Date32);
     assert_eq!(DateType::from_id(DataTypeId::Date64), Some(DateType::Date64));
     assert_eq!(DateType::from_id(DataTypeId::Time32), None);

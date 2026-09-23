@@ -266,6 +266,222 @@ fn every_leaf_sits_in_its_familys_range_and_no_leaf_takes_the_familys_number() {
 }
 
 #[test]
+fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() {
+    use yggdryl::DataTypeKind as K;
+
+    // Each family's range, stated here rather than read out of the crate, so
+    // a moved bound is a failure: the ranges are what `kind`, `contains` and
+    // `of_u8` all answer from.
+    let ranges = [
+        (K::Null, 0x00, 0x07),
+        (K::Boolean, 0x08, 0x0f),
+        (K::Integer, 0x10, 0x1f),
+        (K::Floating, 0x20, 0x27),
+        (K::Decimal, 0x28, 0x2f),
+        (K::Temporal, 0x30, 0x3f),
+        (K::Bytes, 0x40, 0x4f),
+        (K::Text, 0x50, 0x6f),
+        (K::Code, 0x70, 0x7f),
+        (K::Uuid, 0x80, 0x8f),
+        (K::Nested, 0x90, 0xaf),
+        (K::Geospatial, 0xb0, 0xbf),
+    ];
+    assert_eq!(ranges.len(), K::ALL.len());
+    for (kind, first, last) in ranges {
+        assert_eq!(kind.id(), first, "{kind}");
+        assert_eq!(kind.last(), last, "{kind}");
+        assert_eq!(kind.range(), first..=last, "{kind}");
+    }
+    // Every byte up to the last family's end belongs to exactly one family,
+    // and none past it.
+    for byte in 0_u8..=0xff {
+        let owners: Vec<K> = ranges
+            .iter()
+            .filter(|(_, first, last)| (*first..=*last).contains(&byte))
+            .map(|(kind, ..)| *kind)
+            .collect();
+        assert!(owners.len() <= 1, "{byte:#04x}: {owners:?}");
+        assert_eq!(
+            DataTypeKind::of_u8(byte),
+            owners.first().copied(),
+            "{byte:#04x}"
+        );
+        assert_eq!(owners.is_empty(), byte > 0xbf, "{byte:#04x}");
+    }
+
+    // Each identifier's family, listed independently of the byte table, so
+    // a bound typo that moved a leaf into its neighbour is caught.
+    let members: [(K, &[DataTypeId]); 12] = [
+        (K::Null, &[DataTypeId::Null]),
+        (K::Boolean, &[DataTypeId::Boolean]),
+        (
+            K::Integer,
+            &[
+                DataTypeId::Int8,
+                DataTypeId::Int16,
+                DataTypeId::Int32,
+                DataTypeId::Int64,
+                DataTypeId::Int128,
+                DataTypeId::UInt8,
+                DataTypeId::UInt16,
+                DataTypeId::UInt32,
+                DataTypeId::UInt64,
+                DataTypeId::UInt128,
+            ],
+        ),
+        (
+            K::Floating,
+            &[
+                DataTypeId::Float16,
+                DataTypeId::Float32,
+                DataTypeId::Float64,
+            ],
+        ),
+        (
+            K::Decimal,
+            &[
+                DataTypeId::Decimal32,
+                DataTypeId::Decimal64,
+                DataTypeId::Decimal128,
+                DataTypeId::Decimal256,
+            ],
+        ),
+        (
+            K::Temporal,
+            &[
+                DataTypeId::DateTime64,
+                DataTypeId::Date32,
+                DataTypeId::Date64,
+                DataTypeId::Time32,
+                DataTypeId::Time64,
+                DataTypeId::Duration32,
+                DataTypeId::Duration64,
+                DataTypeId::Interval,
+            ],
+        ),
+        (
+            K::Bytes,
+            &[
+                DataTypeId::Binary,
+                DataTypeId::LargeBinary,
+                DataTypeId::BinaryView,
+                DataTypeId::LargeBinaryView,
+                DataTypeId::FixedBinary,
+                DataTypeId::SizedBinary,
+            ],
+        ),
+        (
+            K::Text,
+            &[
+                DataTypeId::Utf8String,
+                DataTypeId::LargeUtf8String,
+                DataTypeId::Utf8StringView,
+                DataTypeId::LargeUtf8StringView,
+                DataTypeId::FixedUtf8String,
+                DataTypeId::SizedUtf8String,
+                DataTypeId::AsciiString,
+                DataTypeId::LargeAsciiString,
+                DataTypeId::AsciiStringView,
+                DataTypeId::LargeAsciiStringView,
+                DataTypeId::FixedAsciiString,
+                DataTypeId::SizedAsciiString,
+                DataTypeId::Cp1252String,
+                DataTypeId::LargeCp1252String,
+                DataTypeId::Cp1252StringView,
+                DataTypeId::LargeCp1252StringView,
+                DataTypeId::FixedCp1252String,
+                DataTypeId::SizedCp1252String,
+                DataTypeId::Version,
+                DataTypeId::Url,
+                DataTypeId::Urn,
+                DataTypeId::Timezone,
+                DataTypeId::MimeType,
+                DataTypeId::MediaType,
+            ],
+        ),
+        (
+            K::Code,
+            &[
+                DataTypeId::Country,
+                DataTypeId::Currency,
+                DataTypeId::MicCode,
+                DataTypeId::CfiCode,
+                DataTypeId::Side,
+                DataTypeId::State,
+                DataTypeId::TimeInForce,
+                DataTypeId::IsinCode,
+                DataTypeId::CusipCode,
+                DataTypeId::SedolCode,
+                DataTypeId::BloombergCode,
+                DataTypeId::FIGICode,
+            ],
+        ),
+        (K::Uuid, &[DataTypeId::Uuid]),
+        (
+            K::Nested,
+            &[
+                DataTypeId::List,
+                DataTypeId::LargeList,
+                DataTypeId::ListView,
+                DataTypeId::LargeListView,
+                DataTypeId::FixedSizeList,
+                DataTypeId::Struct,
+                DataTypeId::Map,
+                DataTypeId::SortedMap,
+                DataTypeId::Union,
+                DataTypeId::Dictionary,
+                DataTypeId::RunEndEncoded,
+                DataTypeId::Variant,
+            ],
+        ),
+        (
+            K::Geospatial,
+            &[DataTypeId::Geometry, DataTypeId::Geography],
+        ),
+    ];
+    let listed: usize = members.iter().map(|(_, ids)| ids.len()).sum();
+    assert_eq!(
+        listed,
+        DataTypeId::ALL.len(),
+        "every identifier is listed once"
+    );
+    for (kind, ids) in members {
+        for &id in ids {
+            assert_eq!(id.kind(), kind, "{id}");
+            for other in K::ALL {
+                assert_eq!(other.contains(id), other == kind, "{id} in {other}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_temporal_identifier_names_its_family_and_no_other_identifier_does() {
+    let families = [
+        (DataTypeId::Date32, "date"),
+        (DataTypeId::Date64, "date"),
+        (DataTypeId::Time32, "time"),
+        (DataTypeId::Time64, "time"),
+        (DataTypeId::DateTime64, "datetime"),
+        (DataTypeId::Duration32, "duration"),
+        (DataTypeId::Duration64, "duration"),
+        (DataTypeId::Interval, "interval"),
+    ];
+    for id in DataTypeId::ALL {
+        let expected = families
+            .iter()
+            .find(|(temporal, _)| *temporal == id)
+            .map(|(_, family)| *family);
+        assert_eq!(id.temporal_family(), expected, "{id}");
+        assert_eq!(
+            expected.is_some(),
+            yggdryl::DataTypeKind::Temporal.contains(id),
+            "{id}"
+        );
+    }
+}
+
+#[test]
 fn unknown_name_reports_the_input() {
     let error = DataTypeId::from_str("int33").unwrap_err();
     assert!(error.to_string().contains("\"int33\""), "{error}");

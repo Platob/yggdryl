@@ -16,10 +16,11 @@ use crate::{Error, Result};
 /// is the value bindings use for type names and annotations.
 ///
 /// The number each variant states is one byte laid out by family: every
-/// [`DataTypeKind`] owns a range that starts at the family's own number -
-/// [`DataTypeKind::id`], a placeholder no leaf takes - and its leaves follow
-/// in that range, so the high bits of a leaf's byte say its family and a
-/// family has room for the leaves it does not have yet. The byte is what
+/// [`DataTypeKind`] owns a [range](DataTypeKind::range) that starts at the
+/// family's own number - [`DataTypeKind::id`], a placeholder no leaf takes,
+/// but for `null`, whose one leaf states it - and its leaves follow in that
+/// range, so the byte says its family and a family has room for the leaves
+/// it does not have yet. The byte is what
 /// [the variant encoding](crate::Scalar::into_value_bytes) and
 /// [`crate::Scalar::write_bytes`] write as a value's tag, and
 /// [`Self::from_u8`] reads it back.
@@ -445,92 +446,53 @@ impl DataTypeId {
         FROM_U8[byte as usize]
     }
 
-    /// Return the coarse family this identifier belongs to.
+    /// Return the coarse family this identifier belongs to: the family whose
+    /// [range](DataTypeKind::range) its byte is in.
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// assert_eq!(DataTypeId::UInt128.kind(), DataTypeKind::Integer);
+    /// assert_eq!(DataTypeId::Url.kind(), DataTypeKind::Text);
+    /// assert!(DataTypeId::Url.kind().contains(DataTypeId::Url));
+    /// ```
     pub const fn kind(self) -> DataTypeKind {
+        match DataTypeKind::of_u8(self.as_u8()) {
+            Some(kind) => kind,
+            None => panic!("every identifier sits in a family's range"),
+        }
+    }
+
+    /// The temporal family this identifier is a leaf of - a date, a time of
+    /// day, a datetime, a duration or a calendar interval - and `None`
+    /// outside [`DataTypeKind::Temporal`]. The widths of one family share it.
+    pub(crate) const fn temporal_kind(self) -> Option<crate::TemporalKind> {
+        use crate::TemporalKind as T;
         match self {
-            Self::Null => DataTypeKind::Null,
-            Self::Boolean => DataTypeKind::Boolean,
-            Self::Int8
-            | Self::Int16
-            | Self::Int32
-            | Self::Int64
-            | Self::UInt8
-            | Self::UInt16
-            | Self::UInt32
-            | Self::UInt64
-            | Self::Int128
-            | Self::UInt128 => DataTypeKind::Integer,
-            Self::Float16 | Self::Float32 | Self::Float64 => DataTypeKind::Floating,
-            Self::Decimal32 | Self::Decimal64 | Self::Decimal128 | Self::Decimal256 => {
-                DataTypeKind::Decimal
-            }
-            Self::DateTime64
-            | Self::Date32
-            | Self::Date64
-            | Self::Time32
-            | Self::Time64
-            | Self::Duration32
-            | Self::Duration64
-            | Self::Interval => DataTypeKind::Temporal,
-            Self::Binary
-            | Self::FixedBinary
-            | Self::LargeBinary
-            | Self::BinaryView
-            | Self::LargeBinaryView
-            | Self::SizedBinary => DataTypeKind::Bytes,
-            Self::Utf8String
-            | Self::FixedUtf8String
-            | Self::Utf8StringView
-            | Self::LargeUtf8String
-            | Self::LargeUtf8StringView
-            | Self::SizedUtf8String
-            | Self::AsciiString
-            | Self::LargeAsciiString
-            | Self::AsciiStringView
-            | Self::LargeAsciiStringView
-            | Self::FixedAsciiString
-            | Self::SizedAsciiString
-            | Self::Cp1252String
-            | Self::LargeCp1252String
-            | Self::Cp1252StringView
-            | Self::LargeCp1252StringView
-            | Self::FixedCp1252String
-            | Self::SizedCp1252String
-            | Self::Version
-            | Self::Url
-            | Self::Urn
-            | Self::Timezone
-            | Self::MimeType
-            | Self::MediaType => DataTypeKind::Text,
-            // A registered code is fixed-width ASCII text with an identity;
-            // the family is the identity, and every text behaviour - comparison,
-            // casting to a variable layout, merging - is uniform over it too.
-            Self::Country
-            | Self::Currency
-            | Self::MicCode
-            | Self::CfiCode
-            | Self::IsinCode
-            | Self::CusipCode
-            | Self::SedolCode
-            | Self::BloombergCode
-            | Self::FIGICode
-            | Self::Side
-            | Self::State
-            | Self::TimeInForce => DataTypeKind::Code,
-            Self::Uuid => DataTypeKind::Uuid,
-            Self::List
-            | Self::ListView
-            | Self::FixedSizeList
-            | Self::LargeList
-            | Self::LargeListView
-            | Self::Struct
-            | Self::Union
-            | Self::Map
-            | Self::SortedMap
-            | Self::Dictionary
-            | Self::RunEndEncoded
-            | Self::Variant => DataTypeKind::Nested,
-            Self::Geometry | Self::Geography => DataTypeKind::Geospatial,
+            Self::Date32 | Self::Date64 => Some(T::Date),
+            Self::Time32 | Self::Time64 => Some(T::Time),
+            Self::DateTime64 => Some(T::DateTime),
+            Self::Duration32 | Self::Duration64 => Some(T::Duration),
+            Self::Interval => Some(T::Interval),
+            _ => None,
+        }
+    }
+
+    /// The name of the temporal family this identifier is a leaf of -
+    /// `date`, `time`, `datetime`, `duration` or `interval` - and `None`
+    /// outside [`DataTypeKind::Temporal`].
+    ///
+    /// ```
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::Date64.temporal_family(), Some("date"));
+    /// assert_eq!(DataTypeId::Duration32.temporal_family(), Some("duration"));
+    /// assert_eq!(DataTypeId::Int64.temporal_family(), None);
+    /// ```
+    pub const fn temporal_family(self) -> Option<&'static str> {
+        match self.temporal_kind() {
+            Some(kind) => Some(kind.as_str()),
+            None => None,
         }
     }
 
@@ -593,7 +555,7 @@ impl DataTypeId {
 
     /// Return whether the variant is a signed or unsigned integer.
     pub const fn is_integer(self) -> bool {
-        matches!(self.kind(), DataTypeKind::Integer)
+        DataTypeKind::Integer.contains(self)
     }
 
     /// Return whether the variant is a signed integer.
@@ -718,6 +680,19 @@ impl DataTypeId {
         }
     }
 }
+
+// Every identifier sits in one family's range, so `kind` never reaches its
+// panic: a new identifier placed past every range fails to compile.
+const _: () = {
+    let mut index = 0;
+    while index < DataTypeId::ALL.len() {
+        assert!(
+            DataTypeKind::of_u8(DataTypeId::ALL[index].as_u8()).is_some(),
+            "an identifier sits past every family's range"
+        );
+        index += 1;
+    }
+};
 
 /// Every byte's identifier, built once from [`DataTypeId::ALL`].
 const FROM_U8: [Option<DataTypeId>; 256] = {

@@ -36,7 +36,7 @@ mod temporal {
         assert_eq!(default.unit(), TimeUnit::Microsecond);
         assert_eq!(default.timezone(), Timezone::NAIVE);
         assert_eq!(default.bit_width(), 64);
-        assert_eq!(default.family(), "datetime");
+        assert_eq!(default.id().temporal_family(), Some("datetime"));
         assert_eq!(
             DateTimeType::from_id(
                 DataTypeId::DateTime64,

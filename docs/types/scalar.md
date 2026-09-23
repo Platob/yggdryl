@@ -17,9 +17,9 @@
 | Columns | a held column is `Scalar::List(Serie)`: `Scalar::from(serie)` wraps it and `as_serie` borrows it back, neither reading a row, so a columnar value crosses a boundary as the list it is, buffers shared ([Serie](serie.md#a-column-is-a-value)). A stream is never a `Scalar` |
 | `Scalar::Variant` | one Apache Parquet Variant metadata dictionary and value payload; `into_variant` encodes any supported scalar and `from_variant` decodes it, while `DataType::encode_variant` / `decode_variant` apply one declared type |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
-| Families | one value enum per family with several leaves - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial`, `Nested` - each a `FamilyValue`; `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial`, `as_nested` narrow a `Scalar` to one by value, `None` for another kind |
+| Families | a family is the range of `DataTypeId` bytes its `DataTypeKind` owns, not a type: `family()` is the kind whose range `id()` is in, and `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number` are range checks; the value is the leaf its variant holds ([Families](#families)) |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
-| Bindings | `yggdryl.enums`, `enums`; `FieldScalar`, the family value enums and the `wkb` reader Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `family` and `id` on every `Scalar`; `FieldScalar`, `DataTypeKind::range`/`contains`, `DataTypeId::temporal_family` and the `wkb` reader Rust only |
 
 ## Use
 
@@ -107,7 +107,7 @@ The readers answer across widths and `None` for another kind; an interval's `tem
 Rust only.
 
 ```rust
-use yggdryl::{i256, Scalar, Temporal, TimeUnit, Timezone};
+use yggdryl::{i256, Scalar, TimeUnit, Timezone};
 
 let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
@@ -119,12 +119,12 @@ assert!(matches!(date, Scalar::Date32(_)));
 assert_eq!(time.kind(), "time64");
 assert!(matches!(duration, Scalar::Duration64(_)));
 
-assert!(matches!(time.as_temporal(), Some(Temporal::Time64(_))));
-assert_eq!(time.as_temporal().map(|held| held.family()), Some("time"));
+assert!(time.is_temporal());
+assert_eq!(time.id().temporal_family(), Some("time"));
 assert_eq!(time.temporal_unit(), Some(TimeUnit::Nanosecond));
 assert_eq!(date.temporal_timezone(), Some(Timezone::NAIVE));
 assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
-assert_eq!(decimal.as_temporal(), None);
+assert_eq!(decimal.temporal_unit(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
 assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
@@ -133,37 +133,73 @@ assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
-## Families
+## Families are id ranges { #families }
 
-A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`. `Nested` has nine leaves: the five sequence layouts (`List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`), `Map` and `SortedMap`, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children.
-Rust only.
+A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-and-family) bytes its `DataTypeKind` owns - `DataTypeKind::range`, from the family's own number `DataTypeKind::id` to `DataTypeKind::last` - so which family a value is in is which range its identifier is in. `Scalar::family` answers that kind for `Scalar::id`, `DataTypeKind::contains` asks it of one identifier, and `is_integer`, `is_decimal`, `is_temporal`, `is_code` and `is_number` are the same range checks spelled on the value. Nothing narrows a `Scalar` to a family: the value is the leaf its variant holds, so a reader matches the variant, or borrows the leaf with its `Value::from_scalar` and widens it back with `into_scalar`. What the leaves of one family share is a leaf contract - `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue`, `NestedValue` - implemented beside each leaf, and the [readers](#widths-and-readers) read across a family's widths without naming one. The temporal range holds five families of its own, and `DataTypeId::temporal_family` names which: `date`, `time`, `datetime`, `duration` or `interval`, `None` outside it. A nested value is one of nine leaves: the five sequence layouts (`List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`), `Map` and `SortedMap`, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children. The ranges, `contains` and `temporal_family` are Rust only; Python and JavaScript read `family` and `id` off the value.
 
-```rust
-use yggdryl::{Decimal, Decimal18, FamilyValue, Floating, Int32, Integer, Nested, Temporal};
-use yggdryl::{DataType, DataTypeKind, Scalar, TimeUnit, Timezone};
+=== "Rust"
 
-// The variant is the leaf, spelled as the scalar spells it, and the enum
-// answers the leaf's datatype.
-let held = Integer::from(Int32::new(7));
-assert_eq!(Integer::KIND, DataTypeKind::Integer);
-assert_eq!(held.dtype()?, DataType::Int32);
-assert_eq!(held.clone().into_scalar(), Scalar::Int32(Int32::new(7)));
-assert_eq!(Scalar::from(7_i32).as_integer(), Some(held));
+    ```rust
+    use yggdryl::{DataTypeId, DataTypeKind, Decimal18, Int32, Scalar, TimeUnit, Timezone, Value};
 
-// A scalar narrows to its own family by value, and to no other.
-let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
-assert!(matches!(at.as_temporal(), Some(Temporal::DateTime64(_))));
-assert_eq!(at.as_temporal().map(|held| held.family()), Some("datetime"));
-assert_eq!(at.as_integer(), None);
-assert!(matches!(Scalar::from(1.5_f64).as_floating(), Some(Floating::Float64(_))));
-assert!(matches!(Scalar::from_sequence([Scalar::from(1_i64)]).as_nested(), Some(Nested::List(_))));
+    // A value is in the family whose range its identifier is in.
+    let seven = Scalar::from(7_i32);
+    assert_eq!(seven.id(), DataTypeId::Int32);
+    assert_eq!(seven.family(), DataTypeKind::Integer);
+    assert_eq!(DataTypeKind::Integer.range(), 0x10..=0x1f);
+    assert!(DataTypeKind::Integer.contains(seven.id()));
+    assert!(seven.is_integer() && seven.is_number());
 
-// The decimal family narrows through its own enum, because `as_decimal`
-// is the coefficient-and-scale reader.
-let price = Scalar::from(Decimal18::from_int(3));
-assert!(matches!(Decimal::from_scalar(&price), Some(Decimal::Decimal128(_))));
-assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
-```
+    // The value is the leaf the variant holds: borrow it, widen it back.
+    let leaf = Int32::from_scalar(&seven).expect("an int32");
+    assert_eq!(leaf.get(), 7);
+    assert_eq!(leaf.into_scalar(), seven);
+    assert_eq!(Int32::from_scalar(&Scalar::from(7_i64)), None);
+
+    // The temporal range holds five families, and the identifier names which.
+    let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
+    assert!(at.is_temporal());
+    assert_eq!(at.id().temporal_family(), Some("datetime"));
+    assert_eq!(seven.id().temporal_family(), None);
+
+    // A decimal is its width's leaf, and `as_decimal` reads any width.
+    let price = Scalar::from(Decimal18::from_int(3));
+    assert!(matches!(price, Scalar::Decimal128(_)));
+    assert!(price.is_decimal() && !price.is_integer());
+    assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
+
+    // A sequence is the nested family's list leaf.
+    let items = Scalar::from_sequence([Scalar::from(1_i64)]);
+    assert_eq!(items.family(), DataTypeKind::Nested);
+    assert!(matches!(items, Scalar::List(_)));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar
+
+    seven = DataType("int32").scalar(7)
+    assert seven.family == "integer"
+    assert seven.id == "int32"
+    assert seven.is_integer() and seven.is_number()
+
+    price = Scalar.decimal(1250, 2)
+    assert price.family == "decimal"
+    assert price.is_number() and not price.is_integer()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Scalar } = require('yggdryl')
+
+    const seven = DataType.from('int32').scalar(7)
+    assert.equal(seven.family, 'integer')
+    assert.equal(seven.id, 'int32')
+    assert.equal(Scalar.decimal(1250n, 2).family, 'decimal')
+    ```
 
 ## Truthiness and length
 
@@ -221,7 +257,7 @@ else, so it is not a text or byte length and never a truthiness test.
 
 ## Variants and arithmetic
 
-Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`); a [family enum](#families) is what a reader narrows to, never what a variant holds. Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
+Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(Int32(2))`); a [family](#families) is the range the variant's identifier falls in, never a type a variant holds. Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
 
 | group | variants |
 | --- | --- |
@@ -293,7 +329,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `List` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, `id` and its [family](#families) with the range checks `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -407,7 +443,7 @@ See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured
   a code. Geospatial values read as bytes but do not join - two WKB payloads
   end to end are not a geometry. This is not the expression language's
   `concat`, which is a variadic text function that also renders a version.
-- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader or `as_<family>` accessor on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
+- `count`, `unit`, `zone`, `unscaled`, `scale`, a Rust `temporal_*` reader, or `DataTypeId::temporal_family` on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric/index.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.

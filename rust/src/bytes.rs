@@ -1760,10 +1760,6 @@ impl crate::DataTypeValue for BytesType {
         DataType::Bytes(*self).id()
     }
 
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Bytes
-    }
-
     fn validate(&self) -> Result<()> {
         DataType::Bytes(*self).validate()
     }

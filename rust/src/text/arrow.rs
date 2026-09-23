@@ -1700,17 +1700,22 @@ fn is_string_layout(dtype: &ArrowDataType) -> bool {
 /// record's string - reads each row through its key into the values it
 /// points at, so nothing is unpacked.
 enum Bodies<'a> {
-    Runs(&'a crate::StringSerie),
+    Runs(&'a crate::Serie),
     Encoded {
         keys: &'a crate::Serie,
-        values: &'a crate::StringSerie,
+        values: &'a crate::Serie,
     },
 }
 
 impl<'a> Bodies<'a> {
     fn of(column: &'a crate::Serie) -> Result<Self> {
+        // Proven a text storage leaf once, so every row after reads its run
+        // and a `None` is an absent row, never another layout.
         let text = |serie: &'a crate::Serie| {
-            serie.as_string().ok_or_else(|| Error::InvalidRecord {
+            if serie.is_string_storage() {
+                return Ok(serie);
+            }
+            Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.body"),
                 reason: format_smolstr!(
                     "expected a utf8 body column, got {}",

@@ -3005,10 +3005,6 @@ impl crate::DataTypeValue for StringType {
         DataType::String(*self).id()
     }
 
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Text
-    }
-
     fn validate(&self) -> Result<()> {
         DataType::String(*self).validate()
     }

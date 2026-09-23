@@ -46,9 +46,9 @@ use smol_str::format_smolstr;
 use crate::invalid;
 use crate::parser::{Parser, fmt_quoted, precision_to_unit};
 use crate::temporal::scalars::require;
-use crate::temporal::{TemporalKind, temporal_leaf};
+use crate::temporal::temporal_leaf;
 use crate::value::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
 // The datetime payload: one width, a resolution and a zone.
@@ -144,12 +144,6 @@ impl DateTimeType {
         }
     }
 
-    /// The family's name, `datetime`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        TemporalKind::DateTime.as_str()
-    }
-
     /// This leaf at another resolution.
     ///
     /// # Errors
@@ -195,10 +189,6 @@ impl DataTypeValue for DateTimeType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Temporal
     }
 
     fn validate(&self) -> Result<()> {
@@ -471,7 +461,6 @@ mod arrow {
 temporal_leaf!(
     DateTime64,
     i64,
-    DateTime,
     64,
     valid = |unit: TimeUnit, _timezone: Timezone| unit.is_arrow_time(),
     dtype = |value: &DateTime64| DataType::datetime64(value.unit(), value.timezone()),

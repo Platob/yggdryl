@@ -60,10 +60,7 @@ use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
 use crate::graph::EventColumn;
 use crate::serie::{Proof, land_batch};
 use crate::text::TextOptions;
-use crate::{
-    BytesSerie, DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, StringSerie,
-    Utf8StringSerie,
-};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
@@ -632,8 +629,8 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
     })
 }
 
-/// The payload column of one landed batch, narrowed once to the leaf its
-/// bytes are borrowed from.
+/// The payload column of one landed batch, narrowed once to where its bytes
+/// are borrowed from.
 ///
 /// Text and bytes in an offsets, view or fixed layout lend each row's run
 /// where it lies, and a code its characters; a fixed-width string reads
@@ -641,30 +638,30 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
 /// dictionary, a run-end - which hold no run of their own. A payload is read
 /// by the codec and copied only into what the message keeps of it.
 enum Payload {
-    Text(StringSerie),
-    Bytes(BytesSerie),
+    /// A text or byte storage leaf, proven one once.
+    Stored(Serie),
     Code(Utf8StringSerie),
     Cell(Serie),
 }
 
 impl Payload {
     fn of(column: &Serie) -> Self {
-        match column.as_string() {
-            Some(StringSerie::Fixed(_)) => Self::Cell(column.clone()),
-            Some(text) => Self::Text(text.clone()),
-            None => match (column.as_bytes(), column.as_utf8()) {
-                (Some(bytes), _) => Self::Bytes(bytes.clone()),
-                (None, Some(code)) => Self::Code(code.clone()),
-                (None, None) => Self::Cell(column.clone()),
-            },
+        if matches!(column, Serie::FixedString(_)) {
+            return Self::Cell(column.clone());
+        }
+        if column.is_string_storage() || column.is_byte_storage() {
+            return Self::Stored(column.clone());
+        }
+        match column.as_utf8() {
+            Some(code) => Self::Code(code.clone()),
+            None => Self::Cell(column.clone()),
         }
     }
 
     /// The bytes one row carries, empty where it carries none.
     fn get(&self, row: usize) -> Result<Cow<'_, [u8]>> {
         Ok(match self {
-            Self::Text(held) => Cow::Borrowed(held.value_bytes(row).unwrap_or_default()),
-            Self::Bytes(held) => Cow::Borrowed(held.value_bytes(row).unwrap_or_default()),
+            Self::Stored(held) => Cow::Borrowed(held.value_bytes(row).unwrap_or_default()),
             Self::Code(held) => Cow::Borrowed(held.value(row).map_or(&[][..], str::as_bytes)),
             Self::Cell(held) => {
                 let value = held.scalar(row)?;

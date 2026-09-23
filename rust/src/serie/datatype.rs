@@ -43,10 +43,10 @@ use crate::datatype::validate_non_negative;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Result, Serie};
+use crate::{DataType, DataTypeId, Field, Result, Serie};
 use serde::{Deserialize, Serialize};
 
-/// The serie family's datatype view.
+/// The typed field's payload over the five list layouts.
 ///
 /// Each leaf holds the one item field its rows repeat; the fixed-size leaf
 /// also holds how many times.
@@ -152,10 +152,6 @@ impl DataTypeValue for SerieType {
         }
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
-    }
-
     fn validate(&self) -> Result<()> {
         if let Self::FixedSizeList(_, length) = self {
             validate_non_negative("FixedSizeList", "length", *length)?;
@@ -217,7 +213,7 @@ impl DataType {
         Self::LargeListView(Arc::new(item))
     }
 
-    /// The serie family's view of any of the five list layouts, `None`
+    /// The typed field's payload over any of the five list layouts, `None`
     /// for every other datatype: a shared-pointer clone of the item field.
     #[must_use]
     pub fn as_serie_type(&self) -> Option<SerieType> {

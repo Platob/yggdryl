@@ -35,9 +35,9 @@ pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
 use crate::temporal::scalars::{narrow_i32, require};
-use crate::temporal::{TemporalKind, invalid_record, temporal_leaf};
+use crate::temporal::{invalid_record, temporal_leaf};
 use crate::value::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
 // The date payload: two widths of one calendar day.
@@ -117,12 +117,6 @@ impl DateType {
         }
     }
 
-    /// The family's name, `date`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        TemporalKind::Date.as_str()
-    }
-
     /// A date has no parameter to refuse.
     ///
     /// # Errors
@@ -140,10 +134,6 @@ impl DataTypeValue for DateType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Temporal
     }
 
     fn validate(&self) -> Result<()> {
@@ -266,7 +256,6 @@ mod arrow {
 temporal_leaf!(
     Date32,
     i32,
-    Date,
     32,
     valid = |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Day && timezone.is_naive(),
     dtype = |_: &Date32| Ok(DataType::date32()),
@@ -275,7 +264,6 @@ temporal_leaf!(
 temporal_leaf!(
     Date64,
     i64,
-    Date,
     64,
     valid =
         |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Millisecond && timezone.is_naive(),

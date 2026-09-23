@@ -990,7 +990,7 @@ mod fields {
 }
 
 mod scalars {
-    use yggdryl::{DataType, DataTypeId, FamilyValue, Scalar, Temporal, TimeUnit, Timezone, Value};
+    use yggdryl::{DataType, DataTypeId, Scalar, TimeUnit, Timezone, Value};
     use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 
     #[test]
@@ -1134,11 +1134,7 @@ mod scalars {
         ];
         for (value, family, unit, zone, count) in &cases {
             assert!(value.is_temporal(), "{value:?}");
-            assert_eq!(
-                value.as_temporal().map(|held| held.family()),
-                Some(*family),
-                "{value:?}"
-            );
+            assert_eq!(value.id().temporal_family(), Some(*family), "{value:?}");
             assert_eq!(value.temporal_unit(), Some(*unit), "{value:?}");
             assert_eq!(value.temporal_timezone(), Some(*zone), "{value:?}");
             assert_eq!(value.temporal_count(), Some(*count), "{value:?}");
@@ -1156,7 +1152,7 @@ mod scalars {
 
         let number = Scalar::from(1);
         assert!(!number.is_temporal());
-        assert_eq!(number.as_temporal().map(|held| held.family()), None);
+        assert_eq!(number.id().temporal_family(), None);
         assert_eq!(number.temporal_unit(), None);
         assert_eq!(number.temporal_timezone(), None);
         assert_eq!(number.temporal_count(), None);
@@ -1208,47 +1204,51 @@ mod scalars {
         crate::scalar::assert_family_round_trip(
             vec![
                 crate::family_leaf!(
-                    Temporal::Date32,
+                    Date32,
                     Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Date64,
+                    Date64,
                     Date64::new(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Time32,
+                    Time32,
                     Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Time64,
+                    Time64,
                     Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::DateTime64,
+                    DateTime64,
                     DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Duration32,
+                    Duration32,
                     Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Duration64,
+                    Duration64,
                     Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
                 ),
                 crate::family_leaf!(
-                    Temporal::Interval,
+                    Interval,
                     Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()
                 ),
             ],
             yggdryl::DataTypeKind::Temporal,
             &Scalar::from(1_i64),
         );
-        // The family answers the leaf's datatype with the parameters the leaf
-        // carries, as `Scalar::dtype` does for the same value.
+        // The leaf answers its datatype with the parameters it carries, as
+        // `Scalar::dtype` does for the same value.
         let value = Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let Scalar::DateTime64(leaf) = &value else {
+            panic!("a datetime64 value");
+        };
         assert_eq!(
-            Temporal::from_scalar(&value).unwrap().dtype().unwrap(),
+            Value::dtype(leaf).unwrap(),
             DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap()
         );
+        assert_eq!(value.dtype().unwrap(), Value::dtype(leaf).unwrap());
     }
 }

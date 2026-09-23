@@ -32,7 +32,7 @@ use crate::metadata::is_all_sources;
 use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit};
-use crate::{Serie, Str, StringSerie};
+use crate::{Serie, Str};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
@@ -1107,9 +1107,23 @@ fn feed_cell(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result
         Serie::Float64(held) => write_float(digester, held.values()[index]),
         // A string digests as its characters, whatever charset holds them:
         // the digest is of the value, and the charset is how it is stored.
-        Serie::String(held) => feed_string(digester, column, held, index)?,
+        // Text storage was validated when it was written, so a UTF-8 cell is
+        // fed straight from the run it lies in.
+        Serie::Utf8String(held) => write_string(digester, held.value(index).unwrap_or_default()),
+        Serie::LargeUtf8String(held) => {
+            write_string(digester, held.value(index).unwrap_or_default());
+        }
+        Serie::Utf8ViewString(held) => {
+            write_string(digester, held.value(index).unwrap_or_default());
+        }
+        Serie::BinaryString(_)
+        | Serie::LargeBinaryString(_)
+        | Serie::BinaryViewString(_)
+        | Serie::FixedString(_) => feed_string(digester, column, index)?,
         // Bytes digest as their payload, whichever layout holds them.
-        Serie::Bytes(held) => write_binary(digester, held.value_bytes(index).unwrap_or_default()),
+        Serie::Binary(_) | Serie::LargeBinary(_) | Serie::BinaryView(_) | Serie::FixedBytes(_) => {
+            write_binary(digester, column.value_bytes(index).unwrap_or_default());
+        }
         _ => column.scalar(index)?.write_bytes(digester),
     }
     Ok(())
@@ -1126,35 +1140,19 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
     })
 }
 
-/// Feed one string cell as the characters a [`Str`] read from it holds.
+/// Feed one string cell a binary layout holds as the characters a [`Str`]
+/// read from it holds.
 ///
-/// Text storage was validated when it was written, so the cell is fed
-/// straight from the run it lies in - the characters [`Str::from_storage`]
-/// would hold, without the value. Binary storage goes through
-/// [`Str::from_bytes`], the one door bytes take into a string value: a fixed
-/// slot is trimmed of its padding, and a legacy charset is transcribed rather
-/// than refused.
-fn feed_string(
-    digester: &mut impl Hasher,
-    column: &Serie,
-    text: &StringSerie,
-    index: usize,
-) -> Result<()> {
-    let characters = match text {
-        StringSerie::Utf8(held) => held.value(index),
-        StringSerie::LargeUtf8(held) => held.value(index),
-        StringSerie::Utf8View(held) => held.value(index),
-        stored => {
-            let Some(DataType::String(parameters)) = column.field().map(Field::dtype) else {
-                return Err(Error::Internal {
-                    site: "xxhash::arrow::feed_string",
-                });
-            };
-            let bytes = stored.value_bytes(index).unwrap_or_default();
-            write_string(digester, &Str::from_bytes(bytes, *parameters)?);
-            return Ok(());
-        }
+/// Binary storage goes through [`Str::from_bytes`], the one door bytes take
+/// into a string value: a fixed slot is trimmed of its padding, and a legacy
+/// charset is transcribed rather than refused.
+fn feed_string(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result<()> {
+    let Some(DataType::String(parameters)) = column.field().map(Field::dtype) else {
+        return Err(Error::Internal {
+            site: "xxhash::arrow::feed_string",
+        });
     };
-    write_string(digester, characters.unwrap_or_default());
+    let bytes = column.value_bytes(index).unwrap_or_default();
+    write_string(digester, &Str::from_bytes(bytes, *parameters)?);
     Ok(())
 }

@@ -67,7 +67,7 @@ pub enum DataType {
     /// An instant or a wall-clock reading: a 64-bit count at `unit`, in
     /// `timezone` (`TimeZone::Naive` for a wall clock).
     ///
-    /// [`DateTimeType`](crate::DateTimeType) is the family's view: [`Self::datetime_type`].
+    /// [`DateTimeType`](crate::DateTimeType) is the typed field's payload: [`Self::datetime_type`].
     DateTime64 {
         /// The resolution the count is in.
         unit: TimeUnit,
@@ -76,26 +76,26 @@ pub enum DataType {
     },
     /// A calendar day as a 32-bit count of days.
     ///
-    /// [`DateType`](crate::DateType) is the family's view: [`Self::date_type`].
+    /// [`DateType`](crate::DateType) is the typed field's payload: [`Self::date_type`].
     Date32,
     /// A calendar day as the 64-bit milliseconds of its midnight.
     Date64,
     /// A time of day as a 32-bit count at `unit`: seconds or milliseconds.
     ///
-    /// [`TimeType`](crate::TimeType) is the family's view: [`Self::time_type`].
+    /// [`TimeType`](crate::TimeType) is the typed field's payload: [`Self::time_type`].
     Time32(TimeUnit),
     /// A time of day as a 64-bit count at `unit`: micro- or nanoseconds.
     Time64(TimeUnit),
     /// An elapsed 32-bit count at `unit`.
     ///
-    /// [`DurationType`](crate::DurationType) is the family's view: [`Self::duration_type`].
+    /// [`DurationType`](crate::DurationType) is the typed field's payload: [`Self::duration_type`].
     Duration32(TimeUnit),
     /// An elapsed 64-bit count at `unit`.
     Duration64(TimeUnit),
     /// A calendar span in one of Arrow's three interval layouts, named by
     /// its unit.
     ///
-    /// [`IntervalType`](crate::IntervalType) is the family's view: [`Self::interval_type`].
+    /// [`IntervalType`](crate::IntervalType) is the typed field's payload: [`Self::interval_type`].
     Interval(TimeUnit),
     /// Bytes: one layout, one optional byte bound.
     ///
@@ -145,13 +145,13 @@ pub enum DataType {
     /// A location - hierarchical, with a host unless `file:` - stored as its
     /// canonical text.
     ///
-    /// [`UriType`](crate::UriType) is the family's view: [`Self::uri_type`].
+    /// [`UriType`](crate::UriType) is the typed field's payload: [`Self::uri_type`].
     Url,
     /// A name - `urn:<namespace>:<specific>` - stored as its canonical text.
     Urn,
     /// Many of one item field under 32-bit offsets.
     ///
-    /// [`SerieType`](crate::SerieType) is the family's view: [`Self::as_serie_type`], and
+    /// [`SerieType`](crate::SerieType) is the typed field's payload: [`Self::as_serie_type`], and
     /// [`Self::list_item`] reads the item of any of the five layouts.
     List(Arc<Field>),
     /// Many of one item field under 32-bit offsets and sizes.
@@ -169,11 +169,11 @@ pub enum DataType {
     Union(UnionFields, UnionMode),
     /// A value stored as a key into a vocabulary of values.
     ///
-    /// [`EnumType`](crate::EnumType) is the family's view: [`Self::enum_type`].
+    /// [`EnumType`](crate::EnumType) is the typed field's payload: [`Self::enum_type`].
     Dictionary(Arc<DictionaryType>),
     /// An exact number whose coefficient is a 32-bit integer.
     ///
-    /// [`DecimalType`](crate::DecimalType) is the family's view: [`Self::decimal_type`].
+    /// [`DecimalType`](crate::DecimalType) is the typed field's payload: [`Self::decimal_type`].
     Decimal32 {
         /// The digits the coefficient holds.
         precision: u8,

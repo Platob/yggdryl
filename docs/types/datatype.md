@@ -217,7 +217,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 
 ## Identity and family
 
-`id` names the variant, `kind` its family; both drop parameters and touch no nested state.
+`id` names the variant, `kind` its family; both drop parameters and touch no nested state. A family is the range of identifier bytes its `DataTypeKind` owns - `DataTypeKind::range`, from `DataTypeKind::id` to `DataTypeKind::last` - so `kind` is the family whose range `id` is in and `DataTypeKind::contains` asks it of one identifier; the temporal range holds five families, and `DataTypeId::temporal_family` names which.
 
 === "Rust"
 
@@ -239,6 +239,18 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 
     assert_eq!(DataType::decimal(38, 4)?.id(), DataTypeId::Decimal128);
     assert_eq!(DataType::decimal(38, 4)?.kind(), DataTypeKind::Decimal);
+
+    // A family is a range of identifier bytes, and membership is its bounds.
+    assert_eq!(DataTypeKind::Temporal.range(), 0x30..=0x3f);
+    assert_eq!(DataTypeKind::Temporal.last(), 0x3f);
+    assert!(DataTypeKind::Temporal.contains(stamp.id()));
+    assert!(!DataTypeKind::Integer.contains(stamp.id()));
+    assert_eq!(DataTypeKind::of_u8(stamp.id().as_u8()), Some(DataTypeKind::Temporal));
+
+    // The temporal range holds five families, named by the identifier.
+    assert_eq!(stamp.id().temporal_family(), Some("datetime"));
+    assert_eq!(DataTypeId::Duration32.temporal_family(), Some("duration"));
+    assert_eq!(DataTypeId::Decimal128.temporal_family(), None);
     ```
 
 === "Python"
@@ -276,7 +288,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
 
 ## Arrow projection
 

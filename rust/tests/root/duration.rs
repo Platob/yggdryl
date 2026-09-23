@@ -66,7 +66,7 @@ mod temporal {
                 assert_eq!(leaf.as_str(), id.as_str());
                 assert_eq!(leaf.unit(), unit);
                 assert_eq!(leaf.bit_width(), bits);
-                assert_eq!(leaf.family(), "duration");
+                assert_eq!(leaf.id().temporal_family(), Some("duration"));
                 assert_eq!(DurationType::from_id(id, unit), Some(leaf));
                 assert!(leaf.validate().is_ok());
                 assert_eq!(leaf.to_string(), format!("{}({unit})", id.as_str()));

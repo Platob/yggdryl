@@ -11,7 +11,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Storage | A column stores a values buffer, offsets where the layout has them, and a validity bitmap. No `Scalar` is stored anywhere in a column; a row is built when one is asked for and kept nowhere |
 | Recursion | A record's children, a sequence's items, a mapping's entries, a dictionary's keys and values, a run-end column's ends and values, a union's members are each a `Serie`, so the nesting is one type all the way down |
 | Size | 24 bytes: the run's slice inline, because a row canonicalizes to one; every column leaf behind one shared pointer, so a `Scalar` carrying a column is two words and a clone is a pointer bump |
-| Shape | One leaf per Arrow layout, spelled as `DataType`'s own leaves are: `Int32Serie` lends `&[i32]`, `Utf8StringSerie` lends the offsets and the characters, `StructSerie` holds one child `Serie` per child field |
+| Shape | A flat root, one variant per storage layout, named as the leaf that holds it: `Int32` holds an `Int32Serie` lending `&[i32]`, `Utf8String` a `Utf8StringSerie` lending the offsets and the characters, `Struct` a `StructSerie` holding one child `Serie` per child field. A variant names the layout, never the datatype: [one layout serves several](#the-root-names-the-layout-the-field-names-the-datatype), so a column's datatype is its field's |
 | Invariant 1 | A column holds only rows its field accepts: `from_scalars`, `splice` and every typed writer prove values through the field's contract, and the Arrow door proves them at import. A stored row never refuses to be read; `scalar(i)`'s one refusal is an index past the end |
 | Invariant 2 | A nested column's children are aligned: every record child has exactly `len` rows, a list's offsets are monotone from `0` to `items.len()`, a fixed-size list's items hold `len * width` rows, a mapping's entries are a record column of the entries field, a union's members hold the rows its type ids reach. No public path hands a child out mutably, so nothing can break it and `into_arrow_array` cannot fail |
 | Invariant 3 | Every offsets buffer is rebased: the first offset is `0` and the last is `items.len()`, so a column that grows knows where its items end |
@@ -19,7 +19,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Identity | The rows, and nothing else: a run and a column of equal rows are one value and hash alike, and so are an int32 column and an int64 column of equal numbers, exactly as their `Scalar`s are. Not the leaf, not the field |
 | Datatype | For a column, `list(<the field named item>)` - read off the field, so an empty column still names it. For a run, agreed back out of its rows |
 | Registration | `Scalar::List(Serie)`, and its four sibling leaves `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`. It adds no `DataTypeId`, no `DataType` variant and no `Field` variant of its own, and `kind()` answers that leaf's own name - `list`, `list_view`, `large_list`, `large_list_view`, `fixed_size_list` - for either a run or a column |
-| Family | `SerieValue`, implemented by every column leaf. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
+| Leaf contract | `SerieValue`, implemented by every column leaf: its field, and the `id` and `kind` that field's datatype answers - never the variant's, because one layout holds several datatypes. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | The crate's own serde writes a run as its list and a column as `{"field": .., "rows": [..]}` under the `serie` tag, and reads back only that column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
 | Arrow value | There is no Arrow wrapper beside it: a held column, table or one-row array is a `Serie`, and a stream of them is a `SerieReader`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
 | Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the list leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in); JavaScript as copied IPC. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
@@ -33,11 +33,11 @@ A leaf is one Arrow layout under one field, and its accessors are that layout's 
 | `Int8Serie` .. `UInt64Serie` | `values() -> &[T]`, `value(i) -> Option<T>`, `nulls()`, `array()` | `push_value`, `set_value`, `splice_values`, `extend_values` over `Option<T>` |
 | `Float16Serie`, `Float32Serie`, `Float64Serie` | the same | the same |
 | `Decimal32Serie` .. `Decimal256Serie` | the coefficients, at the field's scale | none: precision is narrower than the width |
-| `Date32Serie`, `Date64Serie`, `Time32Serie`, `Time64Serie`, `DateTime64Serie`, `DurationSerie`, `IntervalSerie` | the counts, at the field's unit | `Date32`, every `DateTime`, `Duration` and `Interval` leaf writes natively; `Date64`, `Time32`, `Time64` do not, because whole days and a time of day are narrower than the storage |
+| `Date32Serie`, `Date64Serie`, `Time32SecondSerie` .. `Time64NanosecondSerie`, `DateTimeSecondSerie` .. `DateTimeNanosecondSerie`, `DurationSecondSerie` .. `DurationNanosecondSerie`, `IntervalYearMonthSerie` .. `IntervalMonthDayNanoSerie` | the counts, at the unit the leaf is | `Date32`, every `DateTime`, `Duration` and `Interval` leaf writes natively; `Date64`, `Time32`, `Time64` do not, because whole days and a time of day are narrower than the storage |
 | `BooleanSerie` | `values() -> &BooleanBuffer`, `value(i)`, `nulls()`, `array()` | `push_value`, `set_value`, `splice_values` over `Option<bool>` |
 | `NullSerie` | `array()`, built on demand: a null column is a length | `push_value()`, `splice_values(range, count)` |
-| `StringSerie`: `Utf8StringSerie`, `LargeUtf8StringSerie`, `Utf8ViewStringSerie`, `BinaryStringSerie`, `LargeBinaryStringSerie`, `BinaryViewStringSerie`, `FixedStringSerie` | `offsets()` and `payload()`, or `views()` and `payloads()` for a viewed leaf, `width()` and `payload()` for a fixed one; `value(i)`, `nulls()`, `array()` | none: codes, charsets and sizes are narrower than the bytes |
-| `BytesSerie`: `BinarySerie`, `LargeBinarySerie`, `BinaryViewSerie`, `FixedBytesSerie` | the same | none: a UUID and well-known binary are narrower than the bytes |
+| `Utf8StringSerie`, `LargeUtf8StringSerie`, `Utf8ViewStringSerie`, `BinaryStringSerie`, `LargeBinaryStringSerie`, `BinaryViewStringSerie`, `FixedStringSerie` | `offsets()` and `payload()`, or `views()` and `payloads()` for a viewed leaf, `width()` and `payload()` for a fixed one; `value(i)`, `nulls()`, `array()` | none: codes, charsets and sizes are narrower than the bytes |
+| `BinarySerie`, `LargeBinarySerie`, `BinaryViewSerie`, `FixedBytesSerie` | the same | none: a UUID and well-known binary are narrower than the bytes |
 | `StructSerie` | `children()`, `child(name)`, `child_at(i)`, `nulls()` | `set_child(child)`, `set_cell(path, i, value)`, `without_child(name)` |
 | `ListSerie`, `LargeListSerie`, `ListViewSerie`, `LargeListViewSerie`, `FixedSizeListSerie` | `items()`, `offsets()` at the leaf's own width - and `sizes()` for a view, `width()` for a fixed size - `range(i)`, `row(i)` (the item column sliced to that row, zero copy), `nulls()` | none: a row is a sequence, and the items are not mutably reachable |
 | `MapSerie` | `entries()` - a record column of the entries field - `keys()`, `values()`, `offsets()`, `range(i)`, `row(i)`, `nulls()`, `keys_sorted()` | none |
@@ -51,6 +51,47 @@ Arrow spells one binary layout for text and for bytes, so `ByteSerie<T, K>`, `By
 A map's rows are `Scalar::Map` (or `Scalar::SortedMap`), and its entries column is a `StructSerie` of the entries field: `Field::scalar` on a map field answers a map whose keys and values are already canonical under the entries record's two fields, so a write turns each pair into a two-cell run for the entries record's own write, and `scalar(i)` pairs them back.
 
 A null row in a nested column is a cleared validity bit and what Arrow needs underneath it: every record child receives one placeholder slot, a list, list-view or map row cuts zero items, a fixed-size-list row holds `width` placeholder items, a union row the placeholder member. A column built by pushes is therefore buffer-for-buffer the column `from_scalars` builds from the same rows.
+
+### The root names the layout, the field names the datatype
+
+`Serie` is flat: one variant per storage layout, named as the leaf that holds it without `Serie` - `Int32`, `Time32Second`, `DateTimeMicrosecond`, `DurationMillisecond`, `IntervalMonthDayNano`, `Utf8String`, `BinaryViewString`, `FixedBytes` - so a column's variant is the buffers it holds and nothing wraps them. A variant names the layout, never the datatype: `Utf8String` holds every string leaf laid out as UTF-8 - `ascii` and `sized_utf8` among them - `Binary` a sized binary too, `BinaryView` a large view, and `DurationSecond` both duration widths, the width being the field's. Which datatype a column is, is therefore its field's: `SerieValue::id` answers it, and `SerieValue::kind` the family whose range that id is in; a dictionary or run-end column answers its encoding. A code, a version, a URI, a zone, a MIME or media type, a UUID and a geospatial reading keep a variant of their own over the leaf they are stored in, and `as_utf8`, `as_fixed_bytes` and `as_binary` reach those variants too. A reader proves the layout once - `as_<leaf>()` - and reads each row through that leaf's `value(i)`, borrowed where it lies.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, Scalar, Serie, SerieValue, TimeUnit};
+
+    // Two duration widths, one layout: the variant is the buffers, the field the datatype.
+    let short = Serie::empty(Field::new("short", DataType::duration32(TimeUnit::Millisecond)?, true))?;
+    let long = Serie::empty(Field::new("long", DataType::duration64(TimeUnit::Millisecond)?, true))?;
+    assert!(matches!(short, Serie::DurationMillisecond(_)));
+    assert!(matches!(long, Serie::DurationMillisecond(_)));
+    let column = short.as_duration_millisecond().expect("a millisecond duration column");
+    assert_eq!(column.id(), DataTypeId::Duration32);
+    assert_eq!(column.kind(), DataTypeKind::Temporal);
+    let column = long.as_duration_millisecond().expect("a millisecond duration column");
+    assert_eq!(column.id(), DataTypeId::Duration64);
+
+    // Every string leaf laid out as UTF-8 is one layout, read through its `value`.
+    let codes = Serie::from_scalars(Field::new("code", DataType::ascii(), false), [Scalar::from("EUR")])?;
+    assert!(matches!(codes, Serie::Utf8String(_)));
+    let leaf = codes.as_utf8().expect("a utf8 layout");
+    assert_eq!(leaf.id(), DataTypeId::AsciiString);
+    assert_eq!(leaf.kind(), DataTypeKind::Text);
+    assert_eq!(leaf.value(0), Some("EUR"));
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: a binding reads a column's datatype off its field.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: a binding reads a column's datatype off its field.
+    ```
 
 ## Reads and writes
 
@@ -74,7 +115,7 @@ Every verb answers on both leaves; only its cost differs.
 | `splice(range, rows)` | the one mutation: `range` replaced by `rows`, refused when reversed or past the end |
 | `set(i, v)`, `push(v)`, `insert(i, v)`, `remove(i)`, `pop()` | spelled over `splice`; `remove` and `pop` read the row first |
 | `truncate(len)`, `clear()`, `extend(rows)`, `resize(len, v)` | `clear` keeps the field; `resize` proves `v` once and writes the clones |
-| `extend_from_serie(other)` | two columns whose datatypes agree and whose nullability fits append buffer to buffer with no row read; anything else reads `other`'s rows |
+| `extend_from_serie(other)` | two columns whose datatypes agree and whose nullability fits append buffer to buffer with no row read; anything else reads `other`'s rows - one layout under two datatypes, a `duration32` column beside a `duration64` one of the same unit, is not agreement |
 | `set_child(child)`, `set_cell(path, i, v)` | a record column only: replace or add a child of `len` rows; write one cell `path` deep in place, every level row-aligned |
 
 Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.

@@ -873,28 +873,25 @@ mod datatypes {
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
         use yggdryl::{
-            BloombergCode, CfiCode, Code, Country, Currency, CusipCode, FIGICode, IsinCode,
-            MicCode, SedolCode,
+            BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
+            SedolCode,
         };
         use yggdryl::{Side, State, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
-                crate::family_leaf!(Code::Country, Country::new("US").unwrap()),
-                crate::family_leaf!(Code::Currency, Currency::new("USD").unwrap()),
-                crate::family_leaf!(Code::MicCode, MicCode::new("XPAR").unwrap()),
-                crate::family_leaf!(Code::CfiCode, CfiCode::new("ESVUFR").unwrap()),
-                crate::family_leaf!(Code::Side, Side::new("BUY").unwrap()),
-                crate::family_leaf!(Code::State, State::new("20NEW").unwrap()),
-                crate::family_leaf!(Code::TimeInForce, TimeInForce::new("0").unwrap()),
-                crate::family_leaf!(Code::IsinCode, IsinCode::new("US0378331005").unwrap()),
-                crate::family_leaf!(Code::CusipCode, CusipCode::new("037833100").unwrap()),
-                crate::family_leaf!(Code::SedolCode, SedolCode::new("B0YBKJ7").unwrap()),
-                crate::family_leaf!(
-                    Code::BloombergCode,
-                    BloombergCode::new("BBG000B9XRY4").unwrap()
-                ),
-                crate::family_leaf!(Code::FIGICode, FIGICode::new("BBG000BLNQ16").unwrap()),
+                crate::family_leaf!(Country, Country::new("US").unwrap()),
+                crate::family_leaf!(Currency, Currency::new("USD").unwrap()),
+                crate::family_leaf!(MicCode, MicCode::new("XPAR").unwrap()),
+                crate::family_leaf!(CfiCode, CfiCode::new("ESVUFR").unwrap()),
+                crate::family_leaf!(Side, Side::new("BUY").unwrap()),
+                crate::family_leaf!(State, State::new("20NEW").unwrap()),
+                crate::family_leaf!(TimeInForce, TimeInForce::new("0").unwrap()),
+                crate::family_leaf!(IsinCode, IsinCode::new("US0378331005").unwrap()),
+                crate::family_leaf!(CusipCode, CusipCode::new("037833100").unwrap()),
+                crate::family_leaf!(SedolCode, SedolCode::new("B0YBKJ7").unwrap()),
+                crate::family_leaf!(BloombergCode, BloombergCode::new("BBG000B9XRY4").unwrap()),
+                crate::family_leaf!(FIGICode, FIGICode::new("BBG000BLNQ16").unwrap()),
             ],
             DataTypeKind::Code,
             // The text a code is made of is not the code.

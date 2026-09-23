@@ -8,7 +8,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Twelve `DataType` variants, twelve `Field` leaves, twelve `Scalar` variants, and the `Code` family value over them |
+| Owns | Twelve `DataType` variants, twelve `Field` leaves, twelve `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
 | Validates | At the value door, once: US-ASCII, no NUL, at most the code's width, then the code's own rule - a check digit, a category grid, a published spelling |
 | Lazy | Nothing - a code has no children, no registry lookup and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -17,7 +17,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
-| Rust only | `DataType::CODES`, the twelve leaf value types, the `Code` family enum, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
+| Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
 
 The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the twelve is then one file of its own, holding its datatype, its field marker and its value in that order.
 
@@ -154,27 +154,19 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(Scalar.from('USD').kind, 'string')
     ```
 
-## The `Code` family value
+## `CodeValue::merge_with` { #the-code-family-value }
 
-The twelve as one value: a variant per code, named as the `Scalar` variant is, and a `FamilyValue` beside `CodeValue`. `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](../scalar.md#families)). Rust only - Python and JavaScript read the family off the value itself, as `family` above.
-
-```rust
-use yggdryl::{Code, Currency, DataType, DataTypeKind, FamilyValue, Scalar};
-
-let held = Code::from(Currency::new("EUR")?);
-assert_eq!(Code::KIND, DataTypeKind::Code);
-assert_eq!(held.dtype()?, DataType::Currency);
-assert_eq!(held.clone().into_scalar(), Scalar::Currency(Currency::new("EUR")?));
-assert_eq!(Scalar::Currency(Currency::new("EUR")?).as_code(), Some(held));
-
-// The text a code is made of is not the code.
-assert_eq!(Code::from_scalar(&Scalar::from("EUR")), None);
-```
+The twelve share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
 `CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Currency, IsinCode, MicCode, State};
+use yggdryl::{CodeValue, Currency, DataTypeKind, IsinCode, MicCode, Scalar, State};
+
+// A code is its own leaf, in the code family's range; its text is not a code.
+let usd = Scalar::Currency(Currency::new("USD")?);
+assert!(usd.is_code() && DataTypeKind::Code.contains(usd.id()));
+assert!(!Scalar::from("USD").is_code());
 
 // A code stated as none takes the other; anything stated stands.
 assert_eq!(Currency::none().merge_with(&Currency::new("USD")?).as_str(), "USD");

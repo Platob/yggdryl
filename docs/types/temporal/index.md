@@ -6,7 +6,7 @@ Five families - date, time, datetime, duration and interval - eight leaves over 
 
 | | |
 | --- | --- |
-| Owned | `DataType::Date32`, `Date64`, `Time32(TimeUnit)`, `Time64(TimeUnit)`, `DateTime64 { unit, timezone }`, `Duration32(TimeUnit)`, `Duration64(TimeUnit)`, `Interval(TimeUnit)` - the eight leaves - with `DateType`, `TimeType`, `DateTimeType`, `DurationType`, `IntervalType` the family views over them; the values `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64`, `Interval`; `Temporal`, the one value enum over the eight leaves; the `TimeUnit` vocabulary and the [`Timezone`](timezone.md) value |
+| Owned | `DataType::Date32`, `Date64`, `Time32(TimeUnit)`, `Time64(TimeUnit)`, `DateTime64 { unit, timezone }`, `Duration32(TimeUnit)`, `Duration64(TimeUnit)`, `Interval(TimeUnit)` - the eight leaves - with `DateType`, `TimeType`, `DateTimeType`, `DurationType`, `IntervalType` the typed fields' payloads over them; the values `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64`, `Interval`, each its own `Scalar` variant; the `TimeUnit` vocabulary and the [`Timezone`](timezone.md) value. Which of the five families a leaf is in is its identifier's `temporal_family` |
 | Validated | once, at construction: a width refuses a resolution it does not carry, an interval refuses a resolution, a datetime refuses a layout; a leaf built by hand is caught by `validate` and again by the Arrow projection |
 | Lazy | nothing; every leaf is `Copy` and every value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection, as every field caches it; a datatype caches nothing |
@@ -31,7 +31,7 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
 
     ```rust
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
-    use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, Temporal, TimeUnit, Timezone};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, TimeUnit, Timezone};
 
     // Five families; each constructor picks a leaf and validates its unit once.
     let day = DataType::date32();
@@ -63,13 +63,13 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     assert_eq!(clock.time_type().unwrap().bit_width(), 32);
     assert_eq!(at.datetime_type().unwrap().timezone(), Timezone::UTC);
     assert_eq!(span.interval_type().unwrap().unit(), TimeUnit::MonthDayNano);
-    assert_eq!(elapsed.duration_type().unwrap().family(), "duration");
+    assert_eq!(elapsed.id().temporal_family(), Some("duration"));
     assert_eq!(day.time_type(), None);
 
-    // A value answers the same family, as one `Temporal` over the eight leaves.
+    // A value is its leaf's own variant, and its identifier names the same family.
     let ninety = Scalar::duration64(90, TimeUnit::Second)?;
-    assert!(matches!(ninety.as_temporal(), Some(Temporal::Duration64(_))));
-    assert_eq!(ninety.as_temporal().map(|held| held.family()), Some("duration"));
+    assert!(matches!(ninety, Scalar::Duration64(_)));
+    assert_eq!(ninety.id().temporal_family(), Some("duration"));
 
     // `time` picks the width from the unit; a unit a width does not carry is refused.
     assert_eq!(DataType::time(TimeUnit::Second)?, DataType::time32(TimeUnit::Second)?);
@@ -170,15 +170,17 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
 
 ## One value across the families
 
-`Temporal` is the one value enum over the eight leaves, and `family()` answers
-`date`, `time`, `datetime`, `duration` or `interval` - the same word a datatype
-payload answers. The [`Scalar`](../scalar.md) readers go through it, so a count,
-a unit and a zone are read without naming a width.
+Each leaf is its own `Scalar` variant, and the eight share one kind, the
+temporal range of identifiers ([Scalar](../scalar.md#families)).
+`DataTypeId::temporal_family` names which of the five a leaf is in - `date`,
+`time`, `datetime`, `duration` or `interval`, the same word for a value's
+identifier and a datatype's. The [`Scalar`](../scalar.md) readers answer across
+the leaves, so a count, a unit and a zone are read without naming a width.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FamilyValue, Scalar, Temporal, TimeUnit, Timezone};
+    use yggdryl::{DataType, DataTypeKind, DateTime64, Scalar, TimeUnit, Timezone, Value};
 
     let values = [
         Scalar::date32(1),
@@ -188,10 +190,11 @@ a unit and a zone are read without naming a width.
         Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano)?,
     ];
     assert!(values.iter().all(Scalar::is_temporal));
+    assert!(values.iter().all(|value| DataTypeKind::Temporal.contains(value.id())));
     assert_eq!(
         values
             .iter()
-            .map(|value| value.as_temporal().map(|held| held.family()))
+            .map(|value| value.id().temporal_family())
             .collect::<Vec<_>>(),
         vec![Some("date"), Some("time"), Some("datetime"), Some("duration"), Some("interval")],
     );
@@ -204,15 +207,15 @@ a unit and a zone are read without naming a width.
     // An interval restates no count across units: a month is no count of days.
     assert_eq!(values[4].temporal_count_at(TimeUnit::Nanosecond), None);
 
-    // The family value is one enum, and it answers the leaf's own datatype.
-    let held = Temporal::from_scalar(&values[2]).expect("a datetime");
+    // The value is the leaf its variant holds, and it answers its own datatype.
+    let held = DateTime64::from_scalar(&values[2]).expect("a datetime");
     assert_eq!(held.dtype()?, DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?);
 
     // A number is no temporal, and every reader says so the same way.
     let number = Scalar::from(1_i64);
     assert!(!number.is_temporal());
     assert_eq!(number.temporal_unit(), None);
-    assert_eq!(Temporal::from_scalar(&number), None);
+    assert_eq!(number.id().temporal_family(), None);
     ```
 
 === "Python"
@@ -315,7 +318,7 @@ leaf's parameter. The zone vocabulary is one value, documented on
 - `2026-02-30` -> refused, not a guess; so is a fraction with no digits after its decimal sign, and a compact reading of the wrong width.
 - ISO 8601 names the comma the preferred decimal sign, so `01,148` and `01.148` read one value in every spelling that carries a fraction.
 - [Merged](../field.md) within one family -> one unit, `date64` over `date32`, `duration64` over `duration32`, `time` at the unit picking its width, and a zone one side declares kept; two families -> refused, a date beside a datetime included.
-- The family enums, the value types, the `Temporal` enum and `TemporalValue` are Rust only; the bindings speak the identifiers, `DataType.time(unit)`, and one factory per leaf.
+- The payload enums, the value types, `DataTypeId::temporal_family` and `TemporalValue` are Rust only; the bindings speak the identifiers, `DataType.time(unit)`, and one factory per leaf.
 
 ## Commands
 

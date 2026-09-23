@@ -144,8 +144,8 @@ mod encoding {
     use std::sync::Arc;
 
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, FamilyValue, Field,
-        Nested, Scalar, Serie, VARIANT_EXTENSION_NAME, VARIANT_VERSION, Value, Variant,
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, Field, Scalar,
+        Serie, VARIANT_EXTENSION_NAME, VARIANT_VERSION, Value, Variant,
     };
 
     /// The value most of these tests exchange: one object, two leaves.
@@ -203,11 +203,10 @@ mod encoding {
         assert_eq!(Variant::from_scalar(&quote()), None);
         assert_eq!(Scalar::from(variant.clone()), value);
 
-        // It is one leaf of the nested family, beside the three containers.
-        let held = Nested::from_scalar(&value).expect("a nested value");
-        assert!(matches!(held, Nested::Variant(_)));
-        assert_eq!(FamilyValue::dtype(&held).unwrap(), DataType::Variant);
-        assert_eq!(held.into_scalar(), value);
+        // It is one leaf of the nested family, beside the three containers:
+        // its identifier sits in the range the nested kind owns.
+        assert!(DataTypeKind::Nested.contains(value.id()));
+        assert_eq!(value.dtype().unwrap(), DataType::Variant);
 
         // Equality is the bytes, and the display is the JSON the value spells.
         assert_eq!(value, variant.clone().into_scalar());

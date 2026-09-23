@@ -946,41 +946,6 @@ fixed_leaf!(
     FixedBytesSerie, Octets
 );
 
-impl crate::StringSerie {
-    /// Borrow row `index`'s bytes where they lie - in the payload an offset
-    /// run points into, in a view's buffer, or in a fixed slot - with no
-    /// value built: `None` where the row is absent or past the end.
-    ///
-    /// The bytes are the storage as it stands: text in the charset its field
-    /// declares, and a fixed slot with its padding. [`SerieValue::scalar`]
-    /// is the reading that decodes them.
-    pub fn value_bytes(&self, index: usize) -> Option<&[u8]> {
-        match self {
-            Self::Utf8(column) => column.value(index).map(str::as_bytes),
-            Self::LargeUtf8(column) => column.value(index).map(str::as_bytes),
-            Self::Utf8View(column) => column.value(index).map(str::as_bytes),
-            Self::Binary(column) => column.value(index),
-            Self::LargeBinary(column) => column.value(index),
-            Self::BinaryView(column) => column.value(index),
-            Self::Fixed(column) => column.value(index),
-        }
-    }
-}
-
-impl crate::BytesSerie {
-    /// Borrow row `index`'s bytes where they lie - in the payload an offset
-    /// run points into, in a view's buffer, or in a fixed slot - with no
-    /// value built: `None` where the row is absent or past the end.
-    pub fn value_bytes(&self, index: usize) -> Option<&[u8]> {
-        match self {
-            Self::Binary(column) => column.value(index),
-            Self::LargeBinary(column) => column.value(index),
-            Self::BinaryView(column) => column.value(index),
-            Self::Fixed(column) => column.value(index),
-        }
-    }
-}
-
 /// Build the column `field` types out of a byte-run array, or answer `None`
 /// for a layout that is not one.
 ///

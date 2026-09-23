@@ -41,11 +41,9 @@ use smol_str::format_smolstr;
 use crate::invalid;
 use crate::parser::{Parser, precision_to_unit};
 use crate::temporal::scalars::{narrow_i32, require};
-use crate::temporal::{
-    TemporalKind, invalid_record, temporal_leaf, validate_time32_unit, validate_time64_unit,
-};
+use crate::temporal::{invalid_record, temporal_leaf, validate_time32_unit, validate_time64_unit};
 use crate::value::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
 // The time payload: two widths, each over the resolutions it carries.
@@ -138,12 +136,6 @@ impl TimeType {
         }
     }
 
-    /// The family's name, `time`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        TemporalKind::Time.as_str()
-    }
-
     /// The width a resolution fits in: seconds and milliseconds in 32 bits,
     /// microseconds and nanoseconds in 64.
     ///
@@ -185,10 +177,6 @@ impl DataTypeValue for TimeType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Temporal
     }
 
     fn validate(&self) -> Result<()> {
@@ -388,7 +376,6 @@ mod arrow {
 temporal_leaf!(
     Time32,
     i32,
-    Time,
     32,
     valid = |unit: TimeUnit, timezone: Timezone| matches!(
         unit,
@@ -400,7 +387,6 @@ temporal_leaf!(
 temporal_leaf!(
     Time64,
     i64,
-    Time,
     64,
     valid = |unit: TimeUnit, timezone: Timezone| matches!(
         unit,

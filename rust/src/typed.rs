@@ -1052,9 +1052,6 @@ macro_rules! define_field_types {
                 $crate::DataTypeId::$variant
             }
 
-            fn kind(&self) -> $crate::DataTypeKind {
-                $crate::DataTypeId::$variant.kind()
-            }
 
             fn validate(&self) -> $crate::Result<()> {
                 Ok(())

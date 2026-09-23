@@ -73,8 +73,7 @@ use crate::{
 };
 use std::ops::Index;
 
-use crate::value::{FamilyValue, Nested};
-use crate::{Code, Floating, Geospatial, Integer, Serie, Temporal};
+use crate::Serie;
 
 /// Make one canonical text value a scalar leaf of its own.
 ///
@@ -1220,7 +1219,7 @@ impl Scalar {
     /// narrows a sequence to a list, fixed-size list, struct, or union. Static
     /// enum members report UTF-8 because their column representation remains a
     /// field-level choice.
-    pub fn id(&self) -> DataTypeId {
+    pub const fn id(&self) -> DataTypeId {
         match self {
             Self::Null => DataTypeId::Null,
             Self::Boolean(_) => DataTypeId::Boolean,
@@ -1285,8 +1284,9 @@ impl Scalar {
         }
     }
 
-    /// Return the datatype family the value itself proves.
-    pub fn family(&self) -> DataTypeKind {
+    /// Return the datatype family the value itself proves: the one whose
+    /// [range](DataTypeKind::range) [`Self::id`] is in.
+    pub const fn family(&self) -> DataTypeKind {
         self.id().kind()
     }
 
@@ -1599,7 +1599,7 @@ impl Scalar {
     /// Whether this value is a code drawn from a published registry.
     #[must_use]
     pub const fn is_code(&self) -> bool {
-        self.code_storage().is_some()
+        DataTypeKind::Code.contains(self.id())
     }
 
     /// Return bytes when this is a byte value.
@@ -1730,47 +1730,6 @@ impl Scalar {
             .find_map(|(candidate, value)| (candidate.as_str() == Some(key)).then_some(value))
     }
 
-    /// The integer family's value, when this scalar holds one of its widths.
-    ///
-    /// By value, as every family accessor here is: the scalar holds the leaf
-    /// and not the family, and every leaf is `Copy` or one shared pointer.
-    #[must_use]
-    pub fn as_integer(&self) -> Option<Integer> {
-        Integer::from_scalar(self)
-    }
-
-    /// The floating family's value, when this scalar holds one of its widths.
-    #[must_use]
-    pub fn as_floating(&self) -> Option<Floating> {
-        Floating::from_scalar(self)
-    }
-
-    /// The temporal family's value, when this scalar holds one of its leaves.
-    #[must_use]
-    pub fn as_temporal(&self) -> Option<Temporal> {
-        Temporal::from_scalar(self)
-    }
-
-    /// The code family's value, when this scalar holds a registered code.
-    #[must_use]
-    pub fn as_code(&self) -> Option<Code> {
-        Code::from_scalar(self)
-    }
-
-    /// The geospatial family's value, when this scalar holds a geometry or a
-    /// geography.
-    #[must_use]
-    pub fn as_geospatial(&self) -> Option<Geospatial> {
-        Geospatial::from_scalar(self)
-    }
-
-    /// The nested family's value, when this scalar holds a sequence, a
-    /// mapping or a record.
-    #[must_use]
-    pub fn as_nested(&self) -> Option<Nested> {
-        Nested::from_scalar(self)
-    }
-
     /// Iterate over sequence values, mapping keys, or record field values.
     ///
     /// Use [`Self::record_iter`] when both a record field's name and value are
@@ -1823,19 +1782,10 @@ impl Scalar {
         )
     }
 
-    /// Return whether this is a number of any width.
+    /// Return whether this is a number of any width: an integer, a float or
+    /// a decimal.
     pub const fn is_number(&self) -> bool {
-        self.is_integer()
-            || matches!(
-                self,
-                Self::Float16(_)
-                    | Self::Float32(_)
-                    | Self::Float64(_)
-                    | Self::Decimal32(_)
-                    | Self::Decimal64(_)
-                    | Self::Decimal128(_)
-                    | Self::Decimal256(_)
-            )
+        self.family().is_numeric()
     }
 
     /// Borrow the width leaf's own [`fmt::Display`], for a variant that holds

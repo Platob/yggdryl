@@ -41,7 +41,7 @@ fn the_family_holds_two_leaves_and_names_them() {
     assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
     assert_eq!(DataType::utf8().uri_type(), None);
     for leaf in UriType::ALL {
-        assert_eq!(leaf.family(), "uri");
+        assert_eq!(<UriType as yggdryl::DataTypeValue>::FAMILY, "uri");
         assert_eq!(leaf.kind(), DataTypeKind::Text);
         assert_eq!(UriType::from_id(leaf.id()), Some(leaf));
         assert_eq!(leaf.to_string(), leaf.id().as_str());

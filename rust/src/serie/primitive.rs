@@ -479,7 +479,7 @@ pub(crate) fn column_of(
 }
 
 /// Name one primitive width as a leaf of the root, and tie Arrow's type
-/// parameter to the family variant it widens through.
+/// parameter to the root variant it widens to.
 macro_rules! primitive_leaf {
     ($(#[$meta:meta])* $name:ident, $arrow:ty) => {
         $(#[$meta])*

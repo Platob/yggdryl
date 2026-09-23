@@ -12,8 +12,8 @@ use crate::arithmetic::{Arithmetic, invalid_binary};
 use crate::invalid;
 use crate::parser::Parser;
 use crate::value::DataTypeValue;
-use crate::value::{DecimalValue, ValidationFailure, expected, family_value};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, Value, i256};
+use crate::value::{DecimalValue, ValidationFailure, expected};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, Value, i256};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -190,10 +190,6 @@ impl DataTypeValue for DecimalType {
         Self::id(*self)
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Decimal
-    }
-
     fn validate(&self) -> Result<()> {
         validate_decimal(
             self.refusal_kind(),
@@ -315,7 +311,7 @@ impl DataType {
         Ok(family.into())
     }
 
-    /// The decimal family's view of any of the four widths, `None` for
+    /// The typed field's payload over any of the four widths, `None` for
     /// every other datatype.
     #[must_use]
     pub const fn decimal_type(&self) -> Option<DecimalType> {
@@ -872,25 +868,6 @@ impl Parser<'_> {
 // ```
 // ------------------------------------------------------------------------
 
-family_value!(
-    /// The decimal family as one value: any of the four widths, each at its
-    /// own precision and scale.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, Decimal, Decimal18, FamilyValue, Scalar};
-    ///
-    /// let value = Scalar::from(Decimal18::from_int(3));
-    /// let held = Decimal::from_scalar(&value).expect("a decimal");
-    /// assert!(matches!(held, Decimal::Decimal128(_)));
-    /// // The datatype the value itself is: eighteen fractional digits, and the
-    /// // digits its coefficient has.
-    /// assert_eq!(held.dtype().unwrap(), DataType::decimal128(19, 18).unwrap());
-    /// assert_eq!(held.into_scalar(), value);
-    /// assert_eq!(Decimal::from_scalar(&Scalar::from(3_i64)), None);
-    /// ```
-    Decimal, Decimal, [Decimal32, Decimal64, Decimal128, Decimal256]
-);
-
 trait IntoI256 {
     fn into_i256(self) -> i256;
 }
@@ -1088,10 +1065,7 @@ impl Scalar {
 
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
-        matches!(
-            self,
-            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_)
-        )
+        crate::DataTypeKind::Decimal.contains(self.id())
     }
 
     /// Return this decimal's unscaled integer at `scale`, when it is exact.

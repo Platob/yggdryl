@@ -143,8 +143,8 @@ fn a_text_column_lends_its_offsets_and_its_characters_where_they_lie() {
         Scalar::from("NVDA")
     );
     assert!(column.as_binary().is_none());
-    assert!(column.as_string().is_some());
-    assert!(column.as_bytes().is_none());
+    assert!(matches!(column, Serie::Utf8String(_)));
+    assert_eq!(leaf.id(), yggdryl::DataTypeId::Utf8String);
     assert!(column.as_large_utf8().is_none());
 }
 

@@ -4,7 +4,6 @@
 use smol_str::SmolStr;
 
 use crate::ascii::ascii_text_sized;
-use crate::value::family_value;
 use crate::{
     BLOOMBERG_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME, CURRENCY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME,
@@ -14,10 +13,6 @@ use crate::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
-use crate::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
-    Side, State, TimeInForce,
-};
 use crate::{DataType, Error, Result};
 
 // ------------------------------------------------------------------------
@@ -26,27 +21,9 @@ use crate::{DataType, Error, Result};
 // The short codes live inside the crate's compact string and never touch the
 // heap; Bloomberg's wider text uses the same value owner. The text is validated
 // once when it is built and never changed after. Equality, order and hashing
-// read the text; the family enum keeps the identity in front of it, so a
-// currency is never a country however alike their bytes look.
+// read the text; the `Scalar` variant keeps the identity in front of it, so
+// a currency is never a country however alike their bytes look.
 // ------------------------------------------------------------------------
-
-family_value!(
-    /// The code family as one value: any of the twelve registered codes.
-    ///
-    /// ```
-    /// use yggdryl::{Code, Currency, DataType, FamilyValue, Scalar};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let held = Code::from(Currency::new("EUR")?);
-    /// assert_eq!(held.dtype()?, DataType::Currency);
-    /// assert_eq!(held.clone().into_scalar(), Scalar::Currency(Currency::new("EUR")?));
-    /// assert_eq!(Code::from_scalar(&Scalar::Currency(Currency::new("EUR")?)), Some(held));
-    /// assert_eq!(Code::from_scalar(&Scalar::from("EUR")), None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    Code, Code, [Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode]
-);
 
 macro_rules! code_leaf {
     ($name:ident, $width:expr) => {
@@ -217,7 +194,7 @@ impl DataType {
     /// ```
     #[must_use]
     pub const fn is_code(&self) -> bool {
-        self.code_name().is_some()
+        crate::DataTypeKind::Code.contains(self.id())
     }
 }
 

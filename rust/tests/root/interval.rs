@@ -38,7 +38,7 @@ mod temporal {
             assert_eq!(leaf.id(), DataTypeId::Interval);
             assert_eq!(leaf.as_str(), "interval");
             assert_eq!(leaf.unit(), unit);
-            assert_eq!(leaf.family(), "interval");
+            assert_eq!(leaf.id().temporal_family(), Some("interval"));
             assert_eq!(
                 IntervalType::from_id(DataTypeId::Interval, unit),
                 Some(leaf)

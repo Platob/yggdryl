@@ -208,8 +208,7 @@ pub use bloomberg_code::*;
 pub use boolean::*;
 pub use bytes::*;
 pub use cfi_code::*;
-pub use code::*;
-pub(crate) use code::{code_cell_text, code_for_extension};
+pub(crate) use code::{code_cell_text, code_extension_name, code_for_extension};
 pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use currency::*;
@@ -258,7 +257,6 @@ pub(crate) use string::trim_padding;
 pub use string::*;
 pub use structure::*;
 pub(crate) use temporal::TemporalKind;
-pub use temporal::*;
 pub use time::*;
 pub use timeinforce::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
@@ -271,9 +269,9 @@ pub(crate) use uuid::{
 };
 pub(crate) use value::dtype_scalar;
 pub use value::{
-    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue,
-    FieldSidecar, FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue,
-    IntegerValue, Nested, NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
+    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FieldSidecar,
+    FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue,
+    NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
 };
 pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
 pub use variant::{

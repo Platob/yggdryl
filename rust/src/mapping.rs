@@ -29,7 +29,7 @@ use crate::value::Children;
 use crate::value::DataTypeValue;
 use crate::value::NestedValue;
 use crate::value::Value;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar};
+use crate::{DataType, DataTypeId, Error, Field, Result, Scalar};
 
 // ------------------------------------------------------------------------
 // Datatype side: the family and its one leaf.
@@ -169,10 +169,6 @@ impl DataTypeValue for MappingType {
         }
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
-    }
-
     fn validate(&self) -> Result<()> {
         validate_map_entries(self.entries())
     }
@@ -233,7 +229,7 @@ impl DataType {
         )
     }
 
-    /// The mapping family's view of a map or sorted map, `None` for every
+    /// The typed field's payload over a map or sorted map, `None` for every
     /// other datatype: a shared-pointer clone, never a walk of the entries.
     #[must_use]
     pub fn as_mapping(&self) -> Option<MappingType> {

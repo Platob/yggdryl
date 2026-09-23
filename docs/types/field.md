@@ -623,7 +623,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contracts `Value` and `FamilyValue` in `rust/src/value/` and re-exported at the crate root.
+`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contract `Value` and the leaf contracts (`IntegerValue`, `TemporalValue`, ...) in `rust/src/value/` and re-exported at the crate root; a payload's `kind` is the family whose range its `id` is in.
 
 | alias | constructors |
 | --- | --- |

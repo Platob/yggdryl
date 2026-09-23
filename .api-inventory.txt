@@ -213,9 +213,10 @@ pub enum DataTypeId
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8  (one byte laid out by family: the family's own number first, `DataTypeKind::id`, then its leaves in the family's range; the tag the digest feed and the variant encoding write)
   pub const fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names; none for a family's own number, a placeholder in a family's range, or a byte past every family)
-  pub const fn kind(self) -> DataTypeKind
+  pub const fn kind(self) -> DataTypeKind  (the family whose DataTypeKind::range the byte is in)
+  pub const fn temporal_family(self) -> Option<&'static str>  (date, time, datetime, duration or interval: which of the five temporal families the leaf is in, the widths of one family sharing it; None outside DataTypeKind::Temporal)
   pub const fn is_parameterized(self) -> bool
-  pub const fn is_integer(self) -> bool
+  pub const fn is_integer(self) -> bool  (DataTypeKind::Integer.contains(self))
   pub const fn is_signed_integer(self) -> bool
   pub const fn is_unsigned_integer(self) -> bool
   pub const fn is_floating(self) -> bool
@@ -232,7 +233,10 @@ pub enum DataTypeKind
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn id(self) -> u8  (the family's own number, the start of the range its leaves take and a placeholder no leaf takes - but the null family's, whose one leaf is the null itself)
-  pub const fn of_u8(byte: u8) -> Option<Self>  (the family whose range a byte is in, or none past every family)
+  pub const fn last(self) -> u8  (the last byte of the range the family owns)
+  pub const fn range(self) -> RangeInclusive<u8>  (id() ..= last(): a family is this range of DataTypeId bytes, laid out by hand and checked at compile time never to overlap)
+  pub const fn contains(self, id: DataTypeId) -> bool  (whether id's byte is in range(); Scalar::is_integer, is_decimal, is_temporal, is_code and DataType::is_integer, is_code are this check)
+  pub const fn of_u8(byte: u8) -> Option<Self>  (the family whose range a byte is in, or none past every family; one table lookup)
   pub const fn is_nested(self) -> bool
   pub const fn is_wrapper(self) -> bool
   pub const fn is_numeric(self) -> bool
@@ -3377,14 +3381,10 @@ pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn as_d128(&self) -> Option<(i128, i8)>
   pub const fn as_d256(&self) -> Option<(i256, i8)>
   pub fn as_decimal(&self) -> Option<(i256, i8)>
-  pub const fn is_decimal(&self) -> bool
+  pub const fn is_decimal(&self) -> bool  (DataTypeKind::Decimal.contains(self.id()))
   pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
   pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<i256>
   pub fn into_decimal_utf8(&self) -> Option<String>
-pub enum Decimal  (Decimal32(Decimal32), Decimal64(Decimal64), Decimal128(Decimal128), Decimal256(Decimal256); the decimal family as one value, each width at its own precision and scale, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's; the one family with no Scalar::as_* accessor, `as_decimal` being the coefficient-and-scale reader, so a caller narrows through Decimal::from_scalar)
-  impl FamilyValue for Decimal  (KIND = DataTypeKind::Decimal)
-  impl From<Decimal32>, From<Decimal64>, From<Decimal128>, From<Decimal256> for Decimal
-  impl From<Decimal> for Scalar
 
 ### yggdryl::default  [rust/src/default.rs]
 pub fn default_value(&self) -> Result<Scalar>
@@ -3594,10 +3594,6 @@ pub struct i256([u64; 4]);  (signed two's complement; ZERO; from_i128, from_u128
   pub const fn unsigned_abs(self) -> u256
 
 ### yggdryl::geospatial  [rust/src/geospatial.rs]  (GeospatialValue, the contract both leaves answer, is under yggdryl::value)
-pub enum Geospatial  (Geometry(Geometry), Geography(Geography); the geospatial family as one value, each validated Well-Known Binary, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
-  impl FamilyValue for Geospatial  (KIND = DataTypeKind::Geospatial)
-  impl From<Geometry>, From<Geography> for Geospatial
-  impl From<Geospatial> for Scalar
   pub struct Geometry  // and Geography
   pub fn new(value: impl Into<Arc<[u8]>>) -> Result<Self>
   pub fn as_bytes(&self) -> &[u8]
@@ -3605,10 +3601,6 @@ pub enum Geospatial  (Geometry(Geometry), Geography(Geography); the geospatial f
   pub fn into_inner(self) -> Arc<[u8]>
 
 ### yggdryl::floating  [rust/src/floating.rs]
-pub enum Floating  (Float16(Float16), Float32(Float32), Float64(Float64); the floating family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
-  impl FamilyValue for Floating  (KIND = DataTypeKind::Floating)
-  impl From<Float16>, From<Float32>, From<Float64> for Floating
-  impl From<Floating> for Scalar
 pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal64(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal(precision: u8, scale: i8) -> Result<Self>
@@ -3649,11 +3641,7 @@ pub struct Version
   pub type VersionField = FieldOf<VersionType>;
 
 ### yggdryl::integer  [rust/src/integer.rs]
-pub const fn is_integer(&self) -> bool
-pub enum Integer  (Int8(Int8), Int16(Int16), Int32(Int32), Int64(Int64), UInt8(UInt8), UInt16(UInt16), UInt32(UInt32), UInt64(UInt64), Int128(Int128), UInt128(UInt128); the integer family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
-  impl FamilyValue for Integer  (KIND = DataTypeKind::Integer)
-  impl From<Int8> .. From<UInt128> for Integer  (one per leaf)
-  impl From<Integer> for Scalar
+pub const fn is_integer(&self) -> bool  (on DataType and on Scalar: DataTypeKind::Integer.contains(self.id()))
 
 ### yggdryl  [rust/src/lib.rs]
 pub enum DataType
@@ -4046,10 +4034,10 @@ pub struct ProtocolField<'field>
   pub struct PythonFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> PythonField<'_>
 
-### yggdryl::scalar  [rust/src/scalar.rs]  (the Value and FamilyValue contracts a scalar's leaves answer are under yggdryl::value)
+### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
   pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, List, ListView, FixedSizeList, LargeList, LargeListView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the list it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
-  pub fn id(&self) -> DataTypeId
-  pub fn family(&self) -> DataTypeKind
+  pub const fn id(&self) -> DataTypeId
+  pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
   pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
@@ -4057,7 +4045,7 @@ pub struct ProtocolField<'field>
   pub const fn as_bool(&self) -> Option<bool>
   pub fn as_str(&self) -> Option<&str>
   pub const fn code_storage(&self) -> Option<&SmolStr>  (the twelve registered codes written out once; `id` is the other half - the identity leads, the text follows)
-  pub const fn is_code(&self) -> bool
+  pub const fn is_code(&self) -> bool  (DataTypeKind::Code.contains(self.id()))
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
   pub fn into_json(&self) -> Result<String>
@@ -4067,12 +4055,6 @@ pub struct ProtocolField<'field>
   pub fn sequence_rows(&self) -> Option<Cow<'_, [Self]>>  (the door every reader of meaning uses: a run's slice borrowed, a column's rows built)
   pub fn as_mapping(&self) -> Option<&[(Self, Self)]>
   pub fn as_struct(&self) -> Option<&BTreeMap<SmolStr, Self>>
-  pub fn as_integer(&self) -> Option<Integer>  (the family accessors, by value through FamilyValue::from_scalar: the scalar holds the leaf and not the family, and every leaf is Copy or one shared pointer; None for another kind. The decimal family narrows through Decimal::from_scalar, `as_decimal` being the coefficient-and-scale reader)
-  pub fn as_floating(&self) -> Option<Floating>
-  pub fn as_temporal(&self) -> Option<Temporal>
-  pub fn as_code(&self) -> Option<Code>
-  pub fn as_geospatial(&self) -> Option<Geospatial>
-  pub fn as_nested(&self) -> Option<Nested>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
   pub fn get(&self, index: usize) -> Option<Cow<'_, Self>>  (borrowed for a run, built for a column)
@@ -4084,7 +4066,7 @@ pub struct ProtocolField<'field>
   pub const fn is_null(&self) -> bool
   pub const fn is_container(&self) -> bool
   pub fn is_truthy(&self) -> bool  (coercion, not a reading: absence, zero at any width, empty text/bytes, and a container with nothing set are false; text spelling false/no/off/0/f/n is false, wider than Python because values arrive as text)
-  pub const fn is_number(&self) -> bool
+  pub const fn is_number(&self) -> bool  (self.family().is_numeric())
   pub fn path(&self, path: &str) -> Option<Cow<'_, Self>>  (borrowed for a run's walk, owned once a step reached a row a column built)
   pub fn get_or<'value>(&'value self, key: &str, default: &'value Self) -> &'value Self
   pub fn entries(&self) -> std::slice::Iter<'_, (Self, Self)>
@@ -4095,8 +4077,8 @@ pub struct ProtocolField<'field>
   pub fn with_field(&self, name: impl Into<SmolStr>, value: impl Into<Self>) -> Result<Self>
   pub fn without_field(&self, name: &str) -> Result<Self>
 
-### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the family enums, the identity helpers and the serde shadow live here, the leaves in serie/)
-  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per DataType variant, spelled as it is: Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTime64(Arc<DateTime64Serie>), Date32, Date64, Time32(Arc<Time32Serie>), Time64(Arc<Time64Serie>), Duration32, Duration64 (Arc<DurationSerie>), Interval(Arc<IntervalSerie>), Bytes(Arc<BytesSerie>), String(Arc<StringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
+### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
+  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
@@ -4147,11 +4129,11 @@ pub struct ProtocolField<'field>
   pub fn truncate(&mut self, len: usize) -> Result<()>
   pub fn clear(&mut self) -> Result<()>  (keeps the field)
   pub fn extend(&mut self, rows: Vec<Scalar>) -> Result<()>
-  pub fn extend_from_serie(&mut self, other: &Self) -> Result<()>  (two columns whose fields have one datatype and whose nullability fits append buffer to buffer, no row read; anything else reads other's rows)
+  pub fn extend_from_serie(&mut self, other: &Self) -> Result<()>  (two columns whose fields have one datatype and whose nullability fits append buffer to buffer, no row read; anything else reads other's rows - one layout under two datatypes, duration32 beside duration64 of one unit, is not one datatype)
   pub fn resize(&mut self, len: usize, value: Scalar) -> Result<()>  (proves value once and writes clones)
   pub fn set_child(&mut self, child: Self) -> Result<()>  (a record column only: replaces the child of child's name or adds one, extending the field; refuses a run, a length other than len and a non-record column, each by name)
   pub fn set_cell(&mut self, path: &FieldPath, index: usize, value: Scalar) -> Result<()>  (a record column only: descends path through record children by name and writes one slot in place; refuses an absent row on the way)
-  pub fn as_null(&self) -> Option<&NullSerie>  // and as_boolean, as_time32, as_time64, as_datetime64, as_duration, as_interval, as_string, as_bytes, as_struct, as_map, as_union, as_run_end_encoded, as_variant: the payload a root variant holds, and as_int8 .. as_uint64, as_float16/32/64, as_decimal32/64/128/256, as_date32, as_date64, as_time32_second, as_time32_millisecond, as_time64_microsecond, as_time64_nanosecond, as_datetime_second/millisecond/microsecond/nanosecond, as_duration_second/millisecond/microsecond/nanosecond, as_interval_year_month/day_time/month_day_nano, as_utf8, as_large_utf8, as_utf8_view, as_binary_string, as_large_binary_string, as_binary_view_string, as_fixed_string, as_binary, as_large_binary, as_binary_view, as_fixed_bytes, as_list, as_large_list, as_list_view, as_large_list_view, as_fixed_size_list, as_dictionary: the named leaves; allocation free
+  pub fn as_null(&self) -> Option<&NullSerie>  // and as_boolean, as_struct, as_map (Map and SortedMap), as_union, as_run_end_encoded, as_variant, as_int8 .. as_uint64, as_float16/32/64, as_decimal32/64/128/256, as_date32, as_date64, as_time32_second, as_time32_millisecond, as_time64_microsecond, as_time64_nanosecond, as_datetime_second/millisecond/microsecond/nanosecond, as_duration_second/millisecond/microsecond/nanosecond, as_interval_year_month/day_time/month_day_nano, as_utf8, as_large_utf8, as_utf8_view, as_binary_string, as_large_binary_string, as_binary_view_string, as_fixed_string, as_binary, as_large_binary, as_binary_view, as_fixed_bytes, as_list, as_large_list, as_list_view, as_large_list_view, as_fixed_size_list, as_dictionary: one per leaf, a direct match on its variant - as_utf8 also reaches the code, Version, Url, Urn, Timezone, MimeType and MediaType variants, as_fixed_bytes Uuid, as_binary Geometry and Geography; allocation free
   pub fn get_null_mut(&mut self) -> Option<&mut NullSerie>  // and get_<leaf>_mut for every as_<leaf> above: through Arc::make_mut, the leaf struct copied once when the column is shared; only the typed writers of a leaf can write through it, and they validate nullability
   impl Value for Serie
   impl NestedValue for Serie  (children answers Children::Sequence for a run and Children::Column for a column)
@@ -4159,16 +4141,8 @@ pub struct ProtocolField<'field>
   impl Deserialize for Serie  (the column wire alone; a list is refused naming the `serie` tag)
   impl From<Run> for Serie
   impl From<Serie> for Scalar
-  impl From<Time32Serie> for Serie  // and every payload family below
   impl FromIterator<Scalar> for Serie  (a run)
   impl IntoIterator for &Serie  (item Cow<'_, Scalar>)
-  pub enum Time32Serie  (#[non_exhaustive]; Second(Time32SecondSerie), Millisecond(Time32MillisecondSerie); emitted by serie_family!, as are the enums below: the payload one root variant holds where its unit picks the leaf, SerieValue dispatching to the leaf, Debug, identity over the rows, From<$family> for Serie)
-  pub enum Time64Serie  (Microsecond(Time64MicrosecondSerie), Nanosecond(Time64NanosecondSerie))
-  pub enum DateTime64Serie  (Second(DateTimeSecondSerie), Millisecond, Microsecond, Nanosecond)
-  pub enum DurationSerie  (Second(DurationSecondSerie), Millisecond, Microsecond, Nanosecond; held by Duration32 and Duration64 alike)
-  pub enum IntervalSerie  (YearMonth(IntervalYearMonthSerie), DayTime, MonthDayNano)
-  pub enum StringSerie  (Utf8(Utf8StringSerie), LargeUtf8, Utf8View, Binary(BinaryStringSerie), LargeBinary, BinaryView, Fixed(FixedStringSerie); the field says which string leaf the bytes are, the variant how they are laid out)
-  pub enum BytesSerie  (Binary(BinarySerie), LargeBinary, BinaryView, Fixed(FixedBytesSerie))
 
 ### yggdryl::serie::primitive  [rust/src/serie/primitive.rs]  (one column of fixed-width rows over every Arrow primitive type, and the 35 named leaves)
   pub trait PrimitiveLeaf: ArrowPrimitiveType + Sized + Send + Sync + 'static  (ties one Arrow primitive type to the leaf its column widens to)
@@ -4186,7 +4160,7 @@ pub struct ProtocolField<'field>
   pub fn splice_values(&mut self, range: Range<usize>, values: Vec<Option<T::Native>>) -> Result<()>
   pub fn extend_values(&mut self, values: Vec<Option<T::Native>>) -> Result<()>
   impl SerieValue for PrimitiveSerie<T>
-  pub type Int8Serie = PrimitiveSerie<Int8Type>  // and Int16Serie, Int32Serie, Int64Serie, UInt8Serie, UInt16Serie, UInt32Serie, UInt64Serie, Float16Serie, Float32Serie, Float64Serie, Decimal32Serie, Decimal64Serie, Decimal128Serie, Decimal256Serie, Date32Serie, Date64Serie, Time32SecondSerie, Time32MillisecondSerie, Time64MicrosecondSerie, Time64NanosecondSerie, DateTimeSecondSerie, DateTimeMillisecondSerie, DateTimeMicrosecondSerie, DateTimeNanosecondSerie, DurationSecondSerie, DurationMillisecondSerie, DurationMicrosecondSerie, DurationNanosecondSerie, IntervalYearMonthSerie, IntervalDayTimeSerie, IntervalMonthDayNanoSerie: one alias per Arrow primitive type, each tied to its family variant
+  pub type Int8Serie = PrimitiveSerie<Int8Type>  // and Int16Serie, Int32Serie, Int64Serie, UInt8Serie, UInt16Serie, UInt32Serie, UInt64Serie, Float16Serie, Float32Serie, Float64Serie, Decimal32Serie, Decimal64Serie, Decimal128Serie, Decimal256Serie, Date32Serie, Date64Serie, Time32SecondSerie, Time32MillisecondSerie, Time64MicrosecondSerie, Time64NanosecondSerie, DateTimeSecondSerie, DateTimeMillisecondSerie, DateTimeMicrosecondSerie, DateTimeNanosecondSerie, DurationSecondSerie, DurationMillisecondSerie, DurationMicrosecondSerie, DurationNanosecondSerie, IntervalYearMonthSerie, IntervalDayTimeSerie, IntervalMonthDayNanoSerie: one alias per Arrow primitive type, each tied to its root variant
 
 ### yggdryl::serie::boolean  [rust/src/serie/boolean.rs]  (one column of booleans: a values bitmap and a validity bitmap)
   pub struct BooleanSerie
@@ -4210,7 +4184,7 @@ pub struct ProtocolField<'field>
   pub trait ByteKind: Send + Sync + Clone + Copy + fmt::Debug + 'static  (which family a run of bytes belongs to when its layout belongs to both)
   pub struct Chars  (the marker for bytes a field reads as text)
   pub struct Octets  (the marker for bytes a field reads as bytes)
-  pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized + Send + Sync + 'static  (ties one offsets layout under one marker to its family variant: NAME, into_serie, from_serie)
+  pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized + Send + Sync + 'static  (ties one offsets layout under one marker to its root variant: NAME, into_serie, from_serie)
   pub trait ViewLeaf<K: ByteKind>: ByteViewType + Sized + Send + Sync + 'static  (the same for a view layout)
   pub trait FixedLeaf: Sized  (the same for the fixed-width layout)
   pub struct ByteSerie<T: ByteArrayType, K: ByteKind>  (offsets into one payload buffer; Utf8, LargeUtf8, Binary, LargeBinary under Chars or Octets)
@@ -4238,7 +4212,6 @@ pub struct ProtocolField<'field>
   pub type LargeBinarySerie = ByteSerie<LargeBinaryType, Octets>
   pub type BinaryViewSerie = ByteViewSerie<BinaryViewType, Octets>
   pub type FixedBytesSerie = FixedSerie<Octets>  (a UUID, or any identity stored at one width)
-  pub fn value_bytes(&self, index: usize) -> Option<&[u8]>  (on StringSerie and BytesSerie: row index's run borrowed where it lies - an offsets payload, a view's buffer, a fixed slot with its padding - no value built; None when absent or past the end)
 
 ### yggdryl::serie::string  [rust/src/serie/string.rs]  (the string family's leaves over the byte layouts: the field says which of the eighteen string leaves or twelve codes the bytes are)
   pub type Utf8StringSerie = ByteSerie<Utf8Type, Chars>
@@ -4333,18 +4306,13 @@ pub struct ProtocolField<'field>
   pub fn mode(&self) -> UnionMode
   impl SerieValue for UnionSerie
 
-### yggdryl::value  [rust/src/value/mod.rs]  (what a datatype, a field and a value each owe the root that holds them, and what a family owes its leaves; the module is private and every name here is re-exported at the crate root as yggdryl::<Name>)
+### yggdryl::value  [rust/src/value/mod.rs]  (what a datatype, a field and a value each owe the root that holds them, and the leaf contracts the leaves of one family share - a family itself is no type, only the DataTypeId range its DataTypeKind owns; the module is private and every name here is re-exported at the crate root as yggdryl::<Name>)
 pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (one concrete scalar representation; no associated consts: a leaf's identity is its dtype; no Family type - a leaf widens through into_scalar)
   fn dtype(&self) -> Result<DataType>
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<&Self>
   fn into_variant(&self) -> Result<Variant>  (encode through Scalar using the Parquet Variant mapping)
   fn from_variant(value: &Variant) -> Result<Self>  (decode and require this exact leaf; Variant itself shares its buffers)
-pub trait FamilyValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (what a family's value enum owes: it stands for any one leaf of the family; implemented by Integer, Floating, Decimal, Temporal, Code, Geospatial and Nested)
-  const KIND: DataTypeKind
-  fn dtype(&self) -> Result<DataType>
-  fn into_scalar(self) -> Scalar
-  fn from_scalar(value: &Scalar) -> Option<Self>  (by value: the scalar holds the leaf and not the family, and every leaf is Copy or one shared pointer)
 pub trait IntegerValue: Value  (implemented by Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128 and UInt128)
   const SIGNED: bool
   const BIT_WIDTH: u8
@@ -4359,7 +4327,6 @@ pub trait DecimalValue: Value  (implemented by Decimal32, Decimal64, Decimal128 
   fn scale(&self) -> i8
   fn rescale(self, scale: i8) -> Result<Self>
 pub trait TemporalValue: Value  (implemented by Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64 and Interval)
-  const FAMILY: &'static str  // date, time, datetime, duration, interval
   const BIT_WIDTH: u8
   fn count(&self) -> i64
   fn unit(&self) -> TimeUnit
@@ -4378,10 +4345,6 @@ pub trait NestedValue: Value  (implemented by Run, Serie, Map and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
-pub enum Nested  (List, ListView, FixedSizeList, LargeList, LargeListView (Serie), Map, SortedMap (Map), Struct(Struct), Variant(Variant); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
-  impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
-  (no From<leaf> for Nested: a Serie or a Map names the layout it is held under, so the variant is always stated)
-  impl From<Nested> for Scalar
 pub trait FieldSidecar: Clone + fmt::Debug + Default + Eq + Ord + Hash + Send + Sync + Sized + 'static  (the per-column facts only one datatype has; `()` for every datatype but the dictionary-encoded one)
   fn dictionary_id(&self) -> Option<i64>  (provided: None)
   fn dictionary_is_ordered(&self) -> Option<bool>  (provided: None)
@@ -4392,7 +4355,7 @@ pub trait DataTypeValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   const FAMILY: &'static str  (the family's parameter-free name, as a binding and a refusal spell it)
   type Sidecar: FieldSidecar
   fn id(&self) -> DataTypeId
-  fn kind(&self) -> DataTypeKind
+  fn kind(&self) -> DataTypeKind  (provided: self.id().kind(), the family whose range the id is in)
   fn validate(&self) -> Result<()>
   fn into_dtype(self) -> DataType
   fn from_dtype(dtype: &DataType) -> Option<Self>  (owned: a payload is Copy or one shared pointer)
@@ -4410,9 +4373,11 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
   fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided: the datatype's door under the field, whose nullability is the one thing a datatype does not state; Arrow casts are Serie's)
 pub enum Children<'a>  (Sequence(slice::Iter<'a, Scalar>), Mapping(slice::Iter<'a, (Scalar, Scalar)>), Struct(btree_map::Values<'a, SmolStr, Scalar>), Column(ColumnRows<'a>); Iterator<Item = Cow<'a, Scalar>> over sequence values, mapping keys, struct values or a column's rows - borrowed where the value is already there, built where it is not; DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 pub struct ColumnRows<'a>  (the rows of one column, built one at a time as the walk reaches them; a stored row is one its field accepts, so none refuses)
-pub trait SerieValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static  (what every column leaf of Serie and every family enum owes: its field, its length, one row built on demand, a zero-copy slice, the one mutation splice - prove once, check once, write without failing - its buffers as an Arrow array, and the widening to and narrowing from Serie; Serie itself does not implement it, the run having no field)
+pub trait SerieValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static  (what every column leaf of Serie owes: its field, the datatype id and family that field answers, its length, one row built on demand, a zero-copy slice, the one mutation splice - prove once, check once, write without failing - its buffers as an Arrow array, and the widening to and narrowing from Serie; Serie itself does not implement it, the run having no field)
   fn field(&self) -> &Field
   fn field_ref(&self) -> &Arc<Field>
+  fn id(&self) -> DataTypeId  (provided: self.field().id() - the field's, because one storage layout holds several datatypes; a dictionary or run-end column answers its encoding)
+  fn kind(&self) -> DataTypeKind  (provided: self.id().kind())
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided)
   fn null_count(&self) -> usize
@@ -4457,18 +4422,13 @@ pub fn from_json(input: &str) -> Result<Self>
 pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::temporal  [rust/src/temporal.rs]  (what the five temporal families share: the Temporal value enum over the eight leaves, the ISO 8601 spellings and the Scalar readers that answer across the families; no datatype, no field and no leaf value lives here, and TemporalValue, the contract every leaf answers, is under yggdryl::value)
-pub enum Temporal  (Date32(Date32), Date64(Date64), Time32(Time32), Time64(Time64), DateTime64(DateTime64), Duration32(Duration32), Duration64(Duration64), Interval(Interval); the temporal family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's; re-exported at the crate root through `pub use temporal::*`)
-  pub const fn family(&self) -> &'static str  // date, time, datetime, duration, interval: the family's name as a datatype spells it
-  impl FamilyValue for Temporal  (KIND = DataTypeKind::Temporal)
-  impl From<Date32>, From<Date64>, From<Time32>, From<Time64>, From<DateTime64>, From<Duration32>, From<Duration64>, From<Interval> for Temporal
-  impl From<Temporal> for Scalar
-impl Scalar  (`as_temporal`, the family accessor, is under yggdryl::scalar beside the other five)
+### yggdryl::temporal  [rust/src/temporal.rs]  (what the five temporal families share: the ISO 8601 spellings and the Scalar readers that answer across the families, which family a leaf is in being DataTypeId::temporal_family; no datatype, no field and no leaf value lives here, and TemporalValue, the contract every leaf answers, is under yggdryl::value)
+impl Scalar
   pub const fn temporal_unit(&self) -> Option<TimeUnit>  (an interval answers its layout unit)
   pub const fn temporal_timezone(&self) -> Option<Timezone>  (an interval answers Timezone::NAIVE)
   pub const fn temporal_count(&self) -> Option<i64>  (an interval answers its nanosecond component)
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
-  pub const fn is_temporal(&self) -> bool
+  pub const fn is_temporal(&self) -> bool  (DataTypeKind::Temporal.contains(self.id()))
   pub fn temporal_dtype(&self) -> Option<DataType>
 
 ### yggdryl::date  [rust/src/date.rs]  (the date family: two leaves with no parameter, the unit being what the leaf is)
@@ -4479,7 +4439,6 @@ pub enum DateType  (#[non_exhaustive]; Copy; Default = Date32; Date32, Date64; D
   pub const fn as_str(self) -> &'static str  // date32, date64
   pub const fn unit(self) -> TimeUnit  // Day, Millisecond
   pub const fn bit_width(self) -> u8  // 32, 64
-  pub const fn family(self) -> &'static str  // "date"
   pub const fn validate(self) -> Result<()>  (always Ok: a date has no parameter to refuse)
 impl DataType
   pub const fn date32() -> Self
@@ -4513,7 +4472,6 @@ pub enum TimeType  (#[non_exhaustive]; Copy; Time32(TimeUnit), Time64(TimeUnit);
   pub const fn as_str(self) -> &'static str  // time32, time64
   pub const fn unit(self) -> TimeUnit
   pub const fn bit_width(self) -> u8  // 32, 64
-  pub const fn family(self) -> &'static str  // "time"
   pub fn for_unit(unit: TimeUnit) -> Result<Self>  (Second | Millisecond -> Time32, Microsecond | Nanosecond -> Time64; a day or a layout refused with "unit must be a temporal resolution")
   pub fn validate(self) -> Result<()>  (Time32 takes second or millisecond, Time64 microsecond or nanosecond)
 impl DataType
@@ -4549,7 +4507,6 @@ pub enum DateTimeType  (#[non_exhaustive]; Copy; DateTime64 { unit: TimeUnit, ti
   pub const fn unit(self) -> TimeUnit
   pub const fn timezone(self) -> Timezone
   pub const fn bit_width(self) -> u8  // 64
-  pub const fn family(self) -> &'static str  // "datetime"
   pub fn with_unit(self, unit: TimeUnit) -> Result<Self>  (validates)
   pub fn with_timezone(self, timezone: Timezone) -> Self
   pub fn validate(self) -> Result<()>  (a day or a layout refused under the kind "datetime64" with "unit must be a temporal resolution")
@@ -4576,7 +4533,6 @@ pub enum DurationType  (#[non_exhaustive]; Copy; Duration32(TimeUnit), Duration6
   pub const fn as_str(self) -> &'static str  // duration32, duration64
   pub const fn unit(self) -> TimeUnit
   pub const fn bit_width(self) -> u8  // 32, 64
-  pub const fn family(self) -> &'static str  // "duration"
   pub fn validate(self) -> Result<()>  (day, second, millisecond, microsecond or nanosecond; a layout refused)
 impl DataType
   pub fn duration32(unit: TimeUnit) -> Result<Self>
@@ -4610,7 +4566,6 @@ pub enum IntervalType  (#[non_exhaustive]; Copy; Interval(TimeUnit), the unit on
   pub const fn from_id(id: DataTypeId, unit: TimeUnit) -> Option<Self>
   pub const fn as_str(self) -> &'static str  // interval
   pub const fn unit(self) -> TimeUnit  (the layout)
-  pub const fn family(self) -> &'static str  // "interval"
   pub fn validate(self) -> Result<()>  (a resolution refused with "unit must be an interval layout")
 impl DataType
   pub fn interval(unit: TimeUnit) -> Result<Self>  (validating; the bare variant used to be built unchecked)
@@ -4753,10 +4708,6 @@ impl Scalar
   pub type TimeInForceField = FieldOf<TimeInForceType>;
 
 ### yggdryl::code  [rust/src/code.rs]  (CodeValue, the contract every registered code answers, is under yggdryl::value)
-  pub enum Code  (Country(Country), Currency(Currency), MicCode(MicCode), CfiCode(CfiCode), Side(Side), State(State), TimeInForce(TimeInForce), IsinCode(IsinCode), CusipCode(CusipCode), SedolCode(SedolCode), BloombergCode(BloombergCode), FIGICode(FIGICode); the code family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
-  impl FamilyValue for Code  (KIND = DataTypeKind::Code)
-  impl From<Country> .. From<FIGICode> for Code  (one per code)
-  impl From<Code> for Scalar
   macro_rules! code_leaf  (the validated newtype and its Display)
   macro_rules! code_value  (its Value impl, its Scalar variant and the From that builds one)
   pub struct $name(SmolStr);
@@ -5237,7 +5188,6 @@ pub enum UriType  (#[non_exhaustive]; Url (the default), Urn; Copy; the payload 
   pub const fn id(self) -> DataTypeId
   pub const fn from_id(id: DataTypeId) -> Option<Self>
   pub const fn as_str(self) -> &'static str
-  pub const fn family(self) -> &'static str  (`uri`)
   pub const fn validate(self) -> Result<()>
   impl DataTypeValue for UriType  (FAMILY `uri`, kind Text, no sidecar)
   impl From<UriType> for DataType

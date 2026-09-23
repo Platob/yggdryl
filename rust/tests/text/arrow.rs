@@ -84,6 +84,74 @@ mod text {
         assert_eq!(target.read_all_bytes().unwrap(), b"old");
     }
 
+    #[test]
+    fn a_code_body_laid_out_as_utf8_is_still_refused_by_the_body_reader() {
+        // A currency is stored as UTF-8, so its layout passes the schema; the
+        // column lands as a currency, not as text, and is refused by its type.
+        let mut target = named("coded.txt", b"old");
+        let mut options: RecordOptions = TextOptions::new().into();
+        let field = StructType::from_fields([
+            DataType::utf8().required_field("crosscode"),
+            DataType::Currency.required_field("body"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        options.set_field(field);
+        let rows = [yggdryl::Scalar::from_struct([
+            ("crosscode", yggdryl::Scalar::from("input")),
+            (
+                "body",
+                yggdryl::Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
+            ),
+        ])
+        .unwrap()];
+        let error = target
+            .overwrite_records(rows, &options)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("expected a utf8 body column, got currency"),
+            "{error}"
+        );
+        assert_eq!(target.read_all_bytes().unwrap(), b"old");
+    }
+
+    #[test]
+    fn every_text_layout_a_body_may_take_writes_its_lines() {
+        // Each lands in a text storage leaf of its own - offsets, large
+        // offsets, views, and an ASCII leaf laid out as UTF-8 - and every one
+        // is read as the body.
+        for body in [
+            DataType::utf8(),
+            DataType::large_utf8(),
+            DataType::utf8_view(),
+            DataType::ascii(),
+        ] {
+            let mut target = named("layouts.txt", b"old");
+            let mut options: RecordOptions = TextOptions::new().into();
+            let field = StructType::from_fields([
+                DataType::utf8().required_field("crosscode"),
+                body.clone().required_field("body"),
+            ])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+            options.set_field(field);
+            let rows = ["one", "two"].map(|text| {
+                yggdryl::Scalar::from_struct([
+                    ("crosscode", yggdryl::Scalar::from("input")),
+                    ("body", yggdryl::Scalar::from(text)),
+                ])
+                .unwrap()
+            });
+            target
+                .overwrite_records(rows, &options)
+                .unwrap_or_else(|error| panic!("{body}: {error}"));
+            assert_eq!(target.read_all_bytes().unwrap(), b"one\ntwo\n", "{body}");
+        }
+    }
+
     // --- Reading Arrow back into lines ---
 
     mod intake {

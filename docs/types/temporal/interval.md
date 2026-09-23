@@ -50,7 +50,7 @@ reinterpreted.
     assert_eq!(leaf.id(), DataTypeId::Interval);
     assert_eq!(leaf.as_str(), "interval");
     assert_eq!(leaf.unit(), TimeUnit::YearMonth);
-    assert_eq!(leaf.family(), "interval");
+    assert_eq!(leaf.id().temporal_family(), Some("interval"));
     assert_eq!(IntervalType::from_id(DataTypeId::Interval, TimeUnit::DayTime), Some(IntervalType::Interval(TimeUnit::DayTime)));
     assert_eq!(DataTypeId::Interval.as_u8(), 0x38);
     assert_eq!(span.kind(), DataTypeKind::Temporal);

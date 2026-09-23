@@ -505,6 +505,200 @@ fn extending_from_another_serie_appends_buffers_where_the_fields_agree() {
 }
 
 #[test]
+fn every_storage_layout_is_one_variant_and_its_field_names_the_datatype() {
+    use yggdryl::{DataTypeKind, SerieValue, TimeUnit, Timezone};
+
+    fn empty(dtype: DataType) -> Serie {
+        Serie::empty(Field::new("column", dtype, true)).expect("an empty column")
+    }
+    // What a column of `dtype` is: the variant its layout lands in, the
+    // accessor that reaches it, and the field's identifier and family - never
+    // the variant's, which one layout shares across several datatypes.
+    macro_rules! lands_as {
+        ($dtype:expr, $variant:ident, $accessor:ident) => {{
+            let dtype: DataType = $dtype;
+            let serie = empty(dtype.clone());
+            assert!(matches!(serie, Serie::$variant(_)), "{dtype}: {serie:?}");
+            let leaf = serie.$accessor().expect(stringify!($accessor));
+            assert_eq!(SerieValue::id(leaf), dtype.id(), "{dtype}");
+            assert_eq!(SerieValue::kind(leaf), dtype.kind(), "{dtype}");
+            assert!(SerieValue::kind(leaf).contains(dtype.id()), "{dtype}");
+        }};
+    }
+
+    lands_as!(DataType::utf8(), Utf8String, as_utf8);
+    lands_as!(DataType::ascii(), Utf8String, as_utf8);
+    lands_as!(DataType::large_utf8(), LargeUtf8String, as_large_utf8);
+    lands_as!(DataType::utf8_view(), Utf8ViewString, as_utf8_view);
+    lands_as!(DataType::sized_utf8(8).unwrap(), Utf8String, as_utf8);
+    lands_as!(DataType::cp1252(), BinaryString, as_binary_string);
+    lands_as!(
+        DataType::large_cp1252(),
+        LargeBinaryString,
+        as_large_binary_string
+    );
+    lands_as!(
+        DataType::cp1252_view(),
+        BinaryViewString,
+        as_binary_view_string
+    );
+    lands_as!(
+        DataType::fixed_ascii(7).unwrap(),
+        FixedString,
+        as_fixed_string
+    );
+    lands_as!(DataType::binary(), Binary, as_binary);
+    lands_as!(DataType::large_binary(), LargeBinary, as_large_binary);
+    lands_as!(DataType::binary_view(), BinaryView, as_binary_view);
+    lands_as!(DataType::large_binary_view(), BinaryView, as_binary_view);
+    lands_as!(DataType::sized_binary(8).unwrap(), Binary, as_binary);
+    lands_as!(
+        DataType::fixed_binary(16).unwrap(),
+        FixedBytes,
+        as_fixed_bytes
+    );
+    lands_as!(
+        DataType::time32(TimeUnit::Second).unwrap(),
+        Time32Second,
+        as_time32_second
+    );
+    lands_as!(
+        DataType::time32(TimeUnit::Millisecond).unwrap(),
+        Time32Millisecond,
+        as_time32_millisecond
+    );
+    lands_as!(
+        DataType::time64(TimeUnit::Microsecond).unwrap(),
+        Time64Microsecond,
+        as_time64_microsecond
+    );
+    lands_as!(
+        DataType::time64(TimeUnit::Nanosecond).unwrap(),
+        Time64Nanosecond,
+        as_time64_nanosecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        DateTimeSecond,
+        as_datetime_second
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Millisecond, Timezone::UTC).unwrap(),
+        DateTimeMillisecond,
+        as_datetime_millisecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+        DateTimeMicrosecond,
+        as_datetime_microsecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        DateTimeNanosecond,
+        as_datetime_nanosecond
+    );
+    // Both duration widths share each unit's leaf; the field says which.
+    for unit in [
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ] {
+        for dtype in [
+            DataType::duration32(unit).unwrap(),
+            DataType::duration64(unit).unwrap(),
+        ] {
+            let serie = empty(dtype.clone());
+            let id = match &serie {
+                Serie::DurationSecond(leaf) => leaf.id(),
+                Serie::DurationMillisecond(leaf) => leaf.id(),
+                Serie::DurationMicrosecond(leaf) => leaf.id(),
+                Serie::DurationNanosecond(leaf) => leaf.id(),
+                other => panic!("{dtype}: {other:?}"),
+            };
+            assert_eq!(id, dtype.id(), "{dtype}");
+        }
+    }
+    lands_as!(
+        DataType::duration64(TimeUnit::Second).unwrap(),
+        DurationSecond,
+        as_duration_second
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        IntervalYearMonth,
+        as_interval_year_month
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        IntervalDayTime,
+        as_interval_day_time
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
+        IntervalMonthDayNano,
+        as_interval_month_day_nano
+    );
+
+    // A code, a URL and a UUID keep a variant of their own over the leaf
+    // they are stored in, which the leaf's accessor still reaches.
+    lands_as!(DataType::Currency, Currency, as_utf8);
+    lands_as!(DataType::Url, Url, as_utf8);
+    lands_as!(DataType::Uuid, Uuid, as_fixed_bytes);
+    lands_as!(DataType::geometry(None).unwrap(), Geometry, as_binary);
+
+    // A column's identifier is its field's; a run has no field to name one.
+    let prices = column();
+    assert_eq!(
+        prices.as_int64().map(SerieValue::id),
+        Some(yggdryl::DataTypeId::Int64)
+    );
+    assert_eq!(
+        prices.as_int64().map(SerieValue::kind),
+        Some(DataTypeKind::Integer)
+    );
+    assert_eq!(run().field(), None);
+}
+
+#[test]
+fn a_duration_of_one_width_is_read_into_the_other_never_appended() {
+    use yggdryl::TimeUnit;
+
+    // Both widths hold the same leaf, so only the fields' datatypes keep one
+    // column's buffers off the other: a duration64 count past 32 bits is
+    // read through the duration32 field's contract and refused.
+    let narrow = Field::new(
+        "elapsed",
+        DataType::duration32(TimeUnit::Second).unwrap(),
+        true,
+    );
+    let wide = Field::new(
+        "elapsed",
+        DataType::duration64(TimeUnit::Second).unwrap(),
+        true,
+    );
+    let mut short =
+        Serie::from_scalars(narrow, [Scalar::duration32(5, TimeUnit::Second).unwrap()]).unwrap();
+    let long = Serie::from_scalars(
+        wide.clone(),
+        [Scalar::duration64(i64::from(i32::MAX) + 1, TimeUnit::Second).unwrap()],
+    )
+    .unwrap();
+    assert!(matches!(short, Serie::DurationSecond(_)));
+    assert!(matches!(long, Serie::DurationSecond(_)));
+    assert!(short.extend_from_serie(&long).is_err());
+    assert_eq!(short.len(), 1);
+
+    // The other way the rows fit, and are read as the wider width.
+    let mut widened = Serie::empty(wide).unwrap();
+    widened.extend_from_serie(&short).unwrap();
+    assert_eq!(
+        widened.scalar(0).unwrap(),
+        Scalar::duration64(5, TimeUnit::Second).unwrap()
+    );
+}
+
+#[test]
 fn a_record_column_lends_its_children_by_name_position_and_path() {
     let quotes = quotes();
     assert_eq!(quotes.children().len(), 2);

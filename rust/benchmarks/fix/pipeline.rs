@@ -118,10 +118,10 @@ fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
         let records = records.expect("a batch");
         let body = records
             .child("body")
-            .and_then(|column| column.as_string())
+            .and_then(|column| column.as_utf8())
             .expect("the body column");
         for row in 0..records.len() {
-            held.push(body.value_bytes(row).unwrap_or_default().to_vec());
+            held.push(body.value(row).map_or(&[][..], str::as_bytes).to_vec());
         }
     }
     held

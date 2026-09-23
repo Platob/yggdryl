@@ -6,7 +6,7 @@ Many of one thing, in all five layouts Arrow gives it: one item field, and a lea
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` - its five leaves, each a `DataType` variant of its own - `SerieType` the family's view over them, the `SerieField` marker, and the `Run` value: the schema-free run a row canonicalizes to, one leaf of [`Serie`](../serie.md), held by whichever of `Scalar::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` matches the leaf |
+| Owns | `DataType::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` - its five leaves, each a `DataType` variant of its own - `SerieType` the typed field's payload over them, the `SerieField` marker, and the `Run` value: the schema-free run a row canonicalizes to, one leaf of [`Serie`](../serie.md), held by whichever of `Scalar::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` matches the leaf |
 | Validates | At construction: a fixed length is non-negative, and the item field validates |
 | Lazy | Nothing - a leaf holds one shared item field and, on the fixed leaf, one `i32` |
 | Cached | The item field behind one `Arc<Field>`, so a leaf clone shares it; the Arrow projection on the [`Field`](../field.md) |
@@ -213,7 +213,7 @@ place - is the other leaf of [`Serie`](../serie.md).
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FamilyValue, Nested, NestedValue, Run, Scalar, Serie};
+    use yggdryl::{DataType, DataTypeKind, NestedValue, Run, Scalar, Serie};
 
     let levels = DataType::list(DataType::Float64.nullable_field("item"));
     let value = levels.scalar(vec![Scalar::from(1.5_f64), Scalar::Null])?;
@@ -229,7 +229,10 @@ place - is the other leaf of [`Serie`](../serie.md).
         Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
         Scalar::List(Serie::Run(held.clone()))
     );
-    assert!(matches!(Scalar::List(Serie::from(held)).as_nested(), Some(Nested::List(_))));
+    // A list is in the nested family's range of identifiers.
+    let list = Scalar::List(Serie::from(held));
+    assert_eq!(list.family(), DataTypeKind::Nested);
+    assert!(DataTypeKind::Nested.contains(list.id()));
 
     // A run of the wrong item datatype is refused, with the path that failed.
     let refused = levels.scalar(vec![Scalar::from("text")]).unwrap_err().to_string();

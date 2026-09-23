@@ -6,7 +6,7 @@ Keys to values: one `entries` field holding a key and a value, and a leaf that s
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Map(Arc<MapType>)` and `DataType::SortedMap(Arc<MapType>)`, its two leaves over one `MapType`; `MappingType` is the family's view over them, the `MappingField` marker, and the `Map` value |
+| Owns | `DataType::Map(Arc<MapType>)` and `DataType::SortedMap(Arc<MapType>)`, its two leaves over one `MapType`; `MappingType` is the typed field's payload over them, the `MappingField` marker, and the `Map` value |
 | Validates | At construction: the entries field is non-null, holds a struct of exactly two children, and its key child is non-null |
 | Lazy | Nothing - the entries are checked once, where the leaf is built |
 | Cached | The parameters behind one `Arc<MapType>`, so a clone shares the whole entries schema; the Arrow projection on the [`Field`](../field.md) |

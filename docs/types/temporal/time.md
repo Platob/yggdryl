@@ -58,7 +58,7 @@ with a fraction is one type whichever field carried it, and the
     assert_eq!(leaf, TimeType::Time64(TimeUnit::Nanosecond));
     assert_eq!(leaf.unit(), TimeUnit::Nanosecond);
     assert_eq!(leaf.bit_width(), 64);
-    assert_eq!(leaf.family(), "time");
+    assert_eq!(leaf.id().temporal_family(), Some("time"));
     assert_eq!(leaf.id(), DataTypeId::Time64);
     assert_eq!(TimeType::from_id(DataTypeId::Time32, TimeUnit::Second), Some(TimeType::Time32(TimeUnit::Second)));
     assert_eq!(DataTypeId::Time32.as_u8(), 0x34);

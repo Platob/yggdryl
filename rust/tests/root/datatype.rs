@@ -495,20 +495,20 @@ mod families {
     use std::hash::Hash;
     use std::sync::Arc;
     use yggdryl::{
-        BytesType, DataType, DateTimeType, DateType, DecimalType, DurationType, FloatingType,
-        GeospatialType, IntegerType, IntervalType, MapType, RunEndEncodedType, StringType,
-        StructType, TimeType, TimeUnit, UnionMode,
+        BytesType, DataType, DataTypeKind, DataTypeValue, DateTimeType, DateType, DecimalType,
+        DurationType, GeographyType, GeometryType, IntervalType, MapType, RunEndEncodedType,
+        StringType, StructType, TimeType, TimeUnit, UnionMode,
     };
     use yggdryl::{Charset, Field, Timezone};
 
     #[test]
-    fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
-        let integer = IntegerType::try_from(&DataType::UInt32).unwrap();
-        assert_eq!(integer.id(), yggdryl::DataTypeId::UInt32);
-        assert_eq!(DataType::from(integer), DataType::UInt32);
-
-        let floating = FloatingType::try_from(&DataType::Float16).unwrap();
-        assert_eq!(DataType::from(floating), DataType::Float16);
+    fn datatype_payloads_round_trip_the_root_without_losing_parameters() {
+        // An integer or a float carries nothing beyond its identifier, so it
+        // has no payload: its family is the range its identifier is in.
+        assert!(DataTypeKind::Integer.contains(DataType::UInt32.id()));
+        assert!(DataType::UInt32.is_integer());
+        assert!(DataTypeKind::Floating.contains(DataType::Float16.id()));
+        assert!(!DataType::Float16.is_integer());
 
         let decimal = DataType::decimal128(20, 4).unwrap();
         let decimal_family = DecimalType::try_from(&decimal).unwrap();
@@ -582,11 +582,15 @@ mod families {
         assert!(nested.id().is_wrapper());
         assert_eq!(nested.id(), yggdryl::DataTypeId::Dictionary);
 
+        // A geometry and a geography each hold their parameters, and the
+        // payload of one is never the other's.
         let geospatial = DataType::geography(None, None).unwrap();
-        let geospatial_family = GeospatialType::try_from(&geospatial).unwrap();
-        assert_eq!(DataType::from(geospatial_family), geospatial);
+        let geography = GeographyType::from_dtype(&geospatial).unwrap();
+        assert_eq!(geography.into_dtype(), geospatial);
+        assert!(GeometryType::from_dtype(&geospatial).is_none());
+        assert!(DataTypeKind::Geospatial.contains(geospatial.id()));
 
-        assert!(IntegerType::try_from(&DataType::utf8()).is_err());
+        assert!(!DataType::utf8().is_integer());
     }
 
     #[test]

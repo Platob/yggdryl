@@ -24,7 +24,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::value::{DataTypeValue, Value};
-use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, Uri, Url, Urn};
+use crate::{DataType, DataTypeId, Result, Scalar, Uri, Url, Urn};
 
 /// Arrow casts owned by the family: one ingest per leaf.
 pub(crate) mod casts {
@@ -121,7 +121,7 @@ pub(crate) mod casts {
 /// narrowing of one [`Uri`] that shape names.
 ///
 /// ```
-/// use yggdryl::{DataType, DataTypeId, UriType};
+/// use yggdryl::{DataType, DataTypeId, DataTypeValue, UriType};
 ///
 /// assert_eq!(UriType::Url.id(), DataTypeId::Url);
 /// assert_eq!(UriType::from_id(DataTypeId::Urn), Some(UriType::Urn));
@@ -129,7 +129,7 @@ pub(crate) mod casts {
 /// assert_eq!(DataType::url(), DataType::Url);
 /// assert_eq!(DataType::urn().to_string(), "urn");
 /// assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
-/// assert_eq!(UriType::Urn.family(), "uri");
+/// assert_eq!(<UriType as DataTypeValue>::FAMILY, "uri");
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -171,12 +171,6 @@ impl UriType {
         self.id().as_str()
     }
 
-    /// The family's name, `uri`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        "uri"
-    }
-
     /// A leaf has no parameter to refuse.
     ///
     /// # Errors
@@ -207,10 +201,6 @@ impl DataTypeValue for UriType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Text
     }
 
     fn validate(&self) -> Result<()> {
