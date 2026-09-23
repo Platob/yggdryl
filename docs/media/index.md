@@ -17,7 +17,7 @@ A handle's name picks the encoding, the compression and the charset; the read an
 
 ## Read and write
 
-Every record encoding answers the same calls through [`IOMedia`](../holder/iobase/records.md): `overwrite_records`, `append_records`, `merge_records`, `read_records` for native rows, and the `*_arrow_*` twins for Arrow batches.
+Every record encoding answers the same calls through [`IOMedia`](../holder/index.md#records): `overwrite_records`, `append_records`, `merge_records`, `read_records` for native rows, and the `*_arrow_*` twins for Arrow batches.
 
 === "Rust"
 

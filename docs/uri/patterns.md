@@ -13,7 +13,7 @@ This page reads a query off a URL path: glob detection and decomposition, `.giti
 | Any `/` | Anchored at the path root |
 | Glob in a URL | Spelled with `*`; the full syntax is for `matches_glob` text |
 | `glob_parts` | Deepest fixed root, then the rest |
-| `hive_partitions` | `column=value` directories, in path order; read back by [Partitions](../holder/iobase/partitions.md) |
+| `hive_partitions` | `column=value` directories, in path order; read back by [Partitions](../holder/index.md#partitions) |
 | Bindings | Python answers all three, as `glob_parts`, `is_recursive_glob`, and `full_match_under`; JavaScript is Rust-only here |
 
 ## Use

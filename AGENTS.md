@@ -862,7 +862,7 @@ under the names its own index has: `ZipNode` is a prefix of that index,
   reserves the sizes a stream does not know yet, and the index learns about a
   member only once its bytes are in the handle.
 - `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
-  handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
+  handle beneath it; the cost model in the ZIP section of `docs/holder/index.md` is stated
   and asserted in those terms.
 
 ### Object stores (`s3/`, non-default `s3` feature)
@@ -1595,8 +1595,9 @@ Write for lookup - the readers are human scanners and LLM retrieval. Contract,
 then the smallest runnable example, then non-obvious edges, then measured
 performance. Canonical symbol names, stable headings, short paragraphs, tables
 only for exact mappings, exact commands and results preserved. One fact in one
-place: link instead of paraphrasing, and never narrate signatures, repeat
-examples in prose, add marketing text, or create benchmark-only pages.
+place: link instead of paraphrasing, and never narrate signatures in prose (a
+signature block is code, see below), repeat examples in prose, add marketing
+text, or create benchmark-only pages.
 
 The layer tabs, the page skeleton, and the per-change docs rules are spelled out
 in `docs/architecture.md` and `docs/contributing.md`; those pages and this
@@ -1616,6 +1617,13 @@ section change together. What binds every page:
   and Charsets. Each section is a sentence or two and a tabbed example; the
   example carries the detail, not the prose. A section's benchmarks sit in its
   own `<section> performance` subsection, never in a shared one.
+  `docs/holder/index.md` is the same kind of page for storage: Handles
+  (`Holder`, roles, delegation), then the `IOBase` surfaces - Bytes, Values,
+  Records, Partitions, Call counts - then one section per backend: Buffer,
+  Local, Filesystems, Object stores, Buffered, ZIP. A section may open with a
+  `text` block of the few public signatures a caller implements or reaches for
+  first, each with a one-line comment on what it promises; it is never the
+  whole surface, which rustdoc owns.
   `docs/types/` is a theme of the same kind: the Core pages - `datatype.md`,
   `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
   subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,
