@@ -49,6 +49,12 @@ mod timezone;
 mod uri;
 mod version;
 
+/// The extension's allocator: decoded Arrow buffers are large and short
+/// lived, and mimalloc reuses their pages where the system allocator maps
+/// fresh ones for every batch.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
 }

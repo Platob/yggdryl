@@ -518,6 +518,9 @@ struct Refine {
     /// Whether a file may store a column under a name the read root does
     /// not use, so its footer has to be read before its projection is made.
     renamed: bool,
+    /// The threads one file's columns decode on: the whole read parallelism
+    /// when files are read one at a time, a share of it when several are.
+    threads: usize,
 }
 
 impl Refine {
@@ -532,7 +535,8 @@ impl Refine {
         use crate::IOMedia;
         use crate::media::IORecordOptions;
 
-        let options = part.handle.record_options()?;
+        let mut options = part.handle.record_options()?;
+        options.set_parquet_threads(self.threads);
         if self.target.is_none() {
             // Nothing was asked for, so nothing is pushed down and the file's
             // own columns come back as they are.
@@ -638,6 +642,20 @@ pub(super) fn reader(
     renamed: bool,
 ) -> Result<BatchReader> {
     let schema = crate::arrow::arrow_schema_from_field(&root)?;
+    let qualifying = parts
+        .iter()
+        .filter(|part| {
+            u64::try_from(part.size).is_ok_and(|size| size >= parallel.min_file_size_bytes)
+        })
+        .count();
+    let fan_out = parallel.parallelism >= 2 && parts.len() > 1 && qualifying >= parallel.min_files;
+    // Files in flight at once share the parallelism between them; one file
+    // at a time has all of it for its columns.
+    let in_flight = if fan_out {
+        parallel.parallelism.min(parts.len())
+    } else {
+        1
+    };
     let refine = Arc::new(Refine {
         project: read_root.field_len() != root.field_len(),
         read_root,
@@ -645,14 +663,9 @@ pub(super) fn reader(
         target,
         predicates,
         renamed,
+        threads: (parallel.parallelism / in_flight).max(1),
     });
-    let qualifying = parts
-        .iter()
-        .filter(|part| {
-            u64::try_from(part.size).is_ok_and(|size| size >= parallel.min_file_size_bytes)
-        })
-        .count();
-    if parallel.parallelism >= 2 && parts.len() > 1 && qualifying >= parallel.min_files {
+    if fan_out {
         return Ok(Box::new(ParallelScan::new(
             parts,
             schema,

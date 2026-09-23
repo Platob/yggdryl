@@ -1157,6 +1157,18 @@ impl RecordOptions {
             .set_compression_name(compression)
     }
 
+    /// Bound the threads one Parquet file's columns decode or encode on.
+    ///
+    /// A table that already reads or writes several files at once hands each
+    /// file its share this way. Another encoding has no column threads, and
+    /// the bound means nothing to it.
+    #[cfg(feature = "parquet")]
+    pub(crate) fn set_parquet_threads(&mut self, threads: usize) {
+        if let Self::Parquet(options) = self {
+            options.threads = Some(threads.max(1));
+        }
+    }
+
     /// Return the Parquet row-group bound, or `None` for another encoding.
     #[cfg(feature = "parquet")]
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {

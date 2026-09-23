@@ -755,6 +755,10 @@ impl IOBase for Holder {
         self.as_io().read_all_bytes()
     }
 
+    fn read_all_shared(&self) -> Result<crate::SharedBytes> {
+        self.as_io().read_all_shared()
+    }
+
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
         self.as_io().read_range_bytes(offset, length)
     }

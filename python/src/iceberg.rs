@@ -631,7 +631,7 @@ impl PyIcebergOptions {
             .map_err(value_error)
     }
 
-    /// How many large-enough files justify a parallel scan. Default: 16.
+    /// How many large-enough files justify a parallel scan. Default: 2.
     #[getter]
     fn read_parallel_min_files(&self) -> usize {
         self.inner.read_parallel_min_files()
@@ -645,7 +645,7 @@ impl PyIcebergOptions {
     }
 
     /// The recorded size below which a file does not count toward justifying
-    /// a parallel scan, in bytes. Default: 4 MiB.
+    /// a parallel scan, in bytes. Default: 64 KiB.
     #[getter]
     fn read_parallel_min_file_size(&self) -> u64 {
         self.inner.read_parallel_min_file_size_bytes()

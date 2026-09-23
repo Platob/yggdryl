@@ -1911,6 +1911,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
   fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
+  fn read_all_shared(&self) -> Result<crate::SharedBytes>  (a memory-mapped file lends its pages; every other handle copies through read_all_bytes)
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
@@ -3708,6 +3709,7 @@ pub enum Integer  (Int8(Int8), Int16(Int16), Int32(Int32), Int64(Int64), UInt8(U
 
 ### yggdryl  [rust/src/lib.rs]
 pub enum DataType
+pub use ::bytes::Bytes as SharedBytes  (the shared byte view IOBase::read_all_shared answers with)
 
 ### yggdryl::enums  [rust/src/enums.rs]  (the dictionary family: a key column over a value column)
   pub enum EnumType  (#[non_exhaustive]; Dictionary(Arc<DictionaryType>))

@@ -25,11 +25,13 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [zstd](media/index.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
 | Media | [Arrow IPC](media/index.md#arrow-ipc-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
 | Media | [Parquet](media/index.md#parquet-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Parquet against PyArrow](media/index.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
 | Media | [Parquet footer statistics](media/index.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
 | Media | [Avro](media/index.md#avro-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
 | Media | [JSON](media/index.md#json-performance), [YAML](media/index.md#yaml-performance), [TOML](media/index.md#toml-performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format |
 | Media | [YAML placeholders](media/index.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
 | Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
+| Media | [Iceberg against PyIceberg](media/index.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | The value model's own boundaries - enum, inference, and the `Scalar`/Arrow crossings - in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
@@ -64,6 +66,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/media.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.05 --repeat 3
+    python/.venv/bin/python python/benchmarks/media/parquet.py --repeat 7
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
@@ -74,7 +77,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```
 
-    Build a release wheel with `maturin develop --release` before timing. The S3 Tables run needs `pyiceberg` and `boto3` installed and a table bucket of your own to write into; without either it reports `SKIPPED` and names what is missing.
+    Build a release wheel with `maturin develop --release` before timing. The Iceberg comparison needs `pyiceberg[pyarrow,sql-sqlite]` and reports `SKIPPED` without it. The S3 Tables run needs `pyiceberg` and `boto3` installed and a table bucket of your own to write into; without either it reports `SKIPPED` and names what is missing.
 
 === "JavaScript"
 

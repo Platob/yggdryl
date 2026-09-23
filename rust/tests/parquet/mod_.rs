@@ -1850,3 +1850,176 @@ mod records {
         }
     }
 }
+
+/// The threads a read decodes on and a write encodes on, seen from outside:
+/// the same rows, the same bounds, the same bytes as one thread produces.
+mod parallel {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray};
+    use parquet::arrow::ArrowWriter;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use parquet::basic::{Compression, ZstdLevel};
+    use parquet::file::properties::WriterProperties;
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::parquet::{Parquet, ParquetOptions};
+    use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, SharedBytes, StructType};
+
+    /// Three columns, one of them incompressible, so a few hundred thousand
+    /// rows clear the size a read or a write splits across threads at.
+    fn field() -> Field {
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("price"),
+            DataType::utf8().nullable_field("symbol"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    fn rows(count: usize) -> RecordBatch {
+        let ids: Vec<i64> = (0..i64::try_from(count).unwrap()).collect();
+        // A deterministic scramble: every price distinct, none predictable.
+        let prices: Vec<f64> = ids
+            .iter()
+            .map(|id| (id.wrapping_mul(6_364_136_223_846_793_005) >> 11) as f64)
+            .collect();
+        let symbols: Vec<Option<&str>> = ids
+            .iter()
+            .map(|id| {
+                ["AAPL", "MSFT", "GOOG"]
+                    .get(usize::try_from(id % 4).unwrap())
+                    .copied()
+            })
+            .collect();
+        RecordBatch::try_new(
+            field().into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(ids)) as ArrayRef,
+                Arc::new(Float64Array::from(prices)) as ArrayRef,
+                Arc::new(StringArray::from(symbols)) as ArrayRef,
+            ],
+        )
+        .unwrap()
+    }
+
+    fn written(batch: &RecordBatch, options: ParquetOptions) -> Parquet<Buffer> {
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
+            .with_options(options);
+        let record = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                &record,
+            )
+            .unwrap();
+        media
+    }
+
+    /// What the `parquet` crate's own reader, on one thread, reads back.
+    fn reference(media: &Parquet<Buffer>, columns: Option<&[usize]>) -> RecordBatch {
+        let bytes = SharedBytes::from(media.handle().read_all_bytes().unwrap());
+        let builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
+        let builder = match columns {
+            Some(columns) => {
+                let mask = parquet::arrow::ProjectionMask::roots(
+                    builder.parquet_schema(),
+                    columns.iter().copied(),
+                );
+                builder.with_projection(mask)
+            }
+            None => builder,
+        };
+        let reader = builder.build().unwrap();
+        let schema = arrow_array::RecordBatchReader::schema(&reader);
+        let batches: Vec<RecordBatch> = reader.map(Result::unwrap).collect();
+        arrow_select::concat::concat_batches(&schema, &batches).unwrap()
+    }
+
+    #[test]
+    fn row_groups_decoded_side_by_side_come_back_in_file_order() {
+        let batch = rows(300_000);
+        let media = written(
+            &batch,
+            ParquetOptions::new().with_max_row_group_size(100_000),
+        );
+        let options = media.record_options().unwrap();
+
+        let batches: Vec<RecordBatch> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+
+        // No batch exceeds the default size, and none spans two row groups:
+        // every group boundary is a batch boundary.
+        let mut ends = Vec::new();
+        let mut end = 0;
+        for read in &batches {
+            assert!(read.num_rows() <= yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE);
+            end += read.num_rows();
+            ends.push(end);
+        }
+        for boundary in [100_000, 200_000, 300_000] {
+            assert!(ends.contains(&boundary), "{boundary} in {ends:?}");
+        }
+        let joined = arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap();
+        assert_eq!(joined, reference(&media, None));
+        assert_eq!(joined.num_rows(), 300_000);
+    }
+
+    #[test]
+    fn one_row_group_splits_its_projected_columns_and_joins_them_back() {
+        let batch = rows(300_000);
+        let media = written(&batch, ParquetOptions::new());
+        let projected = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("price"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let options = media.record_options().unwrap().with_field(projected);
+
+        let batches: Vec<RecordBatch> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+
+        assert_eq!(
+            batches[0].num_rows(),
+            yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE,
+            "an unbounded read takes the crate's batch size"
+        );
+        let joined = arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap();
+        let expected = reference(&media, Some(&[0, 1]));
+        assert_eq!(joined.num_columns(), 2);
+        assert_eq!(joined.column(0), expected.column(0));
+        assert_eq!(joined.column(1), expected.column(1));
+    }
+
+    #[test]
+    fn columns_encoded_side_by_side_write_the_sequential_writers_bytes() {
+        // Two row groups, each well past the size that encodes on threads.
+        let batch = rows(300_000);
+        let media = written(
+            &batch,
+            ParquetOptions::new().with_max_row_group_size(200_000),
+        );
+
+        let mut expected = Vec::new();
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::ZSTD(ZstdLevel::default()))
+            .set_max_row_group_row_count(Some(200_000))
+            .build();
+        let mut writer =
+            ArrowWriter::try_new(&mut expected, batch.schema(), Some(properties)).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+
+        assert_eq!(media.handle().read_all_bytes().unwrap(), expected);
+    }
+}

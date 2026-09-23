@@ -89,11 +89,13 @@
 //! the table's current snapshot.
 
 use std::collections::{HashMap, VecDeque};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_ord::sort::{SortColumn, lexsort_to_indices};
+use arrow_row::{Row, RowConverter, SortField};
 use arrow_schema::SortOptions;
 use smol_str::{SmolStr, format_smolstr};
 
@@ -1074,7 +1076,7 @@ impl<H: IOBase> Table<H> {
         // The residual conjuncts run against the read root, which carries the
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
-        let parts = self.scan_parts(tasks, stored)?;
+        let parts = self.scan_parts(tasks, stored, &read_root)?;
         let parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
         super::scan::reader(
             parts,
@@ -1088,7 +1090,16 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Resolve planned files into the handles a scan opens.
-    fn scan_parts(&self, tasks: Vec<ScanTask>, stored: &Field) -> Result<Vec<ScanPart>> {
+    ///
+    /// A partition column is restored from the manifest only when the read
+    /// root asks for it: one it leaves out would be built for every row and
+    /// dropped again by the final cast.
+    fn scan_parts(
+        &self,
+        tasks: Vec<ScanTask>,
+        stored: &Field,
+        read_root: &Field,
+    ) -> Result<Vec<ScanPart>> {
         let mut parts = Vec::with_capacity(tasks.len());
         for task in tasks {
             // The manifest recorded the file's length, so the handle knows it
@@ -1111,7 +1122,15 @@ impl<H: IOBase> Table<H> {
                     &task.spec,
                     stored,
                     &task.entry.data_file,
-                )?,
+                )?
+                .into_iter()
+                .filter(|(column, _)| {
+                    read_root
+                        .fields()
+                        .iter()
+                        .any(|wanted| wanted.name().eq_ignore_ascii_case(column.name()))
+                })
+                .collect(),
                 residual: task.residual,
             });
         }
@@ -1324,6 +1343,11 @@ impl<H: IOBase> Table<H> {
         if writes.is_empty() {
             return Ok(());
         }
+        // A merge reads the incoming keys here, before any file is chosen,
+        // so its groups are gathered on this thread.
+        for write in &mut writes {
+            write.gather()?;
+        }
         let tuples: Vec<Vec<Scalar>> = writes.iter().map(|write| write.values.clone()).collect();
         let scope = Filter::all([
             pairs_predicate(&schema, filters),
@@ -1358,7 +1382,7 @@ impl<H: IOBase> Table<H> {
             // prove no incoming key can be in it.
             let all: Vec<RecordBatch> = writes
                 .iter()
-                .flat_map(|write| write.incoming.iter().cloned())
+                .flat_map(|write| write.incoming.iter().map(|rows| rows.batch.clone()))
                 .collect();
             let bounds = KeyBounds::of(&all, &schema, &row_keys)?;
             for task in foreign {
@@ -1380,7 +1404,12 @@ impl<H: IOBase> Table<H> {
                 // The partition is the key: its files are replaced, not read.
                 continue;
             }
-            let bounds = KeyBounds::of(&write.incoming, &schema, &row_keys)?;
+            let incoming: Vec<RecordBatch> = write
+                .incoming
+                .iter()
+                .map(|rows| rows.batch.clone())
+                .collect();
+            let bounds = KeyBounds::of(&incoming, &schema, &row_keys)?;
             let mut selected = Vec::new();
             for task in tasks {
                 if bounds.may_hold(&task.entry.data_file) {
@@ -1389,7 +1418,7 @@ impl<H: IOBase> Table<H> {
                     carried.push(task);
                 }
             }
-            write.stored = self.scan_parts(selected, &schema)?;
+            write.stored = self.scan_parts(selected, &schema, &schema)?;
         }
         let join = Join {
             keys: row_keys,
@@ -1837,7 +1866,8 @@ impl<H: IOBase> Table<H> {
         // rather than after data files were written.
         let settings = IcebergOptions::write_settings(self.options.as_ref(), &self.metadata)?;
         require_encodable(&settings.mime_type)?;
-        let (sort, sort_order_id) = sort_columns(self.metadata.default_sort_order()?, &schema)?;
+        let (sort, sort_order_id) =
+            sort_columns(self.metadata.default_sort_order()?, &spec, &schema)?;
         let initial_sequence = next_sequence_number(&self.metadata)?;
         let snapshot_id = snapshot_id();
         let location = self.metadata.location().trim_end_matches('/').to_owned();
@@ -1854,6 +1884,8 @@ impl<H: IOBase> Table<H> {
             sort_order_id,
             join,
             staging: &staging,
+            file_threads: (settings.parallelism / settings.parallelism.min(writes.len()).max(1))
+                .max(1),
         };
         log::debug!(
             "writing an iceberg {operation} snapshot {snapshot_id} to {} in {} partition groups",
@@ -2687,11 +2719,51 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 struct PartitionWrite {
     /// The partition tuple every row computes to, in spec order.
     values: Vec<Scalar>,
-    /// The rows, cast to the table schema.
-    incoming: Vec<RecordBatch>,
+    /// The rows, cast to the table schema, one entry per incoming batch.
+    incoming: Vec<GroupRows>,
     /// The stored files of this partition a keyed merge joins with, resolved
     /// to handles; empty for an append, an overwrite, or a partition replace.
     stored: Vec<ScanPart>,
+}
+
+impl PartitionWrite {
+    /// Copy every incoming batch's rows of this partition out, once.
+    fn gather(&mut self) -> Result<()> {
+        for rows in &mut self.incoming {
+            rows.gather()?;
+        }
+        Ok(())
+    }
+}
+
+/// The rows of one incoming batch that one partition holds.
+///
+/// Grouping only *indexes* a batch on the calling thread; the gather that
+/// copies a partition's rows out of it runs on the thread writing that
+/// partition, so the partitions of one commit are gathered side by side. A
+/// batch whose rows all fall in one partition is never copied.
+struct GroupRows {
+    /// The incoming batch, or - once gathered - exactly this partition's rows.
+    batch: RecordBatch,
+    /// The rows of `batch` this partition holds, in batch order; `None`
+    /// once they are all of it.
+    rows: Option<UInt32Array>,
+}
+
+impl GroupRows {
+    /// Reduce the batch to this partition's rows, once.
+    fn gather(&mut self) -> Result<()> {
+        if let Some(rows) = self.rows.take() {
+            self.batch = arrow_select::take::take_record_batch(&self.batch, &rows)?;
+        }
+        Ok(())
+    }
+
+    /// This partition's rows, gathered.
+    fn into_batch(mut self) -> Result<RecordBatch> {
+        self.gather()?;
+        Ok(self.batch)
+    }
 }
 
 /// One partition group handed to a writer thread, with where it lands.
@@ -2735,6 +2807,9 @@ struct CommitWrite<'a> {
     join: Option<&'a Join>,
     /// The staging every file of the commit is published through.
     staging: &'a Staging,
+    /// The threads one file's columns encode on: the write parallelism's
+    /// share left over by the partition groups written side by side.
+    file_threads: usize,
 }
 
 /// One column of the default sort order, resolved against the schema.
@@ -2752,10 +2827,29 @@ struct SortColumnSpec {
 /// does, and a bucket orders by its source value rather than its hash. The
 /// unsorted order resolves to no columns, and a file written under it
 /// records no order id.
-fn sort_columns(order: &SortOrder, schema: &Field) -> Result<(Vec<SortColumnSpec>, Option<i32>)> {
+///
+/// A column `spec` partitions by identity is left out of the sort: every row
+/// of one partition group holds the same value of it, so ordering by it
+/// moves nothing, and the order derived from a spec is exactly those
+/// columns. A floating source is the exception, because one group can hold
+/// both zeros, which the order tells apart. The file still records the
+/// order id, because its rows are in that order.
+fn sort_columns(
+    order: &SortOrder,
+    spec: &PartitionSpec,
+    schema: &Field,
+) -> Result<(Vec<SortColumnSpec>, Option<i32>)> {
     let mut columns = Vec::with_capacity(order.fields.len());
     for field in &order.fields {
-        let (path, _) = super::partition::source_path(schema, field.source_id)?;
+        let (path, source) = super::partition::source_path(schema, field.source_id)?;
+        let constant = !source.dtype().id().is_floating()
+            && spec.fields.iter().any(|partition| {
+                partition.source_id == field.source_id
+                    && partition.transform == super::partition::Transform::Identity
+            });
+        if constant {
+            continue;
+        }
         columns.push(SortColumnSpec {
             path,
             options: SortOptions {
@@ -2764,7 +2858,7 @@ fn sort_columns(order: &SortOrder, schema: &Field) -> Result<(Vec<SortColumnSpec
             },
         });
     }
-    let order_id = (!columns.is_empty())
+    let order_id = (!order.fields.is_empty())
         .then(|| i32::try_from(order.order_id).ok())
         .flatten();
     Ok((columns, order_id))
@@ -2864,9 +2958,14 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
                     false,
                 )?
             };
+            let incoming = group
+                .incoming
+                .into_iter()
+                .map(GroupRows::into_batch)
+                .collect::<Result<Vec<_>>>()?;
             let merged = crate::media::merge::merged(
                 stored,
-                crate::arrow::batch_reader(arrow_schema.clone(), group.incoming),
+                crate::arrow::batch_reader(arrow_schema.clone(), incoming),
                 write.schema,
                 &join.keys,
                 join.safe,
@@ -2875,16 +2974,29 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
                 .map(|batch| batch.map_err(Error::Arrow))
                 .collect::<Result<Vec<_>>>()?
         }
-        None => group.incoming,
+        None => group
+            .incoming
+            .into_iter()
+            .map(GroupRows::into_batch)
+            .collect::<Result<Vec<_>>>()?,
     };
-    let rows: Vec<&RecordBatch> = rows.iter().filter(|batch| batch.num_rows() > 0).collect();
+    let mut rows: Vec<RecordBatch> = rows
+        .into_iter()
+        .filter(|batch| batch.num_rows() > 0)
+        .collect();
     if rows.is_empty() {
         return Ok(Vec::new());
     }
-    let batch = arrow_select::concat::concat_batches(&arrow_schema, rows).map_err(Error::Arrow)?;
-    let batch = sorted(batch, write.sort)?;
+    if !write.sort.is_empty() {
+        // Ordering needs the group's rows side by side; rows that keep their
+        // arrival order go to the encoder as the batches they arrived in, so
+        // an unsorted group is never copied into one batch first.
+        let batch =
+            arrow_select::concat::concat_batches(&arrow_schema, &rows).map_err(Error::Arrow)?;
+        rows = vec![sorted(batch, write.sort)?];
+    }
     let mut written = Vec::new();
-    for slice in sliced(&batch, write.settings.target_file_size_bytes) {
+    for slice in sliced(rows, write.settings.target_file_size_bytes) {
         // Deliberately no record per file: a commit is the unit worth
         // watching, and a wide partition write is thousands of files.
         written.push(write_data_file(
@@ -2901,7 +3013,7 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
 
 /// Order one partition group's rows by the table's default sort order.
 fn sorted(batch: RecordBatch, sort: &[SortColumnSpec]) -> Result<RecordBatch> {
-    if sort.is_empty() || batch.num_rows() < 2 {
+    if batch.num_rows() < 2 {
         return Ok(batch);
     }
     let columns: Vec<SortColumn> = sort
@@ -2946,25 +3058,45 @@ fn column_at(batch: &RecordBatch, path: &[SmolStr]) -> Result<ArrayRef> {
     Ok(std::sync::Arc::clone(column))
 }
 
-/// Cut one sorted partition group into files of roughly `target` bytes.
+/// Cut one partition group's ordered rows into files of roughly `target` bytes.
 ///
 /// The estimate is the group's Arrow in-memory size
 /// ([`RecordBatch::get_array_memory_size`]) spread evenly over its rows,
 /// taken *before* encoding: Parquet compresses what it writes, so the files
 /// land under the target rather than at it. A file holds at least one row,
-/// so a target below one row's size is one file per row.
-fn sliced(batch: &RecordBatch, target: u64) -> Vec<RecordBatch> {
-    let rows = batch.num_rows();
-    let bytes = u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX);
+/// so a target below one row's size is one file per row. The cuts fall at
+/// the same row offsets whether the rows arrive as one batch or several; a
+/// file is the zero-copy slices of the batches its rows span.
+fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    let bytes = batches.iter().fold(0_u64, |total, batch| {
+        total.saturating_add(u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX))
+    });
     if rows == 0 || bytes <= target {
-        return vec![batch.clone()];
+        return vec![batches];
     }
     let per_file = (u128::from(target) * rows as u128 / u128::from(bytes)).max(1);
     let per_file = usize::try_from(per_file).unwrap_or(rows).max(1);
-    (0..rows)
-        .step_by(per_file)
-        .map(|offset| batch.slice(offset, per_file.min(rows - offset)))
-        .collect()
+    let mut files = Vec::with_capacity(rows.div_ceil(per_file));
+    let mut file = Vec::new();
+    let mut filled = 0;
+    for batch in batches {
+        let mut offset = 0;
+        while offset < batch.num_rows() {
+            let length = (per_file - filled).min(batch.num_rows() - offset);
+            file.push(batch.slice(offset, length));
+            filled += length;
+            offset += length;
+            if filled == per_file {
+                files.push(std::mem::take(&mut file));
+                filled = 0;
+            }
+        }
+    }
+    if !file.is_empty() {
+        files.push(file);
+    }
+    files
 }
 
 /// Write one file of one partition group and describe it.
@@ -2973,16 +3105,16 @@ fn sliced(batch: &RecordBatch, target: u64) -> Vec<RecordBatch> {
 /// media type - which is what selects the encoder - agrees with the
 /// `file_format` the manifest will record. A Parquet file's statistics are
 /// read back from the footer that was just written; any other format has no
-/// footer this crate reads, so its statistics are measured from the batch
-/// before it is encoded. An `unknown` column is left out of the file, as the
-/// spec requires; the scan restores it as null.
+/// footer this crate reads, so its statistics are measured from the batches
+/// before they are encoded. An `unknown` column is left out of the file, as
+/// the spec requires; the scan restores it as null.
 fn write_data_file(
     root: &Holder,
     directory_path: &str,
     write: &CommitWrite<'_>,
     index: usize,
     values: &[Scalar],
-    batch: RecordBatch,
+    batches: Vec<RecordBatch>,
 ) -> Result<DataFile> {
     let snapshot_id = write.snapshot_id;
     let schema = write.schema;
@@ -2991,7 +3123,7 @@ fn write_data_file(
         .extension()
         .ok_or_else(|| not_encodable(mime_type))?;
     let name = format!("{index:05}-{snapshot_id}-{}.{extension}", uuid());
-    let (stored, batch) = stored_columns(schema, batch)?;
+    let (stored, batches) = stored_columns(schema, batches)?;
     let relative = if directory_path.is_empty() {
         format!("{DATA_DIR}/{name}")
     } else {
@@ -3008,28 +3140,26 @@ fn write_data_file(
         &relative,
         &crate::MediaType::new(mime_type.clone()),
         |handle| {
-            let options = handle
+            let mut options = handle
                 .record_options()?
                 .with_safe(false)
                 .with_field(stored.clone());
+            options.set_parquet_threads(write.file_threads);
             if parquet {
                 handle.overwrite_arrow_reader(
-                    crate::arrow::batch_reader(arrow_schema, [batch]),
+                    crate::arrow::batch_reader(arrow_schema, batches),
                     &options,
                 )?;
                 handle.flush()?;
                 let statistics = crate::parquet::read_statistics(handle)?;
                 super::statistics::data_file(schema, &statistics)
             } else {
-                // The batch is measured before it is consumed by the write,
+                // The batches are measured before the write consumes them,
                 // because this format's file carries no footer to read them
                 // from.
-                let file = super::statistics::data_file_from_batches(
-                    schema,
-                    std::slice::from_ref(&batch),
-                )?;
+                let file = super::statistics::data_file_from_batches(schema, &batches)?;
                 handle.overwrite_arrow_reader(
-                    crate::arrow::batch_reader(arrow_schema, [batch]),
+                    crate::arrow::batch_reader(arrow_schema, batches),
                     &options,
                 )?;
                 handle.flush()?;
@@ -3057,8 +3187,8 @@ fn write_data_file(
 ///
 /// The spec keeps an `unknown` column out of data files - every value it
 /// holds is null - and a scan restores it from the schema. A schema with none
-/// hands the batch back untouched.
-fn stored_columns(schema: &Field, batch: RecordBatch) -> Result<(Field, RecordBatch)> {
+/// hands the batches back untouched.
+fn stored_columns(schema: &Field, batches: Vec<RecordBatch>) -> Result<(Field, Vec<RecordBatch>)> {
     let omitted: Vec<&str> = schema
         .fields()
         .iter()
@@ -3066,16 +3196,22 @@ fn stored_columns(schema: &Field, batch: RecordBatch) -> Result<(Field, RecordBa
         .map(Field::name)
         .collect();
     if omitted.is_empty() {
-        return Ok((schema.clone(), batch));
+        return Ok((schema.clone(), batches));
     }
     let stored = schema.without_fields(&omitted)?;
-    let kept: Vec<usize> = (0..batch.num_columns())
-        .filter(|index| {
-            let name = batch.schema().field(*index).name().clone();
-            !omitted.iter().any(|omit| *omit == name)
+    let batches = batches
+        .into_iter()
+        .map(|batch| {
+            let kept: Vec<usize> = (0..batch.num_columns())
+                .filter(|index| {
+                    let name = batch.schema().field(*index).name().clone();
+                    !omitted.iter().any(|omit| *omit == name)
+                })
+                .collect();
+            batch.project(&kept).map_err(Error::Arrow)
         })
-        .collect();
-    Ok((stored, batch.project(&kept).map_err(Error::Arrow)?))
+        .collect::<Result<Vec<_>>>()?;
+    Ok((stored, batches))
 }
 
 /// The columns every top-level identity partition field reads, in spec order.
@@ -3455,15 +3591,17 @@ pub(super) fn extreme(
 ///
 /// A data file belongs to exactly one partition, so a partitioned write has to
 /// group its rows before it can write anything; an unpartitioned one does not
-/// and passes straight through as a single group.
+/// and passes straight through as a single group. Each group records which
+/// rows of a batch it holds, and the copy is left to [`GroupRows::gather`] on
+/// the thread that writes the group.
 fn grouped_batches(
     batches: BatchReader,
     schema: &Field,
     spec: &PartitionSpec,
     partition: &Field,
     safe: bool,
-) -> Result<Vec<(Vec<Scalar>, Vec<RecordBatch>)>> {
-    let mut groups: Vec<(Vec<Scalar>, Vec<RecordBatch>)> = Vec::new();
+) -> Result<Vec<(Vec<Scalar>, Vec<GroupRows>)>> {
+    let mut groups: Vec<(Vec<Scalar>, Vec<GroupRows>)> = Vec::new();
     // `Scalar`'s hash reads canonical content only, never the
     // interior-mutable caches a datatype holds, so the key is stable.
     #[allow(clippy::mutable_key_type)]
@@ -3479,14 +3617,17 @@ fn grouped_batches(
             continue;
         }
         if spec.is_unpartitioned() {
+            let rows = GroupRows { batch, rows: None };
             match groups.first_mut() {
-                Some(group) => group.1.push(batch),
-                None => groups.push((Vec::new(), vec![batch])),
+                Some(group) => group.1.push(rows),
+                None => groups.push((Vec::new(), vec![rows])),
             }
             continue;
         }
 
-        for (values, rows) in row_groups(&batch, &transforms)? {
+        let found = row_groups(&batch, &transforms)?;
+        let whole = found.len() == 1;
+        for (values, rows) in found {
             let position = match index.get(&values) {
                 Some(position) => *position,
                 None => {
@@ -3495,42 +3636,157 @@ fn grouped_batches(
                     groups.len() - 1
                 }
             };
-            let indices = UInt32Array::from(rows);
-            let taken = arrow_select::take::take_record_batch(&batch, &indices)?;
-            groups[position].1.push(taken);
+            groups[position].1.push(GroupRows {
+                batch: batch.clone(),
+                rows: (!whole).then(|| UInt32Array::from(rows)),
+            });
         }
     }
     Ok(groups)
 }
 
 /// Group row indices by their computed, typed partition tuple.
+///
+/// The tuple is computed once per distinct grouping key rather than once per
+/// row: each transform's key column is resolved for the whole batch
+/// ([`PartitionTransform::grouping_key`](super::partition::PartitionTransform::grouping_key)),
+/// the keys are row-encoded together, and a row whose encoded key was seen
+/// before joins that key's group without a scalar being built. Only the first
+/// row of a new key reaches the transform, and two keys computing one tuple
+/// share its group. Groups keep the order their first row arrived in, and
+/// each group's rows stay in batch order.
 fn row_groups(
     batch: &RecordBatch,
     transforms: &[super::partition::PartitionTransform],
 ) -> Result<Vec<(Vec<Scalar>, Vec<u32>)>> {
+    let rows = u32::try_from(batch.num_rows()).map_err(|_| {
+        invalid(format_smolstr!(
+            "expected at most {} rows in one partitioning batch, got {}",
+            u32::MAX,
+            batch.num_rows()
+        ))
+    })?;
+    let mut keys = Vec::with_capacity(transforms.len());
+    for transform in transforms {
+        if let Some(key) = transform.grouping_key(&source_column(batch, transform)?)? {
+            keys.push(key);
+        }
+    }
+    if keys.is_empty() {
+        // Nothing varies by row, so every row computes the first row's tuple.
+        return Ok(vec![(tuple_at(batch, transforms, 0)?, (0..rows).collect())]);
+    }
+    let converter = RowConverter::new(
+        keys.iter()
+            .map(|key| SortField::new(key.data_type().clone()))
+            .collect(),
+    )
+    .map_err(Error::Arrow)?;
+    let encoded = converter.convert_columns(&keys).map_err(Error::Arrow)?;
+
     let mut order: Vec<(Vec<Scalar>, Vec<u32>)> = Vec::new();
     // `Scalar`'s hash reads canonical content only, never the
     // interior-mutable caches a datatype holds, so the key is stable.
     #[allow(clippy::mutable_key_type)]
-    let mut seen: HashMap<Vec<Scalar>, usize> = HashMap::new();
-    for row in 0..batch.num_rows() {
-        let row = u32::try_from(row).map_err(|_| {
-            invalid(format_smolstr!(
-                "expected at most {} rows in one partitioning batch, got {}",
-                u32::MAX,
-                batch.num_rows()
-            ))
-        })?;
-        let values = tuple_at(batch, transforms, row)?;
-        match seen.get(&values) {
-            Some(position) => order[*position].1.push(row),
-            None => {
-                seen.insert(values.clone(), order.len());
-                order.push((values, vec![row]));
-            }
-        }
+    let mut tuples: HashMap<Vec<Scalar>, usize> = HashMap::new();
+    let mut groups: HashMap<Row<'_>, usize, BuildHasherDefault<RowKeyHasher>> = HashMap::default();
+    // Rows of one partition usually arrive together, so the previous row's
+    // key is checked before the map is.
+    let mut previous: Option<(Row<'_>, usize)> = None;
+    for row in 0..rows {
+        let key = encoded.row(row as usize);
+        let position = match previous {
+            Some((last, position)) if last == key => position,
+            _ => match groups.get(&key) {
+                Some(position) => *position,
+                None => {
+                    let values = tuple_at(batch, transforms, row)?;
+                    let position = match tuples.get(&values) {
+                        Some(position) => *position,
+                        None => {
+                            tuples.insert(values.clone(), order.len());
+                            order.push((values, Vec::new()));
+                            order.len() - 1
+                        }
+                    };
+                    groups.insert(key, position);
+                    position
+                }
+            },
+        };
+        previous = Some((key, position));
+        order[position].1.push(row);
     }
     Ok(order)
+}
+
+/// Hashes one row-encoded partition key in a single pass over its bytes.
+///
+/// The row format is already a canonical encoding of every key value, so one
+/// XXH3 over those bytes is the whole hash; this is the per-row lookup of a
+/// partitioned write, where SipHash's rounds are most of the cost. The keys
+/// are the writer's own rows, so there is no one to flood the map but the
+/// writer.
+#[derive(Default)]
+struct RowKeyHasher(u64);
+
+impl Hasher for RowKeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        self.0 = self.0.rotate_left(23) ^ twox_hash::XxHash3_64::oneshot(bytes);
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.0 = self.0.rotate_left(23) ^ value as u64;
+    }
+}
+
+/// Resolve one transform's source column for a whole batch.
+///
+/// A column below a struct is null wherever an enclosing struct is, as
+/// [`source_value`] reads it, so the parents' nulls are folded into what the
+/// grouping keys see.
+fn source_column(
+    batch: &RecordBatch,
+    transform: &super::partition::PartitionTransform,
+) -> Result<ArrayRef> {
+    let (first, nested) = transform.path().split_first().ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "expected a non-empty partition source path",
+        ))
+    })?;
+    let mut column = std::sync::Arc::clone(batch.column_by_name(first).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "expected a partition source column {first:?} in the batch, got none"
+        ))
+    })?);
+    for name in nested {
+        let parent = column
+            .as_any()
+            .downcast_ref::<StructArray>()
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a struct on the partition source path before {name:?}, got {}",
+                    column.data_type()
+                ))
+            })?;
+        let child = parent.column_by_name(name).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a nested partition source column {name:?}, got none"
+            ))
+        })?;
+        column = match parent.nulls() {
+            Some(nulls) => {
+                let hidden = arrow_array::BooleanArray::new(!nulls.inner(), None);
+                arrow_select::nullif::nullif(child.as_ref(), &hidden).map_err(Error::Arrow)?
+            }
+            None => std::sync::Arc::clone(child),
+        };
+    }
+    Ok(column)
 }
 
 /// Read one row's partition tuple out of a batch.
@@ -3738,14 +3994,19 @@ fn metadata_version_from_name(name: &str) -> Option<u32> {
         };
     }
 
-    format!("/metadata/{name}")
-        .parse::<iceberg_official::MetadataLocation>()
-        .ok()?;
-    let (version, _) = stem.split_once('-')?;
+    // `<version>-<uuid>`, exactly what the official `MetadataLocation`
+    // accepts - a non-negative `i32` and a UUID - checked here because its
+    // parser builds every error it might return before it knows whether it
+    // will, so a listing of good names captured a backtrace per file.
+    let (version, id) = stem.split_once('-')?;
+    uuid::Uuid::parse_str(id).ok()?;
     if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) {
         None
     } else {
-        version.parse().ok()
+        version
+            .parse::<i32>()
+            .ok()
+            .and_then(|version| u32::try_from(version).ok())
     }
 }
 

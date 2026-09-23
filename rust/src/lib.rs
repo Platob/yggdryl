@@ -135,6 +135,9 @@ pub mod zstd;
 pub use crate::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
+/// The shared, reference-counted byte view [`IOBase::read_all_shared`]
+/// answers with: the `bytes` crate's, which Arrow's own buffers are built on.
+pub use ::bytes::Bytes as SharedBytes;
 pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use cast::{ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation};

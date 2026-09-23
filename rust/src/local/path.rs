@@ -222,6 +222,12 @@ impl IOBase for LocalPath {
         self.with_resolved(Ok(0), |handle| handle.pread(offset, buffer))?
     }
 
+    fn read_all_shared(&self) -> Result<crate::SharedBytes> {
+        self.with_resolved(Ok(crate::SharedBytes::new()), |handle| {
+            handle.read_all_shared()
+        })?
+    }
+
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
         self.with_resolved_mut(|handle| handle.pwrite(offset, bytes))?
     }

@@ -2889,6 +2889,164 @@ mod tables {
     }
 
     #[test]
+    fn calendar_partitions_group_distinct_instants_by_their_utc_period() {
+        // Every instant is distinct, so only the calendar period can group
+        // them; the ones either side of the epoch are where flooring and
+        // truncating a count disagree.
+        let path = root("calendar-grouping");
+        let at = || {
+            DataType::DateTime(DateTimeType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: yggdryl::Timezone::NAIVE,
+            })
+        };
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            at().required_field("day_at"),
+            at().required_field("hour_at"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![
+                PartitionField {
+                    source_id: 2,
+                    field_id: 1000,
+                    name: "day".into(),
+                    transform: Transform::Day,
+                },
+                PartitionField {
+                    source_id: 3,
+                    field_id: 1001,
+                    name: "hour".into(),
+                    transform: Transform::Hour,
+                },
+            ],
+        };
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        let hour = 3_600_000_000_i64;
+        let instants = [
+            -hour - 1,
+            -1,
+            0,
+            1,
+            hour - 1,
+            23 * hour,
+            24 * hour - 1,
+            24 * hour,
+        ];
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..8)) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(instants.to_vec())) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(instants.to_vec())) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let mut tuples: Vec<(Vec<Scalar>, i64)> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| (file.partition, file.record_count))
+            .collect();
+        tuples.sort_by_key(|(_, rows)| *rows);
+        let mut expected = vec![
+            (vec![Scalar::date32(-1), Scalar::from(-2)], 1),
+            (vec![Scalar::date32(-1), Scalar::from(-1)], 1),
+            (vec![Scalar::date32(0), Scalar::from(0)], 3),
+            (vec![Scalar::date32(0), Scalar::from(23)], 2),
+            (vec![Scalar::date32(1), Scalar::from(24)], 1),
+        ];
+        expected.sort_by_key(|(_, rows)| *rows);
+        assert_eq!(tuples.len(), expected.len(), "{tuples:?}");
+        for tuple in &expected {
+            assert!(tuples.contains(tuple), "{tuple:?} in {tuples:?}");
+        }
+    }
+
+    #[test]
+    fn a_source_under_a_null_struct_partitions_as_null_whatever_its_slot_holds() {
+        // The child slot under a null parent still holds bytes, and here they
+        // are exactly the valid row's value: one partition key must not
+        // swallow the other.
+        let path = root("null-parent-partition");
+        let nested = StructType::from_fields([DataType::utf8().required_field("category")])
+            .map(DataType::from)
+            .unwrap()
+            .nullable_field("payload");
+        let mut schema = StructType::from_fields([DataType::Int64.required_field("id"), nested])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 3,
+                field_id: 1000,
+                name: "category".into(),
+                transform: Transform::Identity,
+            }],
+        };
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        let ArrowDataType::Struct(children) = arrow.field(1).data_type() else {
+            panic!("payload must be a struct")
+        };
+        let payload = StructArray::try_new(
+            children.clone(),
+            vec![Arc::new(StringArray::from(vec!["books", "books", "games"])) as ArrayRef],
+            Some(vec![true, false, true].into()),
+        )
+        .unwrap();
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+                Arc::new(payload) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let mut partitions: Vec<Scalar> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file.partition[0].clone())
+            .collect();
+        partitions.sort_by_key(|value| format!("{value:?}"));
+        let mut expected = vec![Scalar::from("books"), Scalar::Null, Scalar::from("games")];
+        expected.sort_by_key(|value| format!("{value:?}"));
+        assert_eq!(partitions, expected);
+    }
+
+    #[test]
     fn a_null_partition_value_writes_its_own_directory_and_reads_back_null() {
         let path = root("null-partition");
         let schema = trade_schema();
@@ -5582,8 +5740,8 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     assert_eq!(options.commit_total_timeout_ms(), 1_800_000);
     assert_eq!(options.target_file_size_bytes(), 512 * 1024 * 1024);
     assert!((1..=8).contains(&options.read_parallelism()));
-    assert_eq!(options.read_parallel_min_files(), 16);
-    assert_eq!(options.read_parallel_min_file_size_bytes(), 4 * 1024 * 1024);
+    assert_eq!(options.read_parallel_min_files(), 2);
+    assert_eq!(options.read_parallel_min_file_size_bytes(), 64 * 1024);
 
     // A table property overrides the default.
     table

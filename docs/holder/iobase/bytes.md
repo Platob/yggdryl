@@ -13,7 +13,8 @@ This page owns positional bytes over any handle: `pread`/`pwrite`, streams, lazi
 | Cached | Open caches, closed fetches; no ordinary read fills the cache |
 | Media type | Computed on ask, re-derived when bytes change; a declared type wins; it names the decoded type, and `codec` the coding the stored bytes carry |
 | Errors | `compress_into`/`decompress_into` refuse a handle presenting a decoded view, and a target declaring no coding; a spent handle refuses every call; `remove` refuses a container with children unless `recursive` |
-| Bindings | Read is `read_range_bytes`/`readRangeBytes`, write is `pwrite`; Python answers the `IOBase` subclass the name composes to, JavaScript one `IOBase`; `IOCursor` and `ByteStream` are Rust only |
+| Shared | `read_all_shared` answers the whole value as a `SharedBytes` a reader may keep: a memory-mapped `LocalFile` lends its own pages, every other handle copies through `read_all_bytes` - so a coded, transcoded or counted handle answers what it always read |
+| Bindings | Read is `read_range_bytes`/`readRangeBytes`, write is `pwrite`; Python answers the `IOBase` subclass the name composes to, JavaScript one `IOBase`; `IOCursor`, `ByteStream` and `read_all_shared` are Rust only |
 
 ## Use
 
@@ -957,6 +958,8 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 ## Edges
 
 - `pread` entirely past `size` -> returns `0`, not an error.
+- `read_all_shared` on a `LocalFile` -> a read-only mapping of the logical length, unpublished writes included, that outlives the handle; shrinking the file below it while it lives faults the reader rather than failing it, so a file rewritten in place is read with `read_all_bytes`. A Parquet read decodes through it, so a data file's pages are decoded where they lie.
+- `read_all_shared` on an absent or empty resource -> empty bytes, as `read_all_bytes` answers.
 - `pstream_bytes(position, 0)` -> refused; `batch_size` must be non-zero.
 - Stream error -> yielded once after every successful prefix, then the iterator stays fused.
 - `pstream_bytes` at a non-zero position on a coded handle -> decodes and discards the prefix; frames are not seekable.

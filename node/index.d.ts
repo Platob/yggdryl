@@ -2476,7 +2476,7 @@ export declare class IcebergOptions {
    * which would read nothing at all.
    */
   set readParallelism(threads: number)
-  /** How many large-enough files justify a parallel scan. Default: 16. */
+  /** How many large-enough files justify a parallel scan. Default: 2. */
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
   set readParallelMinFiles(files: number)
@@ -2514,7 +2514,7 @@ export declare class IcebergOptions {
   set writeStaging(staging: string)
   /**
    * The recorded size below which a file does not count toward justifying a
-   * parallel scan, in bytes. Default: 4 MiB.
+   * parallel scan, in bytes. Default: 64 KiB.
    */
   get readParallelMinFileSize(): number
   /**
