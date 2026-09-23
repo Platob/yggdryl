@@ -2981,6 +2981,199 @@ mod tables {
     }
 
     #[test]
+    fn a_day_before_the_epoch_holds_its_last_second_whatever_arrives_first() {
+        // 1969-12-30T23:59:59.5 and 1969-12-30T12:00 are one UTC day, day -2.
+        // Truncating the count toward zero before flooring would move the
+        // first into 1969-12-31, and a write keys every instant of a day
+        // together, so whichever row came first would label both.
+        let last_second = -86_400_500_000_i64;
+        let noon = -129_600_000_000_i64;
+        for (label, order) in [
+            ("day-before-epoch-a", [last_second, noon]),
+            ("day-before-epoch-b", [noon, last_second]),
+        ] {
+            let path = root(label);
+            let at = |unit| {
+                DataType::DateTime(DateTimeType::DateTime64 {
+                    unit,
+                    timezone: yggdryl::Timezone::NAIVE,
+                })
+            };
+            let mut schema = StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                at(TimeUnit::Microsecond).required_field("at_us"),
+                at(TimeUnit::Nanosecond).required_field("at_ns"),
+            ])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+            assign_field_ids(&mut schema, 1).unwrap();
+            let spec = PartitionSpec {
+                spec_id: 0,
+                fields: vec![
+                    PartitionField {
+                        source_id: 2,
+                        field_id: 1000,
+                        name: "day_us".into(),
+                        transform: Transform::Day,
+                    },
+                    PartitionField {
+                        source_id: 3,
+                        field_id: 1001,
+                        name: "day_ns".into(),
+                        transform: Transform::Day,
+                    },
+                ],
+            };
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                spec,
+            )
+            .unwrap();
+            let arrow = schema.clone().into_arrow_schema().unwrap();
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(0..2)) as ArrayRef,
+                    Arc::new(TimestampMicrosecondArray::from(order.to_vec())) as ArrayRef,
+                    Arc::new(arrow_array::TimestampNanosecondArray::from(
+                        order
+                            .iter()
+                            .map(|micros| micros * 1_000)
+                            .collect::<Vec<_>>(),
+                    )) as ArrayRef,
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+                .unwrap();
+            let tuples: Vec<(Vec<Scalar>, i64)> = table
+                .data_files()
+                .unwrap()
+                .into_iter()
+                .map(|(file, _)| (file.partition, file.record_count))
+                .collect();
+            assert_eq!(
+                tuples,
+                vec![(vec![Scalar::date32(-2), Scalar::date32(-2)], 2)],
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_nan_row_survives_file_pruning_and_clean_files_still_prune() {
+        // Iceberg bounds leave NaN out, and this crate orders NaN past every
+        // number, so only a NaN count of zero lets a float bound skip a file.
+        let path = root("nan-pruning");
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("price"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        for (ids, prices) in [([1, 2], [1.0, f64::NAN]), ([3, 4], [200.0, 300.0])] {
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![
+                    Arc::new(Int64Array::from(ids.to_vec())) as ArrayRef,
+                    Arc::new(arrow_array::Float64Array::from(prices.to_vec())) as ArrayRef,
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow.clone(), [batch]))
+                .unwrap();
+        }
+        let mut nans: Vec<Vec<(i32, i64)>> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file.nan_value_counts)
+            .collect();
+        nans.sort();
+        assert_eq!(nans, vec![vec![(2, 0)], vec![(2, 1)]]);
+
+        let ids = |filter: &str| {
+            let mut ids: Vec<i64> = table
+                .scan_matching(filter, None)
+                .unwrap()
+                .flat_map(|batch| {
+                    batch
+                        .unwrap()
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            ids.sort_unstable();
+            ids
+        };
+        assert_eq!(ids("price > 100"), vec![2, 3, 4]);
+        assert_eq!(ids("price > 500"), vec![2]);
+        // The NaN-free file is still skipped from its bounds alone.
+        assert_eq!(table.plan_matching("price > 500").unwrap().tasks.len(), 1);
+    }
+
+    #[test]
+    fn sliced_input_is_cut_into_files_by_its_own_rows() {
+        // One batch, then the same rows as zero-copy slices of it: each slice
+        // counts its own extent, so both write the same number of files.
+        let files = |label: &str, slices: usize| {
+            let path = root(label);
+            let mut schema = StructType::from_fields([DataType::Int64.required_field("id")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("row");
+            assign_field_ids(&mut schema, 1).unwrap();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            let arrow = schema.clone().into_arrow_schema().unwrap();
+            let rows = 200_000_usize;
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![Arc::new(Int64Array::from_iter_values(0..rows as i64)) as ArrayRef],
+            )
+            .unwrap();
+            let step = rows / slices;
+            let pieces: Vec<RecordBatch> = (0..slices)
+                .map(|piece| batch.slice(piece * step, step))
+                .collect();
+            let mut options = yggdryl::iceberg::IcebergOptions::default();
+            options.set_target_file_size_bytes(256 * 1024).unwrap();
+            table.set_options(options);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow, pieces))
+                .unwrap();
+            table.data_files().unwrap().len()
+        };
+        let whole = files("sliced-whole", 1);
+        assert!(whole > 1, "{whole}");
+        assert_eq!(files("sliced-pieces", 100), whole);
+    }
+
+    #[test]
     fn a_source_under_a_null_struct_partitions_as_null_whatever_its_slot_holds() {
         // The child slot under a null parent still holds bytes, and here they
         // are exactly the valid row's value: one partition key must not
@@ -6737,9 +6930,13 @@ mod manifest_planning {
             );
             assert_eq!(full.data_file.lower_bounds, pruned.data_file.lower_bounds);
             assert_eq!(full.data_file.upper_bounds, pruned.data_file.upper_bounds);
+            // A float bound counts only beside a NaN count of zero.
+            assert_eq!(
+                full.data_file.nan_value_counts,
+                pruned.data_file.nan_value_counts
+            );
             // ...and skips what it never reads.
             assert!(pruned.data_file.column_sizes.is_empty());
-            assert!(pruned.data_file.nan_value_counts.is_empty());
             assert!(pruned.data_file.split_offsets.is_empty());
         }
     }

@@ -92,6 +92,13 @@ pub struct AvroOptions {
     /// A fixed synchronization marker, for writes that must be reproducible
     /// byte for byte; a fresh random marker is used when absent.
     pub sync_marker: Option<[u8; 16]>,
+    /// The threads one container's blocks decode or encode on; unbounded
+    /// is what the host offers.
+    ///
+    /// Crate-internal and outside the options' identity: a table that
+    /// already works on several files at once hands each its share, so the
+    /// two levels of parallelism never multiply.
+    pub(crate) threads: crate::media::options::FileThreads,
 }
 
 impl AvroOptions {
@@ -112,6 +119,7 @@ impl AvroOptions {
             level: Level::DEFAULT,
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
+            threads: crate::media::options::FileThreads::default(),
         }
     }
 
@@ -232,9 +240,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     options: &AvroOptions,
 ) -> Result<BatchReader> {
     reject_outer_coding(handle)?;
-    // Shared rather than copied: a local file is its mapped view, and every
-    // decoder thread reads the same bytes.
-    let bytes = handle.read_all_shared()?;
+    // Owned, and shared by reference count with every decoder thread: the
+    // reader and the batches it yields never point back into the handle's
+    // storage, so rewriting the file while they live is safe.
+    let bytes = bytes::Bytes::from(handle.read_all_bytes()?);
     if bytes.is_empty() {
         // Per the laziness contract, a missing container holds no batches.
         let schema = match options.field() {
@@ -272,7 +281,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     let threads = if options.max_row_size().is_some() {
         1
     } else {
-        std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        options.threads.resolve()
     };
     if let Some((spans, units)) = plan_units(
         &bytes,
@@ -356,7 +365,7 @@ where
     put_long(&mut output, 0);
     output.extend_from_slice(&sync);
 
-    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let threads = options.threads.resolve();
     let blocks = BlockWriter {
         schema: &schema,
         coding,
@@ -372,10 +381,15 @@ where
             continue;
         }
         let batch = canonical.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?;
-        // The in-memory width is an estimate of the encoded one - a varint is
-        // shorter than its eight bytes - which only makes a block smaller.
-        let width = (batch.get_array_memory_size() / rows).max(1);
-        let block_rows = (WRITE_BLOCK_BYTES / width).max(1);
+        // The rows' own in-memory extent estimates their encoded width - a
+        // slice counts itself, not its parent's buffers - and a value takes at
+        // least a byte on the wire whatever it takes in memory, so a bit-packed
+        // boolean is not a block of a million rows. A block never holds more
+        // rows than a reader with the default limits accepts.
+        let width = (crate::arrow::sliced_memory_size(&batch) / rows)
+            .max(batch.num_columns())
+            .max(1);
+        let block_rows = (WRITE_BLOCK_BYTES / width).clamp(1, Limits::default().max_nodes());
         let mut start = 0;
         while start < rows {
             let length = block_rows.min(rows - start);
@@ -494,7 +508,7 @@ struct AvroBatchReader {
     /// The whole container. DESIGN: owned because a `BatchReader` outlives the
     /// borrow of the handle it came from; decompression and decoding stay
     /// lazy, one block at a time.
-    bytes: crate::SharedBytes,
+    bytes: bytes::Bytes,
     /// The offset of the next unread block.
     position: usize,
     /// The projected batch schema.
@@ -707,7 +721,7 @@ fn plan_units(
 /// What every unit of a parallel read shares.
 struct AvroSource {
     /// The whole container, shared rather than copied.
-    bytes: crate::SharedBytes,
+    bytes: bytes::Bytes,
     /// The writer schema, for skips and reference resolution.
     writer: Schema,
     /// The block compression.
@@ -777,7 +791,8 @@ impl ParallelAvroRead {
         let Some(unit) = self.pending.pop_front() else {
             return;
         };
-        let (sender, receiver) = std::sync::mpsc::channel();
+        // A run decodes at most a batch or two ahead of the consumer.
+        let (sender, receiver) = std::sync::mpsc::sync_channel(2);
         let source = Arc::clone(&self.source);
         let spans = Arc::clone(&self.spans);
         // Deliberately detached: see the type docs for why drop does not join.
@@ -798,7 +813,7 @@ impl ParallelAvroRead {
 fn decode_unit(
     source: &AvroSource,
     spans: &[BlockSpan],
-    sender: &std::sync::mpsc::Sender<UnitMessage>,
+    sender: &std::sync::mpsc::SyncSender<UnitMessage>,
 ) -> crate::Result<()> {
     let keep: Option<Vec<&str>> = source
         .keep
@@ -1135,6 +1150,16 @@ pub mod internals {
     #[must_use]
     pub const fn root_step_size() -> usize {
         std::mem::size_of::<super::RootStep>()
+    }
+
+    /// These options with the threads one container decodes or encodes on
+    /// pinned - the crate-internal bound a table hands each file - so a test
+    /// runs the threaded paths, or the one-thread path, whatever the host
+    /// offers.
+    #[must_use]
+    pub fn with_threads(mut options: super::AvroOptions, threads: usize) -> super::AvroOptions {
+        options.threads = crate::media::options::FileThreads(Some(threads.max(1)));
+        options
     }
 }
 
@@ -2395,7 +2420,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
 }
 
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_all_shared, read_range_bytes, pstream_bytes,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 

@@ -1,11 +1,11 @@
 //! `rust/src/expression/parser.rs`: the edge cases this module is built to
 //! get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
@@ -26,6 +26,19 @@ mod grammar {
         let parsed: Term = "\"select\" = 1".parse().unwrap();
         assert_eq!(parsed.columns(), vec!["select".to_owned()]);
         assert_eq!(parsed.to_string(), "\"select\" = 1");
+    }
+
+    #[test]
+    fn a_bracketed_location_part_reads_its_raw_text() {
+        use yggdryl::expression::{Location, Plan, Source};
+
+        let plan: Plan = "select * from [R&D].t".parse().unwrap();
+        let Some(Source::Target(target)) = plan.source() else {
+            panic!("expected a target source, got {:?}", plan.source());
+        };
+        assert_eq!(target.location(), &Location::parts(["R&D", "t"]));
+        // `&` is tokenized for that reading alone; no term takes it.
+        assert!("a & b".parse::<Term>().is_err());
     }
 
     #[test]

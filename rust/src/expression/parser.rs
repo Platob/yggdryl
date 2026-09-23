@@ -222,9 +222,13 @@ struct Spanned {
 }
 
 /// The multi-character symbols, longest first so `<=` never reads as `<`.
-const SYMBOLS: [&str; 22] = [
-    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "*", "+",
-    "-", "/", "%", "=",
+///
+/// No term takes `&`. It is tokenized so a bracketed location part reads
+/// the raw text between its brackets - `[R&D]` - which the whole input must
+/// tokenize to reach; anywhere else it is refused as an unexpected symbol.
+const SYMBOLS: [&str; 23] = [
+    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "&", "*",
+    "+", "-", "/", "%", "=",
 ];
 
 fn tokenize(input: &str) -> Result<Vec<Spanned>> {

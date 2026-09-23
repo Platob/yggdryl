@@ -55,11 +55,16 @@ impl Certainty {
         }
     }
 
+    /// The certainty of `not` over a node this certain.
+    ///
+    /// Every row true makes every row false. No row true is not the mirror:
+    /// the rows it leaves are false *or unknown*, and `not unknown` is still
+    /// unknown - not true - so the negation holds for every row only where
+    /// no row was unknown, which a node's certainty does not say.
     const fn negated(self) -> Self {
         match self {
             Self::Always => Self::Never,
-            Self::Never => Self::Always,
-            Self::Unknown => Self::Unknown,
+            Self::Never | Self::Unknown => Self::Unknown,
         }
     }
 }
@@ -332,8 +337,6 @@ fn prune(node: &Node, schema: &Field, bounds: &Bounds) -> Certainty {
             }
             certain
         }
-        // `not unknown` is unknown, so the negation of an unproven answer stays
-        // unproven and nothing is skipped on the strength of it.
         Kind::Not(inner) => prune(inner, schema, bounds).negated(),
         Kind::Compare(left, comparison, right) => match (oriented(left, right), comparison) {
             (Some((column, literal, flipped)), _) => {
@@ -469,7 +472,26 @@ fn settle(
             return Certainty::Never;
         }
     }
-    compare_range(node, column, comparison, literal)
+    let answer = compare_range(node, column, comparison, literal);
+    // The extremes describe the non-null rows only. A null row is distinct
+    // from every value, so it satisfies `is distinct from` whatever they say,
+    // and it satisfies no other comparison, so "every row" also needs a count
+    // proving there are no nulls - or a column that cannot hold one.
+    let no_nulls = column.nulls == Some(0) || !node.field.is_nullable();
+    match (comparison, answer) {
+        (Comparison::IsDistinctFrom, Certainty::Never)
+        | (
+            Comparison::Eq
+            | Comparison::NotEq
+            | Comparison::IsNotDistinctFrom
+            | Comparison::Lt
+            | Comparison::LtEq
+            | Comparison::Gt
+            | Comparison::GtEq,
+            Certainty::Always,
+        ) if !no_nulls => Certainty::Unknown,
+        (_, answer) => answer,
+    }
 }
 
 /// Settle one comparison against a `[minimum, maximum]` range.

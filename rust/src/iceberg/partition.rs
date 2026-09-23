@@ -828,6 +828,36 @@ impl PartitionTransform {
             };
         }
 
+        // `day` over an instant floors its count to the UTC day, as the
+        // specification and the Java implementation do. iceberg-rust 0.10
+        // truncates a count before the epoch toward zero first, which moves
+        // the last second of a day before 1970 into the next day - and a
+        // write keys every instant of one UTC day together, so one row would
+        // label the whole day.
+        if self.transform == Transform::Day {
+            if let DataType::DateTime(crate::DateTimeType::DateTime64 { unit, .. }) =
+                self.source.dtype()
+            {
+                let count = super::value::single_value(&value, self.source.dtype())
+                    .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
+                    .map(i64::from_le_bytes)
+                    .ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected a timestamp scalar for the day transform, got {}",
+                            value.kind()
+                        ))
+                    })?;
+                let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
+                let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected a day number fitting i32, got {}",
+                        count.div_euclid(per_day)
+                    ))
+                })?;
+                return Ok(Scalar::date32(days));
+            }
+        }
+
         self.official_value(value)
     }
 

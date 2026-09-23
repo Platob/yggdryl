@@ -1272,7 +1272,6 @@ Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `
 
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>
-fn read_all_shared(&self) -> Result<SharedBytes>                            // Rust only: a LocalFile lends its mapped pages
 fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>   // clamped: past the end is empty
 fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()>
 fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>                    // the offset the bytes landed at
@@ -1280,8 +1279,6 @@ fn read_digest(&self, algorithm: DigestAlgorithm) -> Result<Digest>
 fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>              // JSON, YAML or TOML by media type
 fn write_scalar(&mut self, value: &Scalar) -> Result<()>
 ```
-
-`read_all_shared` answers the whole value as a `SharedBytes` a reader may keep. A `LocalFile` lends a read-only mapping of its logical length, unpublished writes included, that outlives the handle - a Parquet or Avro read decodes where the pages lie - and every other handle copies through `read_all_bytes`, so a coded, transcoded or counted handle answers what it always read; an absent or empty resource answers empty bytes. Shrinking a mapped file while a reader holds it faults the reader rather than failing it, so a file rewritten in place is read with `read_all_bytes`.
 
 === "Rust"
 

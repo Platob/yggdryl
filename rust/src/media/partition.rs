@@ -589,6 +589,11 @@ fn leaf_name(
 /// agrees on `year`, which makes it useless for telling two of them apart.
 fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<RecordOptions> {
     let mut leaf = options.clone();
+    // A limited read decodes each leaf lazily on one thread, so it stops
+    // where the limit does rather than decoding ahead of it.
+    if options.max_row_size().is_some() {
+        leaf.set_file_threads(1);
+    }
     // The row and byte limits were already applied to the whole operation at
     // the record-method seam, so a leaf must not apply them again: a limit on
     // the tree re-applied per leaf would become one bound per partition, and

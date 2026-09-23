@@ -361,9 +361,9 @@ impl<H: IOBase> Table<H> {
     /// Iceberg's own default of 512 MiB.
     ///
     /// What a write measures against this target is the Arrow in-memory size
-    /// of the accumulated batches ([`RecordBatch::get_array_memory_size`]),
-    /// estimated *before* encoding. Parquet compresses what it writes, so data
-    /// files land under the target rather than at it.
+    /// of the accumulated rows - a zero-copy slice counts its own extent, not
+    /// its parent's buffers - estimated *before* encoding. Parquet compresses
+    /// what it writes, so data files land under the target rather than at it.
     ///
     /// # Errors
     ///
@@ -600,7 +600,7 @@ impl<H: IOBase> Table<H> {
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let manifests = self.manifests_at(snapshot)?;
         let plan = self.plan_manifests(&manifests, &conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter)
+        self.reader(plan.tasks, &stored, field, &filter, false)
     }
 
     /// Return one retained snapshot, or say which ids are retained.
@@ -1055,11 +1055,15 @@ impl<H: IOBase> Table<H> {
         filter: impl crate::expression::IntoFilter,
         field: Option<&Field>,
     ) -> Result<BatchReader> {
+        self.scan_with(filter.into_filter()?, field, false)
+    }
+
+    /// [`Self::scan_matching`], decoding lazily on one thread when `lazy`.
+    fn scan_with(&self, filter: Filter, field: Option<&Field>, lazy: bool) -> Result<BatchReader> {
         let stored = self.schema()?.clone();
-        let filter = filter.into_filter()?;
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let plan = self.planned(&conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter)
+        self.reader(plan.tasks, &stored, field, &filter, lazy)
     }
 
     /// Build the reader over one set of planned files.
@@ -1069,6 +1073,7 @@ impl<H: IOBase> Table<H> {
         stored: &Field,
         field: Option<&Field>,
         filter: &crate::Filter,
+        lazy: bool,
     ) -> Result<BatchReader> {
         let root = field.map_or_else(|| stored.clone(), Clone::clone);
         let read_root = super::scan::read_root(&root, stored, filter)?;
@@ -1076,7 +1081,12 @@ impl<H: IOBase> Table<H> {
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
+        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
+        if lazy {
+            // A limited read decodes one file at a time, on one thread, so it
+            // stops where its limit does rather than decoding ahead of it.
+            parallel.parallelism = 1;
+        }
         super::scan::reader(
             parts,
             root,
@@ -1165,8 +1175,9 @@ impl<H: IOBase> Table<H> {
                 .apply_columns()
                 .and_then(|columns| projected_root(&stored, &columns)),
         };
+        let lazy = options.max_row_size().is_some();
         if late {
-            let reader = self.scan_matching(scope, root.as_ref())?;
+            let reader = self.scan_with(scope, root.as_ref(), lazy)?;
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
         }
         let pushed = if scope.is_always_true() {
@@ -1174,7 +1185,7 @@ impl<H: IOBase> Table<H> {
         } else {
             Filter::all([scope, filter.clone()])
         };
-        let reader = self.scan_matching(pushed, root.as_ref())?;
+        let reader = self.scan_with(pushed, root.as_ref(), lazy)?;
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied scan stops decoding data files.
         options.limit_arrow_reader(select.apply_arrow_reader(reader)?)
@@ -1530,7 +1541,13 @@ impl<H: IOBase> Table<H> {
             self.metadata.location(),
         );
         let schema = self.schema()?.clone();
-        let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
+        let rows = self.reader(
+            selected,
+            &schema,
+            None,
+            &crate::Filter::always_true(),
+            false,
+        )?;
         let writes = self.partition_writes(rows, false)?;
         let files_after = self.commit(
             writes,
@@ -3058,9 +3075,9 @@ fn column_at(batch: &RecordBatch, path: &[SmolStr]) -> Result<ArrayRef> {
 
 /// Cut one partition group's ordered rows into files of roughly `target` bytes.
 ///
-/// The estimate is the group's Arrow in-memory size
-/// ([`RecordBatch::get_array_memory_size`]) spread evenly over its rows,
-/// taken *before* encoding: Parquet compresses what it writes, so the files
+/// The estimate is the group's Arrow in-memory size - each slice's own
+/// extent, not the buffers it shares - spread evenly over its rows, taken
+/// *before* encoding: Parquet compresses what it writes, so the files
 /// land under the target rather than at it. A file holds at least one row,
 /// so a target below one row's size is one file per row. The cuts fall at
 /// the same row offsets whether the rows arrive as one batch or several; a
@@ -3068,7 +3085,9 @@ fn column_at(batch: &RecordBatch, path: &[SmolStr]) -> Result<ArrayRef> {
 fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
     let bytes = batches.iter().fold(0_u64, |total, batch| {
-        total.saturating_add(u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX))
+        total.saturating_add(
+            u64::try_from(crate::arrow::sliced_memory_size(batch)).unwrap_or(u64::MAX),
+        )
     });
     if rows == 0 || bytes <= target {
         return vec![batches];
@@ -3133,6 +3152,7 @@ fn write_data_file(
     // store nothing - before the file reaches the table.
     let arrow_schema = crate::arrow::arrow_schema_from_field(&stored)?;
     let parquet = mime_type == &MimeType::PARQUET;
+    let nans = super::statistics::nan_value_counts(schema, &batches)?;
     let (mut file, size) = write.staging.publish(
         root,
         &relative,
@@ -3142,7 +3162,7 @@ fn write_data_file(
                 .record_options()?
                 .with_safe(false)
                 .with_field(stored.clone());
-            options.set_parquet_threads(write.file_threads);
+            options.set_file_threads(write.file_threads);
             if parquet {
                 handle.overwrite_arrow_reader(
                     crate::arrow::batch_reader(arrow_schema, batches),
@@ -3178,6 +3198,7 @@ fn write_data_file(
     })?;
     file.partition = values.to_vec();
     file.sort_order_id = write.sort_order_id;
+    file.nan_value_counts = nans;
     Ok(file)
 }
 
@@ -3371,6 +3392,13 @@ fn summaries(
     }
     let partition = spec.partition_field(schema)?;
     let mut summaries = vec![FieldSummary::default(); partition.field_len()];
+    // A float field says whether any value is NaN, and its bounds leave NaN
+    // out, as the specification asks: a planner trusts them only when none is.
+    for (summary, child) in summaries.iter_mut().zip(partition.fields()) {
+        if child.dtype().id().is_floating() {
+            summary.contains_nan = Some(false);
+        }
+    }
     for entry in entries {
         for (index, child) in partition.fields().iter().enumerate() {
             let Some(value) = entry.data_file.partition.get(index) else {
@@ -3381,6 +3409,10 @@ fn summaries(
             };
             if matches!(value, Scalar::Null) {
                 summary.contains_null = true;
+                continue;
+            }
+            if value.as_f64().is_some_and(f64::is_nan) {
+                summary.contains_nan = Some(true);
                 continue;
             }
             let Some(encoded) = single_value(value, child.dtype()) else {

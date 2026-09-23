@@ -1830,7 +1830,7 @@ mod records {
                 counting.size()
             );
 
-            // The full drain fetches the complete value: one whole-value read.
+            // The full drain of a file this small is one whole-value read.
             let (full_reads, full_bytes) = counting.cost(|| {
                 assert_eq!(rows(&counting, &options), total);
             });
@@ -1864,7 +1864,7 @@ mod parallel {
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
     use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, SharedBytes, StructType};
+    use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, StructType};
 
     /// Three columns, one of them incompressible, so a few hundred thousand
     /// rows clear the size a read or a write splits across threads at.
@@ -1905,9 +1905,17 @@ mod parallel {
         .unwrap()
     }
 
+    /// Options that decode and encode on four threads whatever the host
+    /// offers, where the `internals` hook can pin them.
+    fn threaded(options: ParquetOptions) -> ParquetOptions {
+        #[cfg(feature = "internals")]
+        let options = yggdryl::internals::parquet::with_threads(options, 4);
+        options
+    }
+
     fn written(batch: &RecordBatch, options: ParquetOptions) -> Parquet<Buffer> {
         let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
-            .with_options(options);
+            .with_options(threaded(options));
         let record = media.record_options().unwrap();
         media
             .overwrite_arrow_reader(
@@ -1920,7 +1928,7 @@ mod parallel {
 
     /// What the `parquet` crate's own reader, on one thread, reads back.
     fn reference(media: &Parquet<Buffer>, columns: Option<&[usize]>) -> RecordBatch {
-        let bytes = SharedBytes::from(media.handle().read_all_bytes().unwrap());
+        let bytes = bytes::Bytes::from(media.handle().read_all_bytes().unwrap());
         let builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
         let builder = match columns {
             Some(columns) => {
@@ -1938,6 +1946,9 @@ mod parallel {
         arrow_select::concat::concat_batches(&schema, &batches).unwrap()
     }
 
+    // Only a read split across threads cuts its batches at every row group;
+    // one reader fills a batch across them.
+    #[cfg(feature = "internals")]
     #[test]
     fn row_groups_decoded_side_by_side_come_back_in_file_order() {
         let batch = rows(300_000);
@@ -2022,6 +2033,405 @@ mod parallel {
 
         assert_eq!(media.handle().read_all_bytes().unwrap(), expected);
     }
+
+    #[cfg(feature = "internals")]
+    #[test]
+    fn one_thread_reads_the_same_rows_as_four() {
+        let batch = rows(300_000);
+        let media = written(
+            &batch,
+            ParquetOptions::new().with_max_row_group_size(100_000),
+        );
+        let read = |threads: usize| {
+            let options = yggdryl::media::RecordOptions::from(
+                yggdryl::internals::parquet::with_threads(media.options().clone(), threads),
+            );
+            let batches: Vec<RecordBatch> = media
+                .read_arrow_reader(&options)
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap()
+        };
+        assert_eq!(read(1), read(4));
+        assert_eq!(read(1), reference(&media, None));
+    }
+
+    #[test]
+    fn a_failing_row_group_fails_the_read_rather_than_ending_it() {
+        let batch = rows(300_000);
+        let mut media = written(
+            &batch,
+            ParquetOptions::new().with_max_row_group_size(100_000),
+        );
+        let bytes = media.handle().read_all_bytes().unwrap();
+        let footer = parquet::file::metadata::ParquetMetaDataReader::new()
+            .parse_and_finish(&bytes::Bytes::from(bytes))
+            .unwrap();
+        // Break the last row group's pages, footer untouched.
+        let last = footer.row_group(2);
+        let start = last
+            .columns()
+            .iter()
+            .map(|column| column.byte_range().0)
+            .min()
+            .unwrap();
+        let end = last
+            .columns()
+            .iter()
+            .map(|column| column.byte_range().0 + column.byte_range().1)
+            .max()
+            .unwrap();
+        media
+            .pwrite(start, &vec![0xA5_u8; usize::try_from(end - start).unwrap()])
+            .unwrap();
+        let options = media.record_options().unwrap();
+        let mut rows = 0;
+        let mut failed = false;
+        for read in media.read_arrow_reader(&options).unwrap() {
+            match read {
+                Ok(read) => rows += read.num_rows(),
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            failed,
+            "the broken row group is an error, after {rows} rows"
+        );
+        assert!(rows <= 200_000, "{rows}");
+    }
+
+    #[test]
+    fn nested_columns_split_across_threads_join_back() {
+        use arrow_array::builder::{Int64Builder, ListBuilder};
+        use arrow_array::{Array, StructArray};
+
+        let count = 200_000_usize;
+        let mut legs = ListBuilder::new(Int64Builder::new());
+        for row in 0..count {
+            for leg in 0..(row % 4) {
+                legs.values()
+                    .append_value(i64::try_from(row * 10 + leg).unwrap());
+            }
+            legs.append(row % 7 != 0);
+        }
+        let legs = legs.finish();
+        let ids = Int64Array::from_iter_values(0..i64::try_from(count).unwrap());
+        let prices = Float64Array::from_iter_values((0..count).map(|row| row as f64 * 0.5));
+        let quote = StructArray::from(vec![
+            (
+                Arc::new(arrow_schema::Field::new(
+                    "bid",
+                    arrow_schema::DataType::Float64,
+                    false,
+                )),
+                Arc::new(prices.clone()) as ArrayRef,
+            ),
+            (
+                Arc::new(arrow_schema::Field::new(
+                    "size",
+                    arrow_schema::DataType::Int64,
+                    false,
+                )),
+                Arc::new(ids.clone()) as ArrayRef,
+            ),
+        ]);
+        let schema = Arc::new(arrow_schema::Schema::new(vec![
+            arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+            arrow_schema::Field::new("legs", legs.data_type().clone(), true),
+            arrow_schema::Field::new("quote", quote.data_type().clone(), false),
+            arrow_schema::Field::new("price", arrow_schema::DataType::Float64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(ids) as ArrayRef,
+                Arc::new(legs) as ArrayRef,
+                Arc::new(quote) as ArrayRef,
+                Arc::new(prices) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        // One row group, so the read deals its columns across threads.
+        let media = written(&batch, ParquetOptions::new());
+        let options = media.record_options().unwrap();
+        let batches: Vec<RecordBatch> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let joined = arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap();
+        assert_eq!(joined, reference(&media, None));
+    }
+
+    #[test]
+    fn a_limited_read_under_a_filter_keeps_the_full_batch_size() {
+        let batch = rows(300_000);
+        let media = written(&batch, ParquetOptions::new());
+        let mut options = media.options().clone();
+        options.set_max_row_size(Some(1));
+        let options = options.with_filter("id >= 0").unwrap();
+        // The limit counts rows the filter keeps, so it does not size the
+        // batches the file is decoded in.
+        let first = yggdryl::parquet::read_batch_reader(media.handle(), None, &options)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            first.num_rows(),
+            yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE
+        );
+    }
+
+    // Pinned to four threads, so the failing column is one of several being
+    // encoded side by side.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_column_the_writer_cannot_encode_reports_its_own_failure() {
+        use arrow_array::Array as _;
+        use arrow_array::IntervalMonthDayNanoArray;
+        use arrow_array::types::IntervalMonthDayNano;
+
+        let count = 200_000_usize;
+        // Twelve light columns ahead of the failing one, so more columns than
+        // threads remain when it fails.
+        let mut fields = Vec::new();
+        let mut columns: Vec<ArrayRef> = Vec::new();
+        for index in 0..12 {
+            fields.push(arrow_schema::Field::new(
+                format!("c{index}"),
+                arrow_schema::DataType::Int64,
+                false,
+            ));
+            columns.push(Arc::new(Int64Array::from_iter_values(
+                0..i64::try_from(count).unwrap(),
+            )));
+        }
+        let spans = IntervalMonthDayNanoArray::from_iter_values(
+            (0..count).map(|row| IntervalMonthDayNano::new(0, i32::try_from(row % 30).unwrap(), 0)),
+        );
+        fields.push(arrow_schema::Field::new(
+            "span",
+            spans.data_type().clone(),
+            false,
+        ));
+        columns.push(Arc::new(spans));
+        let schema = Arc::new(arrow_schema::Schema::new(fields));
+        let batch = RecordBatch::try_new(Arc::clone(&schema), columns).unwrap();
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
+            .with_options(threaded(ParquetOptions::new()));
+        let record = media.record_options().unwrap();
+        match media.overwrite_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]), &record) {
+            Err(error) => {
+                let message = error.to_string();
+                assert!(
+                    message.contains("MonthDayNano") || message.contains("not yet implemented"),
+                    "{message}"
+                );
+            }
+            // A writer that learns to encode the interval wrote every row.
+            Ok(()) => assert_eq!(media.row_size().unwrap(), count as u64),
+        }
+    }
+
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_row_group_fed_in_several_feeds_writes_the_sequential_writers_bytes() {
+        let batch = rows(300_000);
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+        // A 64 KiB feed, so one row group is encoded over dozens of feeds.
+        yggdryl::internals::parquet::overwrite_with_write_buffer(
+            media.handle_mut(),
+            yggdryl::arrow::batch_reader(
+                batch.schema(),
+                (0..300_000)
+                    .step_by(20_000)
+                    .map(|start| batch.slice(start, 20_000))
+                    .collect::<Vec<_>>(),
+            ),
+            &threaded(ParquetOptions::new().with_max_row_group_size(200_000)),
+            64 * 1024,
+        )
+        .unwrap();
+
+        let mut expected = Vec::new();
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::ZSTD(ZstdLevel::default()))
+            .set_max_row_group_row_count(Some(200_000))
+            .build();
+        // The same slices, one write each: page cuts follow the calls.
+        let mut writer =
+            ArrowWriter::try_new(&mut expected, batch.schema(), Some(properties)).unwrap();
+        for start in (0..300_000).step_by(20_000) {
+            writer.write(&batch.slice(start, 20_000)).unwrap();
+        }
+        writer.close().unwrap();
+
+        assert!(media.handle().read_all_bytes().unwrap() == expected);
+    }
+
+    // A limited read decodes on one reader, which fills a batch across a row
+    // group boundary where threads would cut it there.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_limited_read_stays_on_one_reader() {
+        let batch = rows(300_000);
+        let media = written(
+            &batch,
+            ParquetOptions::new().with_max_row_group_size(100_000),
+        );
+        let options = yggdryl::media::RecordOptions::from(
+            yggdryl::internals::parquet::with_threads(media.options().clone(), 4),
+        )
+        .with_max_row_size(250_000);
+        let sizes: Vec<usize> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|read| read.unwrap().num_rows())
+            .collect();
+        assert_eq!(sizes[..2], [65_536, 65_536], "{sizes:?}");
+        assert_eq!(sizes.iter().sum::<usize>(), 250_000);
+    }
+
+    /// A limited read of a folder decodes each leaf on one reader too: the
+    /// limit is applied over the whole folder, and a leaf decoding ahead of
+    /// it on every thread would decode rows no one reads.
+    #[test]
+    fn a_limited_folder_read_decodes_its_leaves_on_one_reader() {
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
+        root.push(format!("yggdryl-parquet-limited-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let batch = rows(300_000);
+        let mut leaf = Parquet::new(LocalFile::create(root.join("part-0.parquet")).unwrap())
+            .with_options(ParquetOptions::new().with_max_row_group_size(100_000));
+        let options = leaf.record_options().unwrap();
+        leaf.overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &options,
+        )
+        .unwrap();
+        leaf.flush().unwrap();
+        drop(leaf);
+
+        let folder = LocalFolder::new(&root).unwrap();
+        let options = folder.record_options().unwrap().with_max_row_size(250_000);
+        let sizes: Vec<usize> = folder
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|read| read.unwrap().num_rows())
+            .collect();
+        // One reader fills a batch across the row group boundary at 100,000.
+        assert_eq!(sizes[..2], [65_536, 65_536], "{sizes:?}");
+        assert_eq!(sizes.iter().sum::<usize>(), 250_000);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Batches a read returned stay whole after the file they came from is
+    /// rewritten shorter - including view columns whose values, decoded from
+    /// uncompressed pages, sit in the page buffers themselves.
+    #[test]
+    fn view_columns_outlive_a_shorter_rewrite_of_their_file() {
+        use arrow_array::{Array as _, StringViewArray};
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-parquet-views-{}.parquet",
+            std::process::id()
+        ));
+        let _ = LocalFile::new(&path).unwrap().remove(false);
+        let count = 200_000_usize;
+        let notes = StringViewArray::from_iter_values(
+            (0..count).map(|row| format!("a note long enough to live out of line {row:08}")),
+        );
+        let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+            "note",
+            notes.data_type().clone(),
+            false,
+        )]));
+        let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(notes)]).unwrap();
+        let mut bytes = Vec::new();
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::UNCOMPRESSED)
+            .build();
+        let mut writer =
+            ArrowWriter::try_new(&mut bytes, Arc::clone(&schema), Some(properties)).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+        let mut file = LocalFile::create(&path).unwrap();
+        file.write_all_bytes(&bytes).unwrap();
+        file.flush().unwrap();
+
+        let mut media = Parquet::new(file);
+        let options = media.record_options().unwrap();
+        let read: Vec<RecordBatch> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(read[0].schema(), [read[0].slice(0, 3)]),
+                &options,
+            )
+            .unwrap();
+        media.flush().unwrap();
+
+        let joined = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+        let expected = arrow_cast::cast(batch.column(0), joined.column(0).data_type()).unwrap();
+        assert_eq!(joined.column(0).as_ref(), expected.as_ref());
+        drop(media);
+        let _ = LocalFile::new(&path).unwrap().remove(false);
+    }
+
+    /// A file rewritten from a streamed read of itself - in commits, on one
+    /// lazy reader that is still decoding when the first commit lands.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_file_rewritten_from_a_streamed_read_of_itself_keeps_every_row() {
+        use yggdryl::local::{LocalFile, LocalFolder};
+
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-parquet-self-{}.parquet",
+            std::process::id()
+        ));
+        let _ = LocalFile::new(&path).unwrap().remove(false);
+        let batch = rows(600_000);
+        let mut media = Parquet::new(LocalFile::create(&path).unwrap()).with_options(
+            yggdryl::internals::parquet::with_threads(
+                ParquetOptions::new().with_max_row_group_size(100_000),
+                1,
+            ),
+        );
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                &options,
+            )
+            .unwrap();
+        media.flush().unwrap();
+
+        // Every row group holds nulls, so the filter prunes none of them.
+        let reader = media
+            .read_arrow_reader(&options.clone().with_filter("symbol is not null").unwrap())
+            .unwrap();
+        let mut streamed = options.clone();
+        streamed.set_commit_row_size(Some(50_000));
+        media.overwrite_arrow_reader(reader, &streamed).unwrap();
+        media.flush().unwrap();
+        assert_eq!(media.row_size().unwrap(), 450_000);
+        drop(media);
+        let _ = LocalFile::new(&path).unwrap().remove(false);
+    }
 }
 
 /// The read's filter answered from the footer before a page is decoded.
@@ -2081,7 +2491,7 @@ mod pruning {
         // that decodes it fails, one that skips it does not.
         let bytes = media.handle().read_all_bytes().unwrap();
         let footer = parquet::file::metadata::ParquetMetaDataReader::new()
-            .parse_and_finish(&yggdryl::SharedBytes::from(bytes))
+            .parse_and_finish(&bytes::Bytes::from(bytes))
             .unwrap();
         let second = footer.row_group(1);
         let start = second
@@ -2148,5 +2558,261 @@ mod pruning {
             .map(|batch| batch.unwrap().num_rows())
             .sum();
         assert_eq!(kept, 1);
+    }
+
+    /// One Parquet file of one row group, written from `batch`.
+    fn file_of(batch: &RecordBatch) -> Parquet<Buffer> {
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                &options,
+            )
+            .unwrap();
+        media
+    }
+
+    /// The `i` column of the rows a filter keeps, under an optional root.
+    fn kept(media: &Parquet<Buffer>, root: Option<yggdryl::Field>, filter: &str) -> Vec<i64> {
+        use arrow_array::cast::AsArray;
+        let mut options = media.record_options().unwrap();
+        if let Some(root) = root {
+            options = options.with_field(root);
+        }
+        let options = options.with_filter(filter).unwrap();
+        media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let index = batch.schema().index_of("i").unwrap();
+                batch
+                    .column(index)
+                    .as_primitive::<arrow_array::types::Int64Type>()
+                    .values()
+                    .to_vec()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_nan_row_is_never_pruned_by_the_extremes_that_leave_it_out() {
+        // Parquet writers leave NaN out of a float column's minimum and
+        // maximum; this crate orders NaN past every number, by its sign.
+        let positive = f64::NAN;
+        let negative = f64::from_bits(0xFFF8_0000_0000_0000);
+        for (values, filters) in [
+            (
+                [1.0, positive, 2.0],
+                &[
+                    "x > 2",
+                    "x >= 3",
+                    "not (x between 1 and 2)",
+                    "x is distinct from 1",
+                ][..],
+            ),
+            ([1.0, negative, 2.0], &["x < 0", "x <= 0.5"][..]),
+            ([1.0, positive, 1.0], &["x != 1.0", "not (x = 1.0)"][..]),
+        ] {
+            let batch = RecordBatch::try_new(
+                Arc::new(arrow_schema::Schema::new(vec![
+                    arrow_schema::Field::new("x", arrow_schema::DataType::Float64, false),
+                    arrow_schema::Field::new("i", arrow_schema::DataType::Int64, false),
+                ])),
+                vec![
+                    Arc::new(arrow_array::Float64Array::from(values.to_vec())) as ArrayRef,
+                    Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+                ],
+            )
+            .unwrap();
+            let media = file_of(&batch);
+            for filter in filters {
+                // The same filter over the rows in memory, with no footer to
+                // answer from, is the rows' own answer.
+                let expected: Vec<i64> = filter
+                    .parse::<yggdryl::Filter>()
+                    .unwrap()
+                    .apply_arrow_batch(&batch)
+                    .unwrap()
+                    .column(1)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec();
+                assert!(!expected.is_empty(), "{filter} over {values:?}");
+                assert_eq!(
+                    kept(&media, None, filter),
+                    expected,
+                    "{filter} over {values:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_null_row_is_distinct_from_the_one_value_the_extremes_hold() {
+        let batch = RecordBatch::try_new(
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("x", arrow_schema::DataType::Int64, true),
+                arrow_schema::Field::new("i", arrow_schema::DataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![Some(1), None, Some(1)])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let media = file_of(&batch);
+        assert_eq!(kept(&media, None, "x is distinct from 1"), vec![2]);
+        assert_eq!(
+            kept(&media, None, "not (x is not distinct from 1)"),
+            vec![2]
+        );
+        assert_eq!(kept(&media, None, "x is not distinct from 1"), vec![1, 3]);
+        assert!(kept(&media, None, "x = 2").is_empty());
+    }
+
+    #[test]
+    fn a_stored_null_read_as_a_default_is_not_pruned_by_the_statistics() {
+        let batch = RecordBatch::try_new(
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("x", arrow_schema::DataType::Int64, true),
+                arrow_schema::Field::new("i", arrow_schema::DataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![Some(5), None, Some(10)])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let media = file_of(&batch);
+        // Declared non-null, the stored null reads as the default zero.
+        let root = StructType::from_fields([
+            DataType::Int64.required_field("x"),
+            DataType::Int64.required_field("i"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        for filter in ["x = 0", "x < 5", "x is not null"] {
+            let unpruned = filter.replacen('x', "(x + 0)", 1);
+            assert_eq!(
+                kept(&media, Some(root.clone()), filter),
+                kept(&media, Some(root.clone()), &unpruned),
+                "{filter}"
+            );
+        }
+        assert_eq!(kept(&media, Some(root), "x = 0"), vec![2]);
+    }
+
+    #[test]
+    fn legacy_extremes_in_an_unsigned_order_prune_nothing() {
+        use parquet::data_type::ByteArray;
+        use parquet::file::metadata::{ParquetMetaDataReader, ParquetMetaDataWriter};
+        use parquet::file::statistics::{Statistics, ValueStatistics};
+
+        // Written by a current writer, then given the footer a writer before
+        // parquet-mr 1.10 left: only the deprecated extremes, taken in signed
+        // byte order, so 'é' (0xC3...) sorts below 'a'.
+        let batch = RecordBatch::try_new(
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("s", arrow_schema::DataType::Utf8, false),
+                arrow_schema::Field::new("i", arrow_schema::DataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(StringArray::from(vec!["a", "é"])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let bytes = file_of(&batch).handle().read_all_bytes().unwrap();
+        let footer_length =
+            u32::from_le_bytes(bytes[bytes.len() - 8..bytes.len() - 4].try_into().unwrap());
+        let body = bytes.len() - 8 - usize::try_from(footer_length).unwrap();
+        let metadata = ParquetMetaDataReader::new()
+            .parse_and_finish(&bytes::Bytes::from(bytes.clone()))
+            .unwrap();
+        let mut builder = metadata.into_builder();
+        let groups = builder
+            .take_row_groups()
+            .into_iter()
+            .map(|group| {
+                let columns = group
+                    .columns()
+                    .iter()
+                    .map(|column| {
+                        let legacy = if column.column_path().string() == "s" {
+                            Statistics::ByteArray(ValueStatistics::new(
+                                Some(ByteArray::from("é")),
+                                Some(ByteArray::from("a")),
+                                None,
+                                Some(0),
+                                true,
+                            ))
+                        } else {
+                            column.statistics().unwrap().clone()
+                        };
+                        column
+                            .clone()
+                            .into_builder()
+                            .set_statistics(legacy)
+                            .build()
+                            .unwrap()
+                    })
+                    .collect();
+                group
+                    .into_builder()
+                    .set_column_metadata(columns)
+                    .build()
+                    .unwrap()
+            })
+            .collect();
+        let metadata = builder.set_row_groups(groups).build();
+        let mut rewritten = bytes[..body].to_vec();
+        ParquetMetaDataWriter::new(&mut rewritten, &metadata)
+            .finish()
+            .unwrap();
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+        media.write_all_bytes(&rewritten).unwrap();
+
+        assert_eq!(kept(&media, None, "s = 'é'"), vec![2]);
+        assert_eq!(kept(&media, None, "s > 'b'"), vec![2]);
+        assert_eq!(kept(&media, None, "i = 1"), vec![1]);
+    }
+
+    #[test]
+    fn a_derived_column_prunes_nothing_by_what_is_stored_under_its_name() {
+        // Stored all null under `y`; the declared root computes `y` from `x`.
+        let batch = RecordBatch::try_new(
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
+                arrow_schema::Field::new("y", arrow_schema::DataType::Int64, true),
+                arrow_schema::Field::new("i", arrow_schema::DataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![5, 7])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![None, None])) as ArrayRef,
+                Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let media = file_of(&batch);
+        let mut derived = DataType::Int64.nullable_field("y");
+        derived
+            .insert_metadata("TRANSFORM:expression", "x * 2")
+            .unwrap();
+        let root = StructType::from_fields([
+            DataType::Int64.required_field("x"),
+            derived,
+            DataType::Int64.required_field("i"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        // The unprunable spelling is the rows' own answer.
+        assert_eq!(kept(&media, Some(root.clone()), "(y + 0) = 10"), vec![1]);
+        assert_eq!(kept(&media, Some(root), "y = 10"), vec![1]);
     }
 }

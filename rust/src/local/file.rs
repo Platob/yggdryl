@@ -253,17 +253,6 @@ fn map_file(file: &File) -> Result<MmapMut> {
     unsafe { MmapMut::map_mut(file) }.map_err(Error::Io)
 }
 
-/// Map the first `length` bytes of a file for reading only.
-fn map_view(file: &File, length: usize) -> Result<memmap2::Mmap> {
-    // SAFETY: the same aliasing hazard as `map_file`, documented on
-    // `LocalFile::read_all_shared`: the view reads the file's pages in place,
-    // so a truncation below `length` while it lives turns a later access into
-    // SIGBUS. The file handle is only borrowed to establish the mapping, which
-    // then stands on its own. Pages are mapped as they are touched, never up
-    // front: a pruned or projected read touches a fraction of them.
-    unsafe { memmap2::MmapOptions::new().len(length).map(file) }.map_err(Error::Io)
-}
-
 /// Report a poisoned lock without panicking a caller.
 fn poisoned() -> Error {
     Error::Io(std::io::Error::other(
@@ -337,39 +326,6 @@ impl IOBase for LocalFile {
         let count = available.len().min(buffer.len());
         buffer[..count].copy_from_slice(&available[..count]);
         Ok(count)
-    }
-
-    /// Lend the file's logical length as a read-only view of its own pages.
-    ///
-    /// The view is a mapping of its own over the same file, so what it reads
-    /// is exactly what the handle's writes left in the page cache, published
-    /// or not, and it lives as long as the bytes do - past this handle, past
-    /// a close. That is also its hazard, the one the module documentation
-    /// names: shrinking the file below the view's length while the bytes are
-    /// alive - through any handle, in or out of this process - faults the
-    /// reader that touches the lost pages rather than failing it. A table's
-    /// data files are never rewritten in place; a file that is must be read
-    /// with [`Self::read_all_bytes`], which copies.
-    fn read_all_shared(&self) -> Result<crate::SharedBytes> {
-        let mut state = self.state.lock().map_err(|_| poisoned())?;
-        // A missing file reads as empty rather than failing.
-        if !Self::materialize(&mut state, &self.path, false)? {
-            return Ok(crate::SharedBytes::new());
-        }
-        let Some(mapped) = state.as_ref() else {
-            return Ok(crate::SharedBytes::new());
-        };
-        let size =
-            usize::try_from(mapped.size).map_err(|_| crate::iobase::oversized(mapped.size))?;
-        if size == 0 {
-            // A zero-length mapping is refused by the platform; nothing is
-            // there to lend.
-            return Ok(crate::SharedBytes::new());
-        }
-        Ok(crate::SharedBytes::from_owner(map_view(
-            &mapped.file,
-            size,
-        )?))
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {

@@ -178,58 +178,6 @@ mod local {
         }
 
         #[test]
-        fn a_shared_read_lends_the_logical_length_unpublished_writes_included() {
-            let path = path("shared");
-            let mut mapped = LocalFile::create(&path).unwrap();
-            mapped.pwrite(0, b"trade").unwrap();
-            // Nothing is published yet: the file on disk is the mapping's
-            // capacity, and the view must stop at what was written.
-            let lent = mapped.read_all_shared().unwrap();
-            assert_eq!(lent.as_ref(), b"trade");
-
-            mapped.append_bytes(b" book").unwrap();
-            mapped.flush().unwrap();
-            let published = mapped.read_all_shared().unwrap();
-            drop(mapped);
-            // The view outlives the handle that lent it.
-            assert_eq!(published.as_ref(), b"trade book");
-            assert_eq!(lent.as_ref(), b"trade");
-
-            // Reached through a folder, the location resolves to the mapped
-            // file and lends the same bytes.
-            let folder = LocalFolder::new(path.parent().unwrap()).unwrap();
-            let child = folder
-                .child_by_path(path.file_name().unwrap().to_str().unwrap())
-                .unwrap();
-            assert_eq!(child.read_all_shared().unwrap().as_ref(), b"trade book");
-
-            LocalFile::new(&path).unwrap().remove(false).unwrap();
-        }
-
-        #[test]
-        fn a_shared_read_of_a_missing_or_empty_file_is_empty() {
-            let path = path("shared-empty");
-            assert!(
-                LocalFile::new(&path)
-                    .unwrap()
-                    .read_all_shared()
-                    .unwrap()
-                    .is_empty()
-            );
-
-            std::fs::write(&path, b"").unwrap();
-            assert!(
-                LocalFile::new(&path)
-                    .unwrap()
-                    .read_all_shared()
-                    .unwrap()
-                    .is_empty()
-            );
-
-            LocalFile::new(&path).unwrap().remove(false).unwrap();
-        }
-
-        #[test]
         fn a_mapped_file_zero_fills_a_write_gap() {
             let path = path("gap");
             let mut mapped = LocalFile::create(&path).unwrap();

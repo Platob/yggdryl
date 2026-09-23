@@ -619,34 +619,6 @@ pub trait IOBase: Send + IOMedia {
         Ok(bytes)
     }
 
-    /// Read the whole value as shared bytes, lending rather than copying
-    /// where the handle can.
-    ///
-    /// This is [`Self::read_all_bytes`] for a reader that keeps the value
-    /// past the call - a Parquet read hands it to every thread that decodes
-    /// a column. A memory-mapped [`LocalFile`](crate::local::LocalFile)
-    /// answers with a read-only view of the file's own pages, so they are
-    /// decoded where they lie; every other handle answers with
-    /// [`Self::read_all_bytes`], whose copy is what a handle that decodes,
-    /// transcodes or counts its bytes has to make anyway.
-    ///
-    /// ```
-    /// use yggdryl::{IOBase, holder::Buffer};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let handle = Buffer::from_bytes(b"AAPL".to_vec());
-    /// assert_eq!(handle.read_all_shared()?.as_ref(), b"AAPL");
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns the backing store's read failure.
-    fn read_all_shared(&self) -> Result<crate::SharedBytes> {
-        Ok(crate::SharedBytes::from(self.read_all_bytes()?))
-    }
-
     /// Decode one structured [`Scalar`](crate::Scalar) from this handle.
     ///
     /// The media type selects JSON, YAML, or TOML and its content coding. A

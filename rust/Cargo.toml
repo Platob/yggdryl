@@ -44,8 +44,10 @@ arrow-row.workspace = true
 arrow-schema.workspace = true
 arrow-select.workspace = true
 base64.workspace = true
-# Shared, reference-counted byte views: what `IOBase::read_all_shared` lends.
-# Arrow's buffer crate already compiles it, so naming it costs no crate.
+# Shared, reference-counted byte views: the column chunks a Parquet read
+# fetches and the container an Avro read decodes, each shared by the threads
+# that decode it. Arrow's buffer crate already compiles it, so naming it costs
+# no crate.
 bytes = "1"
 # zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }

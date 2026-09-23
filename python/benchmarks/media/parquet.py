@@ -49,7 +49,7 @@ SYMBOLS = np.array(["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BP"
 FILTERS = [
     ("id < 100,000, 1 row group of 32", "id < 100000", [("id", "<", 100_000)]),
     (
-        "id in 2.0M..2.1M, 1 row group of 32",
+        "id in 2.0M..2.1M, 2 row groups of 32",
         "id between 2000000 and 2100000",
         [("id", ">=", 2_000_000), ("id", "<=", 2_100_000)],
     ),

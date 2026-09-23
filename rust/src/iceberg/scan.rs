@@ -198,7 +198,11 @@ pub(super) fn manifest_bounds(
             held.as_deref()
                 .and_then(|bytes| single_to_value(bytes, dtype))
         };
-        let (minimum, maximum) = (decode(&summary.lower_bound), decode(&summary.upper_bound));
+        let (minimum, maximum) = if nan_free(dtype, summary.contains_nan.map(u64::from)) {
+            (decode(&summary.lower_bound), decode(&summary.upper_bound))
+        } else {
+            (None, None)
+        };
         bounds = bounds.with_column(
             column.name(),
             minimum,
@@ -247,8 +251,15 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let dtype = column.dtype();
         let decode = |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
         let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
-        let minimum = decode(bound(&file.lower_bounds, id));
-        let maximum = decode(bound(&file.upper_bounds, id));
+        let nans = lookup(&file.nan_value_counts, id).and_then(|count| u64::try_from(count).ok());
+        let (minimum, maximum) = if nan_free(dtype, nans) {
+            (
+                decode(bound(&file.lower_bounds, id)),
+                decode(bound(&file.upper_bounds, id)),
+            )
+        } else {
+            (None, None)
+        };
         if minimum.is_none() && maximum.is_none() && nulls.is_none() {
             continue;
         }
@@ -284,6 +295,15 @@ fn lookup(counts: &[(i32, i64)], id: i32) -> Option<i64> {
     counts
         .iter()
         .find_map(|(key, count)| (*key == id).then_some(*count))
+}
+
+/// Whether a column's recorded bounds cover every value the filter reads.
+///
+/// Iceberg leaves NaN out of a float column's bounds, while this crate orders
+/// NaN past every number, by its sign - so a float column's bounds count only
+/// where a NaN count of zero proves the file holds no NaN.
+fn nan_free(dtype: &DataType, nans: Option<u64>) -> bool {
+    !dtype.id().is_floating() || nans == Some(0)
 }
 
 /// Read one encoded bound by field id.
@@ -503,7 +523,7 @@ impl Refine {
         use crate::media::IORecordOptions;
 
         let mut options = part.handle.record_options()?;
-        options.set_parquet_threads(self.threads);
+        options.set_file_threads(self.threads);
         if self.target.is_none() {
             // Nothing was asked for, so nothing is pushed down and the file's
             // own columns come back as they are.

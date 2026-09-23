@@ -1320,22 +1320,131 @@ mod avro {
             .unwrap()
         }
 
+        /// Options that decode and encode on four threads whatever the host
+        /// offers, where the `internals` hook can pin them.
+        fn threaded(options: AvroOptions) -> AvroOptions {
+            #[cfg(feature = "internals")]
+            let options = yggdryl::internals::avro_batch::with_threads(options, 4);
+            options
+        }
+
         fn written(batch: &RecordBatch) -> Buffer {
             let mut handle = buffer();
             avro::overwrite_arrow_reader(
                 &mut handle,
                 yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
-                &AvroOptions::new().with_codec("null"),
+                &threaded(AvroOptions::new().with_codec("null")),
             )
             .unwrap();
             handle
         }
 
         fn read(handle: &Buffer, field: Option<&Field>, options: &AvroOptions) -> Vec<RecordBatch> {
-            avro::read_batch_reader(handle, field, options)
+            avro::read_batch_reader(handle, field, &threaded(options.clone()))
                 .unwrap()
                 .collect::<Result<_, _>>()
                 .unwrap()
+        }
+
+        /// The row count of every block a container holds.
+        fn block_counts(handle: &Buffer) -> Vec<u64> {
+            let mut blocks = avro::read_blocks(handle).unwrap();
+            let mut counts = Vec::new();
+            while let Some(block) = blocks.next_block().unwrap() {
+                counts.push(block.count());
+            }
+            counts
+        }
+
+        #[test]
+        fn a_million_booleans_are_cut_into_blocks_a_reader_accepts() {
+            let rows = 1_100_000;
+            let flags: BooleanArray = (0..rows).map(|row| Some(row % 3 == 0)).collect();
+            let batch = RecordBatch::try_new(
+                Arc::new(Schema::new(vec![ArrowField::new(
+                    "flag",
+                    ArrowType::Boolean,
+                    false,
+                )])),
+                vec![Arc::new(flags) as ArrayRef],
+            )
+            .unwrap();
+            let handle = written(&batch);
+            let counts = block_counts(&handle);
+            assert!(counts.iter().all(|count| *count <= 1_000_000), "{counts:?}");
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.column(0).as_ref(), batch.column(0).as_ref());
+        }
+
+        #[test]
+        fn a_sliced_batch_is_cut_as_its_own_rows_not_its_parents() {
+            let batch = trades(ROWS);
+            let owned = block_counts(&written(&batch)).len();
+            // The same rows arriving as zero-copy slices of one batch.
+            let mut handle = buffer();
+            let slices: Vec<RecordBatch> = (0..ROWS)
+                .step_by(10_000)
+                .map(|start| batch.slice(start, 10_000.min(ROWS - start)))
+                .collect();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(batch.schema(), slices),
+                &threaded(AvroOptions::new().with_codec("null")),
+            )
+            .unwrap();
+            let sliced = block_counts(&handle).len();
+            // A slice never splits into more blocks than its rows need: each
+            // 10,000-row slice is at most one block.
+            assert!(
+                sliced <= ROWS.div_ceil(10_000).max(owned),
+                "{sliced} blocks vs {owned}"
+            );
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.num_rows(), ROWS);
+        }
+
+        #[test]
+        fn a_sliced_list_column_is_cut_by_the_child_rows_its_slice_spans() {
+            use arrow_array::builder::{Int64Builder, ListBuilder};
+
+            let rows = 150_000;
+            let mut legs = ListBuilder::new(Int64Builder::new());
+            for row in 0..rows {
+                for leg in 0..4 {
+                    legs.values().append_value(row as i64 * 4 + leg);
+                }
+                legs.append(true);
+            }
+            let legs = legs.finish();
+            let batch = RecordBatch::try_new(
+                Arc::new(Schema::new(vec![ArrowField::new(
+                    "legs",
+                    legs.data_type().clone(),
+                    false,
+                )])),
+                vec![Arc::new(legs) as ArrayRef],
+            )
+            .unwrap();
+            let slices: Vec<RecordBatch> = (0..rows)
+                .step_by(10_000)
+                .map(|start| batch.slice(start, 10_000))
+                .collect();
+            let mut handle = buffer();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(batch.schema(), slices),
+                &threaded(AvroOptions::new().with_codec("null")),
+            )
+            .unwrap();
+            // A 10,000-row slice spans 40,000 child values - far under a
+            // block - so each slice is one block, not a fraction of one.
+            let counts = block_counts(&handle);
+            assert_eq!(counts.len(), rows / 10_000, "{counts:?}");
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.num_rows(), rows);
         }
 
         #[test]
@@ -1363,10 +1472,8 @@ mod avro {
         #[test]
         fn a_batch_never_holds_more_rows_than_asked_for() {
             let handle = written(&trades(ROWS));
-            let options = AvroOptions {
-                batch_row_size: Some(10_000),
-                ..AvroOptions::new()
-            };
+            let mut options = AvroOptions::new();
+            options.batch_row_size = Some(10_000);
             let read = read(&handle, None, &options);
             assert!(read.iter().all(|batch| batch.num_rows() <= 10_000));
             let ids: Vec<i64> = read

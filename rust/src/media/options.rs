@@ -75,6 +75,48 @@ use crate::{
 /// widened into Arrow before entering the core reader surface.
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
 
+/// The threads one file may decode or encode on; `None` is what the host
+/// offers.
+///
+/// Crate-internal, and outside every options value's identity: it changes
+/// how fast a file is read or written and never what is, so two options that
+/// differ only here compare, hash and order as equal.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FileThreads(pub(crate) Option<usize>);
+
+impl FileThreads {
+    /// The bound, or every thread the host offers when there is none.
+    pub(crate) fn resolve(self) -> usize {
+        self.0.unwrap_or_else(|| {
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        })
+    }
+}
+
+impl PartialEq for FileThreads {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for FileThreads {}
+
+impl PartialOrd for FileThreads {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileThreads {
+    fn cmp(&self, _: &Self) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+
+impl std::hash::Hash for FileThreads {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
 /// The read and write settings shared by every record encoding.
 ///
 /// Each encoding stores these as its own fields - there is no shared settings
@@ -1141,15 +1183,19 @@ impl RecordOptions {
             .set_compression_name(compression)
     }
 
-    /// Bound the threads one Parquet file's columns decode or encode on.
+    /// Bound the threads one file decodes or encodes on.
     ///
     /// A table that already reads or writes several files at once hands each
-    /// file its share this way. Another encoding has no column threads, and
-    /// the bound means nothing to it.
-    #[cfg(feature = "parquet")]
-    pub(crate) fn set_parquet_threads(&mut self, threads: usize) {
-        if let Self::Parquet(options) = self {
-            options.threads = Some(threads.max(1));
+    /// file its share this way, so the two levels of parallelism never
+    /// multiply past what it resolved. Parquet splits its row groups and
+    /// columns across the share and Avro its blocks; Arrow IPC and text
+    /// already decode on one thread.
+    pub(crate) fn set_file_threads(&mut self, threads: usize) {
+        match self {
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.threads = Some(threads.max(1)),
+            Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
+            Self::Ipc(_) | Self::Text(_) => {}
         }
     }
 
@@ -1357,5 +1403,23 @@ pub mod internals {
         batches: BatchReader,
     ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
         options.commit_arrow_readers(batches)
+    }
+
+    /// Hand one file its share of a table's threads, as a table scan or
+    /// commit does before it reads or writes the file.
+    pub fn set_file_threads(options: &mut RecordOptions, threads: usize) {
+        options.set_file_threads(threads);
+    }
+
+    /// The thread share a file's options carry, when one was handed down;
+    /// `None` for an encoding that decodes on one thread already.
+    #[must_use]
+    pub fn file_threads(options: &RecordOptions) -> Option<usize> {
+        match options {
+            #[cfg(feature = "parquet")]
+            RecordOptions::Parquet(options) => options.threads,
+            RecordOptions::Avro(options) => options.threads.0,
+            RecordOptions::Ipc(_) | RecordOptions::Text(_) => None,
+        }
     }
 }

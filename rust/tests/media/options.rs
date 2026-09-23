@@ -612,3 +612,29 @@ fn a_full_commit_does_not_read_ahead() {
     assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
     assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
+
+// A table hands each file its share of the threads, whatever encoding the
+// file is: Parquet splits its row groups and columns over it and Avro its
+// blocks, while Arrow IPC and text decode on one thread already.
+#[cfg(all(feature = "internals", feature = "parquet"))]
+#[test]
+fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
+    use yggdryl::avro::AvroOptions;
+    use yggdryl::internals::media_options::{file_threads, set_file_threads};
+    use yggdryl::parquet::ParquetOptions;
+
+    for mut options in [
+        RecordOptions::Avro(AvroOptions::new()),
+        RecordOptions::Parquet(ParquetOptions::new()),
+    ] {
+        assert_eq!(file_threads(&options), None);
+        set_file_threads(&mut options, 3);
+        assert_eq!(file_threads(&options), Some(3));
+        // No share is zero threads.
+        set_file_threads(&mut options, 0);
+        assert_eq!(file_threads(&options), Some(1));
+    }
+    let mut ipc = RecordOptions::Ipc(IpcOptions::new());
+    set_file_threads(&mut ipc, 3);
+    assert_eq!(file_threads(&ipc), None);
+}
