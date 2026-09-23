@@ -16,12 +16,13 @@ use crate::{
 /// Its identity is derived: [`Element::finalize`] digests the facts the
 /// traits know through [`MarketElement::digest_market`], records the code
 /// and sets the identity that code derives, RFC 9562 UUIDv8 over it, so
-/// two elements stating the same things are one identity. Its order is
-/// lineage, as a node's is: it is after the elements it descends from, and
-/// it follows another by descending from its whole lineage.
+/// two elements stating the same things are one identity. It states no
+/// order: with no instant and no predecessor, no element is after another,
+/// and following another takes the chain's cross code, the names it went by
+/// and the market it is about.
 ///
 /// A new element states nothing: no identity, no cross code, no names, no
-/// parents, no sources, a price and a quantity of nothing in no currency
+/// sources, a price and a quantity of nothing in no currency
 /// (`XXX`) and no unit, a side of `UNKNOWN`, no instrument named, no lane
 /// stated. It is what any [`MarketElement`] converts into, dropping
 /// whatever else that element states, and what a [`MarketEventData`] is
@@ -34,7 +35,7 @@ use crate::{
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut element = MarketElementData::default();
 /// element.set_crosscode("O-100".to_owned());
-/// // Where the element was read from: provenance, beside its lineage.
+/// // Where the element was read from: provenance, not content.
 /// element.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// element.set_price("82.5".parse()?);
 /// element.set_quantity(Decimal18::from_int(1_000));
@@ -69,7 +70,6 @@ pub struct MarketElementData {
     currhashcode: u64,
     crosshashcode: u64,
     identifiers: BTreeMap<String, String>,
-    parentuuids: Vec<Uuid>,
     srcuuids: Vec<Uuid>,
     marketoperationid: Option<i32>,
     price: Decimal18,
@@ -114,7 +114,6 @@ impl Default for MarketElementData {
             currhashcode: 0,
             crosshashcode: 0,
             identifiers: BTreeMap::new(),
-            parentuuids: Vec::new(),
             srcuuids: Vec::new(),
             marketoperationid: None,
             price: Decimal18::ZERO,
@@ -200,15 +199,6 @@ impl Element for MarketElementData {
         self.identifiers = identifiers;
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        &self.parentuuids
-    }
-
-    fn set_parentuuids(&mut self, mut parents: Vec<Uuid>) {
-        super::element::canonicalize_uuids(&mut parents);
-        self.parentuuids = parents;
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         &self.srcuuids
     }
@@ -218,8 +208,9 @@ impl Element for MarketElementData {
         self.srcuuids = sources;
     }
 
-    fn is_after(&self, other: &Self) -> bool {
-        self.parentuuids.binary_search(&other.curruuid).is_ok()
+    /// An element with no instant and no predecessor states no order.
+    fn is_after(&self, _: &Self) -> bool {
+        false
     }
 
     fn finalize(&mut self) {
@@ -236,7 +227,6 @@ impl Element for MarketElementData {
         }
         let mut changed = super::element::follow_element(&mut self, previous);
         changed |= super::element::follow_market(&mut self, previous);
-        changed |= super::element::descend_from(&mut self, previous);
         if !changed {
             return None;
         }
@@ -681,15 +671,6 @@ impl Element for MarketEventData {
         self.element.identifiers = identifiers;
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        &self.element.parentuuids
-    }
-
-    fn set_parentuuids(&mut self, mut parents: Vec<Uuid>) {
-        super::element::canonicalize_uuids(&mut parents);
-        self.element.parentuuids = parents;
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         &self.element.srcuuids
     }
@@ -1094,7 +1075,6 @@ fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &
     this.set_currhashcode(other.get_currhashcode());
     this.set_crosshashcode(other.get_crosshashcode());
     this.set_identifiers(other.get_identifiers().clone());
-    this.set_parentuuids(other.get_parentuuids().to_vec());
     this.set_srcuuids(other.get_srcuuids().to_vec());
 }
 
@@ -1179,7 +1159,7 @@ impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
 
 impl From<MarketEventData> for MarketElementData {
     /// The event without its instants: the identity, the codes, the names,
-    /// the parents and the market's facts, moved.
+    /// the sources and the market's facts, moved.
     fn from(event: MarketEventData) -> Self {
         event.element
     }

@@ -4,6 +4,7 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hasher;
 use std::iter::FusedIterator;
+use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -178,14 +179,6 @@ impl Element for MarketOperation {
 
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
         self.as_mut().set_identifiers(identifiers);
-    }
-
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.as_ref().get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.as_mut().set_parentuuids(parents);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {
@@ -483,19 +476,101 @@ impl BookPrice {
 
 /// One side of a book: persistent live orders and quotes, price ordered,
 /// beside the deltas applied since the last emitted book.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// A live entry is shared: a book emitted per instant is a clone of the one
+/// the walk keeps, and the entries an update did not touch are the same
+/// entries in both, so emitting a deep book costs a reference count per
+/// entry rather than a copy of each.
+#[derive(Clone, Debug)]
 pub struct BookSide {
     element: MarketElementData,
-    levels: BTreeMap<BookPrice, Vec<MarketOperation>>,
-    positions: HashMap<LiveKey, BookPrice>,
+    levels: BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
+    /// Derived from `levels` and kept in step by every change, shared with
+    /// clones until one changes: a book emitted per instant copies no index,
+    /// and the side the walk keeps changes its own in place once the
+    /// emitted book is gone.
+    index: Arc<SideIndex>,
     deltas: Vec<MarketOperation>,
+}
+
+/// Two sides are equal by what they hold; the index is derived from it.
+impl PartialEq for BookSide {
+    fn eq(&self, other: &Self) -> bool {
+        self.element == other.element && self.levels == other.levels && self.deltas == other.deltas
+    }
+}
+
+/// Where each live identity of one side stands, and the live entry each
+/// stated `MDEntryID` names within its partition: an update addressing an
+/// entry is answered without walking a side thousands deep.
+#[derive(Clone, Debug, Default)]
+struct SideIndex {
+    positions: HashMap<LiveKey, BookPrice>,
+    entry_ids: HashMap<EntryKey, EntrySlot>,
+}
+
+impl SideIndex {
+    /// Records a live entry under the id it states.
+    fn record(&mut self, operation: &MarketOperation, identity: &LiveKey) {
+        let Some(key) = EntryKey::of(operation) else {
+            return;
+        };
+        let slot = self.entry_ids.entry(key).or_insert(EntrySlot::Many(0));
+        *slot = match slot {
+            EntrySlot::Many(0) => EntrySlot::One(identity.clone()),
+            EntrySlot::One(_) => EntrySlot::Many(2),
+            EntrySlot::Many(count) => EntrySlot::Many(*count + 1),
+        };
+    }
+
+    /// Forgets a live entry leaving the side under the id it states.
+    fn forget(&mut self, operation: &MarketOperation) {
+        let Some(key) = EntryKey::of(operation) else {
+            return;
+        };
+        let std::collections::hash_map::Entry::Occupied(mut slot) = self.entry_ids.entry(key)
+        else {
+            return;
+        };
+        match slot.get_mut() {
+            EntrySlot::Many(count) if *count > 1 => *count -= 1,
+            _ => {
+                slot.remove();
+            }
+        }
+    }
+}
+
+/// One `MDEntryID` within one book partition.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct EntryKey {
+    partition: SnapshotPartition,
+    entry: SmolStr,
+}
+
+impl EntryKey {
+    fn of(operation: &MarketOperation) -> Option<Self> {
+        let entry = operation.get_identifiers().get(ENTRY_ID)?;
+        Some(Self {
+            partition: SnapshotPartition::of(operation),
+            entry: SmolStr::new(entry),
+        })
+    }
+}
+
+/// The live entries one [`EntryKey`] names: the one, or how many where
+/// several do - which the walk over the side answers in its own order.
+#[derive(Clone, Debug)]
+enum EntrySlot {
+    One(LiveKey),
+    Many(usize),
 }
 
 struct RemovedLive {
     identity: LiveKey,
     price: BookPrice,
     index: usize,
-    operation: MarketOperation,
+    operation: Arc<MarketOperation>,
 }
 
 struct SideJournal {
@@ -526,8 +601,7 @@ impl SideJournal {
         for removed in self.removed.into_iter().rev() {
             let level = side.levels.entry(removed.price).or_default();
             let index = removed.index.min(level.len());
-            level.insert(index, removed.operation);
-            side.positions.insert(removed.identity, removed.price);
+            side.insert_live(removed.price, index, removed.operation, removed.identity);
         }
         if let Some(deltas) = self.cleared_deltas {
             side.deltas = deltas;
@@ -552,7 +626,7 @@ impl BookSide {
         let mut side = Self {
             element,
             levels: BTreeMap::new(),
-            positions: HashMap::new(),
+            index: Arc::default(),
             deltas: Vec::new(),
         };
         side.finalize();
@@ -564,6 +638,16 @@ impl BookSide {
     pub(crate) fn from_parts(
         element: MarketElementData,
         live: Vec<MarketOperation>,
+        deltas: Vec<MarketOperation>,
+    ) -> Result<Self> {
+        Self::from_shared_parts(element, live.into_iter().map(Arc::new).collect(), deltas)
+    }
+
+    /// [`Self::from_parts`] over live entries already shared, which a side
+    /// rebuilt around its own entries keeps rather than copies.
+    fn from_shared_parts(
+        element: MarketElementData,
+        live: Vec<Arc<MarketOperation>>,
         deltas: Vec<MarketOperation>,
     ) -> Result<Self> {
         if !element.get_side().is_bid() && !element.get_side().is_ask() {
@@ -578,8 +662,12 @@ impl BookSide {
         let mut side = Self {
             element,
             levels: BTreeMap::new(),
-            positions: HashMap::with_capacity(live.len()),
+            index: Arc::default(),
             deltas: Vec::new(),
+        };
+        let mut built = SideIndex {
+            positions: HashMap::with_capacity(live.len()),
+            entry_ids: HashMap::new(),
         };
         for (index, operation) in live.into_iter().enumerate() {
             let path = format_smolstr!("$.live[{index}]");
@@ -587,7 +675,7 @@ impl BookSide {
             let price = BookPrice::of(operation.get_side(), operation.get_price())
                 .expect("a validated side has a book price");
             let identity = LiveKey::of(&operation);
-            if side.positions.insert(identity.clone(), price).is_some() {
+            if built.positions.insert(identity.clone(), price).is_some() {
                 return Err(invalid(
                     path,
                     format_smolstr!(
@@ -597,8 +685,10 @@ impl BookSide {
                     ),
                 ));
             }
+            built.record(&operation, &identity);
             side.levels.entry(price).or_default().push(operation);
         }
+        side.index = Arc::new(built);
         for level in side.levels.values_mut() {
             if level.iter().any(|held| position_of(held).is_some()) {
                 level.sort_by_key(|held| position_of(held).unwrap_or(u64::MAX));
@@ -614,7 +704,9 @@ impl BookSide {
 
     /// The live orders and quotes, best price first.
     pub fn live(&self) -> impl Iterator<Item = &MarketOperation> {
-        self.levels.values().flat_map(|level| level.iter())
+        self.levels
+            .values()
+            .flat_map(|level| level.iter().map(Arc::as_ref))
     }
 
     /// Deltas applied since this side was last cleared.
@@ -625,12 +717,12 @@ impl BookSide {
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.positions.len()
+        self.index.positions.len()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.positions.is_empty()
+        self.index.positions.is_empty()
     }
 
     /// The best live price on this side.
@@ -750,15 +842,19 @@ impl BookSide {
         let action = operation.get_identifiers().get(ACTION).map(String::as_str);
         let partial = matches!(action, Some("1" | "5"));
         let destination = LiveKey::of(&operation);
-        let occupied_position = position_of(&operation).is_some_and(|position| {
-            self.live()
-                .any(|held| same_partition(held, &operation) && position_of(held) == Some(position))
-        });
+        // Walked only for the one statement it can refuse.
+        let occupied_position = || {
+            position_of(&operation).is_some_and(|position| {
+                self.live().any(|held| {
+                    same_partition(held, &operation) && position_of(held) == Some(position)
+                })
+            })
+        };
         if action == Some("0")
             && operation.get_identifiers().contains_key(ENTRY_POSITION)
             && !operation.get_identifiers().contains_key(ENTRY_ID)
             && !operation.get_identifiers().contains_key(ENTRY_REF_ID)
-            && occupied_position
+            && occupied_position()
         {
             return Err(invalid(
                 "$.operation.identifiers.MDEntryPositionNo",
@@ -783,7 +879,7 @@ impl BookSide {
         let identity = referenced.unwrap_or_else(|| {
             other_side.map_or_else(|| self.identity_of(&operation), LiveKey::of)
         });
-        if (identity != destination && self.positions.contains_key(&destination))
+        if (identity != destination && self.index.positions.contains_key(&destination))
             || other_side.is_some_and(|previous| LiveKey::of(previous) != identity)
         {
             return Err(invalid(
@@ -895,17 +991,16 @@ impl BookSide {
                 .is_none_or(|expiration| expiration > operation.get_currunix())
         {
             let identity = LiveKey::of(&operation);
+            // A level is kept ordered by stated position, unpositioned
+            // entries last, each in arrival order: an entry lands behind
+            // every one its position does not precede.
             let level = self.levels.entry(price).or_default();
-            level.push(operation.clone());
-            if level.iter().any(|held| position_of(held).is_some()) {
-                level.sort_by_key(|held| position_of(held).unwrap_or(u64::MAX));
-            }
+            let key = position_of(&operation).unwrap_or(u64::MAX);
+            let at = level.partition_point(|held| position_of(held).unwrap_or(u64::MAX) <= key);
             if let Some(journal) = journal {
-                self.positions.insert(identity.clone(), price);
-                journal.inserted.push(identity);
-            } else {
-                self.positions.insert(identity, price);
+                journal.inserted.push(identity.clone());
             }
+            self.insert_live(price, at, Arc::new(operation.clone()), identity);
         }
         self.deltas.push(operation);
         Ok(())
@@ -916,7 +1011,7 @@ impl BookSide {
         if let Some(identity) = self.referenced_identity_of(operation) {
             return identity;
         }
-        if self.positions.contains_key(&own) {
+        if self.index.positions.contains_key(&own) {
             return own;
         }
         operation
@@ -934,32 +1029,57 @@ impl BookSide {
     }
 
     fn find_entry_identity(&self, operation: &MarketOperation, wanted: &String) -> Option<LiveKey> {
-        self.live().find_map(|held| {
-            (same_partition(held, operation)
-                && held.get_identifiers().get(ENTRY_ID) == Some(wanted))
-            .then(|| LiveKey::of(held))
-        })
+        let key = EntryKey {
+            partition: SnapshotPartition::of(operation),
+            entry: SmolStr::new(wanted),
+        };
+        match self.index.entry_ids.get(&key)? {
+            EntrySlot::One(identity) => Some(identity.clone()),
+            EntrySlot::Many(_) => self.live().find_map(|held| {
+                (same_partition(held, operation)
+                    && held.get_identifiers().get(ENTRY_ID) == Some(wanted))
+                .then(|| LiveKey::of(held))
+            }),
+        }
+    }
+
+    /// Stands `operation` live at `at` in the level of `price`, the index
+    /// kept in step.
+    fn insert_live(
+        &mut self,
+        price: BookPrice,
+        at: usize,
+        operation: Arc<MarketOperation>,
+        identity: LiveKey,
+    ) {
+        let index = Arc::make_mut(&mut self.index);
+        index.record(&operation, &identity);
+        index.positions.insert(identity, price);
+        self.levels.entry(price).or_default().insert(at, operation);
     }
 
     fn get(&self, identity: &LiveKey) -> Option<&MarketOperation> {
-        let price = self.positions.get(identity)?;
+        let price = self.index.positions.get(identity)?;
         self.levels
             .get(price)?
             .iter()
             .find(|operation| LiveKey::of(operation) == *identity)
+            .map(Arc::as_ref)
     }
 
     fn take_removed(&mut self, identity: &LiveKey) -> Option<RemovedLive> {
-        let price = *self.positions.get(identity)?;
+        let price = *self.index.positions.get(identity)?;
         let level = self.levels.get_mut(&price)?;
         let index = level
             .iter()
             .position(|operation| LiveKey::of(operation) == *identity)?;
         let operation = level.remove(index);
-        self.positions.remove(identity);
         if level.is_empty() {
             self.levels.remove(&price);
         }
+        let held = Arc::make_mut(&mut self.index);
+        held.positions.remove(identity);
+        held.forget(&operation);
         Some(RemovedLive {
             identity: identity.clone(),
             price,
@@ -968,7 +1088,7 @@ impl BookSide {
         })
     }
 
-    fn remove(&mut self, identity: &LiveKey) -> Option<MarketOperation> {
+    fn remove(&mut self, identity: &LiveKey) -> Option<Arc<MarketOperation>> {
         self.take_removed(identity).map(|removed| removed.operation)
     }
 
@@ -1034,12 +1154,14 @@ impl BookSide {
         partitions: &BTreeSet<SnapshotPartition>,
     ) -> Result<()> {
         let mut live = self
-            .live()
+            .levels
+            .values()
+            .flatten()
             .filter(|operation| !partitions.contains(&SnapshotPartition::of(operation)))
             .cloned()
             .collect::<Vec<_>>();
-        live.extend(snapshot);
-        *self = Self::from_parts(self.element.clone(), live, self.deltas.clone())?;
+        live.extend(snapshot.into_iter().map(Arc::new));
+        *self = Self::from_shared_parts(self.element.clone(), live, self.deltas.clone())?;
         Ok(())
     }
 
@@ -1083,12 +1205,7 @@ impl BookSide {
                 element.set_askunit(Some(first.get_unit().to_owned()));
             }
         }
-        finalize_side_element(
-            &mut element,
-            &self.levels,
-            self.positions.len(),
-            &self.deltas,
-        );
+        finalize_side_element(&mut element, &self.levels, self.len(), &self.deltas);
         Ok(element)
     }
 
@@ -1108,22 +1225,27 @@ impl BookSide {
 
 fn finalize_side_element(
     element: &mut MarketElementData,
-    levels: &BTreeMap<BookPrice, Vec<MarketOperation>>,
+    levels: &BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
     live_len: usize,
     deltas: &[MarketOperation],
 ) {
     element.fill_market();
     element.sync_cross();
     let mut digest = element.digest_market();
-    digest.write(&(live_len as u64).to_be_bytes());
-    for operation in levels.values().flatten() {
-        digest.write(operation.kind().as_str().as_bytes());
-        digest.write(&operation.get_curruuid().get().to_be_bytes());
-    }
-    digest.write(&(deltas.len() as u64).to_be_bytes());
-    for operation in deltas {
-        digest.write(operation.kind().as_str().as_bytes());
-        digest.write(&operation.get_curruuid().get().to_be_bytes());
+    // Two facts per entry of a side that may be thousands deep, staged so
+    // the state reads them a chunk at a time.
+    {
+        let mut staged = super::element::Staged::new(&mut digest);
+        staged.write(&(live_len as u64).to_be_bytes());
+        for operation in levels.values().flatten() {
+            staged.write(operation.kind().as_str().as_bytes());
+            staged.write(&operation.get_curruuid().get().to_be_bytes());
+        }
+        staged.write(&(deltas.len() as u64).to_be_bytes());
+        for operation in deltas {
+            staged.write(operation.kind().as_str().as_bytes());
+            staged.write(&operation.get_curruuid().get().to_be_bytes());
+        }
     }
     let hashcode = digest.finish();
     element.set_currhashcode(hashcode);
@@ -1198,14 +1320,6 @@ impl Element for BookSide {
         self.element.set_identifiers(identifiers);
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.element.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.element.set_parentuuids(parents);
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.element.get_srcuuids()
     }
@@ -1222,7 +1336,7 @@ impl Element for BookSide {
         finalize_side_element(
             &mut self.element,
             &self.levels,
-            self.positions.len(),
+            self.index.positions.len(),
             &self.deltas,
         );
     }
@@ -1956,14 +2070,6 @@ impl Element for Book {
 
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
         self.event.set_identifiers(identifiers);
-    }
-
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.event.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.event.set_parentuuids(parents);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {

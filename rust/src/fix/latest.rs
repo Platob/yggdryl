@@ -46,7 +46,7 @@ use smol_str::SmolStr;
 use super::build::{stated as stated_field, typed_spelling};
 use super::entry::wire_text;
 use super::msg::FixMsg;
-use super::registry::FixMap;
+use super::registry::{FixMap, name_key};
 use super::retired::{self, Fill, Part, Rule, When};
 use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
@@ -264,20 +264,35 @@ impl Level {
     /// One logical child remains one child; repeating groups merge occurrence
     /// by occurrence, and an absent scalar is filled from the other statement.
     fn merge_from(&mut self, registry: &FixRegistry, other: Self) {
+        // Each child's identity is resolved once, beside it, and indexed:
+        // the child another statement names is found by a hash rather than
+        // by comparing it against every child held.
+        let mut tags: Vec<Option<i32>> = self
+            .children
+            .iter()
+            .map(|held| child_tag(registry, held))
+            .collect();
+        let mut index = ChildIndex::of(&self.children, &tags);
         for child in other.children {
-            let Some(at) = self
-                .children
-                .iter()
-                .position(|held| same_child(registry, held, &child))
-            else {
+            let tag = child_tag(registry, &child);
+            let Some(at) = index.position(&self.children, &tags, &child, tag) else {
+                index.push(self.children.len(), &child, tag);
                 self.children.push(child);
+                tags.push(tag);
                 continue;
             };
             match (&mut self.children[at], child) {
                 (Child::Flat(field, value), Child::Flat(other_field, other_value)) => {
                     if value.is_null() && !other_value.is_null() {
+                        // The child may now answer to another tag or name,
+                        // so the index is read again from the children.
+                        let moved = tags[at] != tag || field.name() != other_field.name();
                         *field = other_field;
                         *value = other_value;
+                        tags[at] = tag;
+                        if moved {
+                            index = ChildIndex::of(&self.children, &tags);
+                        }
                     }
                 }
                 (Child::Group(_, occurrences), Child::Group(_, other_occurrences)) => {
@@ -322,8 +337,15 @@ impl Level {
                 }
             }
         }
+        // Keyed once per child rather than once per comparison: tagged
+        // members by tag, a group after the scalar sharing its tag, and
+        // untagged bridge fields after them by lowercased name. The sort is
+        // stable, so members one key names keep their order.
         self.children
-            .sort_by(|left, right| child_order(registry, left, right));
+            .sort_by_cached_key(|child| match child_tag(registry, child) {
+                Some(tag) => (false, tag, matches!(child, Child::Group(..)), String::new()),
+                None => (true, 0, false, child.name().to_ascii_lowercase()),
+            });
     }
 
     /// Brings every scalar counter in step with the merged List it counts.
@@ -371,27 +393,103 @@ fn child_tag(registry: &FixRegistry, child: &Child) -> Option<i32> {
     }
 }
 
-fn same_child(registry: &FixRegistry, left: &Child, right: &Child) -> bool {
-    if std::mem::discriminant(left) != std::mem::discriminant(right) {
-        return false;
+/// Where the first child stating each identity stands in one level, by the
+/// keys [`same_child`] compares: shape and tag, and shape and folded name.
+///
+/// The folded name is keyed by [`name_key`], which folds ASCII exactly as
+/// [`crate::folds_equal`] does; a level holding a name outside ASCII, or a
+/// key two names share, is answered by the scan the index stands in for.
+struct ChildIndex {
+    tagged: FixMap<(bool, i32), usize>,
+    /// Untagged children only: a tagged child meets a tagged one by tag.
+    untagged: FixMap<(bool, u64), usize>,
+    named: FixMap<(bool, u64), usize>,
+    /// Whether every held name is ASCII, which is what the name keys fold.
+    exact: bool,
+}
+
+impl ChildIndex {
+    fn of(children: &[Child], tags: &[Option<i32>]) -> Self {
+        let mut index = Self {
+            tagged: FixMap::default(),
+            untagged: FixMap::default(),
+            named: FixMap::default(),
+            exact: true,
+        };
+        for (at, (child, tag)) in children.iter().zip(tags).enumerate() {
+            index.push(at, child, *tag);
+        }
+        index
     }
-    match (child_tag(registry, left), child_tag(registry, right)) {
-        (Some(left), Some(right)) => left == right,
-        _ => crate::folds_equal(left.name(), right.name()),
+
+    /// Records the child at `at`, where no child before it holds its keys.
+    fn push(&mut self, at: usize, child: &Child, tag: Option<i32>) {
+        let group = matches!(child, Child::Group(..));
+        let name = child.name();
+        self.exact &= name.is_ascii();
+        let key = (group, name_key(name));
+        self.named.entry(key).or_insert(at);
+        match tag {
+            Some(tag) => {
+                self.tagged.entry((group, tag)).or_insert(at);
+            }
+            None => {
+                self.untagged.entry(key).or_insert(at);
+            }
+        }
+    }
+
+    /// The first held child [`same_child`] matches with `child`.
+    fn position(
+        &self,
+        children: &[Child],
+        tags: &[Option<i32>],
+        child: &Child,
+        tag: Option<i32>,
+    ) -> Option<usize> {
+        let scan = || {
+            children
+                .iter()
+                .zip(tags)
+                .position(|(held, held_tag)| same_child(held, *held_tag, child, tag))
+        };
+        let name = child.name();
+        if !self.exact || !name.is_ascii() {
+            return scan();
+        }
+        let group = matches!(child, Child::Group(..));
+        let key = (group, name_key(name));
+        // A name key is believed only where the names it joins fold alike;
+        // two names sharing a key are left to the scan.
+        let by_name = |table: &FixMap<(bool, u64), usize>| match table.get(&key) {
+            Some(&at) if crate::folds_equal(children[at].name(), name) => Ok(Some(at)),
+            Some(_) => Err(()),
+            None => Ok(None),
+        };
+        let found = match tag {
+            Some(tag) => by_name(&self.untagged).map(|named| {
+                let tagged = self.tagged.get(&(group, tag)).copied();
+                match (tagged, named) {
+                    (Some(tagged), Some(named)) => Some(tagged.min(named)),
+                    (tagged, named) => tagged.or(named),
+                }
+            }),
+            None => by_name(&self.named),
+        };
+        found.unwrap_or_else(|()| scan())
     }
 }
 
-fn child_order(registry: &FixRegistry, left: &Child, right: &Child) -> std::cmp::Ordering {
-    let left_group = matches!(left, Child::Group(..));
-    let right_group = matches!(right, Child::Group(..));
-    match (child_tag(registry, left), child_tag(registry, right)) {
-        (Some(left), Some(right)) => left.cmp(&right).then_with(|| left_group.cmp(&right_group)),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => left
-            .name()
-            .to_ascii_lowercase()
-            .cmp(&right.name().to_ascii_lowercase()),
+/// Whether two children, each beside its [`child_tag`], state one logical
+/// child: the same shape, and the same tag where both carry one, else the
+/// same folded name.
+fn same_child(left: &Child, left_tag: Option<i32>, right: &Child, right_tag: Option<i32>) -> bool {
+    if std::mem::discriminant(left) != std::mem::discriminant(right) {
+        return false;
+    }
+    match (left_tag, right_tag) {
+        (Some(left), Some(right)) => left == right,
+        _ => crate::folds_equal(left.name(), right.name()),
     }
 }
 
@@ -420,15 +518,14 @@ impl Child {
     /// heads is a repeated flat field and stays whole, because the registry's
     /// scalar field cannot hold it.
     fn unpack(field: Field, value: Scalar) -> Self {
+        // The shape first: a scalar child - nearly every child - is told
+        // apart without reading its metadata for a counter.
+        let (Some(members), Some(rows)) = (item_fields(&field), value.as_sequence()) else {
+            return Self::Flat(field, value);
+        };
         if field.as_fix().counter().ok().flatten().is_none() {
             return Self::Flat(field, value);
         }
-        let Some(members) = item_fields(&field) else {
-            return Self::Flat(field, value);
-        };
-        let Some(rows) = value.as_sequence() else {
-            return Self::Flat(field, value);
-        };
         let occurrences = rows
             .iter()
             .map(|row| {
@@ -1035,6 +1132,12 @@ impl<'msg> Restater<'msg> {
         sources.sort_unstable();
         let parameters = self.parameters(group);
         let mut touched = false;
+        // The level's view, built on the first plan that has to be read
+        // against it and kept until a write lands: every later source reads
+        // the level as it then stands, so a field with no rule costs no
+        // clone at all, one the specification rules costs none either, and
+        // the fields a write left untouched share one rebuilt view.
+        let mut view: Option<(Field, Scalar, u64)> = None;
         for (tag, at) in sources {
             let mut remaining = usize::MAX;
             while remaining > 0 {
@@ -1056,11 +1159,6 @@ impl<'msg> Restater<'msg> {
                     let entries = self.entries(field, Some(tag));
                     let count = entries.len();
                     let source = Source { value, tag };
-                    // The level's view is built on the first plan that has
-                    // to be read against it and never before, so a field
-                    // with no rule costs no clone at all, and one the
-                    // specification rules costs none either.
-                    let mut view = None;
                     for entry in entries.iter() {
                         if planned.is_some() {
                             continue;
@@ -1112,6 +1210,7 @@ impl<'msg> Restater<'msg> {
                     level.apply(write);
                 }
                 touched = true;
+                view = None;
                 remaining -= 1;
                 // A field the specification deprecated is restated and not
                 // kept: what it said now lives under what replaced it, and
@@ -1643,13 +1742,22 @@ struct BoundKey {
     group: Option<SmolStr>,
 }
 
-/// What one binding remembers: the plan it is read from, the root it was
-/// bound against, and the binding - or none, for a term that does not bind
-/// against that root.
-type Remembered = (Arc<Plan>, Field, Option<Arc<Bound>>);
+/// What one binding remembers: the plan it is read from, the generation of
+/// the shape it was bound against, and the binding - or none, for a term
+/// that does not bind against that shape.
+type Remembered = (Arc<Plan>, u64, Option<Arc<Bound>>);
 
 /// The bindings one thread has read, by what names each.
 type BoundTerms = FixMap<BoundKey, Remembered>;
+
+/// The root one shape digest currently stands for, and the generation a
+/// binding read against that shape carries: a digest two shapes share
+/// takes a new generation when the other shape arrives, so no binding of
+/// the first is read for it.
+struct ShapeRoot {
+    root: Field,
+    generation: u64,
+}
 
 thread_local! {
     /// Every rule term this thread has bound, by the shape of the root it
@@ -1657,11 +1765,51 @@ thread_local! {
     /// binding read against one root answers every root of that shape, and
     /// a capture states a few shapes a hundred thousand times each.
     static BOUND_TERMS: RefCell<BoundTerms> = RefCell::new(BoundTerms::default());
+    /// The root each shape digest stands for. A root is compared against it
+    /// once and then stands for the shape itself, so the rules read against
+    /// one message's root verify its shape once between them.
+    static SHAPE_ROOTS: RefCell<FixMap<u64, ShapeRoot>> = RefCell::new(FixMap::default());
+    static SHAPE_GENERATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// How many bindings one thread remembers; past it a term is still bound
 /// and simply not kept.
 const REMEMBERED_BINDINGS: usize = 4_096;
+
+/// How many shapes one thread remembers a root for; past it a shape takes a
+/// fresh generation on every read and its terms are bound every time.
+const REMEMBERED_SHAPES: usize = 4_096;
+
+/// The generation of the shape `root` is, whose digest is `shape`.
+fn shape_generation(root: &Field, shape: u64) -> u64 {
+    SHAPE_ROOTS.with(|held| {
+        let mut held = held.borrow_mut();
+        if let Some(known) = held.get_mut(&shape) {
+            if std::ptr::eq(known.root.fields(), root.fields()) {
+                return known.generation;
+            }
+            if same_shape(&known.root, root) {
+                known.root = root.clone();
+                return known.generation;
+            }
+        }
+        let generation = SHAPE_GENERATIONS.with(|next| {
+            let generation = next.get();
+            next.set(generation + 1);
+            generation
+        });
+        if held.len() < REMEMBERED_SHAPES || held.contains_key(&shape) {
+            held.insert(
+                shape,
+                ShapeRoot {
+                    root: root.clone(),
+                    generation,
+                },
+            );
+        }
+        generation
+    })
+}
 
 /// The text one parameter supplies, where it supplies one.
 fn parameter_text(parameters: &[(&str, Scalar)], name: &str) -> Option<SmolStr> {
@@ -1676,8 +1824,8 @@ fn parameter_text(parameters: &[(&str, Scalar)], name: &str) -> Option<SmolStr> 
 /// per shape of root per thread; nothing where it does not bind, exactly
 /// as a bind's refusal reads.
 ///
-/// The shape digest names a bucket; the root the remembered binding was
-/// read against says whether this root is that shape, so a digest two
+/// The shape digest names a bucket; the root it currently stands for says
+/// whether this root is that shape, compared once per root, so a digest two
 /// shapes share costs a bind and never a wrong answer.
 fn bound_term(
     plan: &Arc<Plan>,
@@ -1693,10 +1841,11 @@ fn bound_term(
         msgtype: parameter_text(parameters, "msgtype"),
         group: parameter_text(parameters, "group"),
     };
+    let generation = shape_generation(root, shape);
     let known = BOUND_TERMS.with(|held| {
         held.borrow()
             .get(&key)
-            .filter(|(_, schema, _)| same_shape(schema, root))
+            .filter(|(_, held, _)| *held == generation)
             .map(|(_, _, bound)| bound.clone())
     });
     if let Some(bound) = known {
@@ -1710,8 +1859,8 @@ fn bound_term(
     .map(Arc::new);
     BOUND_TERMS.with(|held| {
         let mut held = held.borrow_mut();
-        if held.len() < REMEMBERED_BINDINGS {
-            held.insert(key, (Arc::clone(plan), root.clone(), bound.clone()));
+        if held.len() < REMEMBERED_BINDINGS || held.contains_key(&key) {
+            held.insert(key, (Arc::clone(plan), generation, bound.clone()));
         }
     });
     bound

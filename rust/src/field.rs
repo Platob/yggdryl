@@ -60,20 +60,19 @@ pub type FieldRef = Arc<ArrowField>;
 /// Scalar traits ignore the projection cache. Clones share metadata, nested
 /// datatype state, and a populated Arrow projection until an effective change
 /// invalidates the cache.
+///
+/// `repr(C)` with the facts every leaf shares first: they sit at one offset
+/// whatever `D` is, so [`Field`]'s accessors for them compile to one load
+/// rather than a jump over every leaf.
+#[repr(C)]
 pub struct FieldOf<D: DataTypeValue> {
     pub(crate) name: SmolStr,
-    pub(crate) dtype: D,
-    pub(crate) nullable: bool,
-    /// The per-column facts only this datatype's fields carry.
-    ///
-    /// Zero-sized for every datatype but the dictionary-encoded one, so a
-    /// field that has no dictionary identifier does not carry room for one.
-    pub(crate) sidecar: D::Sidecar,
     pub(crate) metadata: Metadata,
     pub(crate) arrow: OnceLock<FieldRef>,
+    pub(crate) nullable: bool,
     /// The leaf's datatype widened to the root, derived when `dtype` is set.
     ///
-    /// Not a second fact: `dtype` above is the only one, and this is that one
+    /// Not a second fact: `dtype` below is the only one, and this is that one
     /// read back in the root's spelling. It is here so a reader can borrow a
     /// `DataType` - the whole crate asks for one - without any ask rebuilding
     /// it. Inline rather than boxed or lazy, because widening is one variant
@@ -83,6 +82,12 @@ pub struct FieldOf<D: DataTypeValue> {
     /// Those two writes are the only ones, so this never answers for a
     /// datatype the field no longer has.
     pub(crate) widened: DataType,
+    pub(crate) dtype: D,
+    /// The per-column facts only this datatype's fields carry.
+    ///
+    /// Zero-sized for every datatype but the dictionary-encoded one, so a
+    /// field that has no dictionary identifier does not carry room for one.
+    pub(crate) sidecar: D::Sidecar,
 }
 
 impl<D: DataTypeValue + Default> FieldOf<D> {

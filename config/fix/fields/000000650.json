@@ -190,27 +190,6 @@
     }
   },
   {
-    "name": "parentuuids",
-    "dtype": {
-      "type": "list",
-      "field": {
-        "name": "parentuuid",
-        "dtype": {
-          "type": "uuid"
-        },
-        "nullable": false,
-        "metadata": {}
-      }
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65041",
-      "FIX:transient": "false",
-      "description": "The identities of the events this one descends from, sorted and unique.",
-      "display": "ParentUuids"
-    }
-  },
-  {
     "name": "seqnum",
     "dtype": {
       "type": "uint64"

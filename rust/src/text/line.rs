@@ -42,7 +42,7 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
 /// | `get_curruuid` | [`Event::time_uuid`] over the millisecond, sequence, code and cross-hash seed |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
-/// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
+/// | `get_srcuuids` | none: a line is read from a handle |
 ///
 /// The identity orders by millisecond and row sequence, then fingerprints the
 /// code under the cross-hash seed. The code also tells two identical bodies
@@ -229,7 +229,6 @@ struct Stated {
     currhashcode: Option<u64>,
     crosshashcode: Option<u64>,
     identifiers: Option<BTreeMap<String, String>>,
-    parentuuids: Option<Vec<Uuid>>,
     srcuuids: Option<Vec<Uuid>>,
     currunix: Option<i64>,
     state: Option<State>,
@@ -1443,16 +1442,6 @@ impl Element for TextLine {
 
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
         self.stated.identifiers = Some(identifiers);
-        self.derive_content();
-    }
-
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.stated.parentuuids.as_deref().unwrap_or_default()
-    }
-
-    fn set_parentuuids(&mut self, mut parents: Vec<Uuid>) {
-        crate::graph::element::canonicalize_uuids(&mut parents);
-        self.stated.parentuuids = Some(parents);
         self.derive_content();
     }
 

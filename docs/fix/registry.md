@@ -28,8 +28,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 32 definitions from tag 65003: 30 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 32 scalar fields and two groups: 34 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 32 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 31 definitions from tag 65003: 29 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 31 scalar fields and two groups: 33 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 31 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -1281,7 +1281,7 @@ Registration states the set tag 35 reads by - the one the field names, else `msg
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 30 crate scalar fields and two Map groups beside the two seeded clocks, so `len()` is 34. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 29 crate scalar fields and two Map groups beside the two seeded clocks, so `len()` is 33. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `LocalFolder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

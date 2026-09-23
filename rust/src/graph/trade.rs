@@ -209,14 +209,6 @@ impl Element for Trade {
         self.event.set_identifiers(identifiers);
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.event.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.event.set_parentuuids(parents);
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.event.get_srcuuids()
     }

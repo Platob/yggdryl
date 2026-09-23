@@ -144,11 +144,6 @@ mod dataset {
             );
             assert_eq!(after.get_currunix(), before.get_currunix(), "row {index}");
             assert_eq!(after.get_prevuuid(), before.get_prevuuid(), "row {index}");
-            assert_eq!(
-                after.get_parentuuids(),
-                before.get_parentuuids(),
-                "row {index}"
-            );
             assert_eq!(after.get_srcuuids(), before.get_srcuuids(), "row {index}");
             assert_eq!(after.get_seqnum(), before.get_seqnum(), "row {index}");
             assert_eq!(after.get_state(), before.get_state(), "row {index}");

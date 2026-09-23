@@ -617,8 +617,8 @@ declare module './index' {
     /**
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each stated as the one after the live message it follows -
-     * its `prevuuid`, `prevunix`, `seqnum`, the predecessor among its
-     * `parentuuids` and the chain's `creaunix` - and settled again.
+     * its `prevuuid`, `prevunix`, `seqnum` and the chain's `creaunix` - and
+     * settled again.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**

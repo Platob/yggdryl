@@ -314,29 +314,18 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
     Ok(())
 }
 
-/// Validate one value against the datatype it claims, outside any row.
-///
-/// The check half of [`dtype_scalar`]: a value with no field around it
-/// validates through the same walk a column value takes and reports the same
-/// failures, rooted at the value itself. A null is accepted by every datatype
-/// that can spell one, because nullability belongs to the field that holds
-/// the column rather than to the value in it - and a union and a run-end
-/// layout cannot: each spells absence through a child, so a bare null is not
-/// a value either of them holds.
-fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
-    if spells_bare_null(dtype, value) {
-        return Ok(());
+/// A failure of a value checked with no field around it, rooted at the value:
+/// the check half of [`dtype_scalar`] reports what a column value's walk
+/// reports, at the value itself.
+fn rooted_failure(failure: ValidationFailure) -> Error {
+    let mut path = String::from("$");
+    for segment in failure.path {
+        segment.append_diagnostic(&mut path);
     }
-    validate_dtype_value(dtype, value, 0).map_err(|failure| {
-        let mut path = String::from("$");
-        for segment in failure.path {
-            segment.append_diagnostic(&mut path);
-        }
-        Error::InvalidRecord {
-            path: SmolStr::from(path),
-            reason: failure.reason,
-        }
-    })
+    Error::InvalidRecord {
+        path: SmolStr::from(path),
+        reason: failure.reason,
+    }
 }
 
 /// The canonical value one datatype holds, from any value it accepts: the one
@@ -361,10 +350,21 @@ pub(crate) fn dtype_scalar(dtype: &DataType, value: Scalar) -> Result<Scalar> {
 /// default planner materializes a member through this half alone: a code's
 /// neutral member is the empty text, and a member is not caller text.
 pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar> {
-    validate_dtype_value_for(dtype, &value)?;
     if spells_bare_null(dtype, &value) {
         return Ok(value);
     }
+    // A spelling is read once, here: the check and the rewrite below each
+    // begin by reading one, so both are handed what this read answered, and
+    // a refused spelling is refused as the check refuses it.
+    let value = match read_as(dtype, &value) {
+        Some(read) => {
+            read.map_err(|error| rooted_failure(ValidationFailure::new(reason_of(&error))))?
+        }
+        None => value,
+    };
+    // Not the bare-null exemption again: it was answered for what arrived,
+    // and a spelling that read as null is checked as the value it read as.
+    validate_dtype_value(dtype, &value, 0).map_err(rooted_failure)?;
     // The value has no field around it, so a refusal is already rooted at the
     // value itself, exactly as the check above roots one.
     let (canonical, changed) = canonicalize_dtype_value(dtype, &value)?;
