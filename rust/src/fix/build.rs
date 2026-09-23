@@ -35,7 +35,6 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
-use crate::sequence::SequenceType;
 use crate::text::TextBytes;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 use crate::{Side, State};
@@ -2011,8 +2010,7 @@ impl Slot {
             // An unlabeled value cannot type as a component. Preserve its
             // raw entry and occurrence position; the typed occurrence is null.
             let mut item = match self.field.dtype() {
-                DataType::Sequence(SequenceType::List(item))
-                | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
+                DataType::List(item) | DataType::LargeList(item) => item.as_ref().clone(),
                 _ => DataType::from(StructType::from_fields([])?)
                     .required_field(occurrence_name(&self.field)),
             };
@@ -2184,7 +2182,10 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime(leaf) => {
+        leaf_dtype @ DataType::DateTime64 { .. } => {
+            let leaf = &leaf_dtype
+                .datetime_type()
+                .expect("the variant was just matched");
             let timezone = leaf.timezone();
             // The zone a value states outranks the column's, and a column
             // stating none takes no zone rather than Z: a `LocalMktDate` and

@@ -44,10 +44,17 @@ mod media;
 mod parameters;
 mod protocol;
 mod scalar;
+mod serie;
 mod text;
 mod timezone;
 mod uri;
 mod version;
+
+/// The extension's allocator: decoded Arrow buffers are large and short
+/// lived, and mimalloc reuses their pages where the system allocator maps
+/// fresh ones for every batch.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -444,6 +451,15 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
+    module.add_class::<serie::PySerie>()?;
+    module.add_class::<serie::PyListSerie>()?;
+    module.add_class::<serie::PyLargeListSerie>()?;
+    module.add_class::<serie::PyListViewSerie>()?;
+    module.add_class::<serie::PyLargeListViewSerie>()?;
+    module.add_class::<serie::PyFixedSizeListSerie>()?;
+    module.add_class::<serie::PyMapSerie>()?;
+    module.add_class::<serie::PyStructSerie>()?;
+    module.add_class::<serie::PySerieReader>()?;
     module.add_class::<crate::arrow::PyArrowScalar>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;

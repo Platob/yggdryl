@@ -51,3 +51,5 @@ mod position;
 mod reader;
 #[path = "text/sep.rs"]
 mod sep;
+#[path = "text/typed.rs"]
+mod typed;

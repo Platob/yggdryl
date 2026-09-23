@@ -1,49 +1,59 @@
-//! A compiled Arrow record-batch cast, reusable across every batch of one
-//! schema.
+//! A compiled Arrow cast from one field to another, reusable across every
+//! column or batch of the source layout.
 //!
-//! Everything a cast decides from two schemas alone - which source column
-//! answers which declared field, the recursive conversion each pair needs, the
-//! target schema, and the kernel options - is decided once here. Only the
-//! masks, offsets, and dictionary reachability that vary per batch are left to
-//! `apply`, and an exact cast hands the caller's own batch back.
+//! Everything a cast decides from two fields alone - which source child
+//! answers which declared field, the recursive conversion each pair needs,
+//! and the kernel options - is decided once here. Only the masks, offsets,
+//! and dictionary reachability that vary per column are left to `apply`, and
+//! an identity plan hands the column's own buffers back.
 
-use std::sync::Arc;
-
-use arrow_array::RecordBatch as ArrowRecordBatch;
 use arrow_pyarrow::FromPyArrow;
 use arrow_schema::Schema as ArrowSchema;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
-use yggdryl::ArrowCastPlan;
+use yggdryl::{ArrowCastPlan, Field as CoreField, Serie};
 
-use crate::field::{PyField, arrow_schema_to_pyarrow, core_field_from_value};
-use crate::iomedia::batch_to_pyarrow;
+use crate::datatype::{arrow_array_from_pyarrow, core_field_to_pyarrow};
+use crate::field::{PyField, core_field_from_value};
+use crate::iomedia::record_batch_from_value;
+use crate::serie::{PySerie, described};
 use crate::{cast_options, value_error};
 
-/// One Arrow cast compiled from a source schema and a declared root.
+/// Resolve a plan's source once: a `pyarrow.Schema` is the record root
+/// `row` its columns are children of, and anything else is a field.
+fn source_of(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    if value.is_instance(&value.py().import("pyarrow")?.getattr("Schema")?)? {
+        let schema = ArrowSchema::from_pyarrow_bound(value)?;
+        return CoreField::from_arrow_schema("row", &schema).map_err(value_error);
+    }
+    core_field_from_value(value)
+}
+
+/// One Arrow cast compiled from a source field and a target field.
 ///
 /// Compiling is the schema-dependent half of a cast, so a reader that yields
-/// a thousand batches of one schema pays for it once. The plan is immutable
-/// and carries no batch, so the same one answers every batch of that schema.
+/// a thousand batches of one layout pays for it once. The plan is immutable
+/// and holds no column, so the same one answers every column of that layout.
 #[pyclass(
     name = "ArrowCastPlan",
     module = "yggdryl._native",
+    frozen,
     skip_from_py_object
 )]
 pub(crate) struct PyArrowCastPlan {
-    inner: Arc<ArrowCastPlan>,
+    inner: ArrowCastPlan,
 }
 
 #[pymethods]
 impl PyArrowCastPlan {
-    /// Compile the cast from one source schema to one non-null Struct root.
+    /// Compile the cast from `source` to `target`.
     ///
-    /// Every failure the two schemas alone can produce - an unsupported
+    /// Every failure the two fields alone can produce - an unsupported
     /// conversion, an ambiguous case-insensitive name, a required field the
     /// source cannot fill under `nullability="strict"` - is raised here
-    /// rather than on the first batch.
+    /// rather than on the first column.
     #[new]
-    #[pyo3(signature = (source, target, *, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (source, target, *, safe = true, nullability = "default", representation = "value"))]
     fn new(
         source: &Bound<'_, PyAny>,
         target: &Bound<'_, PyAny>,
@@ -51,42 +61,28 @@ impl PyArrowCastPlan {
         nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        let source = ArrowSchema::from_pyarrow_bound(source)?;
+        let options = cast_options(safe, nullability, representation)?;
+        let source = source_of(source)?;
         let target = core_field_from_value(target)?;
         Ok(Self {
-            inner: Arc::new(
-                ArrowCastPlan::compile(
-                    &source,
-                    &target,
-                    cast_options(safe, nullability, representation)?,
-                )
-                .map_err(value_error)?,
-            ),
+            inner: ArrowCastPlan::compile(&source, &target, options).map_err(value_error)?,
         })
     }
 
-    /// The declared root this plan casts to.
+    /// The Arrow field an input must lay out as, as a `pyarrow.Field`.
     #[getter]
-    fn field(&self) -> PyField {
-        PyField::from_inner(self.inner.as_field().clone())
+    fn source<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let source = CoreField::try_from(self.inner.as_source().as_ref()).map_err(value_error)?;
+        core_field_to_pyarrow(py, &source)
     }
 
-    /// The source schema this plan was compiled for.
-    ///
-    /// A batch of any other schema needs its own plan, which is what makes
-    /// one plan reusable without a per-batch check.
+    /// The field every cast lands under.
     #[getter]
-    fn source_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        arrow_schema_to_pyarrow(py, self.inner.as_source_schema())
+    fn target(&self) -> PyField {
+        PyField::from_inner(self.inner.as_target().clone())
     }
 
-    /// The schema every batch this plan answers carries.
-    #[getter]
-    fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        arrow_schema_to_pyarrow(py, self.inner.as_schema())
-    }
-
-    /// Whether a present value may be converted.
+    /// Whether a present value that does not convert becomes null.
     #[getter]
     fn safe(&self) -> bool {
         self.inner.as_options().is_safe()
@@ -104,51 +100,51 @@ impl PyArrowCastPlan {
         self.inner.as_options().representation().as_str()
     }
 
+    /// Whether the plan hands every input of its source layout straight back.
+    #[getter]
+    fn is_identity(&self) -> bool {
+        self.inner.is_identity()
+    }
+
     /// Run the plan over no rows, so a failure surfaces before any exist.
     ///
-    /// This is what an empty backend asks before a lazy read is attempted:
-    /// everything the values themselves could still refuse - an out-of-range
-    /// number under `safe=True`, a null in a required column - is left to
+    /// Everything the values themselves could still refuse - an out-of-range
+    /// number under `safe=False`, a null in a required column - is left to
     /// `apply`, because no value has been seen yet.
     fn preflight(&self) -> PyResult<()> {
         self.inner.preflight().map_err(value_error)
     }
 
-    /// Cast one `PyArrow` `RecordBatch` through this plan.
+    /// Cast one column of the source layout through this plan.
     ///
-    /// A batch that is already exactly what the plan answers is handed back
-    /// as the caller's own object, so an exact cast costs no arrays.
-    fn apply<'py>(
-        &self,
-        py: Python<'py>,
-        batch: &Bound<'py, PyAny>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let value = ArrowRecordBatch::from_pyarrow_bound(batch)?;
-        let source_schema = value.schema();
-        let source_columns = value.columns().to_vec();
-        let cast = self.inner.apply(value).map_err(value_error)?;
-        if Arc::ptr_eq(&source_schema, &cast.schema())
-            && source_columns
-                .iter()
-                .zip(cast.columns())
-                .all(|(left, right)| Arc::ptr_eq(left, right))
-        {
-            return Ok(batch.clone());
-        }
-        batch_to_pyarrow(py, cast)
+    /// A `Serie` is cast as it is; a `pyarrow.RecordBatch` is first the
+    /// record column of its own schema and any other Arrow array the column
+    /// of its own layout, exactly as `Serie.from_arrow_batch` and
+    /// `Serie.from_arrow_array` read them with no field.
+    fn apply(&self, py: Python<'_>, serie: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let cast = if let Ok(serie) = serie.extract::<PyRef<'_, PySerie>>() {
+            self.inner.apply(&serie.inner)
+        } else {
+            let options = *self.inner.as_options();
+            let pyarrow = py.import("pyarrow")?;
+            let landed = if serie.is_instance(&pyarrow.getattr("RecordBatch")?)? {
+                Serie::from_arrow_batch(None, &record_batch_from_value(serie)?, options)
+            } else {
+                Serie::from_arrow_array(None, arrow_array_from_pyarrow(serie)?, options)
+            };
+            landed.and_then(|landed| self.inner.apply(&landed))
+        };
+        described(py, cast.map_err(value_error)?)
     }
 
     fn __repr__(&self) -> String {
+        let options = self.inner.as_options();
         format!(
-            "ArrowCastPlan(field={:?}, safe={}, nullability={:?}, representation={:?})",
-            self.inner.as_field().name(),
-            if self.inner.as_options().is_safe() {
-                "True"
-            } else {
-                "False"
-            },
-            self.inner.as_options().nullability().as_str(),
-            self.inner.as_options().representation().as_str(),
+            "ArrowCastPlan(target={:?}, safe={}, nullability={:?}, representation={:?})",
+            self.inner.as_target().name(),
+            if options.is_safe() { "True" } else { "False" },
+            options.nullability().as_str(),
+            options.representation().as_str(),
         )
     }
 }

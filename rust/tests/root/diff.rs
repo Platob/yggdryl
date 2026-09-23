@@ -107,7 +107,6 @@ mod internal {
 
 mod comparison {
     use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone, UnionMode};
-    use yggdryl::{DateTimeType, DurationType, TimeType};
 
     #[test]
     fn equals_can_ignore_only_metadata_recursively() {
@@ -228,34 +227,34 @@ mod comparison {
         let item = || Field::new("item", DataType::utf8(), true);
         let pairs = vec![
             (
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::NAIVE,
-                }),
-                DataType::DateTime(DateTimeType::DateTime64 {
+                },
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             (
-                DataType::Time(TimeType::Time32(TimeUnit::Second)),
-                DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+                DataType::Time32(TimeUnit::Second),
+                DataType::Time32(TimeUnit::Millisecond),
             ),
             (
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+                DataType::Time64(TimeUnit::Microsecond),
+                DataType::Time64(TimeUnit::Nanosecond),
             ),
             (
-                DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
-                DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
+                DataType::Duration32(TimeUnit::Second),
+                DataType::Duration32(TimeUnit::Nanosecond),
             ),
             (
-                DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
-                DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+                DataType::Duration64(TimeUnit::Second),
+                DataType::Duration64(TimeUnit::Nanosecond),
             ),
             (
-                DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
-                DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+                DataType::Duration32(TimeUnit::Second),
+                DataType::Duration64(TimeUnit::Second),
             ),
             (
                 DataType::interval(TimeUnit::YearMonth).unwrap(),

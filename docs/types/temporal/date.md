@@ -6,7 +6,7 @@ One calendar day, held either as a count of days or as the milliseconds of its m
 
 | | |
 | --- | --- |
-| Owned | `DateType` and its two leaves, `DataType::Date(DateType)`, the `DateField` marker, and the `Date32` and `Date64` values |
+| Owned | `DateType` and its two leaves, `DataType::Date32` and `DataType::Date64` - `DateType` the family's view over them - the `DateField` marker, and the `Date32` and `Date64` values |
 | Validated | nothing at the datatype: a date takes no parameter, so `date32()` and `date64()` are `const` and `DateType::validate` never refuses. The value is where the rules live - a `Date32` counts days, a `Date64` milliseconds, and both are naive |
 | Lazy | nothing; the leaf is `Copy` and the value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -26,8 +26,8 @@ one.
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
-| `date32` | `Date(DateType::Date32)` | `date` |
-| `date64` | `Date(DateType::Date64)` | `date_millisecond` |
+| `date32` | `DataType::Date32` | `date` |
+| `date64` | `DataType::Date64` | `date_millisecond` |
 
 No logical name answers a date column: FIX's `LocalMktDate` and `UTCDateOnly`
 resolve to that day's midnight as a [datetime](datetime.md), so a settlement
@@ -42,7 +42,7 @@ logical vocabulary.
     use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit};
 
     // Two leaves, no parameter: the unit is what the width means.
-    assert_eq!(DataType::date32(), DataType::Date(DateType::Date32));
+    assert_eq!(DataType::date32(), DataType::Date32);
     assert_eq!(DataType::date64().date_type(), Some(DateType::Date64));
     assert_eq!(DateType::ALL, [DateType::Date32, DateType::Date64]);
     assert_eq!(DateType::default(), DateType::Date32);
@@ -258,10 +258,10 @@ unit and zone first.
 | `date64` | `Date64` | `date64` |
 
 Both projections are Arrow's own and both round-trip, so a date column crosses
-a boundary as the width it declared. A `date32` column casts to a `Date32Array`
-and a `date64` one to a `Date64Array`: the family has no single array type, so
-[the cast](../cast.md) answers an `ArrayRef` and the leaf says which to narrow
-to.
+a boundary as the width it declared. A `date32` column is a `Date32Serie` and
+a `date64` one a `Date64Serie`: the family has no single column type, so
+[the cast](../cast.md) answers a [`Serie`](../serie.md) and `as_date32` or
+`as_date64` narrows it to the leaf.
 
 ## Text
 

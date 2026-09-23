@@ -126,7 +126,6 @@ impl Term {
                     .map(|predicate| where_branch(predicate.tree()))
                     .collect(),
             ),
-            Self::Attribute(attribute) => Tree::leaf(format!("attribute &holder.{attribute}")),
             Self::Parameter(name) => Tree::leaf(format!("parameter :{name}")),
             Self::And(operands) => Tree::node("and", children(operands)),
             Self::Or(operands) => Tree::node("or", children(operands)),
@@ -294,7 +293,6 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
                 branches,
             )
         }
-        Kind::Attribute(attribute) => (format!("attribute &holder.{attribute}"), Vec::new()),
         Kind::And(operands) => ("and".to_owned(), children(operands)),
         Kind::Or(operands) => ("or".to_owned(), children(operands)),
         Kind::Not(inner) => ("not".to_owned(), vec![one(inner)]),
@@ -325,7 +323,7 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
         }
         Kind::Negate(inner) => ("negate".to_owned(), vec![one(inner)]),
         Kind::Function(function, arguments) => (format!("call {function}"), children(arguments)),
-        Kind::Cast(inner, safety) => (cast_label(node.field.dtype(), *safety), vec![one(inner)]),
+        Kind::Cast(inner, safety, _) => (cast_label(node.field.dtype(), *safety), vec![one(inner)]),
         Kind::Case {
             branches,
             otherwise,

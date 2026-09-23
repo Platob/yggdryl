@@ -13,6 +13,7 @@
 //! readings. A dictionary's contribution is membership on the field -
 //! `field.fix.branches` - and never a key a lookup takes.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
@@ -1397,11 +1398,11 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
     match field.dtype() {
         CoreDataType::Struct(_) => {
             let children = field.fields();
-            if let Some(items) = value.as_sequence() {
+            if let Some(items) = value.sequence_rows() {
                 if items.len() == children.len() {
                     let row: Vec<Scalar> = children
                         .iter()
-                        .zip(items)
+                        .zip(items.iter())
                         .map(|(child, item)| named_rows(child, item.clone()))
                         .collect();
                     return Scalar::from_sequence(row);
@@ -1424,9 +1425,16 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
                 .and_then(|named| Scalar::from_struct(named).ok())
                 .unwrap_or(value)
         }
-        CoreDataType::Sequence(sequence) => {
+        sequence_dtype @ (CoreDataType::List(_)
+        | CoreDataType::ListView(_)
+        | CoreDataType::FixedSizeList(..)
+        | CoreDataType::LargeList(_)
+        | CoreDataType::LargeListView(_)) => {
+            let sequence = &sequence_dtype
+                .as_serie_type()
+                .expect("the variant was just matched");
             let item = sequence.item();
-            let Some(entries) = value.as_sequence() else {
+            let Some(entries) = value.sequence_rows() else {
                 return value;
             };
             let entries: Vec<Scalar> = entries
@@ -1841,9 +1849,9 @@ impl PyFixMsg {
         let mut values = self
             .inner
             .as_value()
-            .as_sequence()
-            .unwrap_or_default()
-            .to_vec();
+            .sequence_rows()
+            .map(Cow::into_owned)
+            .unwrap_or_default();
         values.extend(typed_values);
         let mut field = root.clone();
         field
@@ -3013,7 +3021,7 @@ impl PyFixMsgIterator {
 
     fn __next__(&mut self) -> Option<(String, PyScalar)> {
         let child = self.field.fields().get(self.index)?;
-        let value = self.value.get(self.index)?.clone();
+        let value = self.value.get(self.index)?.into_owned();
         self.index += 1;
         Some((child.name().to_owned(), PyScalar::from_inner(value)))
     }

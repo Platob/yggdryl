@@ -22,7 +22,6 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::DecimalType;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -608,7 +607,7 @@ impl PartitionSpec {
     /// bare field array a v1 table writes.
     pub fn from_json(document: &Scalar) -> Result<Self> {
         // v1 wrote `partition-spec` as a bare array of fields with no id.
-        if let Some(entries) = document.as_sequence() {
+        if let Some(entries) = document.as_serie() {
             let mut fields = Vec::with_capacity(entries.len());
             for (offset, entry) in entries.iter().enumerate() {
                 let offset = i32::try_from(offset).map_err(|_| {
@@ -622,7 +621,7 @@ impl PartitionSpec {
                     ))
                 })?;
                 fields.push(PartitionField::from_json_with_field_id(
-                    entry,
+                    &entry,
                     Some(field_id),
                 )?);
             }
@@ -642,15 +641,15 @@ impl PartitionSpec {
             })?;
         let entries = document
             .get_key_str("fields")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a \"fields\" array in partition spec {spec_id}"
                 ))
             })?;
         let mut fields = Vec::with_capacity(entries.len());
-        for entry in entries {
-            fields.push(PartitionField::from_json(entry)?);
+        for entry in entries.iter() {
+            fields.push(PartitionField::from_json(&entry)?);
         }
         let spec = Self { spec_id, fields };
         spec.validate_shape()?;
@@ -757,6 +756,49 @@ impl PartitionTransform {
         &self.source
     }
 
+    /// A column whose equal values always compute one partition value.
+    ///
+    /// A write groups a batch's rows by these keys and evaluates
+    /// [`Self::partition_value`] once per distinct key rather than once per
+    /// row, which is only the same partition when equal keys can never compute
+    /// two values. The source column itself has that property for every
+    /// transform. A timestamp under a calendar transform has a coarser one -
+    /// the UTC hour for `hour`, the UTC day for `day`, `month` and `year` -
+    /// because every instant of one day computes one day, month and year, so
+    /// a column of distinct instants still keys a handful of groups. `void`
+    /// computes null whatever the row holds, so it keys nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a timestamp column cannot be read as its count.
+    pub(super) fn grouping_key(
+        &self,
+        source: &arrow_array::ArrayRef,
+    ) -> Result<Option<arrow_array::ArrayRef>> {
+        use arrow_array::cast::AsArray;
+        use arrow_array::types::Int64Type;
+
+        let (seconds, unit) = match (self.transform, source.data_type()) {
+            (Transform::Void, _) => return Ok(None),
+            (Transform::Hour, arrow_schema::DataType::Timestamp(unit, _)) => (3_600, *unit),
+            (
+                Transform::Day | Transform::Month | Transform::Year,
+                arrow_schema::DataType::Timestamp(unit, _),
+            ) => (86_400, *unit),
+            _ => return Ok(Some(std::sync::Arc::clone(source))),
+        };
+        let step = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit)).unwrap_or(1)
+            * seconds;
+        // A timestamp is its count, so the reinterpretation copies nothing;
+        // flooring keeps an instant before the epoch in its own period.
+        let counts =
+            arrow_cast::cast(source, &arrow_schema::DataType::Int64).map_err(Error::Arrow)?;
+        let keys: arrow_array::Int64Array = counts
+            .as_primitive::<Int64Type>()
+            .unary(|count| count.div_euclid(step));
+        Ok(Some(std::sync::Arc::new(keys)))
+    }
+
     /// Compute one partition value through Apache Iceberg's scalar transform.
     pub(super) fn partition_value(&self, value: Scalar) -> Result<Scalar> {
         if value.is_null() || self.transform == Transform::Void {
@@ -783,6 +825,34 @@ impl PartitionTransform {
                 Transform::Day => Ok(Scalar::date32(days)),
                 _ => self.official_value(Scalar::date32(days)),
             };
+        }
+
+        // `day` over an instant floors its count to the UTC day, as the
+        // specification and the Java implementation do. iceberg-rust 0.10
+        // truncates a count before the epoch toward zero first, which moves
+        // the last second of a day before 1970 into the next day - and a
+        // write keys every instant of one UTC day together, so one row would
+        // label the whole day.
+        if self.transform == Transform::Day {
+            if let DataType::DateTime64 { unit, .. } = self.source.dtype() {
+                let count = super::value::single_value(&value, self.source.dtype())
+                    .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
+                    .map(i64::from_le_bytes)
+                    .ok_or_else(|| {
+                        invalid(format_smolstr!(
+                            "expected a timestamp scalar for the day transform, got {}",
+                            value.kind()
+                        ))
+                    })?;
+                let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
+                let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected a day number fitting i32, got {}",
+                        count.div_euclid(per_day)
+                    ))
+                })?;
+                return Ok(Scalar::date32(days));
+            }
         }
 
         self.official_value(value)
@@ -863,9 +933,9 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
 
 fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
     let primitive = official_primitive_type(dtype)?;
-    let bytes = if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    let bytes = if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         let (unscaled, actual_scale) = value.as_decimal().ok_or_else(|| {
             invalid(format_smolstr!(
@@ -895,9 +965,9 @@ fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
 }
 
 fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scalar> {
-    if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
             OfficialLiteral::Int128(unscaled) => dtype.scalar(Scalar::d128(*unscaled, *scale)),

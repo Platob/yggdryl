@@ -1,7 +1,7 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
-const { fields } = require('yggdryl')
+const { Serie, fields } = require('yggdryl')
 
 const iterations = Number.parseInt(
   process.env.YGGDRYL_BENCH_ITERATIONS ?? '100000',
@@ -31,12 +31,16 @@ function benchmark(name, count, operation) {
 }
 
 const int64 = fields.int64('id').dtype
+const required = fields.int64('id', { nullable: false })
 const nullable = fields.utf8('note', { nullable: true })
-const child = fields.struct('child', [
-  fields.int32('quantity'),
-  fields.utf8('sku'),
-])
-const nested = fields.fixedSizeList('children', child, 4)
+// Required all the way down, so the nested default is materialized rather
+// than the logical null a nullable factory field defaults to.
+const child = fields.struct(
+  'child',
+  [fields.int32('quantity', { nullable: false }), fields.utf8('sku')],
+  { nullable: false },
+)
+const nested = fields.fixedSizeList('children', child, 4, { nullable: false })
 const sparkSource = fields.struct('payload', [
   fields.uint8('small'),
   fields.largeUtf8('text'),
@@ -45,12 +49,12 @@ const sparkSource = fields.struct('payload', [
 
 // Resolve Apache Arrow JS and its schema support before timing scalar IPC
 // projection. Each measured call still owns its documented one-row IPC copy.
-int64.defaultArrowScalar()
+Serie.fromDefault(required).intoArrowScalar()
 
 benchmark('defaults/datatype_scalar_js', iterations, () => int64.defaultJSValue())
 benchmark('defaults/field_nullable_js', iterations, () => nullable.defaultJSValue())
 benchmark('defaults/nested_struct_js', Math.max(1, Math.floor(iterations / 10)), () =>
-  nested.defaultJSValue()[3].quantity,
+  nested.defaultJSValue()[3][0],
 )
 benchmark('defaults/cached_hint', iterations, () => nested.defaultJSHint())
 benchmark('defaults/arrow_compat_clone', iterations, () =>
@@ -60,7 +64,7 @@ benchmark('defaults/spark_nested_normalize', Math.max(1, Math.floor(iterations /
   sparkSource.intoSchemeCompat('spark'),
 )
 benchmark('defaults/arrow_scalar_ipc', Math.max(1, Math.floor(iterations / 1_000)), () =>
-  int64.defaultArrowScalar(),
+  Serie.fromDefault(required).intoArrowScalar(),
 )
 
 globalThis.__yggdrylDefaultsBenchSink = sink

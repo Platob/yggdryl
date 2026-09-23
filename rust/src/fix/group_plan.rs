@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 const MAX_DEPTH: usize = 64;
@@ -148,12 +147,8 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
                 .map(|child| nullable_layout(child, true, depth + 1))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::Sequence(SequenceType::List(item)) => {
-            DataType::list(nullable_layout(item, false, depth + 1)?)
-        }
-        DataType::Sequence(SequenceType::LargeList(item)) => {
-            DataType::large_list(nullable_layout(item, false, depth + 1)?)
-        }
+        DataType::List(item) => DataType::list(nullable_layout(item, false, depth + 1)?),
+        DataType::LargeList(item) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
         // Native maps are already complete values, not sparse wire groups:
         // their entry and key nullability must remain exactly as declared.
         _ => field.dtype().clone(),

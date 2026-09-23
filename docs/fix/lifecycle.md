@@ -390,9 +390,9 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     // One order, one chain: the fill is the second in it and names the
     // order before it.
     assert_eq!(rows[0].get(crossuuid), rows[1].get(crossuuid));
-    assert_eq!(rows[0].get(seqnum), Some(&Scalar::Null), "a first message states no place");
-    assert_eq!(rows[1].get(seqnum), Some(&Scalar::from(1_u64)));
-    assert!(rows[0].get(prevuuid).is_some_and(Scalar::is_null));
+    assert_eq!(rows[0].get(seqnum).as_deref(), Some(&Scalar::Null), "a first message states no place");
+    assert_eq!(rows[1].get(seqnum).as_deref(), Some(&Scalar::from(1_u64)));
+    assert!(rows[0].get(prevuuid).is_some_and(|value| value.is_null()));
     assert!(rows[1].get(prevuuid).is_some_and(|held| !held.is_null()));
     ```
 

@@ -25,7 +25,7 @@
 //! unary      := "-" unary | accessor
 //! accessor   := atom ("." identifier | "[" segment "]")*
 //! segment    := integer | "'key'" | [integer] ":" [integer] | term
-//! atom       := literal | "(" term ")" | column | "&holder." attribute | ":" parameter
+//! atom       := literal | "(" term ")" | column | ":" parameter
 //!             | "cast" "(" term "as" datatype ")" | "case" .. "end"
 //!             | function "(" term,* ")" | "[" term,* "]" | "{" term ":" term,* "}"
 //!             | "struct" "(" term "as" identifier,* ")" | datatype text
@@ -45,7 +45,6 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::Attribute;
 use super::display::{is_bare_identifier, is_reserved};
 use super::path::{FieldPath, FieldSegment};
 use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
@@ -223,6 +222,10 @@ struct Spanned {
 }
 
 /// The multi-character symbols, longest first so `<=` never reads as `<`.
+///
+/// No term takes `&`. It is tokenized so a bracketed location part reads
+/// the raw text between its brackets - `[R&D]` - which the whole input must
+/// tokenize to reach; anywhere else it is refused as an unexpected symbol.
 const SYMBOLS: [&str; 23] = [
     "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "&", "*",
     "+", "-", "/", "%", "=",
@@ -1354,9 +1357,6 @@ impl<'input> Parser<'input> {
             self.expect_symbol("}")?;
             return Ok(Term::Map(Arc::from(entries)));
         }
-        if self.eat_symbol("&") {
-            return self.attribute(position);
-        }
         if self.eat_symbol(":") {
             return Ok(Term::parameter(self.identifier()?));
         }
@@ -1470,35 +1470,6 @@ impl<'input> Parser<'input> {
         }
         self.cursor += 1;
         Ok(Term::column(word))
-    }
-
-    /// Read `&holder.<attribute>`, the one attribute spelling.
-    fn attribute(&mut self, position: usize) -> Result<Term> {
-        let holder = self.identifier()?;
-        if !holder.eq_ignore_ascii_case("holder") {
-            return Err(parse_error(
-                position,
-                format_smolstr!("expected `&holder.<attribute>`, got `&{holder}`"),
-            ));
-        }
-        self.expect_symbol(".")?;
-        let name_position = self.position();
-        let name = self.identifier()?;
-        if name.eq_ignore_ascii_case("partition") {
-            self.expect_symbol("[")?;
-            let key_position = self.position();
-            let Some(Token::Text(column)) = self.advance() else {
-                return Err(parse_error(
-                    key_position,
-                    "expected a quoted partition column name",
-                ));
-            };
-            self.expect_symbol("]")?;
-            return Ok(Term::attribute(Attribute::Partition(column)));
-        }
-        let attribute = Attribute::from_name(&name)
-            .ok_or_else(|| super::attribute::unknown(&name, name_position))?;
-        Ok(Term::attribute(attribute))
     }
 
     fn arguments(&mut self) -> Result<Vec<Term>> {
@@ -1728,7 +1699,6 @@ fn number_literal(text: &str, position: usize) -> Result<Term> {
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
-    use crate::DecimalType;
     use DataType as D;
 
     let fail = |expected: &str| {
@@ -1754,9 +1724,13 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         // count is a physical detail and the literal is what a person wrote.
         // The reading is the crate's one text reading, so a literal and a
         // cast of the same text land on the same value.
-        D::Date(_) | D::Time(_) | D::DateTime(_) | D::Duration(_) => {
-            Scalar::from_temporal_text(dtype, text)?
-        }
+        D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::DateTime64 { .. }
+        | D::Duration32(_)
+        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
             .parse::<u128>()
             .map(Scalar::from)
@@ -1770,15 +1744,15 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         D::Float64 => {
             Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
         }
-        D::Decimal(DecimalType::Decimal32 { scale, .. })
-        | D::Decimal(DecimalType::Decimal64 { scale, .. })
-        | D::Decimal(DecimalType::Decimal128 { scale, .. }) => Scalar::d128(
-            decimal_from_text(text, *scale).ok_or_else(|| {
-                fail("an exact decimal that fits the declared precision and scale")
-            })?,
-            *scale,
-        ),
-        D::Decimal(DecimalType::Decimal256 { scale, .. }) => Scalar::d256(
+        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
+            Scalar::d128(
+                decimal_from_text(text, *scale).ok_or_else(|| {
+                    fail("an exact decimal that fits the declared precision and scale")
+                })?,
+                *scale,
+            )
+        }
+        D::Decimal256 { scale, .. } => Scalar::d256(
             i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")
             })?),

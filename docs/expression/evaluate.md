@@ -6,7 +6,7 @@ Application over every target: the streamed Arrow tier, native records, the boun
 
 | Key | Value |
 | --- | --- |
-| Owns | the Arrow tier, `apply_arrow_reader` / `apply_arrow_batch` / `apply_arrow_array` on every layer, `apply_records`, `Bound::evaluate` / `filter` / `filter_reader`, `Table::plan_matching` / `scan_matching` |
+| Owns | the Arrow tier, `apply_arrow_reader` / `apply_arrow_batch` / `apply_arrow_array` on every layer, `apply_records`, `Bound::evaluate` / `filter` / `filter_reader`, `Bound::statistics_prune` / `statistics_certainty` over `Bounds`, `Table::plan_matching` / `scan_matching` |
 | Reader first | `apply_arrow_reader` binds once and wraps the stream; `apply_arrow_batch` is one batch through that same reader, so nothing is collected and one batch returned unchanged is the caller's own |
 | Arrow tier | An optimization of the row tier, never a second definition; a property test asserts equality on every operator, nulls and `nan` included |
 | Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else runs the row evaluator and gathers, which is slower |
@@ -154,7 +154,6 @@ The column spells through the row code, and Arrow answers only spellings a row r
 | Target | Method | Produces |
 | --- | --- | --- |
 | one row (`Scalar`) | `eval`, `matches` | the `Scalar` the term computes, or whether it is exactly `true` |
-| one holder (`dyn Attributes`) | `matches_holder`, `settle_holder` | what the holder alone settles, three-valued |
 | one Arrow `RecordBatch` | `evaluate`, `filter_mask`, `filter` | one column of answers, a null-free mask, the kept rows |
 | one Arrow stream | `filter_reader` | the filtering reader, one batch at a time |
 | one container's statistics (`Bounds`) | `statistics_prune`, `statistics_certainty` | whether any row can match; the `Option<bool>` certainty |
@@ -163,8 +162,8 @@ The column spells through the row code, and Arrow answers only spellings a row r
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
-use yggdryl::expression::{Attributes, Bounds, Term};
-use yggdryl::{Field, Scalar, Url};
+use yggdryl::expression::{Bounds, Term};
+use yggdryl::{Field, Scalar};
 
 // Non-nullable at the root, because the batch below projects it to Arrow.
 let schema = "trades:struct<ccy:utf8,size:bigint>".parse::<Field>()?.with_nullable(false);
@@ -192,21 +191,61 @@ let bounds = Bounds::new(Some(1_000))
     .with_column("size", Some(Scalar::from(1_i64)), Some(Scalar::from(5_i64)), Some(0));
 assert_eq!(bound.statistics_certainty(&bounds), Some(false));
 
-// A holder settles only the conjuncts that need no row - here none - and an
-// unknown answer excludes nothing.
-let url = Url::from_str("file:///lake/year=2024/part-0.parquet")?;
-let holder: &dyn Attributes = &url;
-assert!(bound.matches_holder(holder)?);
-
 // The stream application is the filtering reader: only the EUR row survives.
 let filtered = bound.filter_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]));
 let kept: usize = filtered.map(|batch| batch.unwrap().num_rows()).sum();
 assert_eq!(kept, 1);
 ```
 
+## Statistics pruning
+
+`statistics_prune` answers whether any row of a container can match from the per-column minimums, maximums, and null counts a Parquet footer, an Iceberg manifest, or a Hive path carries.
+
+Rust and Python; JavaScript has no `Bounds`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expression::{Bounds, Term};
+    use yggdryl::{Field, Scalar};
+
+    let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
+    let bounds = Bounds::new(Some(1_000))
+        .with_column("ccy", Some(Scalar::from("EUR")), Some(Scalar::from("USD")), Some(0))
+        .with_column(
+            "size",
+            Some(Scalar::from(1_i64)),
+            Some(Scalar::from(99_i64)),
+            Some(4),
+        );
+
+    // Provably empty: no row can hold a size above the file's maximum.
+    assert!(!"size > 1000".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
+    // Not provable either way: the range overlaps, so the file is read.
+    assert!("size > 50".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
+    // A null test the count settles outright.
+    assert!("size is null".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Bounds, Field, Term
+
+    schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
+    bounds = Bounds(rows=1_000).with_column("ccy", "EUR", "USD", 0).with_column("size", 1, 99, 4)
+
+    # Provably empty: no row can hold a size above the file's maximum.
+    assert not Term("size > 1000").bind(schema).statistics_prune(bounds)
+    # Not provable either way: the range overlaps, so the file is read.
+    assert Term("size > 50").bind(schema).statistics_prune(bounds)
+    # A null test the count settles outright.
+    assert Term("size is null").bind(schema).statistics_prune(bounds)
+    ```
+
 ## Iceberg: one predicate, every level of the metadata
 
-The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list, a null test or a holder attribute prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. Pushdown and time travel are on [Reading](../media/index.md#iceberg).
+The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list or a null test prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. Pushdown and time travel are on [Reading](../media/index.md#iceberg).
 
 === "Rust"
 
@@ -216,13 +255,10 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 
     let table = Table::open(LocalFolder::new("/lake/trades")?)?;
 
-    let plan = table.plan_matching("&holder.partition['year'] = '2024'")?;
+    let plan = table.plan_matching("year = 2024")?;
     println!("{} manifests never opened", plan.manifests_skipped());
 
-    let reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
-        None,
-    )?;
+    let reader = table.scan_matching("ccy = 'EUR' and price > 100 and year = 2024", None)?;
     ```
 
 === "Python"
@@ -232,12 +268,10 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 
     table = Table("/lake/trades")
 
-    plan = table.plan_matching("&holder.partition['year'] = '2024'")
+    plan = table.plan_matching("year = 2024")
     print(plan["manifests_skipped"], "manifests never opened")
 
-    reader = table.scan_matching(
-        "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'"
-    )
+    reader = table.scan_matching("ccy = 'EUR' and price > 100 and year = 2024")
     ```
 
 === "JavaScript"
@@ -247,20 +281,19 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 
     const table = iceberg.Table.open('/lake/trades')
 
-    const plan = table.planMatching("&holder.partition['year'] = '2024'")
+    const plan = table.planMatching('year = 2024')
     console.log(plan.manifestsSkipped, 'manifests never opened')
 
-    const reader = table.scanMatching(
-      "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
-    )
+    const reader = table.scanMatching("ccy = 'EUR' and price > 100 and year = 2024")
     ```
 
 ## Edges
 
 - Mask keeps some rows -> the batch is copied; only a mask keeping every row is zero-copy.
 - `apply_arrow_batch` on a plan with `order by` -> the one batch is sorted; on a reader every batch is collected first, and nothing else collects.
-- Holder settles no conjunct -> `matches_holder` is true; an unknown answer excludes nothing.
 - `Bounds` prove no row can match -> `Some(false)`; the container is skipped unread.
+- Unprovable predicate -> `statistics_prune` returns `true`, one read.
+- A Hive path -> the tightest statistic there is: minimum equal to maximum, nothing null.
 - Conjunct proven by the partition tuple -> dropped rather than re-tested; what no metadata level settles is left for the rows.
 - Text to temporal cast on a column -> the row reader spells first; the kernel sees only spellings a row refuses.
 - `apply_arrow` / `applyArrow` -> the input kind is preserved: record batch, table, or reader.
@@ -272,9 +305,10 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --test expression -- arrow::grammar bind::grammar selector::grammar
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- arrow::grammar bind::grammar pushdown::grammar selector::grammar
     cargo test --features "parquet iceberg" -p yggdryl --test expression -- plan::streams
     cargo test --features "iceberg internals parquet" -p yggdryl --test iceberg -- mod_::planning
+    cargo bench -p yggdryl --bench expression -- expression_prune
     cargo bench -p yggdryl --bench expression -- expression_mask
     cargo bench -p yggdryl --bench expression -- kernel_mask
     cargo bench -p yggdryl --bench expression -- expression_filter
@@ -285,7 +319,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "shapes_a_stream or records or batch_at_once or partitioned_table or one_predicate or one_plan"
+    python/.venv/bin/python -m pytest python/tests/test_expression.py -k "shapes_a_stream or records or batch_at_once or statistics or partitioned_table or one_predicate or one_plan"
     ```
 
 === "JavaScript"

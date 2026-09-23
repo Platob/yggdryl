@@ -550,4 +550,31 @@ mod encoding {
             .to_string();
         assert!(refused.contains("38"), "{refused}");
     }
+
+    #[test]
+    fn a_list_column_encodes_as_the_run_of_its_rows() {
+        let object = Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap();
+        let cases = [
+            (
+                DataType::Int64,
+                vec![Scalar::from(1_i64), Scalar::from(2_i64)],
+            ),
+            (
+                DataType::from_str("map<utf8, int64>").unwrap(),
+                vec![object.clone(), object],
+            ),
+        ];
+        for (item, rows) in cases {
+            let column =
+                yggdryl::Serie::from_scalars(Field::new("item", item, false), rows.iter().cloned())
+                    .unwrap();
+            let run = Scalar::from_sequence(rows);
+            let column = Scalar::from_struct([("xs", Scalar::from(column))]).unwrap();
+            let run = Scalar::from_struct([("xs", run)]).unwrap();
+            assert_eq!(
+                Variant::encode(&column).unwrap(),
+                Variant::encode(&run).unwrap()
+            );
+        }
+    }
 }

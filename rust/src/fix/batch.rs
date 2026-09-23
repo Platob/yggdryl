@@ -69,7 +69,6 @@ use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH, Spread};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
-use crate::enums::EnumType;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -472,7 +471,7 @@ impl FixCodec {
     ///
     /// Two paths, and the source's own schema decides which. A source that
     /// already carries `field`'s columns is cast batch by batch through the
-    /// crate's one [Arrow cast](crate::arrow::cast_reader) - column kernels,
+    /// crate's one [Arrow cast](crate::SerieReader) - column kernels,
     /// no row loop, one plan for the whole stream, and a value that will not
     /// convert nulled rather than refused - and a source that is already
     /// exactly `field` is handed back untouched. A source carrying the
@@ -503,11 +502,12 @@ impl FixCodec {
         // target, so it is read as messages and filled. One that does not is
         // a projection already, and a cast is what a projection needs.
         if read.index_of(FIXENTRIES_COLUMN).is_none() {
-            return Ok(crate::arrow::cast_reader(
+            return Ok(crate::SerieReader::from_arrow_reader(
+                Some(&target),
                 source,
-                &target,
                 crate::ArrowCastOptions::new(),
-            )?);
+            )?
+            .into_arrow_reader());
         }
         // The capture's own columns are the source row's statement about
         // its line, and this pass keeps the row it read: each message
@@ -594,7 +594,7 @@ fn closes(carried: &mut Carried, charge: u64, target: u64, rows: usize) -> bool 
 /// bytes in any layout, a dictionary or run-end encoding of one included.
 fn carries_payload(dtype: &DataType) -> bool {
     match dtype {
-        DataType::Enum(EnumType::Dictionary(held)) => carries_payload(&held.value),
+        DataType::Dictionary(held) => carries_payload(&held.value),
         DataType::RunEndEncoded(held) => carries_payload(held.values.dtype()),
         other => matches!(
             other.kind(),

@@ -33,7 +33,6 @@ use smol_str::SmolStr;
 
 use crate::string::is_text_storage;
 use crate::{DataType, Scalar, TimeUnit};
-use crate::{DateTimeType, DateType, TimeType};
 
 /// The literal Iceberg writes for a null partition value.
 pub(super) const NULL_TEXT: &str = crate::media::partition::NULL_PARTITION;
@@ -77,12 +76,12 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Int64
             | DataType::Float32
             | DataType::Float64
-            | DataType::Date(DateType::Date32)
-            | DataType::Time(TimeType::Time64(TimeUnit::Microsecond))
-            | DataType::DateTime(DateTimeType::DateTime64 {
+            | DataType::Date32
+            | DataType::Time64(TimeUnit::Microsecond)
+            | DataType::DateTime64 {
                 unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
                 ..
-            })
+            }
             | DataType::Uuid
             | DataType::Bytes(_)
     )
@@ -98,30 +97,30 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
     let datum = match dtype {
         DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
         DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
-        DataType::Date(DateType::Date32) => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
+        DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
         DataType::Int64 => OfficialDatum::long(count(value)?),
         #[allow(clippy::cast_possible_truncation)]
         DataType::Float32 => OfficialDatum::float(value.as_f64()? as f32),
         DataType::Float64 => OfficialDatum::double(value.as_f64()?),
-        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)) => {
+        DataType::Time64(TimeUnit::Microsecond) => {
             OfficialDatum::time_micros(count(value)?).ok()?
         }
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone,
-        }) if timezone.is_naive() => OfficialDatum::timestamp_micros(count(value)?),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } if timezone.is_naive() => OfficialDatum::timestamp_micros(count(value)?),
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             ..
-        }) => OfficialDatum::timestamptz_micros(count(value)?),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } => OfficialDatum::timestamptz_micros(count(value)?),
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone,
-        }) if timezone.is_naive() => OfficialDatum::timestamp_nanos(count(value)?),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } if timezone.is_naive() => OfficialDatum::timestamp_nanos(count(value)?),
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             ..
-        }) => OfficialDatum::timestamptz_nanos(count(value)?),
+        } => OfficialDatum::timestamptz_nanos(count(value)?),
         // A bound over a text-storage string or a code is a string bound: the
         // value is the trimmed text.
         DataType::String(parameters) if is_text_storage(*parameters) => {
@@ -171,17 +170,14 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
     let value = match (dtype, datum.literal()) {
         (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Scalar::from(*value),
         (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Scalar::from(*value),
-        (DataType::Date(DateType::Date32), OfficialPrimitiveLiteral::Int(value)) => {
-            Scalar::date32(*value)
-        }
+        (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Scalar::date32(*value),
         (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Scalar::from(*value),
-        (DataType::Time(TimeType::Time64(unit)), OfficialPrimitiveLiteral::Long(value)) => {
+        (DataType::Time64(unit), OfficialPrimitiveLiteral::Long(value)) => {
             Scalar::time64(*value, *unit, crate::Timezone::NAIVE).ok()?
         }
-        (
-            DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }),
-            OfficialPrimitiveLiteral::Long(value),
-        ) => Scalar::datetime64(*value, *unit, *timezone).ok()?,
+        (DataType::DateTime64 { unit, timezone }, OfficialPrimitiveLiteral::Long(value)) => {
+            Scalar::datetime64(*value, *unit, *timezone).ok()?
+        }
         (DataType::Float32, OfficialPrimitiveLiteral::Float(value)) => {
             Scalar::from(crate::Float32::from_f32((*value).into_inner()))
         }
@@ -220,29 +216,27 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
     let primitive = match dtype {
         DataType::Boolean if matches!(bytes, [0] | [1]) => OfficialPrimitiveType::Boolean,
         DataType::Int32 if bytes.len() == 4 => OfficialPrimitiveType::Int,
-        DataType::Date(DateType::Date32) if bytes.len() == 4 => OfficialPrimitiveType::Date,
+        DataType::Date32 if bytes.len() == 4 => OfficialPrimitiveType::Date,
         DataType::Int64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Long,
         DataType::Float32 if bytes.len() == 4 => OfficialPrimitiveType::Float,
         DataType::Float64 if matches!(bytes.len(), 4 | 8) => OfficialPrimitiveType::Double,
-        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)) if bytes.len() == 8 => {
-            OfficialPrimitiveType::Time
-        }
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::Time64(TimeUnit::Microsecond) if bytes.len() == 8 => OfficialPrimitiveType::Time,
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone,
-        }) if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::Timestamp,
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::Timestamp,
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             ..
-        }) if bytes.len() == 8 => OfficialPrimitiveType::Timestamptz,
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } if bytes.len() == 8 => OfficialPrimitiveType::Timestamptz,
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone,
-        }) if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::TimestampNs,
-        DataType::DateTime(DateTimeType::DateTime64 {
+        } if bytes.len() == 8 && timezone.is_naive() => OfficialPrimitiveType::TimestampNs,
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             ..
-        }) if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
+        } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
         DataType::String(parameters) if is_text_storage(*parameters) => {
             OfficialPrimitiveType::String
         }

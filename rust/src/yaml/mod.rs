@@ -20,7 +20,7 @@ use crate::text::wire::{RawValue, from_raw};
 use crate::text::{
     Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
 };
-use crate::{Error, Field, Result};
+use crate::{Error, Field, Result, Serie};
 
 use self::parser::YamlParser;
 use crate::code_scalars;
@@ -568,13 +568,19 @@ fn write_node<W: Write>(
         return write_node(writer, &held.scalar()?, columns, position, width);
     }
     match value {
-        Scalar::Sequence(values) if !values.as_slice().is_empty() => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if !values.is_empty() =>
+        {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, values.as_slice(), columns, skip_first_indent, width)
+            write_sequence(writer, values, columns, skip_first_indent, width)
         }
-        Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) if !entries.as_slice().is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
@@ -603,7 +609,7 @@ fn write_node<W: Write>(
 /// marker already started, so its first entry continues that line.
 fn write_sequence<W: Write>(
     writer: &mut W,
-    values: &[Scalar],
+    values: &Serie,
     columns: usize,
     skip_first_indent: bool,
     width: usize,
@@ -621,7 +627,7 @@ fn write_sequence<W: Write>(
         // what YAML requires whatever the level width is.
         write_node(
             writer,
-            value,
+            &value,
             columns + DASH_WIDTH,
             Position::AfterDash,
             width,
@@ -902,12 +908,16 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             )?,
             _ => return Err(codec_error(0, "invalid interval layout")),
         },
-        Scalar::Sequence(values) => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => {
             // Only an empty sequence reaches here.
-            debug_assert!(values.as_slice().is_empty());
+            debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             debug_assert!(entries.as_slice().is_empty());
             writer.write_all(b"{}")?;
         }
@@ -983,18 +993,24 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Sequence(values) if !values.as_slice().is_empty() => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if !values.is_empty() =>
+        {
             writer.write_all(b"[")?;
-            for (index, value) in values.as_slice().iter().enumerate() {
+            for (index, value) in values.iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
-                write_flow(writer, value)?;
+                write_flow(writer, &value)?;
             }
             writer.write_all(b"]")?;
             Ok(())
         }
-        Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) if !entries.as_slice().is_empty() => {
             writer.write_all(b"{")?;
             for (index, (key, value)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {

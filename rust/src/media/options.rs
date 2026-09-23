@@ -60,10 +60,16 @@ use commit::CommitReaders;
 use limits::Limited;
 pub(crate) use limits::WriteLimitState;
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
+use crate::arrow::field_from_arrow_schema;
 use crate::cast::ArrowCastOptions;
-use crate::expression::{IntoFilter, IntoPlan, IntoSelector, Plan, Term};
+use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
+use crate::field::AppliedPlan;
 use crate::ipc::IpcOptions;
 use crate::{
     DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
@@ -74,6 +80,48 @@ use crate::{
 /// Runtime bindings use this same value when their host-language rows must be
 /// widened into Arrow before entering the core reader surface.
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
+
+/// The threads one file may decode or encode on; `None` is what the host
+/// offers.
+///
+/// Crate-internal, and outside every options value's identity: it changes
+/// how fast a file is read or written and never what is, so two options that
+/// differ only here compare, hash and order as equal.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FileThreads(pub(crate) Option<usize>);
+
+impl FileThreads {
+    /// The bound, or every thread the host offers when there is none.
+    pub(crate) fn resolve(self) -> usize {
+        self.0.unwrap_or_else(|| {
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        })
+    }
+}
+
+impl PartialEq for FileThreads {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for FileThreads {}
+
+impl PartialOrd for FileThreads {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileThreads {
+    fn cmp(&self, _: &Self) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+
+impl std::hash::Hash for FileThreads {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
 
 /// The read and write settings shared by every record encoding.
 ///
@@ -373,22 +421,6 @@ pub trait IORecordOptions: Sized {
             .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
     }
 
-    /// The predicate the `where` section's partition equalities spell about
-    /// a *path*.
-    ///
-    /// One filter, built from the pairs, asked of the holder rather than of
-    /// the rows: `&holder.partition['year'] = '2024'`. This is what prunes a
-    /// listing before anything is opened, and it is the same predicate type
-    /// the rows are filtered with - the pairs are sugar over one
-    /// representation, not a second filter.
-    fn partition_filter(&self) -> Filter {
-        Filter::all_holder_partitions_equal(
-            self.partition_pairs()
-                .iter()
-                .map(|(column, value)| (column, value)),
-        )
-    }
-
     /// Build the declared field, or say that one is required.
     ///
     /// # Errors
@@ -664,6 +696,10 @@ pub trait IORecordOptions: Sized {
     /// written rather than arriving as the default nothing filled. A root that
     /// declares no derivation applies as the cast alone.
     ///
+    /// Every layer answers from the schemas alone, so the shaping is compiled
+    /// against the batch's schema and then applied; a caller shaping many
+    /// batches of one layout holds the compiled shaping instead.
+    ///
     /// # Errors
     ///
     /// Returns an error when a cast cannot be planned, a declaration cannot be
@@ -673,36 +709,7 @@ pub trait IORecordOptions: Sized {
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
-        let options = ArrowCastOptions::new().with_safe(self.safe());
-        let mut batch = match self.field() {
-            Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
-            None => batch,
-        };
-        let late = crate::expression::filter_after_select(
-            self.filter(),
-            self.select(),
-            batch
-                .schema()
-                .fields()
-                .iter()
-                .map(|field| field.name().as_str()),
-        );
-        if late {
-            batch = self.select().apply_arrow_batch(&batch)?;
-            batch = self.filter().apply_arrow_batch(&batch)?;
-        } else {
-            batch = self.filter().apply_arrow_batch(&batch)?;
-            batch = self.select().apply_arrow_batch(&batch)?;
-        }
-        match existing {
-            // A holder already holding a value is left alone, so this fills
-            // only what the destination declares and the incoming rows do not
-            // already carry.
-            Some(stored) => {
-                Ok(stored.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?)
-            }
-            None => Ok(batch),
-        }
+        Shaping::compile(self, batch.schema(), existing)?.apply(batch)
     }
 
     /// Shape a whole reader as [`apply_arrow_batch`](Self::apply_arrow_batch)
@@ -814,6 +821,144 @@ pub trait IORecordOptions: Sized {
     /// Return whether a zero write bound admits no incoming row.
     fn write_limit_is_zero(&self) -> bool {
         self.max_row_size() == Some(0) || self.max_byte_size() == Some(0)
+    }
+}
+
+/// [`IORecordOptions::apply_arrow_batch`] compiled against one schema.
+///
+/// The declared field, the `where` and `select` clauses and the stored field
+/// are each planned or bound once against the schema the layer before hands
+/// it, read off an empty batch, so a batch of that schema moves only rows.
+pub(crate) struct Shaping {
+    declared: Option<AppliedPlan>,
+    /// Whether the `select` runs first, because the `where` reads a column
+    /// only the selector builds.
+    late: bool,
+    filter: Option<Bound>,
+    select: Option<BoundSelector>,
+    /// A holder already holding a value is left alone, so this fills only
+    /// what the destination declares and the incoming rows do not already
+    /// carry.
+    existing: Option<AppliedPlan>,
+}
+
+impl Shaping {
+    /// Compile how `options`, completed onto `existing`, shape a batch of
+    /// `source`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a cast cannot be planned, a declaration cannot be
+    /// satisfied, or an expression does not bind against the schema it meets.
+    pub(crate) fn compile(
+        options: &impl IORecordOptions,
+        source: SchemaRef,
+        existing: Option<&Field>,
+    ) -> Result<Self> {
+        let mut schema = source;
+        let declared = match options.declared() {
+            Some(declared) => {
+                let plan = AppliedPlan::compile(
+                    declared,
+                    Arc::clone(&schema),
+                    true,
+                    true,
+                    true,
+                    ArrowCastOptions::new().with_safe(options.safe()),
+                )?;
+                schema = plan.apply(&RecordBatch::new_empty(schema))?.schema();
+                Some(plan)
+            }
+            None => None,
+        };
+        let late = crate::expression::filter_after_select(
+            options.filter(),
+            options.select(),
+            schema.fields().iter().map(|field| field.name().as_str()),
+        );
+        let (filter, select) = if late {
+            let select = Self::bind_select(options.select(), &mut schema)?;
+            (Self::bind_filter(options.filter(), &schema)?, select)
+        } else {
+            let filter = Self::bind_filter(options.filter(), &schema)?;
+            (filter, Self::bind_select(options.select(), &mut schema)?)
+        };
+        let existing = match existing {
+            Some(stored) => Some(AppliedPlan::compile(
+                stored,
+                schema,
+                true,
+                true,
+                true,
+                ArrowCastOptions::new(),
+            )?),
+            None => None,
+        };
+        Ok(Self {
+            declared,
+            late,
+            filter,
+            select,
+            existing,
+        })
+    }
+
+    fn bind_filter(filter: &Filter, schema: &Schema) -> Result<Option<Bound>> {
+        if filter.is_always_true() {
+            return Ok(None);
+        }
+        let root = field_from_arrow_schema(super::DEFAULT_ROOT_NAME, schema)?;
+        Ok(Some(filter.bind(&root)?))
+    }
+
+    /// Bind the selector and move `schema` to the one it publishes.
+    fn bind_select(select: &Selector, schema: &mut SchemaRef) -> Result<Option<BoundSelector>> {
+        if select.is_all() {
+            return Ok(None);
+        }
+        let bound = select.bind(&field_from_arrow_schema(super::DEFAULT_ROOT_NAME, schema)?)?;
+        *schema = bound
+            .apply_arrow_batch(&RecordBatch::new_empty(Arc::clone(schema)))?
+            .schema();
+        Ok(Some(bound))
+    }
+
+    /// Shape one batch of the schema this was compiled against.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value does not fit its declared column, a
+    /// declaration cannot be satisfied, or a term fails over the rows.
+    pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        let mut batch = match &self.declared {
+            Some(plan) => plan.apply(&batch)?,
+            None => batch,
+        };
+        if self.late {
+            batch = self.select(batch)?;
+            batch = self.filter(batch)?;
+        } else {
+            batch = self.filter(batch)?;
+            batch = self.select(batch)?;
+        }
+        match &self.existing {
+            Some(plan) => Ok(plan.apply(&batch)?),
+            None => Ok(batch),
+        }
+    }
+
+    fn filter(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        match &self.filter {
+            Some(bound) => Ok(bound.filter(&batch)?),
+            None => Ok(batch),
+        }
+    }
+
+    fn select(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        match &self.select {
+            Some(bound) => bound.apply_arrow_batch(&batch),
+            None => Ok(batch),
+        }
     }
 }
 
@@ -1157,6 +1302,22 @@ impl RecordOptions {
             .set_compression_name(compression)
     }
 
+    /// Bound the threads one file decodes or encodes on.
+    ///
+    /// A table that already reads or writes several files at once hands each
+    /// file its share this way, so the two levels of parallelism never
+    /// multiply past what it resolved. Parquet splits its row groups and
+    /// columns across the share and Avro its blocks; Arrow IPC and text
+    /// already decode on one thread.
+    pub(crate) fn set_file_threads(&mut self, threads: usize) {
+        match self {
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.threads = Some(threads.max(1)),
+            Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
+            Self::Ipc(_) | Self::Text(_) => {}
+        }
+    }
+
     /// Return the Parquet row-group bound, or `None` for another encoding.
     #[cfg(feature = "parquet")]
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
@@ -1361,5 +1522,23 @@ pub mod internals {
         batches: BatchReader,
     ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
         options.commit_arrow_readers(batches)
+    }
+
+    /// Hand one file its share of a table's threads, as a table scan or
+    /// commit does before it reads or writes the file.
+    pub fn set_file_threads(options: &mut RecordOptions, threads: usize) {
+        options.set_file_threads(threads);
+    }
+
+    /// The thread share a file's options carry, when one was handed down;
+    /// `None` for an encoding that decodes on one thread already.
+    #[must_use]
+    pub fn file_threads(options: &RecordOptions) -> Option<usize> {
+        match options {
+            #[cfg(feature = "parquet")]
+            RecordOptions::Parquet(options) => options.threads,
+            RecordOptions::Avro(options) => options.threads.0,
+            RecordOptions::Ipc(_) | RecordOptions::Text(_) => None,
+        }
     }
 }

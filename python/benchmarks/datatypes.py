@@ -32,6 +32,7 @@ from yggdryl import (
     MediaType,
     MimeType,
     PythonMetadata,
+    Serie,
     StringEnum,
     field,
     scalar,
@@ -263,16 +264,18 @@ def _cold_customized_field_class() -> object:
     return PreciseQuote.into_field()
 
 
-def _default_arrow_scalar() -> object:
-    return DEFAULT_FIELD.default_arrow_scalar()
+def _default_serie_scalar() -> object:
+    return Serie.from_default(DEFAULT_FIELD).into_arrow_scalar()
 
 
 def _spark_compatibility() -> DataType:
     return DEFAULT_STRUCT.into_scheme_compat("spark")
 
 
-def _cast_arrow_array_bits() -> object:
-    return BIT_CAST_FIELD.cast_arrow_array(BIT_CAST_SOURCE, representation="bits")
+def _serie_bit_cast() -> object:
+    return Serie.from_arrow_array(
+        BIT_CAST_SOURCE, BIT_CAST_FIELD, representation="bits"
+    ).into_arrow_array()
 
 
 # The protocol cases measure the boundary the live view adds: creating one is a
@@ -486,8 +489,8 @@ def main() -> None:
             _cold_customized_field_class,
             max(1, args.iterations // 100),
         )
-        _measure("default Arrow scalar", _default_arrow_scalar, args.iterations)
-        _measure("Arrow integer bit cast", _cast_arrow_array_bits, args.iterations)
+        _measure("Serie.from_default Arrow scalar", _default_serie_scalar, args.iterations)
+        _measure("Serie integer bit cast", _serie_bit_cast, args.iterations)
         _measure("Spark compatibility", _spark_compatibility, args.iterations)
         _measure("protocol view creation", _create_protocol_view, args.iterations)
         _measure("protocol view read", _read_through_protocol_view, args.iterations)

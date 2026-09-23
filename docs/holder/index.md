@@ -1389,7 +1389,7 @@ Both stream [`pstream_bytes`](#streams-and-cursors) and retain one bounded chunk
 
 ### Structured values
 
-The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Sequence`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
+The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::List`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
 
 === "Rust"
 
@@ -1409,7 +1409,7 @@ The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `f
     let field = Field::from_str(
         "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null",
     )?;
-    assert_eq!(handle.read_scalar(Some(&field))?[0], Scalar::from(2_i64));
+    assert_eq!(handle.read_scalar(Some(&field))?.get(0).as_deref(), Some(&Scalar::from(2_i64)));
     ```
 
 === "Python"
@@ -1426,7 +1426,7 @@ The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `f
     field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
     assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
     value = handle.read_scalar(field, cls=Scalar)
-    assert value.kind == "sequence"
+    assert value.kind == "list"
     ```
 
 === "JavaScript"
@@ -1445,7 +1445,7 @@ The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `f
     assert.deepEqual(handle.readScalar(field), { quantity: 2, symbol: 'AAPL' })
     const value = handle.readScalar({ field, scalar: true })
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'sequence')
+    assert.equal(value.kind, 'list')
     ```
 
 ### Streaming adapters
@@ -1646,7 +1646,7 @@ Default append and merge shape once and delegate to `overwrite_arrow_reader`. `r
 
 ### Native rows
 
-A row is anything `TryInto<Scalar>`: an ordered `Scalar::Sequence` under `options.field`, or a `Scalar::Struct` resolved to that order. The bindings take plain objects and dataclasses, and JavaScript `readRecords(Class)` builds instances.
+A row is anything `TryInto<Scalar>`: an ordered `Scalar::List` under `options.field`, or a `Scalar::Struct` resolved to that order. The bindings take plain objects and dataclasses, and JavaScript `readRecords(Class)` builds instances.
 
 ```rust
 use yggdryl::media::IORecordOptions;
@@ -2268,8 +2268,7 @@ Listings are lazy iterators: building one costs nothing, entries are sorted, a f
 ```text
 fn ls(&self, recursive: bool, include_private: bool) -> Listing
 fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing>
-fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing>   // leaves carrying every pair
-fn children_matching(&self, filter: &Filter, include_private: bool) -> Result<Listing>         // the whole expression language
+fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing>   // leaves whose Hive path spells every pair
 fn partitions(&self) -> Vec<(String, String)>                                                  // the pairs the path spells
 ```
 
@@ -2367,7 +2366,7 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
 
 ### Pruning and filtering
 
-One [expression](../expression/holder.md) does both halves: the equalities a `filter` pins (`partition_pairs`) prune leaves by path, the rest runs over the rows.
+The equalities a `filter` pins (`partition_pairs`) prune leaves by path: a leaf whose path names another value for a filtered column is never decoded, and one that does not name the column stays for the rows to answer. The whole [filter](../expression/filters.md#pushdown) then runs over the rows that survive; a range or `in` list pins no pair, so it prunes no leaf by path.
 
 === "Rust"
 

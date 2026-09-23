@@ -32,7 +32,7 @@ mod internal {
     use yggdryl::internals::fix_store::shard_of;
     use yggdryl::internals::hashing_stable::stable_hash_of;
     use yggdryl::local::LocalFolder;
-    use yggdryl::sequence::SequenceType;
+
     use yggdryl::{
         DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
         FixRegistry, MimeType, Plan, Scalar, StructType, Version,
@@ -148,9 +148,12 @@ mod internal {
             .iter()
             .filter(|field| {
                 if groups {
-                    matches!(field.dtype(), DataType::Mapping(_))
+                    matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_))
                 } else {
-                    !matches!(field.dtype(), DataType::Mapping(_) | DataType::Struct(_))
+                    !matches!(
+                        field.dtype(),
+                        DataType::Map(_) | DataType::SortedMap(_) | DataType::Struct(_)
+                    )
                 }
             })
             .map(Field::name)
@@ -4177,7 +4180,7 @@ mod internal {
         let mut entries = HashSet::new();
         for field in registry.definitions(FixCategory::Groups) {
             assert!(groups.insert(field.name()));
-            if let DataType::Mapping(map) = field.dtype() {
+            if let Some(map) = (field.dtype()).as_mapping() {
                 // The crate's two Map groups, each counted by its own tag and
                 // reached through the counter door, as every group is.
                 let (tag, name) = [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME]
@@ -4192,7 +4195,7 @@ mod internal {
                 assert_eq!(registry.get_field_by_counter(tag), Some(field), "{name}");
                 continue;
             }
-            let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
+            let DataType::List(item) = field.dtype() else {
                 panic!("{}", field.dtype());
             };
             let display = field
@@ -4244,9 +4247,9 @@ mod internal {
             &DataType::Int32
         );
         for field in registry.definitions(FixCategory::Groups) {
-            let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
+            let DataType::List(item) = field.dtype() else {
                 assert!(
-                    matches!(field.dtype(), DataType::Mapping(_)),
+                    matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_)),
                     "{}: a group is a List, or one of the crate's Maps",
                     field.name()
                 );
@@ -4402,7 +4405,7 @@ mod internal {
             .iter()
             .find(|field| field.name() == column)
             .unwrap_or_else(|| panic!("a {column} column"));
-        let DataType::Sequence(SequenceType::List(item)) = held.dtype() else {
+        let DataType::List(item) = held.dtype() else {
             panic!("a list, got {}", held.dtype());
         };
         // Exactly three fixentry levels on every root-to-leaf path, each with the
@@ -4433,7 +4436,7 @@ mod internal {
             assert!(members[2].is_nullable(), "{column} level {level} value");
             let tail = &members[3];
             match tail.dtype() {
-                DataType::Sequence(SequenceType::List(deeper)) if level < 3 => {
+                DataType::List(deeper) if level < 3 => {
                     assert!(!tail.is_nullable(), "{column} level {level} tail");
                     held = deeper;
                 }
@@ -4758,10 +4761,7 @@ mod internal {
             assert!(names.iter().any(|name| name == read), "{read}");
         }
         let group = schema.get_field("secaltids").expect("the group");
-        assert!(matches!(
-            group.dtype(),
-            DataType::Sequence(SequenceType::List(_))
-        ));
+        assert!(matches!(group.dtype(), DataType::List(_)));
         assert!(names.iter().any(|held| held == "settlcurrfxrate"));
         // The edit reads a column another rule already read, so the working
         // schema is no wider.

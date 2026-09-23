@@ -77,20 +77,22 @@
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
-use arrow_array::RecordBatchIterator;
-use arrow_schema::Schema;
+use arrow_array::{RecordBatch, RecordBatchIterator};
+use arrow_schema::{ArrowError, Schema};
 use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::ProjectionMask;
 use parquet::arrow::arrow_reader::{
     ArrowReaderMetadata, ArrowReaderOptions, ParquetRecordBatchReaderBuilder,
 };
-use parquet::arrow::arrow_writer::ArrowWriterOptions;
+use parquet::arrow::arrow_writer::{
+    ArrowColumnWriter, ArrowRowGroupWriterFactory, ArrowWriterOptions, compute_leaves,
+};
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use parquet::file::properties::WriterProperties;
+use parquet::file::writer::SerializedFileWriter;
 
-use crate::FieldValue as _;
 use crate::IOBase;
 use crate::arrow::arrow_schema_from_field;
 use crate::arrow::{
@@ -133,12 +135,15 @@ pub struct ParquetOptions {
     pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
-    /// Rows per batch, when a reader should bound them.
     /// Bytes per batch, whichever of this and `batch_row_size` binds first.
     ///
     /// A target rather than a ceiling, and a non-zero bound always yields at
     /// least one row.
     pub batch_byte_size: Option<u64>,
+    /// Rows per batch; `None` reads
+    /// [`DEFAULT_RECORD_BATCH_ROW_SIZE`](crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
+    /// rows at a time, or fewer when an unfiltered read's `max_row_size`
+    /// asks for fewer.
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
@@ -148,6 +153,14 @@ pub struct ParquetOptions {
     pub commit_row_size: Option<usize>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
+    /// The threads one file's columns decode or encode on; `None` is what
+    /// the host offers.
+    ///
+    /// Crate-internal and outside the options' identity, because it changes
+    /// how fast a file is read or written and never what is: a table that
+    /// already works on several files at once hands each its share, so the
+    /// two levels of parallelism never multiply past what it resolved.
+    pub(crate) threads: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -214,7 +227,15 @@ impl ParquetOptions {
             max_byte_size: None,
             commit_row_size: None,
             level: crate::Level::DEFAULT,
+            threads: None,
         }
+    }
+
+    /// The threads one file's columns may decode or encode on.
+    fn column_threads(&self) -> usize {
+        self.threads.unwrap_or_else(|| {
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        })
     }
 
     /// Return these options with a different page compression.
@@ -413,7 +434,8 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     options: &ParquetOptions,
 ) -> Result<BatchReader> {
     let columns = options.apply_columns();
-    if handle.is_empty() {
+    let size = handle.size();
+    if size == 0 {
         // Per the laziness contract, a missing file holds no batches.
         let schema = match options.field() {
             Some(field) => arrow_schema_from_field(&field)?,
@@ -428,15 +450,36 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             schema,
         )));
     }
-    let builder = match bounded_builder(handle, options)? {
-        Some(builder) => builder,
-        None => open_builder(handle)?,
+    let mut source = open_footer(handle, size, Some(options))?;
+    // Every array a batch holds is allocated, decoded into and handed on per
+    // batch, so an unbounded read takes the crate's batch size - the one the
+    // other record encodings read at - rather than the Parquet crate's 1,024
+    // rows. A limited read with no filter decodes no more than its limit asks
+    // for; under a filter the limit counts result rows, not stored ones, so
+    // it does not size the batches.
+    let batch_rows = options.batch_row_size().unwrap_or_else(|| {
+        options
+            .max_row_size()
+            .filter(|_| options.filter().is_always_true())
+            .and_then(|rows| usize::try_from(rows).ok())
+            .map_or(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE, |rows| {
+                rows.clamp(1, crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
+            })
+    });
+    let projection = projection_indices(field, columns.as_deref(), source.metadata.schema());
+    source.push_filter(options);
+    source.fetch(handle, projection.as_deref())?;
+    // A limited read stays lazy on one thread: the threads would decode
+    // whole row groups ahead of a consumer that stops at its limit.
+    let threads = if options.max_row_size().is_some() {
+        1
+    } else {
+        options.column_threads()
     };
-    let builder = match options.batch_row_size() {
-        Some(size) => builder.with_batch_size(size),
-        None => builder,
-    };
-    let projection = projection_indices(field, columns.as_deref(), builder.schema());
+    if let Some(reader) = ParallelRead::open(&source, projection.as_deref(), batch_rows, threads)? {
+        return Ok(reader);
+    }
+    let builder = source.builder().with_batch_size(batch_rows);
     let builder = match projection {
         // Root indices, not leaf indices: a nested column is one root, and its
         // whole subtree comes along with it.
@@ -467,6 +510,20 @@ pub fn overwrite_arrow_reader<H>(
 where
     H: IOBase + ?Sized,
 {
+    overwrite_buffered(handle, batches, options, WRITE_BUFFER_BYTES)
+}
+
+/// [`overwrite_arrow_reader`] holding at most `buffer` Arrow bytes of input
+/// before it feeds the column writers.
+fn overwrite_buffered<H>(
+    handle: &mut H,
+    batches: BatchReader,
+    options: &ParquetOptions,
+    buffer: usize,
+) -> Result<()>
+where
+    H: IOBase + ?Sized,
+{
     reject_outer_coding(handle)?;
     let schema = batches.schema();
 
@@ -479,16 +536,26 @@ where
         geospatial::install_wkb_statistics();
         writer_options = writer_options.with_parquet_schema(descriptor);
     }
-    let mut writer =
-        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?;
+    let (mut file, columns) =
+        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?
+            .into_serialized_writer()?;
+    let group_rows = options.max_row_group_size.max(1);
+    let threads = options.column_threads();
+    let mut group: Option<RowGroupEncoder> = None;
+    let mut buffered = 0;
     // Arrow schema equality includes nullability and metadata, so comparing
     // would refuse a batch differing from the writer's only in a nullable flag
     // that holds no null, an `ARROW:extension:name`, or a schema-level entry -
     // all of which are the same rows. A batch naming the same columns is
     // reconciled instead, strictly; one naming different columns is different
     // data and is still refused, because a cast would invent the columns it is
-    // missing. The plan is built once, and an exact batch never reaches it.
+    // missing. The plan is built once per layout the batches carry, and an
+    // exact batch never reaches it.
     let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
+    let options = crate::ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(crate::Nullability::Strict);
+    let mut plans = crate::cast::PlanCache::new();
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;
         let stored = batch.schema();
@@ -504,20 +571,273 @@ where
         let batch = if Arc::ptr_eq(&stored, &schema) {
             batch
         } else if crate::arrow::same_columns(&schema, &stored) {
-            root.cast_arrow_batch(
-                batch,
-                crate::ArrowCastOptions::new()
-                    .with_safe(false)
-                    .with_nullability(crate::Nullability::Strict),
-            )
-            .map_err(|error| mismatch(&error))?
+            plans
+                .get_or_compile(stored.fields(), || {
+                    crate::cast::ArrowCastPlan::compile_schema(
+                        &stored,
+                        &root,
+                        options,
+                        crate::cast::Deferred::default(),
+                    )
+                })
+                .and_then(|plan| plan.reconcile_batch(batch))
+                .map_err(|error| mismatch(&error))?
         } else {
             return Err(mismatch(&"names different columns than the written root"));
         };
-        writer.write(&batch)?;
+        // A row group closes at exactly `max_row_group_size` rows, cutting a
+        // batch that crosses the boundary, as `ArrowWriter` cuts it.
+        let mut offset = 0;
+        while offset < batch.num_rows() {
+            let length = (group_rows - buffered).min(batch.num_rows() - offset);
+            let encoder = match &mut group {
+                Some(encoder) => encoder,
+                None => group.insert(RowGroupEncoder::open(&file, &columns, threads, buffer)?),
+            };
+            encoder.push(&schema, &batch.slice(offset, length))?;
+            buffered += length;
+            offset += length;
+            if buffered == group_rows {
+                if let Some(encoder) = group.take() {
+                    encoder.close(&mut file, &schema)?;
+                }
+                buffered = 0;
+            }
+        }
     }
-    writer.close()?;
+    if let Some(encoder) = group.take() {
+        encoder.close(&mut file, &schema)?;
+    }
+    file.close()?;
     handle.write_all_bytes(&encoded)?;
+    Ok(())
+}
+
+/// The Arrow bytes worth spreading one feed of the column writers over
+/// threads.
+///
+/// Below this, spawning costs more than it saves: a thread is tens of
+/// microseconds, and a megabyte of columns encodes in a few milliseconds.
+const PARALLEL_ROW_GROUP_BYTES: usize = 1024 * 1024;
+
+/// The Arrow bytes a write holds before it feeds them to the column writers.
+///
+/// A row group's column writers stay open for the whole group, so input is
+/// encoded as it arrives rather than when the group closes; on several
+/// threads it is gathered first, so each column's share of one feed is worth
+/// a thread. What a write holds is therefore this much Arrow input - the
+/// slices themselves, their levels computed only as each is fed - plus the
+/// batch that crossed it, beside the pages already encoded, however many
+/// rows a row group takes.
+const WRITE_BUFFER_BYTES: usize = 32 * 1024 * 1024;
+
+/// One open row group: a writer per leaf column and, per root column, the
+/// input its writers have yet to be fed.
+///
+/// The writers are the ones [`ArrowWriter`] would use, fed the same leaves
+/// in the same order, and the chunks are appended in schema order, so the
+/// file is byte for byte the one a sequential writer produces - only the
+/// encoding runs side by side.
+struct RowGroupEncoder {
+    /// One writer per leaf column, in schema order.
+    writers: Vec<ArrowColumnWriter>,
+    /// How many leaf writers each root column has, in schema order.
+    leaves: Vec<usize>,
+    /// Each root column's slices not yet fed, in arrival order.
+    pending: Vec<Vec<arrow_array::ArrayRef>>,
+    /// The Arrow bytes of each root column's pending slices.
+    weights: Vec<usize>,
+    /// The Arrow bytes pending in all.
+    buffered: usize,
+    /// The threads a feed may use; one feeds each slice as it arrives.
+    threads: usize,
+    /// The pending bytes that trigger a feed.
+    buffer: usize,
+}
+
+impl RowGroupEncoder {
+    /// Open the column writers of the file's next row group.
+    fn open<W: std::io::Write + Send>(
+        file: &SerializedFileWriter<W>,
+        columns: &ArrowRowGroupWriterFactory,
+        threads: usize,
+        buffer: usize,
+    ) -> Result<Self> {
+        let writers = columns.create_column_writers(file.flushed_row_groups().len())?;
+        let descriptor = file.schema_descr();
+        let roots = descriptor.root_schema().get_fields().len();
+        let mut leaves = vec![0; roots];
+        for leaf in 0..descriptor.num_columns() {
+            if let Some(count) = leaves.get_mut(descriptor.get_column_root_idx(leaf)) {
+                *count += 1;
+            }
+        }
+        Ok(Self {
+            writers,
+            leaves,
+            pending: (0..roots).map(|_| Vec::new()).collect(),
+            weights: vec![0; roots],
+            buffered: 0,
+            threads,
+            buffer,
+        })
+    }
+
+    /// Take one batch's columns: fed at once on one thread, gathered for a
+    /// feed on several.
+    fn push(&mut self, schema: &Schema, batch: &RecordBatch) -> Result<()> {
+        if self.threads <= 1 {
+            let mut writers = self.writers.as_mut_slice();
+            for ((field, column), count) in schema
+                .fields()
+                .iter()
+                .zip(batch.columns())
+                .zip(&self.leaves)
+            {
+                let (own, rest) = writers.split_at_mut((*count).min(writers.len()));
+                write_root(field, column, own)?;
+                writers = rest;
+            }
+            return Ok(());
+        }
+        for (root, column) in batch.columns().iter().enumerate() {
+            let size = crate::arrow::sliced_array_size(column);
+            if let (Some(pending), Some(weight)) =
+                (self.pending.get_mut(root), self.weights.get_mut(root))
+            {
+                pending.push(Arc::clone(column));
+                *weight += size;
+                self.buffered += size;
+            }
+        }
+        if self.buffered >= self.buffer {
+            self.feed(schema)?;
+        }
+        Ok(())
+    }
+
+    /// Feed every pending slice to its root column's writers, the roots side
+    /// by side when what is pending is worth the threads; the heaviest are
+    /// claimed first, so the last to finish is a light one.
+    fn feed(&mut self, schema: &Schema) -> Result<()> {
+        let threads = if self.buffered < PARALLEL_ROW_GROUP_BYTES {
+            1
+        } else {
+            self.threads.min(self.leaves.len())
+        };
+        self.buffered = 0;
+        let mut work: Vec<RootWork<'_>> = Vec::with_capacity(self.leaves.len());
+        let mut writers = self.writers.as_mut_slice();
+        for (((field, count), pending), weight) in schema
+            .fields()
+            .iter()
+            .zip(&self.leaves)
+            .zip(self.pending.iter_mut())
+            .zip(self.weights.iter_mut())
+        {
+            let (own, rest) = writers.split_at_mut((*count).min(writers.len()));
+            writers = rest;
+            work.push((std::mem::take(weight), field, own, std::mem::take(pending)));
+        }
+        if threads <= 1 {
+            for (_, field, writers, slices) in work {
+                for column in &slices {
+                    write_root(field, column, writers)?;
+                }
+            }
+            return Ok(());
+        }
+        // Claimed from the back, so the heaviest root goes first.
+        work.sort_by_key(|(weight, _, _, _)| *weight);
+        let queue = std::sync::Mutex::new(work);
+        let failure = std::sync::Mutex::new(None);
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| {
+                    loop {
+                        let Some((_, field, writers, slices)) =
+                            queue.lock().ok().and_then(|mut queue| queue.pop())
+                        else {
+                            return;
+                        };
+                        let fed = slices
+                            .iter()
+                            .try_for_each(|column| write_root(field, column, writers));
+                        if let Err(error) = fed {
+                            // The row group is lost either way; the first
+                            // failure is the one reported, and the other
+                            // threads stop at their next claim.
+                            if let Ok(mut failure) = failure.lock() {
+                                failure.get_or_insert(error);
+                            }
+                            if let Ok(mut queue) = queue.lock() {
+                                queue.clear();
+                            }
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        match failure.into_inner() {
+            Ok(None) => Ok(()),
+            Ok(Some(error)) => Err(error),
+            Err(_) => Err(parquet::errors::ParquetError::General(
+                "expected every column encoder to finish, got a poisoned failure".to_owned(),
+            )
+            .into()),
+        }
+    }
+
+    /// Feed what is pending, close every writer, and append the row group.
+    fn close<W: std::io::Write + Send>(
+        mut self,
+        file: &mut SerializedFileWriter<W>,
+        schema: &Schema,
+    ) -> Result<()> {
+        self.feed(schema)?;
+        let mut row_group = file.next_row_group()?;
+        for writer in self.writers {
+            writer.close()?.append_to_row_group(&mut row_group)?;
+        }
+        row_group.close()?;
+        Ok(())
+    }
+}
+
+/// One root column's share of a feed: its weight, its field, its leaf
+/// writers, and the slices they have yet to be fed.
+type RootWork<'a> = (
+    usize,
+    &'a arrow_schema::FieldRef,
+    &'a mut [ArrowColumnWriter],
+    Vec<arrow_array::ArrayRef>,
+);
+
+/// Feed one root column's slice to its leaf writers.
+///
+/// # Errors
+///
+/// Returns the leaves' computation or encoding failure, or a slice whose
+/// leaves do not match the writers the schema gave the root.
+fn write_root(
+    field: &arrow_schema::FieldRef,
+    column: &arrow_array::ArrayRef,
+    writers: &mut [ArrowColumnWriter],
+) -> Result<()> {
+    let leaves = compute_leaves(field.as_ref(), column)?;
+    if leaves.len() != writers.len() {
+        return Err(parquet::errors::ParquetError::General(format!(
+            "expected {} leaf columns under {:?}, got {}",
+            writers.len(),
+            field.name(),
+            leaves.len()
+        ))
+        .into());
+    }
+    for (leaf, writer) in leaves.iter().zip(writers) {
+        writer.write(leaf)?;
+    }
     Ok(())
 }
 
@@ -634,98 +954,856 @@ fn reader_metadata(metadata: Arc<ParquetMetaData>) -> Result<ArrowReaderMetadata
     )?)
 }
 
+/// The bytes one read decodes, the footer they end in, and the row groups it
+/// keeps - everything a reader builder is made from, so a read can make
+/// several over one fetch.
+struct ParquetSource {
+    /// The fetched column chunks: empty until [`Self::fetch`], then the
+    /// ranges the kept row groups and projected columns occupy.
+    data: FetchedRanges,
+    /// The decoded footer and the Arrow schema it describes.
+    metadata: ArrowReaderMetadata,
+    /// The row groups the read keeps, when a row bound or the filter spares
+    /// the rest.
+    row_groups: Option<Vec<usize>>,
+}
+
+impl ParquetSource {
+    /// Keep only the row groups the read's filter could find a row in.
+    ///
+    /// Each conjunct is bound against the root the rows are filtered as, and
+    /// every row group's footer statistics become the same
+    /// [`Bounds`](crate::expression::Bounds) an Iceberg manifest entry or a
+    /// Hive path becomes, so one pruning rule answers all three. Only a
+    /// column stored as the type the filter reads takes part - a declared
+    /// root that casts a column filters the cast value, which the stored
+    /// bounds do not bound. A filter that runs after the selection, a
+    /// conjunct that does not bind, and a statistic the file does not carry
+    /// prune nothing, and every row of every group that survives is still
+    /// filtered afterwards, so pruning only ever saves a read.
+    fn push_filter(&mut self, options: &ParquetOptions) {
+        let filter = options.filter();
+        if filter.is_always_true() {
+            return;
+        }
+        let stored = Arc::clone(self.metadata.schema());
+        if crate::expression::filter_after_select(
+            filter,
+            options.select(),
+            stored.fields().iter().map(|field| field.name().as_str()),
+        ) {
+            return;
+        }
+        let root = match options.field() {
+            Some(field) => field,
+            None => match field_from_arrow_schema(options.name(), stored.as_ref()) {
+                Ok(field) => field,
+                Err(_) => return,
+            },
+        };
+        self.prune(&filter.simplify().conjuncts(), &root, &stored);
+    }
+
+    /// Keep only the row groups the bound conjuncts could find a row in.
+    fn prune(&mut self, conjuncts: &[crate::Filter], root: &Field, stored: &Schema) {
+        use parquet::arrow::arrow_reader::statistics::StatisticsConverter;
+
+        let bound: Vec<crate::expression::Bound> = conjuncts
+            .iter()
+            .filter_map(|conjunct| conjunct.bind(root).ok())
+            .collect();
+        if bound.is_empty() {
+            return;
+        }
+        let groups = self.metadata.metadata().row_groups();
+        let kept: Vec<usize> = match &self.row_groups {
+            Some(kept) => kept.clone(),
+            None => (0..groups.len()).collect(),
+        };
+        let parquet_schema = self.metadata.parquet_schema();
+        let mut names: Vec<String> = conjuncts.iter().flat_map(crate::Filter::columns).collect();
+        names.dedup();
+        let mut columns = Vec::new();
+        for name in names {
+            let Some((index, declared)) = stored_column(root, stored, &name) else {
+                continue;
+            };
+            if columns
+                .iter()
+                .any(|column: &StoredBounds| column.field.name() == declared.name())
+            {
+                continue;
+            }
+            let Ok(converter) =
+                StatisticsConverter::try_new(stored.field(index).name(), stored, parquet_schema)
+            else {
+                continue;
+            };
+            // A count the writer did not record is unknown, never zero: an
+            // `is null` must not prune a group that may hold nulls.
+            let converter = converter.with_missing_null_counts_as_zero(false);
+            let Some(leaf) = converter.parquet_column_index() else {
+                continue;
+            };
+            let chosen = || kept.iter().filter_map(|index| groups.get(*index));
+            let (Ok(minimums), Ok(maximums), Ok(nulls)) = (
+                converter.row_group_mins(chosen()),
+                converter.row_group_maxes(chosen()),
+                converter.row_group_null_counts(chosen()),
+            ) else {
+                continue;
+            };
+            let use_extremes = extremes_bound(&declared);
+            // A declared non-null column over a stored nullable one reads each
+            // stored null as the type's default, which no statistic describes.
+            let fills_nulls = !declared.is_nullable() && stored.field(index).is_nullable();
+            columns.push(StoredBounds {
+                field: declared.with_nullable(true),
+                leaf,
+                use_extremes,
+                fills_nulls,
+                minimums,
+                maximums,
+                nulls,
+            });
+        }
+
+        let bound_at = |field: &Field, values: &arrow_array::ArrayRef, position: usize| {
+            use arrow_array::Array as _;
+            if values.is_null(position) {
+                return None;
+            }
+            crate::arrow::scalar_value(field, values.slice(position, 1).as_ref())
+                .ok()
+                .filter(|value| !value.is_null())
+        };
+        let mut survivors = Vec::with_capacity(kept.len());
+        for (position, index) in kept.iter().enumerate() {
+            let Some(group) = groups.get(*index) else {
+                continue;
+            };
+            let mut bounds = crate::expression::Bounds::new(u64::try_from(group.num_rows()).ok());
+            for column in &columns {
+                use arrow_array::Array as _;
+                let nulls = (!column.nulls.is_null(position)).then(|| column.nulls.value(position));
+                if column.fills_nulls && nulls != Some(0) {
+                    // Some rows read as a default the statistics never saw.
+                    continue;
+                }
+                // Writers before parquet-mr 1.10 ordered strings, bytes and
+                // unsigned integers as signed bytes in the deprecated fields;
+                // those extremes do not bound the values in this crate's
+                // order, as parquet-mr and Arrow C++ also refuse them.
+                let legacy = group.column(column.leaf).statistics().is_some_and(|stats| {
+                    stats.is_min_max_deprecated()
+                        && parquet_schema.column(column.leaf).sort_order()
+                            != parquet::basic::SortOrder::SIGNED
+                });
+                let (minimum, maximum) = if column.use_extremes && !legacy {
+                    (
+                        bound_at(&column.field, &column.minimums, position),
+                        bound_at(&column.field, &column.maximums, position),
+                    )
+                } else {
+                    (None, None)
+                };
+                bounds = bounds.with_column(column.field.name(), minimum, maximum, nulls);
+            }
+            if bound
+                .iter()
+                .all(|conjunct| conjunct.statistics_prune(&bounds))
+            {
+                survivors.push(*index);
+            }
+        }
+        if survivors.len() < kept.len() {
+            self.row_groups = Some(survivors);
+        }
+    }
+
+    /// Fetch the column chunks the kept row groups hold for the projected
+    /// roots.
+    ///
+    /// A source [`open_footer`] read whole already holds them. Otherwise each
+    /// chunk's footer byte range is read through the handle into owned memory,
+    /// ranges no more than [`FETCH_GAP_BYTES`] apart coalesced into one read:
+    /// a pruned row group or an unprojected column is read only when it lies
+    /// in such a gap between kept ones, and on an object store a gap costs
+    /// less than the request it saves. The copies are the reader's own:
+    /// nothing a batch holds points back into the handle's storage, so
+    /// rewriting the file while a reader or its batches live is safe.
+    ///
+    /// # Errors
+    ///
+    /// Returns the handle's read failure.
+    fn fetch<H: IOBase + ?Sized>(
+        &mut self,
+        handle: &H,
+        projection: Option<&[usize]>,
+    ) -> Result<()> {
+        if self.data.whole {
+            return Ok(());
+        }
+        let metadata = self.metadata.metadata();
+        let parquet_schema = metadata.file_metadata().schema_descr();
+        let leaves: Vec<usize> = (0..parquet_schema.num_columns())
+            .filter(|leaf| {
+                projection
+                    .is_none_or(|roots| roots.contains(&parquet_schema.get_column_root_idx(*leaf)))
+            })
+            .collect();
+        let groups = metadata.row_groups();
+        let kept: Vec<usize> = match &self.row_groups {
+            Some(kept) => kept.clone(),
+            None => (0..groups.len()).collect(),
+        };
+        let mut wanted: Vec<(u64, u64)> = Vec::new();
+        for group in kept.iter().filter_map(|index| groups.get(*index)) {
+            for leaf in &leaves {
+                let Some(column) = group.columns().get(*leaf) else {
+                    continue;
+                };
+                // `byte_range` asserts what a crafted footer can violate, so
+                // the range is read here, and a negative one - or one past the
+                // end of the file - is fetched only as far as the file goes:
+                // the reader then reports the short chunk as the error it is.
+                let start = column
+                    .dictionary_page_offset()
+                    .unwrap_or_else(|| column.data_page_offset());
+                let (Ok(start), Ok(length)) = (
+                    u64::try_from(start),
+                    u64::try_from(column.compressed_size()),
+                ) else {
+                    continue;
+                };
+                let end = start.saturating_add(length).min(self.data.length);
+                if start < end {
+                    wanted.push((start, end));
+                }
+            }
+        }
+        wanted.sort_unstable();
+        let mut coalesced: Vec<(u64, u64)> = Vec::with_capacity(wanted.len());
+        for (start, end) in wanted {
+            match coalesced.last_mut() {
+                Some(last) if start <= last.1.saturating_add(FETCH_GAP_BYTES) => {
+                    last.1 = last.1.max(end);
+                }
+                _ => coalesced.push((start, end)),
+            }
+        }
+        let mut ranges = Vec::with_capacity(coalesced.len());
+        for (start, end) in coalesced {
+            let length = usize::try_from(end - start).map_err(|_| {
+                CoreError::from(crate::arrow::Error::from(ArrowError::ExternalError(
+                    format!(
+                        "expected a Parquet column chunk this platform can address, got {} bytes",
+                        end - start
+                    )
+                    .into(),
+                )))
+            })?;
+            ranges.push((start, Bytes::from(handle.read_range_bytes(start, length)?)));
+        }
+        self.data.ranges = ranges.into();
+        Ok(())
+    }
+
+    /// A reader builder over the fetched ranges, sharing them rather than
+    /// copying.
+    fn builder(&self) -> ParquetRecordBatchReaderBuilder<FetchedRanges> {
+        let builder = ParquetRecordBatchReaderBuilder::new_with_metadata(
+            self.data.clone(),
+            self.metadata.clone(),
+        );
+        match &self.row_groups {
+            Some(groups) => builder.with_row_groups(groups.clone()),
+            None => builder,
+        }
+    }
+}
+
+/// One stored column's footer statistics, across the kept row groups.
+struct StoredBounds {
+    /// The field the filter reads the column as.
+    field: Field,
+    /// The column's leaf in the Parquet schema.
+    leaf: usize,
+    /// Whether the minimums and maximums bound the values the filter reads.
+    use_extremes: bool,
+    /// Whether the read turns the stored nulls into the type's default.
+    fills_nulls: bool,
+    /// Each kept group's minimum.
+    minimums: arrow_array::ArrayRef,
+    /// Each kept group's maximum.
+    maximums: arrow_array::ArrayRef,
+    /// Each kept group's null count; a null entry is a count not recorded.
+    nulls: arrow_array::UInt64Array,
+}
+
+/// Whether a column's footer minimum and maximum bound the values a filter
+/// reads it as.
+///
+/// A floating-point column's do not: Parquet writers leave NaN out of them,
+/// while this crate orders NaN past every number, above or below by its sign,
+/// so a group whose extremes rule a comparison out can still hold a NaN row
+/// it keeps. Its null count still prunes.
+fn extremes_bound(field: &Field) -> bool {
+    !field.clone().into_arrow_field().is_ok_and(|arrow| {
+        matches!(
+            arrow.data_type(),
+            arrow_schema::DataType::Float16
+                | arrow_schema::DataType::Float32
+                | arrow_schema::DataType::Float64
+        )
+    })
+}
+
+/// The stored root column a filter column reads, with the field the filter
+/// reads it as - when it is stored as that type, and only then.
+///
+/// A declared child that derives its value - a partition, digest or
+/// transform column - reads something other than what is stored under its
+/// name, so its statistics bound nothing the filter sees.
+fn stored_column(root: &Field, stored: &Schema, name: &str) -> Option<(usize, Field)> {
+    let declared = root
+        .fields()
+        .iter()
+        .find(|child| child.name().eq_ignore_ascii_case(name))?;
+    if declared.metadata_iter().any(|(key, _)| {
+        key.starts_with("PARTITION:") || key.starts_with("DIGEST:") || key.starts_with("TRANSFORM:")
+    }) {
+        return None;
+    }
+    let (index, column) = stored
+        .fields()
+        .iter()
+        .enumerate()
+        .find(|(_, column)| column.name().eq_ignore_ascii_case(declared.name()))?;
+    declared
+        .clone()
+        .into_arrow_field()
+        .is_ok_and(|filtered| filtered.data_type() == column.data_type())
+        .then(|| (index, declared.clone()))
+}
+
 /// Open a reader builder over a handle's complete bytes.
 ///
-/// Parquet reads its footer last, so the value is fetched whole. A read with
-/// a row bound goes through [`bounded_builder`] instead, which fetches only
-/// the leading row groups the bound needs; this path is honest about
-/// buffering everything else.
+/// The whole-value door that geospatial statistics and the `internals`
+/// forwarder read through: a builder over bytes the caller may project any
+/// way it likes afterwards.
 fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
     reject_outer_coding(handle)?;
     let bytes = Bytes::from(handle.read_all_bytes()?);
-    let metadata = ArrowReaderMetadata::load(&bytes, ArrowReaderOptions::new())?;
-    let metadata = reader_metadata(Arc::clone(metadata.metadata()))?;
+    let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
     Ok(ParquetRecordBatchReaderBuilder::new_with_metadata(
-        bytes, metadata,
+        bytes,
+        reader_metadata(Arc::new(metadata))?,
     ))
 }
 
-/// Open a reader builder over only the leading row groups a row bound needs.
+/// Gap between two needed byte ranges below which one read covers both.
 ///
-/// The footer is range-read and decoded first; the leading row groups whose
-/// counts cover [`max_row_size`](IORecordOptions::max_row_size) are then
-/// fetched as one prefix, and the rest of the value is never read. The bound
-/// is a fetch plan here, not the limit itself: the record methods above still
-/// trim the result to the exact row count, so this changes what is *read*,
-/// never what a limited read yields. Answers `None` - falling back to
-/// [`open_builder`] - when no row bound is set, when a partition filter means
-/// stored rows and result rows differ, when the bound spares no group, or
-/// when the tail is not a Parquet footer, so every malformed file is reported
-/// by the one whole-value path.
+/// Reading a short gap costs less than a second request - a copy of a
+/// megabyte is some fifty microseconds, and an object-store request tens of
+/// milliseconds - so column chunks that nearly touch are fetched as one.
+const FETCH_GAP_BYTES: u64 = 1024 * 1024;
+
+/// The byte ranges of one Parquet file a read has fetched, each owned.
+///
+/// The Parquet reader asks for a column chunk by its offset in the file;
+/// this answers it from the one fetched range that holds it. Clones share
+/// the ranges.
+#[derive(Clone, Debug)]
+struct FetchedRanges {
+    /// The file's length, which the footer's offsets are counted in.
+    length: u64,
+    /// Whether the one range is the whole file, fetched before the footer.
+    whole: bool,
+    /// The fetched ranges in file order, each with the offset it starts at.
+    ranges: Arc<[(u64, Bytes)]>,
+}
+
+impl FetchedRanges {
+    /// The fetched range holding `length` bytes from `start`.
+    fn holding(&self, start: u64, length: usize) -> parquet::errors::Result<(usize, &Bytes)> {
+        let after = self.ranges.partition_point(|(offset, _)| *offset <= start);
+        after
+            .checked_sub(1)
+            .and_then(|index| self.ranges.get(index))
+            .and_then(|(offset, bytes)| {
+                let from = usize::try_from(start - offset).ok()?;
+                (from.checked_add(length)? <= bytes.len()).then_some((from, bytes))
+            })
+            .ok_or_else(|| {
+                parquet::errors::ParquetError::EOF(format!(
+                    "expected {length} bytes at offset {start} of the Parquet file to be fetched"
+                ))
+            })
+    }
+}
+
+impl parquet::file::reader::Length for FetchedRanges {
+    fn len(&self) -> u64 {
+        self.length
+    }
+}
+
+impl parquet::file::reader::ChunkReader for FetchedRanges {
+    type T = bytes::buf::Reader<Bytes>;
+
+    fn get_read(&self, start: u64) -> parquet::errors::Result<Self::T> {
+        use bytes::Buf as _;
+        let (from, bytes) = self.holding(start, 0)?;
+        Ok(bytes.slice(from..).reader())
+    }
+
+    fn get_bytes(&self, start: u64, length: usize) -> parquet::errors::Result<Bytes> {
+        let (from, bytes) = self.holding(start, length)?;
+        Ok(bytes.slice(from..from + length))
+    }
+}
+
+/// Files up to this size are fetched whole, in one read: a second request
+/// costs an object store more than the bytes a footer-first plan could skip.
+const WHOLE_READ_BYTES: u64 = 1024 * 1024;
+
+/// Bytes a larger file's first read takes from its end, so the footer
+/// usually arrives with the eight-byte tail rather than in a second request.
+const FOOTER_PREFETCH_BYTES: u64 = 64 * 1024;
+
+/// Read a file's footer, and the leading row groups a row bound keeps.
+///
+/// A file of at most [`WHOLE_READ_BYTES`] is read whole, in one request.
+/// A larger one - or any file under a row bound that may spare most of it -
+/// has its footer read first and its column chunks only through
+/// [`ParquetSource::fetch`], once pruning and projection have said which.
+/// With a row bound and no filter - stored rows then are result rows - only
+/// the leading row groups whose counts cover
+/// [`max_row_size`](IORecordOptions::max_row_size) are kept. The bound is a
+/// fetch plan, not the limit itself: the record methods above still trim the
+/// result to the exact row count, so this changes what is *read*, never what
+/// a limited read yields.
+///
+/// A tail that is not a Parquet footer is read the whole-value way instead,
+/// so every malformed file is reported by the Parquet crate's own parser.
 ///
 /// # Errors
 ///
-/// Returns a read failure, or a footer whose embedded Arrow schema cannot be
-/// interpreted.
-fn bounded_builder<H: IOBase + ?Sized>(
+/// Returns a read failure, a malformed footer, or a footer whose embedded
+/// Arrow schema cannot be interpreted.
+fn open_footer<H: IOBase + ?Sized>(
     handle: &H,
-    options: &ParquetOptions,
-) -> Result<Option<ParquetRecordBatchReaderBuilder<Bytes>>> {
-    let Some(max_rows) = options.max_row_size() else {
+    size: u64,
+    options: Option<&ParquetOptions>,
+) -> Result<ParquetSource> {
+    reject_outer_coding(handle)?;
+    let bound = options
+        .filter(|options| options.filter().is_always_true())
+        .and_then(IORecordOptions::max_row_size);
+    let footer = if size < FOOTER_TAIL {
+        None
+    } else if size <= WHOLE_READ_BYTES {
+        match bound {
+            // One read of the whole file is the cheapest plan it has.
+            None => None,
+            // The tail alone, so a bound that spares most of the file reads
+            // only the footer and the rows it keeps.
+            Some(_) => {
+                let tail = handle.read_range_bytes(size - FOOTER_TAIL, FOOTER_TAIL as usize)?;
+                footer_metadata(handle, size, &tail)?
+            }
+        }
+    } else {
+        let prefetch = size.min(FOOTER_PREFETCH_BYTES);
+        let end =
+            handle.read_range_bytes(size - prefetch, usize::try_from(prefetch).unwrap_or(0))?;
+        footer_metadata(handle, size, &end)?
+    };
+    let Some(metadata) = footer else {
+        let bytes = Bytes::from(handle.read_all_bytes()?);
+        let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
+        return Ok(ParquetSource {
+            data: FetchedRanges {
+                length: bytes.len() as u64,
+                whole: true,
+                ranges: Arc::from([(0, bytes)]),
+            },
+            metadata: reader_metadata(Arc::new(metadata))?,
+            row_groups: None,
+        });
+    };
+    let mut row_groups = None;
+    if let Some(max_rows) = bound {
+        let mut selected = Vec::new();
+        let mut covered = 0_u64;
+        for (index, group) in metadata.row_groups().iter().enumerate() {
+            if covered >= max_rows {
+                break;
+            }
+            selected.push(index);
+            covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
+        }
+        if selected.len() < metadata.num_row_groups() {
+            row_groups = Some(selected);
+        }
+    }
+    Ok(ParquetSource {
+        data: FetchedRanges {
+            length: size,
+            whole: false,
+            ranges: Arc::from([]),
+        },
+        metadata: reader_metadata(Arc::new(metadata))?,
+        row_groups,
+    })
+}
+
+/// The footer length and the closing magic every Parquet file ends in.
+const FOOTER_TAIL: u64 = 8;
+
+/// Decode the footer that a file's last bytes, `end`, finish with.
+///
+/// Answers from `end` when it holds the whole footer, and reads the footer's
+/// own range otherwise. `None` is a tail that is not a Parquet footer, or a
+/// footer that does not decode - left for the whole-value parser to report.
+///
+/// # Errors
+///
+/// Returns the handle's read failure.
+fn footer_metadata<H: IOBase + ?Sized>(
+    handle: &H,
+    size: u64,
+    end: &[u8],
+) -> Result<Option<ParquetMetaData>> {
+    let tail = FOOTER_TAIL as usize;
+    let Some(closing) = end.len().checked_sub(tail).map(|at| &end[at..]) else {
         return Ok(None);
     };
-    if !options.filter().is_always_true() {
+    if &closing[4..] != b"PAR1" {
         return Ok(None);
     }
-    reject_outer_coding(handle)?;
-    // The footer length and the closing magic.
-    const TAIL: u64 = 8;
-    let size = handle.size();
-    if size < TAIL {
-        return Ok(None);
-    }
-    let tail = handle.read_range_bytes(size - TAIL, TAIL as usize)?;
-    if tail.len() < TAIL as usize || &tail[4..] != b"PAR1" {
-        return Ok(None);
-    }
-    let footer_length = u64::from(u32::from_le_bytes([tail[0], tail[1], tail[2], tail[3]]));
-    let (Some(footer_start), Ok(footer_length)) = (
-        (size - TAIL).checked_sub(footer_length),
-        usize::try_from(footer_length),
+    let length = u64::from(u32::from_le_bytes([
+        closing[0], closing[1], closing[2], closing[3],
+    ]));
+    let (Some(start), Ok(length)) = (
+        (size - FOOTER_TAIL).checked_sub(length),
+        usize::try_from(length),
     ) else {
         return Ok(None);
     };
-    let footer = handle.read_range_bytes(footer_start, footer_length)?;
-    let Ok(metadata) = ParquetMetaDataReader::decode_metadata(&footer) else {
-        return Ok(None);
-    };
-    let mut selected = Vec::new();
-    let mut covered = 0_u64;
-    let mut end = 0_u64;
-    for (index, group) in metadata.row_groups().iter().enumerate() {
-        if covered >= max_rows {
-            break;
-        }
-        selected.push(index);
-        covered = covered.saturating_add(u64::try_from(group.num_rows()).unwrap_or(0));
-        for column in group.columns() {
-            let (offset, length) = column.byte_range();
-            end = end.max(offset.saturating_add(length));
-        }
+    let held_from = size - end.len() as u64;
+    if start >= held_from {
+        let from = usize::try_from(start - held_from).unwrap_or(usize::MAX);
+        return Ok(end
+            .get(from..end.len() - tail)
+            .and_then(|footer| ParquetMetaDataReader::decode_metadata(footer).ok()));
     }
-    if selected.len() == metadata.num_row_groups() {
-        // The bound spares no group; the whole-value read is the same fetch.
-        return Ok(None);
+    let footer = handle.read_range_bytes(start, length)?;
+    Ok(ParquetMetaDataReader::decode_metadata(&footer).ok())
+}
+
+/// The compressed column bytes a read decodes before it splits across
+/// threads.
+///
+/// Below this, spawning costs more than it saves: a thread is tens of
+/// microseconds, and a megabyte of pages decodes in a few milliseconds.
+const PARALLEL_READ_BYTES: u64 = 1024 * 1024;
+
+/// Batches one unit decodes ahead of the consumer before it waits.
+///
+/// Sixteen batches of the default 65,536 rows cover a row group of the
+/// million rows most writers cut, so decoders of later row groups rarely
+/// wait on the front one, and a single huge row group is held a bounded
+/// number of batches ahead rather than whole.
+const READ_AHEAD_BATCHES: usize = 16;
+
+/// One decoded batch, or the failure that ended a unit.
+type Decoded = std::result::Result<RecordBatch, ArrowError>;
+
+/// A read decoded on several threads, handed out in file order.
+///
+/// The work is cut into units of one row group and one group of projected
+/// root columns, each its own Parquet reader over the same shared bytes and
+/// batch size. Row groups come first: a read of at least as many row groups
+/// as it has threads decodes whole row groups side by side, and a read of
+/// fewer deals each row group's columns into groups of roughly equal
+/// uncompressed size, so a single-row-group file still uses every thread.
+/// The column groups of one row group are cut into batches at the same
+/// rows, so the reader joins their i-th batches side by side in file column
+/// order. A batch never spans two row groups.
+///
+/// At most `threads` units decode at once, and each runs at most
+/// [`READ_AHEAD_BATCHES`] batches ahead of the consumer before it waits, so
+/// what the reader holds is bounded by the batch size, never by how large a
+/// writer made its row groups; the next row group starts as the consumer
+/// finishes one.
+///
+/// **Dropping the reader detaches the decoders rather than joining them**,
+/// as a parallel table scan's workers are: each owns its reader, the copied
+/// column chunks it decodes, and its sender, so nothing borrowed outlives the
+/// drop, and each stops at its next send.
+struct ParallelRead {
+    /// The schema a single reader over every projected column reports.
+    schema: Arc<Schema>,
+    /// The shared bytes and footer every unit reads.
+    source: ParquetSource,
+    /// Rows per batch, the same in every unit.
+    batch_rows: usize,
+    /// The projected root columns of each column group, in file order.
+    column_groups: Vec<Vec<usize>>,
+    /// For each output column, its column group and its position there.
+    layout: Vec<(usize, usize)>,
+    /// The row groups not yet started, in file order.
+    pending: std::collections::VecDeque<usize>,
+    /// The row groups started and not yet drained, in file order, each with
+    /// one receiver per column group.
+    running: std::collections::VecDeque<Vec<std::sync::mpsc::Receiver<Decoded>>>,
+    /// How many row groups decode at once.
+    window: usize,
+    /// Whether the reader has finished, cleanly or not.
+    done: bool,
+}
+
+impl ParallelRead {
+    /// Split a read across threads, when it is worth them.
+    ///
+    /// Answers `None` - the caller reads with one reader - when it may use
+    /// one thread, when there is only one row group and one column to split,
+    /// or when its column chunks are below [`PARALLEL_READ_BYTES`].
+    fn open(
+        source: &ParquetSource,
+        projection: Option<&[usize]>,
+        batch_rows: usize,
+        threads: usize,
+    ) -> Result<Option<BatchReader>> {
+        let roots: Vec<usize> = match projection {
+            Some(indices) => indices.to_vec(),
+            None => (0..source.metadata.schema().fields().len()).collect(),
+        };
+        let groups = source.metadata.metadata().row_groups();
+        let kept: Vec<usize> = match &source.row_groups {
+            Some(kept) => kept.clone(),
+            None => (0..groups.len()).collect(),
+        };
+        if threads < 2 || roots.is_empty() || kept.is_empty() {
+            return Ok(None);
+        }
+        let parquet_schema = source.metadata.parquet_schema();
+        let mut compressed = 0_u64;
+        let mut weights = vec![0_u64; source.metadata.schema().fields().len()];
+        for group in kept.iter().filter_map(|index| groups.get(*index)) {
+            for (leaf, column) in group.columns().iter().enumerate() {
+                let root = parquet_schema.get_column_root_idx(leaf);
+                if roots.contains(&root) {
+                    compressed += u64::try_from(column.compressed_size()).unwrap_or(0);
+                    if let Some(weight) = weights.get_mut(root) {
+                        *weight += u64::try_from(column.uncompressed_size()).unwrap_or(0);
+                    }
+                }
+            }
+        }
+        // Whole row groups first; what the row groups leave of the threads
+        // splits each one's columns.
+        let per_group = (threads / kept.len().min(threads)).min(roots.len()).max(1);
+        if compressed < PARALLEL_READ_BYTES || (kept.len() < 2 && per_group < 2) {
+            return Ok(None);
+        }
+
+        // Largest first, each to the lightest column group so far.
+        let mut order = roots.clone();
+        order.sort_by_key(|root| std::cmp::Reverse(weights[*root]));
+        let mut dealt: Vec<(u64, Vec<usize>)> = (0..per_group).map(|_| (0, Vec::new())).collect();
+        for root in order {
+            if let Some(lightest) = dealt.iter_mut().min_by_key(|(weight, _)| *weight) {
+                lightest.0 += weights[root];
+                lightest.1.push(root);
+            }
+        }
+        let column_groups: Vec<Vec<usize>> = dealt
+            .into_iter()
+            .map(|(_, mut members)| {
+                members.sort_unstable();
+                members
+            })
+            .filter(|members| !members.is_empty())
+            .collect();
+
+        // What one reader over every projected column would report.
+        let schema = source
+            .builder()
+            .with_batch_size(batch_rows)
+            .with_projection(ProjectionMask::roots(parquet_schema, roots.iter().copied()))
+            .build()
+            .map(|reader| arrow_array::RecordBatchReader::schema(&reader))?;
+        let mut sorted = roots;
+        sorted.sort_unstable();
+        let layout = sorted
+            .iter()
+            .map(|root| {
+                column_groups
+                    .iter()
+                    .enumerate()
+                    .find_map(|(group, members)| {
+                        members
+                            .iter()
+                            .position(|member| member == root)
+                            .map(|position| (group, position))
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+        let window = (threads / column_groups.len()).max(1);
+        let mut read = Self {
+            schema,
+            source: ParquetSource {
+                data: source.data.clone(),
+                metadata: source.metadata.clone(),
+                row_groups: None,
+            },
+            batch_rows,
+            column_groups,
+            layout,
+            pending: kept.into(),
+            running: std::collections::VecDeque::with_capacity(window),
+            window,
+            done: false,
+        };
+        for _ in 0..read.window {
+            read.start_next()?;
+        }
+        Ok(Some(Box::new(read)))
     }
-    let Ok(end) = usize::try_from(end) else {
-        return Ok(None);
-    };
-    let prefix = Bytes::from(handle.read_range_bytes(0, end)?);
-    let arrow_metadata = reader_metadata(Arc::new(metadata))?;
-    Ok(Some(
-        ParquetRecordBatchReaderBuilder::new_with_metadata(prefix, arrow_metadata)
-            .with_row_groups(selected),
-    ))
+
+    /// Start decoding the next row group, one thread per column group.
+    fn start_next(&mut self) -> Result<()> {
+        let Some(row_group) = self.pending.pop_front() else {
+            return Ok(());
+        };
+        let mut receivers = Vec::with_capacity(self.column_groups.len());
+        for members in &self.column_groups {
+            let reader = self
+                .source
+                .builder()
+                .with_row_groups(vec![row_group])
+                .with_batch_size(self.batch_rows)
+                .with_projection(ProjectionMask::roots(
+                    self.source.metadata.parquet_schema(),
+                    members.iter().copied(),
+                ))
+                .build()?;
+            let (sender, receiver) = std::sync::mpsc::sync_channel(READ_AHEAD_BATCHES);
+            // Deliberately detached: see the type docs for why drop does not join.
+            let _ = std::thread::spawn(move || decode_unit(reader, &sender));
+            receivers.push(receiver);
+        }
+        self.running.push_back(receivers);
+        Ok(())
+    }
+
+    /// The next batch of the row group in front, or `None` when it is done.
+    fn next_joined(&mut self) -> Option<Decoded> {
+        let units = self.running.front()?;
+        let mut batches = Vec::with_capacity(units.len());
+        let mut ended = 0;
+        for unit in units {
+            match unit.recv() {
+                Ok(Ok(batch)) => batches.push(batch),
+                Ok(Err(error)) => return Some(Err(error)),
+                // A decoder that is done has dropped its sender.
+                Err(_) => ended += 1,
+            }
+        }
+        if ended == units.len() {
+            return None;
+        }
+        if ended > 0 {
+            return Some(Err(ArrowError::ComputeError(
+                "expected every Parquet column group to yield the same batches, got one that \
+                 ended early"
+                    .to_owned(),
+            )));
+        }
+        let rows = batches[0].num_rows();
+        if batches.iter().any(|batch| batch.num_rows() != rows) {
+            return Some(Err(ArrowError::ComputeError(format!(
+                "expected every Parquet column group to yield {rows} rows, got {:?}",
+                batches
+                    .iter()
+                    .map(RecordBatch::num_rows)
+                    .collect::<Vec<_>>()
+            ))));
+        }
+        if batches.len() == 1 {
+            return batches.pop().map(Ok);
+        }
+        let columns = self
+            .layout
+            .iter()
+            .map(|(group, position)| Arc::clone(batches[*group].column(*position)))
+            .collect();
+        Some(RecordBatch::try_new_with_options(
+            Arc::clone(&self.schema),
+            columns,
+            &arrow_array::RecordBatchOptions::new().with_row_count(Some(rows)),
+        ))
+    }
+}
+
+/// Decode one unit on its own thread.
+///
+/// Every send doubles as the liveness check, and the body is unwind-guarded
+/// so a panicking decoder reports an error rather than leaving the consumer
+/// to read its silence as the end of the row group.
+fn decode_unit(
+    reader: parquet::arrow::arrow_reader::ParquetRecordBatchReader,
+    sender: &std::sync::mpsc::SyncSender<Decoded>,
+) {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        for batch in reader {
+            if sender.send(batch).is_err() {
+                return;
+            }
+        }
+    }));
+    if outcome.is_err() {
+        let _ = sender.send(Err(ArrowError::ExternalError(
+            "expected a Parquet row group to decode, got a panicking decoder".into(),
+        )));
+    }
+}
+
+impl Iterator for ParallelRead {
+    type Item = Decoded;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.done {
+            match self.next_joined() {
+                Some(Ok(batch)) => return Some(Ok(batch)),
+                Some(Err(error)) => {
+                    self.done = true;
+                    return Some(Err(error));
+                }
+                None if self.running.is_empty() => self.done = true,
+                None => {
+                    // The front row group is drained, so the window has
+                    // room for one more.
+                    self.running.pop_front();
+                    if let Err(error) = self.start_next() {
+                        self.done = true;
+                        return Some(Err(ArrowError::ExternalError(Box::new(error))));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+impl arrow_array::RecordBatchReader for ParallelRead {
+    fn schema(&self) -> Arc<Schema> {
+        Arc::clone(&self.schema)
+    }
 }
 
 /// An Apache Parquet file bound to one [`IOBase`] handle.
@@ -1150,11 +2228,13 @@ impl From<parquet::errors::ParquetError> for Error {
 pub mod internals {
     //! What `rust/tests/parquet/mod_.rs` pins and a caller cannot reach.
     //!
-    //! `open_builder` is the file-private reader builder every Parquet read
-    //! opens through, and the logical type a column publishes - what a reader
-    //! outside this crate sees - is visible only on it. Forwarding it changes
-    //! no visibility: the builder itself is the `parquet` crate's own public
-    //! type.
+    //! `open_builder` is the file-private whole-value reader builder, and the
+    //! logical type a column publishes - what a reader outside this crate
+    //! sees - is visible only on it. Forwarding it changes no visibility: the
+    //! builder itself is the `parquet` crate's own public type. The thread
+    //! bound a table hands each file is crate-internal; pinning it is what
+    //! lets a test run the threaded paths, or the one-thread path, whatever
+    //! the host offers.
 
     use bytes::Bytes;
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -1172,5 +2252,31 @@ pub mod internals {
         handle: &H,
     ) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
         super::open_builder(handle)
+    }
+
+    /// Replace the file `handle` holds as [`super::overwrite_arrow_reader`]
+    /// does, feeding the column writers every `buffer` Arrow bytes - small
+    /// enough, in a test, that one row group takes several feeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns what the public write returns.
+    pub fn overwrite_with_write_buffer<H: IOBase + ?Sized>(
+        handle: &mut H,
+        batches: crate::arrow::BatchReader,
+        options: &super::ParquetOptions,
+        buffer: usize,
+    ) -> Result<()> {
+        super::overwrite_buffered(handle, batches, options, buffer)
+    }
+
+    /// These options with the threads one file decodes or encodes on pinned.
+    #[must_use]
+    pub fn with_threads(
+        mut options: super::ParquetOptions,
+        threads: usize,
+    ) -> super::ParquetOptions {
+        options.threads = Some(threads.max(1));
+        options
     }
 }

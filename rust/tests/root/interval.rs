@@ -49,7 +49,7 @@ mod temporal {
             // The constructor validates the layout where the bare variant did
             // not, and answers the literal leaf.
             let dtype = DataType::interval(unit).unwrap();
-            assert_eq!(dtype, DataType::Interval(leaf));
+            assert_eq!(dtype, DataType::from(leaf));
             assert_eq!(DataType::from(leaf), dtype);
             assert_eq!(dtype.id(), DataTypeId::Interval);
             assert_eq!(dtype.kind(), DataTypeKind::Temporal);
@@ -81,11 +81,7 @@ mod temporal {
             let reason = "unit must be an interval layout";
             assert_refused(DataType::interval(unit), "Interval", reason);
             assert_refused(IntervalType::Interval(unit).validate(), "Interval", reason);
-            assert_refused(
-                DataType::Interval(IntervalType::Interval(unit)).validate(),
-                "Interval",
-                reason,
-            );
+            assert_refused(DataType::Interval(unit).validate(), "Interval", reason);
         }
     }
 }

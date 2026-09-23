@@ -333,16 +333,17 @@ Text reads into a decimal without passing through a float, and an integer conver
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let text: ArrayRef = Arc::new(StringArray::from(vec!["10.5", "-0.25"]));
     let amount = Field::new("amount", DataType::decimal128(38, 4)?, false);
-    let amounts = amount.cast_arrow_array(text, ArrowCastOptions::new().with_safe(false))?;
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let amounts = Serie::from_arrow_array(Some(&amount), text, strict)?;
 
-    assert_eq!(amounts.data_type(), &arrow_schema::DataType::Decimal128(38, 4));
-    assert_eq!(amounts.len(), 2);
+    // The coefficients, at the declared scale of four.
+    let coefficients = amounts.as_decimal128().expect("a decimal128 column").values();
+    assert_eq!(coefficients, &[105_000, -2_500]);
     ```
 
 === "Python"
@@ -352,16 +353,16 @@ Text reads into a decimal without passing through a float, and an integer conver
 
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
-    amounts = Field("amount", "decimal128(38,4)").cast_arrow_array(pa.array(["10.5", "-0.25"]))
-    assert amounts.to_pylist() == [Decimal("10.5000"), Decimal("-0.2500")]
+    amount = Field("amount", "decimal128(38,4)")
+    amounts = Serie.from_arrow_array(pa.array(["10.5", "-0.25"]), amount)
+    assert amounts.as_py() == [Decimal("10.5000"), Decimal("-0.2500")]
 
     # An integer column rescales into the declared scale.
-    counted = Field("amount", "decimal64(18,2)").cast_arrow_array(
-        pa.array([1, 2], type=pa.int32())
-    )
-    assert counted.to_pylist() == [Decimal("1.00"), Decimal("2.00")]
+    counts = pa.array([1, 2], type=pa.int32())
+    counted = Serie.from_arrow_array(counts, Field("amount", "decimal64(18,2)"))
+    assert counted.as_py() == [Decimal("1.00"), Decimal("2.00")]
     ```
 
 === "JavaScript"
@@ -369,11 +370,14 @@ Text reads into a decimal without passing through a float, and an integer conver
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = arrow.vectorFromArray(['10.5', '-0.25'], new arrow.Utf8())
-    const amounts = fields.decimal('amount', 38, 4).castArrowArray(text)
+    const amounts = Serie.fromArrowArray(text, fields.decimal('amount', 38, 4))
     assert.equal(amounts.length, 2)
+    assert.equal(amounts.field.dtype.toString(), 'decimal128(38,4)')
+    // Arrow JS renders the coefficient, at the declared scale of four.
+    assert.equal(String(amounts.intoArrowArray().get(0)), '105000')
     ```
 
 ## The 256-bit pair

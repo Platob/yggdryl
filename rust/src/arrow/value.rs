@@ -1,9 +1,9 @@
 //! Schema-directed scalar/array conversion.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::UriType;
 use crate::budget::{
     MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
     physical_limit_error, physical_union_branch, unsupported,
@@ -41,9 +41,6 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
-use crate::{DateTimeType, DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -107,7 +104,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             .map(f16::from_f64)),
         DataType::Float32 => primitive!(Float32Array, narrow_f32),
         DataType::Float64 => primitive!(Float64Array, |value: &&Scalar| exact_f64(value)),
-        DataType::DateTime(DateTimeType::DateTime64 { unit, .. }) => match unit {
+        DataType::DateTime64 { unit, .. } => match unit {
             TimeUnit::Second => physical_primitive!(TimestampSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => {
                 physical_primitive!(TimestampMillisecondArray, temporal_i64(*unit))
@@ -120,19 +117,19 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date(DateType::Date32) => primitive!(Date32Array, date_i32),
-        DataType::Date(DateType::Date64) => primitive!(Date64Array, date_i64),
-        DataType::Time(TimeType::Time32(unit)) => match unit {
+        DataType::Date32 => primitive!(Date32Array, date_i32),
+        DataType::Date64 => primitive!(Date64Array, date_i64),
+        DataType::Time32(unit) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, temporal_i32(*unit)),
             TimeUnit::Millisecond => primitive!(Time32MillisecondArray, temporal_i32(*unit)),
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time(TimeType::Time64(unit)) => match unit {
+        DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration(DurationType::Duration32(unit)) => match unit {
+        DataType::Duration32(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
@@ -147,20 +144,20 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }),
             _ => return Err(unsupported(dtype, "invalid duration32 unit")),
         },
-        DataType::Duration(DurationType::Duration64(unit)) => match unit {
+        DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
+        DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, interval_year_month)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
+        DataType::Interval(TimeUnit::DayTime) => {
             primitive!(IntervalDayTimeArray, interval_day_time)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
+        DataType::Interval(TimeUnit::MonthDayNano) => {
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
@@ -189,7 +186,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Uri(UriType::Url) => Arc::new(StringArray::from(
+        DataType::Url => Arc::new(StringArray::from(
             values
                 .iter()
                 .map(|value| match value {
@@ -199,7 +196,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Uri(UriType::Urn) => Arc::new(StringArray::from(
+        DataType::Urn => Arc::new(StringArray::from(
             values
                 .iter()
                 .map(|value| match value {
@@ -241,45 +238,42 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Sequence(SequenceType::List(child)) => {
-            list_array::<i32>(child, values, ListKind::List)?
-        }
-        DataType::Sequence(SequenceType::ListView(child)) => {
-            list_view_array::<i32>(child, values, ListKind::ListView)?
-        }
-        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
-            fixed_size_list_array(child, *size, values)?
-        }
-        DataType::Sequence(SequenceType::LargeList(child)) => {
-            list_array::<i64>(child, values, ListKind::LargeList)?
-        }
-        DataType::Sequence(SequenceType::LargeListView(child)) => {
+        DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
+        DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
+        DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
+        DataType::LargeList(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
+        DataType::LargeListView(child) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
         DataType::Struct(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
-        DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_array(dictionary, values)?,
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
+        DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
+        DataType::Decimal32 { scale, .. } => {
             physical_primitive!(Decimal32Array, |value: &&Scalar| i32::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal32", value.kind())))
         }
-        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
+        DataType::Decimal64 { scale, .. } => {
             physical_primitive!(Decimal64Array, |value: &&Scalar| i64::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal64", value.kind())))
         }
-        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
+        DataType::Decimal128 { scale, .. } => {
             physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
                 value, *scale
             ))
         }
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
+        DataType::Decimal256 { scale, .. } => {
             physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
         }
-        DataType::Mapping(map) => map_array(map, values)?,
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            map_array(map, values)?
+        }
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
         // A geospatial value *is* its WKB payload, so the array is the bytes;
         // both the canonical `Geospatial` spelling and plain bytes build it.
@@ -403,7 +397,7 @@ pub(crate) fn value_from_array(
         // Every temporal reads as its typed value: the count alone is not
         // the datum, the unit and zone are, and the typed spelling is what
         // serializes losslessly and compares across resolutions.
-        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => match unit {
+        DataType::DateTime64 { unit, timezone } => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
                 Scalar::datetime64(value, *unit, *timezone)
             })?,
@@ -418,13 +412,13 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date(DateType::Date32) => {
+        DataType::Date32 => {
             primitive!(Date32Array, |value| { Scalar::date32(value) })
         }
-        DataType::Date(DateType::Date64) => {
+        DataType::Date64 => {
             primitive!(Date64Array, |value| { Scalar::date64(value) })
         }
-        DataType::Time(TimeType::Time32(unit)) => match unit {
+        DataType::Time32(unit) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, |value| Scalar::time32(
                 value,
                 *unit,
@@ -437,7 +431,7 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time(TimeType::Time64(unit)) => match unit {
+        DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, |value| Scalar::time64(
                 value,
                 *unit,
@@ -450,10 +444,8 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration(DurationType::Duration32(unit)) => {
-            duration32_from_array(array, index, *unit)?
-        }
-        DataType::Duration(DurationType::Duration64(unit)) => match unit {
+        DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
+        DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value| {
                 Scalar::duration64(value, *unit)
             })?,
@@ -468,11 +460,11 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
+        DataType::Interval(TimeUnit::YearMonth) => {
             let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(months, 0, 0, TimeUnit::YearMonth)?)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
+        DataType::Interval(TimeUnit::DayTime) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(
                 0,
@@ -481,7 +473,7 @@ pub(crate) fn value_from_array(
                 TimeUnit::DayTime,
             )?)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
+        DataType::Interval(TimeUnit::MonthDayNano) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(
                 value.months,
@@ -505,11 +497,11 @@ pub(crate) fn value_from_array(
                 .parse()
                 .map_err(crate::arrow::Error::from)?,
         ),
-        DataType::Uri(UriType::Url) => Scalar::Url(std::sync::Arc::new(
+        DataType::Url => Scalar::Url(std::sync::Arc::new(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
-        DataType::Uri(UriType::Urn) => Scalar::Urn(std::sync::Arc::new(
+        DataType::Urn => Scalar::Urn(std::sync::Arc::new(
             crate::Urn::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
@@ -612,22 +604,22 @@ pub(crate) fn value_from_array(
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Sequence(SequenceType::List(child)) => {
+        DataType::List(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
-        DataType::Sequence(SequenceType::ListView(child)) => list_value(
+        DataType::ListView(child) => list_value(
             child,
             downcast::<ListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => list_value(
+        DataType::FixedSizeList(child, _) => list_value(
             child,
             downcast::<FixedSizeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::LargeList(child)) => list_value(
+        DataType::LargeList(child) => list_value(
             child,
             downcast::<LargeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::LargeListView(child)) => list_value(
+        DataType::LargeListView(child) => list_value(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,
@@ -684,25 +676,26 @@ pub(crate) fn value_from_array(
             )?;
             Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload])
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
-            dictionary_value(dictionary, array, index)?
-        }
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
+        DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
+        DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
             Scalar::Decimal32(crate::Decimal32::new(value, *scale))
         }
-        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
+        DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
             Scalar::Decimal64(crate::Decimal64::new(value, *scale))
         }
-        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
+        DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
+        DataType::Decimal256 { scale, .. } => {
             let value = downcast::<Decimal256Array>(array)?.value(index);
             Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let entries = downcast::<MapArray>(array)?.value(index);
             let fields = map
                 .entries()
@@ -734,7 +727,7 @@ pub(crate) fn value_from_array(
             Scalar::Variant(crate::Variant::new(metadata, payload)?)
         }
     };
-    Ok(value)
+    Ok(dtype.declared_layout(value))
 }
 
 fn nulls(validity: Vec<bool>) -> Option<NullBuffer> {
@@ -753,47 +746,154 @@ trait Offset: arrow_array::OffsetSizeTrait + TryFrom<usize> {}
 impl Offset for i32 {}
 impl Offset for i64 {}
 
-type ListParts<'a, O> = (Vec<O>, Vec<O>, Vec<&'a Scalar>, Option<NullBuffer>);
+/// One list element's items: the rows to lay out, or the element's own
+/// array where it is a column of the item field itself.
+enum Items<'a> {
+    Rows(Cow<'a, [Scalar]>),
+    Column(ArrayRef),
+}
 
-fn list_parts<'a, O: Offset>(values: &'a [&Scalar]) -> Result<ListParts<'a, O>> {
+impl Items<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Rows(rows) => rows.len(),
+            Self::Column(array) => array.len(),
+        }
+    }
+}
+
+/// Each element's items read through the sequence door, `None` for a null
+/// row; a column of the item field itself is kept as its array, because
+/// its door proved every row and its buffers are the items.
+fn list_items<'a>(
+    child: &Field,
+    values: &[&'a Scalar],
+    what: &'static str,
+) -> Result<Vec<Option<Items<'a>>>> {
+    values
+        .iter()
+        .map(|value| {
+            if matches!(value, Scalar::Null) {
+                return Ok(None);
+            }
+            let serie = value
+                .as_serie()
+                .ok_or_else(|| invalid_value_kind(what, value))?;
+            let held = crate::value::column_fits_item(serie, child)
+                .then(|| serie.into_arrow_array())
+                .flatten()
+                .map_or_else(|| Items::Rows(serie.rows()), Items::Column);
+            Ok(Some(held))
+        })
+        .collect()
+}
+
+/// The child array under a list, assembled in element order: runs of rows
+/// are laid out together, a column's own array is appended as it is, and
+/// the segments are joined once at the end - one build, and no join, where
+/// every element lent rows.
+struct ItemsArray<'a, 'f> {
+    child: &'f Field,
+    segments: Vec<ArrayRef>,
+    pending: Vec<&'a Scalar>,
+}
+
+impl<'a, 'f> ItemsArray<'a, 'f> {
+    const fn new(child: &'f Field) -> Self {
+        Self {
+            child,
+            segments: Vec::new(),
+            pending: Vec::new(),
+        }
+    }
+
+    /// Reserve `slots` rows ahead of laying them out, refusing what memory
+    /// cannot hold rather than aborting on it.
+    fn reserve(&mut self, slots: usize, what: &'static str) -> Result<()> {
+        self.pending
+            .try_reserve_exact(slots)
+            .map_err(|error| allocation_error(what, slots, &error))
+    }
+
+    fn rows(&mut self, rows: impl IntoIterator<Item = &'a Scalar>) {
+        self.pending.extend(rows);
+    }
+
+    fn column(&mut self, array: &ArrayRef) -> Result<()> {
+        self.lay_out_pending()?;
+        self.segments.push(Arc::clone(array));
+        Ok(())
+    }
+
+    fn lay_out_pending(&mut self) -> Result<()> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        let segment = array_from_values(self.child, &self.pending)?;
+        self.pending.clear();
+        self.segments.push(segment);
+        Ok(())
+    }
+
+    fn finish(mut self) -> Result<ArrayRef> {
+        if self.segments.is_empty() {
+            return array_from_values(self.child, &self.pending);
+        }
+        self.lay_out_pending()?;
+        if let [segment] = &*self.segments {
+            return Ok(Arc::clone(segment));
+        }
+        let segments = self
+            .segments
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&dyn Array>>();
+        Ok(arrow_select::concat::concat(&segments)?)
+    }
+}
+
+type ListParts<O> = (Vec<O>, Vec<O>, ArrayRef, Option<NullBuffer>);
+
+fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<O>> {
+    let items = list_items(child, values, "a sequence for a list column")?;
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut sizes = Vec::with_capacity(values.len());
-    let mut flattened = Vec::new();
     let mut validity = Vec::with_capacity(values.len());
+    let mut array = ItemsArray::new(child);
+    let mut total = 0_usize;
     offsets.push(
         O::try_from(0).map_err(|_| invalid_value("a list offset within the offset type", 0))?,
     );
-    for value in values {
-        if matches!(value, Scalar::Null) {
-            validity.push(false);
-            sizes.push(
-                O::try_from(0)
-                    .map_err(|_| invalid_value("a list size within the offset type", 0))?,
-            );
-        } else {
-            let items = value
-                .as_sequence()
-                .ok_or_else(|| invalid_value_kind("a sequence for a list column", value))?;
-            validity.push(true);
-            sizes.push(
-                O::try_from(items.len()).map_err(|_| {
-                    invalid_value("a list size within the offset type", items.len())
-                })?,
-            );
-            flattened.extend(items);
-        }
+    for held in &items {
+        let size = match held {
+            None => {
+                validity.push(false);
+                0
+            }
+            Some(held) => {
+                validity.push(true);
+                match held {
+                    Items::Rows(rows) => array.rows(rows.iter()),
+                    Items::Column(column) => array.column(column)?,
+                }
+                held.len()
+            }
+        };
+        sizes.push(
+            O::try_from(size)
+                .map_err(|_| invalid_value("a list size within the offset type", size))?,
+        );
+        total += size;
         offsets.push(
-            O::try_from(flattened.len()).map_err(|_| {
-                invalid_value("a list offset within the offset type", flattened.len())
-            })?,
+            O::try_from(total)
+                .map_err(|_| invalid_value("a list offset within the offset type", total))?,
         );
     }
-    Ok((offsets, sizes, flattened, nulls(validity)))
+    Ok((offsets, sizes, array.finish()?, nulls(validity)))
 }
 
 fn list_array<O: Offset>(child: &Field, values: &[&Scalar], kind: ListKind) -> Result<ArrayRef> {
-    let (offsets, _, flattened, nulls) = list_parts::<O>(values)?;
-    let child_array = array_from_values(child, &flattened)?;
+    let (offsets, _, child_array, nulls) = list_parts::<O>(child, values)?;
     let child = child.clone().into_arrow_field_ref()?;
     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
     match kind {
@@ -818,9 +918,8 @@ fn list_view_array<O: Offset>(
     values: &[&Scalar],
     kind: ListKind,
 ) -> Result<ArrayRef> {
-    let (offsets, sizes, flattened, nulls) = list_parts::<O>(values)?;
+    let (offsets, sizes, child_array, nulls) = list_parts::<O>(child, values)?;
     let offsets = offsets.into_iter().take(values.len()).collect::<Vec<_>>();
-    let child_array = array_from_values(child, &flattened)?;
     let child = child.clone().into_arrow_field_ref()?;
     match kind {
         ListKind::ListView => Ok(Arc::new(ListViewArray::try_new(
@@ -890,33 +989,32 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     let placeholder = has_parent_null
         .then(|| physical_placeholder_for_field(child))
         .transpose()?;
-    let mut flattened = Vec::new();
-    flattened
-        .try_reserve_exact(physical_len)
-        .map_err(|error| allocation_error("fixed-size-list child slots", physical_len, &error))?;
+    let items = list_items(child, values, "a sequence for a fixed-size-list column")?;
+    let mut array = ItemsArray::new(child);
+    array.reserve(physical_len, "fixed-size-list child slots")?;
     let mut validity = Vec::with_capacity(values.len());
-    for value in values {
-        if matches!(value, Scalar::Null) {
+    for held in &items {
+        let Some(held) = held else {
             validity.push(false);
             let placeholder = placeholder
                 .as_ref()
                 .ok_or_else(|| Error::internal("fixed_size_list_array::null_placeholder"))?;
-            flattened.extend(std::iter::repeat_n(placeholder, size_usize));
-        } else {
-            let items = value.as_sequence().ok_or_else(|| {
-                invalid_value_kind("a sequence for a fixed-size-list column", value)
-            })?;
-            if items.len() != size_usize {
-                return Err(invalid_value(
-                    &format!("a fixed list of exactly {size_usize} items"),
-                    items.len(),
-                ));
-            }
-            validity.push(true);
-            flattened.extend(items);
+            array.rows(std::iter::repeat_n(placeholder, size_usize));
+            continue;
+        };
+        if held.len() != size_usize {
+            return Err(invalid_value(
+                &format!("a fixed list of exactly {size_usize} items"),
+                held.len(),
+            ));
+        }
+        validity.push(true);
+        match held {
+            Items::Rows(rows) => array.rows(rows.iter()),
+            Items::Column(column) => array.column(column)?,
         }
     }
-    let child_array = array_from_values(child, &flattened)?;
+    let child_array = array.finish()?;
     Ok(Arc::new(FixedSizeListArray::try_new_with_length(
         child.clone().into_arrow_field_ref()?,
         size,
@@ -938,10 +1036,19 @@ fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayR
         }
     }
     let has_parent_null = null_rows != 0;
-    let validity = values
+    let rows = values
         .iter()
-        .map(|value| !matches!(value, Scalar::Null))
-        .collect::<Vec<_>>();
+        .map(|value| {
+            if matches!(value, Scalar::Null) {
+                return Ok(None);
+            }
+            value
+                .sequence_rows()
+                .map(Some)
+                .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let validity = rows.iter().map(Option::is_some).collect::<Vec<_>>();
     let arrow_fields = fields
         .iter()
         .cloned()
@@ -960,21 +1067,16 @@ fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayR
             let placeholder = has_parent_null
                 .then(|| physical_placeholder_for_field(field))
                 .transpose()?;
-            let column_values = values
+            let column_values = rows
                 .iter()
-                .map(|value| {
-                    if matches!(value, Scalar::Null) {
-                        placeholder
-                            .as_ref()
-                            .ok_or_else(|| Error::internal("struct_array::null_placeholder"))
-                    } else {
-                        value
-                            .as_sequence()
-                            .and_then(|values| values.get(column))
-                            .ok_or_else(|| {
-                                invalid_value_kind("a sequence for a struct column", value)
-                            })
-                    }
+                .zip(values)
+                .map(|(row, value)| match row {
+                    None => placeholder
+                        .as_ref()
+                        .ok_or_else(|| Error::internal("struct_array::null_placeholder")),
+                    Some(row) => row
+                        .get(column)
+                        .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value)),
                 })
                 .collect::<Result<Vec<_>>>()?;
             array_from_values(field, &column_values)
@@ -1013,11 +1115,16 @@ fn union_array(
         .try_reserve_exact(values.len())
         .map_err(|error| allocation_error("union selections", values.len(), &error))?;
     let mut active_counts = vec![0_usize; fields.len()];
-    for value in values {
-        let pair = value
-            .as_sequence()
-            .ok_or_else(|| invalid_value_kind("a union [type_id, payload] sequence", value))?;
-        let [type_id, payload] = pair else {
+    let pairs = values
+        .iter()
+        .map(|value| {
+            value
+                .sequence_rows()
+                .ok_or_else(|| invalid_value_kind("a union [type_id, payload] sequence", value))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    for pair in &pairs {
+        let [type_id, payload] = &**pair else {
             return Err(invalid_value(
                 "a union [type_id, payload] sequence of exactly 2 items",
                 pair.len(),
@@ -1391,7 +1498,7 @@ fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Res
         TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
         _ => {
             return Err(unsupported(
-                &DataType::Duration(DurationType::Duration32(unit)),
+                &DataType::Duration32(unit),
                 "invalid duration32 unit",
             ));
         }

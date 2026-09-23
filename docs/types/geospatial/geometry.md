@@ -374,18 +374,16 @@ exactly what makes the column import back as a geometry rather than as
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
+    // A column crossing out as a table answers the Arrow field it is written as.
     const point = Uint8Array.from(Buffer.alloc(21, 0))
     point[0] = 1
     point[1] = 1
     const projected = (field) =>
-      fields
-        .struct('row', [field], { nullable: false })
-        .castArrow(
-          new arrow.Table({ [field.name]: arrow.vectorFromArray([point], new arrow.Binary()) }),
-        ).schema.fields[0]
+      Serie.fromArrowArray(arrow.vectorFromArray([point], new arrow.Binary()), field)
+        .intoArrowBatch()
+        .schema.fields[0]
 
     const shape = projected(fields.geometry('shape'))
     assert.equal(shape.type.toString(), 'Binary')

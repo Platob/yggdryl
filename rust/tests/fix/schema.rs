@@ -235,7 +235,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
-    assert!(matches!(typed(60), DataType::DateTime(_)), "TransactTime");
+    assert!(
+        matches!(typed(60), DataType::DateTime64 { .. }),
+        "TransactTime"
+    );
     // Every price and quantity is FIX's own field, exact at the one width
     // this crate keeps a number at.
     assert_eq!(typed(44), DataType::decimal128(38, 18).unwrap());
@@ -600,8 +603,13 @@ fn the_row_keeps_unrepresented_content_and_projects_explained_values() {
     // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries
         .iter()
-        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
-        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .filter(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(0))
+        .map(|entry| {
+            entry
+                .get(1)
+                .and_then(|name| name.as_str().map(str::to_owned))
+                .unwrap()
+        })
         .collect();
     assert_eq!(named, ["9999", "venueownthing"]);
 
@@ -970,7 +978,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
     assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());
-    let DataType::Sequence(yggdryl::SequenceType::List(item)) = field.dtype() else {
+    let DataType::List(item) = field.dtype() else {
         panic!("regulatorytradeids is a List, got {}", field.dtype());
     };
     assert_eq!(item.name(), "regulatorytradeidcomponent");
@@ -1028,7 +1036,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(
         residual
             .iter()
-            .all(|entry| entry.get(0).and_then(Scalar::as_i128) != Some(1907)),
+            .all(|entry| entry.get(0).and_then(|tag| tag.as_i128()) != Some(1907)),
         "the projected group is not duplicated in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -1052,11 +1060,145 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(
         residual
             .iter()
-            .any(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(1907)),
+            .any(|entry| entry.get(0).and_then(|tag| tag.as_i128()) == Some(1907)),
         "the proprietary group remains whole in fixentries"
     );
     let rebuilt = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
+}
+
+/// A row read out of Arrow holds its arrival entries as a column; it
+/// rebuilds the message the run of them does.
+#[test]
+fn a_row_holding_its_arrival_entries_as_a_column_rebuilds_its_message() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let order = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|9999=x|10=0|")
+        .unwrap();
+    let row = order.into_row(&schema).unwrap();
+    let at = schema.index_of("fixentries").expect("the arrival entries");
+    assert!(
+        !row.as_sequence().unwrap()[at]
+            .as_sequence()
+            .unwrap()
+            .is_empty(),
+        "tag 9999 is a residual entry"
+    );
+    let column = super::with_column_at(&row, at, &super::item_of(&schema.fields()[at]));
+    let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &column)
+        .expect("the entries read from a column");
+    assert_eq!(held.into_row(&schema).unwrap(), row);
+}
+
+/// A group column whose counter column is null states its count by its
+/// occurrences, a column's as a run's.
+#[test]
+fn a_group_column_beside_a_null_counter_counts_its_occurrences() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let order = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=US0378331005|456=4|10=0|")
+        .unwrap();
+    let mut cells = order
+        .into_row(&schema)
+        .unwrap()
+        .as_sequence()
+        .unwrap()
+        .to_vec();
+    cells[column_of(&schema, 454)] = Scalar::Null;
+    let row = Scalar::from_sequence(cells);
+    let at = schema.index_of("secaltids").expect("a secaltids column");
+    let column = super::with_column_at(&row, at, &super::item_of(&schema.fields()[at]));
+
+    let run = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &column).unwrap();
+    assert_eq!(run.by_tag(454).unwrap().as_i128(), Some(1));
+    assert_eq!(held.by_tag(454).unwrap().as_i128(), Some(1));
+}
+
+/// A message holding a group as a column whose occurrences state their
+/// members in another order than the fixed row declares lands each member
+/// under its own name, and the fixed group covers the entry it states.
+#[test]
+fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let parsed = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=US0378331005|456=4|10=0|")
+        .unwrap();
+    let (mut root, row) = super::restatable(&registry, &parsed, &[35, 52]);
+    let at = root.index_of("secaltids").expect("the group's column");
+    let declared = super::item_of(&root.fields()[at]);
+    let mut item = declared.clone();
+    item.set_dtype(
+        StructType::from_fields(declared.fields().iter().rev().cloned())
+            .map(DataType::from)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        item.fields()
+            .iter()
+            .map(|member| member.name())
+            .collect::<Vec<_>>(),
+        [
+            "symbolpositionnumber",
+            "securityaltidsource",
+            "securityaltid"
+        ],
+        "the message states its members in another order than the fixed row"
+    );
+    let mut group = root.fields()[at].clone();
+    group.set_dtype(DataType::list(item.clone())).unwrap();
+    let mut children = root.fields().to_vec();
+    children[at] = group;
+    root.set_dtype(
+        StructType::from_fields(children)
+            .map(DataType::from)
+            .unwrap(),
+    )
+    .unwrap();
+    let cells = row.as_sequence().unwrap();
+    let reordered = Scalar::from_sequence(cells.iter().enumerate().map(|(index, cell)| {
+        if index != at {
+            return cell.clone();
+        }
+        Scalar::from_sequence(cell.as_sequence().unwrap().iter().map(|occurrence| {
+            Scalar::from_sequence(occurrence.as_sequence().unwrap().iter().rev().cloned())
+        }))
+    }));
+    let run =
+        yggdryl::FixMsg::with_registry(Arc::clone(&registry), root.clone(), reordered.clone())
+            .unwrap();
+    let message = yggdryl::FixMsg::with_registry(
+        Arc::clone(&registry),
+        root,
+        super::with_column_at(&reordered, at, &item),
+    )
+    .unwrap();
+    assert!(super::holds_column(&message, "secaltids"));
+
+    let row = message.into_row(&schema).unwrap();
+    let cells = row.as_sequence().unwrap();
+    let group = schema.index_of("secaltids").expect("a secaltids column");
+    let declared = super::item_of(&schema.fields()[group]);
+    let occurrences = cells[group].sequence_rows().expect("the fixed group");
+    assert_eq!(occurrences.len(), 1);
+    let members = occurrences[0].sequence_rows().expect("one occurrence");
+    let member = |name: &str| members[declared.index_of(name).expect(name)].as_str();
+    assert_eq!(member("securityaltid"), Some("US0378331005"));
+    assert_eq!(member("securityaltidsource"), Some("4"));
+    let residual = cells[schema.index_of("fixentries").unwrap()]
+        .sequence_rows()
+        .expect("the residual entries");
+    assert!(
+        residual
+            .iter()
+            .all(|entry| entry.get(0).and_then(|tag| tag.as_i128()) != Some(454)),
+        "the fixed group is not duplicated in fixentries"
+    );
+    assert_eq!(row, run.into_row(&schema).unwrap());
 }
 
 // ---------------------------------------------------------------------------

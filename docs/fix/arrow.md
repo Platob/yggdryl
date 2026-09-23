@@ -225,7 +225,7 @@ Lines to batches, with a lifecycle stage that sorts the finite capture: the walk
     assert_eq!(chain.null_count(), 0, "every message names its chain");
     let held = yggdryl::arrow::batch_to_value(&batch)?;
     let at = batch.schema().index_of("crossuuid")?;
-    let chains: Vec<_> = held.as_sequence().expect("rows").iter().map(|row| row.get(at).cloned()).collect();
+    let chains: Vec<_> = held.as_sequence().expect("rows").iter().map(|row| row.get(at).map(std::borrow::Cow::into_owned)).collect();
     assert_eq!(chains[0], chains[1], "one order, one chain");
     ```
 
@@ -370,8 +370,8 @@ A source row is read for every message it carries, so a capture answers one row 
         let values = yggdryl::arrow::batch_to_value(&batch?)?;
         for row in values.as_sequence().expect("rows") {
             // Each row keeps the source row's own columns in front.
-            assert_eq!(row.get(0), Some(&Scalar::from(7_i64)));
-            assert_eq!(row.get(1), Some(&Scalar::from(body)));
+            assert_eq!(row.get(0).as_deref(), Some(&Scalar::from(7_i64)));
+            assert_eq!(row.get(1).as_deref(), Some(&Scalar::from(body)));
             count += 1;
         }
     }
@@ -578,10 +578,10 @@ A carried column returns to its place because the message carries it: a message 
     let rows = rows.as_sequence().expect("rows");
     let at = |name: &str| held.schema().index_of(name).expect("a column");
     assert_eq!(rows[0].get(at("crossuuid")), rows[1].get(at("crossuuid")));
-    assert_eq!(rows[1].get(at("seqnum")), Some(&Scalar::from(1_u64)));
+    assert_eq!(rows[1].get(at("seqnum")).as_deref(), Some(&Scalar::from(1_u64)));
     assert!(rows[1].get(at("prevuuid")).is_some_and(|held| !held.is_null()));
     // The content is what each line stated, carried through untouched.
-    assert_eq!(rows[1].get(at("ordstatus")).and_then(Scalar::as_str), Some("2"));
+    assert_eq!(rows[1].get(at("ordstatus")).as_deref().and_then(Scalar::as_str), Some("2"));
     ```
 
 ## Edges

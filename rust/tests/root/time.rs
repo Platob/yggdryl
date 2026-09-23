@@ -76,7 +76,7 @@ mod temporal {
             assert_eq!(leaf.to_string(), spelling);
 
             let dtype = DataType::from(leaf);
-            assert_eq!(dtype, DataType::Time(leaf));
+            assert_eq!(dtype, DataType::from(leaf));
             assert_eq!(DataType::time_of(leaf).unwrap(), dtype);
             assert_eq!(dtype.id(), id);
             assert_eq!(dtype.kind(), DataTypeKind::Temporal);
@@ -100,11 +100,7 @@ mod temporal {
             assert_refused(DataType::time32(unit), "Time32", reason);
             assert_refused(DataType::time_of(TimeType::Time32(unit)), "Time32", reason);
             assert_refused(TimeType::Time32(unit).validate(), "Time32", reason);
-            assert_refused(
-                DataType::Time(TimeType::Time32(unit)).validate(),
-                "Time32",
-                reason,
-            );
+            assert_refused(DataType::Time32(unit).validate(), "Time32", reason);
         }
         for unit in [TimeUnit::Second, TimeUnit::Millisecond, TimeUnit::Day] {
             let reason = "unit must be microsecond or nanosecond";
@@ -129,26 +125,20 @@ mod temporal {
     #[test]
     fn time_selects_the_arrow_physical_width() {
         for (unit, expected) in [
-            (
-                TimeUnit::Second,
-                DataType::Time(TimeType::Time32(TimeUnit::Second)),
-            ),
+            (TimeUnit::Second, DataType::Time32(TimeUnit::Second)),
             (
                 TimeUnit::Millisecond,
-                DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+                DataType::Time32(TimeUnit::Millisecond),
             ),
             (
                 TimeUnit::Microsecond,
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+                DataType::Time64(TimeUnit::Microsecond),
             ),
-            (
-                TimeUnit::Nanosecond,
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
+            (TimeUnit::Nanosecond, DataType::Time64(TimeUnit::Nanosecond)),
         ] {
             assert_eq!(DataType::time(unit).unwrap(), expected);
             assert_eq!(
-                DataType::Time(TimeType::for_unit(unit).unwrap()),
+                DataType::from(TimeType::for_unit(unit).unwrap()),
                 expected,
                 "{unit}"
             );
@@ -196,26 +186,14 @@ mod temporal {
     #[test]
     fn generic_time_parser_selects_and_round_trips_physical_storage() {
         for (expression, expected) in [
-            (
-                "time",
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            ),
-            (
-                "time(s)",
-                DataType::Time(TimeType::Time32(TimeUnit::Second)),
-            ),
-            (
-                "time(3)",
-                DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            ),
+            ("time", DataType::Time64(TimeUnit::Microsecond)),
+            ("time(s)", DataType::Time32(TimeUnit::Second)),
+            ("time(3)", DataType::Time32(TimeUnit::Millisecond)),
             (
                 "time(micro seconds)",
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+                DataType::Time64(TimeUnit::Microsecond),
             ),
-            (
-                "time(9)",
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
+            ("time(9)", DataType::Time64(TimeUnit::Nanosecond)),
         ] {
             let parsed = DataType::from_str(expression).unwrap();
             assert_eq!(parsed, expected, "{expression}");

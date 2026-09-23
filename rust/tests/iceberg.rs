@@ -24,11 +24,17 @@ mod metadata;
 #[path = "iceberg/mod_.rs"]
 mod mod_;
 #[cfg(feature = "iceberg")]
+#[path = "iceberg/official.rs"]
+mod official;
+#[cfg(feature = "iceberg")]
 #[path = "iceberg/partition.rs"]
 mod partition;
 #[cfg(feature = "iceberg")]
 #[path = "iceberg/scan.rs"]
 mod scan;
+#[cfg(feature = "iceberg")]
+#[path = "iceberg/schema.rs"]
+mod schema;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/snapshot.rs"]
 mod snapshot;

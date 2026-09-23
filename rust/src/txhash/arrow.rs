@@ -47,8 +47,9 @@ use super::value::{TxHash, UNIX_WIDTH, width};
 pub(crate) const fn accepts_time(dtype: &DataType) -> bool {
     matches!(
         dtype,
-        DataType::DateTime(_)
-            | DataType::Date(_)
+        DataType::DateTime64 { .. }
+            | DataType::Date32
+            | DataType::Date64
             | DataType::Int8
             | DataType::Int16
             | DataType::Int32

@@ -278,35 +278,42 @@ One reading serves a row and a column: text into any of the four, any of the fou
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
     let strict = ArrowCastOptions::new().with_safe(false);
+    let id = Field::new("id", DataType::Int64, false);
+    let px = Field::new("px", DataType::Float64, false);
 
-    let ids = Field::new("id", DataType::Int64, false).cast_arrow_array(Arc::clone(&text), strict)?;
-    assert_eq!(ids.data_type(), &arrow_schema::DataType::Int64);
+    let ids = Serie::from_arrow_array(Some(&id), Arc::clone(&text), strict)?;
+    assert_eq!(ids.as_int64().expect("an int64 column").values(), &[1, 2]);
 
-    let prices = Field::new("px", DataType::Float64, false).cast_arrow_array(text, strict)?;
-    assert_eq!(prices.data_type(), &arrow_schema::DataType::Float64);
+    let prices = Serie::from_arrow_array(Some(&px), text, strict)?;
+    assert_eq!(prices.as_float64().expect("a float64 column").values(), &[1.0, 2.0]);
+
+    // A column in hand converts the same way: a number by the value it spells.
+    let widened = ids.cast(&px, strict)?;
+    assert_eq!(widened.as_float64().expect("a float64 column").values(), &[1.0, 2.0]);
     ```
 
 === "Python"
 
     ```python
     import pyarrow as pa
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     text = pa.array(["1", "2"])
 
-    assert Field("id", "int64").cast_arrow_array(text).equals(pa.array([1, 2], type=pa.int64()))
-    assert Field("px", "float64").cast_arrow_array(text).equals(
-        pa.array([1.0, 2.0], type=pa.float64())
-    )
-    assert Field("ok", "boolean").cast_arrow_array(pa.array(["true", "no"])).equals(
-        pa.array([True, False])
-    )
+    ids = Serie.from_arrow_array(text, Field("id", "int64"))
+    assert ids.into_arrow_array().equals(pa.array([1, 2], type=pa.int64()))
+    prices = Serie.from_arrow_array(text, Field("px", "float64"))
+    assert prices.into_arrow_array().equals(pa.array([1.0, 2.0], type=pa.float64()))
+    flags = Serie.from_arrow_array(pa.array(["true", "no"]), Field("ok", "boolean"))
+    assert flags.into_arrow_array().equals(pa.array([True, False]))
+
+    # A column in hand converts the same way: a number by the value it spells.
+    assert ids.cast(Field("px", "float64")).as_py() == [1.0, 2.0]
     ```
 
 === "JavaScript"
@@ -314,12 +321,17 @@ One reading serves a row and a column: text into any of the four, any of the fou
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = arrow.vectorFromArray(['1', '2'], new arrow.Utf8())
 
-    assert.deepEqual([...fields.int64('id').castArrowArray(text)], [1n, 2n])
-    assert.deepEqual([...fields.float64('px').castArrowArray(text)], [1, 2])
+    const ids = Serie.fromArrowArray(text, fields.int64('id'))
+    assert.deepEqual([...ids.intoArrowArray()], [1n, 2n])
+    const prices = Serie.fromArrowArray(text, fields.float64('px'))
+    assert.deepEqual([...prices.intoArrowArray()], [1, 2])
+
+    // A column in hand converts the same way: a number by the value it spells.
+    assert.deepEqual([...ids.cast(fields.float64('px')).intoArrowArray()], [1, 2])
     ```
 
 ## Edges

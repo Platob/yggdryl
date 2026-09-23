@@ -46,7 +46,7 @@ The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `e
     let identifiers = registry.field_by_counter(65_020)?;
     assert_eq!(identifiers.name(), "identifiers");
     assert_eq!(identifiers.as_fix().tag()?, Some(65_020));
-    assert!(matches!(identifiers.dtype(), DataType::Mapping(mapping) if mapping.keys_sorted()));
+    assert!(identifiers.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
     assert!(registry.get_field_by_tag(65_020).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65003, held by every registry;

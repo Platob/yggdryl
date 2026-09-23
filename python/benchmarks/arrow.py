@@ -36,7 +36,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import ArrowScalar, Field, IOBase
+from yggdryl import ArrowCastPlan, ArrowScalar, Field, IOBase, Serie, SerieReader
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one
@@ -82,6 +82,10 @@ DECLARED_SCHEMA = pa.schema(
         pa.field("size", pa.float64(), nullable=False),
     ]
 )
+# A held plan is what a loop over many columns of one layout keeps, so its row
+# measures the per-column half alone; the one-shot doors compile per call.
+COLUMN_PLAN = ArrowCastPlan(SCHEMA.field("size"), DECLARED_COLUMN)
+BATCH_PLAN = ArrowCastPlan(SCHEMA, DECLARED_ROOT)
 
 # A held shape shares its buffers back, so one value answers every export as
 # often as it is asked. A stream would be spent by the first measured call.
@@ -195,7 +199,7 @@ def _read_stream_value() -> int:
 
 
 def _read_lines_value() -> int:
-    return LINES.read_arrow(TEXT_ROOT).row_size
+    return LINES.read_arrow(field=TEXT_ROOT).row_size
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -286,6 +290,25 @@ def _cases(
             bulk,
         ),
         ("cast a held column", lambda: HELD_COLUMN.cast(DECLARED_COLUMN), bulk),
+        # The Serie doors pair with the two PyArrow casts above: the same
+        # array or batch, cast onto the same declared field.
+        (
+            "Serie.from_arrow_array, declared",
+            lambda: Serie.from_arrow_array(COLUMN, DECLARED_COLUMN),
+            bulk,
+        ),
+        ("ArrowCastPlan.apply, Array", lambda: COLUMN_PLAN.apply(COLUMN), bulk),
+        (
+            "Serie.from_arrow_batch, declared",
+            lambda: Serie.from_arrow_batch(BATCH, DECLARED_ROOT),
+            bulk,
+        ),
+        ("ArrowCastPlan.apply, RecordBatch", lambda: BATCH_PLAN.apply(BATCH), bulk),
+        (
+            "SerieReader drain, declared",
+            lambda: list(SerieReader.from_arrow_reader(TABLE, DECLARED_ROOT)),
+            bulk,
+        ),
         ("into_arrow_reader (yggdryl)", lambda: HELD_BATCH.into_arrow_reader(), small),
         (
             "into_arrow_reader (pyarrow)",

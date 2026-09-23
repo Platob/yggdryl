@@ -31,6 +31,7 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -54,8 +55,8 @@ use crate::integer::{
     compare_integer_parts, integer_parts,
 };
 use crate::interval::Interval;
-use crate::mapping::{Map, Mapping};
-use crate::sequence::Sequence;
+use crate::mapping::Map;
+use crate::serie::Run;
 use crate::string::Str;
 use crate::structure::Struct;
 use crate::temporal::scalars::temporal_key;
@@ -73,7 +74,7 @@ use crate::{
 use std::ops::Index;
 
 use crate::value::{FamilyValue, Nested};
-use crate::{Code, Floating, Geospatial, Integer, Temporal};
+use crate::{Code, Floating, Geospatial, Integer, Serie, Temporal};
 
 /// Make one canonical text value a scalar leaf of its own.
 ///
@@ -220,10 +221,25 @@ pub enum Scalar {
     Geometry(Geometry),
     /// Geographic coordinates as validated Well-Known Binary.
     Geography(Geography),
-    /// A schema-free ordered sequence of values.
-    Sequence(Sequence),
-    /// A schema-free insertion-ordered mapping of arbitrary keys.
-    Mapping(Mapping),
+    /// Many values under 32-bit offsets: a run, or a column of its item.
+    ///
+    /// Each of the five sequence variants is the list layout the value
+    /// declares - what [`Scalar::dtype`] answers and what a column crossing
+    /// Arrow is laid out as. The rows are its identity: two sequences of
+    /// equal rows are equal whichever layout declares them.
+    List(Serie),
+    /// Many values under 32-bit offsets and sizes.
+    ListView(Serie),
+    /// Exactly as many values per row as the declaring field fixes.
+    FixedSizeList(Serie),
+    /// Many values under 64-bit offsets.
+    LargeList(Serie),
+    /// Many values under 64-bit offsets and sizes.
+    LargeListView(Serie),
+    /// An insertion-ordered mapping of arbitrary keys.
+    Map(Map),
+    /// A mapping whose keys are held sorted.
+    SortedMap(Map),
     /// A schema-free record of values sorted by field name.
     Struct(Struct),
     /// One semi-structured value in [the Parquet Variant binary
@@ -460,8 +476,27 @@ impl Serialize for Scalar {
                 }
             }
             Self::Interval(value) => tagged(serializer, "interval", value),
-            Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
-            Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => {
+                // A column carries the field that types it, which its rows
+                // alone cannot say, so it writes under its layout's column tag.
+                let (rows_tag, column_tag) = match self {
+                    Self::ListView(_) => ("list_view", "list_view_serie"),
+                    Self::FixedSizeList(_) => ("fixed_size_list", "fixed_size_list_serie"),
+                    Self::LargeList(_) => ("large_list", "large_list_serie"),
+                    Self::LargeListView(_) => ("large_list_view", "large_list_view_serie"),
+                    _ => ("list", "serie"),
+                };
+                match values.as_slice() {
+                    Some(rows) => tagged(serializer, rows_tag, &rows),
+                    None => tagged(serializer, column_tag, values),
+                }
+            }
+            Self::Map(entries) => tagged(serializer, "map", &entries.as_slice()),
+            Self::SortedMap(entries) => tagged(serializer, "sorted_map", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
             // The two buffers as they are: a variant is its bytes, and
             // re-encoding the value they hold would restate a foreign
@@ -600,8 +635,18 @@ impl<'de> Deserialize<'de> for Scalar {
             Duration32(Temporal32),
             Duration64(Temporal64),
             Interval(crate::interval::Interval),
-            Sequence(Vec<Scalar>),
-            Mapping(Vec<(Scalar, Scalar)>),
+            List(Vec<Scalar>),
+            ListView(Vec<Scalar>),
+            FixedSizeList(Vec<Scalar>),
+            LargeList(Vec<Scalar>),
+            LargeListView(Vec<Scalar>),
+            Serie(Serie),
+            ListViewSerie(Serie),
+            FixedSizeListSerie(Serie),
+            LargeListSerie(Serie),
+            LargeListViewSerie(Serie),
+            Map(Vec<(Scalar, Scalar)>),
+            SortedMap(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
             Variant(Arc<[u8]>, Arc<[u8]>),
             #[serde(rename = "figi")]
@@ -785,10 +830,23 @@ impl<'de> Deserialize<'de> for Scalar {
                     .map_err(D::Error::custom)
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
-            StructuralWire::Sequence(values) => Ok(Self::from_sequence(values)),
-            StructuralWire::Mapping(entries) => {
-                Self::from_mapping(entries).map_err(D::Error::custom)
-            }
+            StructuralWire::List(values) => Ok(Self::from_sequence(values)),
+            StructuralWire::ListView(values) => Ok(Self::ListView(Serie::new(values))),
+            StructuralWire::FixedSizeList(values) => Ok(Self::FixedSizeList(Serie::new(values))),
+            StructuralWire::LargeList(values) => Ok(Self::LargeList(Serie::new(values))),
+            StructuralWire::LargeListView(values) => Ok(Self::LargeListView(Serie::new(values))),
+            StructuralWire::Serie(column) => Ok(Self::List(column)),
+            StructuralWire::ListViewSerie(column) => Ok(Self::ListView(column)),
+            StructuralWire::FixedSizeListSerie(column) => Ok(Self::FixedSizeList(column)),
+            StructuralWire::LargeListSerie(column) => Ok(Self::LargeList(column)),
+            StructuralWire::LargeListViewSerie(column) => Ok(Self::LargeListView(column)),
+            StructuralWire::Map(entries) => Self::from_mapping(entries).map_err(D::Error::custom),
+            StructuralWire::SortedMap(entries) => Self::from_mapping(entries)
+                .map(|mapping| match mapping {
+                    Self::Map(entries) => Self::SortedMap(entries),
+                    other => other,
+                })
+                .map_err(D::Error::custom),
             StructuralWire::Struct(entries) => {
                 Self::from_struct(entries.0).map_err(D::Error::custom)
             }
@@ -909,8 +967,16 @@ impl Ord for Scalar {
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
             }
-            Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
-            Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
+            Self::List(left)
+            | Self::ListView(left)
+            | Self::FixedSizeList(left)
+            | Self::LargeList(left)
+            | Self::LargeListView(left) => {
+                same_kind!((Self::List(right) | Self::ListView(right) | Self::FixedSizeList(right) | Self::LargeList(right) | Self::LargeListView(right)) => left.cmp(right))
+            }
+            Self::Map(left) | Self::SortedMap(left) => {
+                same_kind!((Self::Map(right) | Self::SortedMap(right)) => left.cmp(right))
+            }
             Self::Struct(left) => same_kind!(Self::Struct(right) => left.cmp(right)),
             // A variant orders by its bytes, metadata first: its value is
             // not one this comparison decodes, and two encodings of one
@@ -1000,11 +1066,15 @@ impl Hash for Scalar {
             Self::Bytes(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
-            Self::Sequence(value) => {
+            Self::List(value)
+            | Self::ListView(value)
+            | Self::FixedSizeList(value)
+            | Self::LargeList(value)
+            | Self::LargeListView(value) => {
                 0_isize.hash(state);
                 value.hash(state);
             }
-            Self::Mapping(value) => {
+            Self::Map(value) | Self::SortedMap(value) => {
                 1_isize.hash(state);
                 value.hash(state);
             }
@@ -1121,8 +1191,12 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Time32(_) | Scalar::Time64(_) => 8,
         Scalar::DateTime64(_) => 9,
         Scalar::Duration32(_) | Scalar::Duration64(_) => 10,
-        Scalar::Sequence(_) => 11,
-        Scalar::Mapping(_) => 12,
+        Scalar::List(_)
+        | Scalar::ListView(_)
+        | Scalar::FixedSizeList(_)
+        | Scalar::LargeList(_)
+        | Scalar::LargeListView(_) => 11,
+        Scalar::Map(_) | Scalar::SortedMap(_) => 12,
         Scalar::Struct(_) => 13,
         Scalar::Geometry(_) | Scalar::Geography(_) => 14,
         // 15 was the enum member, since retired: a member is its name, so it
@@ -1226,8 +1300,13 @@ impl Scalar {
             Self::Bytes(bytes) => bytes.parameters().id(),
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
-            Self::Sequence(_) => DataTypeId::List,
-            Self::Mapping(_) => DataTypeId::Map,
+            Self::List(_) => DataTypeId::List,
+            Self::ListView(_) => DataTypeId::ListView,
+            Self::FixedSizeList(_) => DataTypeId::FixedSizeList,
+            Self::LargeList(_) => DataTypeId::LargeList,
+            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Map(_) => DataTypeId::Map,
+            Self::SortedMap(_) => DataTypeId::SortedMap,
             Self::Struct(_) => DataTypeId::Struct,
             Self::Variant(_) => DataTypeId::Variant,
         }
@@ -1302,8 +1381,13 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
-            Self::Sequence(_) => "sequence",
-            Self::Mapping(_) => "mapping",
+            Self::List(_) => "list",
+            Self::ListView(_) => "list_view",
+            Self::FixedSizeList(_) => "fixed_size_list",
+            Self::LargeList(_) => "large_list",
+            Self::LargeListView(_) => "large_list_view",
+            Self::Map(_) => "map",
+            Self::SortedMap(_) => "sorted_map",
             Self::Struct(_) => "struct",
             Self::Variant(_) => "variant",
         }
@@ -1312,17 +1396,15 @@ impl Scalar {
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Sequence(Sequence::new(Arc::clone(
+        Self::List(Serie::Run(Run::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
-        )))
+        ))))
     }
 
     /// The one shared empty mapping.
     fn empty_mapping() -> Self {
         static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
-        Self::Mapping(Mapping::Map(Map::new(Arc::clone(
-            EMPTY.get_or_init(|| Arc::from([])),
-        ))))
+        Self::Map(Map::new(Arc::clone(EMPTY.get_or_init(|| Arc::from([])))))
     }
 
     /// Construct an ordered sequence.
@@ -1332,7 +1414,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::Sequence(Sequence::new(values))
+            Self::List(Serie::Run(Run::new(values)))
         })
     }
 
@@ -1354,7 +1436,7 @@ impl Scalar {
         for (index, value) in unique.iter_mut().enumerate() {
             *value = at(index)?;
         }
-        Ok(Self::Sequence(Sequence::new(values)))
+        Ok(Self::List(Serie::Run(Run::new(values))))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
@@ -1381,7 +1463,7 @@ impl Scalar {
                 }
             }
         }
-        Ok(Self::Mapping(Mapping::Map(Map::new(entries))))
+        Ok(Self::Map(Map::new(entries)))
     }
 
     /// Construct a deterministic record sorted by field name.
@@ -1455,6 +1537,16 @@ impl Scalar {
     /// assert!(Scalar::from("anything else").is_truthy());
     /// assert!(!Scalar::from_sequence([Scalar::Null, Scalar::from(0)]).is_truthy());
     /// assert!(Scalar::from_sequence([Scalar::from(1)]).is_truthy());
+    ///
+    /// // A column answers as the run of its rows does, an empty one included.
+    /// # use yggdryl::{DataType, Field, Serie};
+    /// let field = Field::new("flag", DataType::Int64, false);
+    /// let column = |rows: [Scalar; 1]| {
+    ///     Scalar::from(Serie::from_scalars(field.clone(), rows).expect("one row"))
+    /// };
+    /// assert!(column([Scalar::from(1_i64)]).is_truthy());
+    /// assert!(!column([Scalar::from(0_i64)]).is_truthy());
+    /// assert!(!Scalar::from(Serie::empty(field).expect("an empty column")).is_truthy());
     /// ```
     #[must_use]
     pub fn is_truthy(&self) -> bool {
@@ -1484,8 +1576,10 @@ impl Scalar {
         if let Some(bytes) = self.as_bytes() {
             return !bytes.is_empty();
         }
-        if let Some(values) = self.as_sequence() {
-            return values.iter().any(Self::is_truthy);
+        if self.as_serie().is_some() {
+            // Either leaf: a run's values lent, a column's rows built one
+            // at a time, and an empty column is as false as an empty run.
+            return self.iter().any(|value| value.is_truthy());
         }
         if let Some(entries) = self.as_mapping() {
             return entries.iter().any(|(_, value)| value.is_truthy());
@@ -1564,10 +1658,42 @@ impl Scalar {
         self.as_bytes()
     }
 
-    /// Return sequence children without allocating.
+    /// Return a run's children without allocating: `None` for a column,
+    /// which stores no value to lend.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::Sequence(values) => Some(values.as_slice()),
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => values.as_slice(),
+            _ => None,
+        }
+    }
+
+    /// Return any sequence - a run or a column - without allocating.
+    pub fn as_serie(&self) -> Option<&Serie> {
+        match self {
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => Some(values),
+            _ => None,
+        }
+    }
+
+    /// Return a sequence's rows: a run's lent, a column's built.
+    ///
+    /// The door every reader of meaning takes; a column holds only rows its
+    /// field accepts, so building them cannot refuse.
+    pub fn sequence_rows(&self) -> Option<Cow<'_, [Self]>> {
+        match self {
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => Some(values.rows()),
             _ => None,
         }
     }
@@ -1575,7 +1701,7 @@ impl Scalar {
     /// Return mapping entries without allocating.
     pub fn as_mapping(&self) -> Option<&[(Self, Self)]> {
         match self {
-            Self::Mapping(entries) => Some(entries.as_slice()),
+            Self::Map(entries) | Self::SortedMap(entries) => Some(entries.as_slice()),
             _ => None,
         }
     }
@@ -1591,8 +1717,12 @@ impl Scalar {
     /// Return the number of direct children or mapping entries.
     pub fn len(&self) -> usize {
         match self {
-            Self::Sequence(values) => values.as_slice().len(),
-            Self::Mapping(entries) => entries.as_slice().len(),
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => values.len(),
+            Self::Map(entries) | Self::SortedMap(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
         }
@@ -1603,9 +1733,12 @@ impl Scalar {
         self.is_container() && self.len() == 0
     }
 
-    /// Look up a sequence index.
-    pub fn get(&self, index: usize) -> Option<&Self> {
-        self.as_sequence()?.get(index)
+    /// Look up a sequence index, or `None` past the end.
+    ///
+    /// Borrowed for a run, built for a column: the one lookup that
+    /// allocates on a column, by contract.
+    pub fn get(&self, index: usize) -> Option<Cow<'_, Self>> {
+        self.as_serie()?.get(index)
     }
 
     /// Look up a mapping key without allocating.
@@ -1672,16 +1805,17 @@ impl Scalar {
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::Sequence(values) => Children::Sequence(values.as_slice().iter()),
-            Self::Mapping(entries) => Children::Mapping(entries.as_slice().iter()),
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => values.iter(),
+            Self::Map(entries) | Self::SortedMap(entries) => {
+                Children::Mapping(entries.as_slice().iter())
+            }
             Self::Struct(entries) => Children::Struct(entries.as_map().values()),
             _ => Children::Sequence([].iter()),
         }
-    }
-
-    /// Iterate over sequence children without allocating.
-    pub fn sequence_iter(&self) -> std::slice::Iter<'_, Self> {
-        self.as_sequence().unwrap_or_default().iter()
     }
 
     /// Iterate over mapping entries without allocating.
@@ -1704,7 +1838,17 @@ impl Scalar {
 
     /// Return whether this value holds other values.
     pub const fn is_container(&self) -> bool {
-        matches!(self, Self::Sequence(_) | Self::Mapping(_) | Self::Struct(_))
+        matches!(
+            self,
+            Self::List(_)
+                | Self::ListView(_)
+                | Self::FixedSizeList(_)
+                | Self::LargeList(_)
+                | Self::LargeListView(_)
+                | Self::Map(_)
+                | Self::SortedMap(_)
+                | Self::Struct(_)
+        )
     }
 
     /// Return whether this is a number of any width.
@@ -1756,8 +1900,12 @@ impl Scalar {
             Self::Duration32(value) => value,
             Self::Duration64(value) => value,
             Self::Interval(value) => value,
-            Self::Sequence(value) => value,
-            Self::Mapping(value) => value,
+            Self::List(value)
+            | Self::ListView(value)
+            | Self::FixedSizeList(value)
+            | Self::LargeList(value)
+            | Self::LargeListView(value) => value,
+            Self::Map(value) | Self::SortedMap(value) => value,
             Self::Struct(value) => value,
             Self::Arrow(_) => return None,
             Self::Null
@@ -1807,21 +1955,38 @@ impl Scalar {
     ///     )])?]),
     /// )])?;
     ///
-    /// assert_eq!(order.path("legs.0.price").and_then(Scalar::as_i64), Some(12));
+    /// assert_eq!(order.path("legs.0.price").and_then(|price| price.as_i64()), Some(12));
     /// assert!(order.path("legs.9.price").is_none());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn path(&self, path: &str) -> Option<&Self> {
-        let mut current = self;
+    pub fn path(&self, path: &str) -> Option<Cow<'_, Self>> {
+        let mut current = Cow::Borrowed(self);
         for segment in path.split('.').filter(|segment| !segment.is_empty()) {
             current = match current {
-                Self::Mapping(_) | Self::Struct(_) => current.get_key_str(segment)?,
-                Self::Sequence(_) => current.get(segment.parse::<usize>().ok()?)?,
-                _ => return None,
+                Cow::Borrowed(held) => held.step(segment)?,
+                // A row built out of a column is owned here, so what it
+                // holds is cloned out rather than borrowed past its life.
+                Cow::Owned(held) => Cow::Owned(held.step(segment)?.into_owned()),
             };
         }
         Some(current)
+    }
+
+    /// One step of a path: a key of a mapping or a record, a row of a
+    /// sequence.
+    fn step(&self, segment: &str) -> Option<Cow<'_, Self>> {
+        match self {
+            Self::Map(_) | Self::SortedMap(_) | Self::Struct(_) => {
+                self.get_key_str(segment).map(Cow::Borrowed)
+            }
+            Self::List(_)
+            | Self::ListView(_)
+            | Self::FixedSizeList(_)
+            | Self::LargeList(_)
+            | Self::LargeListView(_) => self.get(segment.parse::<usize>().ok()?),
+            _ => None,
+        }
     }
 
     /// Return the value at `key`, or `default` when the key is absent or null.
@@ -2025,14 +2190,6 @@ impl From<Vec<Scalar>> for Scalar {
 impl FromIterator<Scalar> for Scalar {
     fn from_iter<T: IntoIterator<Item = Scalar>>(iter: T) -> Self {
         Self::from_sequence(iter)
-    }
-}
-
-impl Index<usize> for Scalar {
-    type Output = Scalar;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.as_sequence().expect("value is not a sequence")[index]
     }
 }
 

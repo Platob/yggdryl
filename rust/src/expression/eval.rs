@@ -27,31 +27,24 @@ use std::cmp::Ordering;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::Attributes;
 use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::is_blank_text;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 
-/// One row's worth of context: its column values and its holder.
+/// One row's worth of context: its column values.
 ///
-/// Either half may be absent. A constant subtree needs neither, which is what
-/// lets [`bind`](super::bind) fold by evaluating; a listing filter has a
-/// holder and no row, which is what lets it prune before opening anything.
+/// They may be absent: a constant subtree needs none, which is what lets
+/// [`bind`](super::bind) fold by evaluating.
 pub(crate) struct Row<'context> {
     values: Option<&'context [Scalar]>,
-    holder: Option<&'context dyn Attributes>,
 }
 
 impl<'context> Row<'context> {
-    pub(crate) const fn new(
-        values: Option<&'context [Scalar]>,
-        holder: Option<&'context dyn Attributes>,
-    ) -> Self {
-        Self { values, holder }
+    pub(crate) const fn new(values: Option<&'context [Scalar]>) -> Self {
+        Self { values }
     }
 }
 
@@ -96,8 +89,7 @@ impl Node {
     /// # Errors
     ///
     /// Returns an error when a strict cast or checked arithmetic refuses a
-    /// value, when a column is asked for and no row was supplied, or when a
-    /// holder attribute fails.
+    /// value, or when a column is asked for and no row was supplied.
     #[allow(clippy::too_many_lines)]
     pub(crate) fn eval(&self, row: &Row<'_>) -> Result<Scalar> {
         match &self.kind {
@@ -121,7 +113,7 @@ impl Node {
                             let element = step
                                 .element()
                                 .ok_or_else(|| missing("a list of structs to keep elements of"))?;
-                            keep_elements(element, predicate, &value, row.holder)?
+                            keep_elements(element, predicate, &value)?
                         }
                     };
                     field = &step.field;
@@ -131,10 +123,6 @@ impl Node {
                 }
                 Ok(value)
             }
-            Kind::Attribute(attribute) => match row.holder {
-                Some(holder) => holder.attribute(attribute),
-                None => Ok(Scalar::Null),
-            },
             Kind::And(operands) => {
                 let mut unknown = false;
                 for operand in operands {
@@ -271,7 +259,7 @@ impl Node {
                 }
                 call(function, arguments, &values, self.field.dtype())
             }
-            Kind::Cast(inner, safety) => {
+            Kind::Cast(inner, safety, _) => {
                 let held = inner.eval_ref(row)?;
                 match convert(self.field.dtype(), &held, *safety) {
                     Ok(value) => Ok(value),
@@ -331,27 +319,23 @@ impl Node {
 ///
 /// # Errors
 ///
-/// Returns an error when the predicate refuses an element - a strict cast,
-/// checked arithmetic - or a holder attribute it reads cannot be answered.
-pub(crate) fn keep_elements(
-    element: &Field,
-    predicate: &Node,
-    list: &Scalar,
-    holder: Option<&dyn Attributes>,
-) -> Result<Scalar> {
-    let Some(items) = list.as_sequence() else {
+/// Returns an error when the predicate refuses an element - a strict cast or
+/// checked arithmetic.
+pub(crate) fn keep_elements(element: &Field, predicate: &Node, list: &Scalar) -> Result<Scalar> {
+    let Some(items) = list.as_serie() else {
         return Ok(Scalar::Null);
     };
     let mut kept = Vec::new();
-    for item in items {
+    for item in items.iter() {
         if item.is_null() {
             continue;
         }
-        let Some(values) = struct_values(element, item) else {
-            continue;
+        let keep = match struct_values(element, &item) {
+            Some(values) => predicate.eval(&Row::new(Some(&values)))?.as_bool() == Some(true),
+            None => false,
         };
-        if predicate.eval(&Row::new(Some(&values), holder))?.as_bool() == Some(true) {
-            kept.push(item.clone());
+        if keep {
+            kept.push(item.into_owned());
         }
     }
     Ok(Scalar::from_sequence(kept))
@@ -480,13 +464,13 @@ pub(crate) fn temporal_at(value: &Scalar, family: u8, unit: TimeUnit) -> Option<
 /// Put a temporal count back into the exact width, unit, and zone its type declares.
 fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
     match dtype {
-        DataType::Date(DateType::Date32) => Scalar::date32_in(
+        DataType::Date32 => Scalar::date32_in(
             i32::try_from(count).map_err(|_| missing("a date32 count"))?,
             unit,
             Timezone::NAIVE,
         ),
-        DataType::Date(DateType::Date64) => Scalar::date64_in(count, unit, Timezone::NAIVE),
-        DataType::Time(TimeType::Time32(expected)) => {
+        DataType::Date64 => Scalar::date64_in(count, unit, Timezone::NAIVE),
+        DataType::Time32(expected) => {
             if *expected != unit {
                 return Err(missing("a time32 count in its declared unit"));
             }
@@ -496,22 +480,22 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
                 Timezone::NAIVE,
             )
         }
-        DataType::Time(TimeType::Time64(expected)) => {
+        DataType::Time64(expected) => {
             if *expected != unit {
                 return Err(missing("a time64 count in its declared unit"));
             }
             Scalar::time64(count, unit, Timezone::NAIVE)
         }
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: expected,
             timezone,
-        }) => {
+        } => {
             if *expected != unit {
                 return Err(missing("a datetime64 count in its declared unit"));
             }
             Scalar::datetime64(count, unit, *timezone)
         }
-        DataType::Duration(DurationType::Duration32(expected)) => {
+        DataType::Duration32(expected) => {
             if *expected != unit {
                 return Err(missing("a duration32 count in its declared unit"));
             }
@@ -520,7 +504,7 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
                 unit,
             )
         }
-        DataType::Duration(DurationType::Duration64(expected)) => {
+        DataType::Duration64(expected) => {
             if *expected != unit {
                 return Err(missing("a duration64 count in its declared unit"));
             }
@@ -748,7 +732,7 @@ fn call(
         }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {
-            let Some(items) = first.as_sequence() else {
+            let Some(items) = first.as_serie() else {
                 return Ok(Scalar::Null);
             };
             let bound = |value: Option<&Scalar>| -> Result<Option<i64>> {
@@ -763,7 +747,7 @@ fn call(
             };
             let (from, until) =
                 resolve_range(bound(values.get(1))?, bound(values.get(2))?, items.len());
-            Scalar::from_sequence(items[from..until].iter().cloned())
+            Scalar::from(items.slice(from, until - from)?)
         }
     })
 }
@@ -969,9 +953,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal(DecimalType::Decimal256 { .. }) => {
-                Scalar::d256(i256::from_i128(unscaled), scale)
-            }
+            DataType::Decimal256 { .. } => Scalar::d256(i256::from_i128(unscaled), scale),
             _ => Scalar::d128(unscaled, scale),
         };
         return canonical(candidate);

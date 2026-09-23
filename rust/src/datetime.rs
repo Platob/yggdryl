@@ -6,7 +6,7 @@
 //! explicit: [`crate::Timezone::NAIVE`] is a wall clock that means no
 //! instant, and any other zone makes the count a UTC instant read in that
 //! zone. [`DateTimeType`] has one leaf, `DateTime64`, carrying the unit and
-//! the zone as its parameters; [`crate::DataType::DateTime`] is the one
+//! the zone as its parameters; [`crate::DataType::DateTime64`] is the one
 //! datetime datatype; [`DateTime64`] is the value.
 //!
 //! ```
@@ -206,14 +206,13 @@ impl DataTypeValue for DateTimeType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::DateTime(self)
+        match self {
+            Self::DateTime64 { unit, timezone } => DataType::DateTime64 { unit, timezone },
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::DateTime(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.datetime_type()
     }
 }
 
@@ -234,7 +233,7 @@ impl fmt::Display for DateTimeType {
 
 impl From<DateTimeType> for DataType {
     fn from(value: DateTimeType) -> Self {
-        Self::DateTime(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -242,11 +241,11 @@ impl TryFrom<&DataType> for DateTimeType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::DateTime(leaf) => Ok(*leaf),
-            other => Err(Error::InvalidDataType {
+        match value.datetime_type() {
+            Some(leaf) => Ok(leaf),
+            None => Err(Error::InvalidDataType {
                 kind: "datetime",
-                reason: format_smolstr!("expected a datetime datatype, got {other}"),
+                reason: format_smolstr!("expected a datetime datatype, got {value}"),
             }),
         }
     }
@@ -269,14 +268,17 @@ impl DataType {
     pub fn datetime64(unit: TimeUnit, timezone: Timezone) -> Result<Self> {
         let leaf = DateTimeType::DateTime64 { unit, timezone };
         leaf.validate()?;
-        Ok(Self::DateTime(leaf))
+        Ok(DataTypeValue::into_dtype(leaf))
     }
 
     /// The leaf a datetime datatype declares, `None` for every other.
     #[must_use]
     pub const fn datetime_type(&self) -> Option<DateTimeType> {
         match self {
-            Self::DateTime(leaf) => Some(*leaf),
+            Self::DateTime64 { unit, timezone } => Some(DateTimeType::DateTime64 {
+                unit: *unit,
+                timezone: *timezone,
+            }),
             _ => None,
         }
     }
@@ -382,7 +384,6 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::{SmolStr, format_smolstr};
 
-    use super::DateTimeType;
     use crate::invalid;
     use crate::{DataType, Result, TimeUnit, Timezone};
 
@@ -397,13 +398,10 @@ mod arrow {
     /// the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
         match dtype {
-            DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
-                Ok(ArrowDataType::Timestamp(
-                    unit.into_arrow_time()?,
-                    (!timezone.is_naive())
-                        .then(|| Arc::<str>::from(timezone.as_smol_str().clone())),
-                ))
-            }
+            DataType::DateTime64 { unit, timezone } => Ok(ArrowDataType::Timestamp(
+                unit.into_arrow_time()?,
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.as_smol_str().clone())),
+            )),
             other => Err(invalid(
                 "datetime",
                 format_smolstr!("expected a datetime datatype, got {other}"),
@@ -418,12 +416,10 @@ mod arrow {
     /// [`arrow_storage`] carries the rule.
     pub(crate) fn into_arrow_storage(dtype: DataType) -> Result<ArrowDataType> {
         match dtype {
-            DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
-                Ok(ArrowDataType::Timestamp(
-                    unit.into_arrow_time()?,
-                    (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.into_smol_str())),
-                ))
-            }
+            DataType::DateTime64 { unit, timezone } => Ok(ArrowDataType::Timestamp(
+                unit.into_arrow_time()?,
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.into_smol_str())),
+            )),
             other => arrow_storage(&other),
         }
     }

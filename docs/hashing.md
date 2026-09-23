@@ -18,7 +18,7 @@
 | `Hashed<H>` | Answers from its running state and never reads the bytes back, but only while that state covers the whole value: writes strictly sequential from offset 0, counted after `flush`. A positional write makes the next digest re-stream and re-arm, with an identical answer |
 | Value feed | `write_bytes` is a total prefix-free feed: one [`DataTypeId`](types/datatype.md) tag byte, then the family's canonical form, integers little-endian ([Encoding](#encoding)); `as_value_bytes` is the payload alone - no tag, no length - borrowed, never allocating, `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](types/field.md), [`Uri`](uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
-| Row digests | `row_digests` hashes the selected values as one `Scalar::Sequence` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
+| Row digests | `row_digests` hashes the selected values as one `Scalar::List` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Holders | A holder's `DIGEST:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `DIGEST:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
 | `TxHash` | `unit`, `unix`, `digest`; the digest is exactly what `xxhash` answers for the same bytes, so `txhash` defines no second hash. Spelled `<unix>@<unit>:<algorithm>:<hex>`, `from_str` the exact inverse; two units or two algorithms are never equal |
 | TxHash bytes | The instant as a big-endian `i64`, then the digest's canonical bytes: 12, 16, or 24 bytes for XXH32, the two 64-bit algorithms, XXH3-128. Stored as `fixed_size_binary[12|16|24]`; sixteen bytes imply XXH3-64, the project default |
@@ -516,7 +516,7 @@ The bytes moved once, together, when the identifiers were laid out by family: ev
 
 ## Digest holders and row digests
 
-A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::Sequence` of its non-holder columns in schema order, element count included, and the answer never builds one.
+A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::List` of its non-holder columns in schema order, element count included, and the answer never builds one.
 
 === "Rust"
 
@@ -639,7 +639,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     assert.deepEqual([...filled.getChild('row_digest')], [digest, digest])
     ```
 
-Each visible row is framed as an ordered `Scalar::Sequence` and streamed through the canonical value feed. Nested Struct holders are filled deepest first.
+Each visible row is framed as an ordered `Scalar::List` and streamed through the canonical value feed. Nested Struct holders are filled deepest first.
 
 | Holder setting | Effect |
 | --- | --- |

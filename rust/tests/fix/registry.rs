@@ -163,7 +163,6 @@ mod internal {
 mod lenient {
     use super::path as fpath;
 
-    use yggdryl::SequenceType;
     use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry, StructType};
 
     fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
@@ -217,9 +216,7 @@ mod lenient {
 
     /// The occurrence a group's list holds.
     fn occurrence(group: &Field) -> &Field {
-        let (DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item))) = group.dtype()
-        else {
+        let (DataType::List(item) | DataType::LargeList(item)) = group.dtype() else {
             panic!("a group list")
         };
         item

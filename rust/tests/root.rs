@@ -124,6 +124,8 @@ mod scheme;
 mod sedol_code;
 #[path = "root/serde.rs"]
 mod serde;
+#[path = "root/serie.rs"]
+mod serie;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]

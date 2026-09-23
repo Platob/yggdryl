@@ -290,30 +290,32 @@ Text reads into a float through the `f64` spelling - which names every finite va
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Float32Array, StringArray};
-    use yggdryl::{ArrowCastOptions, Float32Field};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1.5", "-0.25"]));
-    let typed = Float32Field::unit("px", false);
-    let prices: Float32Array = typed.cast_arrow_array(text, ArrowCastOptions::new().with_safe(false))?;
-    assert_eq!(prices.values(), &[1.5, -0.25]);
+    let px = Field::new("px", DataType::Float32, false);
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let prices = Serie::from_arrow_array(Some(&px), text, strict)?;
+    assert_eq!(prices.as_float32().expect("a float32 column").values(), &[1.5, -0.25]);
     ```
 
 === "Python"
 
     ```python
     import pyarrow as pa
+    import pytest
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
-    prices = Field("px", "float32").cast_arrow_array(pa.array(["1.5", "-0.25"]))
-    assert prices.to_pylist() == [1.5, -0.25]
+    prices = Serie.from_arrow_array(pa.array(["1.5", "-0.25"]), Field("px", "float32"))
+    assert prices.as_py() == [1.5, -0.25]
 
     # safe nulls what does not convert; strict refuses it instead.
-    assert Field("px", "float64").cast_arrow_array(pa.array(["1.5", "x"])).to_pylist() == [
-        1.5,
-        None,
-    ]
+    px = Field("px", "float64")
+    assert Serie.from_arrow_array(pa.array(["1.5", "x"]), px).as_py() == [1.5, None]
+    with pytest.raises(ValueError, match="'x'"):
+        Serie.from_arrow_array(pa.array(["1.5", "x"]), px, safe=False)
     ```
 
 === "JavaScript"
@@ -321,10 +323,11 @@ Text reads into a float through the `f64` spelling - which names every finite va
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = arrow.vectorFromArray(['1.5', '-0.25'], new arrow.Utf8())
-    assert.deepEqual([...fields.float64('px').castArrowArray(text)], [1.5, -0.25])
+    const prices = Serie.fromArrowArray(text, fields.float64('px'))
+    assert.deepEqual([...prices.intoArrowArray()], [1.5, -0.25])
     ```
 
 A `float64` and an `int64` are the same eight bytes under two readings, so `representation: "bits"` carries the bit pattern rather than the number; that reading is [Cast](../cast.md#reading-the-bits)'s.

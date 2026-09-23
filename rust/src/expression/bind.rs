@@ -17,28 +17,25 @@
 //!   per row is a different operation and pretending otherwise would make the
 //!   vectorized tier silently slower than the scalar one;
 //! * the operands of every `and` and `or` are ordered cheapest-first, so a
-//!   free attribute test runs before a stat and a stat runs before a decode.
+//!   test of fewer columns runs before one of more.
 //!
 //! What comes out is a resolved tree the three evaluators walk. They share it,
 //! which is the mechanism - not the intention - behind scalar and vectorized
 //! agreeing.
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::{Attribute, Attributes, Cost};
+use super::arrow::ColumnCast;
 use super::eval::{Row, convert};
 use super::path::FieldSegment;
 use super::typing::{column_index, common_type};
 use super::{Comparison, Filter, Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, Error, Field, Result, Scalar};
 
-/// What one node costs to answer, in units of "a free attribute read".
-///
-/// The numbers are ordinals, not measurements: what matters is that a stat
-/// outranks every free attribute and a column decode outranks a stat, because
-/// that is the order in which a reader would rather be wrong.
-const COST_FREE_ATTRIBUTE: u32 = 1;
-const COST_STAT: u32 = 64;
+/// What reading one column costs to answer, as an ordinal: a node costs the
+/// columns it reads, so a conjunct of fewer columns is tried first.
 const COST_COLUMN: u32 = 1024;
 
 /// A resolved node: an output field, a resolved operation, and a cost.
@@ -59,8 +56,6 @@ pub(crate) enum Kind {
     /// A path into a value: the column it starts at and the steps taken
     /// inside it, each typed once.
     Path(Box<Node>, Vec<Step>),
-    /// A holder attribute.
-    Attribute(Attribute),
     /// Conjunction, operands ordered cheapest-first.
     And(Vec<Node>),
     /// Disjunction, operands ordered cheapest-first.
@@ -96,8 +91,9 @@ pub(crate) enum Kind {
     Negate(Box<Node>),
     /// A call into the closed function set.
     Function(Function, Vec<Node>),
-    /// A conversion into this node's declared datatype.
-    Cast(Box<Node>, Safety),
+    /// A conversion into this node's declared datatype, and the column cast
+    /// the vectorized tier holds for it.
+    Cast(Box<Node>, Safety, Arc<ColumnCast>),
     /// A searched conditional.
     Case {
         /// The `when`/`then` pairs, in order.
@@ -180,7 +176,7 @@ impl Node {
     /// row's and must never be gathered as if they were.
     pub(crate) fn for_each_child<'node>(&'node self, mut visit: impl FnMut(&'node Self)) {
         match &self.kind {
-            Kind::Literal(_) | Kind::Column(_) | Kind::Attribute(_) => {}
+            Kind::Literal(_) | Kind::Column(_) => {}
             Kind::Path(base, _) => visit(base),
             Kind::And(operands)
             | Kind::Or(operands)
@@ -197,7 +193,7 @@ impl Node {
             | Kind::IsNull(inner)
             | Kind::IsNotNull(inner)
             | Kind::Negate(inner)
-            | Kind::Cast(inner, _)
+            | Kind::Cast(inner, ..)
             | Kind::Glob(inner, _)
             | Kind::Like { value: inner, .. } => visit(inner),
             Kind::Compare(left, _, right) | Kind::Arithmetic(left, _, right) => {
@@ -343,7 +339,7 @@ impl Bound {
 
     /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::sequence::Sequence`] of column values in
+    /// The row is a [`crate::serie::Run`] of column values in
     /// schema order.
     ///
     /// # Errors
@@ -353,7 +349,7 @@ impl Bound {
     /// or cannot represent an exact decimal result.
     pub fn eval(&self, row: &Scalar) -> Result<Scalar> {
         let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values), None))
+        self.node.eval(&Row::new(Some(&values)))
     }
 
     /// Evaluate this term over a row held as its column values.
@@ -371,18 +367,7 @@ impl Bound {
     /// result.
     pub(crate) fn eval_values(&self, values: &[Scalar]) -> Result<Scalar> {
         self.node
-            .eval(&Row::new(Some(sized(values, &self.schema)?), None))
-    }
-
-    /// Evaluate this term for one row alongside a holder.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the row does not match, or the holder cannot
-    /// answer an attribute it is asked for.
-    pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar> {
-        let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values), Some(holder)))
+            .eval(&Row::new(Some(sized(values, &self.schema)?)))
     }
 
     /// Answer this predicate for one row, reading unknown as "no".
@@ -395,67 +380,14 @@ impl Bound {
     pub fn matches(&self, row: &Scalar) -> Result<bool> {
         Ok(self.eval(row)?.as_bool().unwrap_or(false))
     }
-
-    /// Answer this predicate for one row alongside a holder.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the row does not match, or the holder fails.
-    pub fn matches_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<bool> {
-        Ok(self.eval_with(row, holder)?.as_bool().unwrap_or(false))
-    }
-
-    /// What a holder alone settles about this predicate, three-valued.
-    ///
-    /// Only the conjuncts a holder can answer are evaluated - the ones that
-    /// read no column. Every other conjunct leaves the conjunction unknown,
-    /// and an unknown conjunct excludes nothing, which is what keeps a listing
-    /// filter conservative: it may keep a file the rows will later discard,
-    /// and it may never discard a file that would have matched.
-    ///
-    /// The conjuncts run cheapest-first and stop at the first `false`, so a
-    /// predicate answerable from the path alone performs no backend call.
-    ///
-    /// # Errors
-    ///
-    /// Returns the holder's failure when a stat attribute cannot be read.
-    pub fn settle_holder(&self, holder: &dyn Attributes) -> Result<Scalar> {
-        let row = Row::new(None, Some(holder));
-        let mut unknown = false;
-        for conjunct in self.node.conjuncts() {
-            if conjunct.reads_rows() {
-                unknown = true;
-                continue;
-            }
-            match conjunct.eval(&row)?.as_bool() {
-                Some(false) => return Ok(Scalar::from(false)),
-                Some(true) => {}
-                None => unknown = true,
-            }
-        }
-        Ok(if unknown {
-            Scalar::Null
-        } else {
-            Scalar::from(true)
-        })
-    }
-
-    /// Return whether a holder is *not ruled out* by this predicate.
-    ///
-    /// [`Self::settle_holder`] read conservatively: only a proven `false`
-    /// excludes, so an unknown keeps the holder.
-    ///
-    /// # Errors
-    ///
-    /// Returns the holder's failure when a stat attribute cannot be read.
-    pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool> {
-        Ok(self.settle_holder(holder)?.as_bool() != Some(false))
-    }
 }
 
-/// Borrow one row's column values.
-pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'row [Scalar]> {
-    let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+/// One row's column values: lent by a run, built once by a column.
+pub(crate) fn row_values<'row>(
+    row: &'row Scalar,
+    schema: &Field,
+) -> Result<std::borrow::Cow<'row, [Scalar]>> {
+    let values = row.sequence_rows().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(schema.name()),
         reason: format_smolstr!(
             "expected an ordered sequence of {} column values, got {}",
@@ -463,7 +395,8 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
             row.kind()
         ),
     })?;
-    sized(values, schema)
+    sized(&values, schema)?;
+    Ok(values)
 }
 
 /// The values, proven one per column of the schema.
@@ -631,14 +564,6 @@ impl Binder<'_> {
                     }
                 }
             }
-            Term::Attribute(attribute) => Node {
-                field: attribute.field(),
-                cost: match attribute.cost() {
-                    Cost::Free => COST_FREE_ATTRIBUTE,
-                    Cost::Stat => COST_STAT,
-                },
-                kind: Kind::Attribute(attribute.clone()),
-            },
             Term::Parameter(name) => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -828,7 +753,7 @@ impl Binder<'_> {
                 let cost = inner.cost + 1;
                 Node {
                     field: named(term, dtype.clone(), nullable),
-                    kind: Kind::Cast(Box::new(inner), *safety),
+                    kind: Kind::Cast(Box::new(inner), *safety, Arc::default()),
                     cost,
                 }
             }
@@ -948,7 +873,7 @@ impl Binder<'_> {
             .with_nullable(nullable);
         Ok(Node {
             field,
-            kind: Kind::Cast(Box::new(node), Safety::Strict),
+            kind: Kind::Cast(Box::new(node), Safety::Strict, Arc::default()),
             cost,
         })
     }
@@ -1014,7 +939,7 @@ impl Binder<'_> {
         Ok(shared.unwrap_or_else(DataType::utf8))
     }
 
-    /// The constant a term is, when it reads no row and no holder.
+    /// The constant a term is, when it reads no row.
     ///
     /// A literal is itself; anything else that reads nothing - `2 * 50`, a
     /// cast of a literal, a parameter already substituted - is evaluated
@@ -1078,12 +1003,11 @@ fn fold(node: Node) -> Result<Node> {
     if !constant {
         return Ok(node);
     }
-    // An attribute reads the holder and a column reads the row, so neither is
-    // constant even with no children at all.
-    if matches!(node.kind, Kind::Column(_) | Kind::Attribute(_)) {
+    // A column reads the row, so it is not constant even with no children.
+    if matches!(node.kind, Kind::Column(_)) {
         return Ok(node);
     }
-    let Ok(value) = node.eval(&Row::new(None, None)) else {
+    let Ok(value) = node.eval(&Row::new(None)) else {
         // A constant subtree that fails - a strict cast that refuses, say -
         // keeps its node so the failure arrives where the caller can see the
         // row it happened on, rather than at bind time on no row at all.
@@ -1116,10 +1040,15 @@ fn list_item_type(field: &Field) -> Option<DataType> {
 /// The declared key and value types of a map field.
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
     match field.dtype() {
-        DataType::Mapping(map) => (
-            map.entries().get_field(0).map(|held| held.dtype().clone()),
-            map.entries().get_field(1).map(|held| held.dtype().clone()),
-        ),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            (
+                map.entries().get_field(0).map(|held| held.dtype().clone()),
+                map.entries().get_field(1).map(|held| held.dtype().clone()),
+            )
+        }
         _ => (None, None),
     }
 }
@@ -1180,7 +1109,6 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Path(base, steps) => rebuild(base)
             .path(steps.iter().map(Step::segment))
             .expect("a bound path starts at a column"),
-        Kind::Attribute(attribute) => Term::attribute(attribute.clone()),
         Kind::And(operands) => Term::And(operands.iter().map(rebuild).collect()),
         Kind::Or(operands) => Term::Or(operands.iter().map(rebuild).collect()),
         Kind::Not(inner) => Term::Not(Box::new(rebuild(inner))),
@@ -1221,7 +1149,7 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Function(function, arguments) => {
             Term::Function(function.clone(), arguments.iter().map(rebuild).collect())
         }
-        Kind::Cast(inner, safety) => Term::Cast(
+        Kind::Cast(inner, safety, _) => Term::Cast(
             Box::new(rebuild(inner)),
             node.field.dtype().clone(),
             *safety,

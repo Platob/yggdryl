@@ -106,9 +106,7 @@ mod avro {
         use yggdryl::avro::AvroOptions;
         use yggdryl::holder::Buffer;
         use yggdryl::media::{IORecordOptions, RecordOptions};
-        use yggdryl::{
-            DataType, DataTypeId, DateTimeType, Field, MediaType, Scalar, TimeUnit, Url,
-        };
+        use yggdryl::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
         use yggdryl::{IOBase, IOMedia};
 
         /// One canonical batch with a nullable column and a list column.
@@ -399,6 +397,92 @@ mod avro {
             let values = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
             let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
             assert_eq!(row.iter().map(Scalar::id).collect::<Vec<_>>(), ids);
+        }
+
+        #[test]
+        fn batches_changing_layout_mid_stream_each_reconcile_to_the_container_schema() {
+            let canonical = Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+                arrow_schema::Field::new("symbol", arrow_schema::DataType::Utf8, true),
+            ]));
+            let narrow = Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int32, false),
+                arrow_schema::Field::new("symbol", arrow_schema::DataType::LargeUtf8, true),
+            ]));
+            let exact = |ids: Vec<i64>, symbol: &str| {
+                RecordBatch::try_new(
+                    Arc::clone(&canonical),
+                    vec![
+                        Arc::new(arrow_array::Int64Array::from(ids.clone())),
+                        Arc::new(arrow_array::StringArray::from(vec![symbol; ids.len()])),
+                    ],
+                )
+                .unwrap()
+            };
+            let other = RecordBatch::try_new(
+                Arc::clone(&narrow),
+                vec![
+                    Arc::new(arrow_array::Int32Array::from(vec![3, 4])),
+                    Arc::new(arrow_array::LargeStringArray::from(vec![
+                        None,
+                        Some("MSFT"),
+                    ])),
+                ],
+            )
+            .unwrap();
+            let mut handle = handle();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(
+                    Arc::clone(&canonical),
+                    [
+                        exact(vec![1, 2], "AAPL"),
+                        other.clone(),
+                        exact(vec![5], "IBM"),
+                        other,
+                    ],
+                ),
+                &AvroOptions::new(),
+            )
+            .unwrap();
+
+            let batches = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let ids: Vec<i64> = batches
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_primitive::<Int64Type>()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(ids, [1, 2, 3, 4, 5, 3, 4]);
+            let symbols: Vec<Option<String>> = batches
+                .iter()
+                .flat_map(|batch| {
+                    let column = batch.column(1).as_string::<i32>();
+                    (0..column.len())
+                        .map(|row| column.is_valid(row).then(|| column.value(row).to_owned()))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            assert_eq!(
+                symbols,
+                [
+                    Some("AAPL"),
+                    Some("AAPL"),
+                    None,
+                    Some("MSFT"),
+                    Some("IBM"),
+                    None,
+                    Some("MSFT")
+                ]
+                .map(|symbol| symbol.map(str::to_owned))
+            );
         }
 
         #[test]
@@ -1135,10 +1219,10 @@ mod avro {
                 "row",
                 StructType::from_fields([
                     DataType::date32().required_field("day"),
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: yggdryl::TimeUnit::Microsecond,
                         timezone: yggdryl::Timezone::UTC,
-                    })
+                    }
                     .nullable_field("at"),
                     DataType::decimal(10, 2).unwrap().required_field("cost"),
                 ])
@@ -1279,6 +1363,448 @@ mod avro {
                 .append_arrow_reader(reader(vec![3, 4]), &options.clone().with_max_row_size(1))
                 .unwrap();
             assert_eq!(rows(&handle, &options), 2);
+        }
+    }
+
+    /// Containers large enough to decode and encode on several threads.
+    mod parallel {
+        use std::sync::Arc;
+
+        use arrow_array::cast::AsArray;
+        use arrow_array::types::{Float64Type, Int64Type};
+        use arrow_array::{
+            Array, ArrayRef, BinaryArray, BooleanArray, Date32Array, Float32Array, Float64Array,
+            Int32Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
+        };
+        use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema, TimeUnit};
+
+        use yggdryl::avro::{self, AvroOptions};
+        use yggdryl::holder::Buffer;
+        use yggdryl::{DataType, Field, StructType};
+
+        use super::{buffer, handmade_container, put_long};
+
+        const ROWS: usize = 150_000;
+
+        /// Trades whose null codec keeps a container above a megabyte.
+        fn trades(rows: usize) -> RecordBatch {
+            let ids: Int64Array = (0..rows as i64).collect();
+            let symbols: StringArray = (0..rows)
+                .map(|row| (row % 7 != 0).then(|| format!("SYM{}", row % 97)))
+                .collect();
+            let prices: Float64Array = (0..rows).map(|row| row as f64 * 0.25).collect();
+            RecordBatch::try_new(
+                Arc::new(Schema::new(vec![
+                    ArrowField::new("id", ArrowType::Int64, false),
+                    ArrowField::new("symbol", ArrowType::Utf8, true),
+                    ArrowField::new("price", ArrowType::Float64, false),
+                ])),
+                vec![Arc::new(ids), Arc::new(symbols), Arc::new(prices)],
+            )
+            .unwrap()
+        }
+
+        /// Options that decode and encode on four threads whatever the host
+        /// offers, where the `internals` hook can pin them.
+        fn threaded(options: AvroOptions) -> AvroOptions {
+            #[cfg(feature = "internals")]
+            let options = yggdryl::internals::avro_batch::with_threads(options, 4);
+            options
+        }
+
+        fn written(batch: &RecordBatch) -> Buffer {
+            let mut handle = buffer();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                &threaded(AvroOptions::new().with_codec("null")),
+            )
+            .unwrap();
+            handle
+        }
+
+        fn read(handle: &Buffer, field: Option<&Field>, options: &AvroOptions) -> Vec<RecordBatch> {
+            avro::read_batch_reader(handle, field, &threaded(options.clone()))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        }
+
+        /// The row count of every block a container holds.
+        fn block_counts(handle: &Buffer) -> Vec<u64> {
+            let mut blocks = avro::read_blocks(handle).unwrap();
+            let mut counts = Vec::new();
+            while let Some(block) = blocks.next_block().unwrap() {
+                counts.push(block.count());
+            }
+            counts
+        }
+
+        #[test]
+        fn a_million_booleans_are_cut_into_blocks_a_reader_accepts() {
+            let rows = 1_100_000;
+            let flags: BooleanArray = (0..rows).map(|row| Some(row % 3 == 0)).collect();
+            let batch = RecordBatch::try_new(
+                Arc::new(Schema::new(vec![ArrowField::new(
+                    "flag",
+                    ArrowType::Boolean,
+                    false,
+                )])),
+                vec![Arc::new(flags) as ArrayRef],
+            )
+            .unwrap();
+            let handle = written(&batch);
+            let counts = block_counts(&handle);
+            assert!(counts.iter().all(|count| *count <= 1_000_000), "{counts:?}");
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.column(0).as_ref(), batch.column(0).as_ref());
+        }
+
+        #[test]
+        fn a_sliced_batch_is_cut_as_its_own_rows_not_its_parents() {
+            let batch = trades(ROWS);
+            let owned = block_counts(&written(&batch)).len();
+            // The same rows arriving as zero-copy slices of one batch.
+            let mut handle = buffer();
+            let slices: Vec<RecordBatch> = (0..ROWS)
+                .step_by(10_000)
+                .map(|start| batch.slice(start, 10_000.min(ROWS - start)))
+                .collect();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(batch.schema(), slices),
+                &threaded(AvroOptions::new().with_codec("null")),
+            )
+            .unwrap();
+            let sliced = block_counts(&handle).len();
+            // A slice never splits into more blocks than its rows need: each
+            // 10,000-row slice is at most one block.
+            assert!(
+                sliced <= ROWS.div_ceil(10_000).max(owned),
+                "{sliced} blocks vs {owned}"
+            );
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.num_rows(), ROWS);
+        }
+
+        #[test]
+        fn a_sliced_list_column_is_cut_by_the_child_rows_its_slice_spans() {
+            use arrow_array::builder::{Int64Builder, ListBuilder};
+
+            let rows = 150_000;
+            let mut legs = ListBuilder::new(Int64Builder::new());
+            for row in 0..rows {
+                for leg in 0..4 {
+                    legs.values().append_value(row as i64 * 4 + leg);
+                }
+                legs.append(true);
+            }
+            let legs = legs.finish();
+            let batch = RecordBatch::try_new(
+                Arc::new(Schema::new(vec![ArrowField::new(
+                    "legs",
+                    legs.data_type().clone(),
+                    false,
+                )])),
+                vec![Arc::new(legs) as ArrayRef],
+            )
+            .unwrap();
+            let slices: Vec<RecordBatch> = (0..rows)
+                .step_by(10_000)
+                .map(|start| batch.slice(start, 10_000))
+                .collect();
+            let mut handle = buffer();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(batch.schema(), slices),
+                &threaded(AvroOptions::new().with_codec("null")),
+            )
+            .unwrap();
+            // A 10,000-row slice spans 40,000 child values - far under a
+            // block - so each slice is one block, not a fraction of one.
+            let counts = block_counts(&handle);
+            assert_eq!(counts.len(), rows / 10_000, "{counts:?}");
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.num_rows(), rows);
+        }
+
+        #[test]
+        fn a_large_write_is_cut_into_blocks_that_read_back_in_order() {
+            let batch = trades(ROWS);
+            let handle = written(&batch);
+
+            // One incoming batch, several blocks: what lets a reader split it.
+            let mut blocks = avro::read_blocks(&handle).unwrap();
+            let mut counts = Vec::new();
+            while let Some(block) = blocks.next_block().unwrap() {
+                counts.push(block.count());
+            }
+            assert!(counts.len() > 1, "{counts:?}");
+            assert_eq!(counts.iter().sum::<u64>(), ROWS as u64);
+
+            let read = read(&handle, None, &AvroOptions::new());
+            let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+            assert_eq!(whole.num_rows(), ROWS);
+            for column in 0..batch.num_columns() {
+                assert_eq!(whole.column(column).as_ref(), batch.column(column).as_ref());
+            }
+        }
+
+        #[test]
+        fn a_batch_never_holds_more_rows_than_asked_for() {
+            let handle = written(&trades(ROWS));
+            let mut options = AvroOptions::new();
+            options.batch_row_size = Some(10_000);
+            let read = read(&handle, None, &options);
+            assert!(read.iter().all(|batch| batch.num_rows() <= 10_000));
+            let ids: Vec<i64> = read
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_primitive::<Int64Type>()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(ids, (0..ROWS as i64).collect::<Vec<_>>());
+        }
+
+        #[test]
+        fn a_projection_skips_on_every_thread() {
+            let batch = trades(ROWS);
+            let handle = written(&batch);
+            let field = StructType::from_fields([DataType::Float64.required_field("price")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("trades");
+            let read = read(&handle, Some(&field), &AvroOptions::new());
+            assert!(read.iter().all(|batch| batch.num_columns() == 1));
+            let prices: Vec<f64> = read
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_primitive::<Float64Type>()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(
+                prices,
+                batch
+                    .column(2)
+                    .as_primitive::<Float64Type>()
+                    .values()
+                    .to_vec()
+            );
+        }
+
+        /// Four blocks of one `long` column; `declared` is block three's count.
+        fn four_blocks(declared: i64) -> Buffer {
+            let per_block = 120_000_i64;
+            let blocks: Vec<(i64, Vec<u8>)> = (0..4)
+                .map(|block| {
+                    let mut payload = Vec::new();
+                    for row in 0..per_block {
+                        put_long(&mut payload, block * per_block + row);
+                    }
+                    (if block == 2 { declared } else { per_block }, payload)
+                })
+                .collect();
+            handmade_container(
+                r#"{"type":"record","name":"r","fields":[{"name":"id","type":"long"}]}"#,
+                "null",
+                &blocks,
+            )
+        }
+
+        #[test]
+        fn a_block_short_of_its_rows_fails_the_read_after_the_rows_before_it() {
+            let handle = four_blocks(120_001);
+            let mut ids = Vec::new();
+            let mut failure = None;
+            for batch in avro::read_batch_reader(&handle, None, &AvroOptions::new()).unwrap() {
+                match batch {
+                    Ok(batch) => {
+                        ids.extend_from_slice(batch.column(0).as_primitive::<Int64Type>().values())
+                    }
+                    Err(error) => {
+                        failure = Some(error.to_string());
+                        break;
+                    }
+                }
+            }
+            let failure = failure.expect("a block that runs out of rows is an error");
+            assert!(failure.contains("expected"), "{failure}");
+            // What came first is every row in front of the fault, in order, and
+            // nothing from the block behind it.
+            assert!(ids.len() >= 240_000 && ids.len() < 360_000, "{}", ids.len());
+            assert_eq!(ids, (0..ids.len() as i64).collect::<Vec<_>>());
+        }
+
+        #[test]
+        fn a_block_with_rows_left_over_fails_the_read() {
+            let handle = four_blocks(119_999);
+            let failure = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+                .unwrap()
+                .find_map(Result::err)
+                .expect("a block with bytes after its declared rows is an error")
+                .to_string();
+            assert!(failure.contains("declared rows"), "{failure}");
+        }
+
+        #[test]
+        fn every_flat_type_round_trips_through_the_resolved_writers() {
+            let rows = 2_000;
+            let nullable = |row: usize| row % 5 != 0;
+            let columns: Vec<(ArrowField, ArrayRef)> = vec![
+                (
+                    ArrowField::new("int", ArrowType::Int32, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then_some(row as i32 - 1_000))
+                            .collect::<Int32Array>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("long", ArrowType::Int64, false),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| row as i64 * -7_919)
+                            .collect::<Int64Array>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("float", ArrowType::Float32, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then_some(row as f32 / 3.0))
+                            .collect::<Float32Array>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("double", ArrowType::Float64, false),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| row as f64 / 7.0)
+                            .collect::<Float64Array>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("flag", ArrowType::Boolean, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then_some(row % 2 == 0))
+                            .collect::<BooleanArray>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("text", ArrowType::Utf8, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then(|| "é".repeat(row % 4)))
+                            .collect::<StringArray>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("blob", ArrowType::Binary, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then(|| vec![row as u8; row % 3]))
+                            .collect::<BinaryArray>(),
+                    ),
+                ),
+                (
+                    ArrowField::new("day", ArrowType::Date32, true),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then_some(19_000 + row as i32))
+                            .collect::<Date32Array>(),
+                    ),
+                ),
+                (
+                    ArrowField::new(
+                        "at",
+                        ArrowType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+                        true,
+                    ),
+                    Arc::new(
+                        (0..rows)
+                            .map(|row| nullable(row).then_some(1_700_000_000_000_000 + row as i64))
+                            .collect::<TimestampMicrosecondArray>()
+                            .with_timezone("UTC"),
+                    ),
+                ),
+            ];
+            let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
+            let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap();
+            for codec in ["null", "deflate"] {
+                let mut handle = buffer();
+                avro::overwrite_arrow_reader(
+                    &mut handle,
+                    yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
+                    &AvroOptions::new().with_codec(codec),
+                )
+                .unwrap();
+                let read = read(&handle, None, &AvroOptions::new());
+                let whole = arrow_select::concat::concat_batches(&read[0].schema(), &read).unwrap();
+                for (index, expected) in batch.columns().iter().enumerate() {
+                    let actual = whole.column(index);
+                    assert_eq!(actual.len(), expected.len(), "{codec} column {index}");
+                    let actual = arrow_cast::cast(actual, expected.data_type()).unwrap();
+                    assert_eq!(actual.as_ref(), expected.as_ref(), "{codec} column {index}");
+                }
+            }
+        }
+    }
+
+    /// String columns validate their UTF-8 once per batch.
+    mod strings {
+        use arrow_array::cast::AsArray;
+
+        use yggdryl::avro::{self, AvroOptions};
+
+        use super::{handmade_container, put_bytes};
+
+        const SCHEMA: &str =
+            r#"{"type":"record","name":"r","fields":[{"name":"s","type":"string"}]}"#;
+
+        #[test]
+        fn multibyte_text_reads_back_whole() {
+            let mut payload = Vec::new();
+            for text in ["", "é", "日本語", "a\u{1F600}b"] {
+                put_bytes(&mut payload, text.as_bytes());
+            }
+            let handle = handmade_container(SCHEMA, "null", &[(4, payload)]);
+            let read: Vec<_> = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            let texts: Vec<&str> = read[0]
+                .column(0)
+                .as_string::<i32>()
+                .iter()
+                .flatten()
+                .collect();
+            assert_eq!(texts, ["", "é", "日本語", "a\u{1F600}b"]);
+        }
+
+        #[test]
+        fn invalid_utf8_in_a_string_is_an_error() {
+            let mut payload = Vec::new();
+            put_bytes(&mut payload, b"fine");
+            put_bytes(&mut payload, &[0x66, 0xff, 0x6f]);
+            let handle = handmade_container(SCHEMA, "null", &[(2, payload)]);
+            let failure = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+                .unwrap()
+                .find_map(Result::err)
+                .expect("a string that is not UTF-8 is an error")
+                .to_string();
+            assert!(failure.contains("UTF-8"), "{failure}");
         }
     }
 }

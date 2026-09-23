@@ -25,7 +25,6 @@ mod nested {
 
 mod grammar {
     use yggdryl::{DataType, DataTypeId, Field, StructType, TimeUnit, Timezone};
-    use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
     #[test]
     fn variant_parser_alias_canonicalizes_to_dense_union() {
@@ -129,73 +128,61 @@ mod grammar {
         for (source, expected) in [
             (
                 "datetime64(Second)",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::NAIVE,
-                }),
+                },
             ),
             (
                 "datetime64(Nanoseconds,UTC)",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             (
                 "timestamp(nano seconds,UTC)",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
-            (
-                "time32(seconds)",
-                DataType::Time(TimeType::Time32(TimeUnit::Second)),
-            ),
+            ("time32(seconds)", DataType::Time32(TimeUnit::Second)),
             (
                 "time32(milli seconds)",
-                DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+                DataType::Time32(TimeUnit::Millisecond),
             ),
             (
                 "time64(Microsecond)",
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+                DataType::Time64(TimeUnit::Microsecond),
             ),
             (
                 "time64(micro seconds)",
-                DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+                DataType::Time64(TimeUnit::Microsecond),
             ),
             (
                 "duration32(MILLIS)",
-                DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
+                DataType::Duration32(TimeUnit::Millisecond),
             ),
             (
                 "duration64(micro seconds)",
-                DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+                DataType::Duration64(TimeUnit::Microsecond),
             ),
             (
                 "interval(YearMonth)",
-                DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+                DataType::Interval(TimeUnit::YearMonth),
             ),
             (
                 "interval(DAY TO SECOND)",
-                DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+                DataType::Interval(TimeUnit::DayTime),
             ),
             (
                 "interval(MonthDayNano)",
-                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+                DataType::Interval(TimeUnit::MonthDayNano),
             ),
-            (
-                "interval",
-                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
-            ),
-            (
-                "INTERVAL YEAR",
-                DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
-            ),
-            (
-                "INTERVAL DAY",
-                DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
-            ),
+            ("interval", DataType::Interval(TimeUnit::MonthDayNano)),
+            ("INTERVAL YEAR", DataType::Interval(TimeUnit::YearMonth)),
+            ("INTERVAL DAY", DataType::Interval(TimeUnit::DayTime)),
         ] {
             assert_eq!(DataType::from_str(source).unwrap(), expected, "{source:?}");
         }
@@ -570,7 +557,7 @@ mod aliases {
 
 mod families {
 
-    use yggdryl::{DataType, DateTimeType, StructType, TimeUnit};
+    use yggdryl::{DataType, StructType, TimeUnit};
     use yggdryl::{Error, Field};
 
     #[test]
@@ -639,17 +626,17 @@ mod families {
     fn temporal_decimal_and_wrapper_forms_are_validated() {
         assert_eq!(
             DataType::from_str("timestamp(9,'Europe/Paris')").unwrap(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: yggdryl::Timezone::from_str("Europe/Paris").unwrap()
-            })
+            }
         );
         assert_eq!(
             DataType::from_str("TIMESTAMP WITH TIME ZONE").unwrap(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::UTC
-            })
+            }
         );
         assert_eq!(
             DataType::from_str("interval year to month").unwrap(),

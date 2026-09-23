@@ -22,10 +22,12 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray, UInt32Array};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
-use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
+use arrow_schema::{
+    ArrowError, DataType as ArrowDataType, Field as ArrowField, FieldRef, Schema, SchemaRef,
+};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema, rebuilt_batch};
-use crate::cast::{ArrowCastOptions, cast_field_array};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::string::is_text_storage;
@@ -36,7 +38,6 @@ use crate::{IOBase, IOMedia, Listing};
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
 pub use super::NULL_PARTITION;
-use crate::FieldValue as _;
 
 /// How every partition value in the project is rendered as directory text.
 ///
@@ -114,7 +115,7 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     }
 }
 
-/// Build a constant column holding `value` for every row of a batch.
+/// One partition column a path spells out, restored into every batch.
 ///
 /// The directory name is text, and a declared column turns it into its own
 /// type through the field cast: a fixed string pads it, a date parses it.
@@ -122,14 +123,122 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
 /// value, which a path cannot settle by itself, so the declared nullability
 /// decides: a nullable column reads what it cannot convert as absent, a
 /// required one refuses it.
-fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<ArrayRef> {
-    let text: ArrayRef = Arc::new(StringArray::from(vec![value; rows]));
-    match child {
-        Some(child) => {
-            Ok(child
-                .cast_arrow_array(text, ArrowCastOptions::new().with_safe(child.is_nullable()))?)
+///
+/// Every row under one path holds the same value, so the cast is planned by
+/// the first batch that lacks the column and read once, and each batch after
+/// repeats that one row.
+struct Constant {
+    column: String,
+    value: String,
+    child: Option<Field>,
+    /// The restored Arrow field and the cast reading the text into it.
+    planned: Option<(FieldRef, Option<ArrowCastPlan>)>,
+    /// The value, cast once.
+    row: Option<ArrayRef>,
+}
+
+impl Constant {
+    /// Plan the restored field and the cast of its text.
+    fn plan(&self) -> Result<(FieldRef, Option<ArrowCastPlan>)> {
+        // The restored column keeps its declaration - nullability and any
+        // extension identity - and says it came from the path. That is the one
+        // fact the batch would otherwise lose, and it is what lets a read of a
+        // lake be written back out with the same layout.
+        let (restored, plan) = match &self.child {
+            Some(child) => {
+                let text = Arc::new(ArrowField::new(child.name(), ArrowDataType::Utf8, true));
+                let plan = ArrowCastPlan::compile_arrow(
+                    &text,
+                    child,
+                    ArrowCastOptions::new().with_safe(child.is_nullable()),
+                    Deferred::default(),
+                )?;
+                (child.clone().into_arrow_field()?, Some(plan))
+            }
+            // A path value is spelled out, so it is never null.
+            None => (
+                ArrowField::new(&self.column, ArrowDataType::Utf8, false),
+                None,
+            ),
+        };
+        let mut metadata = restored.metadata().clone();
+        metadata.insert(
+            crate::metadata::FIELD_PARTITION_KEY.to_owned(),
+            "true".to_owned(),
+        );
+        Ok((Arc::new(restored.with_metadata(metadata)), plan))
+    }
+
+    /// The restored field and `rows` copies of the value.
+    fn restore(&mut self, rows: usize) -> Result<(FieldRef, ArrayRef)> {
+        let planned = match self.planned.take() {
+            Some(planned) => planned,
+            None => self.plan()?,
+        };
+        let (field, plan) = &*self.planned.insert(planned);
+        let value = self.value.as_str();
+        let text = |rows: usize| -> Result<ArrayRef> {
+            let text: ArrayRef = Arc::new(StringArray::from(vec![value; rows]));
+            match plan {
+                Some(plan) => Ok(plan.reconcile_array(text)?),
+                None => Ok(text),
+            }
+        };
+        if rows == 0 {
+            return Ok((Arc::clone(field), text(0)?));
         }
-        None => Ok(text),
+        let row = match &mut self.row {
+            Some(row) => row,
+            row => row.insert(text(1)?),
+        };
+        let indices = UInt32Array::from_value(0, rows);
+        let repeated =
+            arrow_select::take::take(row.as_ref(), &indices, None).map_err(Error::Arrow)?;
+        Ok((Arc::clone(field), repeated))
+    }
+}
+
+/// The partition columns one path spells out, restored into its batches.
+struct Constants(Vec<Constant>);
+
+impl Constants {
+    fn new(partitions: &[(String, String)], field: Option<&Field>) -> Self {
+        Self(
+            partitions
+                .iter()
+                .map(|(column, value)| Constant {
+                    column: column.clone(),
+                    value: value.clone(),
+                    child: field
+                        .and_then(|field| field.dtype().get_field_by_name(column))
+                        .cloned(),
+                    planned: None,
+                    row: None,
+                })
+                .collect(),
+        )
+    }
+
+    /// Append every column the batch does not already carry.
+    ///
+    /// A column the batch already carries is left alone: the file wins,
+    /// because rewriting stored values from a directory name would hide a
+    /// mismatch.
+    fn restore(&mut self, batch: &RecordBatch) -> Result<RecordBatch> {
+        if self.0.is_empty() {
+            return Ok(batch.clone());
+        }
+        let mut fields: Vec<FieldRef> = batch.schema().fields().iter().map(Arc::clone).collect();
+        let mut columns = batch.columns().to_vec();
+        for constant in &mut self.0 {
+            if batch.schema().index_of(&constant.column).is_ok() {
+                continue;
+            }
+            let (field, column) = constant.restore(batch.num_rows())?;
+            fields.push(field);
+            columns.push(column);
+        }
+        rebuilt_batch(batch, fields, columns)
     }
 }
 
@@ -171,38 +280,7 @@ pub fn with_partitions(
     partitions: &[(String, String)],
     field: Option<&Field>,
 ) -> Result<RecordBatch> {
-    if partitions.is_empty() {
-        return Ok(batch.clone());
-    }
-    let mut fields: Vec<Arc<ArrowField>> = batch.schema().fields().iter().map(Arc::clone).collect();
-    let mut columns = batch.columns().to_vec();
-    let rows = batch.num_rows();
-
-    for (column, value) in partitions {
-        if batch.schema().index_of(column).is_ok() {
-            continue;
-        }
-        let child = field.and_then(|field| field.dtype().get_field_by_name(column));
-        let array = constant_column(value, rows, child)?;
-        // The restored column keeps its declaration - nullability and any
-        // extension identity - and says it came from the path. That is the one
-        // fact the batch would otherwise lose, and it is what lets a read of a
-        // lake be written back out with the same layout.
-        let restored = match child {
-            Some(child) => child.clone().into_arrow_field()?,
-            // A path value is spelled out, so it is never null.
-            None => ArrowField::new(column, ArrowDataType::Utf8, false),
-        };
-        let mut metadata = restored.metadata().clone();
-        metadata.insert(
-            crate::metadata::FIELD_PARTITION_KEY.to_owned(),
-            "true".to_owned(),
-        );
-        fields.push(Arc::new(restored.with_metadata(metadata)));
-        columns.push(array);
-    }
-
-    rebuilt_batch(batch, fields, columns)
+    Constants::new(partitions, field).restore(batch)
 }
 
 /// Drop the columns a path already spells out from one batch.
@@ -244,9 +322,8 @@ pub fn without_partitions(
 /// A batch reader that restores the partition columns of a location.
 struct Partitioned {
     inner: crate::arrow::BatchReader,
-    partitions: Vec<(String, String)>,
+    constants: Constants,
     schema: Arc<Schema>,
-    field: Option<Field>,
 }
 
 impl Iterator for Partitioned {
@@ -257,13 +334,11 @@ impl Iterator for Partitioned {
             Ok(batch) => batch,
             Err(error) => return Some(Err(error)),
         };
-        Some(
-            with_partitions(&batch, &self.partitions, self.field.as_ref()).map_err(|error| {
-                arrow_schema::ArrowError::ComputeError(format!(
-                    "the partition columns could not be projected: {error}"
-                ))
-            }),
-        )
+        Some(self.constants.restore(&batch).map_err(|error| {
+            arrow_schema::ArrowError::ComputeError(format!(
+                "the partition columns could not be projected: {error}"
+            ))
+        }))
     }
 }
 
@@ -288,13 +363,12 @@ pub fn partitioned_reader(
     }
     // The widened schema is the reader's own plus one field per partition, and
     // it is computed once so a consumer can read it before the first batch.
-    let empty = RecordBatch::new_empty(inner.schema());
-    let widened = with_partitions(&empty, &partitions, field.as_ref())?;
+    let mut constants = Constants::new(&partitions, field.as_ref());
+    let widened = constants.restore(&RecordBatch::new_empty(inner.schema()))?;
     Ok(Box::new(Partitioned {
         inner,
-        partitions,
+        constants,
         schema: widened.schema(),
-        field,
     }))
 }
 
@@ -457,52 +531,75 @@ fn write_partition_columns(
     })
 }
 
+/// How the partition columns of one batch schema spell directory text,
+/// planned once per schema.
+struct Rendering {
+    /// Each partition column's position, and the cast reading a column stored
+    /// as bytes back into the text it holds.
+    columns: Vec<(usize, Option<ArrowCastPlan>)>,
+}
+
+impl Rendering {
+    fn compile(schema: &SchemaRef, columns: &[String]) -> Result<Self> {
+        let mut planned = Vec::with_capacity(columns.len());
+        for column in columns {
+            // Folded, like the layout comparison and the cast that shaped this
+            // batch: a tree storing `Year=2024` names the column its
+            // declaration spells `year`.
+            let found = schema
+                .fields()
+                .iter()
+                .position(|field| field.name().eq_ignore_ascii_case(column));
+            let Some(index) = found else {
+                return Err(Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$.{column}"),
+                    reason: crate::text::expected_got(
+                        format_args!("partition column {column:?} among the written columns"),
+                        crate::text::elide_display(schema),
+                    ),
+                });
+            };
+            // A fixed string and a string in a charset other than UTF-8 ride
+            // binary storage, which the formatter would spell as hex; the
+            // directory carries the trimmed text the value is, so such a
+            // column spells its text and the read casts that text back through
+            // the datatype's own path. A code already rides text storage, so
+            // its column is formatted where it stands.
+            let source = &schema.fields()[index];
+            let field = Field::from_arrow_field(source)?;
+            let stored_as_bytes = field
+                .dtype()
+                .string_parameters()
+                .is_some_and(|parameters| parameters.is_fixed() || !is_text_storage(parameters));
+            let plan = if stored_as_bytes {
+                Some(ArrowCastPlan::compile_arrow(
+                    source,
+                    &DataType::utf8().nullable_field(column.as_str()),
+                    ArrowCastOptions::new().with_safe(false),
+                    Deferred::default(),
+                )?)
+            } else {
+                None
+            };
+            planned.push((index, plan));
+        }
+        Ok(Self { columns: planned })
+    }
+}
+
 /// Return the value each row of `batch` spells in a partition directory.
 ///
 /// The rendering is the encoding's own text: an `Int32` `2024` is `2024`, and a
 /// null is [`NULL_PARTITION`], because a path has no other way to say it.
-fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<String>>> {
+fn partition_values(batch: &RecordBatch, rendering: &Rendering) -> Result<Vec<Vec<String>>> {
     let format = partition_format();
-    let mut rendered: Vec<Vec<String>> = vec![Vec::with_capacity(columns.len()); batch.num_rows()];
-    for column in columns {
-        // Folded, like the layout comparison and the cast that shaped this
-        // batch: a tree storing `Year=2024` names the column its declaration
-        // spells `year`.
-        let found = batch
-            .schema()
-            .fields()
-            .iter()
-            .position(|field| field.name().eq_ignore_ascii_case(column));
-        let Some(index) = found else {
-            return Err(Error::InvalidRecord {
-                path: smol_str::format_smolstr!("$.{column}"),
-                reason: crate::text::expected_got(
-                    format_args!("partition column {column:?} among the written columns"),
-                    crate::text::elide_display(&batch.schema()),
-                ),
-            });
-        };
-        // A fixed string and a string in a charset other than UTF-8 ride
-        // binary storage, which the formatter would spell as hex; the
-        // directory carries the trimmed text the value is, so such a column
-        // spells its text and the read casts that text back through the
-        // datatype's own path. A code already rides text storage, so its
-        // column is formatted where it stands.
-        let schema = batch.schema();
-        let field = Field::from_arrow_field(schema.field(index))?;
-        let dtype = field.dtype();
-        let stored_as_bytes = dtype
-            .string_parameters()
-            .is_some_and(|parameters| parameters.is_fixed() || !is_text_storage(parameters));
-        let column = if stored_as_bytes {
-            cast_field_array(
-                &DataType::utf8().nullable_field(column.as_str()),
-                Some(schema.field(index).metadata()),
-                Arc::clone(batch.column(index)),
-                ArrowCastOptions::new().with_safe(false),
-            )?
-        } else {
-            Arc::clone(batch.column(index))
+    let mut rendered: Vec<Vec<String>> =
+        vec![Vec::with_capacity(rendering.columns.len()); batch.num_rows()];
+    for (index, plan) in &rendering.columns {
+        let column = Arc::clone(batch.column(*index));
+        let column = match plan {
+            Some(plan) => plan.reconcile_array(column)?,
+            None => column,
         };
         let formatter = ArrayFormatter::try_new(column.as_ref(), &format).map_err(Error::Arrow)?;
         for (row, values) in rendered.iter_mut().enumerate() {
@@ -517,11 +614,15 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
 /// Groups keep first-appearance order so a write lands in a stable sequence,
 /// and the partition columns are removed from each group: the directory name
 /// carries them, which is the whole point of the layout.
-fn split_by_partition(batch: &RecordBatch, columns: &[String]) -> Result<Vec<PartitionGroup>> {
+fn split_by_partition(
+    batch: &RecordBatch,
+    columns: &[String],
+    rendering: &Rendering,
+) -> Result<Vec<PartitionGroup>> {
     if columns.is_empty() {
         return Ok(vec![(Vec::new(), batch.clone())]);
     }
-    let rendered = partition_values(batch, columns)?;
+    let rendered = partition_values(batch, rendering)?;
     let mut order: Vec<Vec<String>> = Vec::new();
     let mut groups: HashMap<Vec<String>, Vec<u32>> = HashMap::new();
     for (row, values) in rendered.into_iter().enumerate() {
@@ -589,6 +690,11 @@ fn leaf_name(
 /// agrees on `year`, which makes it useless for telling two of them apart.
 fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<RecordOptions> {
     let mut leaf = options.clone();
+    // A limited read decodes each leaf lazily on one thread, so it stops
+    // where the limit does rather than decoding ahead of it.
+    if options.max_row_size().is_some() {
+        leaf.set_file_threads(1);
+    }
     // The row and byte limits were already applied to the whole operation at
     // the record-method seam, so a leaf must not apply them again: a limit on
     // the tree re-applied per leaf would become one bound per partition, and
@@ -627,22 +733,19 @@ pub(crate) fn folder_reader(
     // A leaf whose path names a different value for a filtered column cannot
     // hold a matching row, so it is skipped before anything is decoded; a
     // leaf that does not name the column stays, and the row filter answers.
-    let filter = options.partition_filter();
-    if !filter.is_always_true() {
-        // The same predicate a listing answers, asked of each leaf's own path.
-        // A leaf that does not name a filtered column is unknown rather than
-        // false, so it stays and the row filter answers for it.
-        let bound = filter.bind(
-            &crate::DataType::from(crate::StructType::from_fields([])?).required_field("holder"),
-        )?;
-        parts = Listing::new(parts.filter_map(move |part| match part {
-            Err(error) => Some(Err(error)),
-            Ok(part) => match bound.matches_holder(&crate::expression::Handle(&part)) {
-                Ok(true) => Some(Ok(part)),
-                Ok(false) => None,
-                Err(error) => Some(Err(error)),
-            },
-        }));
+    let pairs = options.partition_pairs();
+    if !pairs.is_empty() {
+        parts = parts.keeping(move |part| {
+            part.url().is_none_or(|url| {
+                let named = url.hive_partitions();
+                pairs.iter().all(|(column, value)| {
+                    named
+                        .iter()
+                        .find(|(key, _)| key == column)
+                        .is_none_or(|(_, held)| held == value)
+                })
+            })
+        });
     }
     let field = match options.field() {
         Some(field) => Some(field.clone()),
@@ -773,11 +876,12 @@ fn part_reader(
     }
     let reader = crate::iobase::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
-    Ok(crate::arrow::cast_reader(
+    Ok(crate::SerieReader::from_arrow_reader(
+        Some(field),
         restored,
-        field,
         ArrowCastOptions::new().with_safe(options.safe()),
-    )?)
+    )?
+    .into_arrow_reader())
 }
 
 /// One stable routing plan for every cadence of a folder write.
@@ -978,12 +1082,16 @@ impl FolderWriter {
         }
 
         let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut renderings = PlanCache::new();
         for batch in batches {
             let batch = batch.map_err(crate::arrow::from_reader_error)?;
             if batch.num_rows() == 0 {
                 continue;
             }
-            for (pairs, part) in split_by_partition(&batch, &self.columns)? {
+            let rendering = renderings.get_or_compile(batch.schema_ref().fields(), || {
+                Ok(Rendering::compile(batch.schema_ref(), &self.columns)?)
+            })?;
+            for (pairs, part) in split_by_partition(&batch, &self.columns, rendering)? {
                 let relative = leaf_name(&self.existing, &pairs, &self.options);
                 let mut leaf = leaf_options(&self.options, &pairs)?;
                 // The folder entry point cast the whole incoming stream before

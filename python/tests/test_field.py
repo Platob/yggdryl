@@ -16,6 +16,7 @@ from yggdryl import (
     MediaType,
     MimeType,
     PythonMetadata,
+    Serie,
     Uri,
     Url,
     enums,
@@ -755,9 +756,9 @@ def test_partition_apply_arrow_batch_leaves_a_stored_column_alone() -> None:
 
 def test_partition_apply_arrow_batch_fills_a_null_placeholder_column() -> None:
     root = _derived_root()
-    placeholder = root.cast_arrow_batch(
-        pa.record_batch({"event": pa.array([19_723], pa.date32())})
-    )
+    placeholder = Serie.from_arrow_batch(
+        pa.record_batch({"event": pa.array([19_723], pa.date32())}), root
+    ).into_arrow_batch()
     assert placeholder.column("year").to_pylist() == [None]
 
     filled = root.partition.apply_arrow_batch(placeholder)
@@ -1113,413 +1114,6 @@ def test_dictionary_options_are_owned_and_validated_by_core() -> None:
     )
     assert wide.dictionary_id == 9_007_199_254_740_993
     assert json.loads(wide.into_json())["dictionary_id"] == "9007199254740993"
-
-
-class TestGenericCast:
-    """One generic cast, the kind inferred and kept."""
-
-    @staticmethod
-    def _root() -> Any:
-        return Field("row", DataType("struct<id: int64, symbol: string>"), False)
-
-    def test_every_pyarrow_kind_comes_back_as_itself(self) -> None:
-        import pyarrow as pa
-
-        root = self._root()
-        batch = pa.table(
-            {"id": pa.array([1, 2], pa.int32()), "symbol": ["AAPL", "MSFT"]}
-        ).to_batches()[0]
-
-        # A batch, a table, and a reader keep their kinds; the int32 widens.
-        cast_batch = root.cast_arrow(batch)
-        assert isinstance(cast_batch, pa.RecordBatch)
-        assert cast_batch.schema.field("id").type == pa.int64()
-        assert root.cast_arrow_batch(batch).equals(cast_batch)
-
-        table = pa.Table.from_batches([batch])
-        cast_table = root.cast_arrow(table)
-        assert isinstance(cast_table, pa.Table)
-
-        reader = root.cast_arrow(table.to_reader())
-        assert isinstance(reader, pa.RecordBatchReader)
-        assert reader.read_all().num_rows == 2
-
-        # An array casts as an array, a scalar as a scalar - and `cast` is
-        # the same dispatch with plain Python values allowed too.
-        price = Field("price", DataType("int64"), False)
-        assert price.cast_arrow(pa.array([5], pa.int32())).type == pa.int64()
-        assert price.cast_arrow_scalar(pa.scalar(5, pa.int32())).as_py() == 5
-        assert price.cast(5).as_py() == 5
-
-    def test_polars_frames_stay_polars_and_lazy_stays_lazy(self) -> None:
-        pl = pytest.importorskip("polars")
-
-        root = self._root()
-        frame = pl.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
-
-        cast = root.cast_arrow(frame)
-        assert isinstance(cast, pl.DataFrame)
-        assert cast.schema["id"] == pl.Int64
-
-        # The lazy frame answers schema questions without collecting, and the
-        # cast is deferred until the caller collects.
-        lazy = root.cast_arrow(frame.lazy())
-        assert isinstance(lazy, pl.LazyFrame)
-        collected = lazy.collect()
-        assert collected.schema["id"] == pl.Int64
-        assert collected.height == 2
-
-    def test_pandas_frames_cross_through_arrow_and_back(self) -> None:
-        pd = pytest.importorskip("pandas")
-
-        root = self._root()
-        frame = pd.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
-        cast = root.cast_arrow(frame)
-        assert isinstance(cast, pd.DataFrame)
-        assert list(cast.columns) == ["id", "symbol"]
-
-    def test_a_table_is_drained_and_a_reader_is_not(self) -> None:
-        root = self._root()
-        stored = pa.schema(
-            [pa.field("id", pa.int32()), pa.field("symbol", pa.string())]
-        )
-        pulled: list[int] = []
-
-        def batches() -> Any:
-            for index in range(3):
-                pulled.append(index)
-                yield pa.record_batch(
-                    {
-                        "id": pa.array([index], pa.int32()),
-                        "symbol": pa.array(["AAPL"], pa.string()),
-                    },
-                    schema=stored,
-                )
-
-        # The eager half: a table is already held whole, so it comes back whole.
-        table = pa.Table.from_batches(list(batches()), schema=stored)
-        assert pulled == [0, 1, 2]
-        eager = root.cast_arrow_table(table)
-        assert isinstance(eager, pa.Table)
-        assert eager.num_rows == 3
-        assert eager.schema.field("id").type == pa.int64()
-
-        # The lazy half: building the reader pulls nothing, and its schema is
-        # derived from the source schema alone rather than from a first batch.
-        pulled.clear()
-        lazy = root.cast_arrow_reader(
-            pa.RecordBatchReader.from_batches(stored, batches())
-        )
-        assert isinstance(lazy, pa.RecordBatchReader)
-        assert lazy.schema.names == ["id", "symbol"]
-        assert lazy.schema.field("id").type == pa.int64()
-        assert pulled == []
-
-        # One pull costs one source batch, and only draining reaches the rest.
-        assert lazy.read_next_batch().num_rows == 1
-        assert pulled == [0]
-        assert lazy.read_all().num_rows == 2
-        assert pulled == [0, 1, 2]
-
-        # The generic cast is that same pair, chosen by what it was handed.
-        assert isinstance(root.cast_arrow(table), pa.Table)
-        assert isinstance(root.cast_arrow(table.to_reader()), pa.RecordBatchReader)
-        with pytest.raises(TypeError, match="expected a pyarrow.Table"):
-            root.cast_arrow_table(table.to_reader())
-
-    def test_an_exact_cast_hands_the_callers_own_object_back(self) -> None:
-        root = self._root()
-        exact = pa.schema([pa.field("id", pa.int64()), pa.field("symbol", pa.string())])
-        batch = pa.record_batch(
-            {
-                "id": pa.array([1, 2], pa.int64()),
-                "symbol": pa.array(["AAPL", "MSFT"], pa.string()),
-            },
-            schema=exact,
-        )
-
-        # Not an equal copy: the caller's own object, by identity.
-        assert root.cast_arrow_batch(batch) is batch
-        assert root.cast_arrow(batch) is batch
-
-        price = Field("price", DataType("int64"), False)
-        values = pa.array([5, 7], pa.int64())
-        scalar = pa.scalar(5, pa.int64())
-        assert price.cast_arrow_array(values) is values
-        assert price.cast_arrow(values) is values
-        assert price.cast_arrow_scalar(scalar) is scalar
-
-
-class TestArrowNullability:
-    """What a cast does about a required field the source cannot fill."""
-
-    @staticmethod
-    def _root() -> Any:
-        return Field(
-            "row", DataType("struct<id: int64, symbol: string not null>"), False
-        )
-
-    @staticmethod
-    def _identifiers() -> Any:
-        return pa.record_batch({"id": pa.array([1, 2], pa.int64())})
-
-    def test_a_missing_required_column_is_filled_or_named(self) -> None:
-        root = self._root()
-        batch = self._identifiers()
-
-        # Default repairs the hole with the target's canonical default.
-        filled = root.cast_arrow_batch(batch)
-        assert filled.column_names == ["id", "symbol"]
-        assert filled.column("symbol").to_pylist() == ["", ""]
-        assert filled.schema.field("symbol").nullable is False
-
-        # Strict refuses it, from the two schemas alone, and names the path.
-        with pytest.raises(
-            ValueError,
-            match=r"required Arrow field \$\.symbol is missing from the source",
-        ):
-            root.cast_arrow_batch(batch, nullability="strict")
-
-        # The policy is a name, and an unknown one is refused by vocabulary.
-        with pytest.raises(ValueError, match="expected one of default, strict"):
-            root.cast_arrow_batch(batch, nullability="lenient")
-
-    def test_a_required_column_holding_null_is_named_with_its_count(self) -> None:
-        root = self._root()
-        batch = pa.record_batch(
-            {
-                "id": pa.array([1, 2, 3], pa.int64()),
-                "symbol": pa.array(["AAPL", None, None], pa.string()),
-            }
-        )
-
-        assert root.cast_arrow_batch(batch).column("symbol").to_pylist() == [
-            "AAPL",
-            "",
-            "",
-        ]
-        with pytest.raises(
-            ValueError, match=r"required Arrow field \$\.symbol holds 2 null values"
-        ):
-            root.cast_arrow_batch(batch, nullability="strict")
-
-    def test_a_nullable_column_the_source_lacks_stays_null_under_both(self) -> None:
-        # Nothing is required here, so strictness has nothing to refuse.
-        root = Field("row", DataType("struct<id: int64, symbol: string>"), False)
-        batch = self._identifiers()
-
-        for nullability in ("default", "strict"):
-            cast = root.cast_arrow_batch(batch, nullability=nullability)
-            assert cast.column_names == ["id", "symbol"]
-            assert cast.column("symbol").null_count == 2
-            assert cast.column("symbol").to_pylist() == [None, None]
-
-    def test_an_undeclared_source_column_is_dropped_under_both(self) -> None:
-        root = self._root()
-        batch = pa.record_batch(
-            {
-                "id": pa.array([1], pa.int64()),
-                "symbol": pa.array(["AAPL"], pa.string()),
-                "venue": pa.array(["XNAS"], pa.string()),
-            }
-        )
-
-        # Strictness is about what the target declares, not about what the
-        # source carries beyond it.
-        for nullability in ("default", "strict"):
-            cast = root.cast_arrow_batch(batch, nullability=nullability)
-            assert cast.column_names == ["id", "symbol"]
-
-    def test_a_nested_required_field_is_named_by_its_whole_path(self) -> None:
-        root = Field(
-            "row",
-            DataType("struct<account: struct<id: int64, zip: string not null>>"),
-            False,
-        )
-        without_zip = pa.record_batch(
-            {
-                "account": pa.array(
-                    [{"id": 1}], pa.struct([pa.field("id", pa.int64())])
-                )
-            }
-        )
-        with_null_zip = pa.record_batch(
-            {
-                "account": pa.array(
-                    [{"id": 1, "zip": "75001"}, {"id": 2, "zip": None}],
-                    pa.struct(
-                        [pa.field("id", pa.int64()), pa.field("zip", pa.string())]
-                    ),
-                )
-            }
-        )
-
-        assert root.cast_arrow_batch(without_zip).to_pylist() == [
-            {"account": {"id": 1, "zip": ""}}
-        ]
-        with pytest.raises(
-            ValueError,
-            match=r"required Arrow field \$\.account\.zip is missing from the source",
-        ):
-            root.cast_arrow_batch(without_zip, nullability="strict")
-        with pytest.raises(
-            ValueError,
-            match=r"required Arrow field \$\.account\.zip holds 1 null values",
-        ):
-            root.cast_arrow_batch(with_null_zip, nullability="strict")
-
-        # A collection is one step of that path too, spelled with brackets.
-        listed = Field(
-            "row", DataType("struct<users: list<struct<zip: string not null>>>"), False
-        )
-        rows = pa.record_batch(
-            {
-                "users": pa.array(
-                    [[{"zip": None}, {"zip": "75001"}], [{"zip": None}]],
-                    pa.list_(pa.struct([pa.field("zip", pa.string())])),
-                )
-            }
-        )
-        with pytest.raises(
-            ValueError,
-            match=r"required Arrow field \$\.users\[\]\.zip holds 2 null values",
-        ):
-            listed.cast_arrow_batch(rows, nullability="strict")
-
-    def test_safe_and_strictness_are_two_independent_answers(self) -> None:
-        root = Field(
-            "row", DataType("struct<id: int64, quantity: int8 not null>"), False
-        )
-        batch = pa.record_batch(
-            {
-                "id": pa.array([1, 2], pa.int64()),
-                "quantity": pa.array([7, 130], pa.int64()),
-            }
-        )
-
-        # `safe` turns the value the target cannot hold into a null, which the
-        # default policy then repairs.
-        assert root.cast_arrow_batch(batch).column("quantity").to_pylist() == [7, 0]
-
-        # Strictness reads that same null as the absence it is, and refuses it.
-        with pytest.raises(
-            ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
-        ):
-            root.cast_arrow_batch(batch, nullability="strict")
-
-        # `safe=False` refuses the conversion itself, before any policy about
-        # absence applies - so both policies raise the same conversion error.
-        for nullability in ("default", "strict"):
-            with pytest.raises(ValueError, match="Can't cast value 130 to type Int8"):
-                root.cast_arrow_batch(batch, safe=False, nullability=nullability)
-
-    def test_a_strict_reader_refuses_when_the_batch_is_pulled(self) -> None:
-        root = self._root()
-        stored = pa.schema(
-            [pa.field("id", pa.int64()), pa.field("symbol", pa.string())]
-        )
-        batch = pa.record_batch(
-            {
-                "id": pa.array([1, 2], pa.int64()),
-                "symbol": pa.array(["AAPL", None], pa.string()),
-            },
-            schema=stored,
-        )
-
-        # A null is a property of rows, so the reader is built and answers its
-        # schema before anything refuses it.
-        reader = root.cast_arrow_reader(
-            pa.RecordBatchReader.from_batches(stored, [batch]), nullability="strict"
-        )
-        assert reader.schema.names == ["id", "symbol"]
-        with pytest.raises(
-            pa.ArrowInvalid,
-            match=r"required Arrow field \$\.symbol holds 1 null values",
-        ):
-            reader.read_all()
-
-        # A missing column is a property of the schemas, so it is refused where
-        # the schemas meet: building the reader, with no batch pulled.
-        absent = pa.schema([pa.field("id", pa.int64())])
-        with pytest.raises(
-            ValueError,
-            match=r"required Arrow field \$\.symbol is missing from the source",
-        ):
-            root.cast_arrow_reader(
-                pa.RecordBatchReader.from_batches(absent, []), nullability="strict"
-            )
-
-
-def test_the_bits_reading_crosses_every_same_width_pair() -> None:
-    import pyarrow as pa
-
-    bits: dict[str, Any] = {"representation": "bits"}
-
-    unsigned32 = pa.array(
-        [0, 2**31 - 1, 2**31, 2**32 - 1, None],
-        type=pa.uint32(),
-    )
-    signed32 = Field("digest", "int32").cast_arrow_array(unsigned32, **bits)
-    assert signed32.type == pa.int32()
-    assert signed32.to_pylist() == [0, 2**31 - 1, -(2**31), -1, None]
-    assert Field("digest", "uint32").cast_arrow_array(signed32, **bits).equals(
-        unsigned32
-    )
-
-    unsigned64 = pa.array(
-        [0, 2**63 - 1, 2**63, 2**64 - 1, None],
-        type=pa.uint64(),
-    )
-    signed64 = Field("digest", "int64").cast_arrow_array(unsigned64, **bits)
-    assert signed64.type == pa.int64()
-    assert signed64.to_pylist() == [0, 2**63 - 1, -(2**63), -1, None]
-    assert Field("digest", "uint64").cast_arrow_array(signed64, **bits).equals(
-        unsigned64
-    )
-
-    # Eight bytes are eight bytes: the integer, its opposite sign and the raw
-    # payload are one buffer under three readings, and the chain round-trips.
-    stored = Field("digest", "fixed_size_binary(8)").cast_arrow_array(
-        unsigned64, **bits
-    )
-    assert stored.type == pa.binary(8)
-    assert stored.to_pylist()[3] == b"\xff" * 8
-    assert Field("digest", "uint64").cast_arrow_array(stored, **bits).equals(
-        unsigned64
-    )
-
-    # The reading says what the bytes mean; nullability still says what an
-    # absent value means.
-    required = Field("digest", "int64", nullable=False).cast_arrow_array(
-        pa.array([None, 2**64 - 1], type=pa.uint64()), **bits
-    )
-    assert required.to_pylist() == [0, -1]
-    with pytest.raises(ValueError, match=r"\$\.digest"):
-        Field("digest", "int64", nullable=False).cast_arrow_array(
-            pa.array([None], type=pa.uint64()), nullability="strict", **bits
-        )
-
-
-def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
-    import pyarrow as pa
-
-    bits: dict[str, Any] = {"representation": "bits"}
-
-    # Four bytes are not eight, so this is the ordinary numeric widening.
-    widened = Field("digest", "int64").cast_arrow_array(
-        pa.array([7], type=pa.uint32()), **bits
-    )
-    assert widened.to_pylist() == [7]
-
-    # And a datatype whose values follow a rule keeps that rule: a safe cast
-    # nulls the cell it cannot read, a strict one names it.
-    assert Field("ccy", "fixed_ascii(4)").cast_arrow_array(
-        pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
-    ).to_pylist() == [None]
-    with pytest.raises(ValueError, match="ccy"):
-        Field("ccy", "fixed_ascii(4)").cast_arrow_array(
-            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), safe=False, **bits
-        )
 
 
 def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:
@@ -2120,7 +1714,7 @@ def test_a_struct_root_canonicalizes_and_validates_one_row() -> None:
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
 
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "sequence"
+    assert row.kind == "list"
     assert row.as_py() == [1, "AAPL"]
     assert root.validate_value(row) is None
 
@@ -2246,10 +1840,12 @@ def test_a_field_replaces_its_whole_metadata_atomically() -> None:
 
 
 def test_a_field_materializes_its_default_as_a_one_row_array() -> None:
-    array = Field("id", "int64").default_arrow_array()
+    array = Serie.from_default(Field("id", "int64")).into_arrow_array()
     assert isinstance(array, pa.Array)
     assert len(array) == 1
 
     # A required field materializes its present default; a nullable one is null.
-    assert Field("id", "int64", nullable=False).default_arrow_array().to_pylist() == [0]
-    assert Field("id", "int64").default_arrow_array().to_pylist() == [None]
+    assert Serie.from_default(
+        Field("id", "int64", nullable=False)
+    ).into_arrow_array().to_pylist() == [0]
+    assert Serie.from_default(Field("id", "int64")).into_arrow_array().to_pylist() == [None]

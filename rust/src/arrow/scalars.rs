@@ -50,7 +50,6 @@ use super::{
     batch_from_value, batch_reader, batch_to_value, field_from_arrow_schema, scalar_array,
     scalar_value,
 };
-use crate::FieldValue as _;
 use crate::media::DEFAULT_ROOT_NAME;
 use crate::{ArrowCastOptions, DataType, Field, Scalar, StructType};
 
@@ -676,23 +675,33 @@ impl ArrowScalar {
     /// satisfy.
     pub fn cast(self, field: &Field, options: ArrowCastOptions) -> Result<Self> {
         match self.payload {
-            Payload::Scalar(array) => {
-                Self::from_scalar_array(field.clone(), field.cast_arrow_array(array, options)?)
-            }
-            Payload::Array(array) => {
-                Self::from_array(field.clone(), field.cast_arrow_array(array, options)?)
-            }
+            Payload::Scalar(array) => Self::from_scalar_array(
+                field.clone(),
+                crate::Serie::from_arrow_array(Some(field), array, options)?
+                    .require_arrow_array()?,
+            ),
+            Payload::Array(array) => Self::from_array(
+                field.clone(),
+                crate::Serie::from_arrow_array(Some(field), array, options)?
+                    .require_arrow_array()?,
+            ),
             Payload::Batch(batch) => Ok(Self {
                 field: field.clone(),
-                payload: Payload::Batch(field.cast_arrow_batch(batch, options)?),
+                payload: Payload::Batch(
+                    crate::Serie::from_arrow_batch(Some(field), &batch, options)?
+                        .into_arrow_batch()?,
+                ),
             }),
             Payload::Stream(slot) => Ok(Self {
                 field: field.clone(),
-                payload: Payload::Stream(Arc::new(Mutex::new(Some(super::cast_reader(
-                    take_stream(&slot)?,
-                    field,
-                    options,
-                )?)))),
+                payload: Payload::Stream(Arc::new(Mutex::new(Some(
+                    crate::SerieReader::from_arrow_reader(
+                        Some(field),
+                        take_stream(&slot)?,
+                        options,
+                    )?
+                    .into_arrow_reader(),
+                )))),
             }),
         }
     }
@@ -738,15 +747,7 @@ fn require_layout(field: &Field, array: &dyn Array) -> Result<()> {
     // A caller-built DataType can be arbitrarily deep, so bound the shape
     // before Arrow's recursive projection walks it.
     field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
-    if array.data_type() == &expected {
-        return Ok(());
-    }
-    Err(Error::IncompatibleSchema(format!(
-        "Arrow datatype {:?} differs from the {:?} field's {expected:?}",
-        array.data_type(),
-        field.name()
-    )))
+    super::require_projection(field, array)
 }
 
 /// Refuse rows whose schema is not exactly the declared root's projection.

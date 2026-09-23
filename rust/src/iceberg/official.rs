@@ -113,13 +113,10 @@ pub(super) fn table_metadata_document(
 fn bridge_v3_types(document: &Scalar) -> Result<(Scalar, V3Types)> {
     let mut types = V3Types::default();
     let mut bridged = document.clone();
-    if let Some(schemas) = document
-        .get_key_str("schemas")
-        .and_then(Scalar::as_sequence)
-    {
+    if let Some(schemas) = document.get_key_str("schemas").and_then(Scalar::as_serie) {
         let mut replaced = Vec::with_capacity(schemas.len());
-        for schema in schemas {
-            replaced.push(bridge_schema(schema, &mut types)?);
+        for schema in schemas.iter() {
+            replaced.push(bridge_schema(&schema, &mut types)?);
         }
         bridged = with_name(&bridged, "schemas", Scalar::from_sequence(replaced))?;
     }
@@ -186,20 +183,20 @@ fn walk_v3_types(
     object: &Scalar,
     rename: &mut dyn FnMut(i64, &str) -> Option<SmolStr>,
 ) -> Result<Scalar> {
-    let Some(fields) = object.get_key_str("fields").and_then(Scalar::as_sequence) else {
+    let Some(fields) = object.get_key_str("fields").and_then(Scalar::as_serie) else {
         return Ok(object.clone());
     };
     let mut replaced = Vec::with_capacity(fields.len());
-    for field in fields {
+    for field in fields.iter() {
         let (Some(id), Some(type_json)) = (
             field.get_key_str("id").and_then(Scalar::as_i64),
             field.get_key_str("type"),
         ) else {
-            replaced.push(field.clone());
+            replaced.push(field.into_owned());
             continue;
         };
         let type_json = walk_v3_type(type_json, id, rename)?;
-        replaced.push(with_name(field, "type", type_json)?);
+        replaced.push(with_name(&field, "type", type_json)?);
     }
     with_name(object, "fields", Scalar::from_sequence(replaced))
 }
@@ -255,13 +252,13 @@ fn bridge_v1_manifests(document: &Scalar) -> Result<(Scalar, V1SnapshotManifests
     let Some(snapshots) = document.get_key_str("snapshots") else {
         return Ok((document.clone(), v1_manifests));
     };
-    let Some(snapshots) = snapshots.as_sequence() else {
+    let Some(snapshots) = snapshots.as_serie() else {
         return Ok((document.clone(), v1_manifests));
     };
     let mut bridged = Vec::with_capacity(snapshots.len());
-    for snapshot in snapshots {
+    for snapshot in snapshots.iter() {
         let Some(paths) = snapshot.get_key_str("manifests") else {
-            bridged.push(snapshot.clone());
+            bridged.push(snapshot.into_owned());
             continue;
         };
         let snapshot_id = snapshot
@@ -269,7 +266,7 @@ fn bridge_v1_manifests(document: &Scalar) -> Result<(Scalar, V1SnapshotManifests
             .and_then(Scalar::as_i64)
             .ok_or_else(|| invalid("expected a snapshot-id beside v1 direct manifests"))?;
         let paths = paths
-            .as_sequence()
+            .as_serie()
             .ok_or_else(|| invalid("expected v1 direct manifests to be an array"))?
             .iter()
             .enumerate()
@@ -282,7 +279,7 @@ fn bridge_v1_manifests(document: &Scalar) -> Result<(Scalar, V1SnapshotManifests
             })
             .collect::<Result<Vec<_>>>()?;
         v1_manifests.insert(snapshot_id, paths);
-        let snapshot = without_name(snapshot, "manifests")?;
+        let snapshot = without_name(&snapshot, "manifests")?;
         bridged.push(with_name(
             &snapshot,
             "manifest-list",

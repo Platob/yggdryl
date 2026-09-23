@@ -6,15 +6,15 @@
 
 | Key | Value |
 | --- | --- |
-| Owns | `BatchReader`, `batch_reader`, `combined`, `combined_as`, `cast_reader` |
+| Owns | `BatchReader`, `batch_reader`, `combined`, `combined_as` |
 | Shape | `Box<dyn arrow_array::RecordBatchReader + Send>`; owns what it reads from |
 | Paths | Every read path returns one; `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` consume one ([../holder/index.md#records](../holder/index.md#records)) |
 | Feature flag | `parquet::read_batch_reader` needs the non-default `parquet` feature |
 | Roots | `combined` merges both schemas into the root; `combined_as` casts both onto the caller's |
 | Lazy | Schema before any batch; `combined` pulls no row and collects nothing |
-| Cast | `cast_reader(inner, &field, options)` ([../types/cast.md](../types/cast.md)); one compiled plan for the whole stream, and an exact side passes through unwrapped |
+| Cast | [`SerieReader`](../types/cast.md#eager-and-lazy)`::from_arrow_reader(root, inner, options)`: one compiled plan for the whole stream, one record `Serie` per batch; `into_arrow_reader` hands it back as a `BatchReader`, and an identity plan hands back the inner reader unwrapped |
 | Cast errors | Reported at the pull of the batch that carries them; the reader is fused after one, and the source is released then |
-| Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)`; JavaScript `BatchReader.combined(other, schema?, safe?)` |
+| Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)` and `SerieReader.from_arrow_reader(reader, root=None, ...)`; JavaScript `BatchReader.combined(other, schema?, safe?)` and `SerieReader.fromArrowReader(reader, root?, options?)` |
 
 ## Use
 
@@ -91,6 +91,116 @@
     assert.equal(joined.intoTable().numRows, 2)
     ```
 
+## Casting a stream
+
+`SerieReader` is a stream reconciled to a non-null Struct root: the plan is compiled from the
+reader's schema before a batch is pulled, so a cast the two schemas alone refuse is refused by the
+constructor, and each pulled batch is one record [`Serie`](../types/serie.md). With no root it is
+the stream's own schema, read as the record `row`. `into_arrow_reader` is the transport face - the
+same batches reconciled to the root as they are pulled and never landed - which is what a record
+write takes. [Eager and lazy](../types/cast.md#eager-and-lazy) has the failure timing.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch, RecordBatchReader};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::arrow::batch_reader;
+    use yggdryl::{ArrowCastOptions, DataType, SerieReader, StructType};
+
+    let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    let schema = Arc::new(Schema::new(vec![ArrowField::new(
+        "id",
+        ArrowDataType::Int32,
+        false,
+    )]));
+    let first = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef],
+    )?;
+    let second = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int32Array::from(vec![3])) as ArrayRef],
+    )?;
+
+    // One record column per batch, every one cast by the one plan.
+    let series = SerieReader::from_arrow_reader(
+        Some(&root),
+        batch_reader(Arc::clone(&schema), [first.clone(), second.clone()]),
+        ArrowCastOptions::new(),
+    )?;
+    assert_eq!(series.field(), &root);
+    let mut lengths = Vec::new();
+    for serie in series {
+        lengths.push(serie?.len());
+    }
+    assert_eq!(lengths, [2, 1]);
+
+    // The transport face states the root's schema before a batch is pulled.
+    let reader = SerieReader::from_arrow_reader(
+        Some(&root),
+        batch_reader(schema, [first, second]),
+        ArrowCastOptions::new(),
+    )?
+    .into_arrow_reader();
+    assert_eq!(reader.schema().field(0).data_type(), &ArrowDataType::Int64);
+    let mut rows = 0;
+    for batch in reader {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Field, SerieReader
+
+    root = Field("row", "struct<id: int64>", nullable=False)
+    table = pa.table({"id": pa.array([1, 2, 3], pa.int32())})
+
+    # One record column per batch, every one cast by the one plan.
+    series = SerieReader.from_arrow_reader(table.to_reader(max_chunksize=2), root)
+    assert series.field == root
+    assert [serie.child("id").as_py() for serie in series] == [[1, 2], [3]]
+
+    # The transport face is a pyarrow reader that casts as it is read.
+    reader = SerieReader.from_arrow_reader(table, root).into_arrow_reader()
+    assert isinstance(reader, pa.RecordBatchReader)
+    assert reader.schema.field("id").type == pa.int64()
+    assert reader.read_all().num_rows == 3
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { BatchReader, Field, SerieReader, fields } = require('yggdryl')
+
+    const root = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const chunk = (ids) => new arrow.Table({ id: arrow.vectorFromArray(ids, new arrow.Int32()) })
+    const source = () => new arrow.Table([...chunk([1, 2]).batches, ...chunk([3]).batches])
+
+    // One record column per batch, every one cast by the one plan.
+    const series = SerieReader.fromArrowReader(BatchReader.from(source()), root)
+    assert.ok(series.field.equals(root))
+    assert.deepEqual(
+      [...series].map((serie) => serie.child('id').asJs()),
+      [[1, 2], [3]],
+    )
+
+    // The transport face is a native BatchReader, read once.
+    const reader = SerieReader.fromArrowReader(BatchReader.from(source()), root).intoArrowReader()
+    assert.ok(reader instanceof BatchReader)
+    assert.equal(reader.intoTable().numRows, 3)
+    ```
+
 ## Merge rules
 
 | Rule | Behavior |
@@ -144,9 +254,10 @@ assert_eq!(rows, 3);
 ## Edges
 
 - Shared column with two datatypes or two `PARQUET:field_id` values -> `combined` refuses, naming both sides.
-- Root not a bounded, non-nullable Struct -> `combined_as` and `cast_reader` return `Err`.
-- A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a required column missing under [`strict`](../types/cast.md#strict-nullability) -> `cast_reader` returns `Err` rather than a reader that fails on its first batch.
-- Dropping a cast reader before it is drained -> the source is dropped with it, so a C stream behind it is released there.
+- Root not a bounded, non-nullable Struct -> `combined_as` and `SerieReader::from_arrow_reader` return `Err`.
+- A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a required column missing under [`strict`](../types/cast.md#strict-nullability) -> `SerieReader::from_arrow_reader` returns `Err` rather than a reader that fails on its first batch.
+- A batch the plan refuses -> reported at the pull that reads it, and the reader is fused after it.
+- Dropping a `SerieReader` or its transport face before it is drained -> the source is dropped with it, so a C stream behind it is released there.
 - Python batch export caches the exact schema before any pull, retains [nested Map flags and shared buffers](values.md#exact-map-schemas), and releases the native reader on exhaustion or failure. A batch with no columns still retains its row count.
 
 ## Commands
@@ -158,4 +269,17 @@ assert_eq!(rows, 3);
     cargo test --features "iceberg internals parquet" -p yggdryl --test arrow -- rows::row_values rows::widening
     cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::coverage
     cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::plans
+    cargo test --features "parquet iceberg" -p yggdryl --test serie -- arrow::
+    ```
+
+=== "Python"
+
+    ```bash
+    python/.venv/bin/python -m pytest python/tests/test_cast.py -k reader
+    ```
+
+=== "JavaScript"
+
+    ```bash
+    node --test node/tests/serie.test.js
     ```

@@ -17,7 +17,6 @@ use crate::{
     JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, exact_u32,
     field::JsField,
     napi_error, ordering_value,
-    value::arrow_scalar_to_ipc,
     value::{JsValueHint, dtype_js_hint, field_value_to_js},
 };
 
@@ -896,15 +895,6 @@ impl JsDataType {
     #[napi(js_name = "_defaultJSHintNative", skip_typescript)]
     pub fn default_js_hint_native(&self) -> Result<u8> {
         dtype_js_hint(&self.inner).map(JsValueHint::code)
-    }
-
-    /// Internal one-row copied IPC projection for Apache Arrow JS scalar
-    /// materialization.
-    #[napi(js_name = "_defaultArrowScalarIpcNative", skip_typescript)]
-    pub fn default_arrow_scalar_ipc_native(&self) -> Result<napi::bindgen_prelude::Buffer> {
-        let array = self.inner.default_arrow_array().map_err(napi_error)?;
-        let field = CoreField::new("value", self.inner.clone(), false);
-        arrow_scalar_to_ipc(&field, array)
     }
 
     /// Recursively normalize this datatype for one closed compatibility

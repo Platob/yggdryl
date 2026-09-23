@@ -10,8 +10,6 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::cast::ArrowCastPlan;
-use crate::enums::EnumType;
 use crate::{DataType, Field, Scalar, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -375,7 +373,7 @@ where
 /// This is what an append is, and what a combine is: two streams end to end,
 /// each batch encoded as it arrives so neither side is collected. Whether
 /// either side is cast is decided *before* it gets here, by wrapping it in
-/// [`cast_reader`], so there is exactly one concatenation and one cast route.
+/// [`SerieReader`](crate::SerieReader), so there is exactly one concatenation and one cast route.
 struct Chained {
     first: BatchReader,
     second: BatchReader,
@@ -415,11 +413,12 @@ pub(crate) fn appended(
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
         first: stored,
-        second: cast_reader(
+        second: crate::SerieReader::from_arrow_reader(
+            Some(field),
             incoming,
-            field,
             crate::ArrowCastOptions::new().with_safe(safe),
-        )?,
+        )?
+        .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -430,7 +429,7 @@ pub(crate) fn appended(
 /// what a caller reaches for when they already know the shape both sides must
 /// land in.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
-/// cast when it is pulled, and [`cast_reader`] short-circuits a side that is
+/// cast when it is pulled, and [`SerieReader`](crate::SerieReader) short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back
 /// unchanged.
 ///
@@ -469,8 +468,18 @@ pub fn combined_as(
     safe: bool,
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
-        first: cast_reader(left, field, crate::ArrowCastOptions::new().with_safe(safe))?,
-        second: cast_reader(right, field, crate::ArrowCastOptions::new().with_safe(safe))?,
+        first: crate::SerieReader::from_arrow_reader(
+            Some(field),
+            left,
+            crate::ArrowCastOptions::new().with_safe(safe),
+        )?
+        .into_arrow_reader(),
+        second: crate::SerieReader::from_arrow_reader(
+            Some(field),
+            right,
+            crate::ArrowCastOptions::new().with_safe(safe),
+        )?
+        .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -504,7 +513,7 @@ pub fn combined_as(
 ///   cares about field identity, and a reassigned id corrupts a table's schema
 ///   evolution.
 /// - **The root name is left's**, and the merged root is a bounded,
-///   non-nullable Struct, as [`cast_reader`] requires. Because the merge never
+///   non-nullable Struct, as [`SerieReader`](crate::SerieReader) requires. Because the merge never
 ///   widens a datatype - it refuses instead - every column stays exactly what
 ///   one of the two sides declared, so a merged reader is appendable to an
 ///   Iceberg table wherever both inputs were.
@@ -629,45 +638,92 @@ fn reconciled(left: &Field, right: &Field) -> Result<Field> {
         .with_nullable(left.is_nullable() || right.is_nullable()))
 }
 
-/// One reader's batches, each cast to a declared root Field as it arrives.
+/// The bytes a batch's rows occupy, as its own slices count them.
 ///
-/// The plan is compiled once from the inner reader's schema, so the batches
-/// differ only in the masks, offsets, and dictionary keys they carry. The
-/// inner reader is dropped the moment it can yield nothing more - exhausted,
-/// failed, or refused by the cast - which releases a C stream behind it at the
-/// same point an early close would, and fuses this reader after the failure
-/// rather than asking a source that already reported one.
-struct Cast {
-    inner: Option<BatchReader>,
-    plan: ArrowCastPlan,
+/// [`RecordBatch::get_array_memory_size`] counts every buffer whole, so a
+/// zero-copy slice of a large batch reports its parent's allocation; a size
+/// estimate spread over the slice's rows then comes out as many times too
+/// large as there are slices. This counts each column's sliced extent, and
+/// falls back to the whole buffers for a layout that cannot be sliced so.
+pub(crate) fn sliced_memory_size(batch: &arrow_array::RecordBatch) -> usize {
+    batch.columns().iter().map(sliced_array_size).sum()
 }
 
-impl Iterator for Cast {
-    type Item = std::result::Result<arrow_array::RecordBatch, ArrowError>;
+/// The bytes one column's rows occupy, as its own slice counts them - the
+/// per-column half of [`sliced_memory_size`].
+///
+/// A flat column counts its sliced buffers. The layouts whose values live
+/// elsewhere count what the slice reaches: a view column its sixteen-byte
+/// views and the out-of-line bytes they point at, a list or map only the
+/// child range its offsets span, a struct its children, a dictionary its keys
+/// and its values whole.
+pub(crate) fn sliced_array_size(column: &arrow_array::ArrayRef) -> usize {
+    sliced_size(column.as_ref())
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let pulled = self.inner.as_mut()?.next();
-        let batch = match pulled {
-            Some(Ok(batch)) => batch,
-            other => {
-                self.inner = None;
-                return other;
-            }
-        };
-        match self.plan.apply(batch) {
-            Ok(cast) => Some(Ok(cast)),
-            Err(error) => {
-                self.inner = None;
-                Some(Err(ArrowError::ExternalError(Box::new(error))))
-            }
+fn sliced_size(array: &dyn arrow_array::Array) -> usize {
+    use arrow_array::cast::AsArray;
+    use arrow_schema::DataType as ArrowType;
+
+    let nulls = array.nulls().map_or(0, |nulls| nulls.len().div_ceil(8));
+    // A view's low 32 bits are its length; one of at most twelve bytes is
+    // stored inline, and a longer one points at a data buffer.
+    let viewed = |views: &[u128]| {
+        views.len() * 16
+            + views
+                .iter()
+                .map(|view| *view as u32 as usize)
+                .filter(|length| *length > 12)
+                .sum::<usize>()
+    };
+    match array.data_type() {
+        ArrowType::Utf8View => nulls + viewed(array.as_string_view().views()),
+        ArrowType::BinaryView => nulls + viewed(array.as_binary_view().views()),
+        ArrowType::List(_) => {
+            let list = array.as_list::<i32>();
+            nulls + offsets_size(list.offsets(), list.values())
+        }
+        ArrowType::LargeList(_) => {
+            let list = array.as_list::<i64>();
+            nulls + offsets_size(list.offsets(), list.values())
+        }
+        ArrowType::Map(..) => {
+            let map = array.as_map();
+            let entries: arrow_array::ArrayRef = Arc::new(map.entries().clone());
+            nulls + offsets_size(map.offsets(), &entries)
+        }
+        ArrowType::Struct(_) => {
+            nulls
+                + array
+                    .as_struct()
+                    .columns()
+                    .iter()
+                    .map(|child| sliced_size(child.as_ref()))
+                    .sum::<usize>()
+        }
+        ArrowType::Dictionary(..) => {
+            let dictionary = array.as_any_dictionary();
+            sliced_size(dictionary.keys()) + dictionary.values().get_array_memory_size()
+        }
+        _ => {
+            let whole = array.get_array_memory_size();
+            array
+                .to_data()
+                .get_slice_memory_size()
+                .map_or(whole, |sliced| sliced.min(whole))
         }
     }
 }
 
-impl arrow_array::RecordBatchReader for Cast {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(self.plan.as_schema())
-    }
+/// A list's offsets and the child range they span.
+fn offsets_size<O: arrow_array::OffsetSizeTrait>(
+    offsets: &arrow_buffer::OffsetBuffer<O>,
+    values: &arrow_array::ArrayRef,
+) -> usize {
+    let first = offsets.first().map_or(0, |offset| offset.as_usize());
+    let last = offsets.last().map_or(0, |offset| offset.as_usize());
+    std::mem::size_of_val(offsets.as_ref())
+        + sliced_size(values.slice(first, last.saturating_sub(first)).as_ref())
 }
 
 /// Return whether two schemas name the same columns, in the same order.
@@ -684,36 +740,6 @@ pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Sc
             .iter()
             .zip(right.fields())
             .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
-}
-
-/// Return `reader`'s batches cast to `field`, one batch at a time.
-///
-/// This is the cast half of a schema-directed read: the encoding has already
-/// skipped the columns the schema does not name, and this reorders, converts,
-/// and fills what is left so every batch really is the declared shape. Nothing
-/// is collected - a batch is cast when it is pulled - and nothing is planned
-/// twice: one [`ArrowCastPlan`] serves the whole stream, so a schema failure
-/// is reported here rather than on the first batch.
-///
-/// # Errors
-///
-/// Returns an error unless `field` is a bounded, non-nullable Struct root, or
-/// when the cast cannot be planned from the reader's schema.
-pub fn cast_reader(
-    inner: BatchReader,
-    field: &Field,
-    options: crate::ArrowCastOptions,
-) -> Result<BatchReader> {
-    let plan = ArrowCastPlan::compile(inner.schema().as_ref(), field, options)?;
-    if plan.is_identity() {
-        // An exact reader is already the declared shape, so casting each batch
-        // would only rebuild arrays it would then hand back unchanged.
-        return Ok(inner);
-    }
-    Ok(Box::new(Cast {
-        inner: Some(inner),
-        plan,
-    }))
 }
 
 /// Recover the failure a batch reader carried, unwrapping a core one.
@@ -809,23 +835,55 @@ pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
     value::array_from_values(field, &[&value])
 }
 
+/// Refuse an array whose physical layout is not the one `field` declares.
+///
+/// The one owner of "this array lays out as this field's projection": the
+/// cached projection is compared, so nothing is cloned or rebuilt, and both
+/// a held Arrow value and a column take this door.
+///
+/// # Errors
+///
+/// Returns an error naming the field and both datatypes when they differ,
+/// or when the field has no Arrow projection.
+pub(crate) fn require_projection(field: &Field, array: &dyn Array) -> Result<()> {
+    let expected = field.as_arrow_field_ref()?.data_type();
+    if array.data_type() == expected {
+        return Ok(());
+    }
+    Err(Error::IncompatibleSchema(format!(
+        "Arrow datatype {:?} differs from the {:?} field's {expected:?}",
+        array.data_type(),
+        field.name()
+    )))
+}
+
 /// Materialize a sequence of native values as one Arrow array.
 ///
-/// Each element is validated and canonicalized by `field`; materialization is
-/// a single array build, not a concatenation of scalar arrays.
+/// A column of `field`'s own datatype, whose nullability fits, holds only
+/// rows the field accepts and answers its own buffers with no row read.
+/// Every other sequence has each element validated and canonicalized by
+/// `field`, and materialization is a single array build, not a
+/// concatenation of scalar arrays.
 ///
 /// # Errors
 ///
 /// Returns an error when `values` is not a sequence or an element violates
 /// `field`.
 pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
-    let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
+    let serie = values.as_serie().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of array values"),
         actual: SmolStr::new(values.kind()),
     })?;
+    if let Some(array) = crate::value::column_fits_item(serie, field)
+        .then(|| serie.into_arrow_array())
+        .flatten()
+    {
+        return Ok(array);
+    }
+    let values = serie.rows();
     let mut canonical = Vec::with_capacity(values.len());
-    for value in values {
+    for value in values.iter() {
         // The field's own value contract, one value at a time: a synthetic row
         // around each element would allocate a sequence per value and answer
         // the same thing.
@@ -837,23 +895,32 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
-/// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`crate::structure::Struct`]. The root Field validates and canonicalizes every
-/// row before one columnar build.
+/// A record column of `root`'s own datatype, with no row absent, holds only
+/// rows the root accepts and its children are the batch's columns with no
+/// row read. Every other sequence has each child - an ordered row sequence
+/// or a named [`crate::structure::Struct`] - validated and canonicalized by
+/// the root Field before one columnar build.
 ///
 /// # Errors
 ///
 /// Returns an error when `root` is not a record root, `rows` is not a
 /// sequence, or a row violates the schema.
 pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
-    let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
+    let serie = rows.as_serie().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of record values"),
         actual: SmolStr::new(rows.kind()),
     })?;
     let schema = arrow_schema_from_field(root)?;
+    if let Some(array) = crate::value::column_fits_item(serie, root)
+        .then(|| serie.into_arrow_array())
+        .flatten()
+    {
+        return self::rows::batch_from_record_array(schema, &array);
+    }
+    let rows = serie.rows();
     let mut canonical = Vec::with_capacity(rows.len());
-    for row in rows {
+    for row in rows.iter() {
         canonical.push(root.canonicalize_value(row.clone())?);
     }
     self::rows::batch_from_values(root, schema, &canonical)
@@ -899,29 +966,6 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     Ok(decoded)
 }
 
-/// Materialize a bare datatype's canonical default as a one-row array.
-///
-/// The datatype planner is the authority, so [`DataType::Null`] and
-/// transparent logical wrappers with a null-only canonical default may be
-/// logically null even though the array projects through a synthetic
-/// non-nullable Field. [`Field::default_value`] remains the sole nullability
-/// authority for a caller-owned Field, reached through
-/// [`default_scalar_array`].
-pub(crate) fn default_dtype_scalar_array(dtype: &DataType) -> Result<ArrayRef> {
-    let field = Field::new("value", dtype.clone(), false);
-    let value = dtype.default_value()?;
-    value::array_from_values(&field, &[&value])
-}
-
-/// Materialize a Field's canonical default as a one-row array.
-pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
-    let value = field.default_value()?;
-    // The core planner has already bounded and recursively validated this
-    // exact Field/value pair. Keep public [`scalar_array`] defensive for
-    // caller input without paying for a second Scalar validation here.
-    value::array_from_values(field, &[&value])
-}
-
 pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {
     // The field's own value contract, which is the same walk a column value
     // takes with no synthetic row built around it.
@@ -952,7 +996,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`crate::sequence::Sequence`] with one value per column, in schema
+/// Each row becomes a [`crate::serie::Run`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///
@@ -1093,7 +1137,7 @@ fn collect_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) {
-    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
+    if let DataType::Dictionary(dictionary) = dtype {
         collect_dictionary_ids_in_dtype(dictionary.value(), path, ids);
         return;
     }
@@ -1222,7 +1266,7 @@ fn restore_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) -> Result<DataType> {
-    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
+    if let DataType::Dictionary(dictionary) = dtype {
         let value = restore_dictionary_ids_in_dtype(dictionary.value(), path, ids)?;
         return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
     }

@@ -1,16 +1,16 @@
 //! `rust/src/expression/selector.rs`: the edge cases this module is built
 //! to get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
     use std::sync::Arc;
-    use yggdryl::DateTimeType;
+
     use yggdryl::expression::Selector;
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
@@ -30,10 +30,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),
@@ -329,6 +329,90 @@ mod grammar {
         assert_eq!(
             fits.apply_scalar(&schema, &rows[0]).unwrap(),
             Scalar::from_sequence([Scalar::from(1_i8)])
+        );
+    }
+
+    #[test]
+    fn a_bound_selector_casts_every_batch_as_a_fresh_bind_does() {
+        // One bound selector holds one cast per declared projection across a
+        // stream: every batch answers what a bind made for that batch alone
+        // answers, a value the column cannot hold and a refusal included.
+        let schema = rows_schema();
+        let rows = rows();
+        let batches: Vec<_> = rows
+            .chunks(2)
+            .map(|chunk| batch_of(&schema, chunk))
+            .collect();
+        let same = |held: yggdryl::Result<arrow_array::RecordBatch>,
+                    fresh: yggdryl::Result<arrow_array::RecordBatch>,
+                    context: &str| match (held, fresh) {
+            (Ok(held), Ok(fresh)) => assert_eq!(held, fresh, "{context}"),
+            (Err(held), Err(fresh)) => assert_eq!(held.to_string(), fresh.to_string(), "{context}"),
+            (held, fresh) => panic!("{context}: {held:?} and {fresh:?}"),
+        };
+        for text in [
+            "i as small int8 not null",
+            "n as small int8",
+            "f as whole int32",
+            "i * 2 as doubled int8, s as name string not null",
+        ] {
+            let selector: Selector = text.parse().unwrap();
+            let bound = selector.bind(&schema).unwrap();
+            for (position, batch) in batches.iter().enumerate() {
+                same(
+                    bound.apply_arrow_batch(batch),
+                    selector.bind(&schema).unwrap().apply_arrow_batch(batch),
+                    &format!("{text}, batch {position}"),
+                );
+            }
+            let stream = yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone());
+            let streamed = selector.apply_arrow_reader(stream).unwrap();
+            for (position, (held, batch)) in streamed.zip(&batches).enumerate() {
+                same(
+                    held.map_err(|error| yggdryl::arrow::from_reader_error(error).into()),
+                    selector.apply_arrow_batch(batch),
+                    &format!("{text}, streamed batch {position}"),
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Intake from a column
+// ---------------------------------------------------------------------------
+
+mod intake {
+
+    use yggdryl::expression::{Projection, Selector};
+    use yggdryl::{DataType, Field, Scalar, Serie};
+
+    /// A utf8 column of `texts`, the shape a binding's columnar input lands as.
+    fn texts(texts: &[&str]) -> Scalar {
+        Scalar::from(
+            Serie::from_scalars(
+                Field::new("item", DataType::utf8(), false),
+                texts.iter().map(|text| Scalar::from(*text)),
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_term_alias_pair_reads_the_same_from_a_column() {
+        assert_eq!(
+            Projection::from_scalar(&texts(&["price", "p"])).unwrap(),
+            "price as p".parse::<Projection>().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_column_of_projections_reads_as_the_run_does() {
+        let spelled = ["i", "i + 1 as next"];
+        let run = Scalar::from_sequence(spelled.iter().map(|text| Scalar::from(*text)));
+        assert_eq!(
+            Selector::from_scalar(&texts(&spelled)).unwrap(),
+            Selector::from_scalar(&run).unwrap()
         );
     }
 }

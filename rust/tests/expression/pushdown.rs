@@ -1,15 +1,14 @@
 //! `rust/src/expression/pushdown.rs`: the edge cases this module is built
 //! to get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
-    use yggdryl::DateTimeType;
     use yggdryl::expression::{Bound, Bounds, Term};
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
@@ -29,10 +28,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),
@@ -338,6 +337,50 @@ mod grammar {
                 "{text} should have been provably empty"
             );
         }
+    }
+
+    #[test]
+    fn an_answer_for_every_row_counts_the_rows_that_hold_null() {
+        let schema = |nullable: bool| {
+            Field::new(
+                "rows",
+                StructType::from_fields([Field::new("x", DataType::Int64, nullable)])
+                    .map(DataType::from)
+                    .unwrap(),
+                false,
+            )
+        };
+        // Three rows whose one non-null value is 1.
+        let certainty = |nullable: bool, text: &str, nulls: Option<u64>| {
+            let bounds = Bounds::new(Some(3)).with_column(
+                "x",
+                Some(Scalar::from(1_i64)),
+                Some(Scalar::from(1_i64)),
+                nulls,
+            );
+            text.parse::<Term>()
+                .unwrap()
+                .bind(&schema(nullable))
+                .unwrap()
+                .statistics_certainty(&bounds)
+        };
+        // Every row holds the one value only when no row is null.
+        assert_eq!(certainty(true, "x = 1", Some(0)), Some(true));
+        assert_eq!(certainty(true, "x = 1", None), None);
+        assert_eq!(certainty(true, "x = 1", Some(1)), None);
+        assert_eq!(certainty(true, "x is not distinct from 1", Some(1)), None);
+        // A required column holds no null, whatever the count says.
+        assert_eq!(certainty(false, "x = 1", None), Some(true));
+        // A null row is distinct from every value.
+        assert_eq!(
+            certainty(true, "x is distinct from 1", Some(0)),
+            Some(false)
+        );
+        assert_eq!(certainty(true, "x is distinct from 1", Some(1)), None);
+        assert_eq!(certainty(true, "x is distinct from 1", None), None);
+        // No row above five leaves the null rows unknown, not true.
+        assert_eq!(certainty(true, "not (x > 5)", Some(1)), None);
+        assert_eq!(certainty(true, "not (x = 1)", Some(0)), Some(false));
     }
 
     #[test]

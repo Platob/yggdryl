@@ -32,7 +32,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::Safety;
-use super::attribute::Attribute;
+use super::arrow::ColumnCast;
 use super::bind::Bound;
 use super::eval::convert;
 use super::path::FieldPath;
@@ -375,10 +375,10 @@ impl Selector {
         if value.is_null() {
             return Ok(Self::all());
         }
-        if let Some(items) = value.as_sequence() {
+        if let Some(items) = value.as_serie() {
             let mut projections = Vec::with_capacity(items.len());
-            for item in items {
-                projections.push(Projection::from_scalar(item)?);
+            for item in items.iter() {
+                projections.push(Projection::from_scalar(&item)?);
             }
             return Ok(Self::new(projections));
         }
@@ -498,20 +498,6 @@ impl Selector {
             }
         }
         names
-    }
-
-    /// Every handle attribute this selector reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        let mut found: Vec<Attribute> = Vec::new();
-        for projection in self.projections.iter() {
-            for attribute in projection.term.attributes() {
-                if !found.contains(&attribute) {
-                    found.push(attribute);
-                }
-            }
-        }
-        found
     }
 
     /// Every parameter this selector names, in first-seen order.
@@ -661,6 +647,7 @@ impl Selector {
         Ok(BoundSelector {
             schema: schema.clone(),
             output,
+            casts: projections.iter().map(|_| ColumnCast::default()).collect(),
             projections,
             identity,
         })
@@ -948,6 +935,8 @@ pub struct BoundSelector {
     schema: Field,
     output: Field,
     projections: Vec<Bound>,
+    /// One held cast per projection, into the column it declares.
+    casts: Arc<[ColumnCast]>,
     identity: bool,
 }
 
@@ -1035,7 +1024,6 @@ mod arrow {
     use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{BoundSelector, Selector};
-    use crate::FieldValue as _;
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
     use crate::cast::ArrowCastOptions;
     use crate::expression::arrow::{collected, one_batch, struct_batch};
@@ -1114,11 +1102,21 @@ mod arrow {
             if self.is_identity() {
                 return Ok(batch.clone());
             }
+            self.projected(batch, None)
+        }
+
+        /// The batch this selector publishes from one batch, under the
+        /// output's schema when the caller already holds it.
+        fn projected(
+            &self,
+            batch: &RecordBatch,
+            schema: Option<&SchemaRef>,
+        ) -> Result<RecordBatch> {
             let mut columns = Vec::with_capacity(self.projections.len());
-            for (bound, field) in self.projections.iter().zip(self.output.fields()) {
+            let fields = self.output.fields().iter().zip(self.casts.iter());
+            for (bound, (field, cast)) in self.projections.iter().zip(fields) {
                 let evaluated = bound.evaluate(batch)?;
-                let declared = field.clone().into_arrow_field_ref()?;
-                let array = if evaluated.data_type() == declared.data_type() {
+                let array = if evaluated.data_type() == field.as_arrow_field_ref()?.data_type() {
                     evaluated
                 } else {
                     // The projection declared a datatype the term does not
@@ -1126,23 +1124,27 @@ mod arrow {
                     // the best-effort reading of a cast - unless the column
                     // is declared `not null`, where a null is refused anyway
                     // and the cast says which value could not be held.
-                    field
-                        .cast_arrow_array(
-                            evaluated,
-                            ArrowCastOptions::new().with_safe(field.is_nullable()),
-                        )
-                        .map_err(|error| Error::InvalidRecord {
-                            path: smol_str::format_smolstr!("$.{}", field.name()),
-                            reason: smol_str::format_smolstr!(
-                                "expected every value to fit the required column {:?}, got {error}",
-                                field.name()
-                            ),
-                        })?
+                    cast.reconcile(
+                        field,
+                        None,
+                        evaluated,
+                        ArrowCastOptions::new().with_safe(field.is_nullable()),
+                    )
+                    .map_err(|error| Error::InvalidRecord {
+                        path: smol_str::format_smolstr!("$.{}", field.name()),
+                        reason: smol_str::format_smolstr!(
+                            "expected every value to fit the required column {:?}, got {error}",
+                            field.name()
+                        ),
+                    })?
                 };
                 super::require_present(field, array.null_count() > 0)?;
                 columns.push(array);
             }
-            let schema = arrow_schema_from_field(&self.output)?;
+            let schema = match schema {
+                Some(schema) => Arc::clone(schema),
+                None => arrow_schema_from_field(&self.output)?,
+            };
             let options =
                 arrow_array::RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
             RecordBatch::try_new_with_options(schema, columns, &options)
@@ -1211,7 +1213,7 @@ mod arrow {
             };
             Some(
                 self.selector
-                    .apply_arrow_batch(&batch)
+                    .projected(&batch, Some(&self.schema))
                     .map_err(|error| ArrowError::ExternalError(Box::new(error))),
             )
         }
@@ -1236,7 +1238,7 @@ impl Projection {
         if let Some(text) = value.as_str() {
             return text.parse();
         }
-        if let Some([term, alias]) = value.as_sequence() {
+        if let Some([term, alias]) = value.sequence_rows().as_deref() {
             if let Some(alias) = alias.as_str() {
                 return Ok(Self::aliased(Term::from_scalar(term)?, alias));
             }

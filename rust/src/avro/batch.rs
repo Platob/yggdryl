@@ -41,6 +41,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
+use crate::cast::{ArrowCastPlan, Deferred, PlanCache};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{ArrowCastOptions, Field, Level, Limits};
 
@@ -50,7 +51,6 @@ use super::container::{
 };
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::schema::{Node, Schema};
-use crate::FieldValue as _;
 
 /// The settings an Avro record read or write takes.
 ///
@@ -92,6 +92,13 @@ pub struct AvroOptions {
     /// A fixed synchronization marker, for writes that must be reproducible
     /// byte for byte; a fresh random marker is used when absent.
     pub sync_marker: Option<[u8; 16]>,
+    /// The threads one container's blocks decode or encode on; unbounded
+    /// is what the host offers.
+    ///
+    /// Crate-internal and outside the options' identity: a table that
+    /// already works on several files at once hands each its share, so the
+    /// two levels of parallelism never multiply.
+    pub(crate) threads: crate::media::options::FileThreads,
 }
 
 impl AvroOptions {
@@ -112,6 +119,7 @@ impl AvroOptions {
             level: Level::DEFAULT,
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
+            threads: crate::media::options::FileThreads::default(),
         }
     }
 
@@ -232,7 +240,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     options: &AvroOptions,
 ) -> Result<BatchReader> {
     reject_outer_coding(handle)?;
-    let bytes = handle.read_all_bytes()?;
+    // Owned, and shared by reference count with every decoder thread: the
+    // reader and the batches it yields never point back into the handle's
+    // storage, so rewriting the file while they live is safe.
+    let bytes = bytes::Bytes::from(handle.read_all_bytes()?);
     if bytes.is_empty() {
         // Per the laziness contract, a missing container holds no batches.
         let schema = match options.field() {
@@ -260,6 +271,42 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         (None, None) => None,
     };
     let (root, arrow_schema) = RootReader::new(&header.schema, options.name(), keep.as_deref())?;
+    let batch_row_size = options
+        .batch_row_size()
+        .unwrap_or(DEFAULT_BATCH_ROWS)
+        .max(1);
+
+    // A read under a row limit stays lazy: one thread decodes only what the
+    // limit pulls, where a window of runs would decode ahead of it.
+    let threads = if options.max_row_size().is_some() {
+        1
+    } else {
+        options.threads.resolve()
+    };
+    if let Some((spans, units)) = plan_units(
+        &bytes,
+        blocks_at,
+        &header.sync,
+        limits,
+        batch_row_size,
+        threads,
+    ) {
+        return Ok(Box::new(ParallelAvroRead::start(
+            AvroSource {
+                bytes,
+                writer: header.schema,
+                coding: header.coding,
+                limits,
+                name: SmolStr::new(options.name()),
+                keep: keep.map(|names| names.into_iter().map(str::to_owned).collect()),
+                batch_rows: batch_row_size,
+            },
+            arrow_schema,
+            spans,
+            units,
+            threads,
+        )));
+    }
 
     Ok(Box::new(AvroBatchReader {
         bytes,
@@ -270,10 +317,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         sync: header.sync,
         limits,
         root,
-        batch_row_size: options
-            .batch_row_size()
-            .unwrap_or(DEFAULT_BATCH_ROWS)
-            .max(1),
+        batch_row_size,
         block: None,
         failed: false,
     }))
@@ -282,8 +326,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 /// Replace the container `handle` holds with every batch `batches` yields.
 ///
 /// The container's schema is derived from the reader's schema, refusing any
-/// datatype Avro cannot spell by name; each incoming batch becomes one block,
-/// compressed with the options' codec.
+/// datatype Avro cannot spell by name. Rows are cut into blocks of about a
+/// megabyte, compressed with the options' codec; the blocks are
+/// independent, so they encode and compress on every thread at once and are
+/// appended in order.
 ///
 /// # Errors
 ///
@@ -319,23 +365,138 @@ where
     put_long(&mut output, 0);
     output.extend_from_slice(&sync);
 
-    let mut payload = Vec::new();
+    let threads = options.threads.resolve();
+    let blocks = BlockWriter {
+        schema: &schema,
+        coding,
+        level: options.level(),
+        sync: &sync,
+        threads,
+    };
+    let mut pending: Vec<RecordBatch> = Vec::new();
+    let mut plans = PlanCache::new();
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
-        if batch.num_rows() == 0 {
+        let rows = batch.num_rows();
+        if rows == 0 {
             continue;
         }
-        let batch = canonical.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?;
-        payload.clear();
-        encode_batch(&schema.node, &schema, &batch, &mut payload)?;
-        let compressed = coding.dump(&payload, options.level())?;
-        put_long(&mut output, batch.num_rows() as i64);
-        put_bytes(&mut output, &compressed);
-        output.extend_from_slice(&sync);
+        let batch = plans
+            .get_or_compile(batch.schema_ref().fields(), || {
+                ArrowCastPlan::compile_schema(
+                    batch.schema_ref(),
+                    &canonical,
+                    ArrowCastOptions::new().with_safe(false),
+                    Deferred::default(),
+                )
+            })?
+            .reconcile_batch(batch)?;
+        // The rows' own in-memory extent estimates their encoded width - a
+        // slice counts itself, not its parent's buffers - and a value takes at
+        // least a byte on the wire whatever it takes in memory, so a bit-packed
+        // boolean is not a block of a million rows. A block never holds more
+        // rows than a reader with the default limits accepts.
+        let width = (crate::arrow::sliced_memory_size(&batch) / rows)
+            .max(batch.num_columns())
+            .max(1);
+        let block_rows = (WRITE_BLOCK_BYTES / width).clamp(1, Limits::default().max_nodes());
+        let mut start = 0;
+        while start < rows {
+            let length = block_rows.min(rows - start);
+            pending.push(batch.slice(start, length));
+            start += length;
+            if pending.len() >= threads.saturating_mul(2) {
+                blocks.write(&mut pending, &mut output)?;
+            }
+        }
     }
+    blocks.write(&mut pending, &mut output)?;
 
     handle.write_all_bytes(&output)?;
     Ok(())
+}
+
+/// Uncompressed bytes one written block aims for.
+///
+/// Near a megabyte a block compresses as well as a larger one would, and a
+/// large container still holds enough blocks for a reader to decode on every
+/// thread at once.
+const WRITE_BLOCK_BYTES: usize = 1 << 20;
+
+/// Appends blocks to a container, encoding and compressing them on threads.
+struct BlockWriter<'a> {
+    /// The container schema the rows are encoded under.
+    schema: &'a Schema,
+    /// The block compression.
+    coding: BlockCoding,
+    /// The compression level.
+    level: Level,
+    /// The marker that closes every block.
+    sync: &'a [u8; SYNC_LEN],
+    /// How many blocks encode at once.
+    threads: usize,
+}
+
+impl BlockWriter<'_> {
+    /// Encode and compress every pending block, then append each in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first block's encoding or compression failure, in order.
+    fn write(&self, pending: &mut Vec<RecordBatch>, output: &mut Vec<u8>) -> crate::Result<()> {
+        let workers = self.threads.min(pending.len());
+        let compressed: Vec<crate::Result<Vec<u8>>> = if workers < 2 {
+            let mut payload = Vec::new();
+            pending
+                .iter()
+                .map(|block| self.encode(block, &mut payload))
+                .collect()
+        } else {
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let blocks: &[RecordBatch] = pending;
+            let mut done: Vec<(usize, crate::Result<Vec<u8>>)> = std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..workers)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            let mut payload = Vec::new();
+                            let mut encoded = Vec::new();
+                            loop {
+                                let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                let Some(block) = blocks.get(index) else {
+                                    return encoded;
+                                };
+                                encoded.push((index, self.encode(block, &mut payload)));
+                            }
+                        })
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .flat_map(|handle| {
+                        handle
+                            .join()
+                            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+                    })
+                    .collect()
+            });
+            done.sort_unstable_by_key(|(index, _)| *index);
+            done.into_iter().map(|(_, block)| block).collect()
+        };
+        for (block, bytes) in pending.drain(..).zip(compressed) {
+            let bytes = bytes?;
+            put_long(output, block.num_rows() as i64);
+            put_bytes(output, &bytes);
+            output.extend_from_slice(self.sync);
+        }
+        Ok(())
+    }
+
+    /// Encode one block's rows and compress them.
+    fn encode(&self, block: &RecordBatch, payload: &mut Vec<u8>) -> crate::Result<Vec<u8>> {
+        payload.clear();
+        encode_batch(&self.schema.node, self.schema, block, payload)?;
+        self.coding.dump(payload, self.level)
+    }
 }
 
 /// Refuse a handle whose media type declares an outer content coding.
@@ -357,7 +518,7 @@ struct AvroBatchReader {
     /// The whole container. DESIGN: owned because a `BatchReader` outlives the
     /// borrow of the handle it came from; decompression and decoding stay
     /// lazy, one block at a time.
-    bytes: Vec<u8>,
+    bytes: bytes::Bytes,
     /// The offset of the next unread block.
     position: usize,
     /// The projected batch schema.
@@ -388,29 +549,7 @@ impl AvroBatchReader {
         if cursor.is_exhausted() {
             return Ok(false);
         }
-        let count = cursor.long()?;
-        let count = u64::try_from(count).map_err(|_| {
-            codec(
-                cursor.position,
-                format_smolstr!("expected a non-negative Avro block count, got {count}"),
-            )
-        })?;
-        let payload = cursor.bytes()?;
-        let marker = cursor.take(SYNC_LEN)?;
-        if marker != self.sync {
-            return Err(codec(
-                cursor.position,
-                SmolStr::new_static(
-                    "expected the header's synchronization marker after an Avro block",
-                ),
-            ));
-        }
-        if count as usize > self.limits.max_nodes() {
-            return Err(invalid(format_smolstr!(
-                "expected at most {} rows in a block",
-                self.limits.max_nodes()
-            )));
-        }
+        let (count, payload) = read_block(&mut cursor, &self.sync, self.limits)?;
         let decoded = self.coding.load(payload, self.limits)?;
         self.position = cursor.position;
         self.block = Some((decoded, 0, count));
@@ -474,6 +613,297 @@ impl Iterator for AvroBatchReader {
 }
 
 impl arrow_array::RecordBatchReader for AvroBatchReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+/// Read one block's count and payload, checking the marker that closes it.
+///
+/// # Errors
+///
+/// Returns a truncation, a negative or oversized count, or a marker that is
+/// not the header's.
+fn read_block<'bytes>(
+    cursor: &mut Cursor<'bytes>,
+    sync: &[u8; SYNC_LEN],
+    limits: Limits,
+) -> crate::Result<(u64, &'bytes [u8])> {
+    let count = cursor.long()?;
+    let count = u64::try_from(count).map_err(|_| {
+        codec(
+            cursor.position,
+            format_smolstr!("expected a non-negative Avro block count, got {count}"),
+        )
+    })?;
+    let payload = cursor.bytes()?;
+    let marker = cursor.take(SYNC_LEN)?;
+    if marker != sync {
+        return Err(codec(
+            cursor.position,
+            SmolStr::new_static("expected the header's synchronization marker after an Avro block"),
+        ));
+    }
+    if count as usize > limits.max_nodes() {
+        return Err(invalid(format_smolstr!(
+            "expected at most {} rows in a block",
+            limits.max_nodes()
+        )));
+    }
+    Ok((count, payload))
+}
+
+/// Compressed block bytes below which a read decodes on the calling thread.
+///
+/// Below about a megabyte the whole read takes around a millisecond, which
+/// starting threads and handing batches between them would eat.
+const PARALLEL_READ_BYTES: usize = 1 << 20;
+
+/// The fewest rows a parallel read hands one thread, so a small container is
+/// not shredded into units that cost more to start than to decode.
+const PARALLEL_UNIT_ROWS: u64 = 8_192;
+
+/// Where one block's payload sits in the container, and how many rows it holds.
+#[derive(Clone, Copy, Debug)]
+struct BlockSpan {
+    /// The payload's first byte.
+    start: usize,
+    /// One past the payload's last byte.
+    end: usize,
+    /// The rows the block declares.
+    rows: u64,
+}
+
+/// Split a container into runs of whole blocks, one per decoding thread.
+///
+/// Answers `None` - the caller reads on one thread - when there is one
+/// thread, when the blocks are below [`PARALLEL_READ_BYTES`] or make one run,
+/// or when the headers do not walk cleanly: the one-thread reader then
+/// reports that failure where it lies, after the rows in front of it.
+fn plan_units(
+    bytes: &[u8],
+    position: usize,
+    sync: &[u8; SYNC_LEN],
+    limits: Limits,
+    batch_rows: usize,
+    threads: usize,
+) -> Option<(Vec<BlockSpan>, Vec<std::ops::Range<usize>>)> {
+    if threads < 2 {
+        return None;
+    }
+    let mut cursor = Cursor::new(bytes);
+    cursor.position = position;
+    let mut spans = Vec::new();
+    let mut compressed = 0_usize;
+    // A header walk reads two lengths and jumps the payload they describe.
+    while !cursor.is_exhausted() {
+        let (rows, payload) = read_block(&mut cursor, sync, limits).ok()?;
+        let end = cursor.position - SYNC_LEN;
+        spans.push(BlockSpan {
+            start: end - payload.len(),
+            end,
+            rows,
+        });
+        compressed += payload.len();
+    }
+    if spans.len() < 2 || compressed < PARALLEL_READ_BYTES {
+        return None;
+    }
+    let total: u64 = spans.iter().map(|span| span.rows).sum();
+    let target = total
+        .div_ceil(threads as u64)
+        .max(PARALLEL_UNIT_ROWS)
+        .min(batch_rows as u64)
+        .max(1);
+    let mut units = Vec::new();
+    let (mut first, mut rows) = (0, 0_u64);
+    for (index, span) in spans.iter().enumerate() {
+        if index > first && rows + span.rows > target {
+            units.push(first..index);
+            (first, rows) = (index, 0);
+        }
+        rows += span.rows;
+    }
+    units.push(first..spans.len());
+    (units.len() >= 2).then_some((spans, units))
+}
+
+/// What every unit of a parallel read shares.
+struct AvroSource {
+    /// The whole container, shared rather than copied.
+    bytes: bytes::Bytes,
+    /// The writer schema, for skips and reference resolution.
+    writer: Schema,
+    /// The block compression.
+    coding: BlockCoding,
+    /// The decode bounds.
+    limits: Limits,
+    /// The root Field name.
+    name: SmolStr,
+    /// The top-level columns kept, when the read narrows them.
+    keep: Option<Vec<String>>,
+    /// Rows per yielded batch.
+    batch_rows: usize,
+}
+
+/// What a unit's decoder sends: a batch, a failure, or that it finished.
+type UnitMessage = crate::Result<Option<RecordBatch>>;
+
+/// A container decoded on several threads, one run of whole blocks each.
+///
+/// Blocks are independent once their headers are walked - each carries its
+/// own row count and payload - so runs of whole blocks decompress and decode
+/// at once, a window of them in flight. Batches come back in file order, and
+/// a batch never spans two runs, so one can hold fewer rows than asked for.
+///
+/// Dropping the reader detaches the decoders rather than joining them: each
+/// owns its share of the bytes and its sender, and stops at its next send.
+struct ParallelAvroRead {
+    /// The projected batch schema.
+    schema: SchemaRef,
+    /// What every unit reads.
+    source: Arc<AvroSource>,
+    /// Every block of the container, in file order.
+    spans: Arc<[BlockSpan]>,
+    /// The runs not yet started, in file order.
+    pending: std::collections::VecDeque<std::ops::Range<usize>>,
+    /// The runs started and not yet drained, in file order.
+    running: std::collections::VecDeque<std::sync::mpsc::Receiver<UnitMessage>>,
+    /// Whether the reader has finished, cleanly or not.
+    done: bool,
+}
+
+impl ParallelAvroRead {
+    /// Start the first window of runs.
+    fn start(
+        source: AvroSource,
+        schema: SchemaRef,
+        spans: Vec<BlockSpan>,
+        units: Vec<std::ops::Range<usize>>,
+        window: usize,
+    ) -> Self {
+        let mut read = Self {
+            schema,
+            source: Arc::new(source),
+            spans: spans.into(),
+            pending: units.into(),
+            running: std::collections::VecDeque::with_capacity(window),
+            done: false,
+        };
+        for _ in 0..window {
+            read.start_next();
+        }
+        read
+    }
+
+    /// Start decoding the next run on a thread of its own.
+    fn start_next(&mut self) {
+        let Some(unit) = self.pending.pop_front() else {
+            return;
+        };
+        // A run decodes at most a batch or two ahead of the consumer.
+        let (sender, receiver) = std::sync::mpsc::sync_channel(2);
+        let source = Arc::clone(&self.source);
+        let spans = Arc::clone(&self.spans);
+        // Deliberately detached: see the type docs for why drop does not join.
+        let _ = std::thread::spawn(move || {
+            let finished = decode_unit(&source, &spans[unit], &sender);
+            let _ = sender.send(finished.map(|()| None));
+        });
+        self.running.push_back(receiver);
+    }
+}
+
+/// Decode one run of blocks, sending each batch as it fills.
+///
+/// # Errors
+///
+/// Returns a decompression or decoding failure, or a block whose rows do not
+/// fill it exactly.
+fn decode_unit(
+    source: &AvroSource,
+    spans: &[BlockSpan],
+    sender: &std::sync::mpsc::SyncSender<UnitMessage>,
+) -> crate::Result<()> {
+    let keep: Option<Vec<&str>> = source
+        .keep
+        .as_ref()
+        .map(|names| names.iter().map(String::as_str).collect());
+    let (mut root, schema) = RootReader::new(&source.writer, &source.name, keep.as_deref())?;
+    let datum = DatumCodec {
+        names: &source.writer.names,
+        limits: source.limits,
+    };
+    let identity = matches!(source.coding, BlockCoding::Shared(crate::Codec::Identity));
+    let mut decoded = Vec::new();
+    let mut rows = 0_usize;
+    for span in spans {
+        let payload = &source.bytes[span.start..span.end];
+        // An uncompressed block is decoded where it lies.
+        let block: &[u8] = if identity {
+            payload
+        } else {
+            source
+                .coding
+                .load_into(payload, source.limits, &mut decoded)?;
+            &decoded
+        };
+        let mut cursor = Cursor::new(block);
+        for _ in 0..span.rows {
+            let mut budget = source.limits.max_nodes();
+            root.append(&mut cursor, &datum, &mut budget)?;
+            rows += 1;
+            if rows == source.batch_rows {
+                // A reader that is gone wants nothing more.
+                if sender.send(Ok(Some(root.finish(&schema, rows)?))).is_err() {
+                    return Ok(());
+                }
+                rows = 0;
+            }
+        }
+        if !cursor.is_exhausted() {
+            return Err(codec(
+                cursor.position,
+                SmolStr::new_static("expected the block to end after its declared rows"),
+            ));
+        }
+    }
+    if rows > 0 {
+        let _ = sender.send(Ok(Some(root.finish(&schema, rows)?)));
+    }
+    Ok(())
+}
+
+impl Iterator for ParallelAvroRead {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.done {
+            let Some(front) = self.running.front() else {
+                self.done = true;
+                break;
+            };
+            let failure = match front.recv() {
+                Ok(Ok(Some(batch))) => return Some(Ok(batch)),
+                Ok(Ok(None)) => {
+                    self.running.pop_front();
+                    self.start_next();
+                    continue;
+                }
+                Ok(Err(error)) => error,
+                // A decoder that ends without saying so has panicked.
+                Err(_) => invalid(SmolStr::new_static(
+                    "expected an Avro decoder thread to finish its blocks, got one that stopped",
+                )),
+            };
+            self.done = true;
+            return Some(Err(ArrowError::ExternalError(Box::new(failure))));
+        }
+        None
+    }
+}
+
+impl arrow_array::RecordBatchReader for ParallelAvroRead {
     fn schema(&self) -> SchemaRef {
         self.schema.clone()
     }
@@ -588,8 +1018,10 @@ enum ColumnReader {
     Float64(PrimitiveBuilder<Float64Type>),
     /// A length-prefixed byte run.
     Binary(BinaryBuilder),
-    /// A length-prefixed UTF-8 run.
-    Utf8(StringBuilder),
+    /// A length-prefixed UTF-8 run, gathered as bytes and validated once per
+    /// batch: one pass over the whole value buffer rather than a call per
+    /// value.
+    Utf8(BinaryBuilder),
     /// A UUID from either of Avro's string or fixed encodings.
     Uuid {
         /// Sixteen canonical bytes per value.
@@ -729,6 +1161,16 @@ pub mod internals {
     pub const fn root_step_size() -> usize {
         std::mem::size_of::<super::RootStep>()
     }
+
+    /// These options with the threads one container decodes or encodes on
+    /// pinned - the crate-internal bound a table hands each file - so a test
+    /// runs the threaded paths, or the one-thread path, whatever the host
+    /// offers.
+    #[must_use]
+    pub fn with_threads(mut options: super::AvroOptions, threads: usize) -> super::AvroOptions {
+        options.threads = crate::media::options::FileThreads(Some(threads.max(1)));
+        options
+    }
 }
 
 /// The Arrow decimal builder selected by the Avro precision.
@@ -804,7 +1246,7 @@ impl ColumnReader {
             Node::Float => Self::Float32(PrimitiveBuilder::new()),
             Node::Double => Self::Float64(PrimitiveBuilder::new()),
             Node::Bytes => Self::Binary(BinaryBuilder::new()),
-            Node::String => Self::Utf8(StringBuilder::new()),
+            Node::String => Self::Utf8(BinaryBuilder::new()),
             Node::Uuid => Self::Uuid {
                 builder: FixedSizeBinaryBuilder::new(16),
                 fixed: false,
@@ -970,7 +1412,7 @@ impl ColumnReader {
             Self::Float32(builder) => builder.append_value(cursor.float()?),
             Self::Float64(builder) => builder.append_value(cursor.double()?),
             Self::Binary(builder) => builder.append_value(cursor.bytes()?),
-            Self::Utf8(builder) => builder.append_value(cursor.string()?),
+            Self::Utf8(builder) => builder.append_value(cursor.bytes()?),
             Self::Uuid { builder, fixed } => {
                 let stored = if *fixed {
                     crate::uuid_parse(cursor.take(16)?)?
@@ -1200,7 +1642,13 @@ impl ColumnReader {
             Self::Float32(builder) => Arc::new(builder.finish()),
             Self::Float64(builder) => Arc::new(builder.finish()),
             Self::Binary(builder) => Arc::new(builder.finish()),
-            Self::Utf8(builder) => Arc::new(builder.finish()),
+            Self::Utf8(builder) => Arc::new(
+                arrow_array::StringArray::try_from_binary(builder.finish()).map_err(|error| {
+                    invalid(format_smolstr!(
+                        "expected UTF-8 in an Avro string, got {error}"
+                    ))
+                })?,
+            ),
             Self::Uuid { builder, .. } => Arc::new(builder.finish()),
             Self::Date32(builder) => Arc::new(builder.finish()),
             Self::Time32(builder) => Arc::new(builder.finish()),
@@ -1342,14 +1790,167 @@ fn encode_batch(
             "expected a record schema to encode batches",
         )));
     };
-    let columns = batch.columns();
+    let columns: Vec<ColumnWriter<'_>> = record
+        .fields
+        .iter()
+        .zip(batch.columns())
+        .map(|(field, column)| ColumnWriter::new(&field.schema, column.as_ref(), &field.name))
+        .collect();
     for row in 0..batch.num_rows() {
-        for (field, column) in record.fields.iter().zip(columns) {
-            encode_cell(&field.schema, schema, column.as_ref(), row, payload)
-                .map_err(|error| locate_column(error, &field.name))?;
+        for column in &columns {
+            column
+                .write(row, schema, payload)
+                .map_err(|error| locate_column(error, column.name))?;
         }
     }
     Ok(())
+}
+
+/// One top-level column resolved to its Arrow values once per block.
+///
+/// The per-cell walk matches the node and downcasts the array for every
+/// value; a flat column - a primitive, a string, bytes, optionally behind a
+/// `["null", T]` union - is resolved here once instead, and every other shape
+/// keeps the walk.
+struct ColumnWriter<'a> {
+    /// The resolved values.
+    values: ColumnValues<'a>,
+    /// The column, for the walk.
+    column: &'a dyn Array,
+    /// The column's validity.
+    nulls: Option<&'a arrow_buffer::NullBuffer>,
+    /// The null and value branch indices of a nullable union.
+    union: Option<(i64, i64)>,
+    /// The column name, for failures.
+    name: &'a str,
+}
+
+/// The values a [`ColumnWriter`] resolved.
+enum ColumnValues<'a> {
+    /// A zig-zag long: `long`, `time-micros`, and every timestamp.
+    Long(&'a [i64]),
+    /// A zig-zag int: `int`, `date`, and `time-millis`.
+    Int(&'a [i32]),
+    /// Four little-endian bytes.
+    Float(&'a [f32]),
+    /// Eight little-endian bytes.
+    Double(&'a [f64]),
+    /// One byte.
+    Boolean(&'a arrow_array::BooleanArray),
+    /// A length-prefixed UTF-8 run.
+    Utf8(&'a arrow_array::StringArray),
+    /// A length-prefixed byte run.
+    Binary(&'a arrow_array::BinaryArray),
+    /// Any other shape, through the per-cell walk.
+    Walk(&'a Node),
+}
+
+impl<'a> ColumnWriter<'a> {
+    /// Resolve one column against its node.
+    fn new(node: &'a Node, column: &'a dyn Array, name: &'a str) -> Self {
+        let walk = Self {
+            values: ColumnValues::Walk(node),
+            column,
+            nulls: column.nulls(),
+            union: None,
+            name,
+        };
+        let (inner, union) = match node {
+            Node::Union(branches) => {
+                let null = branches
+                    .iter()
+                    .position(|branch| matches!(branch, Node::Null));
+                let value = branches
+                    .iter()
+                    .enumerate()
+                    .find(|(_, branch)| !matches!(branch, Node::Null));
+                match (null, value) {
+                    (Some(null), Some((index, inner))) => {
+                        (inner, Some((null as i64, index as i64)))
+                    }
+                    _ => return walk,
+                }
+            }
+            other => (other, None),
+        };
+        let values = match inner {
+            Node::Long => column
+                .as_primitive_opt::<Int64Type>()
+                .map(|array| ColumnValues::Long(array.values())),
+            Node::TimeMicros => column
+                .as_primitive_opt::<Time64MicrosecondType>()
+                .map(|array| ColumnValues::Long(array.values())),
+            Node::TimestampMillis | Node::LocalTimestampMillis => column
+                .as_primitive_opt::<TimestampMillisecondType>()
+                .map(|array| ColumnValues::Long(array.values())),
+            Node::TimestampMicros | Node::LocalTimestampMicros => column
+                .as_primitive_opt::<TimestampMicrosecondType>()
+                .map(|array| ColumnValues::Long(array.values())),
+            Node::TimestampNanos | Node::LocalTimestampNanos => column
+                .as_primitive_opt::<TimestampNanosecondType>()
+                .map(|array| ColumnValues::Long(array.values())),
+            Node::Int => column
+                .as_primitive_opt::<Int32Type>()
+                .map(|array| ColumnValues::Int(array.values())),
+            Node::Date => column
+                .as_primitive_opt::<Date32Type>()
+                .map(|array| ColumnValues::Int(array.values())),
+            Node::TimeMillis => column
+                .as_primitive_opt::<Time32MillisecondType>()
+                .map(|array| ColumnValues::Int(array.values())),
+            Node::Float => column
+                .as_primitive_opt::<Float32Type>()
+                .map(|array| ColumnValues::Float(array.values())),
+            Node::Double => column
+                .as_primitive_opt::<Float64Type>()
+                .map(|array| ColumnValues::Double(array.values())),
+            Node::Boolean => column.as_boolean_opt().map(ColumnValues::Boolean),
+            Node::String => column.as_string_opt::<i32>().map(ColumnValues::Utf8),
+            Node::Bytes => column.as_binary_opt::<i32>().map(ColumnValues::Binary),
+            _ => None,
+        };
+        match values {
+            Some(values) => Self {
+                values,
+                union,
+                ..walk
+            },
+            None => walk,
+        }
+    }
+
+    /// Encode one row's value.
+    #[inline]
+    fn write(&self, row: usize, schema: &Schema, payload: &mut Vec<u8>) -> crate::Result<()> {
+        if let ColumnValues::Walk(node) = self.values {
+            return encode_cell(node, schema, self.column, row, payload);
+        }
+        let null = self.nulls.is_some_and(|nulls| nulls.is_null(row));
+        match (self.union, null) {
+            (Some((branch, _)), true) => {
+                put_long(payload, branch);
+                return Ok(());
+            }
+            (Some((_, branch)), false) => put_long(payload, branch),
+            (None, true) => {
+                return Err(invalid(SmolStr::new_static(
+                    "expected a value for a required column, got null",
+                )));
+            }
+            (None, false) => {}
+        }
+        match self.values {
+            ColumnValues::Long(values) => put_long(payload, values[row]),
+            ColumnValues::Int(values) => put_long(payload, i64::from(values[row])),
+            ColumnValues::Float(values) => payload.extend_from_slice(&values[row].to_le_bytes()),
+            ColumnValues::Double(values) => payload.extend_from_slice(&values[row].to_le_bytes()),
+            ColumnValues::Boolean(array) => payload.push(u8::from(array.value(row))),
+            ColumnValues::Utf8(array) => put_bytes(payload, array.value(row).as_bytes()),
+            ColumnValues::Binary(array) => put_bytes(payload, array.value(row)),
+            ColumnValues::Walk(_) => {}
+        }
+        Ok(())
+    }
 }
 
 /// Encode one cell of one canonical column.

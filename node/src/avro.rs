@@ -314,7 +314,7 @@ pub fn avro_dumps_native(
 ) -> Result<Buffer> {
     let rows = rows
         .inner
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| napi_error("Avro container rows must be a sequence"))?;
     let owned_metadata = metadata
         .into_iter()
@@ -329,7 +329,7 @@ pub fn avro_dumps_native(
         &mut handle,
         &schema.inner.clone().into_json(),
         &borrowed_metadata,
-        rows,
+        &rows,
     )
     .map_err(napi_error)?;
     Ok(handle.into_bytes().into())

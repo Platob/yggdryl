@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 use std::num::IntErrorKind;
-use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch as ArrowRecordBatch, ffi::FFI_ArrowArray, make_array};
+use arrow_array::{ArrayRef, ffi::FFI_ArrowArray, make_array};
 use arrow_data::ArrayData;
 use arrow_pyarrow::{FromPyArrow, PyArrowType};
 use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
@@ -13,11 +12,9 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, P
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::{
-    DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit,
-    UnionMode as CoreUnionMode,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
+    StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
-use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
 
 use crate::field::PyField;
 use crate::parameters::{
@@ -25,7 +22,7 @@ use crate::parameters::{
 };
 use crate::scalar::{PyScalar, arrow_scalar_into_array, from_py};
 use crate::{
-    FieldKey, PyDifferenceIterator, cast_options, compare, field_at_of, field_by_path_of, field_of,
+    FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
 };
 use yggdryl::ArrowCastOptions;
@@ -57,19 +54,6 @@ pub(crate) fn core_field_to_pyarrow<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let schema = field.clone().into_arrow_field_ffi().map_err(value_error)?;
     import_ffi_schema(py, "Field", &schema)
-}
-
-/// Imports a shared core Arrow one-row array through the exact owning Field.
-///
-/// The Field C Schema is intentional: importing only the array datatype would
-/// discard extension metadata and prevent `PyArrow` from rehydrating a
-/// registered `ExtensionType`.
-pub(crate) fn default_arrow_scalar_to_pyarrow<'py>(
-    py: Python<'py>,
-    field: &yggdryl::Field,
-    array: &ArrayRef,
-) -> PyResult<Bound<'py, PyAny>> {
-    arrow_array_to_pyarrow(py, array, Some(field))?.get_item(0)
 }
 
 /// Imports one `PyArrow` Array through the Arrow C Data Interface.
@@ -140,7 +124,8 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
         dtype,
         CoreDataType::Uuid
             | CoreDataType::Version
-            | CoreDataType::Uri(_)
+            | CoreDataType::Url
+            | CoreDataType::Urn
             | CoreDataType::Timezone
             | CoreDataType::MimeType
             | CoreDataType::MediaType
@@ -173,12 +158,14 @@ pub(crate) fn core_arrow_scalar<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let field = yggdryl::Field::new("value", dtype.clone(), true);
     let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
-        field
-            .cast_arrow_array(
-                arrow_scalar_into_array(value)?,
-                ArrowCastOptions::new().with_safe(safe),
-            )
-            .map_err(value_error)?
+        yggdryl::Serie::from_arrow_array(
+            Some(&field),
+            arrow_scalar_into_array(value)?,
+            ArrowCastOptions::new().with_safe(safe),
+        )
+        .map_err(value_error)?
+        .require_arrow_array()
+        .map_err(value_error)?
     } else {
         yggdryl::arrow::scalar_array(&field, &from_py(value)?).map_err(value_error)?
     };
@@ -810,12 +797,17 @@ impl PyDataType {
     /// Internal allocation-free dictionary value view for annotation inference.
     fn _dictionary_value_type(&self) -> PyResult<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Ok(Self {
-                inner: dictionary.value().clone(),
-                hash_locked: false,
-                borrowed_from_field: false,
-                children_read_only: self.children_read_only,
-            }),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Ok(Self {
+                    inner: dictionary.value().clone(),
+                    hash_locked: false,
+                    borrowed_from_field: false,
+                    children_read_only: self.children_read_only,
+                })
+            }
             _ => Err(PyTypeError::new_err(
                 "dictionary value type is available only on dictionary datatypes",
             )),
@@ -956,13 +948,6 @@ impl PyDataType {
             .call1((dtype,))
     }
 
-    /// Returns the native canonical default as an exact `PyArrow` Scalar.
-    fn default_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.default_arrow_array().map_err(value_error)?;
-        let field = yggdryl::Field::new("value", self.inner.clone(), false);
-        default_arrow_scalar_to_pyarrow(py, &field, &array)
-    }
-
     /// Returns the native canonical default as one generic `Scalar`.
     ///
     /// [`Field.default_scalar`](crate::field::PyField::default_scalar)
@@ -1028,85 +1013,6 @@ impl PyDataType {
         arrow_scalar_from_core_type(py, value, &self.inner, safe)
     }
 
-    /// Casts one value or one-row `PyArrow` Array to this datatype.
-    ///
-    /// This is `cast_arrow_array` plus the length check that makes a scalar
-    /// answer honest; `Field.cast_arrow_scalar` is the same call with the
-    /// field's name and nullability on top.
-    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
-    fn cast_arrow_scalar<'py>(
-        &self,
-        py: Python<'py>,
-        value: &Bound<'py, PyAny>,
-        safe: bool,
-        nullability: &str,
-        representation: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        cast_options(safe, nullability, representation)?;
-        if value.is_instance(&py.import("pyarrow")?.getattr("Array")?)? {
-            if value.len()? != 1 {
-                return Err(PyValueError::new_err(format!(
-                    "a scalar cast takes exactly one row, got {}",
-                    value.len()?
-                )));
-            }
-            return self.arrow_scalar(py, &value.get_item(0)?, safe);
-        }
-        self.arrow_scalar(py, value, safe)
-    }
-
-    /// Casts one `PyArrow` Array through Yggdryl's native Arrow kernels.
-    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
-    fn cast_arrow_array<'py>(
-        &self,
-        py: Python<'py>,
-        value: &Bound<'py, PyAny>,
-        safe: bool,
-        nullability: &str,
-        representation: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let input = arrow_array_from_pyarrow(value)?;
-        let array = self
-            .inner
-            .cast_arrow_array(
-                Arc::clone(&input),
-                cast_options(safe, nullability, representation)?,
-            )
-            .map_err(value_error)?;
-        if Arc::ptr_eq(&input, &array) {
-            return Ok(value.clone());
-        }
-        arrow_array_to_pyarrow(py, &array, None)
-    }
-
-    /// Reconciles one `PyArrow` `RecordBatch` to this Struct datatype.
-    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
-    fn cast_arrow_batch<'py>(
-        &self,
-        py: Python<'py>,
-        value: &Bound<'py, PyAny>,
-        safe: bool,
-        nullability: &str,
-        representation: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
-        let source_schema = batch.schema();
-        let source_columns = batch.columns().to_vec();
-        let cast = self
-            .inner
-            .cast_arrow_batch(batch, cast_options(safe, nullability, representation)?)
-            .map_err(value_error)?;
-        if Arc::ptr_eq(&source_schema, &cast.schema())
-            && source_columns
-                .iter()
-                .zip(cast.columns())
-                .all(|(left, right)| Arc::ptr_eq(left, right))
-        {
-            return Ok(value.clone());
-        }
-        crate::iomedia::batch_to_pyarrow(py, cast)
-    }
-
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         core_dtype_to_pyarrow(py, &self.inner)
@@ -1139,12 +1045,6 @@ impl PyDataType {
             py,
             &yggdryl::Field::new(yggdryl::media::DEFAULT_ROOT_NAME, self.inner.clone(), false),
         )
-    }
-
-    /// Materializes the canonical default as a one-row `pyarrow.Array`.
-    fn default_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.default_arrow_array().map_err(value_error)?;
-        arrow_array_to_pyarrow(py, &array, None)
     }
 
     /// Serialize as deterministic structural JSON.
@@ -1472,9 +1372,24 @@ impl PyDataType {
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
-            CoreDataType::DateTime(leaf) => Some(leaf.unit().as_str()),
-            CoreDataType::Time(leaf) => Some(leaf.unit().as_str()),
-            CoreDataType::Duration(leaf) => Some(leaf.unit().as_str()),
+            leaf_dtype @ CoreDataType::DateTime64 { .. } => {
+                let leaf = &leaf_dtype
+                    .datetime_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
+            leaf_dtype @ (CoreDataType::Time32(_) | CoreDataType::Time64(_)) => {
+                let leaf = &leaf_dtype
+                    .time_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
+            leaf_dtype @ (CoreDataType::Duration32(_) | CoreDataType::Duration64(_)) => {
+                let leaf = &leaf_dtype
+                    .duration_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
             _ => None,
         }
     }
@@ -1482,9 +1397,7 @@ impl PyDataType {
     /// Internal field-class conversion view of a `DateTime64` timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
-            CoreDataType::DateTime(DateTimeType::DateTime64 { timezone, .. }) => {
-                Some(timezone.as_str())
-            }
+            CoreDataType::DateTime64 { timezone, .. } => Some(timezone.as_str()),
             _ => None,
         }
     }
@@ -1501,7 +1414,12 @@ impl PyDataType {
     #[getter]
     fn keys_sorted(&self) -> Option<bool> {
         match &self.inner {
-            CoreDataType::Mapping(mapping) => Some(mapping.keys_sorted()),
+            mapping_dtype @ (CoreDataType::Map(_) | CoreDataType::SortedMap(_)) => {
+                let mapping = &mapping_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
+                Some(mapping.keys_sorted())
+            }
             _ => None,
         }
     }
@@ -1510,7 +1428,12 @@ impl PyDataType {
     #[getter]
     fn dictionary_key(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.key().clone())),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Some(Self::from_inner(dictionary.key().clone()))
+            }
             _ => None,
         }
     }
@@ -1519,7 +1442,12 @@ impl PyDataType {
     #[getter]
     fn dictionary_value(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.value().clone())),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Some(Self::from_inner(dictionary.value().clone()))
+            }
             _ => None,
         }
     }
@@ -1584,7 +1512,7 @@ impl PyDataType {
     /// Internal field-class conversion view of fixed-size-list arity.
     fn _fixed_size_list_length(&self) -> Option<i32> {
         match &self.inner {
-            CoreDataType::Sequence(SequenceType::FixedSizeList(_, length)) => Some(*length),
+            CoreDataType::FixedSizeList(_, length) => Some(*length),
             _ => None,
         }
     }

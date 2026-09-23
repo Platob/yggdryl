@@ -1,15 +1,14 @@
 //! `rust/src/expression/typing.rs`: the edge cases this module is built to
 //! get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
-    use yggdryl::DateTimeType;
     use yggdryl::expression::Term;
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
@@ -29,10 +28,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),

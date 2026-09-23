@@ -122,6 +122,34 @@ export declare class Arn {
 }
 export type JsArn = Arn
 
+/**
+ * The cast from one field's layout to another, compiled once.
+ *
+ * Every failure the two fields alone can produce is raised by `compile`,
+ * before a row exists; `apply` then differs per column only in the rows it
+ * reads.
+ */
+export declare class ArrowCastPlan {
+  /**
+   * Run the compiled cast over no rows, refusing an impossible cast now
+   * rather than on the first column.
+   */
+  preflight(): void
+  /**
+   * The field a column must lay out as: its storage and its extension
+   * identity.
+   */
+  get source(): JsField
+  /** The field every cast lands under. */
+  get target(): JsField
+  /**
+   * Whether the plan hands every column of its source layout straight
+   * back.
+   */
+  get isIdentity(): boolean
+}
+export type JsArrowCastPlan = ArrowCastPlan
+
 
 /** One compressed block yielded by an owning lazy Avro iterator. */
 export declare class AvroBlock {
@@ -831,8 +859,6 @@ export declare class Expression {
   get steps(): Array<Expression>
   /** Every top-level column this expression reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this expression reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this expression names, in first-seen order. */
   get parameters(): Array<string>
   /** This expression with every clause simplified. */
@@ -1365,12 +1391,8 @@ export declare class Filter {
   get isAlwaysTrue(): boolean
   /** Whether this filter keeps no row. */
   get isAlwaysFalse(): boolean
-  /** Whether this filter reads any holder attribute. */
-  get hasAttributes(): boolean
   /** Every top-level column this filter reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this filter reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this filter names, in first-seen order. */
   get parameters(): Array<string>
   /** The top-level `and` operands, each its own filter. */
@@ -2495,7 +2517,7 @@ export declare class IcebergOptions {
    * which would read nothing at all.
    */
   set readParallelism(threads: number)
-  /** How many large-enough files justify a parallel scan. Default: 16. */
+  /** How many large-enough files justify a parallel scan. Default: 2. */
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
   set readParallelMinFiles(files: number)
@@ -2533,7 +2555,7 @@ export declare class IcebergOptions {
   set writeStaging(staging: string)
   /**
    * The recorded size below which a file does not count toward justifying a
-   * parallel scan, in bytes. Default: 4 MiB.
+   * parallel scan, in bytes. Default: 64 KiB.
    */
   get readParallelMinFileSize(): number
   /**
@@ -2761,19 +2783,6 @@ export declare class IOBase {
   rglob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** The Hive partition pairs this resource's location spells out. */
   get partitions(): Array<PartitionEntry>
-  /**
-   * Iterate the entries beneath this one a predicate does not rule out.
-   *
-   * The predicate is asked of the holder, not of the rows: `&holder.name`,
-   * `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
-   * row column cannot be answered by a listing, so it is dropped rather
-   * than guessed at - this may keep a file the rows later discard and can
-   * never discard one they would have kept.
-   *
-   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
-   * parses.
-   */
-  childrenMatching(filter: Filter | Term | string, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
@@ -3064,12 +3073,11 @@ export type JsIOCursor = IOCursor
 /**
  * The entries of one listing, one at a time.
  *
- * Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
- * `childrenWhere`. It wraps the core listing directly, so nothing is
- * collected on the way across the boundary; `next()` is the native half of
- * the iteration protocol and the loader wraps it so `for...of` yields
- * handles. A failure throws at the entry it happened on, after which the
- * listing is exhausted.
+ * Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
+ * the core listing directly, so nothing is collected on the way across the
+ * boundary; `next()` is the native half of the iteration protocol and the
+ * loader wraps it so `for...of` yields handles. A failure throws at the entry
+ * it happened on, after which the listing is exhausted.
  */
 export declare class Listing {
   /** The next entry, or `null` when the listing is exhausted. */
@@ -3580,8 +3588,6 @@ export declare class Plan {
   get columns(): Array<string>
   /** The stored columns a read has to decode, or `null` for all of them. */
   get readColumns(): Array<string> | null
-  /** Every holder attribute this plan reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this plan names, in first-seen order. */
   get parameters(): Array<string>
   /**
@@ -4349,8 +4355,6 @@ export declare class Selector {
   get length(): number
   /** Every top-level column this selector reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this selector reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this selector names, in first-seen order. */
   get parameters(): Array<string>
   /** This selector with one more projection, a term or its text. */
@@ -4385,6 +4389,96 @@ export declare class Selector {
   clone(): Selector
 }
 export type JsSelector = Selector
+
+/**
+ * Many values: a schema-free run, or the Arrow buffers of one field.
+ *
+ * A column holds no JavaScript value: a row is built when one is asked
+ * for. Writes land in the buffers the column holds, and two series are
+ * equal when their rows are.
+ */
+export declare class Serie {
+  /**
+   * A schema-free run of already-converted rows; `Serie.fromScalars` and
+   * the Arrow doors build a column.
+   */
+  constructor(rows?: Array<Scalar> | undefined | null)
+  /** The field a column carries, or `null` for a run. */
+  get field(): Field | null
+  /** `list(<the field named item>)` for a column; agreed out of a run's rows. */
+  get dtype(): DataType
+  /** Whether this is a column rather than a schema-free run. */
+  get isColumn(): boolean
+  /** The row count. */
+  get length(): number
+  /** The rows that are absent. */
+  nullCount(): number
+  /** Whether the serie holds no row. */
+  isEmpty(): boolean
+  /** Whether row `index` is absent. */
+  isNull(index: number): boolean
+  /** Row `index`, built as one value. */
+  scalar(index: number): Scalar
+  /** Row `index`, or `null` past the end. */
+  at(index: number): Scalar | null
+  /** Every row, each built once and kept by the array alone. */
+  rows(): Array<Scalar>
+  /** This serie as the one value a `Scalar` sequence holds. */
+  intoScalar(): Scalar
+  /** Remove row `index` and answer it. */
+  remove(index: number): Scalar
+  /** Remove the last row and answer it, or `null` when empty. */
+  pop(): Scalar | null
+  /** Drop every row from `length` on. */
+  truncate(length: number): void
+  /** Drop every row and keep the field. */
+  clear(): void
+  /** Append every row of `other`, buffer to buffer where the fields agree. */
+  extendFromSerie(other: Serie): void
+  /** Replace a record column's child of `child`'s name, or add it. */
+  setChild(child: Serie): void
+  /** This record column as a native `BatchReader` of one batch. */
+  intoArrowReader(): BatchReader
+  /** Whether two series hold equal rows, whichever leaf holds them. */
+  equals(other: Serie): boolean
+  /** Order two series by their rows, as the core defines it. */
+  compare(other: Serie): number
+  /** The rows, rendered behind the field's name. */
+  toString(): string
+}
+export type JsSerie = Serie
+
+/**
+ * An owning iterator over a serie's rows, each built once.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class SerieIterator {
+
+}
+export type JsSerieIterator = SerieIterator
+
+/**
+ * One record serie per batch of a native `BatchReader`, each cast by the
+ * one plan the core compiled from the stream's schema.
+ *
+ * The reader is a stream, read once: iterating it and `intoArrowReader`
+ * both consume it, and a batch's failure surfaces at the pull that read it.
+ */
+export declare class SerieReader {
+  /** The record every yielded serie is typed by. */
+  get field(): Field
+  /**
+   * The stream's batches reconciled to the root as a native
+   * `BatchReader`, never landed; the reader is consumed.
+   */
+  intoArrowReader(): BatchReader
+}
+export type JsSerieReader = SerieReader
 
 /** One committed version of a table's contents. */
 export declare class Snapshot {
@@ -4591,10 +4685,9 @@ export declare class Table {
    *
    * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
    * parses. It is the whole expression language rather than equality
-   * pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
-   * questions about the files themselves. Planning prunes with the
-   * metadata chain, and only the conjuncts it could not settle are tested
-   * against the rows.
+   * pairs: ranges, null tests, `in` lists, and nested paths. Planning
+   * prunes with the metadata chain, and only the conjuncts it could not
+   * settle are tested against the rows.
    */
   scanMatching(filter: Filter | Term | string, field?: Field | undefined | null): JsBatchReader
   /** Report what one predicate lets the scan leave alone. */
@@ -4922,8 +5015,6 @@ export declare class Term {
   static literal(value: JsScalar): Term
   /** Hold a constant in an explicitly named datatype, checked against it. */
   static typedLiteral(dtype: DataTypeInput, value: JsScalar): Term
-  /** Name one holder attribute, such as `size`, or `partition` with a column. */
-  static attribute(name: string, key?: string | undefined | null): Term
   /** Name one late-bound value. */
   static parameter(name: string): Term
   /** The term that is true for every row. */
@@ -4938,8 +5029,6 @@ export declare class Term {
   static call(name: string, arguments: Array<Term | string>): Term
   /** Every top-level column this term reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this term reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this term names, in first-seen order. */
   get parameters(): Array<string>
   /** The top-level `and` operands, flattened. */
@@ -4956,8 +5045,6 @@ export declare class Term {
   get isAlwaysTrue(): boolean
   /** Whether this node is the constant false; an empty `any` counts. */
   get isAlwaysFalse(): boolean
-  /** Whether this term reads any holder attribute. */
-  get hasAttributes(): boolean
   /** Refuse a term past the depth or node limit, before a walk. */
   checkBudget(): void
   /** This term with the same answer and fewer nodes. */
@@ -6222,8 +6309,6 @@ export interface ExpressionVocabularies {
   comparisons: Array<string>
   /** Every function the closed scalar set knows, e.g. `year`, `truncate`. */
   functions: Array<string>
-  /** Every holder attribute `&holder.<name>` can name, e.g. `size`. */
-  holderAttributes: Array<string>
   /** Every write verb a plan spells canonically, e.g. `upsert into`. */
   verbs: Array<string>
 }

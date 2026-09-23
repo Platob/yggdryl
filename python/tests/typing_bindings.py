@@ -13,6 +13,7 @@ import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
 
 import yggdryl
 from yggdryl import (
+    ArrowCastPlan,
     BloombergCodeField,
     Bound,
     BoundSelector,
@@ -45,6 +46,8 @@ from yggdryl import (
     Scalar,
     SedolCodeField,
     Selector,
+    Serie,
+    SerieReader,
     StringField,
     Term,
     TextLine,
@@ -224,21 +227,44 @@ field.set_range("bytes=0-9")
 field.set_vary("accept-encoding")
 dtype_scalar: pa.Scalar = DataType("int32").arrow_scalar(1)
 field_scalar: pa.Scalar = field.arrow_scalar("payload")
-default_dtype_scalar: pa.Scalar = DataType("int32").default_arrow_scalar()
-default_field_scalar: pa.Scalar = field.default_arrow_scalar()
+default_field_serie: Serie = Serie.from_default(field)
+default_field_rows: Serie = Serie.from_default(field, 3)
+default_field_scalar: pa.Scalar = default_field_serie.into_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
-cast_dtype_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
-cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(source_array)
-bit_cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(
-    pa.array([2**64 - 1], type=pa.uint64()), representation="bits"
-)
+landed_array: Serie = Serie.from_arrow_array(source_array)
+cast_field_array: pa.Array = Serie.from_arrow_array(
+    source_array, Field("value", "int64"), safe=False, nullability="strict"
+).into_arrow_array()
+bit_cast_field_array: pa.Array = Serie.from_arrow_array(
+    pa.array([2**64 - 1], type=pa.uint64()), Field("value", "int64"), representation="bits"
+).into_arrow_array()
+cast_dtype_serie: Serie = landed_array.cast(DataType("int64"))
+cast_field_serie: Serie = landed_array.cast(Field("value", "int64"), nullability="strict")
 source_batch = pa.record_batch([source_array], names=["value"])
-cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
-    [Field("value", "int64")]
-).cast_arrow_batch(source_batch)
-cast_field_batch: pa.RecordBatch = Field(
-    "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
-).cast_arrow_batch(source_batch)
+cast_root = Field("rows", DataType.from_fields([Field("value", "int64")]), nullable=False)
+landed_batch: Serie = Serie.from_arrow_batch(source_batch)
+cast_field_batch: pa.RecordBatch = Serie.from_arrow_batch(
+    source_batch, cast_root
+).into_arrow_batch()
+drained_reader: Serie = Serie.from_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch]), cast_root
+)
+serie_reader: SerieReader = SerieReader.from_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch]), cast_root
+)
+serie_reader_field: Field = serie_reader.field
+serie_reader_batches: list[Serie] = list(serie_reader)
+serie_reader_stream: pa.RecordBatchReader = SerieReader.from_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
+).into_arrow_reader()
+cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True, nullability="default")
+cast_plan_source: pa.Field = cast_plan.source
+cast_plan_target: Field = cast_plan.target
+cast_plan_identity: bool = cast_plan.is_identity
+cast_plan_serie: Serie = cast_plan.apply(source_batch)
+cast_plan_column: Serie = ArrowCastPlan(Field("value", "int32"), Field("value", "int64")).apply(
+    landed_array
+)
 applied_root = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 )
@@ -302,9 +328,9 @@ typed_id_default_scalar: Scalar = typed_id.default_scalar()
 typed_id_dtype_default_scalar: Scalar = typed_id.dtype.default_scalar()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
-typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array(
-    pa.array([2**32 - 1], type=pa.uint32()), representation="bits"
-)
+typed_bit_cast_array: pa.Array = Serie.from_arrow_array(
+    pa.array([2**32 - 1], type=pa.uint32()), typed_id, representation="bits"
+).into_arrow_array()
 typed_clock: TimeField = yggdryl.time("clock", "microseconds", nullable=False)
 typed_ids: ListField[int] = yggdryl.list("ids", typed_id)
 nullable_item: Int32Field = yggdryl.int32("item")
@@ -707,8 +733,8 @@ assert partition_rest
 assert partition_marked
 assert dtype_scalar
 assert field_scalar
-assert default_dtype_scalar
 assert default_field_scalar
+assert len(default_field_rows) == 3
 assert default_dtype_native_scalar.as_py() == 0
 assert default_field_native_scalar.as_py() == ""
 assert default_dtype_hint
@@ -1146,13 +1172,10 @@ term_parsed: Term = Term.parse("ccy = 'EUR'")
 term_restored: Term = Term.from_json(term.into_json())
 term_named: Term = Term.column("ccy")
 term_constant: Term = Term.literal("EUR")
-term_held: Term = Term.attribute("partition", "year")
-term_stat: Term = Term.attribute("size")
 term_late: Term = Term.parameter("floor")
 term_true: Term = Term.always_true()
 term_false: Term = Term.always_false()
 term_columns: list[str] = term.columns()
-term_attributes: list[str] = term_held.attributes()
 term_parameters: list[str] = term_late.parameters()
 term_conjuncts: list[Term] = term.conjuncts()
 term_depth: int = term.depth()
@@ -1269,16 +1292,12 @@ expression_records: Records = expression.apply_records([{"ccy": "EUR", "price": 
 expression_records_reader: pa.RecordBatchReader = expression_records.into_arrow_reader()
 expression_explained: str = expression.explain()
 
-expression_matched: list[IOBase] = list(
-    IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
-)
-
 assert str(term)
 assert term_parsed and term_restored
-assert term_named and term_constant and term_held
-assert term_stat and term_late and term_true and term_false
+assert term_named and term_constant
+assert term_late and term_true and term_false
 assert term_columns == ["ccy", "price"]
-assert term_attributes and not term_parameters or term_parameters
+assert term_parameters == ["floor"]
 assert term_conjuncts and term_depth >= 1
 assert term_document and term_simplified and term_explained and term_sliced
 assert term_both and term_either and term_negated and term_field
@@ -1325,7 +1344,6 @@ assert expression_columns and expression_field
 assert expression_batch is not None and expression_reader is not None
 assert expression_records is not None and expression_records_reader is not None
 assert expression_explained
-assert expression_matched == [] or expression_matched
 
 fix_field: Field = Field("OrderQty", "decimal128(20, 8)")
 fix_field.fix.tag = 38
@@ -1868,3 +1886,29 @@ typed_instant: Scalar = typed_instant_field.scalar(
 typed_instant_dtype: Scalar = typed_instant_field.dtype.scalar(1)
 assert typed_instant.kind == "datetime64"
 assert typed_instant_dtype.kind == "datetime64"
+
+# A serie: a run by construction, a column by its field, and every nested
+# column handed out as the class its leaf is named for.
+serie_run: yggdryl.Serie = yggdryl.Serie([1, "a", None])
+serie_column: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [1, 2])
+serie_row: Scalar = serie_column[0]
+serie_window: yggdryl.Serie = serie_column[1:]
+serie_arrow: pa.Array = serie_column.into_arrow_array()
+serie_rows: list[Scalar] = serie_column.rows()
+serie_field: Field | None = serie_column.field
+serie_legs = yggdryl.Serie.from_arrow_array(pa.array([[1, 2], [3]], pa.list_(pa.int64())))
+assert isinstance(serie_legs, yggdryl.ListSerie)
+serie_offsets: list[int] = serie_legs.offsets
+serie_leg: yggdryl.Serie | None = serie_legs.row(0)
+serie_range: tuple[int, int] | None = serie_legs.range(1)
+serie_books = yggdryl.Serie.from_arrow_array(
+    pa.array([[("AAPL", 1)]], pa.map_(pa.utf8(), pa.int64()))
+)
+assert isinstance(serie_books, yggdryl.MapSerie)
+serie_entries: yggdryl.StructSerie = serie_books.entries
+serie_names: list[str] = serie_entries.names
+serie_scalar_serie: yggdryl.Serie | None = Scalar.from_([1]).as_serie()
+assert len(serie_run) == 3 and serie_row is not None and serie_window is not None
+assert serie_arrow is not None and serie_rows and serie_field is not None
+assert serie_offsets and serie_leg is not None and serie_range is not None
+assert serie_names and serie_scalar_serie is not None

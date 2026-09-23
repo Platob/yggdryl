@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use yggdryl::local::LocalFolder;
 
-use yggdryl::SequenceType;
 use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase};
@@ -428,15 +427,12 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
         // `utc-date` is a day, and a day is that day's midnight in UTC.
         (
             10015,
-            DataType::DateTime(yggdryl::DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: yggdryl::TimeUnit::Nanosecond,
                 timezone: yggdryl::Timezone::UTC,
-            }),
+            },
         ),
-        (
-            273,
-            DataType::Time(yggdryl::TimeType::Time64(yggdryl::TimeUnit::Nanosecond)),
-        ),
+        (273, DataType::Time64(yggdryl::TimeUnit::Nanosecond)),
     ] {
         assert_eq!(
             registry.field_by_tag(tag).unwrap().dtype(),
@@ -447,7 +443,7 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
     // `utc-timestamp` is the one that carries a zone.
     assert!(matches!(
         registry.field_by_tag(60).unwrap().dtype(),
-        DataType::DateTime(_)
+        DataType::DateTime64 { .. }
     ));
 }
 
@@ -518,7 +514,7 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     assert_eq!(group.display(), Some("Legs"));
     assert_eq!(group.as_fix().tag().unwrap(), None);
     assert_eq!(group.as_fix().counter().unwrap(), Some(555));
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
     assert_eq!(item.name(), "leg");
@@ -532,7 +528,7 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     assert!(!members[0].is_nullable(), "556 is required");
     assert_eq!(members[1].dtype(), &DataType::Int32);
     assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
-    let DataType::Sequence(SequenceType::List(inner)) = members[2].dtype() else {
+    let DataType::List(inner) = members[2].dtype() else {
         panic!("a nested list, got {}", members[2].dtype());
     };
     assert_eq!(members[2].as_fix().tag().unwrap(), None);
@@ -717,9 +713,7 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         );
         assert!(registry.get_field_by_counter(counter).is_some());
     }
-    let DataType::Sequence(SequenceType::List(item)) =
-        roots[0].get_field("vendorentries").unwrap().dtype()
-    else {
+    let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
         panic!("a list group");
     };
     assert_eq!(branches(item), ["venue"]);
@@ -752,7 +746,7 @@ fn a_published_group_spelling_uses_the_shipped_collection_and_occurrence_names()
         .get_field("partysubids")
         .expect("the semantic collection name");
     assert_eq!(group.display(), Some("PartySubIDs"));
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("a list group");
     };
     assert_eq!(item.name(), "ptyssub");
@@ -778,7 +772,7 @@ fn a_custom_singular_ending_in_s_keeps_grp_and_its_whole_occurrence_name() {
         .get_field("statusgrp")
         .expect("no plural was published");
     assert_eq!(group.display(), Some("StatusGrp"));
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("a list group");
     };
     assert_eq!(item.name(), "status");
@@ -2478,7 +2472,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     let group = root
         .get_field_by_path("hedgegroups")
         .expect("the hedge group");
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
     let members: Vec<&str> = item.fields().iter().map(Field::name).collect();
@@ -2572,7 +2566,7 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         .as_field()
         .get_field_by_path("hedgegroups")
         .expect("the hedge group");
-    let DataType::Sequence(SequenceType::List(item)) = hedge.dtype() else {
+    let DataType::List(item) = hedge.dtype() else {
         panic!("a list, got {}", hedge.dtype());
     };
     let currency = item.fields().first().expect("its first member");

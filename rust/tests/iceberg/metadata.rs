@@ -138,8 +138,8 @@ fn every_historical_layout_must_bind_to_a_retained_schema() {
     let mut specs: Vec<Scalar> = partition_document
         .get_key_str("partition-specs")
         .unwrap()
-        .sequence_iter()
-        .cloned()
+        .iter()
+        .map(std::borrow::Cow::into_owned)
         .collect();
     specs.push(
         yggdryl::json::from_utf8(
@@ -160,8 +160,8 @@ fn every_historical_layout_must_bind_to_a_retained_schema() {
     let mut orders: Vec<Scalar> = sort_document
         .get_key_str("sort-orders")
         .unwrap()
-        .sequence_iter()
-        .cloned()
+        .iter()
+        .map(std::borrow::Cow::into_owned)
         .collect();
     orders.push(
         yggdryl::json::from_utf8(

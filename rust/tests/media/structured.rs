@@ -1,7 +1,6 @@
 //! `rust/src/media/structured.rs`: what a structured text document carries
 //! into Arrow rows, and back out.
 
-use yggdryl::DecimalType;
 use yggdryl::holder::Buffer;
 use yggdryl::{
     ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, StructType, Url,
@@ -97,10 +96,10 @@ fn a_declared_root_types_the_documents_natural_strings() {
 
     let widened = StructType::from_fields([
         DataType::utf8().required_field("symbol"),
-        DataType::Decimal(DecimalType::Decimal128 {
+        DataType::Decimal128 {
             precision: 12,
             scale: 2,
-        })
+        }
         .required_field("size"),
     ])
     .map(DataType::from)

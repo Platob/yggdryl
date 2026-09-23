@@ -8,14 +8,13 @@
 //! a schema that declares it boolean and a nonsense one everywhere else.
 //!
 //! Everything a filter can do it does through the one tree: the same term
-//! prunes a listing through its holder attributes, prunes a container through
-//! its statistics, and filters a batch through the vectorized tier. The
+//! prunes a container through its statistics and filters a batch through the
+//! vectorized tier. The
 //! `(column, value)` pairs record options take are sugar that builds one; there
 //! is no second implementation behind them.
 
 use std::str::FromStr;
 
-use super::attribute::Attribute;
 use super::term::Term;
 use crate::{DataType, Error, Field, Result};
 
@@ -131,22 +130,10 @@ impl Filter {
         self.0.columns()
     }
 
-    /// Every handle attribute this filter reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        self.0.attributes()
-    }
-
     /// Every parameter this filter names, in first-seen order.
     #[must_use]
     pub fn parameters(&self) -> Vec<String> {
         self.0.parameters()
-    }
-
-    /// Return whether this filter reads any handle attribute.
-    #[must_use]
-    pub fn has_attributes(&self) -> bool {
-        self.0.has_attributes()
     }
 
     /// The same filter with fewer nodes and the same answer for every row.
@@ -232,9 +219,9 @@ impl Filter {
                 Self::always_false()
             });
         }
-        if let Some(items) = value.as_sequence() {
+        if let Some(items) = value.as_serie() {
             return items.iter().try_fold(Self::always_true(), |held, item| {
-                Ok(held.and(Self::from_scalar(item)?))
+                Ok(held.and(Self::from_scalar(&item)?))
             });
         }
         Err(Error::InvalidRecord {
@@ -413,16 +400,6 @@ impl Filter {
         Self(reference.eq(Term::literal(value).try_cast(dtype.clone())))
     }
 
-    /// The predicate one column-equals-value pair spells about the *holder*.
-    ///
-    /// The same pair, asked of the path rather than of the rows. A listing can
-    /// answer this one without opening anything, which is why the two
-    /// spellings are kept apart instead of one guessing which was meant.
-    #[must_use]
-    pub fn holder_partition_equals(column: &str, value: &str) -> Self {
-        Self(Term::attribute(Attribute::Partition(column.into())).eq(Term::literal(value)))
-    }
-
     /// Conjoin every pair as a predicate about the rows of a schema.
     ///
     /// A pair naming a column the schema does not declare is left out rather
@@ -440,49 +417,5 @@ impl Filter {
                 .get_field_by_name(column.as_ref())
                 .map(|field| Self::partition_equals(column.as_ref(), value.as_ref(), field.dtype()))
         }))
-    }
-
-    /// Conjoin every pair as a predicate about the holder.
-    #[must_use]
-    pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>(
-        pairs: impl IntoIterator<Item = (C, V)>,
-    ) -> Self {
-        Self::all(
-            pairs.into_iter().map(|(column, value)| {
-                Self::holder_partition_equals(column.as_ref(), value.as_ref())
-            }),
-        )
-    }
-
-    /// The predicate that one holder's path *carries* a partition value.
-    ///
-    /// The difference from [`Self::holder_partition_equals`] is what happens
-    /// when the path does not spell the column at all, and it is the whole
-    /// difference between pruning and selecting. Pruning must keep what it
-    /// cannot rule out, so a missing partition leaves the equality unknown and
-    /// the file is read anyway. Selecting must return only what it can point
-    /// at, so a missing partition has to be a `false`. The two spellings are
-    /// kept apart rather than one of them guessing which was meant.
-    #[must_use]
-    pub fn holder_carries_partition(column: &str, value: &str) -> Self {
-        let attribute = Term::attribute(Attribute::Partition(column.into()));
-        Self(
-            attribute
-                .clone()
-                .is_not_null()
-                .and(attribute.eq(Term::literal(value))),
-        )
-    }
-
-    /// Conjoin every pair as a predicate that the holder carries it.
-    #[must_use]
-    pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>(
-        pairs: impl IntoIterator<Item = (C, V)>,
-    ) -> Self {
-        Self::all(
-            pairs.into_iter().map(|(column, value)| {
-                Self::holder_carries_partition(column.as_ref(), value.as_ref())
-            }),
-        )
     }
 }

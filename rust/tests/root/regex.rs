@@ -1,7 +1,7 @@
 //! `rust/src/regex.rs`.
 
 mod fractions {
-    use yggdryl::DateTimeType;
+
     use yggdryl::{DataType, TimeUnit, Timezone};
 
     #[test]
@@ -21,11 +21,9 @@ mod fractions {
             true,
         )
         .unwrap();
-        let naive = |unit| {
-            DataType::DateTime(DateTimeType::DateTime64 {
-                unit,
-                timezone: Timezone::NAIVE,
-            })
+        let naive = |unit| DataType::DateTime64 {
+            unit,
+            timezone: Timezone::NAIVE,
         };
 
         // ISO 8601 names the comma and the full stop alike, so a log4j rowheader
@@ -79,7 +77,6 @@ mod fractions {
 
 mod captures {
     use yggdryl::{DataType, Error, Field, TimeUnit, Timezone};
-    use yggdryl::{DateTimeType, TimeType};
 
     #[test]
     fn named_captures_keep_order_nullability_and_format_types() {
@@ -107,14 +104,14 @@ mod captures {
         assert_eq!(dtype.field("date").unwrap().dtype(), &DataType::date32());
         assert_eq!(
             dtype.field("clock").unwrap().dtype(),
-            &DataType::Time(TimeType::Time64(TimeUnit::Microsecond))
+            &DataType::Time64(TimeUnit::Microsecond)
         );
         assert_eq!(
             dtype.field("stamp").unwrap().dtype(),
-            &DataType::DateTime(DateTimeType::DateTime64 {
+            &DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            })
+            }
         );
         assert_eq!(dtype.field("text").unwrap().dtype(), &DataType::utf8());
         assert!(fields.iter().all(Field::is_nullable));

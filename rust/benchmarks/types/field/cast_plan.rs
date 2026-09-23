@@ -1,10 +1,12 @@
 //! What compiling a cast once buys, measured against compiling it per batch.
 //!
-//! The two arms answer the same question about the same batches, so the only
+//! The two arms answer the same question about the same batches - each landed
+//! once, outside the timing, as the record column of its rows - so the only
 //! difference between them is where the schema-dependent work happens: once,
-//! or once per batch. Small batches are the honest corpus for that - a batch
-//! wide enough to dominate the plan would hide it - so 1, 10, and 1,000 of
-//! them are measured, which is also the range a streamed read actually pulls.
+//! in one [`ArrowCastPlan`], or once per batch, in [`Serie::cast`]. Small
+//! batches are the honest corpus for that - a batch wide enough to dominate
+//! the plan would hide it - so 1, 10, and 1,000 of them are measured, which is
+//! also the range a streamed read actually pulls.
 //!
 //! The benchmark-only gate compares warmed medians and refuses reuse more
 //! than 25% slower than replanning. Only optimized, explicit benchmark
@@ -18,8 +20,7 @@ use std::time::{Duration, Instant};
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use criterion::{Criterion, Throughput};
-use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, StructType};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StructType};
 
 /// Rows per batch: small on purpose, so the per-batch plan is what is timed.
 const ROWS: usize = crate::bench_profile::corpus(64, 8);
@@ -48,7 +49,9 @@ fn target() -> Field {
     )
 }
 
-fn batches(count: usize) -> Vec<RecordBatch> {
+/// `count` batches of [`stored`], each landed as the record column of its
+/// rows, sharing the batch's columns.
+fn batches(count: usize) -> Vec<Serie> {
     let schema = stored();
     (0..count)
         .map(|index| {
@@ -59,7 +62,7 @@ fn batches(count: usize) -> Vec<RecordBatch> {
             let symbols: Vec<&str> = (0..ROWS)
                 .map(|row| if row % 3 == 0 { "AAPL" } else { "MSFT" })
                 .collect();
-            RecordBatch::try_new(
+            let batch = RecordBatch::try_new(
                 Arc::clone(&schema),
                 vec![
                     Arc::new(Int32Array::from(ids)) as ArrayRef,
@@ -67,33 +70,36 @@ fn batches(count: usize) -> Vec<RecordBatch> {
                     Arc::new(Int32Array::from(vec![0; ROWS])) as ArrayRef,
                 ],
             )
-            .expect("the benchmark batch matches its schema")
+            .expect("the benchmark batch matches its schema");
+            Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+                .expect("the benchmark batch lands as a record column")
         })
         .collect()
 }
 
 /// Compile once, then apply the plan to every batch.
-fn compiled(root: &Field, source: &SchemaRef, batches: &[RecordBatch]) -> usize {
+fn compiled(root: &Field, source: &Field, batches: &[Serie]) -> usize {
     let plan = ArrowCastPlan::compile(source, root, ArrowCastOptions::new())
         .expect("the benchmark cast is plannable");
     batches
         .iter()
         .map(|batch| {
-            plan.apply(batch.clone())
+            plan.apply(batch)
                 .expect("the benchmark batch fits the plan")
-                .num_rows()
+                .len()
         })
         .sum()
 }
 
-/// Plan from the batch's own schema every time, as the entry point does.
-fn per_batch(root: &Field, batches: &[RecordBatch]) -> usize {
+/// Plan from the batch's own field every time, as [`Serie::cast`] does.
+fn per_batch(root: &Field, batches: &[Serie]) -> usize {
     batches
         .iter()
         .map(|batch| {
-            root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+            batch
+                .cast(root, ArrowCastOptions::new())
                 .expect("the benchmark batch fits the root")
-                .num_rows()
+                .len()
         })
         .sum()
 }
@@ -116,7 +122,7 @@ fn median(samples: usize, mut work: impl FnMut()) -> Duration {
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let root = target();
-    let source = stored();
+    let source = Field::from_arrow_schema("row", &stored()).expect("the stored schema imports");
 
     let mut group = criterion.benchmark_group("cast_plan");
     for count in COUNTS {
@@ -150,7 +156,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 /// there, so the two medians are the same measurement and any ordering between
 /// them is noise. Every count above it is a structural difference, and that is
 /// what this holds.
-fn gate(root: &Field, source: &SchemaRef) {
+fn gate(root: &Field, source: &Field) {
     if !crate::measurement::enabled() {
         return;
     }

@@ -6,8 +6,8 @@
 /// The rule a listing uses, applied to plain text: a pattern with no separator
 /// speaks about the last segment at any depth, and a pattern with one is
 /// anchored at the start. Sharing the walk with [`crate::Url::matches_glob`] is what
-/// makes `&holder.url glob '**/*.parquet'` and a folder listing agree - the
-/// expression layer has no glob of its own.
+/// makes a `glob` predicate and a folder listing agree - the expression layer
+/// has no glob of its own.
 pub(crate) fn matches_glob_text(text: &str, pattern: &str) -> bool {
     let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
     let segments: Vec<&str> = text.split('/').filter(|part| !part.is_empty()).collect();

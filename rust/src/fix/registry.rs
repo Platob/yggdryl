@@ -21,7 +21,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{FixId, FixKey};
 use crate::folds_equal;
-use crate::sequence::SequenceType;
 use crate::xxhash::Xxh64;
 use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result};
 
@@ -80,9 +79,7 @@ pub(super) fn descend<'field>(
     let Some((head, rest)) = segments.split_first() else {
         return Some(field);
     };
-    if let crate::DataType::Sequence(SequenceType::List(item))
-    | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype()
-    {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
         // A group's occurrence is transparent in a schema: every one of them
         // has the field the item declares, so an index states which
         // occurrence a caller means without changing which field that is.
@@ -93,11 +90,11 @@ pub(super) fn descend<'field>(
         };
         return descend(item, rest);
     }
-    if let crate::DataType::Mapping(map) = field.dtype() {
+    if let Some(entries) = field.dtype().map_entries() {
         let FieldSegment::Key(_) = head else {
             return None;
         };
-        return descend(map.entries().fields().get(1)?, rest);
+        return descend(entries.fields().get(1)?, rest);
     }
     let child = folded_child(field, segment_name(head)?)?;
     descend(child, rest)
@@ -123,9 +120,7 @@ fn segment_name(segment: &FieldSegment) -> Option<&str> {
 /// struct already carries, so matching the occurrence would shadow every one
 /// of them silently.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
-    if let crate::DataType::Sequence(SequenceType::List(item))
-    | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype()
-    {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
         return folded_child(item, name);
     }
     field
@@ -597,7 +592,7 @@ impl FixRegistry {
     /// One message column: a canonical Map name precedes a scalar alias.
     pub(super) fn get_message_field_by_name(&self, name: &str) -> Option<&Field> {
         self.get_definition(crate::FixCategory::Groups, name)
-            .filter(|group| matches!(group.dtype(), crate::DataType::Mapping(_)))
+            .filter(|group| matches!(group.dtype(), crate::DataType::Map(_) | crate::DataType::SortedMap(_)))
             .or_else(|| self.get_field_by_name(name))
             // Last, and only for a name nothing else answers: a List group is
             // reached by its own name - `Parties`, never `NoPartyIDs`, which
@@ -642,7 +637,7 @@ impl FixRegistry {
                 .get_message_field_by_name(head)
                 // A canonical Map suppresses scalar aliases, but still
                 // shares the named-root ambiguity check with components.
-                .filter(|field| !matches!(field.dtype(), crate::DataType::Mapping(_)))
+                .filter(|field| !matches!(field.dtype(), crate::DataType::Map(_) | crate::DataType::SortedMap(_)))
             {
                 return Some(field);
             }
@@ -1768,10 +1763,12 @@ impl FixRegistry {
             ));
         }
         for alternate in alternate {
-            if let Some(group) = self
-                .get_group_by_tag(*alternate)
-                .filter(|group| matches!(group.dtype(), crate::DataType::Mapping(_)))
-            {
+            if let Some(group) = self.get_group_by_tag(*alternate).filter(|group| {
+                matches!(
+                    group.dtype(),
+                    crate::DataType::Map(_) | crate::DataType::SortedMap(_)
+                )
+            }) {
                 return Err(Error::conflict(
                     "a scalar alternate tag free of Map group counters",
                     "Map group",

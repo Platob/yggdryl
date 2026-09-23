@@ -9,9 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::typed::define_field_types;
 use crate::value::{IntegerValue, ValidationFailure, canonical_error, expected, family_value};
-use crate::{
-    DataType, DataTypeId, Error, FieldSegment, IntervalType, Result, Scalar, TimeUnit, Value,
-};
+use crate::{DataType, DataTypeId, Error, FieldSegment, Result, Scalar, TimeUnit, Value};
 
 // ------------------------------------------------------------------------
 // Integer datatype family and predicates used by run-end validation.
@@ -223,7 +221,7 @@ pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scal
         DataType::Int8 => Scalar::from(i8::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int16 => Scalar::from(i16::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int32 => Scalar::from(i32::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int64 | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
+        DataType::Int64 | DataType::Interval(TimeUnit::YearMonth) => {
             Scalar::from(i64::try_from(integer).map_err(canonical_integer_error)?)
         }
         _ => unreachable!("signed canonicalization requires a signed datatype"),
@@ -299,7 +297,7 @@ pub(crate) fn validate_integer_tuple(
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
     let values = value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| expected(expected_name, value))?;
     if values.len() != widths.len() {
         return Err(ValidationFailure::new(format_smolstr!(

@@ -8,14 +8,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::Field;
-use crate::enums::EnumType;
-use crate::mapping::MappingType;
 use crate::metadata::write_json_string as write_quoted;
-use crate::sequence::SequenceType;
 use crate::{
     DataType, Metadata, RunEndEncodedType, StructType, UnionFields, hashing::stable_hash_display,
 };
-use crate::{DateTimeType, DecimalType, DurationType, IntervalType, TimeType};
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -109,28 +105,21 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         return true;
     }
     match (left, right) {
-        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
-        | (
-            D::Sequence(SequenceType::LargeList(left)),
-            D::Sequence(SequenceType::LargeList(right)),
-        )
-        | (
-            D::Sequence(SequenceType::LargeListView(left)),
-            D::Sequence(SequenceType::LargeListView(right)),
-        ) => Arc::ptr_eq(left, right),
-        (
-            D::Sequence(SequenceType::FixedSizeList(left, left_size)),
-            D::Sequence(SequenceType::FixedSizeList(right, right_size)),
-        ) => left_size == right_size && Arc::ptr_eq(left, right),
+        (D::List(left), D::List(right))
+        | (D::ListView(left), D::ListView(right))
+        | (D::LargeList(left), D::LargeList(right))
+        | (D::LargeListView(left), D::LargeListView(right)) => Arc::ptr_eq(left, right),
+        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            left_size == right_size && Arc::ptr_eq(left, right)
+        }
         (D::Struct(left), D::Struct(right)) => left.shares_storage_with(right),
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode && left.shares_storage_with(right)
         }
-        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
+        (D::Dictionary(left), D::Dictionary(right)) => Arc::ptr_eq(left, right),
+        (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
             Arc::ptr_eq(left, right)
         }
-        (D::Mapping(left), D::Mapping(right)) => left.shares_storage_with(right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => Arc::ptr_eq(left, right),
         // Every remaining variant is scalar or carries only compact parameters.
         _ => left == right,
@@ -302,14 +291,14 @@ impl DiffEngine {
         use DataType as D;
         match (&left, &right) {
             (
-                D::DateTime(DateTimeType::DateTime64 {
+                D::DateTime64 {
                     unit: left_unit,
                     timezone: left_zone,
-                }),
-                D::DateTime(DateTimeType::DateTime64 {
+                },
+                D::DateTime64 {
                     unit: right_unit,
                     timezone: right_zone,
-                }),
+                },
             ) => {
                 if left_unit != right_unit {
                     self.pending.push_back(changed_display(
@@ -326,20 +315,11 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::Time(TimeType::Time32(left)), D::Time(TimeType::Time32(right)))
-            | (D::Time(TimeType::Time64(left)), D::Time(TimeType::Time64(right)))
-            | (
-                D::Duration(DurationType::Duration32(left)),
-                D::Duration(DurationType::Duration32(right)),
-            )
-            | (
-                D::Duration(DurationType::Duration64(left)),
-                D::Duration(DurationType::Duration64(right)),
-            )
-            | (
-                D::Interval(IntervalType::Interval(left)),
-                D::Interval(IntervalType::Interval(right)),
-            ) => {
+            (D::Time32(left), D::Time32(right))
+            | (D::Time64(left), D::Time64(right))
+            | (D::Duration32(left), D::Duration32(right))
+            | (D::Duration64(left), D::Duration64(right))
+            | (D::Interval(left), D::Interval(right)) => {
                 if left != right {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "unit"),
@@ -369,25 +349,13 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-            | (
-                D::Sequence(SequenceType::ListView(left)),
-                D::Sequence(SequenceType::ListView(right)),
-            )
-            | (
-                D::Sequence(SequenceType::LargeList(left)),
-                D::Sequence(SequenceType::LargeList(right)),
-            )
-            | (
-                D::Sequence(SequenceType::LargeListView(left)),
-                D::Sequence(SequenceType::LargeListView(right)),
-            ) => {
+            (D::List(left), D::List(right))
+            | (D::ListView(left), D::ListView(right))
+            | (D::LargeList(left), D::LargeList(right))
+            | (D::LargeListView(left), D::LargeListView(right)) => {
                 self.push_field_property(left, right, &path, "item");
             }
-            (
-                D::Sequence(SequenceType::FixedSizeList(left, left_size)),
-                D::Sequence(SequenceType::FixedSizeList(right, right_size)),
-            ) => {
+            (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
                 if left_size != right_size {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "length"),
@@ -425,43 +393,43 @@ impl DiffEngine {
                     index: 0,
                 });
             }
-            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
+            (D::Dictionary(left), D::Dictionary(right)) => {
                 self.push_dtype(left.value(), right.value(), property_path(&path, "value"));
                 self.push_dtype(left.key(), right.key(), property_path(&path, "key"));
             }
             (
-                D::Decimal(DecimalType::Decimal32 {
+                D::Decimal32 {
                     precision: left_precision,
                     scale: left_scale,
-                })
-                | D::Decimal(DecimalType::Decimal64 {
+                }
+                | D::Decimal64 {
                     precision: left_precision,
                     scale: left_scale,
-                })
-                | D::Decimal(DecimalType::Decimal128 {
+                }
+                | D::Decimal128 {
                     precision: left_precision,
                     scale: left_scale,
-                })
-                | D::Decimal(DecimalType::Decimal256 {
+                }
+                | D::Decimal256 {
                     precision: left_precision,
                     scale: left_scale,
-                }),
-                D::Decimal(DecimalType::Decimal32 {
+                },
+                D::Decimal32 {
                     precision: right_precision,
                     scale: right_scale,
-                })
-                | D::Decimal(DecimalType::Decimal64 {
+                }
+                | D::Decimal64 {
                     precision: right_precision,
                     scale: right_scale,
-                })
-                | D::Decimal(DecimalType::Decimal128 {
+                }
+                | D::Decimal128 {
                     precision: right_precision,
                     scale: right_scale,
-                })
-                | D::Decimal(DecimalType::Decimal256 {
+                }
+                | D::Decimal256 {
                     precision: right_precision,
                     scale: right_scale,
-                }),
+                },
             ) if left.id() == right.id() => {
                 if left_precision != right_precision {
                     self.pending.push_back(changed_display(
@@ -478,12 +446,17 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::Mapping(left), D::Mapping(right)) => {
-                if left.keys_sorted() != right.keys_sorted() {
+            (
+                ld @ (D::Map(left) | D::SortedMap(left)),
+                rd @ (D::Map(right) | D::SortedMap(right)),
+            ) => {
+                let left_sorted = matches!(ld, D::SortedMap(_));
+                let right_sorted = matches!(rd, D::SortedMap(_));
+                if left_sorted != right_sorted {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "keys_sorted"),
-                        left.keys_sorted(),
-                        right.keys_sorted(),
+                        left_sorted,
+                        right_sorted,
                     ));
                 }
                 self.push_field_property(left.entries(), right.entries(), &path, "entries");
@@ -947,20 +920,13 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
     }
     use DataType as D;
     match (left, right) {
-        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
-        | (
-            D::Sequence(SequenceType::LargeList(left)),
-            D::Sequence(SequenceType::LargeList(right)),
-        )
-        | (
-            D::Sequence(SequenceType::LargeListView(left)),
-            D::Sequence(SequenceType::LargeListView(right)),
-        ) => fields_equal(left, right, false),
-        (
-            D::Sequence(SequenceType::FixedSizeList(left, left_size)),
-            D::Sequence(SequenceType::FixedSizeList(right, right_size)),
-        ) => left_size == right_size && fields_equal(left, right, false),
+        (D::List(left), D::List(right))
+        | (D::ListView(left), D::ListView(right))
+        | (D::LargeList(left), D::LargeList(right))
+        | (D::LargeListView(left), D::LargeListView(right)) => fields_equal(left, right, false),
+        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            left_size == right_size && fields_equal(left, right, false)
+        }
         (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
@@ -978,12 +944,12 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
                         left_id == right_id && fields_equal(left, right, false)
                     })
         }
-        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
+        (D::Dictionary(left), D::Dictionary(right)) => {
             dtypes_equal(left.key(), right.key(), false)
                 && dtypes_equal(left.value(), right.value(), false)
         }
-        (D::Mapping(left), D::Mapping(right)) => {
-            left.keys_sorted() == right.keys_sorted()
+        (ld @ (D::Map(left) | D::SortedMap(left)), rd @ (D::Map(right) | D::SortedMap(right))) => {
+            matches!(ld, D::SortedMap(_)) == matches!(rd, D::SortedMap(_))
                 && fields_equal(left.entries(), right.entries(), false)
         }
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => {
@@ -1143,20 +1109,13 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
     }
     use DataType as D;
     match (left, right) {
-        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
-        | (
-            D::Sequence(SequenceType::LargeList(left)),
-            D::Sequence(SequenceType::LargeList(right)),
-        )
-        | (
-            D::Sequence(SequenceType::LargeListView(left)),
-            D::Sequence(SequenceType::LargeListView(right)),
-        ) => field_layout_eq(left, right),
-        (
-            D::Sequence(SequenceType::FixedSizeList(left, left_size)),
-            D::Sequence(SequenceType::FixedSizeList(right, right_size)),
-        ) => left_size == right_size && field_layout_eq(left, right),
+        (D::List(left), D::List(right))
+        | (D::ListView(left), D::ListView(right))
+        | (D::LargeList(left), D::LargeList(right))
+        | (D::LargeListView(left), D::LargeListView(right)) => field_layout_eq(left, right),
+        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            left_size == right_size && field_layout_eq(left, right)
+        }
         (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
@@ -1174,17 +1133,15 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
                         left_id == right_id && field_layout_eq(left, right)
                     })
         }
-        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
+        (D::Dictionary(left), D::Dictionary(right)) => {
             dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
         }
-        (D::Mapping(left), D::Mapping(right)) => map_layout_eq(left, right),
+        (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
+            field_layout_eq(left.entries(), right.entries())
+        }
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),
         _ => left == right,
     }
-}
-
-fn map_layout_eq(left: &MappingType, right: &MappingType) -> bool {
-    left.keys_sorted() == right.keys_sorted() && field_layout_eq(left.entries(), right.entries())
 }
 
 fn run_layout_eq(left: &RunEndEncodedType, right: &RunEndEncodedType) -> bool {

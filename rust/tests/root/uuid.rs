@@ -1,7 +1,6 @@
 //! `rust/src/uuid.rs`: one identifier datatype over sixteen fixed bytes,
 //! and the value it holds.
 
-use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
 use yggdryl::{DataType, Error, Scalar, StructType};
 
@@ -305,7 +304,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, RecordBatch, StringArray};
-    use yggdryl::{ArrowCastOptions, Field};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
     let raw: [u8; 16] = [
@@ -322,12 +321,14 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         )
     };
     let id = Field::new("id", DataType::Uuid, false);
-    let stored = id
-        .cast_arrow_array(
-            Arc::new(StringArray::from(vec![TEXT])) as ArrayRef,
-            strict(),
-        )
-        .unwrap();
+    let stored = Serie::from_arrow_array(
+        Some(&id),
+        Arc::new(StringArray::from(vec![TEXT])) as ArrayRef,
+        strict(),
+    )
+    .unwrap()
+    .require_arrow_array()
+    .unwrap();
     // The column carries `arrow.uuid`, which is what a reading reads it under.
     let batch = RecordBatch::try_new(
         row(id.clone()).into_arrow_schema().unwrap(),
@@ -336,10 +337,15 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     .unwrap();
     let into = |target: DataType| -> ArrayRef {
         Arc::clone(
-            row(Field::new("id", target, false))
-                .cast_arrow_batch(batch.clone(), strict())
-                .unwrap()
-                .column(0),
+            Serie::from_arrow_batch(
+                Some(&row(Field::new("id", target, false))),
+                &batch,
+                strict(),
+            )
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+            .column(0),
         )
     };
 
@@ -358,20 +364,27 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     ] {
         let target = DataType::from_str(spelling).unwrap();
         let read = into(target.clone());
-        let back = Field::new("id", DataType::Uuid, false)
-            .cast_arrow_array(read, strict())
-            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        let back = Serie::from_arrow_array(
+            Some(&Field::new("id", DataType::Uuid, false)),
+            read,
+            strict(),
+        )
+        .and_then(|serie| Ok(serie.require_arrow_array()?))
+        .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
         assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
     }
 
     // A bound the spelling outgrows is refused rather than truncated, and the
     // refusal names the field and the row.
-    let refused = row(Field::new(
-        "id",
-        DataType::from_str("utf8(8)").unwrap(),
-        false,
-    ))
-    .cast_arrow_batch(batch.clone(), strict())
+    let refused = Serie::from_arrow_batch(
+        Some(&row(Field::new(
+            "id",
+            DataType::from_str("utf8(8)").unwrap(),
+            false,
+        ))),
+        &batch,
+        strict(),
+    )
     .unwrap_err()
     .to_string();
     assert!(refused.contains("row 0"), "{refused}");
@@ -386,9 +399,13 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         "binary(16)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
-        let back = Field::new("id", DataType::Uuid, false)
-            .cast_arrow_array(read, strict())
-            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        let back = Serie::from_arrow_array(
+            Some(&Field::new("id", DataType::Uuid, false)),
+            read,
+            strict(),
+        )
+        .and_then(|serie| Ok(serie.require_arrow_array()?))
+        .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
         assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
     }
 
@@ -399,12 +416,15 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         ("fixed_binary(8)", "a fixed binary of 16 bytes"),
         ("binary(8)", "at most 8 bytes"),
     ] {
-        let refused = row(Field::new(
-            "id",
-            DataType::from_str(spelling).unwrap(),
-            false,
-        ))
-        .cast_arrow_batch(batch.clone(), strict())
+        let refused = Serie::from_arrow_batch(
+            Some(&row(Field::new(
+                "id",
+                DataType::from_str(spelling).unwrap(),
+                false,
+            ))),
+            &batch,
+            strict(),
+        )
         .unwrap_err()
         .to_string();
         assert!(refused.contains(expected), "{spelling}: {refused}");

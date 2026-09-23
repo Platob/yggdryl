@@ -6,7 +6,7 @@ Keys to values: one `entries` field holding a key and a value, and a leaf that s
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Mapping(MappingType)` with its two leaves over one `MapType`, the `MappingField` marker, and the `Map` value under `Mapping` |
+| Owns | `DataType::Map(Arc<MapType>)` and `DataType::SortedMap(Arc<MapType>)`, its two leaves over one `MapType`; `MappingType` is the family's view over them, the `MappingField` marker, and the `Map` value |
 | Validates | At construction: the entries field is non-null, holds a struct of exactly two children, and its key child is non-null |
 | Lazy | Nothing - the entries are checked once, where the leaf is built |
 | Cached | The parameters behind one `Arc<MapType>`, so a clone shares the whole entries schema; the Arrow projection on the [`Field`](../field.md) |
@@ -198,16 +198,16 @@ value - and `keys_sorted` picks the leaf in both.
 
 ## Scalar
 
-`Scalar::Mapping(Mapping::Map(Map))` is the value: the entries in order, in one
-shared slice, with arbitrary scalar keys. A key occurs once - a duplicate is
-refused where the value is built - and a record is accepted as a map value too,
-its names becoming the keys, which is how a JSON or YAML object reaches a map
-column.
+`Scalar::Map(Map)` (or, for a sorted leaf, `Scalar::SortedMap(Map)`) is the
+value: the entries in order, in one shared slice, with arbitrary scalar keys.
+A key occurs once - a duplicate is refused where the value is built - and a
+record is accepted as a map value too, its names becoming the keys, which is
+how a JSON or YAML object reaches a map column.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Map, Mapping, NestedValue, Scalar};
+    use yggdryl::{DataType, Map, NestedValue, Scalar, Value};
 
     let lookup = DataType::map_of(DataType::utf8(), DataType::Int64, false)?;
     let value = lookup.scalar(Scalar::from_mapping([
@@ -220,7 +220,7 @@ column.
     let held = Map::new(vec![(Scalar::from("a"), Scalar::from(1_i64))]);
     assert_eq!(held.as_slice()[0].0, Scalar::from("a"));
     assert_eq!(held.children().count(), 1);
-    assert_eq!(Mapping::from(held.clone()).as_map(), Some(&held));
+    assert_eq!(Map::from_scalar(&held.clone().into_scalar()), Some(&held));
 
     // A key occurs once.
     assert!(Scalar::from_mapping([

@@ -51,7 +51,6 @@ use super::retired::{self, Fill, Part, Rule, When};
 use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
 use crate::expression::{Bound, Term};
-use crate::sequence::SequenceType;
 use crate::{DataType, Field, Plan, Result, Scalar, StructType};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
@@ -520,7 +519,7 @@ impl Child {
     fn unpack(field: Field, value: Scalar) -> Self {
         // The shape first: a scalar child - nearly every child - is told
         // apart without reading its metadata for a counter.
-        let (Some(members), Some(rows)) = (item_fields(&field), value.as_sequence()) else {
+        let (Some(members), Some(rows)) = (item_fields(&field), value.as_serie()) else {
             return Self::Flat(field, value);
         };
         if field.as_fix().counter().ok().flatten().is_none() {
@@ -590,7 +589,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
     });
     let rows = Scalar::from_sequence(rows);
     let dtype = match list.dtype() {
-        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(item),
+        DataType::LargeList(_) => DataType::large_list(item),
         _ => DataType::list(item),
     };
     // The List's own metadata travels as the one it is rather than as a map
@@ -921,23 +920,23 @@ impl<'msg> Restater<'msg> {
         for (field, value) in fields.iter().zip(values) {
             if tag_and_counter(self.registry, field).1.is_some() {
                 if let (Some(members), Some(rows)) =
-                    (super::schema::item_fields(field), value.as_sequence())
+                    (super::schema::item_fields(field), value.as_serie())
                 {
                     // The List as `pack_group` would rebuild it: a List and
                     // not a map, its item nullable exactly where an
                     // occurrence is null, and every member nullable.
-                    let DataType::Sequence(
-                        SequenceType::List(item) | SequenceType::LargeList(item),
-                    ) = field.dtype()
-                    else {
+                    let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
                         return false;
                     };
-                    if item.is_nullable() != rows.iter().any(Scalar::is_null) {
+                    if item.is_nullable() != (rows.null_count() != 0) {
                         return false;
                     }
+                    // A member level returns before it would push a ruled
+                    // child, so each occurrence's list stays empty.
                     let canonical = rows.iter().all(|row| {
-                        row.as_sequence()
-                            .is_none_or(|values| self.canonical_level(members, values, true, ruled))
+                        row.as_sequence().is_none_or(|values| {
+                            self.canonical_level(members, values, true, &mut Vec::new())
+                        })
                     });
                     if !canonical {
                         return false;

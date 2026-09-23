@@ -792,7 +792,7 @@ impl Kind {
     /// them: the one order its reader walks and its writer writes. A list
     /// has no order to settle and is held to its element grammar instead.
     fn ordered(self, value: &Scalar) -> Result<Scalar> {
-        let elements = value.as_sequence().ok_or_else(|| {
+        let elements = value.as_serie().ok_or_else(|| {
             self.refused(crate::text::expected_got(
                 match self.shape() {
                     Shape::Entries(_) => "an array of entries",
@@ -805,12 +805,12 @@ impl Kind {
         let ordered = match self.shape() {
             Shape::Entries(keys) => elements
                 .iter()
-                .map(|entry| self.order_entry(keys, entry))
+                .map(|entry| self.order_entry(keys, &entry))
                 .collect::<Result<Vec<_>>>()?,
             Shape::Words => {
                 let words = elements
                     .iter()
-                    .map(|element| self.word(element))
+                    .map(|element| self.word(&element))
                     .collect::<Result<Vec<_>>>()?;
                 if let Some(twice) = repeated_word(words.iter().filter_map(Scalar::as_str)) {
                     return Err(
@@ -822,7 +822,7 @@ impl Kind {
             Shape::Tags => {
                 let tags = elements
                     .iter()
-                    .map(|element| self.tag(element))
+                    .map(|element| self.tag(&element))
                     .collect::<Result<Vec<_>>>()?;
                 if let Some(twice) =
                     repeated_number(tags.iter().filter_map(|tag| tag.as_i64()?.try_into().ok()))
@@ -1066,10 +1066,10 @@ pub(super) fn load(value: Scalar) -> Result<Scalar> {
 
 /// Rewrite every `metadata` map the document holds, at any depth.
 fn cross(value: Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) -> Result<Scalar> {
-    if let Some(values) = value.as_sequence() {
+    if let Some(values) = value.as_serie() {
         return values
             .iter()
-            .map(|held| cross(held.clone(), across))
+            .map(|held| cross(held.into_owned(), across))
             .collect::<Result<Vec<_>>>()
             .map(Scalar::from_sequence);
     }

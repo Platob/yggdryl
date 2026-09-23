@@ -178,10 +178,11 @@ The value is the two letters, under the country's identity.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.country('iso').castArrowArray(utf8(['FR', 'US']))], ['FR', 'US'])
+    const stored = Serie.fromArrowArray(utf8(['FR', 'US']), fields.country('iso'))
+    assert.deepEqual([...stored.intoArrowArray()], ['FR', 'US'])
     ```
 
 ## Two bytes is the whole width

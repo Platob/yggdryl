@@ -235,14 +235,15 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const venue = fields.struct('row', [fields.mic('venue', { nullable: false })], {
       nullable: false,
     })
-    const stored = venue.castArrow(
+    const stored = Serie.fromArrowBatch(
       new arrow.Table({ venue: arrow.vectorFromArray(['XPA'], new arrow.Utf8()) }),
-    )
+      venue,
+    ).intoArrowBatch()
     const venueArrow = stored.schema.fields[0]
     // The storage is the text; the name beside it is the identity.
     assert.equal(String(venueArrow.type), 'Utf8')
@@ -252,7 +253,10 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     const text = fields.struct('row', [fields.utf8('venue', { nullable: false })], {
       nullable: false,
     })
-    assert.deepEqual([...text.castArrow(stored).getChild('venue')], ['XPA'])
+    const plain = Serie.fromArrowBatch(stored, text).intoArrowBatch()
+    assert.deepEqual([...plain.getChild('venue')], ['XPA'])
+    // The same storage under no name at all is plain text.
+    assert.equal(plain.schema.fields[0].metadata.get('ARROW:extension:name'), undefined)
     ```
 
 ## Packed integers and the declared vocabulary

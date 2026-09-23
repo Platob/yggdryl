@@ -31,7 +31,8 @@
 //! A projection of bare columns reorders `ArrayRef`s and never touches a
 //! buffer; a struct child is the child array, shared.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use arrow_array::{
     Array, ArrayRef, BooleanArray, Datum, FixedSizeListArray, LargeListArray, ListArray,
@@ -40,16 +41,15 @@ use arrow_array::{
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, OffsetBuffer};
 use arrow_ord::cmp;
-use arrow_schema::{ArrowError, SchemaRef};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Fields, SchemaRef};
 
-use super::attribute::Attributes;
 use super::bind::{Bound, Kind, Node, StepKind};
 use super::eval::{Row, keep_elements};
 use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
-use crate::cast::{ArrowCastOptions, cast_field_array};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
@@ -113,15 +113,10 @@ struct Context<'batch> {
     batch: &'batch RecordBatch,
     /// Bound-schema index to batch column index, resolved once per call.
     columns: Vec<Option<usize>>,
-    holder: Option<&'batch dyn Attributes>,
 }
 
 impl<'batch> Context<'batch> {
-    fn new(
-        schema: &'batch Field,
-        batch: &'batch RecordBatch,
-        holder: Option<&'batch dyn Attributes>,
-    ) -> Self {
+    fn new(schema: &'batch Field, batch: &'batch RecordBatch) -> Self {
         // Matching by name rather than by position is what lets a bound
         // term survive a reader that projected its columns away or reordered
         // them, which every columnar reader is entitled to do.
@@ -140,7 +135,6 @@ impl<'batch> Context<'batch> {
             schema,
             batch,
             columns,
-            holder,
         }
     }
 
@@ -163,26 +157,7 @@ impl Bound {
     /// Returns an error when the batch does not carry a column the term
     /// reads, or when a strict cast refuses a value.
     pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
-        let context = Context::new(self.schema(), batch, None);
-        evaluate(self.node(), &context)?.into_column(batch.num_rows())
-    }
-
-    /// Evaluate this term over one batch alongside its holder.
-    ///
-    /// The holder answers every `&holder.*` attribute, which is what lets a
-    /// predicate mix a question about the file with a question about the rows
-    /// and still run as one pass.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the batch is missing a column, or the holder
-    /// cannot answer an attribute.
-    pub fn evaluate_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<ArrayRef> {
-        let context = Context::new(self.schema(), batch, holder);
+        let context = Context::new(self.schema(), batch);
         evaluate(self.node(), &context)?.into_column(batch.num_rows())
     }
 
@@ -196,27 +171,13 @@ impl Bound {
     /// Returns an error when the term is not a predicate, or the batch is
     /// missing a column it reads.
     pub fn filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray> {
-        self.filter_mask_with(batch, None)
-    }
-
-    /// The selection this predicate makes over one batch alongside its holder.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the term is not a predicate, the batch is
-    /// missing a column, or the holder fails.
-    pub fn filter_mask_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<BooleanArray> {
         if !self.is_predicate() {
             return Err(Error::IncompatibleSchema(format!(
                 "expected a boolean term to filter with, got {}",
                 self.field().dtype()
             )));
         }
-        let answered = boolean_column(self.evaluate_with(batch, holder)?)?;
+        let answered = boolean_column(self.evaluate(batch)?)?;
         Ok(certain(&answered))
     }
 
@@ -231,24 +192,10 @@ impl Bound {
     /// Returns an error when the term is not a predicate, or the batch is
     /// missing a column it reads.
     pub fn filter(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-        self.filter_with(batch, None)
-    }
-
-    /// Keep the rows one batch's holder and rows both answer true for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the term is not a predicate, the batch is
-    /// missing a column, or the holder fails.
-    pub fn filter_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<RecordBatch> {
         if self.keeps_everything() {
             return Ok(batch.clone());
         }
-        let mask = self.filter_mask_with(batch, holder)?;
+        let mask = self.filter_mask(batch)?;
         if mask.true_count() == mask.len() {
             return Ok(batch.clone());
         }
@@ -434,6 +381,68 @@ impl Expression {
     }
 }
 
+/// One column cast, held for every batch it answers.
+///
+/// The plan is compiled from the storage of the first column that needs it,
+/// never at bind: a term bound to answer rows plans nothing, and a cast that
+/// cannot be planned fails on the batch it meets, as it always has. A later
+/// column of another storage - a dictionary, a view, a batch its reader
+/// re-encoded - is planned in one drift slot, recompiled only when that
+/// storage changes. One holder casts into one target, under one policy,
+/// reading one source metadata.
+#[derive(Default)]
+pub(crate) struct ColumnCast {
+    first: OnceLock<ArrowCastPlan>,
+    drift: Mutex<PlanCache<Arc<ArrowCastPlan>>>,
+}
+
+impl ColumnCast {
+    /// Cast one column into `target`, its layout read from its storage and
+    /// the extension identity `metadata` carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a cast that cannot be planned from the column's
+    /// storage, or a value the target refuses.
+    pub(crate) fn reconcile(
+        &self,
+        target: &Field,
+        metadata: Option<&HashMap<String, String>>,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> Result<ArrayRef> {
+        let compile = |storage: &ArrowDataType| {
+            let source = ArrowField::new(target.name(), storage.clone(), true)
+                .with_metadata(metadata.cloned().unwrap_or_default());
+            ArrowCastPlan::compile_arrow(&Arc::new(source), target, options, Deferred::default())
+        };
+        let first = match self.first.get() {
+            Some(plan) => plan,
+            None => {
+                let plan = compile(array.data_type())?;
+                self.first.get_or_init(|| plan)
+            }
+        };
+        if first.as_source().data_type() == array.data_type() {
+            return first.reconcile_array(array);
+        }
+        let storage = ArrowField::new(target.name(), array.data_type().clone(), true);
+        let storage = Fields::from(vec![storage]);
+        let plan = {
+            let mut drift = self.drift.lock().unwrap_or_else(PoisonError::into_inner);
+            Arc::clone(drift.get_or_compile(&storage, || compile(array.data_type()).map(Arc::new))?)
+        };
+        plan.reconcile_array(array)
+    }
+}
+
+/// A held plan is evaluation state, not part of what a bound term says.
+impl std::fmt::Debug for ColumnCast {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("ColumnCast").finish_non_exhaustive()
+    }
+}
+
 /// One batch as the stream it is.
 pub(crate) fn one_batch(batch: &RecordBatch) -> BatchReader {
     crate::arrow::batch_reader(batch.schema(), [batch.clone()])
@@ -478,11 +487,10 @@ pub(crate) fn struct_batch<'array>(
 
 /// Evaluate one resolved node over one batch.
 fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
-    // A subtree that reads no column is the same value for every row, holder
-    // attributes included. Answering it once and pinning it is both the
-    // constant path and the attribute path.
+    // A subtree that reads no column is the same value for every row, so it
+    // is answered once and pinned.
     if !node.reads_rows() {
-        let value = node.eval(&Row::new(None, context.holder))?;
+        let value = node.eval(&Row::new(None))?;
         return Ok(Vector::Constant(array_from_values(&node.field, &[&value])?));
     }
     match &node.kind {
@@ -497,7 +505,7 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
                         segment_array(field, &step.field, &array, segment)?
                     }
                     StepKind::Where(predicate) => {
-                        kept_elements(field, &step.field, &array, predicate, context.holder)?
+                        kept_elements(field, &step.field, &array, predicate)?
                     }
                 };
                 field = &step.field;
@@ -559,13 +567,13 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             };
             Ok(Vector::Column(Arc::new(BooleanArray::new(values, None))))
         }
-        Kind::Cast(inner, safety) => {
+        Kind::Cast(inner, safety, cast) => {
             let rows = context.batch.num_rows();
             let array = evaluate(inner, context)?.into_column(rows)?;
             // The operand's Field keeps its extension identity in the cast:
             // an ASCII column meets a text literal as its trimmed text.
-            let source = inner.field.clone().into_arrow_field_ref()?;
-            Ok(Vector::Column(cast_field_array(
+            let source = inner.field.as_arrow_field_ref()?;
+            Ok(Vector::Column(cast.reconcile(
                 &node.field,
                 Some(source.metadata()),
                 array,
@@ -676,7 +684,6 @@ fn kept_elements(
     reached: &Field,
     array: &ArrayRef,
     predicate: &Node,
-    holder: Option<&dyn Attributes>,
 ) -> Result<ArrayRef> {
     let element = super::path::list_item(reached.dtype()).ok_or_else(|| {
         Error::IncompatibleSchema(format!(
@@ -689,7 +696,7 @@ fn kept_elements(
         let mut values = Vec::with_capacity(rows);
         for row in 0..rows {
             let value = value_from_array(field.dtype(), array.as_ref(), row)?;
-            values.push(keep_elements(element, predicate, &value, holder)?);
+            values.push(keep_elements(element, predicate, &value)?);
         }
         let borrowed: Vec<&Scalar> = values.iter().collect();
         return array_from_values(reached, &borrowed);
@@ -714,7 +721,7 @@ fn kept_elements(
         &RecordBatchOptions::new().with_row_count(Some(structs.len())),
     )
     .map_err(Error::Arrow)?;
-    let context = Context::new(element, &elements, holder);
+    let context = Context::new(element, &elements);
     let answered = evaluate(predicate, &context)?.into_boolean(structs.len())?;
     let mut mask = certain(&answered);
     if let Some(nulls) = structs.nulls() {
@@ -994,7 +1001,7 @@ fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
         for (index, dtype, array) in &columns {
             row[*index] = value_from_array(dtype, array.as_ref(), position)?;
         }
-        answers.push(node.eval(&Row::new(Some(&row), context.holder))?);
+        answers.push(node.eval(&Row::new(Some(&row)))?);
     }
     let borrowed: Vec<&Scalar> = answers.iter().collect();
     Ok(Vector::Column(array_from_values(&node.field, &borrowed)?))

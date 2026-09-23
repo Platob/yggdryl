@@ -9,11 +9,10 @@ use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
 use yggdryl::DataType;
-use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
-    MediaTypeField, MimeType, MimeTypeField, Scalar, StructType,
+    MediaTypeField, MimeType, MimeTypeField, Scalar, Serie, StructType,
 };
 
 fn mime(text: &str) -> Scalar {
@@ -221,9 +220,14 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         ]))],
     )
     .unwrap();
-    let cast = target
-        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-        .unwrap();
+    let cast = Serie::from_arrow_batch(
+        Some(&target),
+        &batch,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap()
+    .into_arrow_batch()
+    .unwrap();
     let column = cast
         .column(0)
         .as_any()
@@ -237,10 +241,13 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         vec![Arc::new(StringArray::from(vec![Some("not a type")]))],
     )
     .unwrap();
-    let error = target
-        .cast_arrow_batch(bad, ArrowCastOptions::new().with_safe(false))
-        .unwrap_err()
-        .to_string();
+    let error = Serie::from_arrow_batch(
+        Some(&target),
+        &bad,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("row 0"), "{error}");
     assert!(error.contains("does not read as MIME type"), "{error}");
 }

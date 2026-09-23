@@ -154,6 +154,65 @@ fn the_declared_field_is_one_section_of_the_plan() {
 }
 
 #[test]
+fn a_batch_is_shaped_as_a_reader_shapes_it() {
+    use arrow_array::{Array, ArrayRef, Int32Array, StringArray};
+
+    // A declared cast, a `where` over a column only the `select` builds, and
+    // a stored field the shaped rows are completed onto.
+    let declared = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let stored = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("ticker"),
+        DataType::utf8().nullable_field("venue"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let options = RecordOptions::Ipc(IpcOptions::new())
+        .with_field(declared)
+        .with_select("id, trim(symbol) as ticker")
+        .unwrap()
+        .with_filter("ticker = 'MSFT'")
+        .unwrap();
+    let source = RecordBatch::try_from_iter([
+        ("id", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef),
+        (
+            "symbol",
+            Arc::new(StringArray::from(vec![" AAPL", "MSFT ", " IBM"])),
+        ),
+    ])
+    .unwrap();
+
+    let shaped = options
+        .apply_arrow_batch(source.clone(), Some(&stored))
+        .unwrap();
+    let streamed = options
+        .apply_arrow_reader(
+            yggdryl::arrow::batch_reader(source.schema(), [source]),
+            Some(&stored),
+        )
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+
+    assert_eq!(streamed, std::slice::from_ref(&shaped));
+    assert_eq!(shaped.schema(), stored.into_arrow_schema().unwrap());
+    let ids = shaped
+        .column(0)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
+    assert_eq!(ids.values(), &[2]);
+    assert!(shaped.column(2).is_null(0));
+}
+
+#[test]
 fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 
@@ -611,4 +670,30 @@ fn a_full_commit_does_not_read_ahead() {
     // The next cadence is the unconsumed slice of that same input batch.
     assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
     assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+// A table hands each file its share of the threads, whatever encoding the
+// file is: Parquet splits its row groups and columns over it and Avro its
+// blocks, while Arrow IPC and text decode on one thread already.
+#[cfg(all(feature = "internals", feature = "parquet"))]
+#[test]
+fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
+    use yggdryl::avro::AvroOptions;
+    use yggdryl::internals::media_options::{file_threads, set_file_threads};
+    use yggdryl::parquet::ParquetOptions;
+
+    for mut options in [
+        RecordOptions::Avro(AvroOptions::new()),
+        RecordOptions::Parquet(ParquetOptions::new()),
+    ] {
+        assert_eq!(file_threads(&options), None);
+        set_file_threads(&mut options, 3);
+        assert_eq!(file_threads(&options), Some(3));
+        // No share is zero threads.
+        set_file_threads(&mut options, 0);
+        assert_eq!(file_threads(&options), Some(1));
+    }
+    let mut ipc = RecordOptions::Ipc(IpcOptions::new());
+    set_file_threads(&mut ipc, 3);
+    assert_eq!(file_threads(&ipc), None);
 }

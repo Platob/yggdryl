@@ -1,8 +1,7 @@
 //! `rust/src/expression/path.rs`: focused edge cases for the one path grammar.
 
-use yggdryl::SequenceType;
 use yggdryl::expression::Term;
-use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, StructType};
+use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, Serie, StructType};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")
@@ -414,10 +413,7 @@ fn a_step_types_one_level_and_reads_one_value() {
     .unwrap()
     .required_field("row");
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
-    assert!(matches!(
-        legs.dtype(),
-        DataType::Sequence(SequenceType::List(_))
-    ));
+    assert!(matches!(legs.dtype(), DataType::List(_)));
     let first = FieldSegment::index(0).apply_field(&legs).unwrap();
     assert_eq!(first.dtype(), &DataType::Int64);
     assert!(first.is_nullable(), "a position past the end reads as null");
@@ -707,8 +703,7 @@ fn a_predicate_segment_reads_the_elements_a_row_holds() {
 
 mod grammar {
 
-    use yggdryl::DateTimeType;
-    use yggdryl::expression::{Attribute, Term};
+    use yggdryl::expression::Term;
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
     // ---------------------------------------------------------------------------
@@ -727,10 +722,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),
@@ -1056,13 +1051,11 @@ mod grammar {
 
     #[test]
     fn a_predicate_segment_is_walked_like_any_other_node() {
-        let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][&holder.size > :floor]"
+        let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][qty > :floor]"
             .parse()
             .unwrap();
         assert_eq!(term.columns(), vec!["legs".to_owned()]);
         assert_eq!(term.parameters(), vec!["floor".to_owned()]);
-        assert_eq!(term.attributes(), vec![Attribute::Size]);
-        assert!(term.has_attributes());
         // A path, two predicates, and what they hold: the budget counts inside.
         assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().node_count(), 4);
         assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().depth(), 3);
@@ -1075,7 +1068,7 @@ mod grammar {
         );
         assert_eq!(
             term.simplify().to_string(),
-            "legs[ccy in ('EUR', 'USD')][&holder.size > :floor]",
+            "legs[ccy in ('EUR', 'USD')][qty > :floor]",
             "simplification reaches into a predicate"
         );
         // Nesting predicates past the limit is refused, never a crash.
@@ -1392,4 +1385,24 @@ mod nested {
         assert_eq!(row["line"].field_len(), 0);
         assert_eq!(row.field_len(), 1);
     }
+}
+
+#[test]
+fn a_range_over_a_column_is_a_window_of_it() {
+    let item = DataType::Int64.nullable_field("item");
+    let root = StructType::from_fields([DataType::list(item.clone()).nullable_field("xs")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let xs = Serie::from_scalars(item, (1..=4_i64).map(Scalar::from)).unwrap();
+    let row = Scalar::from_sequence([Scalar::from(xs)]);
+    let window = parse("xs[1:3]").apply_scalar(&root, &row).unwrap();
+    assert_eq!(
+        window,
+        Scalar::from_sequence([Scalar::from(2_i64), Scalar::from(3_i64)])
+    );
+    assert!(
+        window.as_serie().is_some_and(Serie::is_column),
+        "a window of a column is a column: {window:?}"
+    );
 }

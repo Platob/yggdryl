@@ -37,6 +37,7 @@ criterion_group!(
     datatype::ascii::ascii_benchmarks,
     datatype::string::string_benchmarks,
     datatype::bytes::bytes_benchmarks,
+    datatype::serie::serie_benchmarks,
     field::field_benches::parser::benchmarks,
     field::field_benches::path::benchmarks,
     field::field_benches::value::benchmarks,

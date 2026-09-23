@@ -1,16 +1,16 @@
 //! `rust/src/expression/arrow.rs`: the edge cases this module is built to
 //! get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
     use std::sync::Arc;
-    use yggdryl::DateTimeType;
+
     use yggdryl::expression::{Bound, Expression, Term};
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
@@ -30,10 +30,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),
@@ -364,5 +364,87 @@ mod grammar {
         assert_eq!(reader.schema().fields().len(), 1);
         let rows: usize = reader.map(|batch| batch.unwrap().num_rows()).sum();
         assert_eq!(rows, 4);
+    }
+
+    #[test]
+    fn a_bound_cast_answers_every_batch_as_a_fresh_bind_does() {
+        use arrow_array::{
+            Array, ArrayRef, Int64Array, LargeStringArray, RecordBatch, StringArray,
+        };
+
+        // A bound cast holds its plan across batches: each batch - one whose
+        // operand storage drifts from the first and back, an empty one, one
+        // a strict cast refuses and the one after it - answers exactly what
+        // a bind made for that batch alone answers.
+        let schema = Field::new(
+            "rows",
+            StructType::from_fields([Field::new("s", DataType::utf8(), true)])
+                .map(DataType::from)
+                .unwrap(),
+            false,
+        );
+        let utf8 = |values: &[Option<&str>]| {
+            let column = Arc::new(StringArray::from(values.to_vec())) as ArrayRef;
+            RecordBatch::try_from_iter([("s", column)]).unwrap()
+        };
+        let large = |values: &[Option<&str>]| {
+            let column = Arc::new(LargeStringArray::from(values.to_vec())) as ArrayRef;
+            RecordBatch::try_from_iter([("s", column)]).unwrap()
+        };
+        let batches = [
+            utf8(&[Some("1"), None, Some("3")]),
+            utf8(&[Some("40")]),
+            large(&[Some("7"), None]),
+            utf8(&[]),
+            large(&[Some("8")]),
+            utf8(&[Some("x")]),
+            utf8(&[Some("5")]),
+        ];
+        for text in [
+            "cast(s as int64)",
+            "try_cast(s as int64)",
+            "cast(s as int64) > 2",
+        ] {
+            let term: Term = text.parse().unwrap();
+            let bound = term.bind(&schema).unwrap();
+            for (position, batch) in batches.iter().enumerate() {
+                let fresh = term.bind(&schema).unwrap().evaluate(batch);
+                match (bound.evaluate(batch), fresh) {
+                    (Ok(held), Ok(fresh)) => {
+                        assert_eq!(held.as_ref(), fresh.as_ref(), "{text}, batch {position}");
+                    }
+                    (Err(held), Err(fresh)) => {
+                        assert_eq!(
+                            held.to_string(),
+                            fresh.to_string(),
+                            "{text}, batch {position}"
+                        );
+                    }
+                    (held, fresh) => panic!("{text}, batch {position}: {held:?} and {fresh:?}"),
+                }
+            }
+        }
+
+        // The answers themselves, so the agreement is not two wrong ones.
+        let bound = "cast(s as int64)"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        let ints = |batch: &RecordBatch| {
+            let answered = bound.evaluate(batch).unwrap();
+            answered
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ints(&batches[0]), vec![Some(1), None, Some(3)]);
+        assert_eq!(ints(&batches[2]), vec![Some(7), None]);
+        assert_eq!(ints(&batches[1]), vec![Some(40)]);
+        assert!(bound.evaluate(&batches[5]).is_err());
+        assert_eq!(ints(&batches[4]), vec![Some(8)]);
+        assert_eq!(ints(&batches[6]), vec![Some(5)]);
     }
 }

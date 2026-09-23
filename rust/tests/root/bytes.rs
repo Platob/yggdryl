@@ -596,7 +596,7 @@ mod fields {
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray};
-    use yggdryl::{ArrowCastOptions, DataType, DataTypeId, FieldScalar, Scalar};
+    use yggdryl::{ArrowCastOptions, DataType, DataTypeId, FieldScalar, Scalar, Serie};
     use yggdryl::{Bytes, BytesField, BytesType, bytes};
 
     use super::typed::assert_typed_marker;
@@ -721,21 +721,23 @@ mod fields {
         ]));
 
         // Strict: the refusal names the field and the row.
-        let refused = field
-            .cast_arrow_array(
-                Arc::clone(&source),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("\"payload\""), "{refused}");
         assert!(refused.contains("row 1"), "{refused}");
         assert!(refused.contains("at most 3 bytes"), "{refused}");
 
         // Safe: the cell that does not fit becomes null.
-        let cast = field
-            .cast_arrow_array(source, ArrowCastOptions::new())
-            .unwrap();
+        let cast =
+            Serie::from_arrow_array(Some(&field.to_field()), source, ArrowCastOptions::new())
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
         let cast = cast.as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!(cast.value(0), b"abc");
         assert!(cast.is_null(1));
@@ -753,13 +755,17 @@ mod fields {
             )
             .unwrap(),
         );
-        let cast = field
-            .cast_arrow_array(
-                Arc::clone(&source),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
-        assert!(Arc::ptr_eq(&cast, &source));
+        let cast = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
+        // A column holds its leaf as its own typed array, so the `Arc` around it
+        // is new; the buffers under it are the caller's.
+        assert!(cast.to_data().ptr_eq(&source.to_data()));
 
         // Variable bytes of another length are refused into the width; the
         // width is the storage, so Arrow's own kernel is what refuses them.
@@ -768,9 +774,12 @@ mod fields {
             Some(&b"abc"[..]),
         ]));
         assert!(
-            field
-                .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-                .is_err()
+            Serie::from_arrow_array(
+                Some(&field.to_field()),
+                source,
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .is_err()
         );
     }
 }

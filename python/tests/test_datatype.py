@@ -22,6 +22,7 @@ from yggdryl import (
     BytesParameters,
     DataType,
     Field,
+    Serie,
     StringEnum,
     StringParameters,
     Version,
@@ -365,7 +366,7 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     assert Field.from_arrow(arrow) == field
 
     # A cast into the type validates; the stored column read as text spells it.
-    stored = field.cast_arrow_array(pa.array([text, text.upper()]))
+    stored = Serie.from_arrow_array(pa.array([text, text.upper()]), field).into_arrow_array()
     # PyArrow reads its own registered extension back as `uuid.UUID`.
     assert stored.to_pylist() == [uuid.UUID(text)] * 2
     assert stored.storage.to_pylist() == [packed.to_bytes(16, "big")] * 2
@@ -373,10 +374,12 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     # recognized ASCII column renders as its trimmed text.
     batch = pa.record_batch([stored], schema=pa.schema([arrow]))
     spelled = DataType.from_fields([Field("id", "utf8")])
-    assert spelled.cast_arrow_batch(batch).column(0).to_pylist() == [text, text]
+    assert Serie.from_arrow_batch(
+        batch, Field("row", spelled, nullable=False)
+    ).into_arrow_batch().column(0).to_pylist() == [text, text]
 
     with pytest.raises(ValueError, match="36-character"):
-        field.cast_arrow_array(pa.array(["not-a-uuid"]))
+        Serie.from_arrow_array(pa.array(["not-a-uuid"]), field).into_arrow_array()
 
 
 def test_version_is_numeric_with_an_arrow_string_projection() -> None:
@@ -390,7 +393,9 @@ def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     assert dtype.string_parameters is None
     assert field.default_scalar().as_py() == Version(0)
     assert field.arrow_scalar("5.0.01") == pa.scalar("5.0.1")
-    assert field.cast_arrow_array(pa.array(["5.0.01", "5.0.10"])).to_pylist() == [
+    assert Serie.from_arrow_array(
+        pa.array(["5.0.01", "5.0.10"]), field
+    ).into_arrow_array().to_pylist() == [
         "5.0.1",
         "5.0.10",
     ]
@@ -400,9 +405,11 @@ def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     assert Field.from_arrow(arrow) == field
     # A tail states no number and folds into the patch rather than failing, so
     # the projection refuses on the major it cannot read, not on the tail.
-    assert field.cast_arrow_array(pa.array(["5.0+"])).to_pylist() == [str(Version.from_str("5.0+"))]
+    assert Serie.from_arrow_array(
+        pa.array(["5.0+"]), field
+    ).into_arrow_array().to_pylist() == [str(Version.from_str("5.0+"))]
     with pytest.raises(ValueError, match="version"):
-        field.cast_arrow_array(pa.array(["FIX.5.0"]))
+        Serie.from_arrow_array(pa.array(["FIX.5.0"]), field).into_arrow_array()
 
 
 def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
@@ -420,9 +427,9 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     # The value is a location, not the text that spelled it: the scheme folds
     # to lower case, a percent escape takes its canonical upper-case digits,
     # and a bare path is the `file:` URL that names it.
-    assert field.cast_arrow_array(
-        pa.array(["HTTPS://example.com/a%2fb", "/lake/part.txt"])
-    ).to_pylist() == [
+    assert Serie.from_arrow_array(
+        pa.array(["HTTPS://example.com/a%2fb", "/lake/part.txt"]), field
+    ).into_arrow_array().to_pylist() == [
         "https://example.com/a%2Fb",
         "file:///lake/part.txt",
     ]
@@ -434,18 +441,20 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     # Nothing relative is a location, so none of them read as one.
     for relative in ("./rel", "example.com/x"):
         with pytest.raises(ValueError, match="does not read as url"):
-            field.cast_arrow_array(pa.array([relative]))
+            Serie.from_arrow_array(pa.array([relative]), field).into_arrow_array()
         with pytest.raises(ValueError, match="expected url"):
             field.arrow_scalar(relative)
 
     # The empty text names nothing at all, so it is not a spelling to refuse
     # but an absence: null before the reader runs, which this required column
     # repairs with its default, or refuses by path when strict.
-    assert field.cast_arrow_array(pa.array([""])).to_pylist() == ["file:///"]
+    assert Serie.from_arrow_array(
+        pa.array([""]), field
+    ).into_arrow_array().to_pylist() == ["file:///"]
     with pytest.raises(
         ValueError, match=r"required Arrow field \$\.url holds 1 null values"
     ):
-        field.cast_arrow_array(pa.array([""]), nullability="strict")
+        Serie.from_arrow_array(pa.array([""]), field, nullability="strict").into_arrow_array()
     with pytest.raises(ValueError, match="null"):
         field.arrow_scalar("")
     assert dtype.scalar("").is_null()
@@ -468,9 +477,9 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     assert located.nullable is True
     assert located.metadata["role"] == "source"
     assert yggdryl.url("location", nullable=False).nullable is False
-    assert located.cast_arrow_array(
-        pa.array(["HTTPS://example.com/a%2fb", None])
-    ).to_pylist() == ["https://example.com/a%2Fb", None]
+    assert Serie.from_arrow_array(
+        pa.array(["HTTPS://example.com/a%2fb", None]), located
+    ).into_arrow_array().to_pylist() == ["https://example.com/a%2Fb", None]
 
 
 def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
@@ -487,26 +496,28 @@ def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
 
     # A name, not a location: the scheme and the namespace fold to lower case,
     # and what a `url` column holds is exactly what a `urn` column refuses.
-    assert field.cast_arrow_array(
-        pa.array(["URN:ISBN:0451450523", "urn:example:a%20b"])
-    ).to_pylist() == [
+    assert Serie.from_arrow_array(
+        pa.array(["URN:ISBN:0451450523", "urn:example:a%20b"]), field
+    ).into_arrow_array().to_pylist() == [
         "urn:isbn:0451450523",
         "urn:example:a%20b",
     ]
     assert field.arrow_scalar("URN:ISBN:0451450523") == pa.scalar("urn:isbn:0451450523")
     for location in ("https://example.com/a", "/lake/part.txt"):
         with pytest.raises(ValueError, match="does not read as urn"):
-            field.cast_arrow_array(pa.array([location]))
+            Serie.from_arrow_array(pa.array([location]), field).into_arrow_array()
         with pytest.raises(ValueError, match="expected urn"):
             field.arrow_scalar(location)
     with pytest.raises(ValueError, match="does not read as url"):
-        Field("url", DataType("url"), nullable=False).cast_arrow_array(
-            pa.array(["urn:isbn:0451450523"])
-        )
+        Serie.from_arrow_array(
+            pa.array(["urn:isbn:0451450523"]), Field("url", DataType("url"), nullable=False)
+        ).into_arrow_array()
 
     # The empty text is an absence, as it is for every non-text column, and
     # a name has no zero: the default is the nil name.
-    assert field.cast_arrow_array(pa.array([""])).to_pylist() == ["urn:nil:nil"]
+    assert Serie.from_arrow_array(
+        pa.array([""]), field
+    ).into_arrow_array().to_pylist() == ["urn:nil:nil"]
     assert dtype.scalar("").is_null()
     assert field.default_scalar().as_py() == "urn:nil:nil"
 
@@ -831,22 +842,24 @@ def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
         batch = pa.RecordBatch.from_arrays(
             [stored], schema=pa.schema([source.into_arrow()])
         )
-        return row(target).cast_arrow_batch(batch, safe=False).column(0)
+        return Serie.from_arrow_batch(batch, row(target), safe=False).into_arrow_batch().column(0)
 
     ccy = Field("ccy", "currency")
-    stored = ccy.cast_arrow_array(pa.array(["USD"]), safe=False)
+    stored = Serie.from_arrow_array(pa.array(["USD"]), ccy, safe=False).into_arrow_array()
     for spelling in ["utf8", "ascii", "utf8(3)", "fixed_ascii(3)", "binary", "fixed_size_binary(3)"]:
         read = through(ccy, stored, Field("ccy", DataType(spelling)))
-        assert ccy.cast_arrow_array(read, safe=False).to_pylist() == ["USD"]
+        assert Serie.from_arrow_array(
+            read, ccy, safe=False
+        ).into_arrow_array().to_pylist() == ["USD"]
     with pytest.raises(ValueError, match="exactly 8 bytes"):
         through(ccy, stored, Field("ccy", "fixed_size_binary(8)"))
 
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     uid = Field("id", "uuid")
-    identifiers = uid.cast_arrow_array(pa.array([text]), safe=False)
+    identifiers = Serie.from_arrow_array(pa.array([text]), uid, safe=False).into_arrow_array()
     for spelling in ["utf8", "ascii", "utf8(36)", "fixed_ascii(36)", "binary", "fixed_size_binary(16)"]:
         read = through(uid, identifiers, Field("id", DataType(spelling)))
-        back = uid.cast_arrow_array(read, safe=False)
+        back = Serie.from_arrow_array(read, uid, safe=False).into_arrow_array()
         assert through(uid, back, Field("id", "utf8")).to_pylist() == [text]
     with pytest.raises(ValueError, match="a fixed binary of 16 bytes"):
         through(uid, identifiers, Field("id", "fixed_size_binary(8)"))
@@ -873,12 +886,14 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
 
     assert ccy.arrow_scalar("USD") == pa.scalar("USD", pa.string())
-    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == ["USD", "EU"]
+    assert Serie.from_arrow_array(
+        pa.array(["USD", "EU"]), ccy
+    ).into_arrow_array().to_pylist() == ["USD", "EU"]
     # A cell the code refuses is null under the default safe cast and an
     # error naming the row when strict, exactly as a string cell is.
-    assert ccy.cast_arrow_array(pa.array(["EURO"])).to_pylist() == [None]
+    assert Serie.from_arrow_array(pa.array(["EURO"]), ccy).into_arrow_array().to_pylist() == [None]
     with pytest.raises(ValueError, match="at most 3 bytes"):
-        ccy.cast_arrow_array(pa.array(["EURO"]), safe=False)
+        Serie.from_arrow_array(pa.array(["EURO"]), ccy, safe=False).into_arrow_array()
 
 
 def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> None:
@@ -908,25 +923,35 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     assert ccy.arrow_scalar("EUR") == pa.scalar(b"EUR\x00", pa.binary(4))
     assert ascii32.default_scalar().as_py() == ""
     assert ascii32.default_pyhint() is str
-    assert ascii32.default_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
+    assert Serie.from_default(
+        Field("value", ascii32, nullable=False)
+    ).into_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
 
-    padded = ccy.cast_arrow_array(pa.array(["USD", None]))
+    padded = Serie.from_arrow_array(pa.array(["USD", None]), ccy).into_arrow_array()
     assert padded.type == pa.binary(4)
     assert padded.to_pylist() == [b"USD\x00", None]
     # A datatype casts as a required column: nulls fill with the default.
-    filled = ascii32.cast_arrow_array(pa.array(["USD", None]))
+    filled = Serie.from_arrow_array(
+        pa.array(["USD", None]), Field("value", ascii32, nullable=False)
+    ).into_arrow_array()
     assert filled.to_pylist() == [b"USD\x00", b"\x00" * 4]
 
     row = DataType.from_fields([Field("ccy", "utf8")])
     stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
-    assert row.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", None]
+    assert Serie.from_arrow_batch(
+        stored, Field("row", row, nullable=False)
+    ).into_arrow_batch().column(0).to_pylist() == ["USD", None]
 
     # A safe cast nulls the cell it cannot write - the required column then
     # fills it with the default - and a strict one names the row.
-    assert ascii32.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [b"\x00" * 4]
-    assert ccy.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [None]
+    assert Serie.from_arrow_array(
+        pa.array(["EURO!"]), Field("value", ascii32, nullable=False)
+    ).into_arrow_array().to_pylist() == [b"\x00" * 4]
+    assert Serie.from_arrow_array(pa.array(["EURO!"]), ccy).into_arrow_array().to_pylist() == [None]
     with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
-        ascii32.cast_arrow_array(pa.array(["EURO!"]), safe=False)
+        Serie.from_arrow_array(
+            pa.array(["EURO!"]), Field("value", ascii32, nullable=False), safe=False
+        ).into_arrow_array()
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ascii32.arrow_scalar("EURO!")
     with pytest.raises(ValueError, match="non-ASCII"):
@@ -935,9 +960,9 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     # it does into `utf8`, and the width then judges the spelling.
     assert ascii32.arrow_scalar(3) == pa.scalar(b"3\x00\x00\x00", pa.binary(4))
     assert ascii32.arrow_scalar(True) == pa.scalar(b"true", pa.binary(4))
-    assert ccy.cast(1.5) == pa.scalar(b"1.5\x00", pa.binary(4))
+    assert ccy.arrow_scalar(1.5) == pa.scalar(b"1.5\x00", pa.binary(4))
     with pytest.raises(ValueError, match="at most 4 bytes"):
-        ccy.cast(12345)
+        ccy.arrow_scalar(12345)
 
 
 def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None:
@@ -961,13 +986,19 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     assert note.arrow_scalar("free text") == pa.scalar("free text", pa.string())
     assert note.default_scalar().as_py() == ""
     assert note.default_pyhint() is str
-    assert note.default_arrow_scalar() == pa.scalar("", pa.string())
+    assert Serie.from_default(
+        Field("value", note, nullable=False)
+    ).into_arrow_scalar() == pa.scalar("", pa.string())
 
-    stored = field.cast_arrow_array(pa.array(["a", "much longer note", None]))
+    stored = Serie.from_arrow_array(
+        pa.array(["a", "much longer note", None]), field
+    ).into_arrow_array()
     assert stored.to_pylist() == ["a", "much longer note", None]
     row = DataType.from_fields([Field("note", "utf8")])
     batch = pa.record_batch([stored], schema=pa.schema([arrow_field]))
-    assert row.cast_arrow_batch(batch).column(0).to_pylist() == [
+    assert Serie.from_arrow_batch(
+        batch, Field("row", row, nullable=False)
+    ).into_arrow_batch().column(0).to_pylist() == [
         "a",
         "much longer note",
         None,
@@ -993,9 +1024,11 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     assert bounded.scalar("USD").dtype == DataType("ascii")
     with pytest.raises(ValueError, match="at most 4 bytes"):
         bounded.scalar("EURO!")
-    assert bounded.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [None]
+    assert Serie.from_arrow_array(
+        pa.array(["EURO!"]), bounded
+    ).into_arrow_array().to_pylist() == [None]
     with pytest.raises(ValueError, match="at most 4 bytes"):
-        bounded.cast_arrow_array(pa.array(["EURO!"]), safe=False)
+        Serie.from_arrow_array(pa.array(["EURO!"]), bounded, safe=False).into_arrow_array()
 
     # The windows-1252 leaves ride binary storage, because their bytes are
     # not UTF-8; the document says which leaf and which charset.
@@ -1006,7 +1039,9 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
         b"ARROW:extension:metadata": b'{"layout":"cp1252","charset":"windows-1252"}',
     }
     assert Field.from_arrow(latin.into_arrow()) == latin
-    assert latin.cast_arrow_array(pa.array(["caf\u00e9"])).to_pylist() == [b"caf\xe9"]
+    assert Serie.from_arrow_array(
+        pa.array(["caf\u00e9"]), latin
+    ).into_arrow_array().to_pylist() == [b"caf\xe9"]
     assert latin.scalar(b"caf\xe9").as_py() == "caf\u00e9"
 
 
@@ -1260,10 +1295,14 @@ def test_a_struct_datatype_projects_the_arrow_schema_a_row_declares() -> None:
     with pytest.raises(ValueError):
         DataType("int64").into_arrow_schema()
 
-    default = DataType("int64").default_arrow_array()
+    default = Serie.from_default(
+        Field("value", DataType("int64"), nullable=False)
+    ).into_arrow_array()
     assert isinstance(default, pa.Array)
     assert default.to_pylist() == [0]
-    assert DataType("utf8").default_arrow_array().to_pylist() == [""]
+    assert Serie.from_default(
+        Field("value", DataType("utf8"), nullable=False)
+    ).into_arrow_array().to_pylist() == [""]
 
 
 def test_a_nested_datatype_is_rebuilt_with_replacement_children() -> None:

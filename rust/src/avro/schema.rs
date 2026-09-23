@@ -26,7 +26,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataType, Limits, Result, Scalar, TimeUnit, Timezone};
 
 use super::datum::invalid;
-use crate::{DateTimeType, TimeType};
 
 /// Maximum structural nesting accepted by the recursive schema parser.
 ///
@@ -340,11 +339,14 @@ impl Hash for Schema {
 /// them (`Mapping` or `Record`) while preserving every key and nested value.
 fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
     match value {
-        Scalar::Sequence(values) => Ok(Scalar::from_sequence(
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => Ok(Scalar::from_sequence(
             values
-                .as_slice()
                 .iter()
-                .map(normalized_schema_json)
+                .map(|value| normalized_schema_json(&value))
                 .collect::<Result<Vec<_>>>()?,
         )),
         Scalar::Struct(entries) => Scalar::from_struct(
@@ -356,7 +358,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        Scalar::Mapping(entries) => Scalar::from_struct(
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => Scalar::from_struct(
             entries
                 .as_slice()
                 .iter()
@@ -401,32 +403,32 @@ impl Node {
             Self::Bytes => DataType::binary(),
             Self::String | Self::Enum(_) => DataType::utf8(),
             Self::Date => DataType::date32(),
-            Self::TimeMillis => DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            Self::TimeMicros => DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            Self::TimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
+            Self::TimeMillis => DataType::Time32(TimeUnit::Millisecond),
+            Self::TimeMicros => DataType::Time64(TimeUnit::Microsecond),
+            Self::TimestampMillis => DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::TimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::TimestampMicros => DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::TimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::TimestampNanos => DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::LocalTimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampMillis => DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::NAIVE,
-            }),
-            Self::LocalTimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampMicros => DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::NAIVE,
-            }),
-            Self::LocalTimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampNanos => DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             Self::Uuid | Self::UuidFixed(_) => DataType::Uuid,
             Self::Decimal(decimal) => DataType::decimal(
                 u8::try_from(decimal.precision).map_err(|_| {
@@ -613,10 +615,10 @@ impl Parser {
         if let Some(name) = document.as_str() {
             return self.resolve(name, namespace);
         }
-        if let Some(branches) = document.as_sequence() {
+        if let Some(branches) = document.as_serie() {
             let mut parsed = Vec::with_capacity(branches.len());
-            for branch in branches {
-                parsed.push(self.parse(branch, namespace, depth + 1)?);
+            for branch in branches.iter() {
+                parsed.push(self.parse(&branch, namespace, depth + 1)?);
             }
             return Ok(Node::Union(parsed.into()));
         }
@@ -680,7 +682,7 @@ impl Parser {
         let aliases = declared_aliases(document, &child_namespace);
         let entries = document
             .get_key_str("fields")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected an Avro record \"fields\" array on {fullname:?}"
@@ -693,7 +695,7 @@ impl Parser {
             .insert(fullname.clone(), Node::Ref(fullname.clone()));
 
         let mut fields = Vec::with_capacity(entries.len());
-        for entry in entries {
+        for entry in entries.iter() {
             let field_name = entry
                 .get_key_str("name")
                 .and_then(Scalar::as_str)
@@ -709,12 +711,11 @@ impl Parser {
             })?;
             let field_aliases = entry
                 .get_key_str("aliases")
-                .and_then(Scalar::as_sequence)
+                .and_then(Scalar::as_serie)
                 .map(|aliases| {
                     aliases
                         .iter()
-                        .filter_map(Scalar::as_str)
-                        .map(SmolStr::new)
+                        .filter_map(|alias| alias.as_str().map(SmolStr::new))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -780,14 +781,14 @@ impl Parser {
         self.check_unregistered(&fullname)?;
         let symbols = document
             .get_key_str("symbols")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(SmolStr::new_static(
                     "expected an Avro enum \"symbols\" array",
                 ))
             })?;
         let mut names = Vec::with_capacity(symbols.len());
-        for symbol in symbols {
+        for symbol in symbols.iter() {
             names.push(SmolStr::new(symbol.as_str().ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected an Avro enum symbol string, got {}",
@@ -971,17 +972,17 @@ fn declared_name(document: &Scalar, namespace: &str) -> Result<(SmolStr, String)
 fn declared_aliases(document: &Scalar, namespace: &str) -> Vec<SmolStr> {
     document
         .get_key_str("aliases")
-        .and_then(Scalar::as_sequence)
+        .and_then(Scalar::as_serie)
         .map(|aliases| {
             aliases
                 .iter()
-                .filter_map(Scalar::as_str)
-                .map(|alias| {
-                    if alias.contains('.') || namespace.is_empty() {
+                .filter_map(|alias| {
+                    let alias = alias.as_str()?;
+                    Some(if alias.contains('.') || namespace.is_empty() {
                         SmolStr::new(alias)
                     } else {
                         format_smolstr!("{namespace}.{alias}")
-                    }
+                    })
                 })
                 .collect()
         })

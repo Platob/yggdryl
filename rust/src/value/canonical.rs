@@ -10,20 +10,17 @@ use crate::boolean::boolean_from_text;
 use crate::bytes::bytes_from_value;
 use crate::cast::text::blank_text_read;
 use crate::decimal::{validate_decimal_value, validate_decimal256_value};
-use crate::enums::EnumType;
 use crate::floating::{FloatWidth, canonical_float, float_from_text};
 use crate::integer::{
     canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
     validate_signed, validate_unsigned,
 };
-use crate::sequence::SequenceType;
 use crate::string::str_from_value;
 use crate::structure::StructType;
 use crate::temporal::{validate_date64, validate_time};
 use crate::{
-    DataType, Error, Field, FieldSegment, Result, Scalar, TemporalKind, TimeUnit, Timezone,
+    DataType, Error, Field, FieldSegment, Result, Scalar, Serie, TemporalKind, TimeUnit, Timezone,
 };
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{
     Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized,
     code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
@@ -155,6 +152,7 @@ impl Field {
     ///
     /// Returns an error when a value cannot be represented by its field.
     pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar> {
+        let value = into_row(value);
         self.validate_value(&value)?;
         canonicalize_row(self, value)
     }
@@ -170,6 +168,7 @@ impl Field {
     ///
     /// Returns what [`Self::canonicalize_value`] returns for the row.
     pub(crate) fn canonicalize_row_value(&self, value: Scalar) -> Result<Scalar> {
+        let value = into_row(value);
         validate_row(self, &value)?;
         canonicalize_row(self, value)
     }
@@ -290,7 +289,7 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
             .map_err(|failure| validation_error(root.name(), failure))?;
         return Ok(());
     }
-    let values = value.as_sequence().ok_or_else(|| Error::InvalidRecord {
+    let values = value.as_serie().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(root.name()),
         reason: format_smolstr!(
             "expected a record or {expected} ordered values, got {}",
@@ -306,8 +305,8 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
             ),
         });
     }
-    for (field, value) in root.fields().iter().zip(values) {
-        if let Err(failure) = validate_field_value(field, value) {
+    for (field, value) in root.fields().iter().zip(values.iter()) {
+        if let Err(failure) = validate_field_value(field, &value) {
             return Err(validation_error(root.name(), failure));
         }
     }
@@ -397,7 +396,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
         })
         .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]));
     }
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.sequence_rows() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::from(root_path(root.name())),
             reason: format_smolstr!(
@@ -407,11 +406,65 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
         });
     };
     let fields = root.fields();
-    let canonical = canonicalize_slice(values, |index, value| {
+    let canonical = canonicalize_slice(&values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })
     .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]))?;
-    Ok(canonical.unwrap_or(value))
+    if let Some(canonical) = canonical {
+        return Ok(canonical);
+    }
+    // A row is a run: a column's rows, built to be read, are the run it
+    // becomes, and a run's own rows are already it.
+    let built = match values {
+        Cow::Owned(rows) => Some(rows),
+        Cow::Borrowed(_) => None,
+    };
+    Ok(built.map_or(value, Scalar::from_sequence))
+}
+
+/// A row as the run it is: a column's rows built once, so the validation
+/// and the rewrite that follow read one run; anything else as it is.
+fn into_row(value: Scalar) -> Scalar {
+    match value {
+        Scalar::List(serie)
+        | Scalar::ListView(serie)
+        | Scalar::FixedSizeList(serie)
+        | Scalar::LargeList(serie)
+        | Scalar::LargeListView(serie)
+            if serie.is_column() =>
+        {
+            Scalar::List(Serie::Run(serie.into_run()))
+        }
+        other => other,
+    }
+}
+
+/// [`into_row`] over a borrowed value: a run or a record is lent.
+fn as_row(value: &Scalar) -> Cow<'_, Scalar> {
+    match value {
+        Scalar::List(serie)
+        | Scalar::ListView(serie)
+        | Scalar::FixedSizeList(serie)
+        | Scalar::LargeList(serie)
+        | Scalar::LargeListView(serie)
+            if serie.is_column() =>
+        {
+            Cow::Owned(Scalar::List(Serie::Run(serie.clone().into_run())))
+        }
+        _ => Cow::Borrowed(value),
+    }
+}
+
+/// Whether a column already holds what `item` declares: its field's datatype
+/// is `item`'s, and its nullability fits - `item` nullable, or no row absent.
+///
+/// A column holds only rows its field accepts, so one of the exact item
+/// field needs no walk to be proven; a run, or a column of another field,
+/// answers `false` and is read row by row.
+pub(crate) fn column_fits_item(serie: &Serie, item: &Field) -> bool {
+    serie.field().is_some_and(|field| {
+        field.dtype() == item.dtype() && (item.is_nullable() || serie.null_count() == 0)
+    })
 }
 
 /// Canonicalize a checked row cell-by-cell, without materializing its row
@@ -421,8 +474,9 @@ pub(crate) fn canonicalize_row_cells<'a>(
     value: &Scalar,
     mut visit: impl FnMut(&'a Field, Scalar),
 ) -> Result<()> {
-    validate_row(root, value)?;
-    let Some(cells) = RowCells::from_value(value) else {
+    let value = as_row(value);
+    validate_row(root, &value)?;
+    let Some(cells) = RowCells::from_value(&value) else {
         return Err(Error::InvalidRecord {
             path: SmolStr::from(root_path(root.name())),
             reason: SmolStr::new_static("expected an ordered sequence of column values"),
@@ -437,22 +491,23 @@ pub(crate) fn canonicalize_row_cells<'a>(
     Ok(())
 }
 
-/// The checked cells of one row. Ordered rows borrow their positions; named
-/// rows borrow their entries and only own a schema default when it is absent.
+/// The checked cells of one row. Ordered rows lend their positions - a run's
+/// as they are, a column's built once; named rows borrow their entries and
+/// only own a schema default when it is absent.
 enum RowCells<'a> {
-    Sequence(&'a [Scalar]),
+    Sequence(Cow<'a, [Scalar]>),
     Record(&'a BTreeMap<SmolStr, Scalar>),
 }
 
 impl<'a> RowCells<'a> {
     fn from_value(value: &'a Scalar) -> Option<Self> {
         value
-            .as_sequence()
+            .sequence_rows()
             .map(Self::Sequence)
             .or_else(|| value.as_struct().map(Self::Record))
     }
 
-    fn value(&self, field: &Field, index: usize) -> Result<Cow<'a, Scalar>> {
+    fn value(&self, field: &Field, index: usize) -> Result<Cow<'_, Scalar>> {
         match self {
             Self::Sequence(values) => Ok(Cow::Borrowed(&values[index])),
             Self::Record(record) => record
@@ -503,25 +558,26 @@ fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, 
 fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
     use DataType as D;
     match dtype {
-        D::Decimal(DecimalType::Decimal32 { scale, .. })
-        | D::Decimal(DecimalType::Decimal64 { scale, .. })
-        | D::Decimal(DecimalType::Decimal128 { scale, .. })
+        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. }
             if value.is_decimal() =>
         {
             value.decimal_unscaled_at(*scale)
         }
-        D::DateTime(leaf)
-            if temporal_matches(value, TemporalKind::DateTime, Some(&leaf.timezone())) =>
+        D::DateTime64 { unit, timezone }
+            if temporal_matches(value, TemporalKind::DateTime, Some(timezone)) =>
         {
-            value.temporal_count_at(leaf.unit()).map(i128::from)
+            value.temporal_count_at(*unit).map(i128::from)
         }
-        D::Duration(leaf) if temporal_matches(value, TemporalKind::Duration, None) => {
-            value.temporal_count_at(leaf.unit()).map(i128::from)
+        D::Duration32(unit) | D::Duration64(unit)
+            if temporal_matches(value, TemporalKind::Duration, None) =>
+        {
+            value.temporal_count_at(*unit).map(i128::from)
         }
-        D::Time(leaf) if temporal_matches(value, TemporalKind::Time, None) => {
-            value.temporal_count_at(leaf.unit()).map(i128::from)
+        D::Time32(unit) | D::Time64(unit) if temporal_matches(value, TemporalKind::Time, None) => {
+            value.temporal_count_at(*unit).map(i128::from)
         }
-        D::Date(leaf) if temporal_matches(value, TemporalKind::Date, None) => {
+        D::Date32 | D::Date64 if temporal_matches(value, TemporalKind::Date, None) => {
+            let leaf = dtype.date_type()?;
             value.temporal_count_at(leaf.unit()).map(i128::from)
         }
         _ => None,
@@ -578,7 +634,7 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // A record is a name-to-value map, so a map column reads it as its
         // entries; the key field then reads each name as its own datatype,
         // exactly as a struct root reads a record's field names.
-        D::Mapping(_) => {
+        D::Map(_) | D::SortedMap(_) => {
             let record = value.as_struct()?;
             Some(Scalar::from_mapping(
                 record
@@ -613,13 +669,16 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
             Ok(integer_from_text(text)?)
         }
         D::Float16 | D::Float32 | D::Float64 => Ok(float_from_text(text)?),
-        D::Decimal(DecimalType::Decimal32 { .. })
-        | D::Decimal(DecimalType::Decimal64 { .. })
-        | D::Decimal(DecimalType::Decimal128 { .. })
-        | D::Decimal(DecimalType::Decimal256 { .. }) => Scalar::from_decimal_text(dtype, text),
-        D::Date(_) | D::Time(_) | D::DateTime(_) | D::Duration(_) => {
-            Scalar::from_temporal_text(dtype, text)
+        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } | D::Decimal256 { .. } => {
+            Scalar::from_decimal_text(dtype, text)
         }
+        D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::DateTime64 { .. }
+        | D::Duration32(_)
+        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text),
         _ => return None,
     })
 }
@@ -673,7 +732,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         return Ok((canonical, true));
     }
     match dtype {
-        D::Decimal(DecimalType::Decimal32 { scale, .. }) => {
+        D::Decimal32 { scale, .. } => {
             let coefficient = decimal_coefficient_at(value, *scale)
                 .and_then(|wide| wide.as_i128())
                 .ok_or_else(|| Error::InvalidRecord {
@@ -687,7 +746,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Decimal(DecimalType::Decimal64 { scale, .. }) => {
+        D::Decimal64 { scale, .. } => {
             let coefficient = decimal_coefficient_at(value, *scale)
                 .and_then(|wide| wide.as_i128())
                 .ok_or_else(|| Error::InvalidRecord {
@@ -701,7 +760,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Decimal(DecimalType::Decimal128 { scale, .. }) => {
+        D::Decimal128 { scale, .. } => {
             let coefficient = decimal_coefficient_at(value, *scale)
                 .and_then(|wide| wide.as_i128())
                 .ok_or_else(|| Error::InvalidRecord {
@@ -712,7 +771,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Decimal(DecimalType::Decimal256 { scale, .. }) => {
+        D::Decimal256 { scale, .. } => {
             let coefficient =
                 decimal_coefficient_at(value, *scale).ok_or_else(|| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -722,7 +781,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Date(DateType::Date32) => {
+        D::Date32 => {
             let count = temporal_or_integer(value, TimeUnit::Day, TemporalKind::Date, None)?;
             let canonical = Scalar::date32(
                 i32::try_from(count)
@@ -731,14 +790,14 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Date(DateType::Date64) => {
+        D::Date64 => {
             let count =
                 temporal_or_integer(value, TimeUnit::Millisecond, TemporalKind::Date, None)?;
             let canonical = Scalar::date64(count);
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Time(TimeType::Time32(unit)) => {
+        D::Time32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalKind::Time, None)?;
             let canonical = Scalar::time32(
                 i32::try_from(count)
@@ -749,19 +808,19 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Time(TimeType::Time64(unit)) => {
+        D::Time64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalKind::Time, None)?;
             let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+        D::DateTime64 { unit, timezone } => {
             let count = temporal_or_integer(value, *unit, TemporalKind::DateTime, Some(timezone))?;
             let canonical = Scalar::datetime64(count, *unit, *timezone)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Duration(DurationType::Duration32(unit)) => {
+        D::Duration32(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalKind::Duration, None)?;
             let canonical = Scalar::duration32(
                 i32::try_from(count)
@@ -771,7 +830,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Duration(DurationType::Duration64(unit)) => {
+        D::Duration64(unit) => {
             let count = temporal_or_integer(value, *unit, TemporalKind::Duration, None)?;
             let canonical = Scalar::duration64(count, *unit)?;
             let changed = !same_temporal_representation(value, &canonical);
@@ -785,7 +844,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     match dtype {
         D::Null | D::Boolean => Ok((value.clone(), false)),
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(dtype, value),
-        D::Interval(leaf) => canonical_interval(leaf.unit(), value),
+        D::Interval(leaf) => canonical_interval(*leaf, value),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(dtype, value),
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
@@ -897,7 +956,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::Uri(UriType::Url) => match value {
+        D::Url => match value {
             Scalar::Url(_) => Ok((value.clone(), false)),
             // Text is canonicalized on the way in, so a column of URLs holds
             // one spelling per location however it was written.
@@ -909,7 +968,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::Uri(UriType::Urn) => match value {
+        D::Urn => match value {
             Scalar::Urn(_) => Ok((value.clone(), false)),
             Scalar::String(text) => crate::Urn::from_str(text.as_str())
                 .map(|urn| (Scalar::Urn(std::sync::Arc::new(urn)), true))
@@ -952,27 +1011,33 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::Sequence(SequenceType::List(field))
-        | D::Sequence(SequenceType::ListView(field))
-        | D::Sequence(SequenceType::FixedSizeList(field, _))
-        | D::Sequence(SequenceType::LargeList(field))
-        | D::Sequence(SequenceType::LargeListView(field)) => {
-            canonical_sequence(value, |value| canonicalize_field_value(field, value))
+        D::List(field)
+        | D::ListView(field)
+        | D::FixedSizeList(field, _)
+        | D::LargeList(field)
+        | D::LargeListView(field) => {
+            canonical_sequence(field, value).map(|held| declared(dtype, value, held))
         }
         D::Struct(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
-        D::Enum(EnumType::Dictionary(dictionary)) => {
-            canonicalize_dtype_value(dictionary.value(), value)
+        D::Dictionary(dictionary) => canonicalize_dtype_value(dictionary.value(), value),
+        D::Decimal32 { .. }
+        | D::Decimal64 { .. }
+        | D::Decimal128 { .. }
+        | D::Decimal256 { .. }
+        | D::DateTime64 { .. }
+        | D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::Duration32(_)
+        | D::Duration64(_) => unreachable!("typed scalars returned above"),
+        map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            canonical_map(map, value).map(|held| declared(dtype, value, held))
         }
-        D::Decimal(DecimalType::Decimal32 { .. })
-        | D::Decimal(DecimalType::Decimal64 { .. })
-        | D::Decimal(DecimalType::Decimal128 { .. })
-        | D::Decimal(DecimalType::Decimal256 { .. })
-        | D::DateTime(_)
-        | D::Date(_)
-        | D::Time(_)
-        | D::Duration(_) => unreachable!("typed scalars returned above"),
-        D::Mapping(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant column holds variant values, so a value entering one
         // is encoded here - canonically, keys sorted and sizes narrowest -
@@ -1097,10 +1162,10 @@ fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> 
             unit,
         )?,
         TimeUnit::DayTime => {
-            let [days, milliseconds] = value
-                .as_sequence()
-                .ok_or_else(|| canonical_error("expected a [days, milliseconds] interval"))?
-            else {
+            let components = value
+                .sequence_rows()
+                .ok_or_else(|| canonical_error("expected a [days, milliseconds] interval"))?;
+            let [days, milliseconds] = &*components else {
                 return Err(canonical_error(
                     "day_time interval requires exactly two components",
                 ));
@@ -1113,10 +1178,10 @@ fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> 
             Interval::new(0, days, i64::from(milliseconds) * 1_000_000, unit)?
         }
         TimeUnit::MonthDayNano => {
-            let [months, days, nanoseconds] = value.as_sequence().ok_or_else(|| {
+            let components = value.sequence_rows().ok_or_else(|| {
                 canonical_error("expected a [months, days, nanoseconds] interval")
-            })?
-            else {
+            })?;
+            let [months, days, nanoseconds] = &*components else {
                 return Err(canonical_error(
                     "month_day_nano interval requires exactly three components",
                 ));
@@ -1139,18 +1204,30 @@ fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> 
     Ok((Scalar::Interval(interval), true))
 }
 
-fn canonical_sequence(
-    value: &Scalar,
-    mut canonicalize: impl FnMut(&Scalar) -> Result<(Scalar, bool)>,
-) -> Result<(Scalar, bool)> {
-    let Some(values) = value.as_sequence() else {
+/// A list value may stay a column: one of the exact item field is answered
+/// untouched, because its door proved every row; any other sequence is read
+/// row by row and, where it was a column, answers the run of its rows.
+/// A canonical sequence or mapping moved into the variant `dtype` declares,
+/// reporting a rewrite when the variant moved.
+fn declared(dtype: &DataType, value: &Scalar, (held, changed): (Scalar, bool)) -> (Scalar, bool) {
+    let held = dtype.declared_layout(held);
+    let moved = std::mem::discriminant(&held) != std::mem::discriminant(value);
+    (held, changed || moved)
+}
+
+fn canonical_sequence(item: &Field, value: &Scalar) -> Result<(Scalar, bool)> {
+    let Some(serie) = value.as_serie() else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated sequence could not be canonicalized"),
         });
     };
-    if let Some(canonical) = canonicalize_slice(values, |index, value| {
-        canonicalize(value).map_err(|error| {
+    if column_fits_item(serie, item) {
+        return Ok((value.clone(), false));
+    }
+    let values = serie.rows();
+    if let Some(canonical) = canonicalize_slice(&values, |index, value| {
+        canonicalize_field_value(item, value).map_err(|error| {
             prepend_canonical_error(
                 error,
                 [FieldSegment::index(
@@ -1159,10 +1236,12 @@ fn canonical_sequence(
             )
         })
     })? {
-        Ok((canonical, true))
-    } else {
-        Ok((value.clone(), false))
+        return Ok((canonical, true));
     }
+    Ok(match values {
+        Cow::Owned(rows) => (Scalar::from_sequence(rows), true),
+        Cow::Borrowed(_) => (value.clone(), false),
+    })
 }
 
 fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool)> {
@@ -1172,20 +1251,32 @@ fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool
             Scalar::try_sequence(fields.len(), |index| cells.canonical(&fields[index], index))?;
         return Ok((sequence, true));
     }
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.sequence_rows() else {
         return canonicalization_failure(&DataType::Struct(fields.clone()));
     };
-    if let Some(canonical) = canonicalize_slice(values, |index, value| {
+    if let Some(canonical) = canonicalize_slice(&values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })? {
-        Ok((canonical, true))
-    } else {
-        Ok((value.clone(), false))
+        return Ok((canonical, true));
     }
+    // A row is a run: a column's rows, built to be read, are the run it
+    // becomes.
+    Ok(match values {
+        Cow::Owned(rows) => (Scalar::from_sequence(rows), true),
+        Cow::Borrowed(_) => (value.clone(), false),
+    })
 }
 
 fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scalar, bool)> {
-    let Some([type_id, payload]) = value.as_sequence() else {
+    let Some(pair) = value.sequence_rows() else {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: SmolStr::new_static("validated union could not be canonicalized"),
+        });
+    };
+    // A union value is a run: one spelled as a column is rebuilt as one.
+    let column = matches!(pair, Cow::Owned(_));
+    let [type_id, payload] = &*pair else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated union could not be canonicalized"),
@@ -1220,7 +1311,7 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     // and the canonical value no longer depends on whether the payload needed
     // one too.
     let id_changed = !matches!(type_id, Scalar::Int64(_));
-    if id_changed || payload_changed {
+    if id_changed || payload_changed || column {
         Ok((
             Scalar::from_sequence([Scalar::from(i64::from(type_id_number)), payload]),
             true,
@@ -1232,10 +1323,10 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
 
 fn canonical_map(map: &crate::MappingType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(entries) = value.as_mapping() else {
-        return canonicalization_failure(&DataType::Mapping(map.clone()));
+        return canonicalization_failure(&DataType::from(map.clone()));
     };
     let Some([key_field, value_field]) = map.entries().dtype().as_fields() else {
-        return canonicalization_failure(&DataType::Mapping(map.clone()));
+        return canonicalization_failure(&DataType::from(map.clone()));
     };
     for (index, (key, entry_value)) in entries.iter().enumerate() {
         let (canonical_key, key_changed) =
@@ -1568,27 +1659,32 @@ fn validate_dtype_value(
         D::Float16 | D::Float32 | D::Float64 => {
             require(value.as_f64().is_some(), dtype.name(), value)
         }
-        D::DateTime(_) | D::Duration(DurationType::Duration64(_)) => validate_signed(
+        D::DateTime64 { .. } | D::Duration64(_) => validate_signed(
             value,
             i128::from(i64::MIN),
             i128::from(i64::MAX),
             dtype.name(),
         ),
-        D::Duration(DurationType::Duration32(_)) => validate_signed(
+        D::Duration32(_) => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
         ),
-        D::Date(DateType::Date32) => validate_signed(
+        D::Date32 => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
         ),
-        D::Date(DateType::Date64) => validate_date64(value),
-        D::Time(leaf) => validate_time(value, leaf.unit()),
-        D::Interval(leaf) => validate_interval_value(value, leaf.unit()),
+        D::Date64 => validate_date64(value),
+        leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
+            let leaf = &leaf_dtype
+                .time_type()
+                .expect("the variant was just matched");
+            validate_time(value, leaf.unit())
+        }
+        D::Interval(leaf) => validate_interval_value(value, *leaf),
         // Bytes are checked the way they are built: the bound alone.
         D::Bytes(parameters) => match value {
             Scalar::Bytes(bytes) => bytes
@@ -1646,14 +1742,14 @@ fn validate_dtype_value(
                 .map_err(|_| expected("version", value)),
             _ => Err(expected("version", value)),
         },
-        D::Uri(UriType::Url) => match value {
+        D::Url => match value {
             Scalar::Url(_) => Ok(()),
             Scalar::String(text) => crate::Url::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("url", value)),
             _ => Err(expected("url", value)),
         },
-        D::Uri(UriType::Urn) => match value {
+        D::Urn => match value {
             Scalar::Urn(_) => Ok(()),
             Scalar::String(text) => crate::Urn::from_str(text.as_str())
                 .map(|_| ())
@@ -1681,13 +1777,10 @@ fn validate_dtype_value(
                 .map_err(|_| expected("mediatype", value)),
             _ => Err(expected("mediatype", value)),
         },
-        D::Sequence(SequenceType::List(field))
-        | D::Sequence(SequenceType::ListView(field))
-        | D::Sequence(SequenceType::LargeList(field))
-        | D::Sequence(SequenceType::LargeListView(field)) => {
+        D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
-        D::Sequence(SequenceType::FixedSizeList(field, size)) => validate_sequence(
+        D::FixedSizeList(field, size) => validate_sequence(
             field,
             value,
             usize::try_from(*size).ok(),
@@ -1696,22 +1789,17 @@ fn validate_dtype_value(
         ),
         D::Struct(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
-        D::Enum(EnumType::Dictionary(dictionary)) => {
-            validate_dtype_value(dictionary.value(), value, depth + 1)
+        D::Dictionary(dictionary) => validate_dtype_value(dictionary.value(), value, depth + 1),
+        D::Decimal32 { precision, .. } => validate_decimal_value(value, *precision, 32),
+        D::Decimal64 { precision, .. } => validate_decimal_value(value, *precision, 64),
+        D::Decimal128 { precision, .. } => validate_decimal_value(value, *precision, 128),
+        D::Decimal256 { precision, scale } => validate_decimal256_value(value, *precision, *scale),
+        map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            validate_map(map, value, depth + 1)
         }
-        D::Decimal(DecimalType::Decimal32 { precision, .. }) => {
-            validate_decimal_value(value, *precision, 32)
-        }
-        D::Decimal(DecimalType::Decimal64 { precision, .. }) => {
-            validate_decimal_value(value, *precision, 64)
-        }
-        D::Decimal(DecimalType::Decimal128 { precision, .. }) => {
-            validate_decimal_value(value, *precision, 128)
-        }
-        D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
-            validate_decimal256_value(value, *precision, *scale)
-        }
-        D::Mapping(map) => validate_map(map, value, depth + 1),
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)
         }
@@ -1738,19 +1826,24 @@ fn validate_sequence(
     expected_name: &str,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
-    let values = value
-        .as_sequence()
+    let serie = value
+        .as_serie()
         .ok_or_else(|| expected(expected_name, value))?;
     if let Some(expected_len) = expected_len {
-        if values.len() != expected_len {
+        if serie.len() != expected_len {
             return Err(ValidationFailure::new(format_smolstr!(
                 "{expected_name} requires {expected_len} items, got {}",
-                values.len()
+                serie.len()
             )));
         }
     }
-    for (index, value) in values.iter().enumerate() {
-        validate_field_value_at_depth(field, value, depth).map_err(|failure| {
+    // A column of the exact item field holds only rows it accepts - its door
+    // proved them - so no row is read.
+    if column_fits_item(serie, field) {
+        return Ok(());
+    }
+    for (index, value) in serie.iter().enumerate() {
+        validate_field_value_at_depth(field, &value, depth).map_err(|failure| {
             failure.prepend(FieldSegment::index(
                 i64::try_from(index).expect("allocated index fits i64"),
             ))
@@ -1768,7 +1861,7 @@ fn validate_struct(
         return validate_record_fields(fields.as_fields(), record, depth);
     }
     let values = value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| expected("struct sequence", value))?;
     if values.len() != fields.len() {
         return Err(ValidationFailure::new(format_smolstr!(
@@ -1779,7 +1872,7 @@ fn validate_struct(
     }
     fields
         .iter()
-        .zip(values)
+        .zip(values.iter())
         .try_for_each(|(field, value)| validate_field_value_at_depth(field, value, depth))
 }
 
@@ -1815,9 +1908,9 @@ fn validate_union(
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     let values = value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| expected("union [type_id, payload] sequence", value))?;
-    let [type_id, payload] = values else {
+    let [type_id, payload] = &*values else {
         return Err(ValidationFailure::new(
             "union value must contain exactly [type_id, payload]",
         ));

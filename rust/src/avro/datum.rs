@@ -15,18 +15,25 @@ use crate::{Error, Limits, Result, Scalar, Timezone};
 use super::schema::{Node, RecordType};
 
 /// Append a zig-zag variable-length integer.
+#[inline]
 pub(crate) fn put_long(target: &mut Vec<u8>, value: i64) {
     // Zig-zag keeps small negatives short, which is what Avro encodes with.
     let mut encoded = ((value << 1) ^ (value >> 63)) as u64;
-    loop {
-        let byte = u8::try_from(encoded & 0x7f).unwrap_or_default();
-        encoded >>= 7;
-        if encoded == 0 {
-            target.push(byte);
-            return;
-        }
-        target.push(byte | 0x80);
+    if encoded < 0x80 {
+        target.push(encoded as u8);
+        return;
     }
+    // Spelled on the stack and appended once: one capacity check per value
+    // rather than one per byte.
+    let mut spelled = [0_u8; 10];
+    let mut length = 0;
+    while encoded >= 0x80 {
+        spelled[length] = (encoded as u8) | 0x80;
+        encoded >>= 7;
+        length += 1;
+    }
+    spelled[length] = encoded as u8;
+    target.extend_from_slice(&spelled[..=length]);
 }
 
 /// Append a length-prefixed byte run.
@@ -71,7 +78,31 @@ impl<'bytes> Cursor<'bytes> {
     }
 
     /// Read a zig-zag variable-length integer.
+    #[inline]
     pub(crate) fn long(&mut self) -> Result<i64> {
+        // A value whose ten-byte window lies inside the buffer ends within
+        // that window or is malformed, so the common case reads without a
+        // bounds check per byte; the checked walk answers the rest - the last
+        // few bytes of a buffer, and the malformed spelling's error.
+        let window = self
+            .position
+            .checked_add(10)
+            .and_then(|end| self.bytes.get(self.position..end));
+        if let Some(window) = window {
+            let mut accumulated = 0_u64;
+            for (index, byte) in window.iter().enumerate() {
+                accumulated |= u64::from(byte & 0x7f) << (7 * index);
+                if byte & 0x80 == 0 {
+                    self.position += index + 1;
+                    return Ok(((accumulated >> 1) as i64) ^ -((accumulated & 1) as i64));
+                }
+            }
+        }
+        self.long_checked()
+    }
+
+    /// Read a zig-zag variable-length integer one checked byte at a time.
+    fn long_checked(&mut self) -> Result<i64> {
         let mut shift = 0_u32;
         let mut accumulated = 0_u64;
         loop {
@@ -757,13 +788,11 @@ impl DatumCodec<'_> {
                 }
                 Node::Array(items) => {
                     let depth = self.descend(depth)?;
-                    let values = value
-                        .as_sequence()
-                        .ok_or_else(|| mismatch("array", value))?;
+                    let values = value.as_serie().ok_or_else(|| mismatch("array", value))?;
                     if !values.is_empty() {
                         put_long(target, values.len() as i64);
-                        for item in values {
-                            self.encode(items, item, target, depth)?;
+                        for item in values.iter() {
+                            self.encode(items, &item, target, depth)?;
                         }
                     }
                     // A zero count closes the last block, so an empty array is one byte.
@@ -781,7 +810,7 @@ impl DatumCodec<'_> {
                                 }
                             }
                         }
-                        Scalar::Mapping(entries) => {
+                        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                             if !entries.as_slice().is_empty() {
                                 put_long(target, entries.as_slice().len() as i64);
                                 for (key, item) in entries.as_slice() {
@@ -902,7 +931,7 @@ impl DatumCodec<'_> {
                 }
             }
             Node::Map(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
-            Node::Array(_) => value.as_sequence().is_some(),
+            Node::Array(_) => value.as_serie().is_some(),
             Node::Union(_) => false,
             Node::Ref(name) => self
                 .names

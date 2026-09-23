@@ -170,13 +170,11 @@ The value is the published spelling, kept exactly: case is preserved, and the sp
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual(
-      [...fields.bloomberg('sid').castArrowArray(utf8(['AAPL US Equity']))],
-      ['AAPL US Equity'],
-    )
+    const stored = Serie.fromArrowArray(utf8(['AAPL US Equity']), fields.bloomberg('sid'))
+    assert.deepEqual([...stored.intoArrowArray()], ['AAPL US Equity'])
     ```
 
 ## Canonical is the published spelling

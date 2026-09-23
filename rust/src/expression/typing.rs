@@ -30,9 +30,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
-use crate::DecimalType;
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructType, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
@@ -100,7 +97,6 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
                 field.with_name(SmolStr::new(expression.to_string()))
             })
         }
-        Term::Attribute(attribute) => Ok(attribute.field()),
         // A parameter has no type until it is supplied. `bind` substitutes
         // every one before typing, so a parameter reaching here means the
         // caller asked for a type an unbound expression does not have.
@@ -392,7 +388,7 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Term) -> Result<
 /// means the same thing whether or not the column is dictionary-encoded.
 pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
     match dtype {
-        DataType::Enum(EnumType::Dictionary(dictionary)) => unwrap_dictionary(dictionary.value()),
+        DataType::Dictionary(dictionary) => unwrap_dictionary(dictionary.value()),
         DataType::RunEndEncoded(encoded) => unwrap_dictionary(encoded.values().dtype()),
         other => other,
     }
@@ -439,12 +435,10 @@ pub(crate) fn is_float(dtype: &DataType) -> bool {
 /// The precision and scale of an exact decimal, if it is one.
 pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
-            Some((*precision, *scale))
-        }
+        DataType::Decimal32 { precision, scale }
+        | DataType::Decimal64 { precision, scale }
+        | DataType::Decimal128 { precision, scale }
+        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
         _ => None,
     }
 }
@@ -461,16 +455,39 @@ fn is_signed_numeric(dtype: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
     ) || decimal_parts(unwrap_dictionary(dtype)).is_some()
-        || matches!(unwrap_dictionary(dtype), DataType::Duration(_))
+        || matches!(
+            unwrap_dictionary(dtype),
+            DataType::Duration32(_) | DataType::Duration64(_)
+        )
 }
 
 /// The temporal family and unit of a datatype, if it has one.
 pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
     match dtype {
-        DataType::Date(leaf) => Some((0, leaf.unit())),
-        DataType::Time(leaf) => Some((1, leaf.unit())),
-        DataType::DateTime(leaf) => Some((2, leaf.unit())),
-        DataType::Duration(leaf) => Some((3, leaf.unit())),
+        leaf_dtype @ (DataType::Date32 | DataType::Date64) => {
+            let leaf = &leaf_dtype
+                .date_type()
+                .expect("the variant was just matched");
+            Some((0, leaf.unit()))
+        }
+        leaf_dtype @ (DataType::Time32(_) | DataType::Time64(_)) => {
+            let leaf = &leaf_dtype
+                .time_type()
+                .expect("the variant was just matched");
+            Some((1, leaf.unit()))
+        }
+        leaf_dtype @ DataType::DateTime64 { .. } => {
+            let leaf = &leaf_dtype
+                .datetime_type()
+                .expect("the variant was just matched");
+            Some((2, leaf.unit()))
+        }
+        leaf_dtype @ (DataType::Duration32(_) | DataType::Duration64(_)) => {
+            let leaf = &leaf_dtype
+                .duration_type()
+                .expect("the variant was just matched");
+            Some((3, leaf.unit()))
+        }
         _ => None,
     }
 }
@@ -502,14 +519,14 @@ pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType>
 fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Option<DataType> {
     let left = unwrap_dictionary(left);
     let right = unwrap_dictionary(right);
-    if matches!(left, DataType::Duration(_))
+    if matches!(left, DataType::Duration32(_) | DataType::Duration64(_))
         && is_integer(right)
         && matches!(operator, Operator::Mul | Operator::Div)
     {
         return Some(left.clone());
     }
     if is_integer(left)
-        && matches!(right, DataType::Duration(_))
+        && matches!(right, DataType::Duration32(_) | DataType::Duration64(_))
         && matches!(operator, Operator::Mul)
     {
         return Some(right.clone());
@@ -587,7 +604,7 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
     }
     if is_integer(&shared)
         || is_float(&shared)
-        || (matches!(shared, DataType::Duration(_))
+        || (matches!(shared, DataType::Duration32(_) | DataType::Duration64(_))
             && matches!(operator, Operator::Add | Operator::Sub))
     {
         return Some(shared);
@@ -717,12 +734,13 @@ fn function_field(
         Function::Size => {
             if !matches!(
                 unwrap_dictionary(&first),
-                DataType::Sequence(SequenceType::List(_))
-                    | DataType::Sequence(SequenceType::ListView(_))
-                    | DataType::Sequence(SequenceType::FixedSizeList(..))
-                    | DataType::Sequence(SequenceType::LargeList(_))
-                    | DataType::Sequence(SequenceType::LargeListView(_))
-                    | DataType::Mapping(_)
+                DataType::List(_)
+                    | DataType::ListView(_)
+                    | DataType::FixedSizeList(..)
+                    | DataType::LargeList(_)
+                    | DataType::LargeListView(_)
+                    | DataType::Map(_)
+                    | DataType::SortedMap(_)
             ) {
                 return Err(typing_error(format_smolstr!(
                     "expected a list or a map for size, got {first}"

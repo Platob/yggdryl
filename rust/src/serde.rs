@@ -4,10 +4,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::{DataType, StructType, TimeUnit, UnionFields, UnionMode};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{Error, Field, Result, Scalar};
 
 /// Structural JSON and Serde implementations for fields.
@@ -714,17 +711,17 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Float16 => Self::Float16 {},
             D::Float32 => Self::Float32 {},
             D::Float64 => Self::Float64 {},
-            D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => Self::DateTime64 {
+            D::DateTime64 { unit, timezone } => Self::DateTime64 {
                 unit: *unit,
                 timezone: (!timezone.is_naive()).then(|| timezone.as_str()),
             },
-            D::Date(DateType::Date32) => Self::Date32 {},
-            D::Date(DateType::Date64) => Self::Date64 {},
-            D::Time(TimeType::Time32(unit)) => Self::Time32 { unit: *unit },
-            D::Time(TimeType::Time64(unit)) => Self::Time64 { unit: *unit },
-            D::Duration(DurationType::Duration32(unit)) => Self::Duration32 { unit: *unit },
-            D::Duration(DurationType::Duration64(unit)) => Self::Duration64 { unit: *unit },
-            D::Interval(leaf) => Self::Interval { unit: leaf.unit() },
+            D::Date32 => Self::Date32 {},
+            D::Date64 => Self::Date64 {},
+            D::Time32(unit) => Self::Time32 { unit: *unit },
+            D::Time64(unit) => Self::Time64 { unit: *unit },
+            D::Duration32(unit) => Self::Duration32 { unit: *unit },
+            D::Duration64(unit) => Self::Duration64 { unit: *unit },
+            D::Interval(leaf) => Self::Interval { unit: *leaf },
             D::Bytes(parameters) => {
                 let parameters = *parameters;
                 Self::Binary {
@@ -756,19 +753,19 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::TimeInForce => Self::TimeInForce {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
-            D::Uri(UriType::Url) => Self::Url {},
-            D::Uri(UriType::Urn) => Self::Urn {},
+            D::Url => Self::Url {},
+            D::Urn => Self::Urn {},
             D::Timezone => Self::Timezone {},
             D::MimeType => Self::MimeType {},
             D::MediaType => Self::MediaType {},
-            D::Sequence(SequenceType::List(field)) => Self::List { field },
-            D::Sequence(SequenceType::ListView(field)) => Self::ListView { field },
-            D::Sequence(SequenceType::FixedSizeList(field, length)) => Self::FixedSizeList {
+            D::List(field) => Self::List { field },
+            D::ListView(field) => Self::ListView { field },
+            D::FixedSizeList(field, length) => Self::FixedSizeList {
                 field,
                 length: *length,
             },
-            D::Sequence(SequenceType::LargeList(field)) => Self::LargeList { field },
-            D::Sequence(SequenceType::LargeListView(field)) => Self::LargeListView { field },
+            D::LargeList(field) => Self::LargeList { field },
+            D::LargeListView(field) => Self::LargeListView { field },
             D::Struct(fields) => Self::Struct {
                 fields: fields.as_fields(),
             },
@@ -776,29 +773,29 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 mode: *mode,
                 fields: UnionFieldsRef(fields),
             },
-            D::Enum(EnumType::Dictionary(dictionary)) => Self::Dictionary {
+            D::Dictionary(dictionary) => Self::Dictionary {
                 key: &dictionary.key,
                 value: &dictionary.value,
             },
-            D::Decimal(DecimalType::Decimal32 { precision, scale }) => Self::Decimal32 {
+            D::Decimal32 { precision, scale } => Self::Decimal32 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal(DecimalType::Decimal64 { precision, scale }) => Self::Decimal64 {
+            D::Decimal64 { precision, scale } => Self::Decimal64 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal(DecimalType::Decimal128 { precision, scale }) => Self::Decimal128 {
+            D::Decimal128 { precision, scale } => Self::Decimal128 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal(DecimalType::Decimal256 { precision, scale }) => Self::Decimal256 {
+            D::Decimal256 { precision, scale } => Self::Decimal256 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Mapping(map) => Self::Map {
+            map_dtype @ (D::Map(map) | D::SortedMap(map)) => Self::Map {
                 entries: map.entries(),
-                keys_sorted: map.keys_sorted(),
+                keys_sorted: matches!(map_dtype, D::SortedMap(_)),
             },
             D::RunEndEncoded(encoded) => Self::RunEndEncoded {
                 run_ends: &encoded.run_ends,
@@ -1152,8 +1149,8 @@ impl DataType {
             D::Float16 => tag("float16"),
             D::Float32 => tag("float32"),
             D::Float64 => tag("float64"),
-            D::Date(DateType::Date32) => tag("date32"),
-            D::Date(DateType::Date64) => tag("date64"),
+            D::Date32 => tag("date32"),
+            D::Date64 => tag("date64"),
             D::Country => tag("country"),
             D::Currency => tag("currency"),
             D::MicCode => tag("mic"),
@@ -1168,12 +1165,12 @@ impl DataType {
             D::TimeInForce => tag("timeinforce"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
-            D::Uri(UriType::Url) => tag("url"),
-            D::Uri(UriType::Urn) => tag("urn"),
+            D::Url => tag("url"),
+            D::Urn => tag("urn"),
             D::Timezone => tag("timezone"),
             D::MimeType => tag("mimetype"),
             D::MediaType => tag("mediatype"),
-            D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+            D::DateTime64 { unit, timezone } => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
                 // Omitted for the explicit NAIVE marker, exactly as the JSON
@@ -1185,25 +1182,25 @@ impl DataType {
                     ));
                 }
             }
-            D::Time(TimeType::Time32(unit)) => {
+            D::Time32(unit) => {
                 tag("time32");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Time(TimeType::Time64(unit)) => {
+            D::Time64(unit) => {
                 tag("time64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Duration(DurationType::Duration32(unit)) => {
+            D::Duration32(unit) => {
                 tag("duration32");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Duration(DurationType::Duration64(unit)) => {
+            D::Duration64(unit) => {
                 tag("duration64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
             D::Interval(leaf) => {
                 tag("interval");
-                entries.push((key("unit"), unit_value(leaf.unit())));
+                entries.push((key("unit"), unit_value(*leaf)));
             }
             D::Bytes(parameters) => {
                 let parameters = *parameters;
@@ -1237,24 +1234,24 @@ impl DataType {
                     entries.push((key("fixed"), Scalar::from(fixed)));
                 }
             }
-            D::Sequence(SequenceType::List(field)) => {
+            D::List(field) => {
                 tag("list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::Sequence(SequenceType::ListView(field)) => {
+            D::ListView(field) => {
                 tag("list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::Sequence(SequenceType::FixedSizeList(field, length)) => {
+            D::FixedSizeList(field, length) => {
                 tag("fixed_size_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
                 entries.push((key("length"), Scalar::from(*length)));
             }
-            D::Sequence(SequenceType::LargeList(field)) => {
+            D::LargeList(field) => {
                 tag("large_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::Sequence(SequenceType::LargeListView(field)) => {
+            D::LargeListView(field) => {
                 tag("large_list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
@@ -1288,24 +1285,27 @@ impl DataType {
                     ),
                 ));
             }
-            D::Enum(EnumType::Dictionary(dictionary)) => {
+            D::Dictionary(dictionary) => {
                 tag("dictionary");
                 entries.push((key("key"), dictionary.key.clone().into_value()));
                 entries.push((key("value"), dictionary.value.clone().into_value()));
             }
-            D::Decimal(DecimalType::Decimal32 { precision, scale }) => {
+            D::Decimal32 { precision, scale } => {
                 decimal(&mut entries, "decimal32", *precision, *scale)
             }
-            D::Decimal(DecimalType::Decimal64 { precision, scale }) => {
+            D::Decimal64 { precision, scale } => {
                 decimal(&mut entries, "decimal64", *precision, *scale)
             }
-            D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+            D::Decimal128 { precision, scale } => {
                 decimal(&mut entries, "decimal128", *precision, *scale);
             }
-            D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            D::Decimal256 { precision, scale } => {
                 decimal(&mut entries, "decimal256", *precision, *scale);
             }
-            D::Mapping(map) => {
+            map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 tag("map");
                 entries.push((key("entries"), map.entries().clone().into_value()));
                 entries.push((key("keys_sorted"), Scalar::from(map.keys_sorted())));
@@ -1512,11 +1512,11 @@ impl DataType {
             "large_list_view" => Self::large_list_view(child("field")?),
             "struct" => {
                 let fields = at("fields")
-                    .and_then(Scalar::as_sequence)
+                    .and_then(Scalar::as_serie)
                     .ok_or_else(|| invalid("$.fields", "a sequence of fields", "nothing"))?;
                 let mut children = Vec::with_capacity(fields.len());
-                for held in fields {
-                    children.push(Field::from_value(held.clone())?);
+                for held in fields.iter() {
+                    children.push(Field::from_value(held.into_owned())?);
                 }
                 Self::from(StructType::from_fields(children)?)
             }
@@ -1533,10 +1533,10 @@ impl DataType {
                     }
                 };
                 let members = at("fields")
-                    .and_then(Scalar::as_sequence)
+                    .and_then(Scalar::as_serie)
                     .ok_or_else(|| invalid("$.fields", "a sequence of union members", "nothing"))?;
                 let mut variants = Vec::with_capacity(members.len());
-                for held in members {
+                for held in members.iter() {
                     let type_id = i8::try_from(integer(held.get_key_str("type_id"), "type_id")?)
                         .map_err(|_| {
                             invalid(

@@ -26,6 +26,12 @@ yggdryl = { path = "../rust", default-features = false, features = [
     "s3",
 ] }
 serde_json = "1"
+# The extension's own allocator. Every Arrow buffer a read decodes is a
+# large allocation, and the system allocator maps and unmaps those per call,
+# so a scan pays a page fault per 4 KiB it decodes; mimalloc - the allocator
+# PyArrow itself ships - keeps freed pages for the next batch. Only this
+# binary sets it: the core crate is a library and never picks one.
+mimalloc = { version = "0.1", default-features = false }
 # Bridges the core's `log` records into Python's `logging`, so a record is
 # emitted where the work happens and reaches the handler the caller configured.
 pyo3-log = "0.13.4"

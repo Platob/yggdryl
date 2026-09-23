@@ -3,12 +3,9 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use yggdryl::DecimalType;
-use yggdryl::SequenceType;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Scheme, StructType, TimeUnit, Timezone, UnionMode,
 };
-use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
@@ -54,7 +51,7 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
     let fields = transformed.as_fields().unwrap();
     assert_eq!(fields[0].dtype(), &DataType::Int16);
     assert_eq!(fields[1].dtype(), &DataType::decimal128(20, 0).unwrap());
-    let DataType::Sequence(SequenceType::List(item)) = fields[2].dtype() else {
+    let DataType::List(item) = fields[2].dtype() else {
         panic!("expected normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
@@ -108,10 +105,10 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
 fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
     let source = StructType::from_fields([Field::new(
         "a.b",
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        }),
+        },
         false,
     )])
     .map(DataType::from)
@@ -275,10 +272,10 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
 
 #[test]
 fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
-    let nanosecond = DataType::DateTime(DateTimeType::DateTime64 {
+    let nanosecond = DataType::DateTime64 {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::NAIVE,
-    });
+    };
 
     // pandas is nanosecond-native, Spark is microsecond-native.
     assert_eq!(
@@ -296,10 +293,10 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
     assert!(message.contains("got ns"), "{message}");
     assert!(message.contains("value cast"), "{message}");
 
-    let second = DataType::DateTime(DateTimeType::DateTime64 {
+    let second = DataType::DateTime64 {
         unit: TimeUnit::Second,
         timezone: Timezone::NAIVE,
-    });
+    };
     let polars_message = second
         .into_scheme_compat(&Scheme::POLARS)
         .unwrap_err()
@@ -314,10 +311,10 @@ fn every_target_reports_a_path_for_a_nested_failure() {
         "outer",
         DataType::list(Field::new(
             "item",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             true,
         )),
         true,
@@ -339,10 +336,10 @@ fn every_target_reports_a_path_for_a_nested_failure() {
 
 #[test]
 fn negative_decimal_scale_names_the_offending_scale() {
-    let negative = DataType::Decimal(DecimalType::Decimal128 {
+    let negative = DataType::Decimal128 {
         precision: 10,
         scale: -2,
-    });
+    };
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
         let message = negative
             .clone()
@@ -380,13 +377,13 @@ fn compatibility_preflight_reports_its_own_operation_kind() {
 #[test]
 fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
     for accepted in [
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }),
-        DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
-        DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
-        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        },
+        DataType::Duration32(TimeUnit::Microsecond),
+        DataType::Duration64(TimeUnit::Microsecond),
+        DataType::Interval(TimeUnit::YearMonth),
         DataType::decimal128(38, 0).unwrap(),
     ] {
         assert_eq!(
@@ -395,17 +392,17 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
         );
     }
     for rejected in [
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        }),
+        },
         DataType::date64(),
-        DataType::Time(TimeType::Time32(TimeUnit::Second)),
-        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-        DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
-        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
-        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+        DataType::Time32(TimeUnit::Second),
+        DataType::Time64(TimeUnit::Microsecond),
+        DataType::Duration32(TimeUnit::Nanosecond),
+        DataType::Duration64(TimeUnit::Nanosecond),
+        DataType::Interval(TimeUnit::DayTime),
+        DataType::Interval(TimeUnit::MonthDayNano),
         DataType::decimal128(9, -1).unwrap(),
         DataType::decimal256(39, 0).unwrap(),
         DataType::union(
@@ -425,7 +422,7 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
 fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     let map = DataType::map_of(DataType::utf8_view(), DataType::UInt8, true).unwrap();
     let transformed = map.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::Mapping(map) = transformed else {
+    let Some(map) = (transformed).as_mapping() else {
         panic!("expected map");
     };
     assert!(map.keys_sorted());
@@ -439,7 +436,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     )
     .unwrap();
     let transformed = dictionary.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = transformed else {
+    let DataType::List(item) = transformed else {
         panic!("expected logical dictionary list");
     };
     assert_eq!(item.dtype(), &DataType::Int32);
@@ -583,23 +580,23 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         DataType::utf8(),
         DataType::fixed_binary(16).unwrap(),
         DataType::fixed_binary(8).unwrap(),
-        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::Time64(TimeUnit::Microsecond),
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        }),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        },
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        },
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        }),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        },
+        DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        }),
+        },
         DataType::decimal128(38, 9).unwrap(),
     ] {
         assert_eq!(
@@ -614,18 +611,18 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
 fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
     let cases = vec![
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             vec!["expected timestamp of us or ns", "got s", "value cast"],
         ),
         (
-            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+            DataType::Time32(TimeUnit::Millisecond),
             vec!["expected time-of-day of us", "got ms"],
         ),
         (
-            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+            DataType::Time64(TimeUnit::Nanosecond),
             vec!["expected time-of-day of us", "got ns"],
         ),
         (
@@ -633,15 +630,15 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
             vec!["date64 milliseconds", "Iceberg date32 days"],
         ),
         (
-            DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
+            DataType::Duration32(TimeUnit::Microsecond),
             vec!["no elapsed-time type", "got duration32(us)"],
         ),
         (
-            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+            DataType::Duration64(TimeUnit::Microsecond),
             vec!["no elapsed-time type", "got duration64(us)"],
         ),
         (
-            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+            DataType::Interval(TimeUnit::MonthDayNano),
             vec!["no calendar interval type", "got interval(month_day_nano)"],
         ),
         (
@@ -649,10 +646,10 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
             vec!["decimal256(39, 0)", "limited to 38"],
         ),
         (
-            DataType::Decimal(DecimalType::Decimal128 {
+            DataType::Decimal128 {
                 precision: 10,
                 scale: -2,
-            }),
+            },
             vec!["expected a non-negative decimal scale, got -2", "Iceberg"],
         ),
     ];
@@ -706,7 +703,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
 
     assert_eq!(fields[0].dtype(), &DataType::Int32);
     assert!(!fields[0].is_nullable());
-    let DataType::Sequence(SequenceType::List(item)) = fields[1].dtype() else {
+    let DataType::List(item) = fields[1].dtype() else {
         panic!("expected a normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
@@ -714,7 +711,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     let nested = fields[2].dtype().as_fields().unwrap();
     assert_eq!(nested[0].name(), "half");
     assert_eq!(nested[0].dtype(), &DataType::Float32);
-    let DataType::Mapping(map) = fields[3].dtype() else {
+    let Some(map) = (fields[3].dtype()).as_mapping() else {
         panic!("expected a retained map");
     };
     assert!(map.keys_sorted());

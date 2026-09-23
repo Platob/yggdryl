@@ -8,9 +8,8 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Field, Serie, StructType};
 
 use super::doors;
 
@@ -75,15 +74,17 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
     let id = DataType::Uuid.required_field("id");
     group.bench_function("text_ingest", |bencher| {
         bencher.iter(|| {
-            black_box(&id)
-                .cast_arrow_array(Arc::clone(&text), strict)
+            Serie::from_arrow_array(Some(black_box(&id)), Arc::clone(&text), strict)
                 .expect("every spelling is an identifier")
+                .require_arrow_array()
+                .expect("a cast column has a layout")
         });
     });
 
-    let stored = id
-        .cast_arrow_array(Arc::clone(&text), strict)
-        .expect("every spelling is an identifier");
+    let stored = Serie::from_arrow_array(Some(&id), Arc::clone(&text), strict)
+        .expect("every spelling is an identifier")
+        .require_arrow_array()
+        .expect("a cast column has a layout");
     let raw: ArrayRef = Arc::new(
         stored
             .as_any()
@@ -93,9 +94,10 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
     );
     group.bench_function("bytes_ingest", |bencher| {
         bencher.iter(|| {
-            black_box(&id)
-                .cast_arrow_array(Arc::clone(&raw), strict)
+            Serie::from_arrow_array(Some(black_box(&id)), Arc::clone(&raw), strict)
                 .expect("sixteen bytes are an identifier")
+                .require_arrow_array()
+                .expect("a cast column has a layout")
         });
     });
 
@@ -116,9 +118,10 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
         );
         group.bench_function(BenchmarkId::new("render", spelling), |bencher| {
             bencher.iter(|| {
-                black_box(&target)
-                    .cast_arrow_batch(batch.clone(), strict)
+                Serie::from_arrow_batch(Some(black_box(&target)), &batch, strict)
                     .expect("the stored identifiers are valid")
+                    .into_arrow_batch()
+                    .expect("a record column is a table")
             });
         });
     }

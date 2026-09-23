@@ -134,6 +134,7 @@ nav:
       - DataType: types/datatype.md
       - Field: types/field.md
       - Scalar: types/scalar.md
+      - Serie: types/serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
       - Protocol: types/protocol.md
@@ -211,7 +212,6 @@ nav:
     - Filters: expression/filters.md
     - Functions: expression/functions.md
     - Plans: expression/plans.md
-    - Holder attributes: expression/holder.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
   - Graph: graph.md

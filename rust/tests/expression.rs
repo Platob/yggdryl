@@ -2,8 +2,6 @@
 
 #[path = "expression/arrow.rs"]
 mod arrow;
-#[path = "expression/attribute.rs"]
-mod attribute;
 #[path = "expression/bind.rs"]
 mod bind;
 #[path = "expression/display.rs"]

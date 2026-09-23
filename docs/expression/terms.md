@@ -7,7 +7,7 @@
 | Key | Value |
 | --- | --- |
 | Owns | `Term`, `Bound`, `Literal`, `Comparison`, `Operator`, `Function`, `col`, `lit` |
-| Build | from text, or method by method: `column`, `literal`, `attribute`, `parameter`, comparisons, arithmetic, paths, `call`, `case`, `cast` |
+| Build | from text, or method by method: `column`, `literal`, `parameter`, comparisons, arithmetic, paths, `call`, `case`, `cast` |
 | Bind | `bind(schema)` and `bind_with(schema, parameters)` resolve names to indices, convert each literal once into the type it meets, fold constant subtrees, order `and` cheapest-first |
 | Simplify | `simplify()` is exact under three-valued logic and reaches a fixed point: `a = 1 or a = 2` is `a in (1, 2)`, `not (a = 1 or a = 2)` is `not a in (1, 2)` |
 | Explain | `explain()` draws the tree one node per line; a bound tree adds each node's datatype, nullability and cost |
@@ -217,9 +217,9 @@ At bind, a literal meets the column it is compared with and is converted once in
 | type | the output `Field` of every node against the schema; `is_predicate` is whether the root answers a boolean |
 | coerce | each literal into the operand it meets; operands with no common type compare as text |
 | fold | constant subtrees evaluated once |
-| order | the operands of `and` cheapest-first: free holder attributes, then stats, then rows, so a listing stops at the first `false` without a decode |
+| order | the operands of `and` and `or` cheapest-first: a test reading fewer columns runs before one reading more |
 
-`Bound` then answers a row (`eval`, `matches`), a batch (`evaluate`, `filter_mask`, `filter`), a reader (`filter_reader`), a holder (`matches_holder`), and a container's statistics (`statistics_prune`, `statistics_certainty`); [Evaluate](evaluate.md) and [Holder attributes](holder.md) show each.
+`Bound` then answers a row (`eval`, `matches`), a batch (`evaluate`, `filter_mask`, `filter`), a reader (`filter_reader`), and a container's statistics (`statistics_prune`, `statistics_certainty`); [Evaluate](evaluate.md) shows each.
 
 ## Edges
 
@@ -228,7 +228,7 @@ At bind, a literal meets the column it is compared with and is converted once in
 - A column named in two cases -> ambiguity error listing both.
 - `simplify` -> a fixed point: simplifying twice changes nothing.
 - `explain` on a `Bound` -> the cheapest-first order, which is the order the tree runs in.
-- A term with holder attributes bound against an empty struct -> binds; `reads_rows` is false.
+- A term that reads no column, bound against an empty struct -> binds; `reads_rows` is false.
 - A predicate segment on a computed value -> refused at parse; on anything but a list of structs, or with a predicate that answers no boolean -> refused at bind naming the datatype.
 
 ## Commands

@@ -33,7 +33,7 @@ test('typed TOML keeps core struct canonicalization on the Scalar path', () => {
 
   const native = toml.loads('value = 1.5', { field, scalar: true })
   assert.ok(native instanceof Scalar)
-  assert.equal(native.kind, 'sequence')
+  assert.equal(native.kind, 'list')
   assert.deepEqual(toml.loads('value = 1.5', { field }), { value: 1.5 })
 })
 

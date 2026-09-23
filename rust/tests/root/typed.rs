@@ -103,9 +103,9 @@ mod pairing {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
+    use yggdryl::UncheckedFieldScalar;
     use yggdryl::interval::Interval;
     use yggdryl::{DataType, Field, FieldScalar, Scalar, StructType, TimeUnit, Timezone};
-    use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
     fn hash_of<T: Hash>(value: &T) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -135,10 +135,10 @@ mod pairing {
             DataType::Int64,
             DataType::utf8(),
             DataType::binary(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            }),
+            },
         ] {
             let nullable = Field::new("value", dtype.clone(), true);
             let typed = FieldScalar::new(&nullable, Scalar::Null).unwrap();
@@ -236,7 +236,7 @@ mod pairing {
         .required_field("row");
         let typed = FieldScalar::new(&schema, row.clone()).unwrap();
         assert_eq!(typed.as_sequence(), row.as_sequence());
-        assert_eq!(typed.get(1), Some(&Scalar::from("AAPL")));
+        assert_eq!(typed.get(1).as_deref(), Some(&Scalar::from("AAPL")));
 
         let wrong = Scalar::from_sequence([Scalar::from("one"), Scalar::from("AAPL")]);
         let error = FieldScalar::new(&schema, wrong).expect_err("id is not text");
@@ -269,7 +269,7 @@ mod pairing {
             "a record canonicalizes to a row"
         );
         assert_eq!(typed.as_struct(), None);
-        assert_eq!(typed.get(0), Some(&Scalar::from(1_i64)));
+        assert_eq!(typed.get(0).as_deref(), Some(&Scalar::from(1_i64)));
         assert_eq!(typed.as_ref(), typed.value());
 
         let mapping = Scalar::from_mapping([(Scalar::from("id"), Scalar::from(1_i64))]).unwrap();
@@ -619,7 +619,7 @@ mod records {
         // A dotted path names a descendant the field walks to, never a cell.
         assert_eq!(schema.get_field("leg.px").map(Field::name), Some("px"));
         assert!(record.get("leg.px").is_none());
-        assert_eq!(record["leg"].get(0).and_then(Scalar::as_f64), Some(1.5));
+        assert_eq!(record["leg"].get(0).and_then(|px| px.as_f64()), Some(1.5));
     }
 
     #[test]

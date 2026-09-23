@@ -124,7 +124,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
     assert_eq!(scalar_value(&choice, array.as_ref())?, chosen);
     ```
 
-The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
+The same accounting runs behind every `ArrowCastPlan`; see [Cast](../types/cast.md).
 
 ## Edges
 

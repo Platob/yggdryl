@@ -49,10 +49,7 @@ use crate::{Charset, DataType, Error, Field, Result, StructType};
 use crate::{TimeUnit, UnionMode};
 
 use crate::bytes::BytesType;
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::string::StringType;
-use crate::{DateType, DecimalType, DurationType};
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -197,7 +194,12 @@ impl DataType {
         let canonical_text = |dtype: &Self| {
             matches!(
                 dtype,
-                Self::Version | Self::Uri(_) | Self::Timezone | Self::MimeType | Self::MediaType
+                Self::Version
+                    | Self::Url
+                    | Self::Urn
+                    | Self::Timezone
+                    | Self::MimeType
+                    | Self::MediaType
             )
         };
         if canonical_text(self) || canonical_text(other) {
@@ -228,10 +230,7 @@ fn merge_encoded(
     recode: Recode,
 ) -> Result<Option<DataType>> {
     match (left, right) {
-        (
-            DataType::Enum(EnumType::Dictionary(left_dict)),
-            DataType::Enum(EnumType::Dictionary(right_dict)),
-        ) => {
+        (DataType::Dictionary(left_dict), DataType::Dictionary(right_dict)) => {
             let key = left_dict.key().merge(right_dict.key(), how, recode)?;
             let value = left_dict.value().merge(right_dict.value(), how, recode)?;
             DataType::dictionary(key, value).map(Some)
@@ -246,10 +245,10 @@ fn merge_encoded(
         // One side encoded and the other not: the logical types meet, and the
         // result is plain, because an encoding one side never had is not
         // something a merge may impose.
-        (DataType::Enum(EnumType::Dictionary(_)) | DataType::RunEndEncoded(_), _) => {
+        (DataType::Dictionary(_) | DataType::RunEndEncoded(_), _) => {
             decoded(left).merge(right, how, recode).map(Some)
         }
-        (_, DataType::Enum(EnumType::Dictionary(_)) | DataType::RunEndEncoded(_)) => {
+        (_, DataType::Dictionary(_) | DataType::RunEndEncoded(_)) => {
             left.merge(decoded(right), how, recode).map(Some)
         }
         _ => Ok(None),
@@ -259,7 +258,7 @@ fn merge_encoded(
 /// The logical type under any number of encoding wrappers.
 fn decoded(dtype: &DataType) -> &DataType {
     match dtype {
-        DataType::Enum(EnumType::Dictionary(dictionary)) => decoded(dictionary.value()),
+        DataType::Dictionary(dictionary) => decoded(dictionary.value()),
         DataType::RunEndEncoded(encoded) => decoded(encoded.values().dtype()),
         other => other,
     }
@@ -276,11 +275,16 @@ fn merge_nested(
         (DataType::Struct(left_fields), DataType::Struct(right_fields)) => {
             merge_struct(left_fields.as_ref(), right_fields.as_ref(), how, recode).map(Some)
         }
-        (DataType::Mapping(left_map), DataType::Mapping(right_map)) => {
+        (
+            DataType::Map(left_map) | DataType::SortedMap(left_map),
+            DataType::Map(right_map) | DataType::SortedMap(right_map),
+        ) => {
             let entries = left_map.entries().merge(right_map.entries(), how, recode)?;
             // Sorted keys are only a promise the merged map can keep if both
             // sides made it.
-            DataType::map(entries, left_map.keys_sorted() && right_map.keys_sorted()).map(Some)
+            let sorted =
+                matches!(left, DataType::SortedMap(_)) && matches!(right, DataType::SortedMap(_));
+            DataType::map(entries, sorted).map(Some)
         }
         (DataType::Union(left_members, left_mode), DataType::Union(right_members, right_mode)) => {
             merge_union(
@@ -392,11 +396,11 @@ fn merge_union(
 /// The item field, width rank, and fixed size of a list-shaped layout.
 fn list_parts(dtype: &DataType) -> Option<(u8, &Field, Option<i32>)> {
     match dtype {
-        DataType::Sequence(SequenceType::List(item)) => Some((0, item, None)),
-        DataType::Sequence(SequenceType::ListView(item)) => Some((1, item, None)),
-        DataType::Sequence(SequenceType::FixedSizeList(item, size)) => Some((0, item, Some(*size))),
-        DataType::Sequence(SequenceType::LargeList(item)) => Some((2, item, None)),
-        DataType::Sequence(SequenceType::LargeListView(item)) => Some((3, item, None)),
+        DataType::List(item) => Some((0, item, None)),
+        DataType::ListView(item) => Some((1, item, None)),
+        DataType::FixedSizeList(item, size) => Some((0, item, Some(*size))),
+        DataType::LargeList(item) => Some((2, item, None)),
+        DataType::LargeListView(item) => Some((3, item, None)),
         _ => None,
     }
 }
@@ -465,7 +469,7 @@ fn merge_scalar(
 fn is_mergeable_into_bytes(dtype: &DataType) -> bool {
     !matches!(
         dtype,
-        DataType::Struct(_) | DataType::Union(..) | DataType::Mapping(_)
+        DataType::Struct(_) | DataType::Union(..) | DataType::Map(_) | DataType::SortedMap(_)
     ) && list_parts(dtype).is_none()
 }
 
@@ -844,10 +848,10 @@ fn merge_decimal(
 /// Which of the four backings a decimal declares, as a width rank.
 const fn decimal_backing(dtype: &DataType) -> Option<u8> {
     match dtype {
-        DataType::Decimal(DecimalType::Decimal32 { .. }) => Some(0),
-        DataType::Decimal(DecimalType::Decimal64 { .. }) => Some(1),
-        DataType::Decimal(DecimalType::Decimal128 { .. }) => Some(2),
-        DataType::Decimal(DecimalType::Decimal256 { .. }) => Some(3),
+        DataType::Decimal32 { .. } => Some(0),
+        DataType::Decimal64 { .. } => Some(1),
+        DataType::Decimal128 { .. } => Some(2),
+        DataType::Decimal256 { .. } => Some(3),
         _ => None,
     }
 }
@@ -890,12 +894,10 @@ const fn integer_as_decimal(dtype: &DataType) -> Option<(u8, i8)> {
 /// The precision and scale of an exact decimal, if it is one.
 const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
-            Some((*precision, *scale))
-        }
+        DataType::Decimal32 { precision, scale }
+        | DataType::Decimal64 { precision, scale }
+        | DataType::Decimal128 { precision, scale }
+        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
         _ => None,
     }
 }
@@ -964,9 +966,7 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
     );
     Some(match left_family {
         0 => {
-            if matches!(left, DataType::Date(DateType::Date64))
-                || matches!(right, DataType::Date(DateType::Date64))
-            {
+            if matches!(left, DataType::Date64) || matches!(right, DataType::Date64) {
                 DataType::date64()
             } else {
                 DataType::date32()
@@ -977,16 +977,14 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
             // A zone one side declares is kept: a naive reading of a zoned
             // column loses the offset, which is not a merge but a cast.
             let timezone = match (left, right) {
-                (DataType::DateTime(leaf), _) if !leaf.timezone().is_naive() => leaf.timezone(),
-                (_, DataType::DateTime(leaf)) if !leaf.timezone().is_naive() => leaf.timezone(),
+                (DataType::DateTime64 { timezone, .. }, _) if !timezone.is_naive() => *timezone,
+                (_, DataType::DateTime64 { timezone, .. }) if !timezone.is_naive() => *timezone,
                 _ => crate::Timezone::NAIVE,
             };
             DataType::datetime64(unit, timezone).ok()?
         }
         _ => {
-            if matches!(left, DataType::Duration(DurationType::Duration64(_)))
-                || matches!(right, DataType::Duration(DurationType::Duration64(_)))
-            {
+            if matches!(left, DataType::Duration64(_)) || matches!(right, DataType::Duration64(_)) {
                 DataType::duration64(unit).ok()?
             } else {
                 DataType::duration32(unit).ok()?
@@ -998,10 +996,30 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
 /// The temporal family and unit of a datatype, if it has one.
 const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
     match dtype {
-        DataType::Date(leaf) => Some((0, leaf.unit())),
-        DataType::Time(leaf) => Some((1, leaf.unit())),
-        DataType::DateTime(leaf) => Some((2, leaf.unit())),
-        DataType::Duration(leaf) => Some((3, leaf.unit())),
+        leaf_dtype @ (DataType::Date32 | DataType::Date64) => {
+            let leaf = &leaf_dtype
+                .date_type()
+                .expect("the variant was just matched");
+            Some((0, leaf.unit()))
+        }
+        leaf_dtype @ (DataType::Time32(_) | DataType::Time64(_)) => {
+            let leaf = &leaf_dtype
+                .time_type()
+                .expect("the variant was just matched");
+            Some((1, leaf.unit()))
+        }
+        leaf_dtype @ DataType::DateTime64 { .. } => {
+            let leaf = &leaf_dtype
+                .datetime_type()
+                .expect("the variant was just matched");
+            Some((2, leaf.unit()))
+        }
+        leaf_dtype @ (DataType::Duration32(_) | DataType::Duration64(_)) => {
+            let leaf = &leaf_dtype
+                .duration_type()
+                .expect("the variant was just matched");
+            Some((3, leaf.unit()))
+        }
         _ => None,
     }
 }

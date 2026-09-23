@@ -46,11 +46,10 @@ mod ordered {
     use arrow_schema::DataType as ArrowDataType;
 
     use yggdryl::DataType;
-    use yggdryl::FieldValue as _;
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
         ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme,
-        StructType, Version, VersionField,
+        Serie, StructType, Version, VersionField,
     };
 
     fn version(text: &str) -> Version {
@@ -219,12 +218,14 @@ mod ordered {
                 serde_json::to_string(&parsed).unwrap(),
                 format!("\"{canonical}\"")
             );
-            let array = field
-                .cast_arrow_array(
-                    Arc::new(StringArray::from(vec![text])),
-                    ArrowCastOptions::new().with_safe(false),
-                )
-                .unwrap();
+            let array = Serie::from_arrow_array(
+                Some(&field),
+                Arc::new(StringArray::from(vec![text])),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
             assert_eq!(
                 array
                     .as_any()
@@ -375,12 +376,14 @@ mod ordered {
             Scalar::from(version("5.0.2"))
         );
 
-        let ingested = field
-            .cast_arrow_array(
-                Arc::new(StringArray::from(vec!["005.000.001"])),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
+        let ingested = Serie::from_arrow_array(
+            Some(&field),
+            Arc::new(StringArray::from(vec!["005.000.001"])),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         assert_eq!(
             ingested
                 .as_any()
@@ -390,35 +393,50 @@ mod ordered {
             "5.0.1"
         );
         assert!(
-            field
-                .cast_arrow_array(
-                    Arc::new(Int32Array::from(vec![5])),
-                    ArrowCastOptions::new().with_safe(false)
-                )
-                .unwrap_err()
-                .to_string()
-                .contains("version")
+            Serie::from_arrow_array(
+                Some(&field),
+                Arc::new(Int32Array::from(vec![5])),
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("version")
         );
 
         let source_root = root(field.clone());
         let source_schema = source_root.clone().into_arrow_schema().unwrap();
         let source: Arc<dyn Array> = Arc::new(StringArray::from(vec!["5.0.2"]));
         let batch = RecordBatch::try_new(source_schema, vec![Arc::clone(&source)]).unwrap();
-        let exact = source_root
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
-            .unwrap();
-        assert!(Arc::ptr_eq(exact.column(0), &source));
+        let exact = Serie::from_arrow_batch(
+            Some(&source_root),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        // A column holds its leaf as its own typed array, so the `Arc` around it
+        // is new; the buffers under it are the caller's.
+        assert!(exact.column(0).to_data().ptr_eq(&source.to_data()));
 
         let text_root = root(DataType::utf8().required_field("begin_string"));
-        let rendered = text_root
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let rendered = Serie::from_arrow_batch(
+            Some(&text_root),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
         assert_eq!(rendered.column(0).data_type(), &ArrowDataType::Utf8);
         let numeric_root = root(DataType::Int32.required_field("begin_string"));
-        let refused = numeric_root
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_batch(
+            Some(&numeric_root),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("version"), "{refused}");
 
         assert!(version("5.0.2") < version("5.0.10"));

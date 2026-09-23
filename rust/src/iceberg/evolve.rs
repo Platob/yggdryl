@@ -52,7 +52,6 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::TableMetadata;
-use crate::DecimalType;
 use crate::text::elide_to;
 use crate::{DataType, Error, Field, Result, StructType};
 
@@ -110,11 +109,9 @@ pub fn can_promote(from: &DataType, to: &DataType) -> Result<()> {
 /// 38, so a 256-bit decimal is not a promotion target the format can store.
 const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
-            Some((*precision, *scale))
-        }
+        DataType::Decimal32 { precision, scale }
+        | DataType::Decimal64 { precision, scale }
+        | DataType::Decimal128 { precision, scale } => Some((*precision, *scale)),
         _ => None,
     }
 }

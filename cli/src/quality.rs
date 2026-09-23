@@ -222,10 +222,7 @@ fn shaped_group(report: &mut Report, field: &Field, named: &str) {
 
 /// A list field's item, where it is one.
 fn list_item(field: &Field) -> Option<&Field> {
-    match field.dtype() {
-        yggdryl::DataType::Sequence(sequence) => Some(sequence.item()),
-        _ => None,
-    }
+    field.dtype().list_item()
 }
 
 /// Prints a report the way a person reads it.

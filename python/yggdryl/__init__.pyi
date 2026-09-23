@@ -219,6 +219,17 @@ from .scalar import (
     Scalar as Scalar,
     scalar as scalar,
 )
+from .serie import (
+    FixedSizeListSerie as FixedSizeListSerie,
+    LargeListSerie as LargeListSerie,
+    LargeListViewSerie as LargeListViewSerie,
+    ListSerie as ListSerie,
+    ListViewSerie as ListViewSerie,
+    MapSerie as MapSerie,
+    Serie as Serie,
+    SerieReader as SerieReader,
+    StructSerie as StructSerie,
+)
 from .string import (
     StringField as StringField,
     ascii as ascii,

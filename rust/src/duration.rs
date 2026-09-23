@@ -5,7 +5,7 @@
 //! a 32-bit width, so a column of short spans costs half the bytes and
 //! crosses an Arrow boundary as the 64-bit storage. [`DurationType`] names
 //! the two leaves, each carrying its unit as a parameter;
-//! [`crate::DataType::Duration`] is the one duration datatype; [`Duration32`]
+//! `DataType::Duration32` and `DataType::Duration64` are the duration datatypes; [`Duration32`]
 //! and [`Duration64`] are the values, and [`crate::Scalar::from_duration`]
 //! picks the narrowest width that holds a count.
 //!
@@ -170,14 +170,14 @@ impl DataTypeValue for DurationType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Duration(self)
+        match self {
+            Self::Duration32(unit) => DataType::Duration32(unit),
+            Self::Duration64(unit) => DataType::Duration64(unit),
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Duration(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.duration_type()
     }
 }
 
@@ -191,7 +191,7 @@ impl fmt::Display for DurationType {
 
 impl From<DurationType> for DataType {
     fn from(value: DurationType) -> Self {
-        Self::Duration(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -199,11 +199,11 @@ impl TryFrom<&DataType> for DurationType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Duration(leaf) => Ok(*leaf),
-            other => Err(Error::InvalidDataType {
+        match value.duration_type() {
+            Some(leaf) => Ok(leaf),
+            None => Err(Error::InvalidDataType {
                 kind: "duration",
-                reason: format_smolstr!("expected a duration datatype, got {other}"),
+                reason: format_smolstr!("expected a duration datatype, got {value}"),
             }),
         }
     }
@@ -242,14 +242,15 @@ impl DataType {
     /// Returns [`Error::InvalidDataType`] for an interval layout.
     pub fn duration_of(leaf: DurationType) -> Result<Self> {
         leaf.validate()?;
-        Ok(Self::Duration(leaf))
+        Ok(DataTypeValue::into_dtype(leaf))
     }
 
     /// The leaf a duration datatype declares, `None` for every other.
     #[must_use]
     pub const fn duration_type(&self) -> Option<DurationType> {
         match self {
-            Self::Duration(leaf) => Some(*leaf),
+            Self::Duration32(unit) => Some(DurationType::Duration32(*unit)),
+            Self::Duration64(unit) => Some(DurationType::Duration64(*unit)),
             _ => None,
         }
     }
@@ -276,7 +277,7 @@ mod arrow {
     /// Returns an error when the unit is an interval layout, or when the
     /// datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        let DataType::Duration(leaf) = dtype else {
+        let Some(leaf) = dtype.duration_type() else {
             return Err(invalid(
                 "duration",
                 format_smolstr!("expected a duration datatype, got {dtype}"),

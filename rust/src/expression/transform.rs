@@ -258,15 +258,19 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
+pub(crate) use arrow::TransformPlan;
+
 mod arrow {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
     use arrow_array::{Array, RecordBatch, StructArray};
-    use arrow_schema::Field as ArrowField;
+    use arrow_schema::{Field as ArrowField, Schema};
 
-    use crate::FieldValue as _;
+    use super::Term;
     use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
-    use crate::cast::ArrowCastOptions;
+    use crate::cast::{ArrowCastOptions, PlanCache};
+    use crate::expression::Bound;
+    use crate::expression::arrow::ColumnCast;
     use crate::protocol::TransformField;
     use crate::{Error, Field, Result};
 
@@ -324,7 +328,104 @@ mod arrow {
         pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
             let root = self.as_field();
             root.require_struct()?;
-            Ok(filled_struct(root, batch)?.unwrap_or_else(|| batch.clone()))
+            TransformPlan::new(root).apply(batch)
+        }
+    }
+
+    /// The derivations one struct root declares, held for every batch they
+    /// fill.
+    ///
+    /// What a batch does not change is settled once and kept: each declared
+    /// term is parsed the first time a batch asks for it, bound once per
+    /// schema a level's batches carry - again only when that schema changes -
+    /// and cast into its column through one held plan. A stream applying a
+    /// root holds one; a single batch builds one and drops it.
+    pub(crate) struct TransformPlan {
+        root: Field,
+        level: Level,
+    }
+
+    impl TransformPlan {
+        /// The plan for one struct root; nothing is parsed or bound yet.
+        pub(crate) fn new(root: &Field) -> Self {
+            Self {
+                root: root.clone(),
+                level: Level::new(root),
+            }
+        }
+
+        /// Add the derived columns the root declares to one batch.
+        ///
+        /// # Errors
+        ///
+        /// [`TransformField::apply_arrow_batch`] carries the rule.
+        pub(crate) fn apply(&self, batch: &RecordBatch) -> Result<RecordBatch> {
+            Ok(filled_struct(&self.root, &self.level, batch)?.unwrap_or_else(|| batch.clone()))
+        }
+    }
+
+    /// One declared struct level, its children in declared order.
+    struct Level {
+        children: Vec<Child>,
+        /// The columns this level's batches carry, as the root its terms bind
+        /// against.
+        stored: Mutex<PlanCache<Arc<Stored>>>,
+    }
+
+    /// One declared child: the level it declares when it is a struct, the
+    /// term it derives with, and the cast into what it declares.
+    struct Child {
+        nested: Option<Level>,
+        term: OnceLock<Option<Term>>,
+        cast: ColumnCast,
+    }
+
+    /// One batch schema of a level, and each child's term bound against it.
+    struct Stored {
+        root: Field,
+        bound: Vec<OnceLock<Bound>>,
+    }
+
+    impl Level {
+        fn new(declared: &Field) -> Self {
+            Self {
+                children: declared
+                    .fields()
+                    .iter()
+                    .map(|child| Child {
+                        nested: child.is_struct().then(|| Self::new(child)),
+                        term: OnceLock::new(),
+                        cast: ColumnCast::default(),
+                    })
+                    .collect(),
+                stored: Mutex::new(PlanCache::new()),
+            }
+        }
+
+        /// The root this level's terms bind against for one batch schema:
+        /// the columns that exist, at the positions they sit at, which is not
+        /// the declared level when the declared level is what is missing.
+        fn stored(&self, declared: &Field, schema: &Schema) -> Result<Arc<Stored>> {
+            let mut stored = self.stored.lock().unwrap_or_else(PoisonError::into_inner);
+            let held = stored.get_or_compile(schema.fields(), || {
+                Ok(Arc::new(Stored {
+                    root: field_from_arrow_schema(declared.name(), schema)?,
+                    bound: self.children.iter().map(|_| OnceLock::new()).collect(),
+                }))
+            })?;
+            Ok(Arc::clone(held))
+        }
+    }
+
+    impl Child {
+        /// The term this child derives with, kept from the first parse that
+        /// succeeds.
+        fn term(&self, declared: &Field) -> Result<Option<&Term>> {
+            if let Some(term) = self.term.get() {
+                return Ok(term.as_ref());
+            }
+            let term = declared.as_transform().term()?;
+            Ok(self.term.get_or_init(|| term).as_ref())
         }
     }
 
@@ -332,24 +433,32 @@ mod arrow {
     ///
     /// `None` is a level nothing was written to, which is what lets an
     /// unchanged batch keep the exact arrays it arrived with.
-    fn filled_struct(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
-        let nested = filled_children(declared, batch)?;
+    fn filled_struct(
+        declared: &Field,
+        plan: &Level,
+        batch: &RecordBatch,
+    ) -> Result<Option<RecordBatch>> {
+        let nested = filled_children(declared, plan, batch)?;
         let level = nested.as_ref().unwrap_or(batch);
-        Ok(filled_columns(declared, level)?.or(nested))
+        Ok(filled_columns(declared, plan, level)?.or(nested))
     }
 
     /// Fill every declared struct column of one level, bottom-up.
-    fn filled_children(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
+    fn filled_children(
+        declared: &Field,
+        plan: &Level,
+        batch: &RecordBatch,
+    ) -> Result<Option<RecordBatch>> {
         let rows = batch.num_rows();
         let mut fields: Vec<Arc<ArrowField>> =
             batch.schema().fields().iter().map(Arc::clone).collect();
         let mut columns = batch.columns().to_vec();
         let mut changed = false;
 
-        for child in declared.fields() {
-            if !child.is_struct() {
+        for (child, planned) in declared.fields().iter().zip(&plan.children) {
+            let Some(nested) = &planned.nested else {
                 continue;
-            }
+            };
             let Ok(index) = batch.schema().index_of(child.name()) else {
                 continue;
             };
@@ -363,7 +472,7 @@ mod arrow {
                 held.fields().iter().map(Arc::clone).collect(),
                 held.columns().to_vec(),
             )?;
-            let Some(filled) = filled_struct(child, &inner)? else {
+            let Some(filled) = filled_struct(child, nested, &inner)? else {
                 continue;
             };
             let widened = StructArray::try_new_with_length(
@@ -392,23 +501,25 @@ mod arrow {
     }
 
     /// Fill the derived columns one level declares directly.
-    fn filled_columns(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
-        // What a term binds against is the rows that exist: this level's own
-        // columns, at the positions they sit at, which is not the declared
-        // level when the declared level is what is missing from it.
-        let stored = field_from_arrow_schema(declared.name(), batch.schema().as_ref())?;
+    fn filled_columns(
+        declared: &Field,
+        plan: &Level,
+        batch: &RecordBatch,
+    ) -> Result<Option<RecordBatch>> {
+        let stored = plan.stored(declared, batch.schema_ref())?;
         let rows = batch.num_rows();
         let mut fields: Vec<Arc<ArrowField>> =
             batch.schema().fields().iter().map(Arc::clone).collect();
         let mut columns = batch.columns().to_vec();
         let mut changed = false;
 
-        for child in declared.fields() {
+        let children = declared.fields().iter().zip(&plan.children);
+        for ((child, derived), bound) in children.zip(&stored.bound) {
             // The declaration is the cheap question and it is asked first: a
             // column that derives nothing is skipped without reading a row,
             // where `is_unwritten` decodes every cell of a column whose
             // default is not null - once per batch, for every ordinary column.
-            let Some(term) = child.as_transform().term()? else {
+            let Some(term) = derived.term(child)? else {
                 continue;
             };
             let held = batch.schema().index_of(child.name()).ok();
@@ -417,16 +528,25 @@ mod arrow {
                     continue;
                 }
             }
+            let bound = match bound.get() {
+                Some(bound) => bound,
+                None => {
+                    let fresh = term.bind(&stored.root)?;
+                    bound.get_or_init(|| fresh)
+                }
+            };
             // Strict: a declared type the computed value does not fit is an
             // error, not a column of silent nulls.
-            let array = child.cast_arrow_array(
-                term.bind(&stored)?.evaluate(batch)?,
+            let array = derived.cast.reconcile(
+                child,
+                None,
+                bound.evaluate(batch)?,
                 ArrowCastOptions::new().with_safe(false),
             )?;
             match held {
                 Some(index) => columns[index] = array,
                 None => {
-                    fields.push(child.clone().into_arrow_field_ref()?);
+                    fields.push(Arc::clone(child.as_arrow_field_ref()?));
                     columns.push(array);
                 }
             }

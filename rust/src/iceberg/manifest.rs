@@ -840,7 +840,7 @@ fn contains_fixed_uuid(value: &Scalar) -> bool {
         return true;
     }
     value.as_mapping().map_or_else(
-        || value.iter().any(contains_fixed_uuid),
+        || value.iter().any(|child| contains_fixed_uuid(&child)),
         |entries| entries.iter().any(|(_, value)| contains_fixed_uuid(value)),
     )
 }
@@ -2466,7 +2466,6 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
     for entry in &mut entries {
         let file = &mut entry.data_file;
         file.column_sizes.clear();
-        file.nan_value_counts.clear();
         file.key_metadata = None;
         file.split_offsets.clear();
         file.equality_ids = None;
@@ -2477,6 +2476,8 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
         if !with_stats {
             file.value_counts.clear();
             file.null_value_counts.clear();
+            // A float bound is trusted only beside a NaN count of zero.
+            file.nan_value_counts.clear();
             file.lower_bounds.clear();
             file.upper_bounds.clear();
         }
