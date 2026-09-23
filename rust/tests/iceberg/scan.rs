@@ -317,7 +317,7 @@ mod iceberg {
     use std::sync::{Arc, Mutex};
     use yggdryl::arrow::BatchReader;
     use yggdryl::holder::Holder;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, Field, IOBase, IOMedia, StructType};
@@ -523,6 +523,120 @@ mod iceberg {
         let folder = LocalFolder::new(&path).unwrap();
         let read = triples(folder.read_arrow_reader(&options).unwrap());
         assert_eq!(read.len(), 2);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// Every `(id, symbol, quantity)` a reader yields, in the order it yields
+    /// them.
+    fn quantities(reader: BatchReader) -> Vec<(i64, String, Option<i64>)> {
+        let mut out = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let ids = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            let symbols = batch
+                .column_by_name("symbol")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let quantities = batch
+                .column_by_name("quantity")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            for row in 0..batch.num_rows() {
+                out.push((
+                    ids.value(row),
+                    symbols.value(row).to_owned(),
+                    quantities.is_valid(row).then(|| quantities.value(row)),
+                ));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn files_decoding_to_different_layouts_each_cast_and_project_in_one_scan() {
+        let path = root("scan_layouts");
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_append(rows(&[1, 2], &["AAPL", "MSFT"], &["XNAS", "XNYS"]))
+            .unwrap();
+
+        // The first file stores three columns; every later one stores four.
+        let mut evolved = table.schema().unwrap().clone();
+        evolved.remove_metadata("ICEBERG:schema-id");
+        let mut fields = evolved.fields().to_vec();
+        fields.push(DataType::Int64.nullable_field("quantity"));
+        evolved
+            .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
+            .unwrap();
+        assign_field_ids(&mut evolved, 4).unwrap();
+        table.evolve_schema(evolved).unwrap();
+        let wide = table.schema().unwrap().clone().into_arrow_schema().unwrap();
+        for (ids, symbols, venues, quantities) in [
+            ([3_i64, 4], ["VOD", "BP"], ["XLON", "XNYS"], [7_i64, 8]),
+            ([5, 6], ["SAP", "SIE"], ["XETR", "XNYS"], [9, 10]),
+        ] {
+            let batch = RecordBatch::try_new(
+                Arc::clone(&wide),
+                vec![
+                    Arc::new(Int64Array::from(ids.to_vec())),
+                    Arc::new(StringArray::from(symbols.to_vec())),
+                    Arc::new(StringArray::from(venues.to_vec())),
+                    Arc::new(Int64Array::from(quantities.to_vec())),
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(Arc::clone(&wide), [batch]))
+                .unwrap();
+        }
+
+        // Without a projection each file comes back in its own layout, so the
+        // cast into the read root changes plan between files; with one that
+        // leaves out the filtered column, a second cast drops it again.
+        let projection = table
+            .schema()
+            .unwrap()
+            .clone()
+            .without_fields(&["venue"])
+            .unwrap();
+        let expected = |mut rows: Vec<(i64, String, Option<i64>)>| {
+            rows.sort();
+            rows
+        };
+        let want = vec![
+            (1, "AAPL".to_owned(), None),
+            (3, "VOD".to_owned(), Some(7)),
+            (5, "SAP".to_owned(), Some(9)),
+        ];
+        for options in [
+            IcebergOptions::new().try_with_read_parallelism(1).unwrap(),
+            IcebergOptions::new()
+                .try_with_read_parallelism(2)
+                .unwrap()
+                .with_read_parallel_min_files(1)
+                .with_read_parallel_min_file_size_bytes(0),
+        ] {
+            table.set_options(options);
+            for field in [None, Some(&projection)] {
+                let read = quantities(table.scan_matching("venue <> 'XNYS'", field).unwrap());
+                assert_eq!(expected(read), want, "projection: {}", field.is_some());
+            }
+        }
         let _ = std::fs::remove_dir_all(&path);
     }
 }

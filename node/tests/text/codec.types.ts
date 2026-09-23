@@ -138,6 +138,14 @@ const classTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', classFieldOptio
 const instanceTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', instanceFieldOptions)
 const nativeTable = tableValue.intoArrowTable(rowField)
 const batchValue: Scalar = Scalar.fromArrowBatch(arrowTable.batches[0], rowField)
+const strictBatch: Scalar = Scalar.fromArrowBatch(arrowTable.batches[0], rowField, {
+  nullability: 'strict',
+})
+const castArray: Scalar = Scalar.fromArrowArray(arrowVector, 'value: int64', { safe: false })
+// @ts-expect-error `nullability` is a closed vocabulary, not any name
+Scalar.fromArrowTable(arrowTable, rowField, { nullability: 'lenient' })
+void strictBatch
+void castArray
 const nativeBatch = batchValue.intoArrowBatch(rowField)
 const narrowNative: Scalar = json.loads('7', {
   field: new Field('value', 'int16', false),

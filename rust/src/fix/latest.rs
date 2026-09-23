@@ -425,7 +425,7 @@ impl Child {
         let Some(members) = item_fields(&field) else {
             return Self::Flat(field, value);
         };
-        let Some(rows) = value.as_sequence() else {
+        let Some(rows) = value.as_serie() else {
             return Self::Flat(field, value);
         };
         let occurrences = rows
@@ -823,7 +823,7 @@ impl<'msg> Restater<'msg> {
         for (field, value) in fields.iter().zip(values) {
             if tag_and_counter(self.registry, field).1.is_some() {
                 if let (Some(members), Some(rows)) =
-                    (super::schema::item_fields(field), value.as_sequence())
+                    (super::schema::item_fields(field), value.as_serie())
                 {
                     // The List as `pack_group` would rebuild it: a List and
                     // not a map, its item nullable exactly where an
@@ -831,12 +831,15 @@ impl<'msg> Restater<'msg> {
                     let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
                         return false;
                     };
-                    if item.is_nullable() != rows.iter().any(Scalar::is_null) {
+                    if item.is_nullable() != (rows.null_count() != 0) {
                         return false;
                     }
+                    // A member level returns before it would push a ruled
+                    // child, so each occurrence's list stays empty.
                     let canonical = rows.iter().all(|row| {
-                        row.as_sequence()
-                            .is_none_or(|values| self.canonical_level(members, values, true, ruled))
+                        row.as_sequence().is_none_or(|values| {
+                            self.canonical_level(members, values, true, &mut Vec::new())
+                        })
                     });
                     if !canonical {
                         return false;

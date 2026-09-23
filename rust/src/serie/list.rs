@@ -892,12 +892,15 @@ impl SerieValue for FixedSizeListSerie {
 
     fn into_arrow_array(&self) -> ArrayRef {
         let width = i32::try_from(self.width).expect(ALIGNED);
+        // The row count is stated, because a zero-width layout's items
+        // cannot say how many rows tile them.
         Arc::new(
-            FixedSizeListArray::try_new(
+            FixedSizeListArray::try_new_with_length(
                 item_field_ref(&self.field),
                 width,
                 self.items.into_arrow_array().expect(ALIGNED),
                 self.nulls.clone(),
+                self.rows,
             )
             .expect(ALIGNED),
         )
@@ -1011,7 +1014,7 @@ fn view_column<O: ListLeaf>(
     field: Arc<Field>,
     item: Arc<Field>,
     array: &ArrayRef,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Serie> {
     let views = super::arrow::held::<GenericListViewArray<O>>(array)?;
     let (offsets, sizes, values) = rebased_views(
@@ -1020,7 +1023,7 @@ fn view_column<O: ListLeaf>(
         views.nulls(),
         views.values(),
     )?;
-    let items = super::arrow::column_of(item, values, None, proven)?;
+    let items = super::arrow::column_of(item, values, None, proof.child(0))?;
     Ok(OffsetListViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
 }
 
@@ -1038,7 +1041,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
@@ -1051,17 +1054,17 @@ pub(crate) fn column_of(
         ArrowDataType::List(_) => {
             let lists = held::<GenericListArray<i32>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::column_of(item, values, None, proven)?;
+            let items = super::arrow::column_of(item, values, None, proof.child(0))?;
             OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::LargeList(_) => {
             let lists = held::<GenericListArray<i64>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::column_of(item, values, None, proven)?;
+            let items = super::arrow::column_of(item, values, None, proof.child(0))?;
             OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
-        ArrowDataType::ListView(_) => view_column::<i32>(field, item, &array, proven)?,
-        ArrowDataType::LargeListView(_) => view_column::<i64>(field, item, &array, proven)?,
+        ArrowDataType::ListView(_) => view_column::<i32>(field, item, &array, proof)?,
+        ArrowDataType::LargeListView(_) => view_column::<i64>(field, item, &array, proof)?,
         ArrowDataType::FixedSizeList(_, width) => {
             let lists = held::<FixedSizeListArray>(&array)?;
             let width = usize::try_from(*width).map_err(|_| crate::arrow::Error::Internal {
@@ -1071,7 +1074,7 @@ pub(crate) fn column_of(
                 .values()
                 .slice(lists.offset() * width, lists.len() * width);
             let hidden = lists.nulls().map(|nulls| nulls.expand(width));
-            let items = super::arrow::column_of(item, values, hidden.as_ref(), proven)?;
+            let items = super::arrow::column_of(item, values, hidden.as_ref(), proof.child(0))?;
             FixedSizeListSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
                 .into_serie()
         }

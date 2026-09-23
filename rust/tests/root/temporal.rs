@@ -784,7 +784,7 @@ mod fields {
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, Date32Array, Date64Array};
-    use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Scalar, TimeUnit, Timezone};
+    use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Scalar, Serie, TimeUnit, Timezone};
     use yggdryl::{
         DateField, DateTimeField, DateTimeType, DateType, DurationField, DurationType,
         IntervalField, IntervalType, TimeField, TimeType,
@@ -845,32 +845,36 @@ mod fields {
 
     #[test]
     fn a_date_fields_array_is_the_width_its_leaf_declares() {
-        // The family has no single array type: a `date32` column casts to a
-        // `Date32Array` and a `date64` one to a `Date64Array`, so the typed
-        // cast answers `ArrayRef` and the leaf says which to narrow to.
+        // The family has no single column type: a `date32` column is a
+        // `Date32Array` and a `date64` one a `Date64Array`, so the leaf says
+        // which to narrow to.
         let days: ArrayRef = Arc::new(Date32Array::from(vec![Some(19_724), None]));
         let narrow = DateField::try_new("day", DataType::date32(), true).unwrap();
-        let cast = narrow
-            .cast_arrow_array(days, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
-        let cast = cast
-            .as_any()
-            .downcast_ref::<Date32Array>()
-            .expect("a date32 column is a Date32Array");
-        assert_eq!(cast.value(0), 19_724);
-        assert!(cast.is_null(1));
+        let cast = Serie::from_arrow_array(
+            Some(&narrow.to_field()),
+            days,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        assert!(cast.as_date64().is_none());
+        let cast = cast.as_date32().expect("a date32 column is a Date32 leaf");
+        assert_eq!(cast.value(0), Some(19_724));
+        assert_eq!(cast.value(1), None);
+        assert!(cast.array().is_null(1));
 
         let millis: ArrayRef = Arc::new(Date64Array::from(vec![Some(19_724 * 86_400_000), None]));
         let wide = DateField::try_new("day", DataType::date64(), true).unwrap();
-        let cast = wide
-            .cast_arrow_array(millis, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
-        let cast = cast
-            .as_any()
-            .downcast_ref::<Date64Array>()
-            .expect("a date64 column is a Date64Array");
-        assert_eq!(cast.value(0), 19_724 * 86_400_000);
-        assert!(cast.is_null(1));
+        let cast = Serie::from_arrow_array(
+            Some(&wide.to_field()),
+            millis,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        assert!(cast.as_date32().is_none());
+        let cast = cast.as_date64().expect("a date64 column is a Date64 leaf");
+        assert_eq!(cast.value(0), Some(19_724 * 86_400_000));
+        assert_eq!(cast.value(1), None);
+        assert!(cast.array().is_null(1));
     }
 
     #[test]

@@ -742,3 +742,53 @@ fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
         .expect("a written capacity");
     assert_eq!(text(&written, 528).as_deref(), Some("P"));
 }
+
+/// A group the row holds as a column is still a group: an identifier setter
+/// adds its occurrence beside the one the column states and the counter
+/// follows.
+#[test]
+fn an_identifier_setter_syncs_a_group_held_as_a_column() {
+    use yggdryl::graph::MarketElement;
+
+    let registry = super::committed_registry();
+    let parsed = super::fixed_codec(Arc::clone(&registry))
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
+        .expect("an order with one unrelated alternate identifier");
+    let root = parsed.as_field().clone();
+    let at = root.index_of("secaltids").expect("the group's column");
+    let row = super::with_column_at(parsed.as_value(), at, &super::item_of(&root.fields()[at]));
+    let mut message = FixMsg::with_registry(Arc::clone(&registry), root, row).expect("a message");
+    assert!(super::holds_column(&message, "secaltids"));
+
+    message.set_isincode(Some(yggdryl::IsinCode::new("US0378331005").unwrap()));
+    let group = message
+        .by_name("secaltids")
+        .expect("the alternate identifiers");
+    let alternates = group
+        .sequence_rows()
+        .expect("the occurrences")
+        .iter()
+        .map(|occurrence| {
+            let values = occurrence.as_sequence().expect("an occurrence");
+            (
+                values[0].as_str().expect("an identifier").to_owned(),
+                values[1].as_str().expect("a source").to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        alternates,
+        [
+            ("AAPL.O".to_owned(), "5".to_owned()),
+            ("US0378331005".to_owned(), "4".to_owned()),
+        ]
+    );
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 454)
+            .and_then(yggdryl::FixEntry::value),
+        Some("2")
+    );
+}

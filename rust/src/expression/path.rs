@@ -296,11 +296,11 @@ impl FieldSegment {
                     .map_or(Scalar::Null, Cow::into_owned)
             }
             Self::Range { start, end } => {
-                let Some(items) = value.sequence_rows() else {
+                let Some(items) = value.as_serie() else {
                     return Ok(Scalar::Null);
                 };
                 let (from, until) = resolve_range(*start, *end, items.len());
-                Scalar::from_sequence(items[from..until].iter().cloned())
+                Scalar::from(items.slice(from, until - from)?)
             }
             Self::Key(key) => {
                 if let Some(entries) = value.as_mapping() {

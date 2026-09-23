@@ -186,9 +186,11 @@ the class.
 Use cached `Class.into_field()` for decorated dataclasses and `field(value)`
 for the general conversion funnel.
 
-`DataType.cast_arrow_array` and `Field.cast_arrow_array` use the native Arrow
-kernel plan; their `cast_arrow_batch` forms reconcile Struct columns by
-ASCII-case-insensitive name, target order, and Field null/default policy.
+`Serie.from_arrow_array(array, field)` and `Serie.from_arrow_batch(batch, root)`
+cast through the native Arrow kernel plan, `SerieReader.from_arrow_reader`
+casts a stream by one plan, and `ArrowCastPlan` is that plan held; a record
+cast reconciles Struct columns by ASCII-case-insensitive name, target order,
+and Field null/default policy.
 Readers and writers continue to exchange `pyarrow.RecordBatchReader` values;
 class declarations remain schema definitions rather than a second row I/O
 surface.

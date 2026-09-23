@@ -325,7 +325,7 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
         }
         Kind::Negate(inner) => ("negate".to_owned(), vec![one(inner)]),
         Kind::Function(function, arguments) => (format!("call {function}"), children(arguments)),
-        Kind::Cast(inner, safety) => (cast_label(node.field.dtype(), *safety), vec![one(inner)]),
+        Kind::Cast(inner, safety, _) => (cast_label(node.field.dtype(), *safety), vec![one(inner)]),
         Kind::Case {
             branches,
             otherwise,

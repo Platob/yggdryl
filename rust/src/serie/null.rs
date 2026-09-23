@@ -144,9 +144,9 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = (parent, proven);
+    let _ = (parent, proof);
     if !matches!(array.data_type(), arrow_schema::DataType::Null) {
         return Ok(None);
     }

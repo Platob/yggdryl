@@ -20,18 +20,22 @@ use std::borrow::Cow;
 use pyo3::IntoPyObjectExt;
 use pyo3::PyClassInitializer;
 use pyo3::class::basic::CompareOp;
+use std::sync::Mutex;
+
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PySlice};
-use yggdryl::{Field as CoreField, FieldPath, Scalar, Serie};
+use yggdryl::arrow::BatchReader;
+use yggdryl::media::RecordOptions;
+use yggdryl::{Field as CoreField, FieldPath, MimeType, Scalar, Serie, SerieReader};
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
-    batch_reader_from_value, batch_reader_to_pyarrow, batch_to_pyarrow, record_batch_from_value,
+    batch_reader_from_any, batch_reader_to_pyarrow, batch_to_pyarrow, record_batch_from_value,
 };
 use crate::scalar::{PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py};
-use crate::{compare, normalize_index, value_error};
+use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
 #[pyclass(
@@ -133,10 +137,23 @@ fn field_of(field: Option<&Bound<'_, PyAny>>) -> PyResult<Option<CoreField>> {
     field.map(core_field_from_value).transpose()
 }
 
-/// Name the field one foreign column proves about itself.
-fn inferred_field(array: &arrow_array::ArrayRef) -> PyResult<CoreField> {
-    let dtype = yggdryl::DataType::try_from(array.data_type().clone()).map_err(value_error)?;
-    Ok(CoreField::new("item", dtype, array.null_count() != 0))
+/// Resolve a cast target once: a field as it is spelled, or a bare
+/// `DataType` as the required column named `value` it declares.
+fn target_of(target: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    if let Ok(dtype) = target.extract::<PyRef<'_, PyDataType>>() {
+        return Ok(dtype.inner.clone().required_field("value"));
+    }
+    core_field_from_value(target)
+}
+
+/// Read anything that streams record batches: a reader, a table, a batch,
+/// a frame, a dataset or scanner, or an iterable of any of those, pulled
+/// one item at a time.
+pub(crate) fn stream_of(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
+    batch_reader_from_any(
+        value,
+        &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).map_err(value_error)?,
+    )
 }
 
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
@@ -181,43 +198,80 @@ impl PySerie {
         )
     }
 
-    /// Take one Arrow array as the column of `field`, sharing its buffers.
+    /// Take one Arrow array as a column: of its own field, or cast into
+    /// `field`.
     ///
-    /// Without `field`, the column is named `item` and typed by what the
-    /// array proves about itself.
+    /// With no field the column is named `item` and typed by what the array
+    /// proves about itself; with one, an exact layout shares the buffers and
+    /// any other is cast under the three options.
     #[staticmethod]
-    #[pyo3(signature = (array, field = None))]
+    #[pyo3(signature = (array, field = None, *, safe = true, nullability = "default", representation = "value"))]
     fn from_arrow_array(
         py: Python<'_>,
         array: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Py<PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
         let array = arrow_array_from_pyarrow(array)?;
-        let field = match field_of(field)? {
-            Some(field) => field,
-            None => inferred_field(&array)?,
-        };
+        let field = field_of(field)?;
         described(
             py,
-            Serie::from_arrow_array(field, array).map_err(value_error)?,
+            Serie::from_arrow_array(field.as_ref(), array, options).map_err(value_error)?,
         )
     }
 
-    /// Take one record batch as a record column named `row`.
+    /// Take one record batch as a record column: of its own schema, under
+    /// the root `row`, or cast into `root`.
     #[staticmethod]
-    fn from_arrow_batch(py: Python<'_>, batch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    #[pyo3(signature = (batch, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    fn from_arrow_batch(
+        py: Python<'_>,
+        batch: &Bound<'_, PyAny>,
+        root: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let root = field_of(root)?;
+        let batch = record_batch_from_value(batch)?;
         described(
             py,
-            Serie::from_arrow_batch(&record_batch_from_value(batch)?).map_err(value_error)?,
+            Serie::from_arrow_batch(root.as_ref(), &batch, options).map_err(value_error)?,
         )
     }
 
-    /// Drain a record batch stream into one record column named `row`.
+    /// Drain a record batch stream into one record column: of its own
+    /// schema, or cast into `root` by one plan.
     #[staticmethod]
-    fn from_arrow_reader(py: Python<'_>, reader: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    #[pyo3(signature = (reader, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    fn from_arrow_reader(
+        py: Python<'_>,
+        reader: &Bound<'_, PyAny>,
+        root: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let root = field_of(root)?;
+        let reader = stream_of(reader)?;
         described(
             py,
-            Serie::from_arrow_reader(batch_reader_from_value(reader)?).map_err(value_error)?,
+            Serie::from_arrow_reader(root.as_ref(), reader, options).map_err(value_error)?,
+        )
+    }
+
+    /// `rows` copies of `field`'s canonical default, laid out once.
+    #[staticmethod]
+    #[pyo3(signature = (field, rows = 1))]
+    fn from_default(py: Python<'_>, field: &Bound<'_, PyAny>, rows: usize) -> PyResult<Py<PyAny>> {
+        described(
+            py,
+            Serie::from_default(core_field_from_value(field)?, rows).map_err(value_error)?,
         )
     }
 
@@ -443,6 +497,28 @@ impl PySerie {
             .map_err(value_error)
     }
 
+    /// This column under `field`, cast once; a `DataType` is the required
+    /// column named `value` it declares. A run has no layout to cast.
+    #[pyo3(signature = (field, *, safe = true, nullability = "default", representation = "value"))]
+    fn cast(
+        &self,
+        py: Python<'_>,
+        field: &Bound<'_, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let target = target_of(field)?;
+        described(py, self.inner.cast(&target, options).map_err(value_error)?)
+    }
+
+    /// This column's one row as a `pyarrow.Scalar`, sharing its buffers.
+    fn into_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let scalar = self.inner.into_arrow_scalar().map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &scalar.into_inner(), self.inner.field())?.get_item(0)
+    }
+
     /// The column's buffers as a `pyarrow.Array`, shared; a run has none.
     fn into_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let array = self.inner.require_arrow_array().map_err(value_error)?;
@@ -544,6 +620,89 @@ impl PySerie {
 
     fn __deepcopy__(&self, py: Python<'_>, _memo: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         described(py, self.inner.clone())
+    }
+}
+
+/// One record [`Serie`] per batch of an Arrow stream, each cast by one plan.
+///
+/// The core [`SerieReader`] compiles its plan before a batch is pulled, so
+/// a planning failure is raised by the constructor. The reader is `Send` but
+/// not `Sync`, and Python may pull from any thread, so it sits behind a lock;
+/// `into_arrow_reader` takes it, after which nothing is left to pull.
+#[pyclass(name = "SerieReader", module = "yggdryl._native")]
+pub(crate) struct PySerieReader {
+    reader: Mutex<Option<SerieReader>>,
+    field: CoreField,
+}
+
+impl PySerieReader {
+    /// The reader, or `None` once `into_arrow_reader` took it.
+    fn held(&mut self) -> &mut Option<SerieReader> {
+        self.reader
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
+#[pymethods]
+impl PySerieReader {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Read `reader`'s batches as record columns: of its own schema, under
+    /// the root `row`, or cast into `root` by one plan compiled here.
+    #[staticmethod]
+    #[pyo3(signature = (reader, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    fn from_arrow_reader(
+        reader: &Bound<'_, PyAny>,
+        root: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Self> {
+        let options = cast_options(safe, nullability, representation)?;
+        let root = field_of(root)?;
+        let reader = SerieReader::from_arrow_reader(root.as_ref(), stream_of(reader)?, options)
+            .map_err(value_error)?;
+        Ok(Self {
+            field: reader.field().clone(),
+            reader: Mutex::new(Some(reader)),
+        })
+    }
+
+    /// The record every yielded column is typed by.
+    #[getter]
+    fn field(&self) -> PyField {
+        PyField::from_inner(self.field.clone())
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next batch as one record column, or the end of the stream.
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let reader = self.held();
+        let next = py.detach(|| reader.as_mut().and_then(Iterator::next));
+        match next {
+            Some(Ok(serie)) => described(py, serie).map(Some),
+            Some(Err(error)) => Err(value_error(error)),
+            None => Ok(None),
+        }
+    }
+
+    /// The batches not yet pulled, cast to the root, as a
+    /// `pyarrow.RecordBatchReader`; this reader is spent afterwards.
+    fn into_arrow_reader<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self.held().take().ok_or_else(|| {
+            PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
+        })?;
+        batch_reader_to_pyarrow(py, reader.into_arrow_reader())
+    }
+
+    fn __repr__(&self) -> String {
+        format!("SerieReader(field={})", self.field)
     }
 }
 

@@ -457,13 +457,12 @@ name, and it imports as its storage. A code rides its own extension name
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
+    // A column crossing out as a table answers the Arrow field it is written as.
     const projected = (field) =>
-      fields
-        .struct('row', [field], { nullable: false })
-        .castArrow(new arrow.Table({ [field.name]: arrow.vectorFromArray(['A'], new arrow.Utf8()) }))
+      Serie.fromArrowArray(arrow.vectorFromArray(['A'], new arrow.Utf8()), field)
+        .intoArrowBatch()
         .schema.fields[0]
 
     // Plain UTF-8 is Arrow's own datatype and crosses bare.
@@ -560,27 +559,25 @@ Encoding Standard's own index maps it to.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
     const strict = { safe: false }
 
     // Five scalars are five windows-1252 bytes and seven UTF-8 ones.
-    const latin = fields.sizedCp1252('name', 5)
-    assert.deepEqual(
-      Array.from(latin.castArrowArray(text(['Grüße']), strict).get(0)),
-      [0x47, 0x72, 0xfc, 0xdf, 0x65],
-    )
+    const latin = Serie.fromArrowArray(text(['Grüße']), fields.sizedCp1252('name', 5), strict)
+    assert.deepEqual(Array.from(latin.intoArrowArray().get(0)), [0x47, 0x72, 0xfc, 0xdf, 0x65])
     assert.throws(
-      () => fields.sizedUtf8('name', 5).castArrowArray(text(['Grüße']), strict),
+      () => Serie.fromArrowArray(text(['Grüße']), fields.sizedUtf8('name', 5), strict),
       /at most 5 bytes/,
     )
 
     // US-ASCII is a validated repertoire: no NUL, nothing above 0x7F.
     const ascii = fields.ascii('note')
-    assert.deepEqual(Array.from(ascii.castArrowArray(text(['USD']), strict)), ['USD'])
-    assert.throws(() => ascii.castArrowArray(text(['café']), strict), /non-ASCII/)
-    assert.throws(() => ascii.castArrowArray(text(['a\0b']), strict), /NUL/)
+    const codes = Serie.fromArrowArray(text(['USD']), ascii, strict)
+    assert.deepEqual(Array.from(codes.intoArrowArray()), ['USD'])
+    assert.throws(() => Serie.fromArrowArray(text(['café']), ascii, strict), /non-ASCII/)
+    assert.throws(() => Serie.fromArrowArray(text(['a\0b']), ascii, strict), /NUL/)
     ```
 
 A windows-1252 value may hold scalars the charset cannot write - that is what
@@ -605,35 +602,30 @@ trims.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, StructType};
 
     let strict = ArrowCastOptions::new().with_safe(false);
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, true);
 
     // A cast into the width pads.
     let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EU"]));
-    let padded = ccy.cast_arrow_array(text, strict)?;
-    let cells = padded.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    assert_eq!(cells.value(1), b"EU\0\0");
+    let padded = Serie::from_arrow_array(Some(&ccy), text, strict)?;
+    let cells = padded.as_fixed_string().expect("a fixed-width column");
+    assert_eq!(cells.value(1), Some(&b"EU\0\0"[..]));
 
     // A stored column carrying the document reads back under `utf8` trimmed.
-    let stored = ccy.clone().into_arrow_field()?;
-    let batch = arrow_array::RecordBatch::try_new(
-        Arc::new(arrow_schema::Schema::new(vec![stored])),
-        vec![padded],
-    )?;
+    let stored = padded.into_arrow_batch()?;
     let text = DataType::from(StructType::from_fields([DataType::utf8().required_field("ccy")])?).required_field("row");
-    let trimmed = text.cast_arrow_batch(batch, strict)?;
-    let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
-    assert_eq!(trimmed.value(1), "EU");
+    let trimmed = Serie::from_arrow_batch(Some(&text), &stored, strict)?;
+    let trimmed = trimmed.as_struct().expect("a record column").child("ccy").expect("the ccy column");
+    assert_eq!(trimmed.as_utf8().expect("a utf8 column").value(1), Some("EU"));
 
     // Under `safe` a failing cell is null; strict names the row and the column.
     let long: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EURO!"]));
-    let nulled = ccy.cast_arrow_array(Arc::clone(&long), ArrowCastOptions::new())?;
-    assert!(nulled.is_null(1));
-    let refused = ccy.cast_arrow_array(long, strict).unwrap_err().to_string();
+    let nulled = Serie::from_arrow_array(Some(&ccy), Arc::clone(&long), ArrowCastOptions::new())?;
+    assert!(nulled.is_null(1)?);
+    let refused = Serie::from_arrow_array(Some(&ccy), long, strict).unwrap_err().to_string();
     assert!(refused.contains("row 1") && refused.contains("at most 4 bytes of us-ascii, got 5"), "{refused}");
     ```
 
@@ -645,23 +637,25 @@ trims.
 
     import yggdryl
 
-    from yggdryl import DataType
+    from yggdryl import DataType, Field, Serie
 
     ccy = yggdryl.fixed_ascii("ccy", 4)
 
     # A cast into the width pads.
-    padded = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
-    assert padded.to_pylist() == [b"USD\x00", b"EU\x00\x00"]
+    padded = Serie.from_arrow_array(pa.array(["USD", "EU"]), ccy)
+    assert padded.into_arrow_array().to_pylist() == [b"USD\x00", b"EU\x00\x00"]
 
     # A stored column carrying the document reads back under `utf8` trimmed.
-    stored = pa.record_batch([padded], schema=pa.schema([ccy.into_arrow()]))
-    text = DataType.from_fields([yggdryl.utf8("ccy")])
-    assert text.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", "EU"]
+    stored = padded.into_arrow_batch()
+    text = Field("row", DataType.from_fields([yggdryl.utf8("ccy")]), nullable=False)
+    trimmed = Serie.from_arrow_batch(stored, text)
+    assert trimmed.into_arrow_batch().column(0).to_pylist() == ["USD", "EU"]
 
     # Under `safe` a failing cell is null; strict names the row and the column.
-    assert ccy.cast_arrow_array(pa.array(["USD", "EURO!"])).to_pylist() == [b"USD\x00", None]
+    long = pa.array(["USD", "EURO!"])
+    assert Serie.from_arrow_array(long, ccy).into_arrow_array().to_pylist() == [b"USD\x00", None]
     with pytest.raises(ValueError, match="row 1: expected at most 4 bytes of us-ascii, got 5"):
-        ccy.cast_arrow_array(pa.array(["USD", "EURO!"]), safe=False)
+        Serie.from_arrow_array(long, ccy, safe=False)
     ```
 
 === "JavaScript"
@@ -669,26 +663,26 @@ trims.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
     const strict = { safe: false }
     const ccy = fields.fixedAscii('ccy', 4)
 
     // A cast into the width pads.
-    const padded = ccy.castArrowArray(text(['USD', 'EU']), strict)
-    assert.deepEqual(Array.from(padded.get(1)), [0x45, 0x55, 0, 0])
+    const padded = Serie.fromArrowArray(text(['USD', 'EU']), ccy, strict)
+    assert.deepEqual(Array.from(padded.intoArrowArray().get(1)), [0x45, 0x55, 0, 0])
 
     // A stored column carrying the document reads back under `utf8` trimmed.
-    const row = fields.struct('row', [ccy], { nullable: false })
-    const stored = row.castArrow(new arrow.Table({ ccy: text(['USD', 'EU']) }), strict)
-    const back = fields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)
+    const stored = padded.intoArrowBatch()
+    const row = fields.struct('row', [fields.utf8('ccy')], { nullable: false })
+    const back = Serie.fromArrowBatch(stored, row).intoArrowBatch()
     assert.deepEqual(Array.from(back.getChild('ccy')), ['USD', 'EU'])
 
     // Under `safe` a failing cell is null; strict names the row and the column.
-    assert.equal(ccy.castArrowArray(text(['USD', 'EURO!'])).get(1), null)
+    assert.equal(Serie.fromArrowArray(text(['USD', 'EURO!']), ccy).intoArrowArray().get(1), null)
     assert.throws(
-      () => ccy.castArrowArray(text(['USD', 'EURO!']), strict),
+      () => Serie.fromArrowArray(text(['USD', 'EURO!']), ccy, strict),
       /row 1.*at most 4 bytes of us-ascii, got 5/,
     )
     ```

@@ -719,6 +719,104 @@ mod arrow {
         );
     }
 
+    /// [`applied_root`] with a signed holder beside the unsigned one: both read
+    /// the same sources, and the signed one stores the digest's bits.
+    fn signed_applied_root() -> Field {
+        let mut signed = DataType::Int64.nullable_field("signed_digest");
+        signed.as_digest_mut().set_holder().unwrap();
+        let unsigned = applied_root();
+        StructType::from_fields(unsigned.fields().iter().cloned().chain([signed]))
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    }
+
+    fn events_on(days: &[i32]) -> arrow_array::RecordBatch {
+        arrow_array::RecordBatch::try_from_iter([(
+            "trade",
+            Arc::new(arrow_array::StructArray::from(vec![(
+                Arc::new(ArrowField::new("event", ArrowDataType::Date32, false)),
+                Arc::new(arrow_array::Date32Array::from(days.to_vec())) as arrow_array::ArrayRef,
+            )])) as arrow_array::ArrayRef,
+        )])
+        .unwrap()
+    }
+
+    #[test]
+    fn apply_arrow_reader_digests_every_batch_as_the_batch_path_does() {
+        let root = signed_applied_root();
+        let batches = vec![
+            events_on(&[19_723, 20_089]),
+            events_on(&[20_454]),
+            events_on(&[]),
+        ];
+        let stored = batches[0].schema();
+        let streamed = |digest, transform, cast| {
+            root.apply_arrow_reader(
+                yggdryl::arrow::batch_reader(Arc::clone(&stored), batches.clone()),
+                digest,
+                transform,
+                cast,
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        };
+
+        // The stream plans its digest fill once, over the batches its cast
+        // step already landed; each answers what the digest verb answers over
+        // that landed batch, which casts and plans for itself.
+        let applied = streamed(true, true, true);
+        assert_eq!(applied.len(), batches.len());
+        for (batch, applied) in batches.iter().zip(&applied) {
+            let landed = root
+                .apply_arrow_batch(batch, false, true, true, ArrowCastOptions::new())
+                .unwrap();
+            assert_eq!(
+                applied,
+                &root.as_digest().apply_arrow_batch(&landed).unwrap()
+            );
+            assert_eq!(
+                applied,
+                &root
+                    .apply_arrow_batch(batch, true, true, true, ArrowCastOptions::new())
+                    .unwrap()
+            );
+            let unsigned = applied
+                .column_by_name("row_digest")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::UInt64Array>()
+                .unwrap();
+            let signed = applied
+                .column_by_name("signed_digest")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap();
+            assert_eq!(arrow_array::Array::null_count(signed), 0);
+            assert_eq!(
+                signed
+                    .values()
+                    .iter()
+                    .map(|value| u64::from_ne_bytes(value.to_ne_bytes()))
+                    .collect::<Vec<_>>(),
+                unsigned.values().to_vec()
+            );
+        }
+
+        // With no cast step the fill lands every batch on the root itself.
+        let digested = streamed(true, false, false);
+        assert_eq!(digested.len(), batches.len());
+        for (batch, digested) in batches.iter().zip(&digested) {
+            assert_eq!(
+                digested,
+                &root.as_digest().apply_arrow_batch(batch).unwrap()
+            );
+        }
+    }
+
     /// A root whose derived and held columns are declared non-null.
     ///
     /// This is the shape strictness has to reason about: `year` and `row_digest`

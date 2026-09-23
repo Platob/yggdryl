@@ -2,7 +2,7 @@
 //! canonicalization, readings, and absence.
 
 mod value {
-    use yggdryl::{DataType, Field, Map, Scalar, StructType, TimeUnit, Timezone, UnionMode};
+    use yggdryl::{DataType, Field, Map, Scalar, Serie, StructType, TimeUnit, Timezone, UnionMode};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
@@ -426,5 +426,44 @@ mod value {
             // Every other datatype still takes absence as a value of its own.
             assert_eq!(DataType::Int32.scalar(Scalar::Null).unwrap(), Scalar::Null);
         }
+    }
+
+    /// The column of `values` under a required `int64` item.
+    fn int64_column(values: &[i64]) -> Scalar {
+        let item = DataType::Int64.required_field("item");
+        Scalar::from(Serie::from_scalars(item, values.iter().copied().map(Scalar::from)).unwrap())
+    }
+
+    /// The run of `values`.
+    fn int64_run(values: &[i64]) -> Scalar {
+        Scalar::from_sequence(values.iter().copied().map(Scalar::from))
+    }
+
+    #[test]
+    fn a_column_fails_where_the_run_of_its_rows_fails() {
+        let refusal =
+            |schema: &Field, value: &Scalar| schema.validate_value(value).unwrap_err().to_string();
+
+        // A row given as a column: the arity, then the second value's shape.
+        let row = root([
+            DataType::Int64.required_field("id"),
+            DataType::from_str("struct<a: int64>")
+                .unwrap()
+                .required_field("pair"),
+        ]);
+        for values in [&[1_i64][..], &[1, 2][..]] {
+            assert_eq!(
+                refusal(&row, &int64_column(values)),
+                refusal(&row, &int64_run(values))
+            );
+        }
+
+        // A list column whose item field is not the one the list declares.
+        let list =
+            root([DataType::list(DataType::Int8.required_field("item")).required_field("xs")]);
+        assert_eq!(
+            refusal(&list, &Scalar::from_sequence([int64_column(&[1, 300])])),
+            refusal(&list, &Scalar::from_sequence([int64_run(&[1, 300])]))
+        );
     }
 }

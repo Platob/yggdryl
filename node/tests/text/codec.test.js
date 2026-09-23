@@ -1227,6 +1227,45 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     )
   })
 
+  test('the Scalar Arrow doors cast under the three answers the caller gave', () => {
+    const overflowing = arrow.vectorFromArray(Int32Array.of(7, 200))
+    const quantity = new Field('value', 'int8', false)
+    assert.deepEqual(Scalar.fromArrowArray(overflowing, quantity).asJs(), [7, 0])
+    assert.throws(
+      () => Scalar.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
+      /required Arrow field \$\.value holds 1 null values/,
+    )
+    assert.throws(
+      () => Scalar.fromArrowArray(overflowing, 'value: int8', { safe: false }),
+      /Can't cast value 200 to type Int8/,
+    )
+    assert.equal(
+      Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity).asJs(),
+      0,
+    )
+    assert.throws(
+      () =>
+        Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
+          safe: false,
+        }),
+      /Can't cast value 200 to type Int8/,
+    )
+
+    const table = arrow.tableFromArrays({ id: Int32Array.from([1, 2]) })
+    const root = Field.from('row: struct<id: int64, venue: utf8 not null> not null')
+    assert.deepEqual(Scalar.fromArrowTable(table, root).asJs(), [[1, ''], [2, '']])
+    for (const read of [
+      () => Scalar.fromArrowTable(table, root, { nullability: 'strict' }),
+      () => Scalar.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
+    ]) {
+      assert.throws(read, /required Arrow field \$\.venue is missing from the source/)
+    }
+    assert.throws(
+      () => Scalar.fromArrowTable(table, root, { strict: true }),
+      /cast options take safe, nullability and representation/,
+    )
+  })
+
   test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
     const date = new Date('2026-08-15T12:30:00.000Z')
     assert.ok(Scalar.from(date).equals(new DataType('datetime64(ms,"UTC")').scalar(1786797000000n)))

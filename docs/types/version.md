@@ -214,8 +214,7 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
 
     use arrow_array::{ArrayRef, StringArray};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let field = Field::new("release", DataType::Version, false);
     let arrow = field.clone().into_arrow_field()?;
@@ -225,9 +224,9 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
 
     // The cast canonicalizes every cell on the way in.
     let text: ArrayRef = Arc::new(StringArray::from(vec!["005.000.001"]));
-    let stored = field.cast_arrow_array(text, ArrowCastOptions::new().with_safe(false))?;
-    let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
-    assert_eq!(cells.value(0), "5.0.1");
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let stored = Serie::from_arrow_array(Some(&field), text, strict)?;
+    assert_eq!(stored.as_utf8().expect("the text column").value(0), Some("5.0.1"));
     ```
 
 === "Python"
@@ -237,7 +236,7 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
 
     import yggdryl
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     release = yggdryl.version("release", nullable=False)
     arrow = release.into_arrow()
@@ -246,7 +245,8 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     assert Field.from_arrow(arrow) == release
 
     # The cast canonicalizes every cell on the way in.
-    assert release.cast_arrow_array(pa.array(["005.000.001"])).to_pylist() == ["5.0.1"]
+    stored = Serie.from_arrow_array(pa.array(["005.000.001"]), release)
+    assert stored.into_arrow_array().to_pylist() == ["5.0.1"]
     ```
 
 === "JavaScript"
@@ -254,13 +254,14 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const release = fields.version('release', { nullable: false })
     const text = arrow.vectorFromArray(['005.000.001'], new arrow.Utf8())
 
     // The cast canonicalizes every cell on the way in.
-    assert.deepEqual(Array.from(release.castArrowArray(text, { safe: false })), ['5.0.1'])
+    const stored = Serie.fromArrowArray(text, release, { safe: false })
+    assert.deepEqual(Array.from(stored.intoArrowArray()), ['5.0.1'])
     // A scalar crosses as the canonical spelling its column stores.
     assert.equal(fields.version('release').dtype.scalar('5.0.300').intoArrowScalar(release), '5.0.300')
     ```

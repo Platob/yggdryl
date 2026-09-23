@@ -446,6 +446,78 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
 }
 
 #[test]
+fn a_coded_ipc_view_is_shaped_as_the_plain_leaf_is() {
+    use std::sync::Arc;
+
+    use arrow_array::{Array, Int64Array, RecordBatch};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{DataType, MimeType};
+
+    let stored = StructType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let schema = stored.into_arrow_schema().unwrap();
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5]))],
+    )
+    .unwrap();
+    let mut plain = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    yggdryl::ipc::overwrite_arrow_reader(
+        &mut plain,
+        yggdryl::arrow::batch_reader(schema, [batch]),
+        &yggdryl::ipc::IpcOptions::new(),
+    )
+    .unwrap();
+    let coded = Coding::new(
+        Buffer::from_bytes(Codec::Gzip.dump(plain.as_slice()).unwrap()).with_media_type(
+            Url::from_str("file:///shaped.arrows.gz")
+                .unwrap()
+                .media_type(),
+        ),
+        Codec::Gzip,
+    );
+
+    // A declared column the leaf does not store, a clause and a bound: the
+    // owning read runs the one read shaping, in the order a plain leaf does.
+    let declared = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
+        .unwrap()
+        .with_field(declared)
+        .with_filter("id > 1")
+        .unwrap()
+        .with_max_row_size(2);
+    let rows = |reader: yggdryl::arrow::BatchReader| {
+        let mut rows = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let ids = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            let venue = batch.column(1);
+            for row in 0..batch.num_rows() {
+                rows.push((ids.value(row), venue.is_null(row)));
+            }
+        }
+        rows
+    };
+
+    let expected = rows(plain.read_arrow_reader(&options).unwrap());
+    assert_eq!(expected, vec![(2, true), (3, true)]);
+    assert_eq!(rows(coded.read_arrow_reader(&options).unwrap()), expected);
+}
+
+#[test]
 fn an_open_stream_reads_only_its_decoded_snapshot() {
     use super::counting::Counting;
 

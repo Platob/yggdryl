@@ -319,17 +319,15 @@ node writes the extension entries and the values node does not.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
-    const row = fields.struct('row', [fields.dictionary('codes', 'int16', 'utf8')], {
-      nullable: false,
-    })
-    const table = row.castArrow(
-      new arrow.Table({ codes: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()) }),
+    // A column crossing out as a table answers the Arrow field it is written as.
+    const codes = Serie.fromArrowArray(
+      arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
+      fields.dictionary('codes', 'int16', 'utf8'),
     )
 
-    const projected = table.schema.fields[0]
+    const projected = codes.intoArrowBatch().schema.fields[0]
     assert.equal(projected.name, 'codes')
     assert.ok(arrow.DataType.isDictionary(projected.type))
     assert.equal(projected.type.indices.toString(), 'Int16')

@@ -55,3 +55,30 @@ fn named_zones_and_durations_have_no_native_toml_scalar() {
     assert!(native_datetime(&datetime).is_none());
     assert!(native_datetime(&duration).is_none());
 }
+
+/// A `list<int64>` value held as a column, and the run of its rows.
+fn int64s() -> (Scalar, Scalar) {
+    let item = yggdryl::Field::new("item", yggdryl::DataType::Int64, false);
+    let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
+    let column = yggdryl::Serie::from_scalars(item, rows.clone()).unwrap();
+    (Scalar::from(column), Scalar::from_sequence(rows))
+}
+
+#[test]
+fn a_list_column_writes_as_the_run_of_its_rows() {
+    let (column, run) = int64s();
+    let table = |xs: Scalar| Scalar::from_struct([("xs", xs)]).unwrap();
+    for formatting in [
+        yggdryl::text::Formatting::default(),
+        yggdryl::text::Formatting::indented(2),
+    ] {
+        assert_eq!(
+            yggdryl::toml::into_utf8_with_formatting(&table(column.clone()), formatting).unwrap(),
+            yggdryl::toml::into_utf8_with_formatting(&table(run.clone()), formatting).unwrap()
+        );
+    }
+    assert_eq!(
+        yggdryl::toml::into_utf8(&table(column)).unwrap(),
+        "\"xs\" = [1, 2]\n"
+    );
+}

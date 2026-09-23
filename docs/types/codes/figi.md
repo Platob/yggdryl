@@ -165,13 +165,11 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual(
-      [...fields.figi('figi').castArrowArray(utf8(['BBG000BLNQ16']))],
-      ['BBG000BLNQ16'],
-    )
+    const stored = Serie.fromArrowArray(utf8(['BBG000BLNQ16']), fields.figi('figi'))
+    assert.deepEqual([...stored.intoArrowArray()], ['BBG000BLNQ16'])
     ```
 
 ## The shape and the check digit

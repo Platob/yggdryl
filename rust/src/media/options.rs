@@ -60,10 +60,16 @@ use commit::CommitReaders;
 use limits::Limited;
 pub(crate) use limits::WriteLimitState;
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
+use crate::arrow::field_from_arrow_schema;
 use crate::cast::ArrowCastOptions;
-use crate::expression::{IntoFilter, IntoPlan, IntoSelector, Plan, Term};
+use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
+use crate::field::AppliedPlan;
 use crate::ipc::IpcOptions;
 use crate::{
     DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
@@ -664,6 +670,10 @@ pub trait IORecordOptions: Sized {
     /// written rather than arriving as the default nothing filled. A root that
     /// declares no derivation applies as the cast alone.
     ///
+    /// Every layer answers from the schemas alone, so the shaping is compiled
+    /// against the batch's schema and then applied; a caller shaping many
+    /// batches of one layout holds the compiled shaping instead.
+    ///
     /// # Errors
     ///
     /// Returns an error when a cast cannot be planned, a declaration cannot be
@@ -673,36 +683,7 @@ pub trait IORecordOptions: Sized {
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
-        let options = ArrowCastOptions::new().with_safe(self.safe());
-        let mut batch = match self.field() {
-            Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
-            None => batch,
-        };
-        let late = crate::expression::filter_after_select(
-            self.filter(),
-            self.select(),
-            batch
-                .schema()
-                .fields()
-                .iter()
-                .map(|field| field.name().as_str()),
-        );
-        if late {
-            batch = self.select().apply_arrow_batch(&batch)?;
-            batch = self.filter().apply_arrow_batch(&batch)?;
-        } else {
-            batch = self.filter().apply_arrow_batch(&batch)?;
-            batch = self.select().apply_arrow_batch(&batch)?;
-        }
-        match existing {
-            // A holder already holding a value is left alone, so this fills
-            // only what the destination declares and the incoming rows do not
-            // already carry.
-            Some(stored) => {
-                Ok(stored.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?)
-            }
-            None => Ok(batch),
-        }
+        Shaping::compile(self, batch.schema(), existing)?.apply(batch)
     }
 
     /// Shape a whole reader as [`apply_arrow_batch`](Self::apply_arrow_batch)
@@ -814,6 +795,144 @@ pub trait IORecordOptions: Sized {
     /// Return whether a zero write bound admits no incoming row.
     fn write_limit_is_zero(&self) -> bool {
         self.max_row_size() == Some(0) || self.max_byte_size() == Some(0)
+    }
+}
+
+/// [`IORecordOptions::apply_arrow_batch`] compiled against one schema.
+///
+/// The declared field, the `where` and `select` clauses and the stored field
+/// are each planned or bound once against the schema the layer before hands
+/// it, read off an empty batch, so a batch of that schema moves only rows.
+pub(crate) struct Shaping {
+    declared: Option<AppliedPlan>,
+    /// Whether the `select` runs first, because the `where` reads a column
+    /// only the selector builds.
+    late: bool,
+    filter: Option<Bound>,
+    select: Option<BoundSelector>,
+    /// A holder already holding a value is left alone, so this fills only
+    /// what the destination declares and the incoming rows do not already
+    /// carry.
+    existing: Option<AppliedPlan>,
+}
+
+impl Shaping {
+    /// Compile how `options`, completed onto `existing`, shape a batch of
+    /// `source`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a cast cannot be planned, a declaration cannot be
+    /// satisfied, or an expression does not bind against the schema it meets.
+    pub(crate) fn compile(
+        options: &impl IORecordOptions,
+        source: SchemaRef,
+        existing: Option<&Field>,
+    ) -> Result<Self> {
+        let mut schema = source;
+        let declared = match options.declared() {
+            Some(declared) => {
+                let plan = AppliedPlan::compile(
+                    declared,
+                    Arc::clone(&schema),
+                    true,
+                    true,
+                    true,
+                    ArrowCastOptions::new().with_safe(options.safe()),
+                )?;
+                schema = plan.apply(&RecordBatch::new_empty(schema))?.schema();
+                Some(plan)
+            }
+            None => None,
+        };
+        let late = crate::expression::filter_after_select(
+            options.filter(),
+            options.select(),
+            schema.fields().iter().map(|field| field.name().as_str()),
+        );
+        let (filter, select) = if late {
+            let select = Self::bind_select(options.select(), &mut schema)?;
+            (Self::bind_filter(options.filter(), &schema)?, select)
+        } else {
+            let filter = Self::bind_filter(options.filter(), &schema)?;
+            (filter, Self::bind_select(options.select(), &mut schema)?)
+        };
+        let existing = match existing {
+            Some(stored) => Some(AppliedPlan::compile(
+                stored,
+                schema,
+                true,
+                true,
+                true,
+                ArrowCastOptions::new(),
+            )?),
+            None => None,
+        };
+        Ok(Self {
+            declared,
+            late,
+            filter,
+            select,
+            existing,
+        })
+    }
+
+    fn bind_filter(filter: &Filter, schema: &Schema) -> Result<Option<Bound>> {
+        if filter.is_always_true() {
+            return Ok(None);
+        }
+        let root = field_from_arrow_schema(super::DEFAULT_ROOT_NAME, schema)?;
+        Ok(Some(filter.bind(&root)?))
+    }
+
+    /// Bind the selector and move `schema` to the one it publishes.
+    fn bind_select(select: &Selector, schema: &mut SchemaRef) -> Result<Option<BoundSelector>> {
+        if select.is_all() {
+            return Ok(None);
+        }
+        let bound = select.bind(&field_from_arrow_schema(super::DEFAULT_ROOT_NAME, schema)?)?;
+        *schema = bound
+            .apply_arrow_batch(&RecordBatch::new_empty(Arc::clone(schema)))?
+            .schema();
+        Ok(Some(bound))
+    }
+
+    /// Shape one batch of the schema this was compiled against.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value does not fit its declared column, a
+    /// declaration cannot be satisfied, or a term fails over the rows.
+    pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        let mut batch = match &self.declared {
+            Some(plan) => plan.apply(&batch)?,
+            None => batch,
+        };
+        if self.late {
+            batch = self.select(batch)?;
+            batch = self.filter(batch)?;
+        } else {
+            batch = self.filter(batch)?;
+            batch = self.select(batch)?;
+        }
+        match &self.existing {
+            Some(plan) => Ok(plan.apply(&batch)?),
+            None => Ok(batch),
+        }
+    }
+
+    fn filter(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        match &self.filter {
+            Some(bound) => Ok(bound.filter(&batch)?),
+            None => Ok(batch),
+        }
+    }
+
+    fn select(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        match &self.select {
+            Some(bound) => bound.apply_arrow_batch(&batch),
+            None => Ok(batch),
+        }
     }
 }
 

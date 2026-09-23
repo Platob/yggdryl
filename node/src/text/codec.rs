@@ -20,8 +20,6 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-use yggdryl::ArrowCastOptions;
-use yggdryl::FieldValue as _;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::{
@@ -30,6 +28,7 @@ use yggdryl::{
 };
 use yggdryl::{json, text, toml, yaml};
 
+use crate::serie::{column_from_ipc, records_from_ipc};
 use crate::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsArn, JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
 
@@ -667,95 +666,77 @@ impl JsScalar {
         self.inner == other.inner
     }
 
-    /// Decode one Arrow JS scalar from its one-column IPC bridge.
+    /// Decode one Arrow JS scalar from its one-column IPC bridge, cast into
+    /// `field` under the three cast answers when one is given.
     #[napi(factory, js_name = "_fromArrowScalarIpcNative", skip_typescript)]
     pub fn from_arrow_scalar_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(&bytes)?;
-        ensure_one_column(&schema, "Arrow scalar")?;
-        let rows = batches.iter().map(RecordBatch::num_rows).sum::<usize>();
-        if rows != 1 {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let column = column_from_ipc(
+            &bytes,
+            "Arrow scalar",
+            field.as_ref().map(|field| &field.inner),
+            options,
+        )?;
+        if column.len() != 1 {
             return Err(napi_error(format!(
-                "Arrow scalar IPC must contain exactly one row, got {rows}"
+                "Arrow scalar IPC must contain exactly one row, got {}",
+                column.len()
             )));
         }
-        let inferred =
-            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        let array = batches
-            .into_iter()
-            .find(|batch| batch.num_rows() != 0)
-            .and_then(|batch| batch.columns().first().cloned())
-            .ok_or_else(|| napi_error("Arrow scalar IPC has no value column"))?;
-        let array = if field == inferred {
-            array
-        } else {
-            field
-                .cast_arrow_array(array, ArrowCastOptions::new())
-                .map_err(napi_error)?
-        };
-        yggdryl::arrow::scalar_value(&field, array.as_ref())
-            .map(Self::from_core)
-            .map_err(napi_error)
+        column.scalar(0).map(Self::from_core).map_err(napi_error)
     }
 
-    /// Decode one Arrow JS vector from its one-column IPC bridge.
+    /// Decode one Arrow JS vector from its one-column IPC bridge as the
+    /// sequence its column is, cast into `field` when one is given.
     #[napi(factory, js_name = "_fromArrowArrayIpcNative", skip_typescript)]
     pub fn from_arrow_array_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(&bytes)?;
-        ensure_one_column(&schema, "Arrow array")?;
-        let inferred =
-            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        let mut values = Vec::new();
-        for batch in batches {
-            let array = batch
-                .columns()
-                .first()
-                .cloned()
-                .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
-            let array = if field == inferred {
-                array
-            } else {
-                field
-                    .cast_arrow_array(array, ArrowCastOptions::new())
-                    .map_err(napi_error)?
-            };
-            let decoded =
-                yggdryl::arrow::array_to_value(&field, array.as_ref()).map_err(napi_error)?;
-            let rows = decoded
-                .sequence_rows()
-                .ok_or_else(|| napi_error("native Arrow array decode did not return a sequence"))?;
-            values.extend_from_slice(&rows);
-        }
-        Ok(Self::from_core(Scalar::from_sequence(values)))
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        column_from_ipc(
+            &bytes,
+            "Arrow array",
+            field.as_ref().map(|field| &field.inner),
+            options,
+        )
+        .map(|column| Self::from_core(Scalar::from(column)))
     }
 
-    /// Decode Arrow JS record batches from standard IPC.
+    /// Decode Arrow JS record batches from standard IPC as the sequence of
+    /// their rows, cast into the root `field` when one is given.
     #[napi(factory, js_name = "_fromArrowBatchIpcNative", skip_typescript)]
     pub fn from_arrow_batch_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        Self::from_arrow_batches_ipc(&bytes, field)
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        records_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
+            .map(|records| Self::from_core(Scalar::from(records)))
     }
 
-    /// Decode an Arrow JS table from standard IPC.
+    /// Decode an Arrow JS table from standard IPC, as a batch is decoded.
     #[napi(factory, js_name = "_fromArrowTableIpcNative", skip_typescript)]
     pub fn from_arrow_table_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        Self::from_arrow_batches_ipc(&bytes, field)
+        Self::from_arrow_batch_ipc_native(bytes, field, safe, nullability, representation)
     }
 
     /// Encode this value as a one-row, one-column Arrow IPC scalar.
@@ -809,34 +790,6 @@ impl JsScalar {
 }
 
 impl JsScalar {
-    fn from_arrow_batches_ipc(
-        bytes: &[u8],
-        field: Option<ClassInstance<'_, JsField>>,
-    ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(bytes)?;
-        let inferred = CoreField::from_arrow_schema("row", schema.as_ref()).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        field.validate_struct_root().map_err(napi_error)?;
-        let mut rows = Vec::new();
-        for batch in batches {
-            let batch = if field == inferred {
-                batch
-            } else {
-                field
-                    .cast_arrow_batch(batch, ArrowCastOptions::new())
-                    .map_err(napi_error)?
-            };
-            let decoded = yggdryl::arrow::batch_to_value(&batch).map_err(napi_error)?;
-            let decoded = decoded
-                .sequence_rows()
-                .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?;
-            rows.extend_from_slice(&decoded);
-        }
-        Ok(Self::from_core(Scalar::from_sequence(rows)))
-    }
-
     fn arrow_batches_ipc(&self, field: Option<ClassInstance<'_, JsField>>) -> Result<Buffer> {
         let field = field
             .as_ref()

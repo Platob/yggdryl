@@ -2241,19 +2241,6 @@ mod arrow {
                 AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
             Ok(Box::new(AppliedReader { inner, plan }))
         }
-        /// Materializes [`Field::default_value`] as an exact one-row array.
-        ///
-        /// The bounded core default planner selects the value under this Field's
-        /// own nullability policy: a nullable Field materializes logical null and
-        /// a non-nullable one its datatype's present default.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when no physically valid default exists or Arrow
-        /// cannot materialize the datatype.
-        pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-            crate::arrow::default_scalar_array(self)
-        }
         /// Imports one complete Arrow schema as a non-null Struct root Field.
         ///
         /// Ordinary schema metadata becomes root metadata. The transport-only
@@ -2682,13 +2669,22 @@ mod arrow {
     pub(crate) struct AppliedPlan {
         root: Field,
         cast: Option<crate::cast::ArrowCastPlan>,
-        transform: bool,
-        digest: bool,
+        /// The derivations the root declares, bound once for every batch.
+        transform: Option<crate::expression::TransformPlan>,
+        digest: Option<DigestStage>,
         /// The strict re-check over the finished batch, compiled only when a
         /// protocol was allowed to leave a hole for itself, or when no cast ran.
         verify: Option<crate::cast::ArrowCastPlan>,
         /// The schema every applied batch carries.
         schema: arrow_schema::SchemaRef,
+    }
+
+    /// The digest step: the holders the root declares, planned once, and the
+    /// cast that lands a batch on the root where no cast step already has.
+    struct DigestStage {
+        prototype: crate::Digester,
+        fill: crate::xxhash::arrow::StructPlan,
+        landing: Option<crate::cast::ArrowCastPlan>,
     }
 
     impl AppliedPlan {
@@ -2704,12 +2700,13 @@ mod arrow {
             use crate::cast::{ArrowCastPlan, Deferred};
 
             // A protocol is asked whether it declares anything before it is
-            // planned: both walk every batch, and the digest fill casts one a
-            // second time to materialize the holder columns. A root that declares
-            // neither is the ordinary schema, and applying it must cost exactly
-            // the cast. The question is answered on the declaration, so it reads
-            // no row - but only after `require_struct`, because a root the
-            // protocols cannot run on at all is refused rather than skipped.
+            // planned: both walk every batch, and where no cast step runs the
+            // digest fill casts one to materialize the holder columns. A root
+            // that declares neither is the ordinary schema, and applying it must
+            // cost exactly the cast. The question is answered on the
+            // declaration, so it reads no row - but only after
+            // `require_struct`, because a root the protocols cannot run on at
+            // all is refused rather than skipped.
             if transform || digest {
                 root.require_struct()?;
             }
@@ -2717,7 +2714,7 @@ mod arrow {
             let digest = digest && root.as_digest().declares_holder();
 
             let cast = if cast {
-                Some(ArrowCastPlan::compile_deferring(
+                Some(ArrowCastPlan::compile_schema(
                     &source,
                     root,
                     options,
@@ -2729,17 +2726,49 @@ mod arrow {
             // The applied shape is a property of the two schemas, so it is read off
             // an empty batch: nothing is decoded, and a declaration that cannot be
             // satisfied fails here rather than on the first batch.
+            let transform = transform.then(|| crate::expression::TransformPlan::new(root));
             let empty = arrow_array::RecordBatch::new_empty(source);
-            let applied = Self::stages(root, cast.as_ref(), transform, digest, &empty)?;
+            let landed = Self::transformed(cast.as_ref(), transform.as_ref(), &empty)?;
+            let digest = if digest {
+                // Seedless, so the holders answer the canonical digest; a holder
+                // whose width the default does not fit resolves its own.
+                let prototype = crate::DigestAlgorithm::Xxh3.digester();
+                let fill = crate::xxhash::arrow::StructPlan::compile(root, prototype.algorithm())?;
+                // A cast step already landed every batch on the root, and a
+                // transform keeps that shape.
+                let landing = match &cast {
+                    Some(_) => None,
+                    None => Some(ArrowCastPlan::compile_schema(
+                        landed.schema_ref(),
+                        root,
+                        crate::ArrowCastOptions::new(),
+                        Deferred::default(),
+                    )?),
+                };
+                Some(DigestStage {
+                    prototype,
+                    fill,
+                    landing,
+                })
+            } else {
+                None
+            };
+            let applied = Self::digested(root, digest.as_ref(), landed)?;
             let schema = applied.schema();
             // A cast with no protocol behind it already refused every hole, so the
             // re-check exists only where something could still have left one.
-            let verify =
-                if options.nullability().is_strict() && (transform || digest || cast.is_none()) {
-                    Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
-                } else {
-                    None
-                };
+            let verify = if options.nullability().is_strict()
+                && (transform.is_some() || digest.is_some() || cast.is_none())
+            {
+                Some(ArrowCastPlan::compile_schema(
+                    schema.as_ref(),
+                    root,
+                    options,
+                    Deferred::default(),
+                )?)
+            } else {
+                None
+            };
             Ok(Self {
                 root: root.clone(),
                 cast,
@@ -2750,26 +2779,38 @@ mod arrow {
             })
         }
 
-        /// Run cast, then transform, then digest - the order their answers depend
-        /// on, and the order this crate publishes.
-        fn stages(
-            root: &Field,
+        /// Run cast, then transform - the steps the digest reads the answers of.
+        fn transformed(
             cast: Option<&crate::cast::ArrowCastPlan>,
-            transform: bool,
-            digest: bool,
+            transform: Option<&crate::expression::TransformPlan>,
             batch: &arrow_array::RecordBatch,
         ) -> Result<arrow_array::RecordBatch> {
             let mut applied = match cast {
-                Some(plan) => plan.apply(batch.clone())?,
+                Some(plan) => plan.reconcile_batch(batch.clone())?,
                 None => batch.clone(),
             };
-            if transform {
-                applied = root.as_transform().apply_arrow_batch(&applied)?;
-            }
-            if digest {
-                applied = root.as_digest().apply_arrow_batch(&applied)?;
+            if let Some(transform) = transform {
+                applied = transform.apply(&applied)?;
             }
             Ok(applied)
+        }
+
+        /// Run the digest last, the order this crate publishes.
+        fn digested(
+            root: &Field,
+            digest: Option<&DigestStage>,
+            batch: arrow_array::RecordBatch,
+        ) -> Result<arrow_array::RecordBatch> {
+            let Some(digest) = digest else {
+                return Ok(batch);
+            };
+            let batch = match &digest.landing {
+                Some(landing) => landing.reconcile_batch(batch)?,
+                None => batch,
+            };
+            Ok(digest
+                .fill
+                .fill_arrow_batch(&digest.prototype, root, batch, false)?)
         }
 
         /// Apply the compiled declarations to one batch of the source schema.
@@ -2777,17 +2818,15 @@ mod arrow {
             &self,
             batch: &arrow_array::RecordBatch,
         ) -> Result<arrow_array::RecordBatch> {
-            let applied = Self::stages(
+            let applied = Self::digested(
                 &self.root,
-                self.cast.as_ref(),
-                self.transform,
-                self.digest,
-                batch,
+                self.digest.as_ref(),
+                Self::transformed(self.cast.as_ref(), self.transform.as_ref(), batch)?,
             )?;
             if let Some(verify) = &self.verify {
                 // The applied batch is already the declared shape, so this is a
                 // zero-copy pass whose only product is the refusal it may raise.
-                verify.apply(applied.clone())?;
+                verify.reconcile_batch(applied.clone())?;
             }
             Ok(applied)
         }
@@ -2878,6 +2917,7 @@ mod arrow {
     }
 }
 
+pub(crate) use arrow::AppliedPlan;
 pub(crate) use arrow::{
     RecognizedExtension, arrow_field_ref_from_shared, recognized_arrow_extension,
 };

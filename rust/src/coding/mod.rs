@@ -238,29 +238,6 @@ impl<H: IOBase> Coding<H> {
         encoded.set_media_type(encoded_media_type);
         Ok(Holder::buffer(encoded))
     }
-
-    /// Apply the generic read shaping after an owning encoding seam.
-    fn shape_owned_arrow_reader(
-        reader: crate::arrow::BatchReader,
-        options: &crate::media::RecordOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        use crate::media::IORecordOptions;
-
-        let reader = match options.field() {
-            // Applied, not cast, for the reason `leaf_reader` applies: a
-            // declared derived column arrives written from every read seam or
-            // from none of them.
-            Some(field) => field.apply_arrow_reader(
-                reader,
-                true,
-                true,
-                true,
-                crate::ArrowCastOptions::new().with_safe(options.safe()),
-            )?,
-            None => reader,
-        };
-        options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
-    }
 }
 
 /// Copy `buffer.len()` bytes of `plain` from `offset`, returning what fit.
@@ -331,7 +308,7 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
             }
             _ => return crate::IOMedia::read_arrow_reader(&owned, options),
         };
-        Self::shape_owned_arrow_reader(reader, options)
+        options.limit_arrow_reader(options.apply_arrow_reader(reader, None)?)
     }
 }
 

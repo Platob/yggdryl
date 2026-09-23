@@ -20,7 +20,6 @@ use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use yggdryl::FieldValue as _;
 use yggdryl::expression::{
     Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
@@ -2942,14 +2941,22 @@ impl CoreUserFunction for PyUserFunction {
         let reference = self.signature.reference();
         Python::attach(|py| -> yggdryl::Result<arrow_array::ArrayRef> {
             if self.vectorized {
-                // Whole columns cross: each argument cast onto its parameter
+                // Whole columns cross: each argument, landed under the field
+                // the evaluator typed it by, cast onto its parameter
                 // datatype, nulls left to the callable, the answer cast onto
                 // the declared return.
+                let options = yggdryl::ArrowCastOptions::new();
                 let mut columns = Vec::with_capacity(arguments.len());
-                for (array, parameter) in arguments.iter().zip(self.signature.parameters()) {
+                for ((field, array), parameter) in fields
+                    .iter()
+                    .zip(arguments)
+                    .zip(self.signature.parameters())
+                {
                     let target = parameter.clone().with_nullable(true);
-                    let cast = target
-                        .cast_arrow_array(Arc::clone(array), yggdryl::ArrowCastOptions::new())?;
+                    let cast =
+                        yggdryl::Serie::from_arrow_array(Some(field), Arc::clone(array), options)?
+                            .cast(&target, options)?
+                            .require_arrow_array()?;
                     columns.push(
                         arrow_array_to_pyarrow(py, &cast, Some(&target))
                             .map_err(|error| user_error(reference, &error))?,
@@ -2960,10 +2967,9 @@ impl CoreUserFunction for PyUserFunction {
                     arrow_array_from_pyarrow(&answer.into_bound(py))
                 })()
                 .map_err(|error| user_error(reference, &error))?;
-                return Ok(output
-                    .clone()
-                    .with_nullable(true)
-                    .cast_arrow_array(answer, yggdryl::ArrowCastOptions::new())?);
+                let output = output.clone().with_nullable(true);
+                return yggdryl::Serie::from_arrow_array(Some(&output), answer, options)?
+                    .require_arrow_array();
             }
             // One attachment for the whole batch: every column crosses once,
             // each row is filled to the signature and called, and the answers

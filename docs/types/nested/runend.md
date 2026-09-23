@@ -356,16 +356,18 @@ encoding survives the boundary exactly as declared.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // Apache Arrow JS has no run-end layout to materialize, so a default
-    // Arrow scalar is refused by name rather than approximated.
+    // Apache Arrow JS has no run-end layout to materialize, so a run-end
+    // column crossing out is refused rather than approximated.
     const runs = fields.runEndEncoded(
       'runs',
       fields.int16('run_ends', { nullable: false }),
       fields.utf8('values'),
     )
-    assert.throws(() => runs.defaultArrowScalar(), /unsupported/)
+    const defaults = Serie.fromDefault(runs)
+    assert.equal(defaults.length, 1)
+    assert.throws(() => defaults.intoArrowScalar(), /unsupported/)
 
     // The datatype itself is complete, and round-trips through its own text.
     assert.equal(runs.dtype.id, 'run_end_encoded')
@@ -458,7 +460,7 @@ leaf, because it is one column.
 - `kind()` is `nested` and `is_nested()` is not: the encoding is nested storage, and the shape is the values'.
 - A run-end field carries no sidecar, unlike a [dictionary](dictionary.md) field: `dictionary_id` answers `None`, because nothing about this encoding is per-column transport.
 - A value is the decoded value: there is no run-end `Scalar` variant, no run index in a value, and the default is the values datatype's default.
-- Apache Arrow JS has no run-end layout, so `defaultArrowScalar` refuses the column by name in JavaScript; every other surface answers.
+- Apache Arrow JS has no run-end layout, so `Serie#intoArrowScalar`, `intoArrowArray` and `intoArrowBatch` refuse a run-end column in JavaScript; every other surface answers.
 - The two children round-trip through the C Data Interface as `+r`, and through `arrow_schema` as whole fields, so the names a schema declared are the names that come back.
 
 ## Commands

@@ -453,6 +453,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PyFixedSizeListSerie>()?;
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
+    module.add_class::<serie::PySerieReader>()?;
     module.add_class::<crate::arrow::PyArrowScalar>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;

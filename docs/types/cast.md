@@ -1,14 +1,16 @@
 # Cast
 
-The [field](field.md) is the cast target: rows, arrays, and record batches are reconciled to its datatype and nullability.
+The [field](field.md) is the cast target: an Arrow array, a record batch, a stream or a [`Serie`](serie.md) already in hand is reconciled to its datatype and nullability, and what comes out is a `Serie` under that field.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Owns | `validate_value`, `canonicalize_value`, the cast doors on `DataTypeValue` / `FieldValue`, `ArrowCastOptions`, `Nullability`, `Representation`, `ArrowCastPlan`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
-| Target | The field, never the source; an exact input returns unchanged - the same arrays, and the same batch object |
-| Returns | `Field`, `DataType`: `ArrayRef`; `TypedField`: its own array (datetime, dictionary: `ArrayRef`) |
+| Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Nullability`, `Representation`; `validate_value` and `canonicalize_value` for rows |
+| Ways in | `Serie::cast` for a column in hand; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
+| Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
+| Returns | A `Serie` under the target field. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
+| Exact input | The identity plan: the same buffers, and a column already under the target is itself |
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
 | `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
@@ -18,72 +20,74 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
 | Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
-| Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip` |
-| Bindings | `Scalar` rows in Rust and Python; Python and JavaScript cast Arrow data and pass both answers explicitly |
+| Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
+| Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
+| Bindings | `Serie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
 
 ## Use
 
-`safe` decides whether a failed conversion errors or defaults.
+An array enters as the column of a field. `safe` decides whether a failed conversion errors or defaults.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
-    use yggdryl::Int64Field;
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, Serie};
 
-    let strict_conversion = ArrowCastOptions::new().with_safe(false);
+    let field = Field::new("id", DataType::Int64, false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
 
-    // Any field answers with an ArrayRef, because any field could be any datatype.
-    let field = Field::new("id", DataType::Int64, false);
-    let cast = field.cast_arrow_array(Arc::clone(&text), strict_conversion)?;
-    assert_eq!(cast.data_type(), &arrow_schema::DataType::Int64);
-
-    // A typed field already knows its variant, so it answers with the array itself.
-    let typed = Int64Field::unit("id", false);
-    let ids: Int64Array = typed.cast_arrow_array(text, strict_conversion)?;
-    assert_eq!(ids.values(), &[1, 2]);
+    // One door: the array lands as the column of `field`, cast on the way in.
+    let strict_conversion = ArrowCastOptions::new().with_safe(false);
+    let ids = Serie::from_arrow_array(Some(&field), text, strict_conversion)?;
+    assert_eq!(ids.field(), Some(&field));
+    // A typed read is a narrowing of the column that came out.
+    assert_eq!(ids.as_int64().expect("an int64 column").values(), &[1, 2]);
 
     // safe nulls a failed conversion; the nullability policy then decides
     // whether that null may stand in for a declared value.
     let broken: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
-    assert!(typed.cast_arrow_array(Arc::clone(&broken), strict_conversion).is_err());
-    let repaired: Int64Array =
-        typed.cast_arrow_array(Arc::clone(&broken), ArrowCastOptions::new())?;
-    assert_eq!(repaired.values(), &[1, 0]);
+    assert!(Serie::from_arrow_array(Some(&field), Arc::clone(&broken), strict_conversion).is_err());
+    let repaired =
+        Serie::from_arrow_array(Some(&field), Arc::clone(&broken), ArrowCastOptions::new())?;
+    assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[1, 0]);
     assert_eq!(repaired.null_count(), 0);
 
-    // Strict refuses the same null instead of defaulting it.
-    let refused = typed
-        .cast_arrow_array(broken, ArrowCastOptions::new().with_nullability(Nullability::Strict))
+    // Strict refuses the same null instead of defaulting it, naming the path.
+    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+    let refused = Serie::from_arrow_array(Some(&field), broken, strict)
         .unwrap_err()
         .to_string();
     assert_eq!(refused, "required Arrow field $.id holds 1 null values");
+
+    // A column in hand casts once under another field.
+    let narrow = ids.cast(&Field::new("id", DataType::Int32, false), ArrowCastOptions::new())?;
+    assert_eq!(narrow.as_int32().expect("an int32 column").values(), &[1, 2]);
     ```
 
 === "Python"
 
     ```python
     import pyarrow as pa
-    from yggdryl import Field
+    from yggdryl import DataType, Field, Serie
 
     field = Field("id", "int64", nullable=False)
 
-    ids = field.cast_arrow_array(pa.array(["1", "2"]))
-    assert ids.equals(pa.array([1, 2], type=pa.int64()))
+    ids = Serie.from_arrow_array(pa.array(["1", "2"]), field, safe=False)
+    assert ids.field == field
+    assert ids.into_arrow_array().equals(pa.array([1, 2], type=pa.int64()))
 
     # safe nulls a failed conversion; the nullability policy then decides
     # whether that null may stand in for a declared value.
-    repaired = field.cast_arrow_array(pa.array(["1", "not a number"]))
-    assert repaired.equals(pa.array([1, 0], type=pa.int64()))
-    assert repaired.null_count == 0
+    broken = pa.array(["1", "not a number"])
+    repaired = Serie.from_arrow_array(broken, field)
+    assert repaired.as_py() == [1, 0]
+    assert repaired.null_count() == 0
 
     try:
-        field.cast_arrow_array(pa.array(["1", "not a number"]), safe=False)
+        Serie.from_arrow_array(broken, field, safe=False)
     except ValueError:
         pass
     else:
@@ -91,11 +95,51 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
     # Strict refuses the same null instead of defaulting it, naming the path.
     try:
-        field.cast_arrow_array(pa.array(["1", "not a number"]), nullability="strict")
+        Serie.from_arrow_array(broken, field, nullability="strict")
     except ValueError as error:
-        assert "$.id" in str(error), error
+        assert str(error) == "required Arrow field $.id holds 1 null values"
     else:
         raise AssertionError("a strict cast must refuse the null")
+
+    # A column in hand casts once; a DataType is its required `value` field.
+    narrow = ids.cast(DataType("int32"))
+    assert narrow.field == Field("value", "int32", nullable=False)
+    assert narrow.as_py() == [1, 2]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const field = fields.int64('id', { nullable: false })
+
+    const ids = Serie.fromArrowArray(
+      arrow.vectorFromArray(['1', '2'], new arrow.Utf8()),
+      field,
+      { safe: false },
+    )
+    assert.ok(ids.field.equals(field))
+    assert.deepEqual([...ids.intoArrowArray()], [1n, 2n])
+
+    // safe nulls a failed conversion; the nullability policy then decides
+    // whether that null may stand in for a declared value.
+    const broken = arrow.vectorFromArray(['1', 'not a number'], new arrow.Utf8())
+    assert.deepEqual(Serie.fromArrowArray(broken, field).asJs(), [1, 0])
+    assert.throws(() => Serie.fromArrowArray(broken, field, { safe: false }), /not a number/)
+
+    // Strict refuses the same null instead of defaulting it, naming the path.
+    assert.throws(
+      () => Serie.fromArrowArray(broken, field, { nullability: 'strict' }),
+      /required Arrow field \$\.id holds 1 null values/,
+    )
+
+    // A column in hand casts once under another field.
+    const narrow = ids.cast(fields.int32('id', { nullable: false }))
+    assert.equal(narrow.field.dtype.toString(), 'int32')
+    assert.deepEqual(narrow.asJs(), [1, 2])
     ```
 
 ## Reading the bits
@@ -119,58 +163,55 @@ what an absent value means.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, UInt64Array};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
+    use arrow_array::{ArrayRef, Int32Array, UInt64Array};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Representation, Serie};
 
     let bits = ArrowCastOptions::new().with_representation(Representation::Bits);
     let source: ArrayRef = Arc::new(UInt64Array::from(vec![0, u64::MAX]));
 
-    let signed = Field::new("digest", DataType::Int64, true)
-        .cast_arrow_array(Arc::clone(&source), bits)?;
-    let signed = signed.as_any().downcast_ref::<Int64Array>().unwrap();
-    assert_eq!(signed.values(), &[0, -1]);
+    let signed = Field::new("digest", DataType::Int64, true);
+    let signed = Serie::from_arrow_array(Some(&signed), Arc::clone(&source), bits)?;
+    assert_eq!(signed.as_int64().expect("an int64 column").values(), &[0, -1]);
 
     // The same eight bytes, now as raw payload - and back again exactly.
-    let stored = Field::new("digest", DataType::fixed_binary(8)?, true)
-        .cast_arrow_array(Arc::clone(&source), bits)?;
-    let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    assert_eq!(bytes.value(1), &[0xff; 8]);
-    let restored = Field::new("digest", DataType::UInt64, true)
-        .cast_arrow_array(stored, bits)?;
-    let restored = restored.as_any().downcast_ref::<UInt64Array>().unwrap();
-    assert_eq!(restored.values(), &[0, u64::MAX]);
+    let payload = Field::new("digest", DataType::fixed_binary(8)?, true);
+    let stored = Serie::from_arrow_array(Some(&payload), Arc::clone(&source), bits)?;
+    let bytes = stored.as_fixed_bytes().expect("a fixed byte column");
+    assert_eq!(bytes.value(1), Some(&[0xff_u8; 8][..]));
+    let restored = stored.cast(&Field::new("digest", DataType::UInt64, true), bits)?;
+    assert_eq!(restored.as_uint64().expect("a uint64 column").values(), &[0, u64::MAX]);
 
     // Four bytes are not eight, so this stays the ordinary numeric widening.
-    let widened = Field::new("id", DataType::Int64, true)
-        .cast_arrow_array(Arc::new(arrow_array::Int32Array::from(vec![7])), bits)?;
-    assert_eq!(widened.data_type(), &arrow_schema::DataType::Int64);
+    let narrow: ArrayRef = Arc::new(Int32Array::from(vec![7]));
+    let widened =
+        Serie::from_arrow_array(Some(&Field::new("id", DataType::Int64, true)), narrow, bits)?;
+    assert_eq!(widened.as_int64().expect("an int64 column").values(), &[7]);
     ```
 
 === "Python"
 
     ```python
     import pyarrow as pa
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     source = pa.array([0, 2**64 - 1], type=pa.uint64())
 
-    signed = Field("digest", "int64").cast_arrow_array(source, representation="bits")
-    assert signed.to_pylist() == [0, -1]
+    signed = Serie.from_arrow_array(source, Field("digest", "int64"), representation="bits")
+    assert signed.as_py() == [0, -1]
 
     # The same eight bytes, now as raw payload - and back again exactly.
-    stored = Field("digest", "fixed_size_binary(8)").cast_arrow_array(
-        source, representation="bits"
+    stored = Serie.from_arrow_array(
+        source, Field("digest", "fixed_size_binary(8)"), representation="bits"
     )
-    assert stored.to_pylist()[1] == b"\xff" * 8
-    restored = Field("digest", "uint64").cast_arrow_array(stored, representation="bits")
-    assert restored.equals(source)
+    assert stored.as_py()[1] == b"\xff" * 8
+    restored = stored.cast(Field("digest", "uint64"), representation="bits")
+    assert restored.into_arrow_array().equals(source)
 
     # Four bytes are not eight, so this stays the ordinary numeric widening.
-    widened = Field("id", "int64").cast_arrow_array(
-        pa.array([7], type=pa.uint32()), representation="bits"
+    widened = Serie.from_arrow_array(
+        pa.array([7], type=pa.uint32()), Field("id", "int64"), representation="bits"
     )
-    assert widened.to_pylist() == [7]
+    assert widened.as_py() == [7]
     ```
 
 === "JavaScript"
@@ -178,21 +219,25 @@ what an absent value means.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const bits = { representation: 'bits' }
     const source = arrow.vectorFromArray([0n, 2n ** 64n - 1n], new arrow.Uint64())
 
-    const signed = fields.int64('digest').castArrowArray(source, bits)
-    assert.deepEqual([...signed], [0n, -1n])
+    const signed = Serie.fromArrowArray(source, fields.int64('digest'), bits)
+    assert.deepEqual([...signed.intoArrowArray()], [0n, -1n])
 
     // The same eight bytes, now as raw payload - and back again exactly.
-    const stored = fields.fixedSizeBinary('digest', 8).castArrowArray(source, bits)
-    assert.deepEqual([...stored.get(1)], new Array(8).fill(255))
+    const stored = Serie.fromArrowArray(source, fields.fixedSizeBinary('digest', 8), bits)
+    assert.deepEqual([...stored.intoArrowArray().get(1)], new Array(8).fill(255))
     assert.deepEqual(
-      [...fields.uint64('digest').castArrowArray(stored, bits)],
+      [...stored.cast(fields.uint64('digest'), bits).intoArrowArray()],
       [...source],
     )
+
+    // Four bytes are not eight, so this stays the ordinary numeric widening.
+    const narrow = arrow.vectorFromArray([7], new arrow.Uint32())
+    assert.deepEqual(Serie.fromArrowArray(narrow, fields.int64('id'), bits).asJs(), [7])
     ```
 
 ## Row values
@@ -289,7 +334,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
 ## Record batches
 
-A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive cast.
+A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive cast: it lands as the record column of its rows under a non-null Struct root, children reconciled by name and returned in the root's order. With no root the batch is the record `row` of its own schema, its columns shared.
 
 === "Rust"
 
@@ -298,10 +343,9 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, StructType};
 
-    let schema = DataType::from(StructType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)
@@ -318,10 +362,20 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
         ],
     )?;
 
-    let batch = schema.cast_arrow_batch(source, ArrowCastOptions::new().with_safe(false))?;
+    let trades = Serie::from_arrow_batch(Some(&root), &source, ArrowCastOptions::new().with_safe(false))?;
+    assert_eq!(trades.field(), Some(&root));
+    let ids = trades.child("id").and_then(Serie::as_int64).map(|ids| ids.values().to_vec());
+    assert_eq!(ids, Some(vec![7]));
+
+    // Back out as a table, in the root's order.
+    let batch = trades.into_arrow_batch()?;
     assert_eq!(batch.num_columns(), 2);
     assert_eq!(batch.schema().field(0).name(), "id");
     assert_eq!(batch.column(0).data_type(), &ArrowDataType::Int64);
+
+    // With no root the batch is the record `row` of its own schema.
+    let own = Serie::from_arrow_batch(None, &source, ArrowCastOptions::new())?;
+    assert_eq!(own.field().map(Field::name), Some("row"));
     ```
 
 === "Python"
@@ -329,9 +383,9 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
     ```python
     import pyarrow as pa
     import yggdryl
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
-    schema = Field(
+    root = Field(
         "trade",
         DataType.from_fields([
             yggdryl.int64("id", nullable=False),
@@ -345,9 +399,45 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
         "id": pa.array([7], type=pa.int32()),
     })
 
-    batch = schema.cast_arrow_batch(source)
+    trades = Serie.from_arrow_batch(source, root, safe=False)
+    assert trades.child("id").as_py() == [7]
+
+    batch = trades.into_arrow_batch()
     assert batch.schema.names == ["id", "symbol"]
     assert batch.column("id").type == pa.int64()
+
+    # With no root the batch is the record `row` of its own schema.
+    assert Serie.from_arrow_batch(source).field.name == "row"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie, fields } = require('yggdryl')
+
+    const root = fields.struct(
+      'trade',
+      [Field.from('id: int64 not null'), Field.from('symbol: utf8')],
+      { nullable: false },
+    )
+    const source = new arrow.Table({
+      symbol: arrow.vectorFromArray(['ACME'], new arrow.Utf8()),
+      id: arrow.vectorFromArray([7], new arrow.Int32()),
+    })
+
+    const trades = Serie.fromArrowBatch(source, root, { safe: false })
+    assert.deepEqual(trades.child('id').asJs(), [7])
+
+    const batch = trades.intoArrowBatch()
+    assert.deepEqual(
+      batch.schema.fields.map((field) => `${field.name}: ${field.type}`),
+      ['id: Int64', 'symbol: Utf8'],
+    )
+
+    // With no root the batch is the record `row` of its own schema.
+    assert.equal(Serie.fromArrowBatch(source).field.name, 'row')
     ```
 
 ## Strict nullability
@@ -356,7 +446,7 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 `default` repairs - the canonical [default](field.md), which is what a lake being filled wants.
 `strict` refuses, naming the full dot/bracket path from the cast root, which is what a contract
 being enforced wants. The two failures happen at different times: a required field *no source
-column carries* is decided by the schemas alone and so is refused when the cast is compiled,
+column carries* is decided by the fields alone and so is refused when the cast is compiled,
 before any batch exists; a required field *holding null* is a property of the rows and is refused
 when that batch is cast.
 
@@ -370,8 +460,7 @@ strictness is about declared values that are absent, not about columns nobody de
 
     use arrow_array::{ArrayRef, Int32Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType};
 
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
     let root = DataType::from(StructType::from_fields([
@@ -380,23 +469,27 @@ strictness is about declared values that are absent, not about columns nobody de
     ])?)
     .required_field("row");
 
-    let source = Arc::new(Schema::new(vec![ArrowField::new(
+    let schema = Arc::new(Schema::new(vec![ArrowField::new(
         "id",
         ArrowDataType::Int32,
         false,
     )]));
     let batch = RecordBatch::try_new(
-        Arc::clone(&source),
+        Arc::clone(&schema),
         vec![Arc::new(Int32Array::from(vec![1])) as ArrayRef],
     )?;
 
     // Default: the hole is filled with the target's canonical default.
-    assert_eq!(root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())?.num_columns(), 2);
+    let filled = Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())?;
+    assert_eq!(filled.into_arrow_batch()?.num_columns(), 2);
 
     // Strict: refused, by path - and refused at compile time, because two
-    // schemas are all it takes to know.
-    let message = root.cast_arrow_batch(batch, strict).unwrap_err().to_string();
+    // fields are all it takes to know.
+    let message = Serie::from_arrow_batch(Some(&root), &batch, strict)
+        .unwrap_err()
+        .to_string();
     assert_eq!(message, "required Arrow field $.symbol is missing from the source");
+    let source = Field::from_arrow_schema("row", &schema)?;
     assert!(ArrowCastPlan::compile(&source, &root, strict).is_err());
     ```
 
@@ -405,21 +498,27 @@ strictness is about declared values that are absent, not about columns nobody de
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
+    from yggdryl import ArrowCastPlan, DataType, Field, Serie
 
     root = Field("row", DataType("struct<id: int64, symbol: string not null>"), False)
     batch = pa.record_batch({"id": pa.array([1], pa.int32())})
 
     # Default: the hole is filled with the target's canonical default.
-    assert root.cast_arrow_batch(batch).num_columns == 2
+    assert Serie.from_arrow_batch(batch, root).into_arrow_batch().num_columns == 2
 
-    # Strict: refused, by path.
+    # Strict: refused, by path - and refused where the plan is compiled.
     try:
-        root.cast_arrow_batch(batch, nullability="strict")
+        Serie.from_arrow_batch(batch, root, nullability="strict")
     except ValueError as error:
         assert str(error) == "required Arrow field $.symbol is missing from the source"
     else:
         raise AssertionError("a strict cast must refuse the missing column")
+    try:
+        ArrowCastPlan(batch.schema, root, nullability="strict")
+    except ValueError as error:
+        assert "$.symbol" in str(error)
+    else:
+        raise AssertionError("the plan must refuse the missing column")
     ```
 
 === "JavaScript"
@@ -427,7 +526,7 @@ strictness is about declared values that are absent, not about columns nobody de
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { Field, fields } = require('yggdryl')
+    const { ArrowCastPlan, Field, Serie, fields } = require('yggdryl')
 
     const root = fields.struct(
       'row',
@@ -439,12 +538,14 @@ strictness is about declared values that are absent, not about columns nobody de
     })
 
     // Default: the hole is filled with the target's canonical default.
-    assert.equal(root.castArrow(table).numCols, 2)
+    assert.equal(Serie.fromArrowBatch(table, root).intoArrowBatch().numCols, 2)
 
-    // Strict: refused, by path.
+    // Strict: refused, by path - and refused where the plan is compiled.
+    const missing = /required Arrow field \$\.symbol is missing from the source/
+    assert.throws(() => Serie.fromArrowBatch(table, root, { nullability: 'strict' }), missing)
     assert.throws(
-      () => root.castArrow(table, { nullability: 'strict' }),
-      /required Arrow field \$\.symbol is missing from the source/,
+      () => ArrowCastPlan.compile(table.schema, root, { nullability: 'strict' }),
+      missing,
     )
     ```
 
@@ -467,23 +568,24 @@ by path there too.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Nullability, Scalar};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Nullability, Scalar, Serie};
 
     let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
     let unsafe_cast = ArrowCastOptions::new().with_safe(false);
 
     // Nullable: null, and `safe = false` never sees the cell.
     let nullable = DataType::Int64.nullable_field("count");
-    assert!(nullable.cast_arrow_array(Arc::clone(&empty), unsafe_cast)?.is_null(0));
+    assert!(Serie::from_arrow_array(Some(&nullable), Arc::clone(&empty), unsafe_cast)?.is_null(0)?);
 
     // Required: the default under `default`, refused by path under `strict`.
     let required = DataType::Int64.required_field("count");
-    let repaired = required.cast_arrow_array(Arc::clone(&empty), ArrowCastOptions::new())?;
-    assert_eq!(repaired.as_any().downcast_ref::<Int64Array>().unwrap().value(0), 0);
+    let repaired = Serie::from_arrow_array(Some(&required), Arc::clone(&empty), ArrowCastOptions::new())?;
+    assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[0]);
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let message = required.cast_arrow_array(empty, strict).unwrap_err().to_string();
+    let message = Serie::from_arrow_array(Some(&required), empty, strict)
+        .unwrap_err()
+        .to_string();
     assert_eq!(message, "required Arrow field $.count holds 1 null values");
 
     // The scalar door answers the same, and a text column keeps the cell.
@@ -496,19 +598,19 @@ by path there too.
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
     empty = pa.array([""])
 
     # Nullable: null, and safe=False never sees the cell.
     nullable = Field("count", "int64")
-    assert nullable.cast_arrow_array(empty, safe=False).null_count == 1
+    assert Serie.from_arrow_array(empty, nullable, safe=False).null_count() == 1
 
     # Required: the default under default, refused by path under strict.
     required = Field("count", "int64", nullable=False)
-    assert required.cast_arrow_array(empty).equals(pa.array([0], type=pa.int64()))
+    assert Serie.from_arrow_array(empty, required).as_py() == [0]
     try:
-        required.cast_arrow_array(empty, nullability="strict")
+        Serie.from_arrow_array(empty, required, nullability="strict")
     except ValueError as error:
         assert str(error) == "required Arrow field $.count holds 1 null values"
     else:
@@ -524,19 +626,19 @@ by path there too.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, fields } = require('yggdryl')
+    const { DataType, Serie, fields } = require('yggdryl')
 
-    const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+    const empty = arrow.vectorFromArray([''], new arrow.Utf8())
 
     // Nullable: null, and safe: false never sees the cell.
     const nullable = fields.int64('count')
-    assert.equal(nullable.castArrowArray(empty(), { safe: false }).get(0), null)
+    assert.deepEqual(Serie.fromArrowArray(empty, nullable, { safe: false }).asJs(), [null])
 
     // Required: the default under default, refused by path under strict.
     const required = fields.int64('count', { nullable: false })
-    assert.deepEqual(Array.from(required.castArrowArray(empty())), [0n])
+    assert.deepEqual(Serie.fromArrowArray(empty, required).asJs(), [0])
     assert.throws(
-      () => required.castArrowArray(empty(), { nullability: 'strict' }),
+      () => Serie.fromArrowArray(empty, required, { nullability: 'strict' }),
       /required Arrow field \$\.count holds 1 null values/,
     )
 
@@ -547,67 +649,287 @@ by path there too.
 
 ## Compiled plans
 
-Everything a cast decides from two schemas - which source column answers which target field, the
-child order, the recursive type dispatch, the target schema, the kernel options - is a function of
-those schemas alone. `ArrowCastPlan` is that work made once: `compile` from a source schema, a
-non-null Struct root, and the options; `preflight` to exercise the whole recursion over no rows;
-`apply` per batch. The plan is immutable and `Send + Sync`, so one serves every batch of a stream
-and every thread of a parallel scan; only the masks, offsets, and dictionary reachability a batch
-actually carries vary.
+Everything a cast decides from two fields - which source child answers which target field, the
+child order, the recursive type dispatch, the target's Arrow projection, the kernel options - is a
+function of those fields alone. `ArrowCastPlan` is that work made once: `compile` from a source
+field, a target field and the options; `preflight` to exercise the whole recursion over no rows;
+`apply` per column of the source layout, each landing a `Serie` under the target. A batch's schema
+is a source as the record it lays out as: `Field::from_arrow_schema("row", &schema)`. The plan is
+immutable and `Send + Sync`, so one serves every column of a stream and every thread of a
+parallel scan; only the masks, offsets, and dictionary reachability a column actually carries vary.
 
-`cast_arrow_batch` compiles one plan for its one batch. A caller with many batches of one schema
-compiles the plan itself - and `cast_reader` already does, so a streamed cast never plans twice.
+`Serie::cast` and the `Serie` Arrow doors compile one plan for their one input, so a loop that
+calls them compiles per iteration. A loop holds the plan instead - and `SerieReader` already
+does, so a stream never plans twice. `as_source` answers the Arrow field an input must lay out as,
+`as_target` the field every cast lands under, `as_options` the three answers, and `is_identity`
+whether the plan hands every input of its source layout straight back.
 
-Rust only: the bindings reach the same reuse through their reader casts.
+=== "Rust"
 
-```rust
-use std::sync::Arc;
+    ```rust
+    use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int32Array, RecordBatch};
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructType};
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie, StructType};
 
-let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
-    .required_field("row");
-let source = Arc::new(Schema::new(vec![ArrowField::new(
-    "id",
-    ArrowDataType::Int32,
-    false,
-)]));
+    let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    let schema = Arc::new(Schema::new(vec![ArrowField::new(
+        "id",
+        ArrowDataType::Int32,
+        false,
+    )]));
 
-let plan = ArrowCastPlan::compile(&source, &root, ArrowCastOptions::new())?;
-// The whole recursion runs with no rows, so an impossible cast is known now.
-plan.preflight()?;
-assert_eq!(plan.as_schema().field(0).data_type(), &ArrowDataType::Int64);
+    // A batch's schema is the record `row` its columns are the children of.
+    let source = Field::from_arrow_schema("row", &schema)?;
+    let plan = ArrowCastPlan::compile(&source, &root, ArrowCastOptions::new())?;
+    // The whole recursion runs with no rows, so an impossible cast is known now.
+    plan.preflight()?;
+    assert_eq!(plan.as_target(), &root);
+    assert!(!plan.is_identity());
 
-for offset in 0..3 {
-    let batch = RecordBatch::try_new(
-        Arc::clone(&source),
-        vec![Arc::new(Int32Array::from(vec![offset])) as ArrayRef],
-    )?;
-    assert_eq!(plan.apply(batch)?.num_rows(), 1);
-}
-```
-
-## Eager and lazy
-
-A cast of held data is eager and a cast of a stream is lazy, and the method names say which.
-A table is already in memory, so casting one drains its batches and hands back a table. A reader
-is not, so casting one hands back a reader that has cast nothing yet: it pulls one source batch,
-casts it, and yields it, so a resource larger than memory casts in bounded memory. A batch's
-failure therefore surfaces when *that batch* is pulled, not when the reader is built - and the
-reader is fused after it, because a stream that has reported it cannot be honoured has nothing
-further to say. Closing or dropping the reader releases the source stream at that point.
-
-The generic `cast_arrow`/`castArrow` infers which of the two it is holding and delegates; it adds
-no behavior of its own.
+    for offset in 0..3 {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(Int32Array::from(vec![offset])) as ArrayRef],
+        )?;
+        // The batch lands as its own layout, sharing its columns, and the
+        // held plan casts it.
+        let landed = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())?;
+        let cast = plan.apply(&landed)?;
+        let id = cast.child("id").and_then(Serie::as_int64).map(|ids| ids.values()[0]);
+        assert_eq!(id, Some(i64::from(offset)));
+    }
+    ```
 
 === "Python"
 
     ```python
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
+    from yggdryl import ArrowCastPlan, DataType, Field, Serie
+
+    root = Field("row", DataType("struct<id: int64 not null>"), False)
+    schema = pa.schema([pa.field("id", pa.int32(), nullable=False)])
+
+    # A pyarrow schema is the record `row` its columns are the children of.
+    plan = ArrowCastPlan(schema, root)
+    plan.preflight()
+    assert plan.source.name == "row"
+    assert plan.target == root
+    assert not plan.is_identity
+
+    for offset in range(3):
+        batch = pa.record_batch([pa.array([offset], pa.int32())], schema=schema)
+        # A batch is first the record column of its own schema, then cast.
+        assert plan.apply(batch).child("id").as_py() == [offset]
+        assert plan.apply(Serie.from_arrow_batch(batch)).as_py() == [{"id": offset}]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { ArrowCastPlan, Field, Serie, fields } = require('yggdryl')
+
+    const root = fields.struct('row', [Field.from('id: int64 not null')], { nullable: false })
+    const table = new arrow.Table({ id: arrow.vectorFromArray([1, 2], new arrow.Int32()) })
+
+    // An Arrow JS schema is the record `row` its columns are the children of.
+    const plan = ArrowCastPlan.compile(table.schema, root)
+    plan.preflight()
+    assert.equal(plan.source.name, 'row')
+    assert.ok(plan.target.equals(root))
+    assert.equal(plan.isIdentity, false)
+    assert.deepEqual(plan.options, { safe: true, nullability: 'default', representation: 'value' })
+
+    for (const batch of table.batches) {
+      assert.deepEqual(plan.apply(Serie.fromArrowBatch(batch)).child('id').asJs(), [1, 2])
+    }
+    ```
+
+## What a landing proves
+
+A column holds only rows its field accepts, so every cast ends where its rows land in a
+`Serie`, and the landing proves them. The layout and the absence are proven on the buffers:
+the projection compared, the validity words counted. A value is proven by the layout wherever
+the layout is the datatype's whole contract, and is otherwise read once - unless the plan itself
+certified it: an ingest that read every value under the target's rule (a string with a bound, a
+width or a charset other than UTF-8, a bounded byte column, a code, a UUID, a URL or a URN), a
+target that is its own contract, a compiled default, or an exact node over a column that had
+already landed.
+
+An extension label is never such a proof. A foreign column whose Arrow field says
+`yggdryl.url` is only claiming to be a URL, so its rows are read once, and the first one the
+field refuses is named with its column and its row - under every option, because the claim is
+the source's, not a conversion `safe` could null. Foreign bytes an Arrow kernel moves into a
+leaf with a rule are read the same way: Arrow reads any `int64` as a `date64`, and a `date64`
+here is a whole day.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+    use arrow_schema::Schema;
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, StructType};
+
+    // The column claims to be a URL; the landing still reads what it holds.
+    let url = Field::new("u", DataType::Url, false);
+    let labelled = url.clone().into_arrow_field_ref()?.as_ref().clone();
+    let batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![labelled])),
+        vec![Arc::new(StringArray::from(vec!["not a url"])) as ArrayRef],
+    )?;
+    let root = DataType::from(StructType::from_fields([url])?).required_field("row");
+    let message = Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("\"u\"") && message.contains("row 0"), "{message}");
+
+    // A kernel moves the bytes; the field's rule still reads them.
+    let day = Field::new("day", DataType::Date64, false);
+    let millis: ArrayRef = Arc::new(Int64Array::from(vec![1_i64]));
+    assert!(Serie::from_arrow_array(Some(&day), millis, ArrowCastOptions::new()).is_err());
+    let midnight: ArrayRef = Arc::new(Int64Array::from(vec![86_400_000_i64]));
+    assert_eq!(Serie::from_arrow_array(Some(&day), midnight, ArrowCastOptions::new())?.len(), 1);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Field, Serie
+
+    # The column claims to be a URL; the landing still reads what it holds.
+    root = Field("row", "struct<u: url not null>", nullable=False)
+    labelled = pa.record_batch([pa.array(["not a url"])], schema=root.into_arrow_schema())
+    assert labelled.schema.field("u").metadata[b"ARROW:extension:name"] == b"yggdryl.url"
+    for claimed in (root, None):
+        try:
+            Serie.from_arrow_batch(labelled, claimed)
+        except ValueError as error:
+            assert '"u"' in str(error) and "row 0" in str(error), error
+        else:
+            raise AssertionError("a label proves nothing")
+
+    # A kernel moves the bytes; the field's rule still reads them.
+    day = Field("day", "date64", nullable=False)
+    try:
+        Serie.from_arrow_array(pa.array([1], pa.int64()), day)
+    except ValueError as error:
+        assert "whole-day" in str(error), error
+    else:
+        raise AssertionError("a date64 is a whole day")
+    assert len(Serie.from_arrow_array(pa.array([86_400_000], pa.int64()), day)) == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie } = require('yggdryl')
+
+    // The column claims to be a URL; the landing still reads what it holds.
+    const plain = new arrow.Table({ u: arrow.vectorFromArray(['not a url'], new arrow.Utf8()) })
+    const claim = new Map([['ARROW:extension:name', 'yggdryl.url']])
+    const url = plain.schema.fields[0].clone({ metadata: claim })
+    const labelled = new arrow.Table(new arrow.Schema([url]), plain.batches)
+    const root = Field.from('row: struct<u: url> not null')
+    for (const claimed of [root, undefined]) {
+      assert.throws(() => Serie.fromArrowBatch(labelled, claimed), /column "u" row 0/)
+    }
+
+    // A kernel moves the bytes; the field's rule still reads them.
+    const day = Field.from('day: date64 not null')
+    assert.throws(
+      () => Serie.fromArrowArray(arrow.vectorFromArray([1n], new arrow.Int64()), day),
+      /whole-day/,
+    )
+    const midnight = arrow.vectorFromArray([86_400_000n], new arrow.Int64())
+    assert.equal(Serie.fromArrowArray(midnight, day).length, 1)
+    ```
+
+## Eager and lazy
+
+A cast of held data is eager and a cast of a stream is lazy, and the type says which.
+`Serie::from_arrow_reader` drains a stream into one column: a column is one contiguous set of
+buffers, so the bound is the stream itself. `SerieReader::from_arrow_reader` compiles one plan
+from the stream's schema before a batch is pulled - a planning failure is raised there - and then
+yields one record `Serie` per batch as it is pulled, holding at most one source batch, so a
+resource larger than memory casts in bounded memory. A batch's failure therefore surfaces when
+*that batch* is pulled, not when the reader is built - and the reader is fused after it, because a
+stream that has reported it cannot be honoured has nothing further to say. The inner reader is
+dropped at that point, which releases a C stream behind it.
+
+`into_arrow_reader` is the stream's transport face: its batches reconciled to the root as they
+are pulled and never landed, so no row is read beyond what the cast itself reads. Over an
+identity plan it is the inner reader, handed back untouched.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::arrow::batch_reader;
+    use yggdryl::{ArrowCastOptions, DataType, Nullability, Serie, SerieReader, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("symbol"),
+    ])?)
+    .required_field("row");
+    let schema = Arc::new(Schema::new(vec![
+        ArrowField::new("id", ArrowDataType::Int32, false),
+        ArrowField::new("symbol", ArrowDataType::Utf8, true),
+    ]));
+    let quoted = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(Int32Array::from(vec![1])) as ArrayRef,
+            Arc::new(StringArray::from(vec![Some("AAPL")])) as ArrayRef,
+        ],
+    )?;
+    let unquoted = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(Int32Array::from(vec![2])) as ArrayRef,
+            Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+        ],
+    )?;
+
+    // Eager: the stream is drained here, into one column.
+    let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted.clone()]);
+    let held = Serie::from_arrow_reader(Some(&root), stream, ArrowCastOptions::new())?;
+    assert_eq!(held.len(), 2);
+
+    // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
+    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+    let stream = batch_reader(Arc::clone(&schema), [quoted.clone(), unquoted, quoted]);
+    let mut series = SerieReader::from_arrow_reader(Some(&root), stream, strict)?;
+    assert_eq!(series.field(), &root);
+    assert_eq!(series.next().transpose()?.map(|serie| serie.len()), Some(1));
+
+    // The refusal arrives with the batch that carries it, and the reader is
+    // fused after it.
+    let refusal = series.next().expect("a second batch").unwrap_err();
+    assert!(refusal.to_string().contains("$.symbol"), "{refusal}");
+    assert!(series.next().is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field, Serie, SerieReader
 
     root = Field("row", DataType("struct<id: int64, symbol: string not null>"), False)
     table = pa.table({
@@ -615,17 +937,31 @@ no behavior of its own.
         "symbol": ["AAPL", None],
     })
 
-    # Eager: a table is drained here and comes back a table.
-    assert isinstance(root.cast_arrow_table(table), pa.Table)
+    # Eager: a table is drained here, into one column.
+    held = Serie.from_arrow_reader(table, root)
+    assert held.as_py() == [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": ""}]
 
-    # Lazy: the reader is built, and nothing has been cast yet.
-    reader = root.cast_arrow_reader(table.to_reader(), nullability="strict")
-    assert reader.schema.names == ["id", "symbol"]
+    # Lazy: one plan compiled now, and nothing cast until a batch is pulled.
+    series = SerieReader.from_arrow_reader(
+        table.to_reader(max_chunksize=1), root, nullability="strict"
+    )
+    assert series.field == root
+    assert next(series).as_py() == [{"id": 1, "symbol": "AAPL"}]
 
     # The refusal arrives with the batch that carries it.
     try:
+        next(series)
+    except ValueError as error:
+        assert "$.symbol" in str(error), error
+    else:
+        raise AssertionError("the null must be refused at the pull")
+
+    # The transport face is a pyarrow reader that casts as it is read.
+    reader = SerieReader.from_arrow_reader(table, root, nullability="strict").into_arrow_reader()
+    assert reader.schema.names == ["id", "symbol"]
+    try:
         reader.read_all()
-    except Exception as error:
+    except pa.ArrowInvalid as error:
         assert "$.symbol" in str(error), error
     else:
         raise AssertionError("the null must be refused at the pull")
@@ -636,57 +972,108 @@ no behavior of its own.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { Field, fields } = require('yggdryl')
+    const { BatchReader, Field, Serie, SerieReader, fields } = require('yggdryl')
 
     const root = fields.struct(
       'row',
-      [Field.from('id: int64'), Field.from('symbol: utf8')],
+      [Field.from('id: int64'), Field.from('symbol: utf8 not null')],
       { nullable: false },
     )
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    const batch = (id, symbol) =>
+      new arrow.Table({
+        id: arrow.vectorFromArray([id], new arrow.Int32()),
+        symbol: arrow.vectorFromArray([symbol], new arrow.Utf8()),
+      }).batches
+    const source = () => new arrow.Table([...batch(1, 'AAPL'), ...batch(2, null)])
+
+    // Eager: the stream is drained here, into one column.
+    const held = Serie.fromArrowReader(BatchReader.from(source()), root)
+    assert.deepEqual(held.child('symbol').asJs(), ['AAPL', ''])
+
+    // Lazy: one plan compiled now, and nothing cast until a batch is pulled.
+    const series = SerieReader.fromArrowReader(BatchReader.from(source()), root, {
+      nullability: 'strict',
     })
+    assert.ok(series.field.equals(root))
+    const pulled = series[Symbol.iterator]()
+    assert.deepEqual(pulled.next().value.child('id').asJs(), [1])
 
-    // Lazy: a BatchReader that has cast nothing yet, and consumes its source.
-    const reader = root.castArrowReader(table)
-    assert.equal(reader.intoTable().numRows, 2)
-
-    // Eager: one Arrow JS record batch in, one out.
-    const [batch] = table.batches
-    assert.equal(root.castArrowBatch(batch).numRows, 2)
+    // The refusal arrives with the batch that carries it, and the reader is
+    // fused after it.
+    assert.throws(() => pulled.next(), /required Arrow field \$\.symbol holds 1 null values/)
+    assert.equal(pulled.next().done, true)
     ```
 
 ## The generic cast
 
-`cast_arrow` keeps the input kind; `cast` also takes plain Python values.
+`cast` is the one cast of a column in hand: any column casts into any field its layout reaches,
+through one compiled plan. A column already under the target is itself, and a schema-free run is
+refused, because it lays out no buffers for a plan to read - [`Serie::from_scalars`](serie.md) is
+the door that types a run's rows. Python also takes a `DataType`, as its required `value` field.
 
-| Input | Result |
-| --- | --- |
-| pyarrow `Scalar`, `Array`, `ChunkedArray`, `RecordBatch` | the same kind, through the named method for it |
-| pyarrow `Table` | a table, eagerly (`cast_arrow_table`) |
-| pyarrow `RecordBatchReader`, `Dataset`, `Scanner`, any C stream | a lazy reader (`cast_arrow_reader`) |
-| polars `DataFrame` | itself, newest compat level, views stay views |
-| polars `LazyFrame` | itself, still lazy (`collect_schema`, per batch) |
-| pandas `DataFrame`, `Series` | itself, through Arrow |
-| plain value, `cast` only | the field's typed scalar |
+What each binding door accepts, each resolved once at the door:
+
+| Door | Python | JavaScript |
+| --- | --- | --- |
+| `from_arrow_array` / `fromArrowArray` | a pyarrow `Array`, or anything exporting the Arrow C array interface | an Arrow JS `Vector`, chunks cast as one column |
+| `from_arrow_batch` / `fromArrowBatch` | a pyarrow `RecordBatch` | an Arrow JS `RecordBatch` or `Table` |
+| `from_arrow_reader` / `fromArrowReader`, `SerieReader` | a pyarrow `RecordBatchReader`, `Table`, `RecordBatch`, `Dataset` or `Scanner`, an Arrow C stream exporter, a pandas or polars frame, or an iterable of any of those | a native `BatchReader`; `BatchReader.from(value)` converts anything else |
+| `cast` | a `Field`, a field expression, a pyarrow `Field`, or a `DataType` | a `Field` or a field expression |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie};
+
+    let ids = Serie::from_scalars(
+        Field::new("id", DataType::Int32, true),
+        [Scalar::from(1_i32), Scalar::Null],
+    )?;
+
+    // A bare datatype is carried as its required `value` field.
+    let value = DataType::Int64.required_field("value");
+    let wide = ids.cast(&value, ArrowCastOptions::new())?;
+    assert_eq!(wide.as_int64().expect("an int64 column").values(), &[1, 0]);
+    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+    let message = ids.cast(&value, strict).unwrap_err().to_string();
+    assert_eq!(message, "required Arrow field $.value holds 1 null values");
+
+    // The column's own field is the column itself; a run has no layout to cast.
+    assert_eq!(ids.cast(&Field::new("id", DataType::Int32, true), strict)?, ids);
+    assert!(Serie::new(vec![Scalar::from(1_i32)]).cast(&value, strict).is_err());
+    ```
 
 === "Python"
 
     ```python
+    import pandas as pd
     import pyarrow as pa
 
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
-    schema = Field("row", DataType("struct<id: int64, symbol: string>"), False)
-    table = pa.table({"id": pa.array([1, 2], pa.int32()), "symbol": ["AAPL", "MSFT"]})
+    root = Field("row", DataType("struct<id: int64, symbol: string>"), False)
 
-    # A table comes back a table, a reader a reader, a frame a frame.
-    cast = schema.cast_arrow(table)
-    assert cast.schema.field("id").type == pa.int64()
+    # A frame is a stream of batches, drained into one column.
+    frame = pd.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
+    assert Serie.from_arrow_reader(frame, root).child("id").as_py() == [1, 2]
 
-    # The generic name also takes plain values, as the typed scalar.
-    price = Field("price", DataType("int64"), False)
-    assert price.cast(5).as_py() == 5
+    # A DataType is its required `value` field, and a refusal names it.
+    ids = Serie.from_arrow_array(pa.array([1, None], pa.int32()))
+    assert ids.cast(DataType("int64")).as_py() == [1, 0]
+    try:
+        ids.cast(DataType("int64"), nullability="strict")
+    except ValueError as error:
+        assert str(error) == "required Arrow field $.value holds 1 null values"
+    else:
+        raise AssertionError("a strict cast must refuse the null")
+
+    # A run has no layout to cast.
+    try:
+        Serie([1, 2]).cast(DataType("int64"))
+    except ValueError as error:
+        assert "run" in str(error), error
+    else:
+        raise AssertionError("a run is refused")
     ```
 
 === "JavaScript"
@@ -694,22 +1081,18 @@ no behavior of its own.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { Field, fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    const schema = fields.struct(
-      'row',
-      [Field.from('id: int64'), Field.from('symbol: utf8')],
-      { nullable: false },
-    )
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
-    })
+    // A vector crossing as several chunks is cast once, as one column.
+    const chunked = arrow
+      .vectorFromArray([1, 2], new arrow.Int32())
+      .concat(arrow.vectorFromArray([3], new arrow.Int32()))
+    const ids = Serie.fromArrowArray(chunked, fields.int64('id'))
+    assert.deepEqual(ids.asJs(), [1, 2, 3])
 
-    // Whatever Arrow JS holds casts batch by batch and comes back a Table.
-    const cast = schema.castArrow(table)
-    assert.equal(cast.numRows, 2)
-    assert.ok(schema.cast(table).numRows === 2)
+    // The column's own field is the column itself; a run has no layout to cast.
+    assert.ok(ids.cast(ids.field).equals(ids))
+    assert.throws(() => new Serie([1, 2]).cast(fields.int64('id')), /run/)
     ```
 
 ## Edges
@@ -721,7 +1104,8 @@ no behavior of its own.
 - `safe=True` plus `strict` -> the failed conversion becomes a null and the null is then refused; `safe=False` refuses the conversion first.
 - An empty text cell into a column that holds neither text nor bytes -> null before `safe` is asked, under every text layout and through the scalar door; a required column then defaults it under `default` and refuses it by path under `strict`. Whitespace is a spelling, not an empty cell. Into a string, byte or interval column, or a code whose neutral member is the empty text, it is the value it is.
 - A `Null` datatype under `strict` -> null is its only value, so it is not absence.
-- Python `cast_arrow_scalar` -> a scalar has no row to repair, so a null entering a non-nullable Field is refused under either policy.
+- A `DataType` target -> its required `value` field, so a refusal names `$.value`.
+- `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
 - Nullable field, `safe` -> the null stays.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
@@ -740,31 +1124,31 @@ no behavior of its own.
 - Temporal to text -> the classic form, zoned instants included.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
 - A required `bits` target over source nulls -> the canonical default under `default`, refused by path under `strict`; the buffer is rebuilt only when a null is actually filled.
-- A batch of another schema handed to a compiled plan -> error naming both schemas; a plan is compiled for one source.
-- A reader whose source schema is already the target, under `default` -> the reader itself, unwrapped; under `strict` it is wrapped, because a non-null Arrow field can still carry a logical null in a nested child.
+- A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
+- A column of another layout handed to a compiled plan -> error naming both layouts; a plan is compiled for one source.
+- `SerieReader::into_arrow_reader` whose plan is the identity, under `default` -> the inner reader itself, unwrapped; under `strict` it is wrapped, because a non-null Arrow field can still carry a logical null in a nested child.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::batches cast::strict cast::typed uuid::value variant::value
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test value
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::plans
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cast::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test serie -- arrow::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- cast
     cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/test_field.py -k "cast or strict or nullability"
+    python/.venv/bin/python -m pytest python/tests/test_cast.py python/tests/test_serie.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/records.test.js
+    node --test node/tests/cast.test.js node/tests/serie.test.js
     ```
 
 ## Performance

@@ -210,8 +210,13 @@ impl UnionSerie {
     /// Take `joined` - this column's storage - as this column, through the
     /// door with its rows already proven.
     fn rebuilt(&self, joined: ArrayRef) -> Self {
-        let serie =
-            super::arrow::column_of(Arc::clone(&self.field), joined, None, true).expect(CHECKED);
+        let serie = super::arrow::column_of(
+            Arc::clone(&self.field),
+            joined,
+            None,
+            &super::arrow::Proof::Proven,
+        )
+        .expect(CHECKED);
         let Serie::Union(held) = serie else {
             unreachable!("{CHECKED}")
         };
@@ -496,7 +501,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Union(..)) {
@@ -511,9 +516,15 @@ pub(crate) fn column_of(
     let children = members
         .iter()
         .zip(arrays)
-        .map(|((type_id, member), child)| {
+        .enumerate()
+        .map(|(index, ((type_id, member), child))| {
             let reached = reached(type_id, &type_ids, offsets.as_ref(), child.len());
-            super::arrow::column_of(Arc::new(member.clone()), child, Some(&reached), proven)
+            super::arrow::column_of(
+                Arc::new(member.clone()),
+                child,
+                Some(&reached),
+                proof.child(index),
+            )
         })
         .collect::<crate::arrow::Result<Vec<Serie>>>()?;
     Ok(Some(

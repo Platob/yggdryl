@@ -365,6 +365,9 @@ pub struct ArrowWriteSession {
     commit_row_size: usize,
     input_schema: Option<arrow_schema::SchemaRef>,
     shaped_schema: Option<arrow_schema::SchemaRef>,
+    /// The shaping compiled for the layout the last batch carried, so a
+    /// later chunk of that layout plans nothing.
+    shapings: crate::cast::PlanCache<crate::media::Shaping>,
     buffer: Option<crate::media::CommitBuffer>,
     target: Option<ArrowWriteTarget>,
     published: bool,
@@ -390,6 +393,18 @@ enum ArrowWriteTarget {
         located: Box<crate::iceberg::Located>,
         stored: crate::Field,
     },
+}
+
+impl ArrowWriteTarget {
+    /// The stored field a shaped batch is completed onto, where one exists.
+    fn stored(&self) -> Option<&crate::Field> {
+        match self {
+            Self::Leaf { stored } => Some(stored),
+            Self::EmptyLeaf | Self::TextLeaf | Self::Folder { .. } => None,
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg { stored, .. } => Some(stored),
+        }
+    }
 }
 
 impl ArrowWriteSession {
@@ -443,6 +458,7 @@ impl ArrowWriteSession {
             commit_row_size,
             input_schema: None,
             shaped_schema: None,
+            shapings: crate::cast::PlanCache::new(),
             buffer: None,
             target: None,
             published: false,
@@ -462,7 +478,6 @@ impl ArrowWriteSession {
         handle: &mut (impl IOBase + ?Sized),
         mut batches: crate::arrow::BatchReader,
     ) -> Result<bool> {
-        use crate::media::IORecordOptions as _;
         use arrow_array::RecordBatchReader as _;
 
         self.require_live()?;
@@ -506,7 +521,19 @@ impl ArrowWriteSession {
                 }
                 None => break,
             };
-            let batch = match self.options.apply_arrow_batch(batch, self.target_field()) {
+            let target = self.target.as_ref().and_then(ArrowWriteTarget::stored);
+            let shaped = self
+                .shapings
+                .get_or_compile(batch.schema_ref().fields(), || {
+                    Ok(crate::media::Shaping::compile(
+                        &self.options,
+                        batch.schema(),
+                        target,
+                    )?)
+                })
+                .map_err(Error::from)
+                .and_then(|shaping| shaping.apply(batch));
+            let batch = match shaped {
                 Ok(batch) => batch,
                 Err(error) => {
                     self.abort();
@@ -660,15 +687,7 @@ impl ArrowWriteSession {
     }
 
     fn target_field(&self) -> Option<&crate::Field> {
-        match self.target.as_ref() {
-            Some(ArrowWriteTarget::Leaf { stored }) => Some(stored),
-            Some(ArrowWriteTarget::EmptyLeaf)
-            | Some(ArrowWriteTarget::TextLeaf)
-            | Some(ArrowWriteTarget::Folder { .. })
-            | None => None,
-            #[cfg(feature = "iceberg")]
-            Some(ArrowWriteTarget::Iceberg { stored, .. }) => Some(stored),
-        }
+        self.target.as_ref().and_then(ArrowWriteTarget::stored)
     }
 
     fn ensure_shaped_schema(

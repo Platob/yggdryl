@@ -327,7 +327,7 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
     let size_at = member_path(message, members, 271);
     let typed_entries = values
         .get(group_at)
-        .and_then(Scalar::as_sequence)
+        .and_then(Scalar::sequence_rows)
         .ok_or_else(|| {
             invalid(
                 "$.NoMDEntries(268)",

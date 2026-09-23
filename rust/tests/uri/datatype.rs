@@ -12,7 +12,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, DataTypeValue as _, Field, FieldScalar, Scalar,
-    StructType, Uri, UriField, UriType, Urn,
+    Serie, StructType, Uri, UriField, UriType, Urn,
 };
 
 fn urn(text: &str) -> Scalar {
@@ -214,9 +214,14 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         ]))],
     )
     .unwrap();
-    let cast = target
-        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-        .unwrap();
+    let cast = Serie::from_arrow_batch(
+        Some(&target),
+        &batch,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap()
+    .into_arrow_batch()
+    .unwrap();
     let column = cast
         .column(0)
         .as_any()
@@ -235,10 +240,13 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         )]))],
     )
     .unwrap();
-    let error = target
-        .cast_arrow_batch(bad, ArrowCastOptions::new().with_safe(false))
-        .unwrap_err()
-        .to_string();
+    let error = Serie::from_arrow_batch(
+        Some(&target),
+        &bad,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("row 0"), "{error}");
     assert!(error.contains("does not read as urn"), "{error}");
 }

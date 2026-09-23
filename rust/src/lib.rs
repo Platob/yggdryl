@@ -137,7 +137,7 @@ pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_s
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
-pub use cast::{ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation};
+pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
 pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;

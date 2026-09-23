@@ -79,14 +79,14 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{ArrayRef, Int32Array};
-//! use yggdryl::{DataType, Field, Int32Serie, Scalar, Serie};
+//! use yggdryl::{ArrowCastOptions, DataType, Field, Int32Serie, Scalar, Serie};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let field = Field::new("price", DataType::Int32, false);
 //! let array: ArrayRef = Arc::new(Int32Array::from(vec![125, 126, 127]));
 //!
-//! // The buffers cross in as they are.
-//! let mut serie = Serie::from_arrow_array(field, array)?;
+//! // The buffers cross in as they are: an exact layout is the identity cast.
+//! let mut serie = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())?;
 //! assert_eq!(serie.len(), 3);
 //!
 //! // And the leaf lends them: this is the values buffer itself.
@@ -313,6 +313,8 @@ macro_rules! serie_family {
 }
 
 mod arrow;
+pub use arrow::SerieReader;
+pub(crate) use arrow::{Proof, default_array, default_dtype_array, land};
 mod boolean;
 mod bytes;
 mod datatype;

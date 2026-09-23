@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import pickle
+from collections.abc import Iterator
 
 import pyarrow as pa
 import pytest
@@ -24,6 +25,7 @@ from yggdryl import (
     MapSerie,
     Scalar,
     Serie,
+    SerieReader,
     StructSerie,
 )
 
@@ -85,9 +87,31 @@ class TestArrow:
         assert inferred.field == Field("item", "utf8", nullable=True)
         assert inferred.as_py() == ["a", None]
 
-    def test_an_array_of_another_layout_is_refused(self) -> None:
+    def test_an_array_of_another_layout_is_cast_into_the_field(self) -> None:
+        column = Serie.from_arrow_array(pa.array([1, 2], pa.int32()), price())
+        assert column.field == price()
+        assert column.into_arrow_array().type == pa.int64()
+        assert column.as_py() == [1, 2]
+
+    def test_an_exact_layout_shares_its_buffers(self) -> None:
+        array = pa.array([125, 126], pa.int64())
+        column = Serie.from_arrow_array(array, price())
+        assert column.into_arrow_array().buffers()[1].address == array.buffers()[1].address
+
+    def test_an_absent_row_is_repaired_by_default_and_refused_when_strict(self) -> None:
+        absent = pa.array([1, None], pa.int64())
+        assert Serie.from_arrow_array(absent, price()).as_py() == [1, 0]
         with pytest.raises(ValueError, match="price"):
-            Serie.from_arrow_array(pa.array([1, 2], pa.int32()), price())
+            Serie.from_arrow_array(absent, price(), nullability="strict")
+
+    def test_a_refused_value_is_null_when_safe_and_raised_otherwise(self) -> None:
+        wide = pa.array([1, 300], pa.int64())
+        narrow = Field("price", "int8")
+        assert Serie.from_arrow_array(wide, narrow).as_py() == [1, None]
+        with pytest.raises(ValueError):
+            Serie.from_arrow_array(wide, narrow, safe=False)
+        with pytest.raises(ValueError, match="nullability"):
+            Serie.from_arrow_array(wide, narrow, nullability="lenient")
 
     def test_a_batch_and_a_reader_are_a_record_column_named_row(self) -> None:
         records = Serie.from_arrow_batch(quotes())
@@ -104,9 +128,161 @@ class TestArrow:
         drained = Serie.from_arrow_reader(reader)
         assert len(drained) == 4
 
+    def test_a_batch_and_a_reader_cast_into_a_root(self) -> None:
+        root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
+        records = Serie.from_arrow_batch(quotes(), root)
+        assert records.field == root
+        assert records.into_arrow_batch().schema.field("id").type == pa.int32()
+
+        reader = pa.RecordBatchReader.from_batches(quotes().schema, [quotes(), quotes()])
+        drained = Serie.from_arrow_reader(reader, root)
+        assert drained.field == root
+        assert drained.child("id").as_py() == [1, 2, 1, 2]
+
+        strict = Field("row", "struct<id:int64,venue:utf8 not null>", nullable=False)
+        with pytest.raises(ValueError, match="venue"):
+            Serie.from_arrow_batch(quotes(), strict, nullability="strict")
+
+    def test_from_default_repeats_the_fields_canonical_default(self) -> None:
+        assert Serie.from_default(price()).as_py() == [0]
+        three = Serie.from_default(price(), 3)
+        assert three.field == price()
+        assert three.as_py() == [0, 0, 0]
+        assert Serie.from_default(Field("symbol", "utf8", nullable=False), 2).as_py() == ["", ""]
+
+    def test_cast_restates_a_column_under_another_field(self) -> None:
+        column = Serie.from_scalars(Field("id", "int32"), [1, None])
+        wide = column.cast(Field("id", "int64"))
+        assert wide.field == Field("id", "int64")
+        assert wide.as_py() == [1, None]
+
+        # A datatype is the required column named `value` it declares, so the
+        # absent row is repaired - or refused when asked to be strict.
+        typed = column.cast(DataType("int64"))
+        assert typed.field == Field("value", "int64", nullable=False)
+        assert typed.as_py() == [1, 0]
+        with pytest.raises(ValueError):
+            column.cast(DataType("int64"), nullability="strict")
+
+        # A column already under the target is itself.
+        assert column.cast(Field("id", "int32")) == column
+
+    def test_a_run_has_no_layout_to_cast(self) -> None:
+        with pytest.raises(ValueError, match="run"):
+            Serie([1, 2]).cast(Field("id", "int64"))
+
+    def test_one_row_is_an_arrow_scalar(self) -> None:
+        assert Serie.from_scalars(price(), [125]).into_arrow_scalar() == pa.scalar(125, pa.int64())
+        with pytest.raises(ValueError, match="exactly one row"):
+            Serie.from_scalars(price(), [1, 2]).into_arrow_scalar()
+
     def test_a_run_has_no_buffers(self) -> None:
         with pytest.raises(ValueError):
             Serie([1, 2]).into_arrow_array()
+
+
+class TestSerieReader:
+    @staticmethod
+    def stream() -> pa.RecordBatchReader:
+        return pa.RecordBatchReader.from_batches(quotes().schema, [quotes(), quotes()])
+
+    def test_one_serie_per_batch(self) -> None:
+        series = SerieReader.from_arrow_reader(self.stream())
+        assert series.field.name == "row"
+        pulled = list(series)
+        assert len(pulled) == 2
+        assert all(type(serie) is StructSerie and len(serie) == 2 for serie in pulled)
+        assert pulled[0].as_py() == [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": "MSFT"}]
+        assert list(series) == []
+
+    def test_a_root_casts_every_batch_by_one_plan(self) -> None:
+        root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
+        series = SerieReader.from_arrow_reader(self.stream(), root)
+        assert series.field == root
+        for serie in series:
+            assert serie.field == root
+            assert serie.child("id").into_arrow_array().type == pa.int32()
+
+    def test_a_plan_the_stream_cannot_meet_is_refused_before_a_batch(self) -> None:
+        strict = Field("row", "struct<id:int64,venue:utf8 not null>", nullable=False)
+        with pytest.raises(ValueError, match="venue"):
+            SerieReader.from_arrow_reader(self.stream(), strict, nullability="strict")
+
+    def test_into_arrow_reader_hands_over_the_batches_not_yet_pulled(self) -> None:
+        root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
+        series = SerieReader.from_arrow_reader(self.stream(), root)
+        next(series)
+        rest = series.into_arrow_reader()
+        assert isinstance(rest, pa.RecordBatchReader)
+        assert rest.schema.field("id").type == pa.int32()
+        assert rest.read_all().num_rows == 2
+        assert list(series) == []
+        with pytest.raises(ValueError, match="into_arrow_reader"):
+            series.into_arrow_reader()
+
+    def test_building_the_reader_pulls_nothing_and_each_pull_costs_one_batch(self) -> None:
+        stored = pa.schema([pa.field("id", pa.int32()), pa.field("symbol", pa.string())])
+        pulled: list[int] = []
+
+        def batches() -> Iterator[pa.RecordBatch]:
+            for index in range(3):
+                pulled.append(index)
+                yield pa.record_batch(
+                    {"id": pa.array([index], pa.int32()), "symbol": pa.array(["AAPL"])},
+                    schema=stored,
+                )
+
+        root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
+        series = SerieReader.from_arrow_reader(
+            pa.RecordBatchReader.from_batches(stored, batches()), root
+        )
+        assert pulled == []
+        assert len(next(series)) == 1
+        assert pulled == [0]
+
+        # The rest crosses as a reader whose schema is the root's, still lazy.
+        rest = series.into_arrow_reader()
+        assert rest.schema.field("id").type == pa.int64()
+        assert pulled == [0]
+        assert rest.read_all().num_rows == 2
+        assert pulled == [0, 1, 2]
+
+    def test_every_table_frame_and_sequence_of_them_streams_in(self) -> None:
+        pandas = pytest.importorskip("pandas")
+        polars = pytest.importorskip("polars")
+
+        root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
+        table = pa.table({"id": pa.array([1, 2], pa.int32()), "symbol": ["AAPL", "MSFT"]})
+        sources = [
+            table,
+            table.to_reader(),
+            table.to_batches()[0],
+            pandas.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}),
+            polars.DataFrame({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}),
+        ]
+        for source in sources:
+            drained = Serie.from_arrow_reader(source, root)
+            assert drained.field == root
+            assert drained.as_py() == [{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": "MSFT"}]
+
+        # A sequence of tables is one stream, each item read into the first
+        # item's shape even when its columns are ordered differently.
+        swapped = table.select(["symbol", "id"])
+        chained = SerieReader.from_arrow_reader(iter([table, swapped]), root)
+        assert [serie.child("symbol").as_py() for serie in chained] == [
+            ["AAPL", "MSFT"],
+            ["AAPL", "MSFT"],
+        ]
+
+    def test_a_polars_lazy_frame_streams_its_batches(self) -> None:
+        pl = pytest.importorskip("polars")
+
+        frame = pl.LazyFrame({"id": [1, 2, 3], "symbol": ["AAPL", "MSFT", "AMD"]})
+        root = Field("row", "struct<id:int32,symbol:utf8>", nullable=False)
+        series = SerieReader.from_arrow_reader(frame.collect_batches(chunk_size=1), root)
+        pulled = [serie.as_py() for serie in series]
+        assert [len(rows) for rows in pulled] == [1, 1, 1]
+        assert [rows[0]["id"] for rows in pulled] == [1, 2, 3]
 
 
 class TestProtocols:

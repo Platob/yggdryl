@@ -757,13 +757,11 @@ impl DatumCodec<'_> {
                 }
                 Node::Array(items) => {
                     let depth = self.descend(depth)?;
-                    let values = value
-                        .sequence_rows()
-                        .ok_or_else(|| mismatch("array", value))?;
+                    let values = value.as_serie().ok_or_else(|| mismatch("array", value))?;
                     if !values.is_empty() {
                         put_long(target, values.len() as i64);
                         for item in values.iter() {
-                            self.encode(items, item, target, depth)?;
+                            self.encode(items, &item, target, depth)?;
                         }
                     }
                     // A zero count closes the last block, so an empty array is one byte.

@@ -818,3 +818,21 @@ mod strict_json_tests {
         }
     }
 }
+
+/// A manifests array a caller hands over as a column reads as the run does:
+/// both are the one sequence a document can hold.
+#[test]
+fn a_manifests_column_reads_as_the_array_it_holds() -> yggdryl::Result<()> {
+    let manifests = yggdryl::Serie::from_scalars(
+        Field::new("item", DataType::utf8(), false),
+        [yggdryl::Scalar::from("m.avro")],
+    )?;
+    let document = yggdryl::json::from_utf8(r#"{"snapshot-id":1,"timestamp-ms":2}"#)?
+        .with_field("manifests", yggdryl::Scalar::from(manifests))?;
+    let snapshot = Snapshot::from_json(&document)?;
+    assert_eq!(
+        snapshot.manifests,
+        Some(vec![SmolStr::new_static("m.avro")])
+    );
+    Ok(())
+}

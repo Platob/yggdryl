@@ -232,9 +232,9 @@ impl Filter {
                 Self::always_false()
             });
         }
-        if let Some(items) = value.sequence_rows() {
+        if let Some(items) = value.as_serie() {
             return items.iter().try_fold(Self::always_true(), |held, item| {
-                Ok(held.and(Self::from_scalar(item)?))
+                Ok(held.and(Self::from_scalar(&item)?))
             });
         }
         Err(Error::InvalidRecord {

@@ -245,5 +245,24 @@ mod avro {
                 .to_string();
             assert!(message.contains("end after 1 declared rows"), "{message}");
         }
+
+        #[test]
+        fn a_list_column_encodes_as_the_run_of_its_rows() {
+            let schema =
+                yggdryl::avro::Schema::from_str(r#"{"type":"array","items":"long"}"#).unwrap();
+            let item = yggdryl::Field::new("item", yggdryl::DataType::Int64, false);
+            let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
+            let column = yggdryl::Serie::from_scalars(item.clone(), rows.clone()).unwrap();
+            let empty = yggdryl::Serie::empty(item).unwrap();
+            for (column, run) in [
+                (Scalar::from(column), Scalar::from_sequence(rows)),
+                (Scalar::from(empty), Scalar::from_sequence([])),
+            ] {
+                assert_eq!(
+                    yggdryl::avro::into_single_object_vec(&schema, &column).unwrap(),
+                    yggdryl::avro::into_single_object_vec(&schema, &run).unwrap()
+                );
+            }
+        }
     }
 }

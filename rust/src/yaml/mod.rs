@@ -20,7 +20,7 @@ use crate::text::wire::{RawValue, from_raw};
 use crate::text::{
     Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
 };
-use crate::{Error, Field, Result};
+use crate::{Error, Field, Result, Serie};
 
 use self::parser::YamlParser;
 use crate::code_scalars;
@@ -578,7 +578,7 @@ fn write_node<W: Write>(
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, &values.rows(), columns, skip_first_indent, width)
+            write_sequence(writer, values, columns, skip_first_indent, width)
         }
         Scalar::Map(entries) | Scalar::SortedMap(entries) if !entries.as_slice().is_empty() => {
             if position == Position::AfterKey {
@@ -609,7 +609,7 @@ fn write_node<W: Write>(
 /// marker already started, so its first entry continues that line.
 fn write_sequence<W: Write>(
     writer: &mut W,
-    values: &[Scalar],
+    values: &Serie,
     columns: usize,
     skip_first_indent: bool,
     width: usize,
@@ -627,7 +627,7 @@ fn write_sequence<W: Write>(
         // what YAML requires whatever the level width is.
         write_node(
             writer,
-            value,
+            &value,
             columns + DASH_WIDTH,
             Position::AfterDash,
             width,
@@ -1001,11 +1001,11 @@ fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             if !values.is_empty() =>
         {
             writer.write_all(b"[")?;
-            for (index, value) in values.rows().iter().enumerate() {
+            for (index, value) in values.iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
-                write_flow(writer, value)?;
+                write_flow(writer, &value)?;
             }
             writer.write_all(b"]")?;
             Ok(())

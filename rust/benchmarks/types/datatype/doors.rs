@@ -14,8 +14,7 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, BenchmarkId};
-use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, Scalar};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
 /// The seven doors a leaf answers with nothing but itself and one value.
 pub(crate) fn leaf_doors(
@@ -107,14 +106,20 @@ pub(crate) fn ingest(
     let label = dtype.to_string();
     let target = Field::new("value", dtype.clone(), true);
     let strict = ArrowCastOptions::new().with_safe(false);
-    target
-        .cast_arrow_array(Arc::clone(source), strict)
-        .expect("every cell of the column is a value of the leaf");
+    Serie::from_arrow_array(Some(&target), Arc::clone(source), strict)
+        .expect("every cell of the column is a value of the leaf")
+        .require_arrow_array()
+        .expect("a cast column has a layout");
     group.bench_function(BenchmarkId::new("ingest", &label), |bencher| {
         bencher.iter(|| {
-            black_box(&target)
-                .cast_arrow_array(Arc::clone(black_box(source)), strict)
-                .expect("every cell of the column is a value of the leaf")
+            Serie::from_arrow_array(
+                Some(black_box(&target)),
+                Arc::clone(black_box(source)),
+                strict,
+            )
+            .expect("every cell of the column is a value of the leaf")
+            .require_arrow_array()
+            .expect("a cast column has a layout")
         });
     });
 }

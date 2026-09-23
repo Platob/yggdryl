@@ -416,6 +416,8 @@ if (!nativeBinding) {
 module.exports = nativeBinding
 module.exports.Arn = nativeBinding.Arn
 module.exports.JsArn = nativeBinding.JsArn
+module.exports.ArrowCastPlan = nativeBinding.ArrowCastPlan
+module.exports.JsArrowCastPlan = nativeBinding.JsArrowCastPlan
 module.exports.AvroBlock = nativeBinding.AvroBlock
 module.exports.JsAvroBlock = nativeBinding.JsAvroBlock
 module.exports.AvroBlocks = nativeBinding.AvroBlocks
@@ -514,6 +516,8 @@ module.exports.Serie = nativeBinding.Serie
 module.exports.JsSerie = nativeBinding.JsSerie
 module.exports.SerieIterator = nativeBinding.SerieIterator
 module.exports.JsSerieIterator = nativeBinding.JsSerieIterator
+module.exports.SerieReader = nativeBinding.SerieReader
+module.exports.JsSerieReader = nativeBinding.JsSerieReader
 module.exports.Snapshot = nativeBinding.Snapshot
 module.exports.JsSnapshot = nativeBinding.JsSnapshot
 module.exports.SnapshotRef = nativeBinding.SnapshotRef

@@ -16,7 +16,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import ArrowScalar, DataType, Field, IOBase, Scalar
+from yggdryl import ArrowCastPlan, ArrowScalar, DataType, Field, IOBase, Scalar, Serie
 from yggdryl.arrow import SHAPES
 
 pandas = pytest.importorskip("pandas")
@@ -503,14 +503,15 @@ def test_nonexact_datatype_cast_exports_nested_map_flags_and_metadata(
         type=nested(pa.int16()),
     )
     expected_type = nested(pa.int64())
-    dtype = DataType.from_arrow(expected_type)
+    target = Field("value", DataType.from_arrow(expected_type), nullable=False)
+    result: pa.Scalar | pa.Array
     if scalar:
         original = source[0]
-        result = dtype.cast_arrow_scalar(original)
+        result = Serie.from_arrow_array(source.slice(0, 1), target).into_arrow_scalar()
         assert result.as_py() == original.as_py()
     else:
         original = source
-        result = dtype.cast_arrow_array(original)
+        result = Serie.from_arrow_array(original, target).into_arrow_array()
         assert result.to_pylist() == original.to_pylist()
     assert result is not original
     assert result.type.equals(expected_type, check_metadata=True)
@@ -522,9 +523,16 @@ def test_nonexact_datatype_cast_exports_nested_map_flags_and_metadata(
 
 
 @pytest.mark.parametrize("keys_sorted", [False, True])
-def test_exact_map_batch_casts_return_the_original_python_object(keys_sorted: bool) -> None:
+def test_exact_map_batch_casts_share_the_callers_buffers(keys_sorted: bool) -> None:
     _, batch = declared_batch(keys_sorted)
     source = batch.select(["lookup", "nested", "history"]).replace_schema_metadata(None)
     field = Field.from_arrow_schema(source.schema, name="row")
-    assert field.cast_arrow_batch(source) is source
-    assert field.dtype.cast_arrow_batch(source) is source
+    plan = ArrowCastPlan(source.schema, field)
+    assert plan.is_identity
+
+    for cast in (Serie.from_arrow_batch(source, field), plan.apply(source)):
+        assert cast.field == field
+        shared = cast.into_arrow_batch()
+        assert shared.equals(source)
+        for column, original in zip(shared.columns, source.columns):
+            assert buffer_locations(column) == buffer_locations(original)

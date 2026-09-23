@@ -35,7 +35,7 @@ use arrow_select::zip::zip;
 
 use crate::TemporalKind;
 use crate::arrow::{Error, Result};
-use crate::cast::{ArrowCastOptions, Nullability, Representation};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Nullability, Representation};
 use crate::metadata::is_all_sources;
 use crate::string::is_text_storage;
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
@@ -50,7 +50,6 @@ use super::scalar::{
     write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
     write_signed, write_string, write_temporal, write_unsigned,
 };
-use crate::FieldValue as _;
 use crate::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 
 /// The state operations shared by the runtime dispatcher and concrete states.
@@ -162,40 +161,43 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     batch: RecordBatch,
     force: bool,
 ) -> Result<RecordBatch> {
-    let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
-    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
-    let row_count = batch.num_rows();
-    let (columns, changed) =
-        fill_struct(prototype, &plan, batch.columns(), None, force, row_count)?;
-    if !changed {
-        return Ok(batch);
-    }
-    let options = RecordBatchOptions::new().with_row_count(Some(row_count));
-    RecordBatch::try_new_with_options(batch.schema(), columns, &options).map_err(Into::into)
+    let plan = StructPlan::compile(root, prototype.algorithm())?;
+    let batch = crate::cast::ArrowCastPlan::compile_schema(
+        batch.schema_ref(),
+        root,
+        ArrowCastOptions::new(),
+        crate::cast::Deferred::default(),
+    )?
+    .reconcile_batch(batch)?;
+    plan.fill_arrow_batch(prototype, root, batch, force)
 }
 
 /// A complete immutable fill plan for one Struct node.
-struct StructPlan<'field> {
-    fields: &'field [Field],
-    nested: Vec<(usize, StructPlan<'field>)>,
-    holders: Vec<HolderPlan<'field>>,
+///
+/// Every declaration is read and every holder cast compiled here, from the
+/// fields alone, so a stream holding the plan moves only rows per batch.
+pub(crate) struct StructPlan {
+    nested: Vec<(usize, StructPlan)>,
+    holders: Vec<HolderPlan>,
 }
 
-struct HolderPlan<'field> {
+struct HolderPlan {
     index: usize,
     path: String,
-    field: &'field Field,
     algorithm: DigestAlgorithm,
     use_prototype: bool,
     default: Scalar,
-    selected: Vec<Selection<'field>>,
+    /// The child steps from this Struct to each value the holder reads.
+    selected: Vec<Vec<usize>>,
     /// The instant a coupled holder stores in front of its digest.
-    time: Option<TimePlan<'field>>,
+    time: Option<TimePlan>,
+    /// The cast a signed holder stores the unsigned digest's bits through.
+    bits: Option<ArrowCastPlan>,
 }
 
 /// Where a coupled holder reads its instant, and the resolution it keeps.
-struct TimePlan<'field> {
-    selection: Selection<'field>,
+struct TimePlan {
+    steps: Vec<usize>,
     unit: TimeUnit,
 }
 
@@ -204,8 +206,39 @@ struct Selection<'field> {
     field: &'field Field,
 }
 
-impl<'field> StructPlan<'field> {
-    fn new(fields: &'field [Field], algorithm: DigestAlgorithm, path: &str) -> Result<Self> {
+impl StructPlan {
+    /// Plans every holder `root` declares for a prototype of `algorithm`.
+    pub(crate) fn compile(root: &Field, algorithm: DigestAlgorithm) -> Result<Self> {
+        Self::new(root.fields(), algorithm, "$")
+    }
+
+    /// Fill the holders in one batch already cast to the `root` this plan was
+    /// compiled from, under a prototype of the algorithm it was compiled for.
+    pub(crate) fn fill_arrow_batch<S: ArrowDigestState>(
+        &self,
+        prototype: &S,
+        root: &Field,
+        batch: RecordBatch,
+        force: bool,
+    ) -> Result<RecordBatch> {
+        let row_count = batch.num_rows();
+        let (columns, changed) = fill_struct(
+            prototype,
+            self,
+            root.fields(),
+            batch.columns(),
+            None,
+            force,
+            row_count,
+        )?;
+        if !changed {
+            return Ok(batch);
+        }
+        let options = RecordBatchOptions::new().with_row_count(Some(row_count));
+        RecordBatch::try_new_with_options(batch.schema(), columns, &options).map_err(Into::into)
+    }
+
+    fn new(fields: &[Field], algorithm: DigestAlgorithm, path: &str) -> Result<Self> {
         let nested = fields
             .iter()
             .enumerate()
@@ -294,7 +327,7 @@ impl<'field> StructPlan<'field> {
                         ));
                     }
                     Some(TimePlan {
-                        selection,
+                        steps: selection.steps,
                         unit: field.as_digest().coupled_unit().map_err(|error| {
                             digest_metadata_error(
                                 DIGEST_UNIT_KEY,
@@ -367,22 +400,40 @@ impl<'field> StructPlan<'field> {
                     ));
                 }
             }
+            let default = field.default_value().map_err(Error::from)?;
+            // A signed holder stores the unsigned digest's bits, not a narrower
+            // number: the same bytes under the width the schema declared.
+            let bits = match field.dtype() {
+                DataType::Int32 | DataType::Int64 => {
+                    let digests = collect(&[], holder_algorithm, None);
+                    Some(ArrowCastPlan::compile_arrow(
+                        &Arc::new(arrow_schema::Field::new(
+                            field.name(),
+                            digests.data_type().clone(),
+                            true,
+                        )),
+                        field,
+                        ArrowCastOptions::new().with_representation(Representation::Bits),
+                        Deferred::default(),
+                    )?)
+                }
+                _ => None,
+            };
             holders.push(HolderPlan {
                 index,
                 path: field_path,
-                field,
                 algorithm: holder_algorithm,
                 use_prototype: holder_algorithm == algorithm,
-                default: field.default_value().map_err(Error::from)?,
-                selected,
+                default,
+                selected: selected
+                    .into_iter()
+                    .map(|selection| selection.steps)
+                    .collect(),
                 time,
+                bits,
             });
         }
-        Ok(Self {
-            fields,
-            nested,
-            holders,
-        })
+        Ok(Self { nested, holders })
     }
 }
 
@@ -631,7 +682,8 @@ fn shortcut_struct_holder<'field>(
 
 fn fill_struct<S: ArrowDigestState>(
     prototype: &S,
-    plan: &StructPlan<'_>,
+    plan: &StructPlan,
+    fields: &[Field],
     source: &[ArrayRef],
     parent_nulls: Option<&NullBuffer>,
     force: bool,
@@ -647,6 +699,7 @@ fn fill_struct<S: ArrowDigestState>(
         let (children, child_changed) = fill_struct(
             prototype,
             nested_plan,
+            fields[*index].fields(),
             nested.columns(),
             hidden.as_ref(),
             force,
@@ -658,7 +711,7 @@ fn fill_struct<S: ArrowDigestState>(
                 _ => {
                     return Err(Error::IncompatibleSchema(format!(
                         "field {:?} was planned as Struct but stores {}",
-                        plan.fields[*index].name(),
+                        fields[*index].name(),
                         nested.data_type()
                     )));
                 }
@@ -674,6 +727,7 @@ fn fill_struct<S: ArrowDigestState>(
     }
 
     for holder in &plan.holders {
+        let field = &fields[holder.index];
         let original = Arc::clone(&columns[holder.index]);
         let mut mask = Vec::with_capacity(row_count);
         for row in 0..row_count {
@@ -683,7 +737,7 @@ fn fill_struct<S: ArrowDigestState>(
             } else if force {
                 true
             } else {
-                crate::arrow::value::value_from_array(holder.field.dtype(), original.as_ref(), row)?
+                crate::arrow::value::value_from_array(field.dtype(), original.as_ref(), row)?
                     == holder.default
             };
             mask.push(recompute);
@@ -697,8 +751,8 @@ fn fill_struct<S: ArrowDigestState>(
         let unix = match &holder.time {
             Some(time) => Some(crate::txhash::arrow::unix_selection(
                 &columns,
-                plan.fields,
-                &time.selection.steps,
+                fields,
+                &time.steps,
                 parent_nulls,
                 time.unit,
                 &mask,
@@ -716,8 +770,8 @@ fn fill_struct<S: ArrowDigestState>(
             worker.reset();
             if selected {
                 write_sequence_header(&mut worker, holder.selected.len());
-                for selected in &holder.selected {
-                    feed_selection(&mut worker, &columns, plan.fields, selected, row)?;
+                for steps in &holder.selected {
+                    feed_selection(&mut worker, &columns, fields, steps, row)?;
                 }
             }
             values.push(worker.answer());
@@ -727,7 +781,7 @@ fn fill_struct<S: ArrowDigestState>(
                 // A null instant names no key. A nullable holder stores that
                 // absence; a required one cannot, and inventing an instant
                 // would be worse than no digest.
-                if !holder.field.is_nullable() {
+                if !field.is_nullable() {
                     if let Some(row) = (0..row_count).find(|row| mask[*row] && unix.is_null(*row)) {
                         return Err(Error::IncompatibleSchema(format!(
                             "holder {} row {row}: DIGEST:time source is null and the holder is required",
@@ -739,15 +793,9 @@ fn fill_struct<S: ArrowDigestState>(
             }
             _ => collect(&values, holder.algorithm, None),
         };
-        // A signed holder stores the unsigned digest's bits, not a narrower
-        // number: the same bytes under the width the schema declared.
-        let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
-            holder.field.cast_arrow_array(
-                computed,
-                ArrowCastOptions::new().with_representation(Representation::Bits),
-            )?
-        } else {
-            computed
+        let computed = match &holder.bits {
+            Some(bits) => bits.reconcile_array(computed)?,
+            None => computed,
         };
         let mask = BooleanArray::from(mask);
         columns[holder.index] = zip(&mask, &computed.as_ref(), &original.as_ref())?;
@@ -760,16 +808,16 @@ fn feed_selection(
     digester: &mut impl Hasher,
     root_arrays: &[ArrayRef],
     root_fields: &[Field],
-    selected: &Selection<'_>,
+    steps: &[usize],
     row: usize,
 ) -> Result<()> {
     let mut arrays = root_arrays;
     let mut fields = root_fields;
-    for (depth, index) in selected.steps.iter().copied().enumerate() {
+    for (depth, index) in steps.iter().copied().enumerate() {
         let field = &fields[index];
         let array = arrays[index].as_ref();
-        if depth + 1 == selected.steps.len() {
-            return feed_selected_cell(digester, selected.field, array, row);
+        if depth + 1 == steps.len() {
+            return feed_selected_cell(digester, field, array, row);
         }
         if array.is_null(row) {
             write_null(digester);
@@ -950,12 +998,14 @@ pub(crate) fn column_digests_with<S: ArrowDigestState>(
     array: ArrayRef,
     field: &Field,
 ) -> Result<Vec<Digest>> {
-    let array = field.cast_arrow_array(
+    let array = crate::Serie::from_arrow_array(
+        Some(field),
         array,
         ArrowCastOptions::new()
             .with_safe(false)
             .with_nullability(Nullability::Strict),
-    )?;
+    )?
+    .require_arrow_array()?;
     let array = array.as_ref();
     let mut digests = Vec::with_capacity(array.len());
     let mut digester = prototype.clone();

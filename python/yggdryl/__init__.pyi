@@ -227,6 +227,7 @@ from .serie import (
     ListViewSerie as ListViewSerie,
     MapSerie as MapSerie,
     Serie as Serie,
+    SerieReader as SerieReader,
     StructSerie as StructSerie,
 )
 from .string import (

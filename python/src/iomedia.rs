@@ -48,11 +48,10 @@ use pyo3::types::{
     PyType,
 };
 
-use yggdryl::FieldValue as _;
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
-use yggdryl::{Field as CoreField, Level};
+use yggdryl::{Field as CoreField, Level, SerieReader};
 
 use crate::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::enums::{PyMimeType, core_media_type_from_value};
@@ -441,7 +440,7 @@ fn chained_reader(
         items: items.clone().unbind(),
         schema: reader.schema(),
         root,
-        safe: options.safe(),
+        options: ArrowCastOptions::new().with_safe(options.safe()),
         current: Some(reader),
         only,
         drained: false,
@@ -495,10 +494,10 @@ struct Chained {
     items: Py<PyAny>,
     /// The Arrow schema the first item declared, which this reader reports.
     schema: SchemaRef,
-    /// The same schema as a root Field, for casting an item that differs.
+    /// The same schema as a root Field, which every later item is read into.
     root: CoreField,
-    /// Whether a cast may null a value it cannot convert.
-    safe: bool,
+    /// How a later item is cast into the root.
+    options: ArrowCastOptions,
     /// The item currently being drained.
     current: Option<BatchReader>,
     /// The one library every item must be a frame of, when a caller named one.
@@ -508,19 +507,17 @@ struct Chained {
 }
 
 impl Chained {
-    /// Cast one item's batch to the shape the first item set, if it differs.
+    /// Read one later item into the shape the first item set, by one plan.
     ///
     /// Two tables in one sequence may order or type their columns differently
-    /// and still describe the same rows, so the declared root is applied rather
-    /// than the disagreement being refused. A batch the root cannot hold is the
-    /// core's error, with the columns it names.
-    fn conform(&self, batch: RecordBatch) -> Result<RecordBatch, arrow_schema::ArrowError> {
-        if batch.schema() == self.schema {
-            return Ok(batch);
-        }
-        self.root
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(self.safe))
-            .map_err(|error| arrow_schema::ArrowError::ExternalError(Box::new(error)))
+    /// and still describe the same rows, so the root is applied rather than
+    /// the disagreement being refused: the item's reader is wrapped once, and
+    /// an item already of the root's shape is handed back untouched. A schema
+    /// the root cannot hold is the core's error, with the columns it names.
+    fn conform(&self, item: BatchReader) -> PyResult<BatchReader> {
+        SerieReader::from_arrow_reader(Some(&self.root), item, self.options)
+            .map(SerieReader::into_arrow_reader)
+            .map_err(value_error)
     }
 }
 
@@ -530,11 +527,10 @@ impl Iterator for Chained {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(current) = self.current.as_mut() {
-                match current.next() {
-                    Some(Ok(batch)) => return Some(self.conform(batch)),
-                    Some(Err(error)) => return Some(Err(error)),
-                    None => self.current = None,
+                if let Some(batch) = current.next() {
+                    return Some(batch);
                 }
+                self.current = None;
             }
             if self.drained {
                 return None;
@@ -544,15 +540,17 @@ impl Iterator for Chained {
                 let Some(item) = next_item(items)? else {
                     return Ok(None);
                 };
-                if let Some(library) = self.only {
-                    return frame_reader(&item, library).map(Some);
-                }
-                columnar_reader(&item)?.map(Some).ok_or_else(|| {
-                    PyTypeError::new_err(format!(
-                        "expected every item of a sequence of batches to name batches too, got {}",
-                        type_name(&item)
-                    ))
-                })
+                let reader = match self.only {
+                    Some(library) => frame_reader(&item, library)?,
+                    None => columnar_reader(&item)?.ok_or_else(|| {
+                        PyTypeError::new_err(format!(
+                            "expected every item of a sequence of batches to name batches too, \
+                             got {}",
+                            type_name(&item)
+                        ))
+                    })?,
+                };
+                self.conform(reader).map(Some)
             });
             match pulled {
                 Ok(Some(reader)) => self.current = Some(reader),

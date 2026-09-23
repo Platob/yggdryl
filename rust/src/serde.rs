@@ -1512,11 +1512,11 @@ impl DataType {
             "large_list_view" => Self::large_list_view(child("field")?),
             "struct" => {
                 let fields = at("fields")
-                    .and_then(Scalar::as_sequence)
+                    .and_then(Scalar::as_serie)
                     .ok_or_else(|| invalid("$.fields", "a sequence of fields", "nothing"))?;
                 let mut children = Vec::with_capacity(fields.len());
-                for held in fields {
-                    children.push(Field::from_value(held.clone())?);
+                for held in fields.iter() {
+                    children.push(Field::from_value(held.into_owned())?);
                 }
                 Self::from(StructType::from_fields(children)?)
             }
@@ -1533,10 +1533,10 @@ impl DataType {
                     }
                 };
                 let members = at("fields")
-                    .and_then(Scalar::as_sequence)
+                    .and_then(Scalar::as_serie)
                     .ok_or_else(|| invalid("$.fields", "a sequence of union members", "nothing"))?;
                 let mut variants = Vec::with_capacity(members.len());
-                for held in members {
+                for held in members.iter() {
                     let type_id = i8::try_from(integer(held.get_key_str("type_id"), "type_id")?)
                         .map_err(|_| {
                             invalid(

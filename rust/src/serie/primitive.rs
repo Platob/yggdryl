@@ -367,11 +367,11 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
 
-    let _ = (parent, proven);
+    let _ = (parent, proof);
     macro_rules! primitive {
         ($arrow:ty) => {
             Ok(Some(

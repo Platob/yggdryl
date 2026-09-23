@@ -226,6 +226,75 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
     value.as_sequence().expect("a sequence").to_vec()
 }
 
+/// The item field a list column repeats.
+#[track_caller]
+fn item_of(list: &yggdryl::Field) -> yggdryl::Field {
+    list.dtype()
+        .as_serie_type()
+        .expect("a list column")
+        .item()
+        .clone()
+}
+
+/// A canonical row with the list cell at `at` restated as the column of its
+/// rows under `item`, every other cell kept: the cell a row read out of
+/// Arrow holds where the crate's own build holds a run.
+#[track_caller]
+fn with_column_at(row: &yggdryl::Scalar, at: usize, item: &yggdryl::Field) -> yggdryl::Scalar {
+    let cells = row.as_sequence().expect("a canonical row");
+    let rows = cells[at].sequence_rows().expect("a list cell").into_owned();
+    let column = yggdryl::Scalar::from(
+        yggdryl::Serie::from_scalars(item.clone(), rows).expect("the rows fit their item"),
+    );
+    assert_eq!(column.as_sequence(), None, "the restated cell is a column");
+    yggdryl::Scalar::from_sequence(cells.iter().enumerate().map(|(index, cell)| {
+        if index == at {
+            column.clone()
+        } else {
+            cell.clone()
+        }
+    }))
+}
+
+/// A parsed message as the root and row [`yggdryl::FixMsg::with_registry`]
+/// rebuilds it from, the header facts `tags` name stated ahead of the
+/// content: the content row carries none of them, because a typed fact
+/// leaves the row for the holder that owns it.
+#[track_caller]
+fn restatable(
+    registry: &yggdryl::FixRegistry,
+    message: &yggdryl::FixMsg,
+    tags: &[i32],
+) -> (yggdryl::Field, yggdryl::Scalar) {
+    let content = message.as_value().as_sequence().expect("a canonical row");
+    let root = yggdryl::StructType::from_fields(
+        tags.iter()
+            .map(|tag| registry.field_by_tag(*tag).expect("a header field").clone())
+            .chain(message.as_field().fields().iter().cloned()),
+    )
+    .map(yggdryl::DataType::from)
+    .expect("a root")
+    .required_field(message.as_field().name());
+    let row = yggdryl::Scalar::from_sequence(
+        tags.iter()
+            .map(|tag| message.by_tag(*tag).expect("a header fact"))
+            .chain(content.iter().cloned()),
+    );
+    (root, row)
+}
+
+/// Whether the message holds the group at `name` as a column: the fixture
+/// proving canonicalization kept the column it was given.
+#[track_caller]
+fn holds_column(message: &yggdryl::FixMsg, name: &str) -> bool {
+    let at = message
+        .as_field()
+        .index_of(name)
+        .expect("the group's column");
+    let cell = &message.as_value().as_sequence().expect("a canonical row")[at];
+    cell.as_serie().is_some() && cell.as_sequence().is_none()
+}
+
 /// Which category a registry field is filed under: a definition is filed by
 /// the shape it has - a Struct is a component, a List or a Map a group - and
 /// everything else is a wire field.
@@ -318,6 +387,8 @@ mod crated;
 mod digest;
 #[path = "fix/direction.rs"]
 mod direction;
+#[path = "fix/document.rs"]
+mod document;
 #[path = "fix/enrich.rs"]
 mod enrich;
 #[path = "fix/entry.rs"]

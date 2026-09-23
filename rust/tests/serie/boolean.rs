@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, BooleanArray};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue};
 
 /// A nullable boolean column of five rows, one of them absent.
 fn flags() -> Serie {
@@ -15,8 +15,12 @@ fn flags() -> Serie {
         Some(true),
         Some(false),
     ]));
-    Serie::from_arrow_array(Field::new("flag", DataType::Boolean, true), array)
-        .expect("a boolean column")
+    Serie::from_arrow_array(
+        Some(&Field::new("flag", DataType::Boolean, true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a boolean column")
 }
 
 #[test]

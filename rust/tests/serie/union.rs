@@ -7,7 +7,18 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, Int64Array, StringArray, UnionArray};
 use arrow_buffer::ScalarBuffer;
 use arrow_schema::{DataType as ArrowDataType, UnionFields};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, UnionMode, UnionSerie};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie, SerieValue, UnionMode,
+    UnionSerie,
+};
+
+/// The options a refusal is pinned under: a present value is never nulled
+/// and an absent one never repaired.
+fn strict() -> ArrowCastOptions {
+    ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(Nullability::Strict)
+}
 
 /// A union of a required identifier and a nullable symbol.
 fn quote_field(mode: UnionMode, nullable: bool) -> Field {
@@ -90,10 +101,18 @@ fn sparse_quotes() -> ArrayRef {
 /// Both layouts of [`quote_rows`] as nullable columns.
 fn quotes() -> [Serie; 2] {
     [
-        Serie::from_arrow_array(quote_field(UnionMode::Dense, true), dense_quotes())
-            .expect("a dense union column"),
-        Serie::from_arrow_array(quote_field(UnionMode::Sparse, true), sparse_quotes())
-            .expect("a sparse union column"),
+        Serie::from_arrow_array(
+            Some(&quote_field(UnionMode::Dense, true)),
+            dense_quotes(),
+            ArrowCastOptions::new(),
+        )
+        .expect("a dense union column"),
+        Serie::from_arrow_array(
+            Some(&quote_field(UnionMode::Sparse, true)),
+            sparse_quotes(),
+            ArrowCastOptions::new(),
+        )
+        .expect("a sparse union column"),
     ]
 }
 
@@ -103,7 +122,7 @@ fn a_required_union_column_with_an_absent_payload_is_refused_naming_the_column()
         (UnionMode::Dense, dense_quotes()),
         (UnionMode::Sparse, sparse_quotes()),
     ] {
-        let refusal = Serie::from_arrow_array(quote_field(mode, false), array)
+        let refusal = Serie::from_arrow_array(Some(&quote_field(mode, false)), array, strict())
             .expect_err("a required column admits no absent payload");
         assert!(
             refusal.to_string().contains("quote"),
@@ -113,8 +132,12 @@ fn a_required_union_column_with_an_absent_payload_is_refused_naming_the_column()
 
     // A required member's inactive slots hold what Arrow leaves unspecified
     // and are never judged.
-    let sparse = Serie::from_arrow_array(quote_field(UnionMode::Sparse, true), sparse_quotes())
-        .expect("a required member judged where it is active");
+    let sparse = Serie::from_arrow_array(
+        Some(&quote_field(UnionMode::Sparse, true)),
+        sparse_quotes(),
+        ArrowCastOptions::new(),
+    )
+    .expect("a required member judged where it is active");
     assert_eq!(sparse.null_count(), 1);
     assert_eq!(sparse.scalar(0).unwrap(), quote(0, Scalar::from(1_i64)));
 }
@@ -143,8 +166,12 @@ fn a_row_past_the_end_and_a_row_the_field_refuses_are_refused_and_nothing_moves(
 #[test]
 fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_type_id() {
     let array = dense_quotes();
-    let dense = Serie::from_arrow_array(quote_field(UnionMode::Dense, true), Arc::clone(&array))
-        .expect("a dense union column");
+    let dense = Serie::from_arrow_array(
+        Some(&quote_field(UnionMode::Dense, true)),
+        Arc::clone(&array),
+        ArrowCastOptions::new(),
+    )
+    .expect("a dense union column");
     let [_, sparse] = quotes();
     let leaf = dense.as_union().expect("a union column");
 
@@ -180,8 +207,12 @@ fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_type_id() {
     assert!(leaf.children().iter().all(|child| child.len() == 4));
     assert_eq!(leaf.scalar(3).unwrap(), quote(0, Scalar::from(2_i64)));
     let array = sparse_quotes();
-    let sparse = Serie::from_arrow_array(quote_field(UnionMode::Sparse, true), Arc::clone(&array))
-        .expect("a sparse union column");
+    let sparse = Serie::from_arrow_array(
+        Some(&quote_field(UnionMode::Sparse, true)),
+        Arc::clone(&array),
+        ArrowCastOptions::new(),
+    )
+    .expect("a sparse union column");
     let back = sparse.into_arrow_array().expect("a column");
     assert!(back.to_data().ptr_eq(&array.to_data()));
 }
@@ -376,8 +407,12 @@ fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
                 }
             }
         }
-        let crossed = Serie::from_arrow_array(field, column.require_arrow_array().unwrap())
-            .expect("the column crosses back in");
+        let crossed = Serie::from_arrow_array(
+            Some(&field),
+            column.require_arrow_array().unwrap(),
+            ArrowCastOptions::new(),
+        )
+        .expect("the column crosses back in");
         assert_eq!(crossed, column, "{mode:?}");
         assert_eq!(
             column.null_count(),

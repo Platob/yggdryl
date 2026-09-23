@@ -503,10 +503,9 @@ mod zones {
     use arrow_schema::DataType as ArrowDataType;
 
     use yggdryl::DataType;
-    use yggdryl::FieldValue as _;
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
-        ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructType,
+        ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie, StructType,
         Timezone, TimezoneField,
     };
 
@@ -652,9 +651,14 @@ mod zones {
             ]))],
         )
         .unwrap();
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_batch(
+            Some(&target),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
         let column = cast
             .column(0)
             .as_any()
@@ -668,10 +672,13 @@ mod zones {
             vec![Arc::new(StringArray::from(vec![Some("+99:00")]))],
         )
         .unwrap();
-        let error = target
-            .cast_arrow_batch(bad, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let error = Serie::from_arrow_batch(
+            Some(&target),
+            &bad,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(error.contains("row 0"), "{error}");
         assert!(error.contains("does not read as time zone"), "{error}");
     }

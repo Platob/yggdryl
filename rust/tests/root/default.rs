@@ -367,6 +367,37 @@ mod datatypes {
             .is_err()
         );
     }
+
+    #[test]
+    fn a_column_is_the_default_exactly_where_its_run_is() -> yggdryl::Result<()> {
+        let item = || Field::new("item", DataType::Int64, false);
+        let fixed = DataType::fixed_size_list(item(), 2)?;
+        let pair = DataType::from(StructType::from_fields([
+            DataType::Int64.required_field("a"),
+            DataType::Int64.required_field("b"),
+        ])?);
+        for values in [[0_i64, 0], [0, 1]] {
+            let column = Scalar::from(yggdryl::Serie::from_scalars(
+                item(),
+                values.map(Scalar::from),
+            )?);
+            let run = Scalar::from_sequence(values.map(Scalar::from));
+            for dtype in [&fixed, &pair] {
+                assert_eq!(
+                    dtype.is_default_value(&column)?,
+                    dtype.is_default_value(&run)?,
+                    "{dtype} over {values:?}"
+                );
+            }
+        }
+        assert!(
+            fixed.is_default_value(&Scalar::from(yggdryl::Serie::from_scalars(
+                item(),
+                [0_i64, 0].map(Scalar::from),
+            )?))?
+        );
+        Ok(())
+    }
 }
 
 mod scalars {
@@ -376,7 +407,8 @@ mod scalars {
     use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
-        DataType, DataTypeId, Field, FieldScalar, Scalar, StructType, TimeUnit, Timezone, UnionMode,
+        DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StructType, TimeUnit, Timezone,
+        UnionMode,
     };
 
     fn representative_types() -> Vec<DataType> {
@@ -454,13 +486,22 @@ mod scalars {
     fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
         for dtype in representative_types() {
             let expected = dtype.default_value().unwrap();
-            let array = dtype
-                .default_arrow_array()
+            // The default is laid out under the datatype's required field. A
+            // required field whose datatype's only default is null has no default
+            // - `Field::default_value` refuses it by design - so that datatype's
+            // default is laid out under the nullable field, and stays null.
+            let holder = if expected.is_null() {
+                dtype.clone().nullable_field("value")
+            } else {
+                dtype.clone().required_field("value")
+            };
+            let array = Serie::from_default(holder, 1)
+                .and_then(|serie| Ok(serie.require_arrow_array()?))
                 .unwrap_or_else(|error| panic!("{} Arrow default failed: {error}", dtype.kind()));
             assert_eq!(array.len(), 1);
-            // The default projects through a synthetic non-nullable Field, which is
-            // exactly what the foreign-array importer's canonical-default exception
-            // exists to accept back.
+            // The default reads back through a non-nullable Field, which is exactly
+            // what the foreign-array importer's canonical-default exception exists
+            // to accept.
             let field = Field::new("value", dtype.clone(), false);
             // The Arrow reading spells temporals and decimals with their unit,
             // zone, or scale; the canonical default recognizes both spellings.
@@ -554,21 +595,23 @@ mod scalars {
             [("ARROW:extension:name", "example.price")],
         )
         .unwrap();
-        let array = field.default_arrow_array().unwrap();
+        let array = Serie::from_default(field.clone(), 1)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_eq!(array.len(), 1);
         assert!(array.is_null(0));
         assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), Scalar::Null);
 
-        assert!(
-            Field::new("never", DataType::Null, false)
-                .default_arrow_array()
-                .is_err()
-        );
+        assert!(Serie::from_default(Field::new("never", DataType::Null, false), 1).is_err());
     }
 
     #[test]
     fn foreign_arrays_reject_wrong_lengths_types_and_recursive_nullability() {
-        let array = DataType::Int32.default_arrow_array().unwrap();
+        let array = Serie::from_default(DataType::Int32.required_field("value"), 1)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert!(
             scalar_value(&Field::new("value", DataType::Int64, false), array.as_ref()).is_err()
         );
@@ -580,8 +623,9 @@ mod scalars {
             .is_err()
         );
 
-        let nullable_child = Field::new("child", DataType::Int32, true)
-            .default_arrow_array()
+        let nullable_child = Serie::from_default(Field::new("child", DataType::Int32, true), 1)
+            .unwrap()
+            .require_arrow_array()
             .unwrap();
         assert!(
             scalar_value(
@@ -610,7 +654,15 @@ mod scalars {
         ];
         for dtype in intrinsic_defaults {
             let expected = dtype.default_value().unwrap();
-            let array = dtype.default_arrow_array().unwrap();
+            // A required field whose datatype's only default is null has no
+            // default - `Field::default_value` refuses it by design - so the
+            // null-only default is laid out under the nullable field, where it is
+            // logically null.
+            assert!(Serie::from_default(dtype.clone().required_field("value"), 1).is_err());
+            let array = Serie::from_default(dtype.clone().nullable_field("value"), 1)
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
             // The canonical-default exception admits the logical-null default back
             // through a non-nullable Field...
             let field = Field::new("value", dtype.clone(), false);
@@ -636,7 +688,10 @@ mod scalars {
         )
         .unwrap();
         let nullable = Field::new("choice", union.clone(), true);
-        let selected_null = nullable.default_arrow_array().unwrap();
+        let selected_null = Serie::from_default(nullable.clone(), 1)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_ne!(
             scalar_value(&nullable, selected_null.as_ref()).unwrap(),
             union.default_value().unwrap()
@@ -668,7 +723,10 @@ mod scalars {
         for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {
             maximum = DataType::list(Field::new("item", maximum, false));
         }
-        let array = maximum.default_arrow_array().unwrap();
+        let array = Serie::from_default(maximum.clone().required_field("value"), 1)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         scalar_value(&Field::new("value", maximum.clone(), false), array.as_ref()).unwrap();
 
         let overdeep = DataType::list(Field::new("item", maximum, false));

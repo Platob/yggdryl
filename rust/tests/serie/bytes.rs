@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, Uuid};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, Uuid};
 
 /// A nullable binary column of three runs, one of them absent, straight off
 /// Arrow buffers.
@@ -15,8 +15,12 @@ fn raw() -> Serie {
         None,
         Some(b"cde".as_slice()),
     ]));
-    Serie::from_arrow_array(Field::new("raw", DataType::binary(), true), array)
-        .expect("a binary column")
+    Serie::from_arrow_array(
+        Some(&Field::new("raw", DataType::binary(), true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a binary column")
 }
 
 /// A required two-byte column of two runs.
@@ -26,8 +30,13 @@ fn pairs() -> Serie {
             .expect("two runs of two bytes"),
     );
     Serie::from_arrow_array(
-        Field::new("pair", DataType::fixed_binary(2).unwrap(), false),
+        Some(&Field::new(
+            "pair",
+            DataType::fixed_binary(2).unwrap(),
+            false,
+        )),
         array,
+        ArrowCastOptions::new(),
     )
     .expect("a fixed-width column")
 }

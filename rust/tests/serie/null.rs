@@ -3,13 +3,17 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, NullArray};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue};
 
 #[test]
 fn a_null_column_is_a_length_whose_every_row_is_absent() {
     let array: ArrayRef = Arc::new(NullArray::new(3));
-    let column = Serie::from_arrow_array(Field::new("nothing", DataType::Null, true), array)
-        .expect("a null column");
+    let column = Serie::from_arrow_array(
+        Some(&Field::new("nothing", DataType::Null, true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a null column");
     let leaf = column.as_null().expect("a null column");
 
     assert_eq!(SerieValue::len(leaf), 3);

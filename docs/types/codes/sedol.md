@@ -175,15 +175,13 @@ The value is the canonical spelling: upper case, closed by its check digit.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     // A column holds the canonical spelling, so a cast lets in an identifier
     // the check digit closes and answers null for a lower-case spelling.
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual(
-      [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'b0ybkj7']))],
-      ['B0YBKJ7', null],
-    )
+    const stored = Serie.fromArrowArray(utf8(['B0YBKJ7', 'b0ybkj7']), fields.sedol('sid'))
+    assert.deepEqual([...stored.intoArrowArray()], ['B0YBKJ7', null])
     ```
 
 ## The check digit
@@ -215,13 +213,12 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let sid = Field::new("sid", DataType::SedolCode, true);
     let source: ArrayRef = Arc::new(StringArray::from(vec!["B0YBKJ7", "b0ybkj7"]));
-    let refused = sid
-        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let refused = Serie::from_arrow_array(Some(&sid), source, strict)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("canonical spelling"), "{refused}");
@@ -233,11 +230,11 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     sid = Field("sid", "sedol")
-    stored = sid.cast_arrow_array(pa.array(["B0YBKJ7", "b0ybkj7", "B0YBKJ8"]))
-    assert stored.to_pylist() == ["B0YBKJ7", None, None]
+    stored = Serie.from_arrow_array(pa.array(["B0YBKJ7", "b0ybkj7", "B0YBKJ8"]), sid)
+    assert stored.as_py() == ["B0YBKJ7", None, None]
     ```
 
 === "JavaScript"
@@ -245,13 +242,11 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual(
-      [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8']))],
-      ['B0YBKJ7', null],
-    )
+    const stored = Serie.fromArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8']), fields.sedol('sid'))
+    assert.deepEqual([...stored.intoArrowArray()], ['B0YBKJ7', null])
     ```
 
 ## Edges

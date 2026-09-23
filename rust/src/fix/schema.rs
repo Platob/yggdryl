@@ -1103,12 +1103,12 @@ fn entries_from_scalar(
         value
     };
     value
-        .as_sequence()
+        .as_serie()
         .ok_or_else(|| entry_error(path, "a sequence of arrival entries", value.kind()))?
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            entry_from_scalar(entry, &path.child(crate::path::Segment::Index(index)))
+            entry_from_scalar(&entry, &path.child(crate::path::Segment::Index(index)))
         })
         .collect()
 }
@@ -1168,7 +1168,7 @@ fn push_child(
     if let Some(counter) = field.as_fix().counter().ok().flatten() {
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
             if !taken(fields, scalar.name()) {
-                let count = value.as_sequence().map_or(0, <[crate::Scalar]>::len);
+                let count = value.as_serie().map_or(0, crate::Serie::len);
                 let count = super::build::typed_spelling(registry, scalar, &count.to_string());
                 let mut scalar = scalar.clone();
                 scalar.set_nullable(count.is_null());
@@ -1240,7 +1240,7 @@ fn covers_entry(
                 && covers_members(registry, field.fields(), value, entry.entries())
         }
         DataType::List(item) | DataType::LargeList(item) => {
-            let Some(occurrences) = value.as_sequence() else {
+            let Some(occurrences) = value.as_serie() else {
                 return false;
             };
             if entry.value().and_then(|count| count.parse::<usize>().ok())
@@ -1252,14 +1252,14 @@ fn covers_entry(
             entry
                 .entries()
                 .iter()
-                .zip(occurrences)
+                .zip(occurrences.iter())
                 .all(|(occurrence, value)| match item.dtype() {
                     DataType::Struct(_) => {
                         occurrence.value().is_none()
                             && covers_identity(registry, item, occurrence)
-                            && covers_members(registry, item.fields(), value, occurrence.entries())
+                            && covers_members(registry, item.fields(), &value, occurrence.entries())
                     }
-                    _ => covers_entry(registry, item, value, occurrence),
+                    _ => covers_entry(registry, item, &value, occurrence),
                 })
         }
         DataType::Map(_)
@@ -1337,11 +1337,9 @@ fn covers_members(
                 };
                 owners.next().is_none()
                     && covered_member_index(registry, fields, owner) == Some(group_index)
-                    && values[group_index]
-                        .as_sequence()
-                        .is_some_and(|occurrences| {
-                            value.as_i128() == i128::try_from(occurrences.len()).ok()
-                        })
+                    && values[group_index].as_serie().is_some_and(|occurrences| {
+                        value.as_i128() == i128::try_from(occurrences.len()).ok()
+                    })
             })
 }
 
@@ -2242,7 +2240,7 @@ impl super::FixMsg {
         let Some(members) = item_fields(declared) else {
             return held;
         };
-        let Some(occurrences) = held.as_sequence() else {
+        let Some(occurrences) = held.as_serie() else {
             return held;
         };
         // The message's own member names, in the order its values sit in.
@@ -2291,7 +2289,7 @@ impl super::FixMsg {
         }
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
-                return occurrence.clone();
+                return occurrence.into_owned();
             };
             crate::Scalar::from_sequence(placed.iter().map(|(at, group_at)| {
                 let explicit = at.and_then(|at| stated.get(at));
@@ -2300,7 +2298,7 @@ impl super::FixMsg {
                 }
                 group_at
                     .and_then(|at| stated.get(at))
-                    .and_then(crate::Scalar::as_sequence)
+                    .and_then(crate::Scalar::as_serie)
                     .map(|occurrences| {
                         crate::Scalar::from(i32::try_from(occurrences.len()).unwrap_or(i32::MAX))
                     })
@@ -2499,7 +2497,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
 /// for it.
 fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     let rebuilt = match field.dtype() {
-        DataType::Struct(members) => value.as_sequence().map(|stated| {
+        DataType::Struct(members) => value.sequence_rows().map(|stated| {
             // A member the value never reached is the null the column would
             // have held anyway; one it reached is refitted in place.
             let held: Option<Vec<crate::Scalar>> = members
@@ -2516,11 +2514,11 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
         | DataType::LargeList(item)
         | DataType::ListView(item)
         | DataType::LargeListView(item)
-        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
+        | DataType::FixedSizeList(item, _) => value.as_serie().map(|stated| {
             Some(crate::Scalar::from_sequence(
                 stated
                     .iter()
-                    .filter_map(|held| refit(item, held.clone()))
+                    .filter_map(|held| refit(item, held.into_owned()))
                     .collect::<Vec<_>>(),
             ))
         }),

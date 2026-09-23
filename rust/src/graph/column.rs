@@ -428,10 +428,10 @@ fn uuids_fact(uuids: &[Uuid]) -> Option<Scalar> {
 /// over; none for a cell stating no list.
 fn uuids_of(value: &Scalar) -> Vec<Uuid> {
     value
-        .as_sequence()
+        .as_serie()
         .map(|held| {
             held.iter()
-                .filter_map(|item| match item {
+                .filter_map(|item| match item.as_ref() {
                     Scalar::Uuid(uuid) => Some(*uuid),
                     _ => None,
                 })

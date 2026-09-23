@@ -206,6 +206,7 @@ from .serie import (
     ListViewSerie,
     MapSerie,
     Serie,
+    SerieReader,
     StructSerie,
 )
 from .string import (
@@ -342,6 +343,7 @@ __all__ = [
     "SedolCodeField",
     "Selector",
     "Serie",
+    "SerieReader",
     "SideField",
     "StateField",
     "StringEnum",

@@ -1,7 +1,7 @@
 //! `rust/src/expression/path.rs`: focused edge cases for the one path grammar.
 
 use yggdryl::expression::Term;
-use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, StructType};
+use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, Serie, StructType};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")
@@ -1387,4 +1387,24 @@ mod nested {
         assert_eq!(row["line"].field_len(), 0);
         assert_eq!(row.field_len(), 1);
     }
+}
+
+#[test]
+fn a_range_over_a_column_is_a_window_of_it() {
+    let item = DataType::Int64.nullable_field("item");
+    let root = StructType::from_fields([DataType::list(item.clone()).nullable_field("xs")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let xs = Serie::from_scalars(item, (1..=4_i64).map(Scalar::from)).unwrap();
+    let row = Scalar::from_sequence([Scalar::from(xs)]);
+    let window = parse("xs[1:3]").apply_scalar(&root, &row).unwrap();
+    assert_eq!(
+        window,
+        Scalar::from_sequence([Scalar::from(2_i64), Scalar::from(3_i64)])
+    );
+    assert!(
+        window.as_serie().is_some_and(Serie::is_column),
+        "a window of a column is a column: {window:?}"
+    );
 }

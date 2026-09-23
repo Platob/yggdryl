@@ -11,7 +11,7 @@ import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import DataType, Field, Scalar, Version
+from yggdryl import DataType, Field, Scalar, Serie, Version
 
 # Every Arrow datatype variant the core distinguishes. It is asserted as a
 # constant so that adding a variant to the core without adding it here fails,
@@ -104,6 +104,15 @@ def _all_datatype_variants() -> tuple[DataType, ...]:
     return variants
 
 
+def arrow_default(dtype: DataType) -> pa.Scalar:
+    """A bare datatype's canonical default as Arrow, under the column ``value``.
+
+    The column is nullable, so the null a ``null`` datatype defaults to has a
+    place; a field's own default is ``Serie.from_default``.
+    """
+    return dtype.default_scalar().into_arrow_scalar(Field("value", dtype))
+
+
 def test_the_catalogue_names_every_variant_this_pyarrow_can_spell() -> None:
     built = len(_all_datatype_variants())
 
@@ -123,7 +132,7 @@ def test_the_catalogue_names_every_variant_this_pyarrow_can_spell() -> None:
 def test_every_datatype_variant_has_one_python_and_arrow_default(
     dtype: DataType,
 ) -> None:
-    scalar = dtype.default_arrow_scalar()
+    scalar = arrow_default(dtype)
 
     assert scalar.type.equals(dtype.into_arrow())
     dtype.default_pyhint()
@@ -149,13 +158,13 @@ def test_a_default_is_one_scalar_that_materializes_the_same_value() -> None:
     assert isinstance(default, Scalar)
     assert default.as_py() == [0, None]
     # The materialized default is that same Scalar rather than a second
-    # answer: rendered into Arrow it reproduces `default_arrow_scalar`
-    # exactly, and a required cast fills its nulls with it.
-    assert default.into_arrow_scalar(required).equals(required.default_arrow_scalar())
-    filled = required.dtype.cast_arrow_array(
-        pa.nulls(2, required.dtype.into_arrow())
+    # answer: rendered into Arrow it reproduces `Serie.from_default` exactly,
+    # and a required cast fills its nulls with it.
+    assert default.into_arrow_scalar(required).equals(
+        Serie.from_default(required).into_arrow_scalar()
     )
-    assert filled.to_pylist() == [{"count": 0, "label": None}] * 2
+    filled = Serie.from_arrow_array(pa.nulls(2, required.dtype.into_arrow()), required)
+    assert filled.as_py() == [{"count": 0, "label": None}] * 2
 
     # Nullability is the core's answer over one layout: the datatype answers
     # its canonical value, and a Field that may be absent answers null.
@@ -307,7 +316,7 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
     assert nested_hint.into_field().metadata.get("role") is None
     # The fallback names the hint's keys only: the default stays positional.
     assert dtype.default_scalar().as_py() == [0, None, [""]]
-    assert dtype.default_arrow_scalar().type.equals(arrow_type)
+    assert arrow_default(dtype).type.equals(arrow_type)
 
 
 def test_a_default_scalar_reads_as_generic_python_values() -> None:
@@ -366,7 +375,7 @@ def test_scalar_defaults_share_exact_arrow_and_python_projection(
     arrow_type: pa.DataType, expected: object
 ) -> None:
     dtype = DataType.from_arrow(arrow_type)
-    scalar = dtype.default_arrow_scalar()
+    scalar = arrow_default(dtype)
 
     assert scalar.type.equals(arrow_type)
     assert scalar.as_py() == expected
@@ -384,18 +393,18 @@ def test_field_default_nullability_comes_from_native_core() -> None:
     # cannot import at all. The Scalar never crosses that boundary, so only
     # the Arrow half runs where the release can spell one.
     if hasattr(pa, "decimal64"):
-        nullable_scalar = nullable.default_arrow_scalar()
-        required_scalar = required.default_arrow_scalar()
+        nullable_scalar = Serie.from_default(nullable).into_arrow_scalar()
+        required_scalar = Serie.from_default(required).into_arrow_scalar()
         assert nullable_scalar.type == pa.decimal64(18, 4)
         assert not nullable_scalar.is_valid
         assert required_scalar.as_py() == Decimal("0.0000")
 
     null_type = DataType("null")
-    assert not null_type.default_arrow_scalar().is_valid
+    assert not arrow_default(null_type).is_valid
     assert null_type.default_scalar().as_py() is None
     impossible = Field("impossible", null_type, nullable=False)
     with pytest.raises(ValueError, match="non-nullable|no constructible|default"):
-        impossible.default_arrow_scalar()
+        Serie.from_default(impossible).into_arrow_scalar()
     with pytest.raises(ValueError, match="non-nullable|no constructible|default"):
         impossible.default_scalar()
 
@@ -414,7 +423,7 @@ def test_nullable_struct_default_masks_uninhabited_nested_physical_children() ->
         nullable=True,
     )
 
-    scalar = outer.default_arrow_scalar()
+    scalar = Serie.from_default(outer).into_arrow_scalar()
     assert outer.default_scalar().kind == "null"
     assert outer.default_scalar().as_py() is None
     assert scalar.type.equals(outer.dtype.into_arrow())
@@ -442,7 +451,7 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
         type_codes=[3, 7],
     )
     union = DataType.from_arrow(union_type)
-    union_scalar = union.default_arrow_scalar()
+    union_scalar = arrow_default(union)
     assert union_scalar.type.equals(union_type)
     assert union_scalar.type_code == 7
     # A union Scalar spells the selected branch beside its value, so the code
@@ -451,7 +460,7 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
 
     dictionary_type = pa.dictionary(pa.int8(), pa.string(), ordered=True)
     dictionary = DataType.from_arrow(dictionary_type)
-    dictionary_scalar = dictionary.default_arrow_scalar()
+    dictionary_scalar = arrow_default(dictionary)
     assert dictionary_scalar.type.equals(dictionary.into_arrow())
     assert dictionary_scalar.as_py() == ""
     assert dictionary.default_pyhint() is str
@@ -460,12 +469,12 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
         pa.field("ordered", dictionary_type, nullable=False)
     )
     unchanged = Field.from_value(ordered_dictionary)
-    assert ordered_dictionary.default_arrow_scalar().type.equals(dictionary_type)
+    assert Serie.from_default(ordered_dictionary).into_arrow_scalar().type.equals(dictionary_type)
     assert ordered_dictionary == unchanged
 
     run_end_type = pa.run_end_encoded(pa.int16(), pa.int64())
     run_end = DataType.from_arrow(run_end_type)
-    run_end_scalar = run_end.default_arrow_scalar()
+    run_end_scalar = arrow_default(run_end)
     assert run_end_scalar.type.equals(run_end_type)
     assert run_end.default_pyhint() is int
     assert run_end.default_scalar().as_py() == 0
@@ -485,7 +494,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
     assert duplicate_python_hint.default_scalar().as_py() == [0, 0]
 
     nullable_choice = Field("choice", duplicate_python_hint, nullable=True)
-    nullable_scalar = nullable_choice.default_arrow_scalar()
+    nullable_scalar = Serie.from_default(nullable_choice).into_arrow_scalar()
     assert nullable_scalar.type_code == 0
     assert not nullable_scalar.is_valid
     # The branch survives the absence: a nullable choice is the first branch
@@ -510,7 +519,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
         nullable=False,
     )
     selected_second = DataType.variant((impossible, selected))
-    assert selected_second.default_arrow_scalar().type_code == 1
+    assert arrow_default(selected_second).type_code == 1
     assert selected_second.default_scalar().as_py() == [1, []]
 
     uninhabited_struct = DataType.from_fields(
@@ -530,7 +539,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
             ),
         )
     )
-    assert structured.default_arrow_scalar().type_code == 1
+    assert arrow_default(structured).type_code == 1
     assert structured.default_scalar().as_py() == [1, [0]]
 
     nested = DataType.from_fields(
@@ -550,7 +559,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
     assert nested.default_scalar().as_py() == [[0, 0], [[0, 0], [0, 0]]]
 
 
-def test_default_arrow_scalar_rehydrates_registered_extension() -> None:
+def test_a_serie_default_rehydrates_registered_extension() -> None:
     class DefaultExtension(pa.ExtensionType):
         def __init__(self) -> None:
             super().__init__(pa.int32(), "tests.defaults.extension")
@@ -572,8 +581,8 @@ def test_default_arrow_scalar_rehydrates_registered_extension() -> None:
         required = Field.from_arrow(pa.field("value", extension, nullable=False))
         nullable = Field.from_arrow(pa.field("value", extension, nullable=True))
 
-        present = required.default_arrow_scalar()
-        missing = nullable.default_arrow_scalar()
+        present = Serie.from_default(required).into_arrow_scalar()
+        missing = Serie.from_default(nullable).into_arrow_scalar()
         assert present.type.equals(extension)
         assert present.as_py() == 0
         assert required.default_scalar().as_py() == 0
@@ -617,7 +626,7 @@ def test_struct_extension_default_keeps_its_storage_and_metadata_free_hint() -> 
             )
         )
         hint = field.default_pyhint()
-        scalar = field.default_arrow_scalar()
+        scalar = Serie.from_default(field).into_arrow_scalar()
 
         assert scalar.type.equals(extension)
         assert scalar.as_py() == {"count": 0}

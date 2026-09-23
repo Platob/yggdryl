@@ -154,6 +154,65 @@ fn the_declared_field_is_one_section_of_the_plan() {
 }
 
 #[test]
+fn a_batch_is_shaped_as_a_reader_shapes_it() {
+    use arrow_array::{Array, ArrayRef, Int32Array, StringArray};
+
+    // A declared cast, a `where` over a column only the `select` builds, and
+    // a stored field the shaped rows are completed onto.
+    let declared = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let stored = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("ticker"),
+        DataType::utf8().nullable_field("venue"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let options = RecordOptions::Ipc(IpcOptions::new())
+        .with_field(declared)
+        .with_select("id, trim(symbol) as ticker")
+        .unwrap()
+        .with_filter("ticker = 'MSFT'")
+        .unwrap();
+    let source = RecordBatch::try_from_iter([
+        ("id", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef),
+        (
+            "symbol",
+            Arc::new(StringArray::from(vec![" AAPL", "MSFT ", " IBM"])),
+        ),
+    ])
+    .unwrap();
+
+    let shaped = options
+        .apply_arrow_batch(source.clone(), Some(&stored))
+        .unwrap();
+    let streamed = options
+        .apply_arrow_reader(
+            yggdryl::arrow::batch_reader(source.schema(), [source]),
+            Some(&stored),
+        )
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+
+    assert_eq!(streamed, std::slice::from_ref(&shaped));
+    assert_eq!(shaped.schema(), stored.into_arrow_schema().unwrap());
+    let ids = shaped
+        .column(0)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
+    assert_eq!(ids.values(), &[2]);
+    assert!(shaped.column(2).is_null(0));
+}
+
+#[test]
 fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 

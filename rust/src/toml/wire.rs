@@ -7,7 +7,7 @@ use base64::Engine as _;
 
 use crate::code_scalars;
 use crate::timezone::{civil_from_days, days_from_civil};
-use crate::{Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{Error, Result, Scalar, Serie, TimeUnit, Timezone};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
@@ -167,8 +167,8 @@ fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
         | Scalar::LargeListView(values) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
-            for value in values.rows().iter() {
-                check_value(value, depth, maximum)?;
+            for value in values.iter() {
+                check_value(&value, depth, maximum)?;
             }
             Ok(())
         }
@@ -363,7 +363,7 @@ fn write_scalar<W: Write>(
         | Scalar::ListView(values)
         | Scalar::FixedSizeList(values)
         | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => write_sequence(writer, &values.rows(), layout, depth)?,
+        | Scalar::LargeListView(values) => write_sequence(writer, values, layout, depth)?,
         Scalar::Struct(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {
@@ -397,7 +397,7 @@ fn write_scalar<W: Write>(
 
 fn write_sequence<W: Write>(
     writer: &mut W,
-    values: &[Scalar],
+    values: &Serie,
     layout: Layout,
     depth: usize,
 ) -> Result<()> {
@@ -408,7 +408,7 @@ fn write_sequence<W: Write>(
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }
-                write_scalar(writer, value, layout, depth)?;
+                write_scalar(writer, &value, layout, depth)?;
             }
             writer.write_all(b"]")?;
         }
@@ -416,7 +416,7 @@ fn write_sequence<W: Write>(
             writer.write_all(b"[\n")?;
             for value in values.iter() {
                 write_units(writer, unit, depth + 1)?;
-                write_scalar(writer, value, layout, depth + 1)?;
+                write_scalar(writer, &value, layout, depth + 1)?;
                 writer.write_all(b",\n")?;
             }
             write_units(writer, unit, depth)?;

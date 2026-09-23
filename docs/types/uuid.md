@@ -274,7 +274,7 @@ a column read there comes back as `uuid.UUID`.
 
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     packed = 0x01912D68783E7C9AB1F20123456789AB
@@ -287,13 +287,34 @@ a column read there comes back as `uuid.UUID`.
     assert Field.from_arrow(arrow) == id
 
     # A cast into the type validates, and the column reads back as `uuid.UUID`.
-    stored = id.cast_arrow_array(pa.array([text, text.upper()]))
+    stored = Serie.from_arrow_array(pa.array([text, text.upper()]), id).into_arrow_array()
     assert stored.to_pylist() == [uuid.UUID(text)] * 2
     assert stored.storage.to_pylist() == [packed.to_bytes(16, "big")] * 2
     ```
 
-JavaScript casts an Arrow vector into the column the same way, through
-`field.castArrowArray(values)`.
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
+    const id = fields.uuid('id', { nullable: false })
+
+    // A cast into the type validates; the column is the sixteen bytes under `arrow.uuid`.
+    const stored = Serie.fromArrowArray(
+      arrow.vectorFromArray([text, text.toUpperCase()], new arrow.Utf8()),
+      id,
+    )
+    const batch = stored.intoArrowBatch()
+    assert.equal(String(batch.schema.fields[0].type), 'FixedSizeBinary[16]')
+    assert.equal(batch.schema.fields[0].metadata.get('ARROW:extension:name'), 'arrow.uuid')
+    assert.equal(Buffer.from(batch.getChild('id').get(0)).toString('hex'), text.replaceAll('-', ''))
+
+    // Every row reads back as the canonical spelling.
+    assert.deepEqual(stored.asJs(), [text, text])
+    ```
 
 ## Text and byte readings
 
@@ -307,49 +328,32 @@ One [cast](cast.md) tier reads both directions.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
-    let strict = || ArrowCastOptions::new().with_safe(false);
-    let row = |field: Field| -> Field {
-        Field::new(
-            "row",
-            DataType::from(StructType::from_fields([field]).unwrap()),
-            false,
-        )
-    };
+    let strict = ArrowCastOptions::new().with_safe(false);
 
     // One spelling in, the sixteen stored bytes out.
     let id = Field::new("id", DataType::Uuid, false);
-    let stored =
-        id.cast_arrow_array(Arc::new(StringArray::from(vec![text])) as ArrayRef, strict())?;
-    let batch = RecordBatch::try_new(
-        row(id.clone()).into_arrow_schema()?,
-        vec![Arc::clone(&stored)],
-    )?;
+    let spelling: ArrayRef = Arc::new(StringArray::from(vec![text]));
+    let stored = Serie::from_arrow_array(Some(&id), spelling, strict)?;
+    assert_eq!(stored.as_fixed_bytes().expect("sixteen bytes").width(), 16);
 
     // The column carries `arrow.uuid`, so a string target reads the spelling.
-    let spelled = row(Field::new("id", DataType::utf8(), false))
-        .cast_arrow_batch(batch.clone(), strict())?;
-    let column = spelled.column(0);
-    assert_eq!(
-        column.as_any().downcast_ref::<StringArray>().unwrap().value(0),
-        text
-    );
+    let spelled = stored.cast(&Field::new("id", DataType::utf8(), false), strict)?;
+    assert_eq!(spelled.as_utf8().expect("a utf8 column").value(0), Some(text));
 
     // A sixteen-byte framing reads the bytes, and both read back as the identifier.
-    let framed = row(Field::new("id", DataType::from_str("fixed_binary(16)")?, false))
-        .cast_arrow_batch(batch.clone(), strict())?;
-    for read in [Arc::clone(column), Arc::clone(framed.column(0))] {
-        let back = id.cast_arrow_array(read, strict())?;
-        assert_eq!(back.as_ref(), stored.as_ref());
+    let framing = Field::new("id", DataType::from_str("fixed_binary(16)")?, false);
+    let framed = stored.cast(&framing, strict)?;
+    for read in [&spelled, &framed] {
+        assert_eq!(read.cast(&id, strict)?, stored);
     }
 
     // A bound the 36 characters outgrow is refused, naming the row.
-    let refused = row(Field::new("id", DataType::from_str("utf8(8)")?, false))
-        .cast_arrow_batch(batch, strict())
+    let refused = stored
+        .cast(&Field::new("id", DataType::from_str("utf8(8)")?, false), strict)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("row 0"), "{refused}");
@@ -359,24 +363,54 @@ One [cast](cast.md) tier reads both directions.
 
     ```python
     import pyarrow as pa
+    import pytest
 
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     id = Field("id", "uuid", nullable=False)
-    stored = id.cast_arrow_array(pa.array([text, text.upper()]))
+    stored = Serie.from_arrow_array(pa.array([text, text.upper()]), id)
 
     # A recognized identifier column renders as its spelling, exactly as a
     # recognized ASCII column renders as its trimmed text.
-    batch = pa.record_batch([stored], schema=pa.schema([id.into_arrow()]))
-    spelled = DataType.from_fields([Field("id", "utf8")])
-    assert spelled.cast_arrow_batch(batch).column(0).to_pylist() == [text, text]
+    batch = stored.into_arrow_batch()
+    spelled = Field("row", DataType.from_fields([Field("id", "utf8")]), nullable=False)
+    assert Serie.from_arrow_batch(batch, spelled).into_arrow_batch().column(0).to_pylist() == [
+        text,
+        text,
+    ]
 
     # A spelling that is not an identifier is refused, naming what is accepted.
-    try:
-        id.cast_arrow_array(pa.array(["not-a-uuid"]))
-    except ValueError as error:
-        assert "36-character" in str(error)
+    with pytest.raises(ValueError, match="36-character"):
+        Serie.from_arrow_array(pa.array(["not-a-uuid"]), id, safe=False)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const text = '01912d68-783e-7c9a-b1f2-0123456789ab'
+    const id = fields.uuid('id', { nullable: false })
+    const stored = Serie.fromArrowArray(arrow.vectorFromArray([text], new arrow.Utf8()), id)
+
+    // The column carries `arrow.uuid`, so a string target reads the spelling.
+    const spelled = stored.cast(fields.utf8('id', { nullable: false }))
+    assert.deepEqual([...spelled.intoArrowArray()], [text])
+
+    // A sixteen-byte framing reads the bytes, and both read back as the identifier.
+    const framed = stored.cast(fields.fixedSizeBinary('id', 16, { nullable: false }))
+    for (const read of [spelled, framed]) {
+      assert.ok(read.cast(id).equals(stored))
+    }
+
+    // A bound the 36 characters outgrow is refused, naming the row.
+    assert.throws(
+      () => stored.cast(fields.sizedUtf8('id', 8, { nullable: false }), { safe: false }),
+      /row 0/,
+    )
     ```
 
 ## RFC 9562 versions

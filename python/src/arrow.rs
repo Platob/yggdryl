@@ -273,9 +273,8 @@ fn pyarrow_scalar(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowScalar>> {
         return array_of(value).map(Some);
     }
     if value.is_instance(&pyarrow.getattr("Scalar")?)? {
-        let array = arrow_scalar_into_array(value)?;
-        let field = inferred_field(&array, "value")?;
-        return ArrowScalar::from_scalar_array(field, array)
+        let (field, array) = landed(arrow_scalar_into_array(value)?)?;
+        return ArrowScalar::from_scalar_array(field.with_name("value"), array)
             .map(Some)
             .map_err(value_error);
     }
@@ -317,15 +316,17 @@ fn batch_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
 }
 
 fn array_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
-    let array = arrow_array_from_pyarrow(value)?;
-    let field = inferred_field(&array, "item")?;
+    let (field, array) = landed(arrow_array_from_pyarrow(value)?)?;
     ArrowScalar::from_array(field, array).map_err(value_error)
 }
 
-/// Name the Field one foreign column proves about itself.
-fn inferred_field(array: &arrow_array::ArrayRef, name: &str) -> PyResult<CoreField> {
-    let dtype = yggdryl::DataType::try_from(array.data_type().clone()).map_err(value_error)?;
-    Ok(CoreField::new(name, dtype, array.null_count() != 0))
+/// One foreign column as the column of its own layout: the field it proves
+/// about itself, named `item`, and its buffers, shared.
+fn landed(array: arrow_array::ArrayRef) -> PyResult<(CoreField, arrow_array::ArrayRef)> {
+    let serie = yggdryl::Serie::from_arrow_array(None, array, ArrowCastOptions::new())
+        .map_err(value_error)?;
+    let field = serie.require_field().map_err(value_error)?.clone();
+    Ok((field, serie.require_arrow_array().map_err(value_error)?))
 }
 
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.

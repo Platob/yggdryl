@@ -1,4 +1,8 @@
-"""Native ``Serie``: many values, as a schema-free run or as the Arrow buffers of one field."""
+"""Native ``Serie``: many values, as a schema-free run or as the Arrow buffers of one field.
+
+``SerieReader`` is the same over a stream: one record ``Serie`` per batch,
+each cast by one plan.
+"""
 
 from ._native import (
     FixedSizeListSerie,
@@ -8,6 +12,7 @@ from ._native import (
     ListViewSerie,
     MapSerie,
     Serie,
+    SerieReader,
     StructSerie,
 )
 
@@ -19,5 +24,6 @@ __all__ = [
     "ListViewSerie",
     "MapSerie",
     "Serie",
+    "SerieReader",
     "StructSerie",
 ]

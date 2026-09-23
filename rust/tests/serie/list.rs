@@ -10,7 +10,7 @@ use arrow_array::{
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, StructType};
 
 /// The Arrow spelling of a required int64 item.
 fn item() -> Arc<ArrowField> {
@@ -48,7 +48,12 @@ fn leg_rows() -> Vec<Scalar> {
 
 /// The column [`legs`] crosses into.
 fn legs_column() -> Serie {
-    Serie::from_arrow_array(legs_field(), Arc::new(legs())).expect("a list column")
+    Serie::from_arrow_array(
+        Some(&legs_field()),
+        Arc::new(legs()),
+        ArrowCastOptions::new(),
+    )
+    .expect("a list column")
 }
 
 /// A nullable fixed-size list of two required int64 items.
@@ -288,7 +293,8 @@ fn a_fixed_size_list_null_row_holds_width_placeholder_items_and_a_cleared_bit() 
     let window = pushed.slice(1, 2).unwrap();
     assert_eq!(window.items().map(Serie::len), Some(4));
     assert_eq!(window.scalar(1).unwrap(), rows[2]);
-    let back = Serie::from_arrow_array(pairs_field(), expected).unwrap();
+    let back =
+        Serie::from_arrow_array(Some(&pairs_field()), expected, ArrowCastOptions::new()).unwrap();
     assert_eq!(back, laid_out);
     assert_eq!(back.rows().into_owned(), rows);
 }
@@ -309,7 +315,8 @@ fn a_list_view_crosses_in_compact_and_every_write_keeps_it_so() {
         Arc::new(Int64Array::from(vec![1, 2, 3])),
         Some(NullBuffer::from(vec![true, true, false, true])),
     ));
-    let mut column = Serie::from_arrow_array(field.clone(), views).expect("a list-view column");
+    let mut column = Serie::from_arrow_array(Some(&field), views, ArrowCastOptions::new())
+        .expect("a list-view column");
     let leaf = column.as_list_view().expect("a list-view column");
 
     // Rebased: contiguous from 0, an absent row viewing nothing, the items
@@ -355,13 +362,15 @@ fn a_list_view_crosses_in_compact_and_every_write_keeps_it_so() {
 
     // Out and back in: an already compact array is taken as it is.
     let out = column.into_arrow_array().unwrap();
-    let back = Serie::from_arrow_array(field.clone(), Arc::clone(&out)).unwrap();
+    let back =
+        Serie::from_arrow_array(Some(&field), Arc::clone(&out), ArrowCastOptions::new()).unwrap();
     assert_eq!(back, column);
     assert_eq!(back.into_arrow_array().unwrap().as_ref(), out.as_ref());
 
     // A sliced compact array is rebased without a gather: the items it
     // reaches, shifted to 0.
-    let sliced = Serie::from_arrow_array(field, out.slice(3, 2)).unwrap();
+    let sliced =
+        Serie::from_arrow_array(Some(&field), out.slice(3, 2), ArrowCastOptions::new()).unwrap();
     let leaf = sliced.as_list_view().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 2]);
     assert_eq!(leaf.items().as_int64().unwrap().values(), &[2, 3, 4]);
@@ -523,7 +532,8 @@ fn a_list_column_cuts_one_item_column_and_reads_a_row_off_it() {
 #[test]
 fn a_sliced_cut_is_rebased_onto_the_items_it_reaches() {
     let sliced: ArrayRef = Arc::new(legs().slice(2, 2));
-    let column = Serie::from_arrow_array(legs_field(), sliced).expect("a sliced list column");
+    let column = Serie::from_arrow_array(Some(&legs_field()), sliced, ArrowCastOptions::new())
+        .expect("a sliced list column");
     let leaf = column.as_list().expect("a list column");
 
     assert_eq!(leaf.offsets().as_ref(), &[0, 1, 1]);

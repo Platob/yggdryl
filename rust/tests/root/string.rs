@@ -291,8 +291,7 @@ mod codes {
 mod leaves {
     use arrow_schema::DataType as ArrowDataType;
     use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar};
+    use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, Serie};
     use yggdryl::{INLINE_CAPACITY, STRING_EXTENSION_NAME, Str, StringType};
 
     /// Every leaf in `StringType::ALL` order, with its identifier, its canonical
@@ -1656,27 +1655,33 @@ mod leaves {
         let target = DataType::from_str("string(windows-1252)")
             .unwrap()
             .nullable_field("value");
-        let cast = target
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&target),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cast = cast.as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!(cast.value(0), &[0x63, 0x61, 0x66, 0xE9]);
         assert!(cast.is_null(1));
 
         let source: ArrayRef = Arc::new(StringArray::from(vec![Some("café"), Some("東京")]));
-        let refusal = target
-            .cast_arrow_array(
-                Arc::clone(&source),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap_err()
-            .to_string();
+        let refusal = Serie::from_arrow_array(
+            Some(&target),
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refusal.contains("windows-1252"), "{refusal}");
         assert!(refusal.contains("row 1"), "{refusal}");
         assert!(refusal.contains("\"value\""), "{refusal}");
         // Under `safe`, the cell that cannot be spelled becomes null.
-        let lenient = target
-            .cast_arrow_array(source, ArrowCastOptions::new())
+        let lenient = Serie::from_arrow_array(Some(&target), source, ArrowCastOptions::new())
+            .unwrap()
+            .require_arrow_array()
             .unwrap();
         let lenient = lenient.as_any().downcast_ref::<BinaryArray>().unwrap();
         assert_eq!(lenient.value(0), &[0x63, 0x61, 0x66, 0xE9]);
@@ -1993,7 +1998,7 @@ mod widths {
     use arrow_schema::DataType as ArrowDataType;
 
     use yggdryl::{Charset, DataTypeId, DataTypeKind, StructType};
-    use yggdryl::{DataType, Str, StringType};
+    use yggdryl::{DataType, Serie, Str, StringType};
     use yggdryl::{Error, Field, Scalar, Scheme};
 
     fn hash_of(value: &DataType) -> u64 {
@@ -2442,7 +2447,10 @@ mod widths {
 
             let field = dtype.required_field("ccy");
             assert_eq!(field.default_value().unwrap(), exact_empty);
-            let array = field.default_arrow_array().unwrap();
+            let array = Serie::from_default(field, 1)
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
             assert_eq!(
                 array.data_type(),
                 &ArrowDataType::FixedSizeBinary(i32::try_from(width).unwrap())

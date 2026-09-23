@@ -25,9 +25,8 @@ use arrow_ipc::writer::FileWriter;
 use arrow_row::{RowConverter, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
-use crate::FieldValue as _;
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
-use crate::cast::ArrowCastOptions;
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::BoundSelector;
 use crate::{Error, Field, Result, Selector};
 
@@ -59,7 +58,9 @@ struct MergeState {
 ///
 /// Both sides are read as `field`: `stored` is expected to already be that
 /// shape and every incoming batch is cast to it, so the two agree column for
-/// column before a single key is compared.
+/// column before a single key is compared. The cast is planned once per
+/// incoming layout, so a batch of the fields the last one carried is cast by
+/// the plan already held.
 ///
 /// Duplicates are resolved by stating the rule rather than refusing the input.
 /// A key stored more than once has *every* occurrence updated, because a key is
@@ -115,11 +116,14 @@ pub(crate) fn merged(
         state.held.push(batch);
     }
 
+    let options = ArrowCastOptions::new().with_safe(safe);
+    let mut plans = PlanCache::new();
     for batch in incoming {
-        let batch = field.cast_arrow_batch(
-            batch.map_err(from_reader_error)?,
-            ArrowCastOptions::new().with_safe(safe),
-        )?;
+        let batch = batch.map_err(from_reader_error)?;
+        let plan = plans.get_or_compile(batch.schema_ref().fields(), || {
+            ArrowCastPlan::compile_schema(batch.schema_ref(), field, options, Deferred::default())
+        })?;
+        let batch = plan.reconcile_batch(batch)?;
         if batch.num_rows() == 0 {
             continue;
         }

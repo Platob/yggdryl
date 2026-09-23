@@ -237,8 +237,8 @@ impl<'message> NativeRow<'message> {
         let item = sequence.item();
         let identifier = item.index_of("securityaltid")?;
         let source = item.index_of("securityaltidsource")?;
-        let group = self.msg.as_value().as_sequence()?.get(at)?.as_sequence()?;
-        for occurrence in group {
+        let group = self.msg.as_value().as_sequence()?.get(at)?.as_serie()?;
+        for occurrence in group.iter() {
             let held = occurrence.as_sequence()?;
             if held.get(source).and_then(Scalar::as_str) == Some(source_value) {
                 return held

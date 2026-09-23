@@ -7,7 +7,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array};
-use yggdryl::{DataType, Field, FieldPath, Int32Serie, Run, Scalar, Serie, StructType, Value};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, FieldPath, Int32Serie, Run, Scalar, Serie, StructType, Value,
+};
 
 /// Three prices as a schema-free run.
 fn run() -> Serie {
@@ -21,15 +23,15 @@ fn run() -> Serie {
 /// The same three prices as an int64 column.
 fn column() -> Serie {
     let array: ArrayRef = Arc::new(Int64Array::from(vec![125, 126, 127]));
-    Serie::from_arrow_array(Field::new("price", DataType::Int64, false), array)
-        .expect("an int64 column")
+    let field = Field::new("price", DataType::Int64, false);
+    Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new()).expect("an int64 column")
 }
 
 /// The int32 column of `values` under `name`.
 fn int32_column(name: &str, values: Vec<i32>) -> Serie {
     let array: ArrayRef = Arc::new(Int32Array::from(values));
-    Serie::from_arrow_array(Field::new(name, DataType::Int32, false), array)
-        .expect("an int32 column")
+    let field = Field::new(name, DataType::Int32, false);
+    Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new()).expect("an int32 column")
 }
 
 /// A record column of two quotes: an identifier and a nested venue record.
@@ -655,8 +657,12 @@ fn a_cell_three_levels_deep_is_written_in_place_and_a_child_is_replaced_whole() 
     );
 
     let volumes: ArrayRef = Arc::new(Int64Array::from(vec![10, 20]));
-    let volume =
-        Serie::from_arrow_array(Field::new("volume", DataType::Int64, false), volumes).unwrap();
+    let volume = Serie::from_arrow_array(
+        Some(&Field::new("volume", DataType::Int64, false)),
+        volumes,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     quotes.set_child(volume).expect("a child added");
     assert_eq!(quotes.children().len(), 3);
     assert_eq!(quotes.field().unwrap().fields().len(), 3);
@@ -670,7 +676,12 @@ fn a_cell_three_levels_deep_is_written_in_place_and_a_child_is_replaced_whole() 
     );
 
     let short: ArrayRef = Arc::new(Int64Array::from(vec![1]));
-    let short = Serie::from_arrow_array(Field::new("bid", DataType::Int64, false), short).unwrap();
+    let short = Serie::from_arrow_array(
+        Some(&Field::new("bid", DataType::Int64, false)),
+        short,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     assert!(quotes.set_child(short).is_err());
     assert!(quotes.set_child(run()).is_err());
     assert!(column().set_child(quotes.clone()).is_err());

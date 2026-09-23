@@ -229,8 +229,6 @@ const nativeScalarIntoArrowBatch =
   NativeScalar.prototype._intoArrowBatchIpcNative
 const nativeScalarIntoArrowTable =
   NativeScalar.prototype._intoArrowTableIpcNative
-const nativeFieldCastArrowArray =
-  NativeField.prototype._castArrowArrayIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -282,7 +280,6 @@ delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowBatchIpcNative
 delete NativeScalar.prototype._intoArrowTableIpcNative
-delete NativeField.prototype._castArrowArrayIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -1217,33 +1214,75 @@ Object.defineProperties(PartitionSpec.prototype, {
   },
 })
 
+// The three answers every cast takes, in the order the native doors read
+// them. An absent answer is skipped and takes the core's default; a key the
+// cast does not know is refused rather than silently doing nothing.
+const CAST_OPTION_NAMES = new Set(['safe', 'nullability', 'representation'])
+function castOptionArgs(options) {
+  if (options === undefined || options === null) return []
+  if (typeof options !== 'object') {
+    throw new TypeError('cast options must be an object of safe, nullability and representation')
+  }
+  for (const key of Object.keys(options)) {
+    if (!CAST_OPTION_NAMES.has(key)) {
+      throw new TypeError(
+        `cast options take safe, nullability and representation, got ${JSON.stringify(key)}`,
+      )
+    }
+  }
+  return [options.safe, options.nullability, options.representation]
+}
+
+// A field argument: a native Field as it is, any FieldLike through
+// `Field.from`, and an absent one skipped.
+function optionalField(field) {
+  if (field === undefined || field === null) return undefined
+  return field instanceof NativeField ? field : Field.from(field)
+}
+
+// A reader door takes the native stream it names and consumes it; another
+// Arrow representation is converted by the caller, explicitly.
+function nativeBatchReader(reader, label) {
+  if (reader instanceof binding.BatchReader) return reader
+  throw new TypeError(
+    `${label} takes a native BatchReader; use BatchReader.from(value) to convert another Arrow representation`,
+  )
+}
+
 Object.defineProperties(Scalar, {
   fromArrowScalar: {
-    value(value, field) {
-      return nativeScalarFromArrowScalar(arrowScalarIntoIPC(value), field)
+    value(value, field, options) {
+      return nativeScalarFromArrowScalar(
+        arrowScalarIntoIPC(value),
+        optionalField(field),
+        ...castOptionArgs(options),
+      )
     },
   },
   fromArrowArray: {
-    value(value, field) {
+    value(value, field, options) {
       return nativeScalarFromArrowArray(
         arrowVectorIntoIPC(value, 'Scalar.fromArrowArray input'),
-        field,
+        optionalField(field),
+        ...castOptionArgs(options),
       )
     },
   },
   fromArrowBatch: {
-    value(value, field) {
+    value(value, field, options) {
       return nativeScalarFromArrowBatch(
         arrowBatchIntoIPC(value, 'Scalar.fromArrowBatch input'),
-        field,
+        optionalField(field),
+        ...castOptionArgs(options),
       )
     },
   },
   fromArrowTable: {
-    value(value, field) {
+    value(value, field, options) {
       return nativeScalarFromArrowTable(
         arrowTableIntoIPC(value, 'Scalar.fromArrowTable input'),
-        field,
+        optionalField(field),
+        ...castOptionArgs(options),
       )
     },
   },
@@ -1370,6 +1409,7 @@ Object.defineProperties(Scalar.prototype, {
 // private natives the loader keeps.
 const nativeSerie = Object.freeze({
   fromScalars: NativeSerie._fromScalarsNative.bind(NativeSerie),
+  fromDefault: NativeSerie._fromDefaultNative.bind(NativeSerie),
   fromArrowArray: NativeSerie._fromArrowArrayIpcNative.bind(NativeSerie),
   fromArrowBatch: NativeSerie._fromArrowBatchIpcNative.bind(NativeSerie),
   leaf: Object.getOwnPropertyDescriptor(NativeSerie.prototype, '_leafNative').get,
@@ -1382,6 +1422,8 @@ const nativeSerie = Object.freeze({
   extend: NativeSerie.prototype._extendNative,
   resize: NativeSerie.prototype._resizeNative,
   setCell: NativeSerie.prototype._setCellNative,
+  cast: NativeSerie.prototype._castNative,
+  intoArrowScalar: NativeSerie.prototype._intoArrowScalarIpcNative,
   intoArrowArray: NativeSerie.prototype._intoArrowArrayIpcNative,
   intoArrowBatch: NativeSerie.prototype._intoArrowBatchIpcNative,
   offsets: NativeSerie.prototype._offsetsNative,
@@ -1422,6 +1464,8 @@ for (const name of [
   '_extendNative',
   '_resizeNative',
   '_setCellNative',
+  '_castNative',
+  '_intoArrowScalarIpcNative',
   '_intoArrowArrayIpcNative',
   '_intoArrowBatchIpcNative',
   '_offsetsNative',
@@ -1477,6 +1521,7 @@ const Serie = publicNativeClass(
   'Serie',
   new Set([
     '_fromScalarsNative',
+    '_fromDefaultNative',
     '_fromArrowArrayIpcNative',
     '_fromArrowBatchIpcNative',
     '_emptyNative',
@@ -1617,37 +1662,49 @@ Object.defineProperties(Serie, {
       )
     },
   },
+  fromDefault: {
+    configurable: true,
+    value(field, rows = 1) {
+      return describedSerie(
+        nativeSerie.fromDefault(field instanceof NativeField ? field : Field.from(field), rows),
+      )
+    },
+  },
   fromArrowArray: {
     configurable: true,
-    value(vector, field) {
+    value(vector, field, options) {
       return describedSerie(
         nativeSerie.fromArrowArray(
           arrowVectorIntoIPC(vector, 'Serie.fromArrowArray input'),
-          field == null ? undefined : field instanceof NativeField ? field : Field.from(field),
+          optionalField(field),
+          ...castOptionArgs(options),
         ),
       )
     },
   },
+  // A batch and a table are both the rows of one schema: a table crosses as
+  // the stream of its batches, and one batch as a stream of one.
   fromArrowBatch: {
     configurable: true,
-    value(batch) {
+    value(batch, root, options) {
+      const bytes = arrow().isArrowTable(batch)
+        ? arrowTableIntoIPC(batch, 'Serie.fromArrowBatch input')
+        : arrowBatchIntoIPC(batch, 'Serie.fromArrowBatch input')
       return describedSerie(
-        nativeSerie.fromArrowBatch(arrowBatchIntoIPC(batch, 'Serie.fromArrowBatch input')),
-      )
-    },
-  },
-  fromArrowTable: {
-    configurable: true,
-    value(table) {
-      return describedSerie(
-        nativeSerie.fromArrowBatch(arrowTableIntoIPC(table, 'Serie.fromArrowTable input')),
+        nativeSerie.fromArrowBatch(bytes, optionalField(root), ...castOptionArgs(options)),
       )
     },
   },
   fromArrowReader: {
     configurable: true,
-    value(reader) {
-      return describedSerie(nativeSerie.fromArrowReader(reader))
+    value(reader, root, options) {
+      return describedSerie(
+        nativeSerie.fromArrowReader(
+          nativeBatchReader(reader, 'Serie.fromArrowReader'),
+          optionalField(root),
+          ...castOptionArgs(options),
+        ),
+      )
     },
   },
 })
@@ -1744,6 +1801,26 @@ Object.defineProperties(Serie.prototype, {
       ])
     },
   },
+  cast: {
+    configurable: true,
+    value(field, options) {
+      return describedSerie(
+        Reflect.apply(nativeSerie.cast, this, [
+          field instanceof NativeField || field instanceof NativeDataType ? field : Field.from(field),
+          ...castOptionArgs(options),
+        ]),
+      )
+    },
+  },
+  intoArrowScalar: {
+    configurable: true,
+    value() {
+      return arrowScalarFromIPC(
+        Reflect.apply(nativeSerie.intoArrowScalar, this, []),
+        'Serie.intoArrowScalar output',
+      )
+    },
+  },
   intoArrowArray: {
     configurable: true,
     value() {
@@ -1772,7 +1849,88 @@ Object.defineProperty(Scalar.prototype, 'asSerie', {
   },
 })
 
+// A stream of record series: the natives it reads by are kept here, and
+// each serie it yields is handed out as its leaf's class.
+const NativeSerieReader = binding.SerieReader
+const nativeSerieReader = Object.freeze({
+  fromArrowReader: NativeSerieReader._fromArrowReaderNative.bind(NativeSerieReader),
+  next: NativeSerieReader.prototype._nextNative,
+})
+delete NativeSerieReader.prototype._nextNative
+const SerieReader = publicNativeClass(
+  NativeSerieReader,
+  'SerieReader',
+  new Set(['_fromArrowReaderNative']),
+)
+Object.defineProperty(SerieReader, 'fromArrowReader', {
+  configurable: true,
+  value(reader, root, options) {
+    return nativeSerieReader.fromArrowReader(
+      nativeBatchReader(reader, 'SerieReader.fromArrowReader'),
+      optionalField(root),
+      ...castOptionArgs(options),
+    )
+  },
+})
+Object.defineProperty(SerieReader.prototype, Symbol.iterator, {
+  configurable: true,
+  value: function* series() {
+    for (let serie; (serie = Reflect.apply(nativeSerieReader.next, this, [])) !== null; ) {
+      yield describedSerie(serie)
+    }
+  },
+})
+
+// The cast compiled once. A source is a Field, or the schema an Apache Arrow
+// JS schema, table or batch carries, imported as the record `row` its
+// batches are read as; anything else is a FieldLike.
+const NativeArrowCastPlan = binding.ArrowCastPlan
+const nativeArrowCastPlan = Object.freeze({
+  compile: NativeArrowCastPlan._compileNative.bind(NativeArrowCastPlan),
+  apply: NativeArrowCastPlan.prototype._applyNative,
+})
+delete NativeArrowCastPlan.prototype._applyNative
+const ArrowCastPlan = publicNativeClass(
+  NativeArrowCastPlan,
+  'ArrowCastPlan',
+  new Set(['_compileNative']),
+)
+
+function castPlanSource(source) {
+  if (source instanceof NativeField) return source
+  if (source !== null && typeof source === 'object') {
+    const runtime = arrow()
+    const schema = source instanceof runtime.Schema ? source : source.schema
+    if (schema instanceof runtime.Schema) {
+      return binding.BatchReader.from(new runtime.Table(schema)).field
+    }
+  }
+  return Field.from(source)
+}
+
+Object.defineProperty(ArrowCastPlan, 'compile', {
+  configurable: true,
+  value(source, target, options) {
+    return nativeArrowCastPlan.compile(
+      castPlanSource(source),
+      target instanceof NativeField ? target : Field.from(target),
+      ...castOptionArgs(options),
+    )
+  },
+})
+Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
+  configurable: true,
+  value(serie) {
+    if (!(serie instanceof NativeSerie)) {
+      throw new TypeError('ArrowCastPlan.apply takes a Serie')
+    }
+    return describedSerie(Reflect.apply(nativeArrowCastPlan.apply, this, [serie]))
+  },
+})
+
 binding.Serie = Serie
+binding.SerieReader = SerieReader
+binding.ArrowCastPlan = ArrowCastPlan
 binding.ListSerie = ListSerie
 binding.LargeListSerie = LargeListSerie
 binding.ListViewSerie = ListViewSerie
@@ -2864,21 +3022,6 @@ Object.defineProperty(Field, 'fromArrow', {
   },
 })
 
-Object.defineProperty(Field.prototype, 'castArrowArray', {
-  configurable: true,
-  value(value, options) {
-    return arrowVectorFromIPC(
-      Reflect.apply(nativeFieldCastArrowArray, this, [
-        arrowVectorIntoIPC(value, 'Field.castArrowArray input'),
-        options?.safe,
-        options?.nullability,
-        options?.representation,
-      ]),
-      'Field.castArrowArray output',
-    )
-  },
-})
-
 const fieldUpdate = Field.prototype.update
 Field.prototype.update = function update(values) {
   return fieldUpdate.call(this, normalizeMetadata(values))
@@ -3276,6 +3419,7 @@ const { icebergBatchReader, intoField } = installRecords({
   Field,
   IOBase,
   RecordOptions,
+  SerieReader,
   TextOptions,
   Table: binding.Table,
   Tables: binding.Tables,

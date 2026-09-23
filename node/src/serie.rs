@@ -9,16 +9,21 @@
 //! serie is handed out as by the leaf `_leafNative` names, so nesting reads
 //! typed all the way down. Arrow crosses as copied IPC, as it does for every
 //! other value of this binding.
+//!
+//! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
+//! native `BatchReader`, every batch cast by the one plan the core compiled
+//! when the reader was built.
 
 use std::borrow::Cow;
 use std::ops::Range;
 
 use arrow_array::RecordBatch;
-use napi::bindgen_prelude::{Buffer, ClassInstance, Generator, Result, Uint8Array};
+use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Generator, Result, Uint8Array};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
-use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieValue};
+use yggdryl::{
+    ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieReader, SerieValue,
+};
 
 use crate::datatype::JsDataType;
 use crate::field::JsField;
@@ -91,29 +96,43 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
     values.iter().map(|value| (*value).into() as f64).collect()
 }
 
-/// Take the columns of a one-column IPC stream as the column of `field`.
-fn column_from_ipc(bytes: &[u8], field: Option<ClassInstance<'_, JsField>>) -> Result<Serie> {
+/// The column a one-column Arrow IPC stream holds, through the core array
+/// door: of its own layout under the `item` field the core names an array
+/// by, or cast into `field` under `options`.
+///
+/// The stream lands once as the record of its batches - its own schema, so
+/// nothing is cast there - and its one child's buffers take the array door
+/// once: one plan however many batches the vector crossed as. The IPC
+/// column's own name and nullability are the bridge's, never the caller's.
+pub(crate) fn column_from_ipc(
+    bytes: &[u8],
+    label: &str,
+    field: Option<&CoreField>,
+    options: ArrowCastOptions,
+) -> Result<Serie> {
     let (schema, batches) = arrow_batches(bytes)?;
-    ensure_one_column(&schema, "Serie")?;
-    let inferred = CoreField::from_arrow_field_ref(std::sync::Arc::clone(&schema.fields()[0]))
-        .map_err(napi_error)?;
-    let field = field
-        .as_ref()
-        .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-    let mut serie = Serie::empty(field.clone()).map_err(napi_error)?;
-    for batch in batches {
-        let array = batch.columns()[0].clone();
-        let array = if field == inferred {
-            array
-        } else {
-            field
-                .cast_arrow_array(array, ArrowCastOptions::new())
-                .map_err(napi_error)?
-        };
-        let piece = Serie::from_arrow_array(field.clone(), array).map_err(napi_error)?;
-        serie.extend_from_serie(&piece).map_err(napi_error)?;
-    }
-    Ok(serie)
+    ensure_one_column(&schema, label)?;
+    let reader = yggdryl::arrow::batch_reader(schema, batches);
+    let records =
+        Serie::from_arrow_reader(None, reader, ArrowCastOptions::new()).map_err(napi_error)?;
+    let column = records
+        .as_struct()
+        .and_then(|records| records.child_at(0))
+        .ok_or_else(|| napi_error(format!("{label} IPC has no value column")))?;
+    let array = column.require_arrow_array().map_err(napi_error)?;
+    Serie::from_arrow_array(field, array, options).map_err(napi_error)
+}
+
+/// The record column an Arrow IPC stream's batches hold: of its own schema,
+/// or cast into `root` under `options`.
+pub(crate) fn records_from_ipc(
+    bytes: &[u8],
+    root: Option<&CoreField>,
+    options: ArrowCastOptions,
+) -> Result<Serie> {
+    let (schema, batches) = arrow_batches(bytes)?;
+    let reader = yggdryl::arrow::batch_reader(schema, batches);
+    Serie::from_arrow_reader(root, reader, options).map_err(napi_error)
 }
 
 #[napi]
@@ -152,31 +171,67 @@ impl JsSerie {
             .map_err(napi_error)
     }
 
-    /// Decode one Arrow JS vector from its one-column IPC bridge.
+    /// `rows` copies of `field`'s canonical default.
+    #[napi(factory, js_name = "_fromDefaultNative", skip_typescript)]
+    pub fn from_default_native(field: ClassInstance<'_, JsField>, rows: f64) -> Result<Self> {
+        Serie::from_default(field.inner.clone(), position(rows, "rows")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Decode one Arrow JS vector from its one-column IPC bridge, cast into
+    /// `field` when one is given.
     #[napi(factory, js_name = "_fromArrowArrayIpcNative", skip_typescript)]
     pub fn from_arrow_array_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        column_from_ipc(&bytes, field).map(Self::from_core)
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        column_from_ipc(
+            &bytes,
+            "Serie",
+            field.as_ref().map(|field| &field.inner),
+            options,
+        )
+        .map(Self::from_core)
     }
 
-    /// Decode one Arrow JS record batch or table as a record column.
+    /// Decode one Arrow JS record batch or table as a record column, cast
+    /// into `root` when one is given.
     #[napi(factory, js_name = "_fromArrowBatchIpcNative", skip_typescript)]
-    pub fn from_arrow_batch_ipc_native(bytes: Uint8Array) -> Result<Self> {
-        let (schema, batches) = arrow_batches(&bytes)?;
-        let reader = yggdryl::arrow::batch_reader(schema, batches);
-        Serie::from_arrow_reader(reader)
+    pub fn from_arrow_batch_ipc_native(
+        bytes: Uint8Array,
+        root: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<Self> {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        records_from_ipc(&bytes, root.as_ref().map(|root| &root.inner), options)
             .map(Self::from_core)
-            .map_err(napi_error)
     }
 
-    /// Drain a native `BatchReader` into one record column named `row`.
+    /// Drain a native `BatchReader` into one record column: of its own
+    /// schema, named `row`, or cast into `root`.
     #[napi(factory, js_name = "_fromArrowReaderNative", skip_typescript)]
-    pub fn from_arrow_reader(mut reader: ClassInstance<'_, JsBatchReader>) -> Result<Self> {
-        Serie::from_arrow_reader(reader.take()?)
-            .map(Self::from_core)
-            .map_err(napi_error)
+    pub fn from_arrow_reader(
+        mut reader: ClassInstance<'_, JsBatchReader>,
+        root: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<Self> {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        Serie::from_arrow_reader(
+            root.as_ref().map(|root| &root.inner),
+            reader.take()?,
+            options,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
     /// The field a column carries, or `null` for a run.
@@ -477,6 +532,36 @@ impl JsSerie {
             .map_err(napi_error)
     }
 
+    /// This column under `target` - a `Field`, or a `DataType` as its required
+    /// `value` field - cast once; a run has no layout to cast.
+    #[napi(js_name = "_castNative", skip_typescript)]
+    pub fn cast_native(
+        &self,
+        target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<Self> {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let target = match target {
+            Either::A(field) => field.inner.clone(),
+            Either::B(dtype) => dtype.inner.clone().required_field("value"),
+        };
+        self.inner
+            .cast(&target, options)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Encode this one-row column as the one-row Arrow IPC a scalar crosses
+    /// as; any other length, and a run, is refused.
+    #[napi(js_name = "_intoArrowScalarIpcNative", skip_typescript)]
+    pub fn into_arrow_scalar_ipc_native(&self) -> Result<Buffer> {
+        let field = self.inner.require_field().map_err(napi_error)?;
+        let scalar = self.inner.into_arrow_scalar().map_err(napi_error)?;
+        arrow_array_ipc(field, scalar.into_inner())
+    }
+
     /// Encode this column as a one-column Arrow IPC array; a run has none.
     #[napi(js_name = "_intoArrowArrayIpcNative", skip_typescript)]
     pub fn into_arrow_array_ipc_native(&self) -> Result<Buffer> {
@@ -707,5 +792,92 @@ impl JsSerie {
             .without_child(&name)
             .map(|leaf| Self::from_core(leaf.into_serie()))
             .map_err(napi_error)
+    }
+}
+
+/// One record serie per batch of a native `BatchReader`, each cast by the
+/// one plan the core compiled from the stream's schema.
+///
+/// The reader is a stream, read once: iterating it and `intoArrowReader`
+/// both consume it, and a batch's failure surfaces at the pull that read it.
+#[napi(js_name = "SerieReader")]
+pub struct JsSerieReader {
+    /// The undrained core reader, taken by whatever consumes it.
+    inner: Option<SerieReader>,
+    /// The record every yielded serie is typed by, kept after the reader
+    /// is taken.
+    root: CoreField,
+    /// Whether `intoArrowReader` took the reader rather than draining it here.
+    taken: bool,
+}
+
+/// The refusal a second consumer of one stream reads.
+fn serie_reader_consumed() -> napi::Error {
+    napi_error("this SerieReader has already been consumed; a stream is read once")
+}
+
+#[napi]
+impl JsSerieReader {
+    /// Read `reader`'s batches as record series: of its own schema, named
+    /// `row`, or cast into `root`. The reader is consumed.
+    #[napi(factory, js_name = "_fromArrowReaderNative", skip_typescript)]
+    pub fn from_arrow_reader(
+        mut reader: ClassInstance<'_, JsBatchReader>,
+        root: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<Self> {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let inner = SerieReader::from_arrow_reader(
+            root.as_ref().map(|root| &root.inner),
+            reader.take()?,
+            options,
+        )
+        .map_err(napi_error)?;
+        Ok(Self {
+            root: inner.field().clone(),
+            inner: Some(inner),
+            taken: false,
+        })
+    }
+
+    /// The record every yielded serie is typed by.
+    #[napi(getter)]
+    pub fn field(&self) -> JsField {
+        JsField::from_core(self.root.clone())
+    }
+
+    /// Pull the next batch as its record serie, or `null` at the end.
+    ///
+    /// The native half of the iteration protocol; the loader wraps it so
+    /// `for...of` yields each serie as its leaf's class.
+    #[napi(js_name = "_nextNative", skip_typescript)]
+    pub fn next_native(&mut self) -> Result<Option<JsSerie>> {
+        if self.taken {
+            return Err(serie_reader_consumed());
+        }
+        let Some(reader) = self.inner.as_mut() else {
+            return Ok(None);
+        };
+        if let Some(landed) = reader.next() {
+            return landed
+                .map(|serie| Some(JsSerie::from_core(serie)))
+                .map_err(napi_error);
+        }
+        self.inner = None;
+        Ok(None)
+    }
+
+    /// The stream's batches reconciled to the root as a native
+    /// `BatchReader`, never landed; the reader is consumed.
+    #[napi]
+    pub fn into_arrow_reader(&mut self) -> Result<JsBatchReader> {
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        Ok(JsBatchReader::from_core(
+            reader.into_arrow_reader(),
+            self.root.name(),
+        ))
     }
 }

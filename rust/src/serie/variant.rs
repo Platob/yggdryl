@@ -276,9 +276,9 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = (parent, proven);
+    let _ = (parent, proof);
     if !matches!(field.dtype(), DataType::Variant)
         || !matches!(array.data_type(), ArrowDataType::Struct(_))
     {

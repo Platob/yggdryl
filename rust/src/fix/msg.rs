@@ -18,7 +18,7 @@ use crate::{
     BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
     Side, State, StructType, Uuid,
 };
-use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
+use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
 /// The nanoseconds in one day: what a transaction time at midnight to the
 /// nanosecond is a multiple of, and what a day-only `TransactTime(60)` is
@@ -847,13 +847,13 @@ impl FixMsg {
     /// `TrdRegTimestamp(769)` and `TrdRegTimestampType(770)` members hold in
     /// each of them; nothing where the dictionary declares no such group, or
     /// where the group it declares does not carry both members.
-    fn trdregtimestamp_members(&self) -> Option<(&[Scalar], usize, usize)> {
+    fn trdregtimestamp_members(&self) -> Option<(&Serie, usize, usize)> {
         let at = self.index_of_group(768)?;
         let sequence = (self.field.fields().get(at)?.dtype()).as_serie_type()?;
         let members = sequence.item().fields();
         let stamp = position_of_tag(&self.registry, members, 769)?;
         let kind = position_of_tag(&self.registry, members, 770)?;
-        let occurrences = self.value.as_sequence()?.get(at)?.as_sequence()?;
+        let occurrences = self.value.as_sequence()?.get(at)?.as_serie()?;
         Some((occurrences, stamp, kind))
     }
 
@@ -1147,7 +1147,7 @@ impl FixMsg {
         self.value
             .as_sequence()?
             .get(at)?
-            .as_sequence()?
+            .as_serie()?
             .iter()
             .find_map(|occurrence| {
                 let held = occurrence.as_sequence()?;
@@ -1376,7 +1376,7 @@ impl FixMsg {
         );
         let group = self.value.as_sequence()?.get(at)?;
         group
-            .as_sequence()?
+            .as_serie()?
             .iter()
             .filter_map(|occurrence| {
                 let held = occurrence.as_sequence()?;
@@ -2566,9 +2566,9 @@ impl FixMsg {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
-                let held = value.as_sequence()?;
+                let len = value.as_serie()?.len();
                 let at = if *position < 0 {
-                    held.len().checked_sub(position.unsigned_abs() as usize)?
+                    len.checked_sub(position.unsigned_abs() as usize)?
                 } else {
                     usize::try_from(*position).ok()?
                 };
@@ -2701,7 +2701,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let tag = tag.unwrap_or(0);
     match field.dtype() {
         DataType::List(item) | DataType::LargeList(item) => {
-            let occurrences = value.as_sequence()?;
+            let occurrences = value.as_serie()?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.
             let item_facts = super::schema::tag_and_counter(registry, item);
@@ -2714,7 +2714,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
                         let own = item_facts.0.unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
                     }
-                    _ => entry_of(registry, item, occurrence),
+                    _ => entry_of(registry, item, &occurrence),
                 })
                 .collect();
             match counter {

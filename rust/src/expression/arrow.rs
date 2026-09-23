@@ -31,7 +31,8 @@
 //! A projection of bare columns reorders `ArrayRef`s and never touches a
 //! buffer; a struct child is the child array, shared.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use arrow_array::{
     Array, ArrayRef, BooleanArray, Datum, FixedSizeListArray, LargeListArray, ListArray,
@@ -40,7 +41,7 @@ use arrow_array::{
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, OffsetBuffer};
 use arrow_ord::cmp;
-use arrow_schema::{ArrowError, SchemaRef};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Fields, SchemaRef};
 
 use super::attribute::Attributes;
 use super::bind::{Bound, Kind, Node, StepKind};
@@ -49,7 +50,7 @@ use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
-use crate::cast::{ArrowCastOptions, cast_field_array};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
@@ -434,6 +435,68 @@ impl Expression {
     }
 }
 
+/// One column cast, held for every batch it answers.
+///
+/// The plan is compiled from the storage of the first column that needs it,
+/// never at bind: a term bound to answer rows plans nothing, and a cast that
+/// cannot be planned fails on the batch it meets, as it always has. A later
+/// column of another storage - a dictionary, a view, a batch its reader
+/// re-encoded - is planned in one drift slot, recompiled only when that
+/// storage changes. One holder casts into one target, under one policy,
+/// reading one source metadata.
+#[derive(Default)]
+pub(crate) struct ColumnCast {
+    first: OnceLock<ArrowCastPlan>,
+    drift: Mutex<PlanCache<Arc<ArrowCastPlan>>>,
+}
+
+impl ColumnCast {
+    /// Cast one column into `target`, its layout read from its storage and
+    /// the extension identity `metadata` carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a cast that cannot be planned from the column's
+    /// storage, or a value the target refuses.
+    pub(crate) fn reconcile(
+        &self,
+        target: &Field,
+        metadata: Option<&HashMap<String, String>>,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> Result<ArrayRef> {
+        let compile = |storage: &ArrowDataType| {
+            let source = ArrowField::new(target.name(), storage.clone(), true)
+                .with_metadata(metadata.cloned().unwrap_or_default());
+            ArrowCastPlan::compile_arrow(&Arc::new(source), target, options, Deferred::default())
+        };
+        let first = match self.first.get() {
+            Some(plan) => plan,
+            None => {
+                let plan = compile(array.data_type())?;
+                self.first.get_or_init(|| plan)
+            }
+        };
+        if first.as_source().data_type() == array.data_type() {
+            return first.reconcile_array(array);
+        }
+        let storage = ArrowField::new(target.name(), array.data_type().clone(), true);
+        let storage = Fields::from(vec![storage]);
+        let plan = {
+            let mut drift = self.drift.lock().unwrap_or_else(PoisonError::into_inner);
+            Arc::clone(drift.get_or_compile(&storage, || compile(array.data_type()).map(Arc::new))?)
+        };
+        plan.reconcile_array(array)
+    }
+}
+
+/// A held plan is evaluation state, not part of what a bound term says.
+impl std::fmt::Debug for ColumnCast {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("ColumnCast").finish_non_exhaustive()
+    }
+}
+
 /// One batch as the stream it is.
 pub(crate) fn one_batch(batch: &RecordBatch) -> BatchReader {
     crate::arrow::batch_reader(batch.schema(), [batch.clone()])
@@ -559,13 +622,13 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             };
             Ok(Vector::Column(Arc::new(BooleanArray::new(values, None))))
         }
-        Kind::Cast(inner, safety) => {
+        Kind::Cast(inner, safety, cast) => {
             let rows = context.batch.num_rows();
             let array = evaluate(inner, context)?.into_column(rows)?;
             // The operand's Field keeps its extension identity in the cast:
             // an ASCII column meets a text literal as its trimmed text.
-            let source = inner.field.clone().into_arrow_field_ref()?;
-            Ok(Vector::Column(cast_field_array(
+            let source = inner.field.as_arrow_field_ref()?;
+            Ok(Vector::Column(cast.reconcile(
                 &node.field,
                 Some(source.metadata()),
                 array,

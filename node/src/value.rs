@@ -576,27 +576,3 @@ where
         .get::<T>(name)?
         .ok_or_else(|| napi_error(format!("missing JavaScript property {name:?}")))
 }
-
-pub(crate) fn arrow_scalar_to_ipc(
-    field: &yggdryl::Field,
-    array: arrow_array::ArrayRef,
-) -> Result<napi::bindgen_prelude::Buffer> {
-    use std::sync::Arc;
-
-    use arrow_array::{RecordBatch, RecordBatchOptions};
-    use arrow_ipc::writer::StreamWriter;
-    use arrow_schema::Schema;
-
-    let schema = Arc::new(Schema::new([field
-        .clone()
-        .into_arrow_field_ref()
-        .map_err(napi_error)?]));
-    let options = RecordBatchOptions::new().with_row_count(Some(1));
-    let batch =
-        RecordBatch::try_new_with_options(schema, vec![array], &options).map_err(napi_error)?;
-    let mut writer =
-        StreamWriter::try_new(Vec::new(), batch.schema().as_ref()).map_err(napi_error)?;
-    writer.write(&batch).map_err(napi_error)?;
-    writer.finish().map_err(napi_error)?;
-    Ok(writer.into_inner().map_err(napi_error)?.into())
-}

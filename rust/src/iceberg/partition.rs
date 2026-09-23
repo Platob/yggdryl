@@ -607,7 +607,7 @@ impl PartitionSpec {
     /// bare field array a v1 table writes.
     pub fn from_json(document: &Scalar) -> Result<Self> {
         // v1 wrote `partition-spec` as a bare array of fields with no id.
-        if let Some(entries) = document.as_sequence() {
+        if let Some(entries) = document.as_serie() {
             let mut fields = Vec::with_capacity(entries.len());
             for (offset, entry) in entries.iter().enumerate() {
                 let offset = i32::try_from(offset).map_err(|_| {
@@ -621,7 +621,7 @@ impl PartitionSpec {
                     ))
                 })?;
                 fields.push(PartitionField::from_json_with_field_id(
-                    entry,
+                    &entry,
                     Some(field_id),
                 )?);
             }
@@ -641,15 +641,15 @@ impl PartitionSpec {
             })?;
         let entries = document
             .get_key_str("fields")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a \"fields\" array in partition spec {spec_id}"
                 ))
             })?;
         let mut fields = Vec::with_capacity(entries.len());
-        for entry in entries {
-            fields.push(PartitionField::from_json(entry)?);
+        for entry in entries.iter() {
+            fields.push(PartitionField::from_json(&entry)?);
         }
         let spec = Self { spec_id, fields };
         spec.validate_shape()?;

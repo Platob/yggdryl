@@ -609,7 +609,8 @@ mod fields {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
     use yggdryl::string;
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructType,
+        ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StringEnum,
+        StructType,
     };
     use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField, StringField};
 
@@ -804,10 +805,14 @@ mod fields {
 
     /// Cast one recognized US-ASCII column to `target` through the batch path.
     fn cast_column(batch: RecordBatch, target: Field) -> yggdryl::arrow::Result<ArrayRef> {
-        Ok(root([target])
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?
-            .column(0)
-            .clone())
+        Ok(Serie::from_arrow_batch(
+            Some(&root([target])),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )?
+        .into_arrow_batch()?
+        .column(0)
+        .clone())
     }
 
     #[test]
@@ -815,9 +820,14 @@ mod fields {
         let field = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), true).unwrap();
         let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EU"), None]));
 
-        let cast = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cast = fixed_cells(&cast);
         assert_eq!(cast.value(0), b"USD\0");
         assert_eq!(cast.value(1), b"EU\0\0");
@@ -833,10 +843,13 @@ mod fields {
             ("U\0S", "NUL byte"),
         ] {
             let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some(value)]));
-            let refused = field
-                .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-                .unwrap_err()
-                .to_string();
+            let refused = Serie::from_arrow_array(
+                Some(&field.clone().into_field()),
+                source,
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_err()
+            .to_string();
             assert!(refused.contains("\"ccy\""), "{refused}");
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains(fact), "{refused}");
@@ -849,10 +862,14 @@ mod fields {
         // Bare storage declares nothing, so every cell is read as US-ASCII
         // through the one door bytes take, and written under the target.
         let source = fixed(4, &[Some(b"USD\0"), Some(b"EUR\0")]);
-        let cast = field
-            .to_field()
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cast = fixed_cells(&cast);
         assert_eq!(cast.value(0), b"USD\0");
         assert_eq!(cast.value(1), b"EUR\0");
@@ -860,11 +877,13 @@ mod fields {
         // The same storage carrying a non-ASCII byte is refused by row, naming
         // the charset that refused it.
         let broken = fixed(4, &[Some(b"USD\0"), Some(b"US\xC3\xA9")]);
-        let refused = field
-            .to_field()
-            .cast_arrow_array(broken, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            broken,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("row 1"), "{refused}");
         assert!(refused.contains("us-ascii"), "{refused}");
     }
@@ -953,7 +972,9 @@ mod fields {
             DataType::fixed_binary(4).unwrap().nullable_field("ccy"),
         )
         .unwrap();
-        assert!(Arc::ptr_eq(&same, &stored));
+        // A column holds its leaf as its own typed array, so the `Arc` around it
+        // is new; the buffers under it are the caller's.
+        assert!(same.to_data().ptr_eq(&stored.to_data()));
     }
 
     #[test]
@@ -964,9 +985,14 @@ mod fields {
         let source: ArrayRef =
             Arc::new(DictionaryArray::<Int32Type>::try_new(keys, values).unwrap());
 
-        let cast = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cast = fixed_cells(&cast);
         assert_eq!(cast.value(0), b"USD\0");
         assert_eq!(cast.value(1), b"EUR\0");
@@ -979,9 +1005,14 @@ mod fields {
         let field = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), false).unwrap();
         let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
 
-        let cast = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cast = fixed_cells(&cast);
         assert_eq!(cast.null_count(), 0);
         assert_eq!(cast.value(0), b"USD\0");
@@ -1013,8 +1044,9 @@ mod fields {
         )]));
         let batch = RecordBatch::try_new(schema, vec![Arc::new(position)]).unwrap();
 
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
         let position = cast
             .column(0)

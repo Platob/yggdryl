@@ -575,11 +575,11 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) ->
         | Scalar::LargeList(items)
         | Scalar::LargeListView(items) => {
             formatter.write_char('[')?;
-            for (index, item) in items.rows().iter().enumerate() {
+            for (index, item) in items.iter().enumerate() {
                 if index != 0 {
                     formatter.write_str(", ")?;
                 }
-                write_constructor_item(formatter, item)?;
+                write_constructor_item(formatter, &item)?;
             }
             formatter.write_char(']')
         }

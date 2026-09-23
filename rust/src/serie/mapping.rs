@@ -311,7 +311,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
@@ -325,7 +325,12 @@ pub(crate) fn column_of(
     let maps = held::<MapArray>(&array)?;
     let entries: ArrayRef = Arc::new(maps.entries().clone());
     let (offsets, values) = rebased(maps.offsets(), &entries);
-    let entries = super::arrow::column_of(Arc::new(entries_field.clone()), values, None, proven)?;
+    let entries = super::arrow::column_of(
+        Arc::new(entries_field.clone()),
+        values,
+        None,
+        proof.child(0),
+    )?;
     Ok(Some(
         MapSerie::new(field, offsets, entries, maps.nulls().cloned()).into_serie(),
     ))

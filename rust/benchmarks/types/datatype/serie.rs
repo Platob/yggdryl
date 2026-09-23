@@ -13,7 +13,9 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType, UnionMode};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, StructType, UnionMode,
+};
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
 /// --all-targets` under a second in a debug build.
@@ -46,7 +48,8 @@ fn price_rows() -> Vec<Scalar> {
 
 /// The column over a fresh [`price_array`], holding its buffers alone.
 fn price_column() -> Serie {
-    Serie::from_arrow_array(price_field(), price_array()).expect("an int64 column")
+    Serie::from_arrow_array(Some(&price_field()), price_array(), ArrowCastOptions::new())
+        .expect("an int64 column")
 }
 
 /// One non-null record root of two leaf columns.
@@ -160,14 +163,20 @@ fn quotes_union(mode: UnionMode) -> Serie {
 pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("serie");
 
-    // In. Taking buffers is a layout check and a null count on the validity
-    // words; taking values is the field's contract once per row and one
-    // layout. The gap is what a column buys a reader that already has Arrow.
+    // In. Taking buffers under a field is one cast plan compiled from the
+    // array's layout - the identity here, sharing the buffers - and a null
+    // count on the validity words; taking values is the field's contract once
+    // per row and one layout. The gap is what a column buys a reader that
+    // already has Arrow.
     let array = price_array();
     group.bench_function("from_arrow_array", |bencher| {
         bencher.iter(|| {
-            Serie::from_arrow_array(price_field(), ArrayRef::clone(black_box(&array)))
-                .expect("an int64 column")
+            Serie::from_arrow_array(
+                Some(&price_field()),
+                ArrayRef::clone(black_box(&array)),
+                ArrowCastOptions::new(),
+            )
+            .expect("an int64 column")
         });
     });
     let rows = price_rows();
@@ -239,7 +248,12 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
 
     // Out. A record root lends the buffers it holds as one table rather
     // than gathering rows.
-    let records = Serie::from_arrow_array(quotes_root(), quotes_array()).expect("a record column");
+    let records = Serie::from_arrow_array(
+        Some(&quotes_root()),
+        quotes_array(),
+        ArrowCastOptions::new(),
+    )
+    .expect("a record column");
     group.bench_function("into_arrow_batch", |bencher| {
         bencher.iter(|| {
             black_box(&records)

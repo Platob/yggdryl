@@ -6,7 +6,17 @@ use std::sync::Arc;
 
 use arrow_array::types::Int32Type;
 use arrow_array::{Array, ArrayRef, Int32Array, RunArray, StringArray};
-use yggdryl::{DataType, Field, RunEndEncodedSerie, Scalar, Serie, SerieValue};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, Nullability, RunEndEncodedSerie, Scalar, Serie, SerieValue,
+};
+
+/// The options a refusal is pinned under: a present value is never nulled
+/// and an absent one never repaired.
+fn strict() -> ArrowCastOptions {
+    ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(Nullability::Strict)
+}
 
 /// A run-end field of states, with `run_ends` of `width` over nullable
 /// UTF-8 values.
@@ -36,8 +46,12 @@ fn states_array() -> ArrayRef {
 
 /// [`states_array`] as a nullable column.
 fn states() -> Serie {
-    Serie::from_arrow_array(states_field(DataType::Int32, true), states_array())
-        .expect("a run-end column")
+    Serie::from_arrow_array(
+        Some(&states_field(DataType::Int32, true)),
+        states_array(),
+        ArrowCastOptions::new(),
+    )
+    .expect("a run-end column")
 }
 
 /// The five rows [`states_array`] encodes.
@@ -53,8 +67,12 @@ fn state_rows() -> Vec<Scalar> {
 
 #[test]
 fn a_required_column_with_an_absent_run_is_refused_at_the_door_naming_the_column() {
-    let refusal = Serie::from_arrow_array(states_field(DataType::Int32, false), states_array())
-        .expect_err("a required column admits no absent run");
+    let refusal = Serie::from_arrow_array(
+        Some(&states_field(DataType::Int32, false)),
+        states_array(),
+        strict(),
+    )
+    .expect_err("a required column admits no absent run");
     assert!(
         refusal.to_string().contains("state"),
         "the refusal names the column: {refusal}"
@@ -116,8 +134,12 @@ fn a_row_past_the_end_a_value_the_field_refuses_and_a_length_past_the_width_are_
 #[test]
 fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_run() {
     let array = states_array();
-    let column = Serie::from_arrow_array(states_field(DataType::Int32, true), Arc::clone(&array))
-        .expect("a run-end column");
+    let column = Serie::from_arrow_array(
+        Some(&states_field(DataType::Int32, true)),
+        Arc::clone(&array),
+        ArrowCastOptions::new(),
+    )
+    .expect("a run-end column");
     let leaf = column.as_run_end_encoded().expect("a run-end column");
 
     assert_eq!(
@@ -151,8 +173,12 @@ fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_run() {
 #[test]
 fn a_sliced_input_and_a_window_are_rebased_onto_the_runs_they_reach() {
     let sliced = states_array().slice(1, 3);
-    let column = Serie::from_arrow_array(states_field(DataType::Int32, true), sliced)
-        .expect("a sliced run array");
+    let column = Serie::from_arrow_array(
+        Some(&states_field(DataType::Int32, true)),
+        sliced,
+        ArrowCastOptions::new(),
+    )
+    .expect("a sliced run array");
     assert_eq!(column.len(), 3);
     assert_eq!(
         column.rows().into_owned(),
@@ -365,8 +391,12 @@ fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
             "writes alone never leave two equal runs side by side: {values:?}"
         );
     }
-    let crossed = Serie::from_arrow_array(field, column.require_arrow_array().unwrap())
-        .expect("the column crosses back in");
+    let crossed = Serie::from_arrow_array(
+        Some(&field),
+        column.require_arrow_array().unwrap(),
+        ArrowCastOptions::new(),
+    )
+    .expect("the column crosses back in");
     assert_eq!(crossed, column);
     assert_eq!(
         column.null_count(),

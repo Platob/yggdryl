@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, Int64Array, MapArray, StringArray, StructArray};
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, StructType};
 
 /// The entries record a tag mapping is stored as: a required text key and
 /// a nullable int64 value.
@@ -125,7 +125,12 @@ fn a_mapping_round_trips_through_arrow_and_a_column_built_by_pushes_is_the_laid_
 
     // Out through the door and back in, the rows are the rows.
     let out = laid_out.into_arrow_array().unwrap();
-    let back = Serie::from_arrow_array(tags_field(), Arc::clone(&out)).unwrap();
+    let back = Serie::from_arrow_array(
+        Some(&tags_field()),
+        Arc::clone(&out),
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     assert_eq!(back, laid_out);
     assert_eq!(back.rows().into_owned(), tag_rows());
     assert_eq!(back.into_arrow_array().unwrap().as_ref(), out.as_ref());
@@ -139,7 +144,8 @@ fn a_mapping_round_trips_through_arrow_and_a_column_built_by_pushes_is_the_laid_
 
     // A sliced array is rebased onto the entries it reaches.
     let sliced: ArrayRef = Arc::new(tags().slice(2, 1));
-    let window = Serie::from_arrow_array(tags_field(), sliced).unwrap();
+    let window =
+        Serie::from_arrow_array(Some(&tags_field()), sliced, ArrowCastOptions::new()).unwrap();
     let leaf = window.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 1]);
     assert_eq!(leaf.entries().len(), 1);
@@ -259,8 +265,41 @@ fn keys_sorted_is_read_off_the_field_and_laid_out_on_the_array() {
         ArrowDataType::Map(_, false)
     ));
 
-    // The layout that says sorted is not the layout that says unsorted.
-    assert!(Serie::from_arrow_array(sorted, Arc::new(tags())).is_err());
+    // The layout that says unsorted is cast into the one that says sorted:
+    // the same rows, now laid out under the sorted field.
+    let cast = Serie::from_arrow_array(Some(&sorted), Arc::new(tags()), ArrowCastOptions::new())
+        .expect("keys already in order cast into the sorted layout");
+    assert!(cast.as_map().unwrap().keys_sorted());
+    assert!(matches!(
+        cast.into_arrow_array().unwrap().data_type(),
+        ArrowDataType::Map(_, true)
+    ));
+    assert_eq!(cast.rows().as_ref(), tag_rows().as_slice());
+
+    // Keys out of order do not become sorted by being cast: the row that
+    // breaks the order is refused.
+    let unordered = MapArray::new(
+        Arc::new(ArrowField::new(
+            "entries",
+            ArrowDataType::Struct(entry_fields()),
+            false,
+        )),
+        OffsetBuffer::new(vec![0, 2].into()),
+        StructArray::new(
+            entry_fields(),
+            vec![
+                Arc::new(StringArray::from(vec!["b", "a"])),
+                Arc::new(Int64Array::from(vec![Some(1), Some(2)])),
+            ],
+            None,
+        ),
+        None,
+        false,
+    );
+    let refusal =
+        Serie::from_arrow_array(Some(&sorted), Arc::new(unordered), ArrowCastOptions::new())
+            .expect_err("b before a is not sorted");
+    assert!(refusal.to_string().contains("row 0"), "{refusal}");
 }
 
 #[test]

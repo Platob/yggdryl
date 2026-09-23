@@ -7,7 +7,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array};
-use yggdryl::{DataType, Decimal128, Field, Int32Serie, Scalar, Serie, SerieValue};
+use yggdryl::{
+    ArrowCastOptions, DataType, Decimal128, Field, Int32Serie, Scalar, Serie, SerieValue,
+};
 
 /// A nullable int64 column of six rows, two of them absent, straight off
 /// Arrow buffers.
@@ -20,8 +22,12 @@ fn counts() -> Serie {
         None,
         Some(6),
     ]));
-    Serie::from_arrow_array(Field::new("count", DataType::Int64, true), array)
-        .expect("an int64 column")
+    Serie::from_arrow_array(
+        Some(&Field::new("count", DataType::Int64, true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("an int64 column")
 }
 
 /// The hash a value writes into the default hasher.
@@ -173,8 +179,18 @@ fn every_edit_keeps_the_fields_own_arrow_datatype() {
 fn two_columns_of_equal_rows_are_one_value_whichever_field_types_them() {
     let a: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
     let b: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
-    let under_a = Serie::from_arrow_array(Field::new("a", DataType::Int32, false), a).unwrap();
-    let under_b = Serie::from_arrow_array(Field::new("b", DataType::Int32, true), b).unwrap();
+    let under_a = Serie::from_arrow_array(
+        Some(&Field::new("a", DataType::Int32, false)),
+        a,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
+    let under_b = Serie::from_arrow_array(
+        Some(&Field::new("b", DataType::Int32, true)),
+        b,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     let (left, right) = (
         under_a.as_int32().expect("int32"),
         under_b.as_int32().expect("int32"),
@@ -201,7 +217,12 @@ fn a_sorted_vec_of_leaves_and_the_sorted_vec_of_series_holding_them_agree() {
         .into_iter()
         .map(|values| {
             let array: ArrayRef = Arc::new(Int32Array::from(values));
-            Serie::from_arrow_array(Field::new("n", DataType::Int32, false), array).unwrap()
+            Serie::from_arrow_array(
+                Some(&Field::new("n", DataType::Int32, false)),
+                array,
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
         })
         .collect();
     let mut leaves: Vec<Int32Serie> = columns

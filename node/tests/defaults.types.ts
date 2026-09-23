@@ -1,6 +1,7 @@
 import {
   DataType,
   Field,
+  Serie,
   fields,
   type JSValueHint,
 } from '..'
@@ -47,7 +48,7 @@ const genericDtype = new DataType('int32')
 const unknownDtypeDefault: unknown = genericDtype.defaultJSValue()
 const genericField = new Field('value', genericDtype, false)
 const unknownFieldDefault: unknown = genericField.defaultJSValue()
-const arrowScalar: unknown = fixed.defaultArrowScalar()
+const arrowScalar: unknown = Serie.fromDefault(fixed).intoArrowScalar()
 const sparkDtype: DataType = fixed.dtype.intoSchemeCompat('spark')
 const arrowField: Field = fixed.intoSchemeCompat('arrow')
 
@@ -63,8 +64,8 @@ fixed.intoSchemeCompat('postgres')
 fixed._defaultJSValueNative()
 // @ts-expect-error private native hint-category bridge is hidden
 fixed.dtype._defaultJSHintNative()
-// @ts-expect-error private native Arrow bridge is hidden
-fixed.dtype._defaultArrowScalarIpcNative()
+// @ts-expect-error a default as Arrow JS is a column's: Serie.fromDefault
+fixed.dtype.defaultArrowScalar()
 
 void nullableValue
 void dtypeValue

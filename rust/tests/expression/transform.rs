@@ -302,4 +302,79 @@ mod grammar {
         );
         assert!(year.as_transform().is_derived());
     }
+
+    #[test]
+    fn a_stream_derives_every_batch_as_one_batch_does() {
+        use std::sync::Arc;
+
+        use arrow_array::{
+            Array, ArrayRef, Date32Array, Int32Array, Int64Array, RecordBatch, StructArray,
+        };
+        use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+
+        // A derivation at the root and one inside a struct, applied over a
+        // stream: every batch it yields is the batch that batch derives alone.
+        let mut year = DataType::Int32.nullable_field("year");
+        year.as_transform_mut()
+            .set_term(&"year(event)".parse().unwrap())
+            .unwrap();
+        let mut twice = DataType::Int64.nullable_field("twice");
+        twice
+            .as_transform_mut()
+            .set_term(&"a * 2".parse().unwrap())
+            .unwrap();
+        let inner = DataType::from(
+            StructType::from_fields([DataType::Int64.nullable_field("a"), twice]).unwrap(),
+        )
+        .nullable_field("inner");
+        let root = DataType::from(
+            StructType::from_fields([DataType::date32().required_field("event"), year, inner])
+                .unwrap(),
+        )
+        .required_field("row");
+
+        let batch = |days: &[i32], values: &[Option<i64>]| {
+            let a = Arc::new(Int64Array::from(values.to_vec())) as ArrayRef;
+            let inner = StructArray::from(vec![(
+                Arc::new(ArrowField::new("a", ArrowDataType::Int64, true)),
+                a,
+            )]);
+            RecordBatch::try_from_iter([
+                (
+                    "event",
+                    Arc::new(Date32Array::from(days.to_vec())) as ArrayRef,
+                ),
+                ("inner", Arc::new(inner) as ArrayRef),
+            ])
+            .unwrap()
+        };
+        let batches = vec![
+            batch(&[19_723, 0], &[Some(1), None]),
+            batch(&[], &[]),
+            batch(&[-365], &[Some(-4)]),
+        ];
+        let stream = yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone());
+        let applied = root
+            .apply_arrow_reader(stream, false, true, false, yggdryl::ArrowCastOptions::new())
+            .unwrap();
+        let mut yielded = 0;
+        for (position, (streamed, batch)) in applied.zip(&batches).enumerate() {
+            let alone = root.as_transform().apply_arrow_batch(batch).unwrap();
+            assert_eq!(streamed.unwrap(), alone, "batch {position}");
+            yielded += 1;
+        }
+        assert_eq!(yielded, batches.len());
+
+        let first = root.as_transform().apply_arrow_batch(&batches[0]).unwrap();
+        assert_eq!(
+            first.column_by_name("year").unwrap().as_ref(),
+            &Int32Array::from(vec![2024, 1970]) as &dyn Array
+        );
+        let inner = first.column_by_name("inner").unwrap();
+        let inner = inner.as_any().downcast_ref::<StructArray>().unwrap();
+        assert_eq!(
+            inner.column_by_name("twice").unwrap().as_ref(),
+            &Int64Array::from(vec![Some(2), None]) as &dyn Array
+        );
+    }
 }

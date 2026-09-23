@@ -8,8 +8,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, StringEnum, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, StringEnum, StructType};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
@@ -99,23 +98,27 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         let target = dtype.required_field("ccy");
         group.bench_function(BenchmarkId::new("utf8_ingest", name), |bencher| {
             bencher.iter(|| {
-                black_box(&target)
-                    .cast_arrow_array(
-                        Arc::clone(&column),
-                        ArrowCastOptions::new().with_safe(false),
-                    )
-                    .expect("the codes fit the width")
+                Serie::from_arrow_array(
+                    Some(black_box(&target)),
+                    Arc::clone(&column),
+                    ArrowCastOptions::new().with_safe(false),
+                )
+                .expect("the codes fit the width")
+                .require_arrow_array()
+                .expect("a cast column has a layout")
             });
         });
 
         // The stored column under its own root's schema, so the render sees
         // the extension identity exactly as a stored column carries it.
-        let stored = target
-            .cast_arrow_array(
-                Arc::clone(&column),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .expect("the codes fit the width");
+        let stored = Serie::from_arrow_array(
+            Some(&target),
+            Arc::clone(&column),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .expect("the codes fit the width")
+        .require_arrow_array()
+        .expect("a cast column has a layout");
         let batch = RecordBatch::try_new(
             root([target.clone()])
                 .into_arrow_schema()
@@ -125,9 +128,14 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         .expect("the stored column matches its schema");
         group.bench_function(BenchmarkId::new("utf8_render", name), |bencher| {
             bencher.iter(|| {
-                black_box(&text_root)
-                    .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
-                    .expect("the stored codes are valid")
+                Serie::from_arrow_batch(
+                    Some(black_box(&text_root)),
+                    &batch,
+                    ArrowCastOptions::new().with_safe(false),
+                )
+                .expect("the stored codes are valid")
+                .into_arrow_batch()
+                .expect("a record column is a table")
             });
         });
     }

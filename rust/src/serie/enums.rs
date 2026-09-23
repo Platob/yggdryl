@@ -357,7 +357,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Dictionary(..)) {
@@ -390,13 +390,13 @@ pub(crate) fn column_of(
         Arc::new(Field::new(field.name(), dictionary.key().clone(), true)),
         keys,
         None,
-        true,
+        &super::arrow::Proof::Proven,
     )?;
     let values = super::arrow::column_of(
         Arc::new(Field::new(field.name(), dictionary.value().clone(), true)),
         values,
         None,
-        proven,
+        proof.child(0),
     )?;
     Ok(Some(DictionarySerie::new(field, keys, values).into_serie()))
 }

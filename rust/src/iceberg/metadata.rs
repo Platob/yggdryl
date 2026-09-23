@@ -37,7 +37,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use super::{Transform, schema_from_json, schema_into_json};
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, Serie};
 
 /// Which revision of the Iceberg table specification a table is written to.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -169,7 +169,7 @@ impl SortOrder {
             })?;
         let entries = document
             .get_key_str("fields")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a sort field array on sort order {order_id}"
@@ -2678,10 +2678,11 @@ fn validate_versioned_document(document: &Scalar) -> Result<()> {
     reject_duplicate_document_string_ids(document, "encryption-keys", "key-id")?;
     for snapshot in document
         .get_key_str("snapshots")
-        .and_then(Scalar::as_sequence)
-        .unwrap_or_default()
+        .and_then(Scalar::as_serie)
+        .into_iter()
+        .flat_map(Serie::iter)
     {
-        Snapshot::from_json(snapshot)?.validate_for_version(version)?;
+        Snapshot::from_json(&snapshot)?.validate_for_version(version)?;
     }
     Ok(())
 }
@@ -2744,13 +2745,14 @@ fn reject_duplicate_document_string_ids(
     let mut seen = HashSet::new();
     for entry in document
         .get_key_str(collection)
-        .and_then(Scalar::as_sequence)
-        .unwrap_or_default()
+        .and_then(Scalar::as_serie)
+        .into_iter()
+        .flat_map(Serie::iter)
     {
         let Some(id) = entry.get_key_str(key).and_then(Scalar::as_str) else {
             continue;
         };
-        if !seen.insert(id) {
+        if !seen.insert(SmolStr::new(id)) {
             return Err(invalid(format_smolstr!(
                 "expected unique {key} values in {collection}, got {:?} more than once",
                 crate::text::elide_to(id, 64)
@@ -2764,8 +2766,9 @@ fn reject_duplicate_document_ids(document: &Scalar, collection: &str, key: &str)
     let mut seen = HashSet::new();
     for entry in document
         .get_key_str(collection)
-        .and_then(Scalar::as_sequence)
-        .unwrap_or_default()
+        .and_then(Scalar::as_serie)
+        .into_iter()
+        .flat_map(Serie::iter)
     {
         let Some(id) = entry.get_key_str(key).and_then(Scalar::as_i64) else {
             continue;

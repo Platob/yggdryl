@@ -413,7 +413,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Struct(_)) {
@@ -424,12 +424,13 @@ pub(crate) fn column_of(
         .fields()
         .iter()
         .zip(records.columns())
-        .map(|(child, column)| {
+        .enumerate()
+        .map(|(index, (child, column))| {
             super::arrow::column_of(
                 Arc::new(child.clone()),
                 Arc::clone(column),
                 records.nulls(),
-                proven,
+                proof.child(index),
             )
         })
         .collect::<crate::arrow::Result<Vec<Serie>>>()?;

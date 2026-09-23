@@ -289,7 +289,7 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
             .map_err(|failure| validation_error(root.name(), failure))?;
         return Ok(());
     }
-    let values = value.sequence_rows().ok_or_else(|| Error::InvalidRecord {
+    let values = value.as_serie().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(root.name()),
         reason: format_smolstr!(
             "expected a record or {expected} ordered values, got {}",
@@ -306,7 +306,7 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
         });
     }
     for (field, value) in root.fields().iter().zip(values.iter()) {
-        if let Err(failure) = validate_field_value(field, value) {
+        if let Err(failure) = validate_field_value(field, &value) {
             return Err(validation_error(root.name(), failure));
         }
     }
@@ -1842,9 +1842,8 @@ fn validate_sequence(
     if column_fits_item(serie, field) {
         return Ok(());
     }
-    let values = serie.rows();
-    for (index, value) in values.iter().enumerate() {
-        validate_field_value_at_depth(field, value, depth).map_err(|failure| {
+    for (index, value) in serie.iter().enumerate() {
+        validate_field_value_at_depth(field, &value, depth).map_err(|failure| {
             failure.prepend(FieldSegment::index(
                 i64::try_from(index).expect("allocated index fits i64"),
             ))

@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::cast::ArrowCastPlan;
 use crate::{DataType, Field, Scalar, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -374,7 +373,7 @@ where
 /// This is what an append is, and what a combine is: two streams end to end,
 /// each batch encoded as it arrives so neither side is collected. Whether
 /// either side is cast is decided *before* it gets here, by wrapping it in
-/// [`cast_reader`], so there is exactly one concatenation and one cast route.
+/// [`SerieReader`](crate::SerieReader), so there is exactly one concatenation and one cast route.
 struct Chained {
     first: BatchReader,
     second: BatchReader,
@@ -414,11 +413,12 @@ pub(crate) fn appended(
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
         first: stored,
-        second: cast_reader(
+        second: crate::SerieReader::from_arrow_reader(
+            Some(field),
             incoming,
-            field,
             crate::ArrowCastOptions::new().with_safe(safe),
-        )?,
+        )?
+        .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -429,7 +429,7 @@ pub(crate) fn appended(
 /// what a caller reaches for when they already know the shape both sides must
 /// land in.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
-/// cast when it is pulled, and [`cast_reader`] short-circuits a side that is
+/// cast when it is pulled, and [`SerieReader`](crate::SerieReader) short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back
 /// unchanged.
 ///
@@ -468,8 +468,18 @@ pub fn combined_as(
     safe: bool,
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
-        first: cast_reader(left, field, crate::ArrowCastOptions::new().with_safe(safe))?,
-        second: cast_reader(right, field, crate::ArrowCastOptions::new().with_safe(safe))?,
+        first: crate::SerieReader::from_arrow_reader(
+            Some(field),
+            left,
+            crate::ArrowCastOptions::new().with_safe(safe),
+        )?
+        .into_arrow_reader(),
+        second: crate::SerieReader::from_arrow_reader(
+            Some(field),
+            right,
+            crate::ArrowCastOptions::new().with_safe(safe),
+        )?
+        .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -503,7 +513,7 @@ pub fn combined_as(
 ///   cares about field identity, and a reassigned id corrupts a table's schema
 ///   evolution.
 /// - **The root name is left's**, and the merged root is a bounded,
-///   non-nullable Struct, as [`cast_reader`] requires. Because the merge never
+///   non-nullable Struct, as [`SerieReader`](crate::SerieReader) requires. Because the merge never
 ///   widens a datatype - it refuses instead - every column stays exactly what
 ///   one of the two sides declared, so a merged reader is appendable to an
 ///   Iceberg table wherever both inputs were.
@@ -628,47 +638,6 @@ fn reconciled(left: &Field, right: &Field) -> Result<Field> {
         .with_nullable(left.is_nullable() || right.is_nullable()))
 }
 
-/// One reader's batches, each cast to a declared root Field as it arrives.
-///
-/// The plan is compiled once from the inner reader's schema, so the batches
-/// differ only in the masks, offsets, and dictionary keys they carry. The
-/// inner reader is dropped the moment it can yield nothing more - exhausted,
-/// failed, or refused by the cast - which releases a C stream behind it at the
-/// same point an early close would, and fuses this reader after the failure
-/// rather than asking a source that already reported one.
-struct Cast {
-    inner: Option<BatchReader>,
-    plan: ArrowCastPlan,
-}
-
-impl Iterator for Cast {
-    type Item = std::result::Result<arrow_array::RecordBatch, ArrowError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let pulled = self.inner.as_mut()?.next();
-        let batch = match pulled {
-            Some(Ok(batch)) => batch,
-            other => {
-                self.inner = None;
-                return other;
-            }
-        };
-        match self.plan.apply(batch) {
-            Ok(cast) => Some(Ok(cast)),
-            Err(error) => {
-                self.inner = None;
-                Some(Err(ArrowError::ExternalError(Box::new(error))))
-            }
-        }
-    }
-}
-
-impl arrow_array::RecordBatchReader for Cast {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(self.plan.as_schema())
-    }
-}
-
 /// Return whether two schemas name the same columns, in the same order.
 ///
 /// This is the question a stream asks of a batch that is not the shape it
@@ -683,36 +652,6 @@ pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Sc
             .iter()
             .zip(right.fields())
             .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
-}
-
-/// Return `reader`'s batches cast to `field`, one batch at a time.
-///
-/// This is the cast half of a schema-directed read: the encoding has already
-/// skipped the columns the schema does not name, and this reorders, converts,
-/// and fills what is left so every batch really is the declared shape. Nothing
-/// is collected - a batch is cast when it is pulled - and nothing is planned
-/// twice: one [`ArrowCastPlan`] serves the whole stream, so a schema failure
-/// is reported here rather than on the first batch.
-///
-/// # Errors
-///
-/// Returns an error unless `field` is a bounded, non-nullable Struct root, or
-/// when the cast cannot be planned from the reader's schema.
-pub fn cast_reader(
-    inner: BatchReader,
-    field: &Field,
-    options: crate::ArrowCastOptions,
-) -> Result<BatchReader> {
-    let plan = ArrowCastPlan::compile(inner.schema().as_ref(), field, options)?;
-    if plan.is_identity() {
-        // An exact reader is already the declared shape, so casting each batch
-        // would only rebuild arrays it would then hand back unchanged.
-        return Ok(inner);
-    }
-    Ok(Box::new(Cast {
-        inner: Some(inner),
-        plan,
-    }))
 }
 
 /// Recover the failure a batch reader carried, unwrapping a core one.
@@ -937,29 +876,6 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
         }
     }
     Ok(decoded)
-}
-
-/// Materialize a bare datatype's canonical default as a one-row array.
-///
-/// The datatype planner is the authority, so [`DataType::Null`] and
-/// transparent logical wrappers with a null-only canonical default may be
-/// logically null even though the array projects through a synthetic
-/// non-nullable Field. [`Field::default_value`] remains the sole nullability
-/// authority for a caller-owned Field, reached through
-/// [`default_scalar_array`].
-pub(crate) fn default_dtype_scalar_array(dtype: &DataType) -> Result<ArrayRef> {
-    let field = Field::new("value", dtype.clone(), false);
-    let value = dtype.default_value()?;
-    value::array_from_values(&field, &[&value])
-}
-
-/// Materialize a Field's canonical default as a one-row array.
-pub(crate) fn default_scalar_array(field: &Field) -> Result<ArrayRef> {
-    let value = field.default_value()?;
-    // The core planner has already bounded and recursively validated this
-    // exact Field/value pair. Keep public [`scalar_array`] defensive for
-    // caller input without paying for a second Scalar validation here.
-    value::array_from_values(field, &[&value])
 }
 
 pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {

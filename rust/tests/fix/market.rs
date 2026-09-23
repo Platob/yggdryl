@@ -353,3 +353,35 @@ fn a_typed_price_outside_decimal18_is_refused_instead_of_becoming_zero() {
         "{error}"
     );
 }
+
+/// A snapshot whose entries group the row holds as a column - what a row
+/// read out of Arrow carries - answers the operations the parse did.
+#[test]
+fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
+    let registry = committed_registry();
+    let parsed = message(
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|262=REQ-1|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=101|271=11|10=0|",
+    );
+    let expected = parsed.market_operations().expect("a full refresh");
+    assert_eq!(expected.len(), 2);
+    let (root, row) = super::restatable(&registry, &parsed, &[35, 52, 262]);
+    let at = root
+        .fields()
+        .iter()
+        .position(|field| field.dtype().as_serie_type().is_some())
+        .expect("the entries' column");
+    let name = root.fields()[at].name().to_owned();
+    let run = FixMsg::with_registry(Arc::clone(&registry), root.clone(), row.clone())
+        .expect("the run-backed message");
+    let row = super::with_column_at(&row, at, &super::item_of(&root.fields()[at]));
+    let column = FixMsg::with_registry(registry, root, row).expect("the column-backed message");
+    assert!(super::holds_column(&column, &name));
+
+    assert_eq!(run.market_operations().unwrap(), expected);
+    assert_eq!(
+        column
+            .market_operations()
+            .expect("the entries read from a column"),
+        expected
+    );
+}

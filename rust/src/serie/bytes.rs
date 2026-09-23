@@ -928,7 +928,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::held;
     use super::string::{
@@ -936,7 +936,7 @@ pub(crate) fn column_of(
         LargeUtf8StringSerie, Utf8StringSerie, Utf8ViewStringSerie,
     };
 
-    let _ = (parent, proven);
+    let _ = (parent, proof);
     let text = is_text(field.dtype());
     Ok(Some(match array.data_type() {
         ArrowDataType::Utf8 => {

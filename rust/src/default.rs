@@ -722,15 +722,15 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         DefaultPlan::EmptySequence => {
             matches!(value, Scalar::List(serie) | Scalar::ListView(serie) | Scalar::FixedSizeList(serie) | Scalar::LargeList(serie) | Scalar::LargeListView(serie) if serie.is_empty())
         }
-        DefaultPlan::Sequence(plans) => value.sequence_rows().is_some_and(|values| {
+        DefaultPlan::Sequence(plans) => value.as_serie().is_some_and(|values| {
             values.len() == plans.len()
                 && plans
                     .iter()
                     .zip(values.iter())
-                    .all(|(plan, value)| plan_matches_value(plan, value))
+                    .all(|(plan, value)| plan_matches_value(plan, &value))
         }),
-        DefaultPlan::Repeated(plan, length) => value.sequence_rows().is_some_and(|values| {
-            values.len() == *length && values.iter().all(|value| plan_matches_value(plan, value))
+        DefaultPlan::Repeated(plan, length) => value.as_serie().is_some_and(|values| {
+            values.len() == *length && values.iter().all(|value| plan_matches_value(plan, &value))
         }),
         DefaultPlan::Union(type_id, payload) => value.sequence_rows().is_some_and(|values| {
             let [actual_type_id, actual_payload] = &*values else {

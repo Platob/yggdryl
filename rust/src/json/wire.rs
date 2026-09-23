@@ -142,8 +142,8 @@ impl Serialize for JsonRef<'_> {
             | Scalar::LargeList(values)
             | Scalar::LargeListView(values) => {
                 let mut sequence = serializer.serialize_seq(Some(values.len()))?;
-                for value in values.rows().iter() {
-                    sequence.serialize_element(&JsonRef(value))?;
+                for value in values.iter() {
+                    sequence.serialize_element(&JsonRef(&value))?;
                 }
                 sequence.end()
             }

@@ -122,6 +122,34 @@ export declare class Arn {
 }
 export type JsArn = Arn
 
+/**
+ * The cast from one field's layout to another, compiled once.
+ *
+ * Every failure the two fields alone can produce is raised by `compile`,
+ * before a row exists; `apply` then differs per column only in the rows it
+ * reads.
+ */
+export declare class ArrowCastPlan {
+  /**
+   * Run the compiled cast over no rows, refusing an impossible cast now
+   * rather than on the first column.
+   */
+  preflight(): void
+  /**
+   * The field a column must lay out as: its storage and its extension
+   * identity.
+   */
+  get source(): JsField
+  /** The field every cast lands under. */
+  get target(): JsField
+  /**
+   * Whether the plan hands every column of its source layout straight
+   * back.
+   */
+  get isIdentity(): boolean
+}
+export type JsArrowCastPlan = ArrowCastPlan
+
 
 /** One compressed block yielded by an owning lazy Avro iterator. */
 export declare class AvroBlock {
@@ -4438,6 +4466,24 @@ export declare class SerieIterator {
 
 }
 export type JsSerieIterator = SerieIterator
+
+/**
+ * One record serie per batch of a native `BatchReader`, each cast by the
+ * one plan the core compiled from the stream's schema.
+ *
+ * The reader is a stream, read once: iterating it and `intoArrowReader`
+ * both consume it, and a batch's failure surfaces at the pull that read it.
+ */
+export declare class SerieReader {
+  /** The record every yielded serie is typed by. */
+  get field(): Field
+  /**
+   * The stream's batches reconciled to the root as a native
+   * `BatchReader`, never landed; the reader is consumed.
+   */
+  intoArrowReader(): BatchReader
+}
+export type JsSerieReader = SerieReader
 
 /** One committed version of a table's contents. */
 export declare class Snapshot {

@@ -22,7 +22,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Family | `SerieValue`, implemented by every column leaf. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | The crate's own serde writes a run as its list and a column as `{"field": .., "rows": [..]}` under the `serie` tag, and reads back only that column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
 | Not `ArrowScalar` | That is the shape wrapper a value takes crossing the Arrow boundary, holding its payload opaquely; a serie is the column itself, the buffers a caller reads and writes as a collection. The two share one layout proof and nothing else |
-| Bindings | Rust only. A column crosses a binding as an Arrow array or record batch, and `ArrowScalar` is what carries one there |
+| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the list leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers; JavaScript as copied IPC. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
 
 ## The leaves
 
@@ -77,7 +77,7 @@ Every verb answers on both leaves; only its cost differs.
 | `extend_from_serie(other)` | two columns whose datatypes agree and whose nullability fits append buffer to buffer with no row read; anything else reads `other`'s rows |
 | `set_child(child)`, `set_cell(path, i, v)` | a record column only: replace or add a child of `len` rows; write one cell `path` deep in place, every level row-aligned |
 
-Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)` and `from_scalars(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
+Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
 
 ## What each ask costs
 
@@ -104,10 +104,13 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `child`, `child_at`, `children`, `items` | constant: a child is already a column |
 | `set_child`, `without_child` | one field edit and one `Vec` of pointers, never a row |
 | `slice` | zero copy on a column; a copy of the window on a run |
-| `into_arrow_array` | the array itself, shared |
-| `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, no row decoded |
-| `from_arrow_array` | the projection compared, the validity words counted, and - only where the datatype is narrower than its layout - each row read once |
-| `from_arrow_reader` | the whole stream held: a column is one contiguous set of buffers, so the bound is the stream itself |
+| `into_arrow_array`, `into_arrow_scalar` | the array itself, shared |
+| `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, or of the one column a non-record column is, no row decoded |
+| `from_arrow_array`, `from_arrow_batch` | no field, or an exact layout: the projection compared, the validity words counted, and - only where the datatype is narrower than its layout - each row read once; any other layout: one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied once |
+| `from_arrow_reader` | one plan for the stream, and the whole stream held: a column is one contiguous set of buffers, so the bound is the stream itself |
+| `SerieReader` | one plan for the stream, at most one source batch held |
+| `cast` | one plan compiled per call; a column already under the target is a clone |
+| `from_default` | one row laid out through the field's default, then repeated by index |
 
 ## Use
 
@@ -119,7 +122,7 @@ A column is built from a field and either the rows it types or the buffers that 
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Int64Array};
-    use yggdryl::{DataType, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     let field = Field::new("price", DataType::Int64, false);
 
@@ -134,7 +137,7 @@ A column is built from a field and either the rows it types or the buffers that 
     // Buffers in: nothing copied, and nothing read, because an int64 layout
     // is the whole of what an int64 field asks.
     let array: ArrayRef = Arc::new(Int64Array::from(vec![125, 126, 127]));
-    let held = Serie::from_arrow_array(field.clone(), array)?;
+    let held = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())?;
     assert_eq!(held.as_int64().expect("an int64 column").values(), &[125, 126, 127]);
 
     // Either way it is the same column.
@@ -155,15 +158,49 @@ A column is built from a field and either the rows it types or the buffers that 
 === "Python"
 
     ```python
-    # Rust only. A column crosses a binding as an Arrow array or record batch;
-    # `ArrowScalar` is what carries one there.
+    import pyarrow as pa
+    from yggdryl import Field, Serie
+
+    field = Field("price", "int64", nullable=False)
+
+    # Values in: each row through the field's own contract.
+    serie = Serie.from_scalars(field, [125, 126, 127])
+    assert len(serie) == 3
+    assert serie.field == field
+
+    # Buffers in: an exact layout shares them, and it is the same column.
+    held = Serie.from_arrow_array(pa.array([125, 126, 127]), field)
+    assert held == serie
+
+    # A row the field refuses refuses the column, naming the field.
+    try:
+        Serie.from_scalars(field, [None])
+    except ValueError as error:
+        assert "$.price" in str(error), error
+    else:
+        raise AssertionError("a required field refuses a null")
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only. A column crosses a binding as an Arrow array or record batch;
-    // `ArrowScalar` is what carries one there.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const field = fields.int64('price', { nullable: false })
+
+    // Values in: each row through the field's own contract.
+    const serie = Serie.fromScalars(field, [125n, 126n, 127n])
+    assert.equal(serie.length, 3)
+    assert.ok(serie.field.equals(field))
+
+    // Buffers in: an exact layout is the same column.
+    const vector = arrow.vectorFromArray([125n, 126n, 127n], new arrow.Int64())
+    assert.ok(Serie.fromArrowArray(vector, field).equals(serie))
+
+    // A row the field refuses refuses the column, naming the field.
+    assert.throws(() => Serie.fromScalars(field, [null]), /\$\.price/)
     ```
 
 ## The buffers, read and written
@@ -176,11 +213,11 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Int64Array, StringArray};
-    use yggdryl::{DataType, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     let field = Field::new("price", DataType::Int64, true);
     let array: ArrayRef = Arc::new(Int64Array::from(vec![125, 126]));
-    let mut serie = Serie::from_arrow_array(field, array)?;
+    let mut serie = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())?;
 
     // Straight off the values buffer: no value built.
     let prices = serie.as_int64().expect("an int64 column");
@@ -217,7 +254,8 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
 
     // Text lends its two components rather than its rows.
     let symbols: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
-    let text = Serie::from_arrow_array(Field::new("symbol", DataType::utf8(), false), symbols)?;
+    let symbol = Field::new("symbol", DataType::utf8(), false);
+    let text = Serie::from_arrow_array(Some(&symbol), symbols, ArrowCastOptions::new())?;
     let leaf = text.as_utf8().expect("a utf8 column");
     assert_eq!(leaf.offsets().as_ref(), &[0, 4, 8]);
     assert_eq!(leaf.payload().as_slice(), b"AAPLMSFT");
@@ -246,7 +284,7 @@ A record column is made of child columns, and Arrow already holds each one separ
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Int64Array};
-    use yggdryl::{DataType, Field, FieldPath, Scalar, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, FieldPath, Scalar, Serie, StructType};
 
     let root = Field::new(
         "row",
@@ -277,7 +315,8 @@ A record column is made of child columns, and Arrow already holds each one separ
 
     // Adding a child extends the field; replacing one moves a pointer.
     let volumes: ArrayRef = Arc::new(Int64Array::from(vec![10_i64, 20]));
-    let volume = Serie::from_arrow_array(Field::new("volume", DataType::Int64, false), volumes)?;
+    let volume = Field::new("volume", DataType::Int64, false);
+    let volume = Serie::from_arrow_array(Some(&volume), volumes, ArrowCastOptions::new())?;
     records.set_child(volume)?;
     assert_eq!(records.field().expect("a column").field_len(), 3);
 
@@ -459,7 +498,7 @@ Arrow lays a mapping out as a list of non-null key-value records, and so does th
 
     ```rust
     use arrow_array::{Array, MapArray};
-    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, StructType};
 
     let entries = Field::new(
         "entries",
@@ -493,7 +532,7 @@ Arrow lays a mapping out as a list of non-null key-value records, and so does th
     // Arrow takes it as a map, and the buffers come back without a row read.
     let array = column.into_arrow_array().expect("a column has buffers");
     assert!(array.as_any().downcast_ref::<MapArray>().is_some());
-    assert_eq!(Serie::from_arrow_array(field, array)?, column);
+    assert_eq!(Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())?, column);
     ```
 
 === "Python"
@@ -510,13 +549,13 @@ Arrow lays a mapping out as a list of non-null key-value records, and so does th
 
 ## Arrow: the door, and what it proves
 
-Every crossing shares buffers. `from_arrow_array(field, array)` takes an array as the column of `field` and proves three things at the door, so that invariant 1 holds for a column that was never built from values:
+Every crossing shares buffers. `from_arrow_array(field, array, options)` takes an array as a column. With no field it is the column of its own layout, named `item` and nullable exactly where it holds an absent row. With a field, one [`ArrowCastPlan`](cast.md#compiled-plans) is compiled from the array's layout to the field and applied once: an exact layout is the identity plan and shares the buffers, and any other is [cast](cast.md) under the three options. Either way the landing proves three things, so that invariant 1 holds for a column that was never built from values:
 
-- the layout: the array's datatype is the field's own Arrow projection, exactly - an array laid out otherwise is refused by name rather than reconciled, and [`cast`](cast.md) is what reshapes it;
-- the absence: a required field refuses absent rows, counted on the validity words, and a record's children are judged only where the record itself is present, because a null record row leaves its children's slots unspecified; a dictionary, run-end or union column is judged on its logical nulls;
-- the values: where the datatype's layout is its whole contract - null, boolean, every integer and float width, `date32`, every datetime, duration and interval, the plain `utf8` leaves, the plain byte leaves, `uuid`, and every nesting of those - no row is read. Everywhere else - a code, an ASCII or windows-1252 or sized string, a decimal, `date64`, a time, a URL, a version, a variant - each row of that leaf is read once and dropped, and the first one the field's own contract refuses is named with its column and its row.
+- the layout: the column's buffers are the field's own Arrow projection, exactly;
+- the absence: a required field holds no absent row - counted on the validity words, repaired to the field's default under `Nullability::Default` and refused by path under `Nullability::Strict` - and a record's children are judged only where the record itself is present, because a null record row leaves its children's slots unspecified; a dictionary, run-end or union column is judged on its logical nulls;
+- the values: where the datatype's layout is its whole contract - null, boolean, every integer and float width, `date32`, every datetime, duration and interval, the plain `utf8` leaves, the plain byte leaves, `uuid`, and every nesting of those - no row is read. Everywhere else - a code, an ASCII or windows-1252 or sized string, a decimal, `date64`, a time, a URL, a version, a variant - each row of that leaf is read once and dropped, and the first one the field's own contract refuses is named with its column and its row. A bare array carries no evidence, and an extension label is none either ([What a landing proves](cast.md#what-a-landing-proves)); a row the plan already read under the field's own rule is not read again.
 
-A sliced list's offsets are rebased onto exactly the items they reach, so the column knows where its items end when it grows. A column the crate itself laid out - `from_scalars`, whose rows went through `Field::scalar` - takes the door already proven and no row is read a second time.
+A sliced list's offsets are rebased onto exactly the items they reach, so the column knows where its items end when it grows. A column the crate itself laid out - `from_scalars`, `from_default`, whose rows went through the field's value contract - takes the door already proven and no row is read a second time.
 
 === "Rust"
 
@@ -524,28 +563,36 @@ A sliced list's offsets are rebased onto exactly the items they reach, so the co
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Int64Array, StringArray};
-    use yggdryl::{DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, Serie};
 
-    // Absence is judged on the validity words, under the field's nullability.
+    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+
+    // With no field the array is the column of its own layout, named `item`,
+    // nullable exactly where it holds an absent row.
     let absent: ArrayRef = Arc::new(Int64Array::from(vec![Some(1), None]));
-    let refusal = Serie::from_arrow_array(Field::new("size", DataType::Int64, false), absent.clone())
-        .unwrap_err();
-    assert!(refusal.to_string().contains("size"), "{refusal}");
-    assert_eq!(
-        Serie::from_arrow_array(Field::new("size", DataType::Int64, true), absent)?.null_count(),
-        1
-    );
+    let own = Serie::from_arrow_array(None, Arc::clone(&absent), ArrowCastOptions::new())?;
+    assert_eq!(own.field(), Some(&Field::new("item", DataType::Int64, true)));
 
-    // A layout that is not the field's projection is refused, never reconciled.
-    let text: ArrayRef = Arc::new(StringArray::from(vec!["AB", "ABCD"]));
-    assert!(Serie::from_arrow_array(Field::new("size", DataType::Int64, false), text.clone()).is_err());
+    // Absence is judged on the validity words, under the field's nullability:
+    // repaired to the default, or refused by path under strict.
+    let size = Field::new("size", DataType::Int64, false);
+    let repaired = Serie::from_arrow_array(Some(&size), Arc::clone(&absent), ArrowCastOptions::new())?;
+    assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[1, 0]);
+    let refusal = Serie::from_arrow_array(Some(&size), absent, strict).unwrap_err();
+    assert_eq!(refusal.to_string(), "required Arrow field $.size holds 1 null values");
 
-    // The plain UTF-8 layout is its own contract, so nothing is read; a
-    // sized string is narrower than its storage, so each row is read once
+    // A layout that is not the field's projection is cast by one plan.
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["12", "1234"]));
+    let sizes = Serie::from_arrow_array(Some(&size), Arc::clone(&text), strict)?;
+    assert_eq!(sizes.as_int64().expect("an int64 column").values(), &[12, 1234]);
+
+    // The plain UTF-8 layout is its own contract, so nothing is read; a sized
+    // string is narrower than its storage, so each row is read under its rule
     // and the first the field refuses is named.
-    assert!(Serie::from_arrow_array(Field::new("code", DataType::utf8(), false), text.clone()).is_ok());
-    let refusal =
-        Serie::from_arrow_array(Field::new("code", DataType::sized_utf8(2)?, false), text).unwrap_err();
+    let code = Field::new("code", DataType::utf8(), false);
+    assert!(Serie::from_arrow_array(Some(&code), Arc::clone(&text), strict).is_ok());
+    let sized = Field::new("code", DataType::sized_utf8(2)?, false);
+    let refusal = Serie::from_arrow_array(Some(&sized), text, strict.with_safe(false)).unwrap_err();
     assert!(refusal.to_string().contains("code"), "{refusal}");
     assert!(refusal.to_string().contains("row 1"), "{refusal}");
     ```
@@ -553,41 +600,105 @@ A sliced list's offsets are rebased onto exactly the items they reach, so the co
 === "Python"
 
     ```python
-    # Rust only.
+    import pyarrow as pa
+    from yggdryl import Field, Serie
+
+    # With no field the array is the column of its own layout, named `item`.
+    absent = pa.array([1, None])
+    assert Serie.from_arrow_array(absent).field == Field("item", "int64")
+
+    # Absence: repaired to the default, or refused by path under strict.
+    size = Field("size", "int64", nullable=False)
+    assert Serie.from_arrow_array(absent, size).as_py() == [1, 0]
+    try:
+        Serie.from_arrow_array(absent, size, nullability="strict")
+    except ValueError as error:
+        assert str(error) == "required Arrow field $.size holds 1 null values"
+    else:
+        raise AssertionError("a strict door refuses the absent row")
+
+    # A layout that is not the field's projection is cast by one plan.
+    text = pa.array(["12", "1234"])
+    assert Serie.from_arrow_array(text, size, nullability="strict").as_py() == [12, 1234]
+
+    # A sized string reads each row under its rule, naming the first it refuses.
+    try:
+        Serie.from_arrow_array(text, Field("code", "sized_utf8(2)", nullable=False), safe=False)
+    except ValueError as error:
+        assert '"code" row 1' in str(error), error
+    else:
+        raise AssertionError("a sized string refuses a longer row")
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie, fields } = require('yggdryl')
+
+    // With no field the vector is the column of its own layout.
+    const absent = arrow.vectorFromArray([1n, null], new arrow.Int64())
+    assert.equal(Serie.fromArrowArray(absent).field.dtype.toString(), 'int64')
+
+    // Absence: repaired to the default, or refused by path under strict.
+    const size = fields.int64('size', { nullable: false })
+    assert.deepEqual(Serie.fromArrowArray(absent, size).asJs(), [1, 0])
+    assert.throws(
+      () => Serie.fromArrowArray(absent, size, { nullability: 'strict' }),
+      /required Arrow field \$\.size holds 1 null values/,
+    )
+
+    // A layout that is not the field's projection is cast by one plan.
+    const text = arrow.vectorFromArray(['12', '1234'], new arrow.Utf8())
+    assert.deepEqual(Serie.fromArrowArray(text, size, { nullability: 'strict' }).asJs(), [12, 1234])
+
+    // A sized string reads each row under its rule, naming the first it refuses.
+    const sized = Field.from('code: sized_utf8(2) not null')
+    assert.throws(() => Serie.fromArrowArray(text, sized, { safe: false }), /"code" row 1/)
     ```
 
 ## Arrow: an array, a batch, a reader
 
-A column of a leaf field is an array; a column of a non-null Struct field is a table, and the stream of it is what a record write already speaks. Coming the other way, the field decides which leaf the buffers land in. A run names no Arrow layout, so it answers `None` for the array and is refused by name where one is required.
+A column of a leaf field is an array; a column of a non-null Struct field is a table, and the stream of it is what a record write already speaks. A leaf column crosses into a table too, as the one column of a `row` root, named as it is. Coming the other way, the field decides which leaf the buffers land in, and `None` takes the input's own: an array's field named `item`, a batch's or a stream's schema as the record `row`, because Arrow names columns and never the record. A run names no Arrow layout, so it answers `None` for the array and is refused by name where one is required.
 
-`arrow::ArrowScalar` is where `Serie` ends: the shape wrapper a value takes when it crosses the Arrow boundary - one scalar, array, batch or stream under one field, with the cast door and the shape queries, holding its payload opaquely and answering `None` to every native accessor. `Serie` is the column itself. The two share one layout proof and no bridge method: `Serie::from_arrow_array(field, held.into_array()?)` reaches the column from a held array, and `ArrowScalar::from_array(field, serie.require_arrow_array()?)` crosses back.
+`into_arrow_scalar` is one row as Arrow's scalar datum, sharing its buffers; any other length is refused naming it. `from_default(field, rows)` is `rows` copies of the field's canonical default - [`Field::default_value`](field.md) laid out once and repeated by index - and a required `null` field, which has no default, is refused. `from_arrow_reader` drains a stream into one column; [`SerieReader`](cast.md#eager-and-lazy) keeps it a stream, one record `Serie` per batch under one plan, and `into_arrow_reader` hands the batches on without landing them.
+
+`arrow::ArrowScalar` is where `Serie` ends: the shape wrapper a value takes when it crosses the Arrow boundary - one scalar, array, batch or stream under one field, with the cast door and the shape queries, holding its payload opaquely and answering `None` to every native accessor. `Serie` is the column itself. The two share one layout proof and no bridge method: `Serie::from_arrow_array(Some(&field), held.into_array()?, options)` reaches the column from a held array, and `ArrowScalar::from_array(field, serie.require_arrow_array()?)` crosses back.
 
 === "Rust"
 
     ```rust
-    use arrow_array::{Array, RecordBatchReader};
-    use yggdryl::{ArrowScalar, DataType, Field, Scalar, Serie, StructType};
+    use arrow_array::{Array, Datum, RecordBatchReader};
+    use yggdryl::{
+        ArrowCastOptions, ArrowScalar, DataType, Field, Scalar, Serie, SerieReader, StructType,
+    };
 
+    let options = ArrowCastOptions::new();
     let field = Field::new("price", DataType::Int64, false);
     let serie = Serie::from_scalars(field.clone(), [Scalar::from(125_i64), Scalar::from(126_i64)])?;
 
     // One column, both directions, nothing copied.
     let array = serie.into_arrow_array().expect("a column has buffers");
     assert_eq!(array.len(), 2);
-    assert_eq!(Serie::from_arrow_array(field.clone(), array)?, serie);
+    assert_eq!(Serie::from_arrow_array(Some(&field), array, options)?, serie);
     assert_eq!(Serie::new(vec![Scalar::from(1_i64)]).into_arrow_array(), None);
     assert!(Serie::new(vec![Scalar::from(1_i64)]).require_arrow_array().is_err());
+
+    // One row is one Arrow scalar; two are not.
+    let one = Serie::from_default(field.clone(), 1)?;
+    assert!(one.into_arrow_scalar()?.get().1);
+    assert_eq!(one.scalar(0)?, Scalar::from(0_i64));
+    assert!(serie.into_arrow_scalar().is_err());
 
     // The shape wrapper is reached through the two doors, and no third exists.
     let crossing = ArrowScalar::from_array(field.clone(), serie.require_arrow_array()?)?;
     assert!(crossing.is_array());
-    assert_eq!(Serie::from_arrow_array(field, crossing.into_array()?)?, serie);
+    assert_eq!(Serie::from_arrow_array(Some(&field), crossing.into_array()?, options)?, serie);
+
+    // A leaf column is the one column of a `row` root, named as it is.
+    let table = serie.into_arrow_batch()?;
+    assert_eq!((table.num_rows(), table.schema().field(0).name().as_str()), (2, "price"));
 
     // The rows of a record root: a table, and the stream of it.
     let root = Field::new(
@@ -599,33 +710,101 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
         false,
     );
     let rows = Serie::from_scalars(
-        root,
+        root.clone(),
         [Scalar::from_struct([("id", Scalar::from(1_i64)), ("symbol", Scalar::from("AAPL"))])?],
     )?;
     let batch = rows.into_arrow_batch()?;
     assert_eq!((batch.num_rows(), batch.num_columns()), (1, 2));
-    assert_eq!(Serie::from_arrow_batch(&batch)?, rows);
+    assert_eq!(Serie::from_arrow_batch(Some(&root), &batch, options)?, rows);
+    let own = Serie::from_arrow_batch(None, &batch, options)?;
+    assert_eq!(own.field().map(Field::name), Some("row"));
 
     // A reader states its schema before it is pulled; one held column is
-    // one batch, and a stream of any number of them drains into one column.
+    // one batch, and a stream drains into one column or stays one per batch.
     let reader = rows.into_arrow_reader()?;
     assert_eq!(reader.schema().fields().len(), 2);
-    assert_eq!(Serie::from_arrow_reader(rows.into_arrow_reader()?)?, rows);
-
-    // A column of a leaf field is not a table, and says so by name.
-    assert!(serie.into_arrow_batch().is_err());
+    assert_eq!(Serie::from_arrow_reader(Some(&root), rows.into_arrow_reader()?, options)?, rows);
+    let series = SerieReader::from_arrow_reader(None, rows.into_arrow_reader()?, options)?;
+    assert_eq!(series.count(), 1);
     ```
 
 === "Python"
 
     ```python
-    # Rust only. `ArrowScalar` is what carries a column across a binding.
+    import pyarrow as pa
+    from yggdryl import Field, Serie, SerieReader
+
+    field = Field("price", "int64", nullable=False)
+    serie = Serie.from_scalars(field, [125, 126])
+
+    # One column, both directions, buffers shared.
+    array = serie.into_arrow_array()
+    assert array.type == pa.int64()
+    assert Serie.from_arrow_array(array, field) == serie
+
+    # One row is one Arrow scalar; two are not.
+    assert Serie.from_default(field).into_arrow_scalar().as_py() == 0
+    try:
+        serie.into_arrow_scalar()
+    except ValueError as error:
+        assert "exactly one row, got 2" in str(error)
+    else:
+        raise AssertionError("two rows are not a scalar")
+
+    # A leaf column is the one column of a `row` root, named as it is.
+    assert serie.into_arrow_batch().schema.names == ["price"]
+
+    # The rows of a record root: a table, and the stream of it.
+    root = Field("row", "struct<id: int64 not null, symbol: utf8 not null>", nullable=False)
+    rows = Serie.from_scalars(root, [[1, "AAPL"]])
+    batch = rows.into_arrow_batch()
+    assert (batch.num_rows, batch.num_columns) == (1, 2)
+    assert Serie.from_arrow_batch(batch, root) == rows
+    assert Serie.from_arrow_batch(batch).field.name == "row"
+
+    assert isinstance(rows.into_arrow_reader(), pa.RecordBatchReader)
+    assert Serie.from_arrow_reader(rows.into_arrow_reader(), root) == rows
+    assert [len(serie) for serie in SerieReader.from_arrow_reader(rows.into_arrow_reader())] == [1]
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only. `ArrowScalar` is what carries a column across a binding.
+    const assert = require('node:assert/strict')
+    const { BatchReader, Field, Serie, SerieReader, fields } = require('yggdryl')
+
+    const field = fields.int64('price', { nullable: false })
+    const serie = Serie.fromScalars(field, [125n, 126n])
+
+    // One column, both directions, as copied IPC.
+    const vector = serie.intoArrowArray()
+    assert.equal(vector.type.toString(), 'Int64')
+    assert.ok(Serie.fromArrowArray(vector, field).equals(serie))
+
+    // One row is one Arrow scalar; two are not.
+    assert.equal(Serie.fromDefault(field).intoArrowScalar(), 0n)
+    assert.throws(() => serie.intoArrowScalar(), /exactly one row, got 2/)
+
+    // A leaf column is the one column of a `row` root, named as it is.
+    assert.deepEqual(
+      serie.intoArrowBatch().schema.fields.map((column) => column.name),
+      ['price'],
+    )
+
+    // The rows of a record root: a table, and the stream of it.
+    const root = Field.from('row: struct<id: int64 not null, symbol: utf8 not null> not null')
+    const rows = Serie.fromScalars(root, [[1n, 'AAPL']])
+    const batch = rows.intoArrowBatch()
+    assert.deepEqual([batch.numRows, batch.numCols], [1, 2])
+    assert.ok(Serie.fromArrowBatch(batch, root).equals(rows))
+    assert.equal(Serie.fromArrowBatch(batch).field.name, 'row')
+
+    assert.ok(rows.intoArrowReader() instanceof BatchReader)
+    assert.ok(Serie.fromArrowReader(rows.intoArrowReader(), root).equals(rows))
+    assert.deepEqual(
+      [...SerieReader.fromArrowReader(rows.intoArrowReader())].map((serie) => serie.length),
+      [1],
+    )
     ```
 
 ## Encodings cross as their parts
@@ -639,14 +818,14 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 
     use arrow_array::types::Int8Type;
     use arrow_array::{ArrayRef, DictionaryArray, Int8Array, StringArray};
-    use yggdryl::{DataType, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     let field = Field::new("symbol", DataType::dictionary(DataType::Int8, DataType::utf8())?, true);
     let array: ArrayRef = Arc::new(DictionaryArray::<Int8Type>::try_new(
         Int8Array::from(vec![Some(0), Some(1), None, Some(0)]),
         Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
     )?);
-    let mut column = Serie::from_arrow_array(field, array)?;
+    let mut column = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())?;
 
     // The keys and the values are each a column; absence is the keys'.
     let encoded = column.as_dictionary().expect("a dictionary column");
@@ -684,12 +863,14 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - A typed writer exists only on a leaf whose native domain is the datatype's whole domain, and it still validates nullability: `push_value(None)` under a required field is refused by name. A decimal, `date64`, `time32` or `time64` column has none, because its rule is narrower than its storage; a byte, string, sequence, mapping or variant column has none for the same reason.
 - No child is handed out mutably. `set_child` replaces a whole child of exactly `len` rows and `set_cell` writes one slot through the leaf's field, so a record's children stay aligned and `into_arrow_array` never refuses.
 - `set_cell` on a row whose record is absent at any level is refused: set the whole row.
-- An Arrow array whose physical datatype is not the field's is refused rather than reconciled; reshape it with [`cast`](cast.md) first. An array carrying absent rows under a required field is refused at every level, a record's children judged only where the record itself is present.
-- The door reads a row only where the datatype is narrower than its layout, and then reads each row of that leaf exactly once; a column crossing back is never read.
+- An Arrow array laid out as the field's projection shares its buffers; any other layout is [cast](cast.md) by one plan under the options. Absent rows under a required field are repaired to the field's default under `Nullability::Default` and refused by path under `Nullability::Strict`, at every level, a record's children judged only where the record itself is present.
+- The door reads a row only where the datatype is narrower than its layout and the plan did not already read it under the field's rule, and then reads each row of that leaf exactly once; a column crossing back is never read. An extension label on a foreign column is not a proof, so its rows are read.
+- `cast` compiles one plan per call: a loop holds an [`ArrowCastPlan`](cast.md#compiled-plans) or a `SerieReader` instead. A column already under the target is itself, and a run is refused, because it lays out no buffers for a plan to read.
 - A list, list-view or map array that was sliced crosses with its offsets rebased onto the items it reaches; a list-view column's write compacts, so the written column's offsets are contiguous.
 - A dictionary write interns into its vocabulary and moves keys in place, so a vocabulary that outgrows its key width is refused by name before anything moves; a run-end write folds equal neighbours into one run, so a column built by writes alone never holds two equal runs side by side, while an Arrow array that does crosses in as it is; a dense union write other than an append is a rebuild, so write such a column in bulk.
-- `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with [`IOMedia::read_arrow_reader`](../holder/index.md) when they should stay one.
-- `into_arrow_batch`, `into_arrow_reader` and `from_arrow_batch` need a non-null Struct root; anything else is refused by name. A batch read back names its root `row`, because Arrow names columns and never the record.
+- `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `SerieReader`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one.
+- `from_arrow_batch`, `from_arrow_reader` and `SerieReader` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
+- `into_arrow_scalar` takes exactly one row and refuses any other count by name. `from_default` refuses a field with no default: a required `null` field has none.
 - A run is one shared slice: every write copies it, so building one `push` at a time is quadratic. `Scalar::from_sequence` and `Serie::new` build one from values in hand, in one allocation.
 - A column and a run of equal rows are equal and hash alike, and so are two columns of equal rows under different fields or widths: identity is the rows and nothing else, exactly as a `Scalar`'s is.
 - `Serie::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the run; `Serie::rows`, `Scalar::sequence_rows`, `get` and `iter` read either, building a column's rows and keeping none. Reading a column's rows twice reads them twice.
@@ -711,11 +892,11 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 === "Python"
 
     ```bash
-    # Rust only: no Python surface to exercise.
+    python/.venv/bin/python -m pytest python/tests/test_serie.py python/tests/test_cast.py
     ```
 
 === "JavaScript"
 
     ```bash
-    # Rust only: no JavaScript surface to exercise.
+    node --test node/tests/serie.test.js node/tests/cast.test.js
     ```

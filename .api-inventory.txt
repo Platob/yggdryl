@@ -13,7 +13,6 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "YGGDRYL:ipc:dictionary-ids";
   pub fn batch_reader<I>(schema: SchemaRef, batches: I) -> BatchReader where I: IntoIterator<Item = arrow_array::RecordBatch>, I::IntoIter: Send + 'static,
   pub fn combined_as(left: BatchReader, right: BatchReader, field: &Field, safe: bool) -> Result<BatchReader>
   pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader>
-  pub fn cast_reader( inner: BatchReader, field: &Field, options: crate::ArrowCastOptions, ) -> Result<BatchReader>
   pub fn from_reader_error(error: ArrowError) -> Error
   pub type Result<T> = std::result::Result<T, Error>;
   pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef>
@@ -3294,7 +3293,6 @@ pub fn from_arrow_datatype(value: &ArrowDataType) -> Result<Self>
   pub fn into_arrow_datatype(self) -> Result<ArrowDataType>
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
   pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema>
-  pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::field::arrow  [rust/src/field.rs]  (the same projection for a Field: its datatype, its nullability and its metadata)
 pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self>
@@ -3309,7 +3307,6 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_array::RecordBatch>
   pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_schema::SchemaRef>
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
-  pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::bytes  [rust/src/bytes.rs]  (the byte family: six real leaves, the number on fixed_binary and sized_binary being the leaf)
 pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types through `pub use bytes::*`; Bytes and BytesType also at the crate root)
@@ -3360,13 +3357,7 @@ pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/O
   pub fn dtype(&self) -> Result<DataType>
   pub type BytesField = FieldOf<BytesType>;  (the Field leaf over DataType::Bytes(_); see yggdryl::field)
 
-### yggdryl::cast  [rust/src/cast.rs]
-pub trait ArrowFieldType: FieldType
-  pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array>
-  pub fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<Scalar<K::Array>>
-  pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array>
-  pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()>
-  pub fn preflight_arrow_batch_cast( source: &Field, target: Option<&Field>, options: ArrowCastOptions, ) -> Result<()>
+### yggdryl::cast  [rust/src/cast.rs]  (the one recursive cast engine, reached through Serie::cast, the Serie Arrow doors, SerieReader and a held ArrowCastPlan)
 
 ### yggdryl::cast::options  [rust/src/cast.rs]
 pub enum Nullability
@@ -3389,14 +3380,14 @@ pub struct ArrowCastOptions
   pub const fn representation(self) -> Representation
 
 ### yggdryl::cast::plan  [rust/src/cast.rs]
-pub struct ArrowCastPlan
-  pub fn compile(source: &Schema, target: &Field, options: ArrowCastOptions) -> Result<Self>
-  pub const fn as_field(&self) -> &Field
-  pub const fn as_source_schema(&self) -> &SchemaRef
-  pub const fn as_schema(&self) -> &SchemaRef
+pub struct ArrowCastPlan  (one Field-to-Field cast compiled once, immutable, Send + Sync, with the leaves it certified compiled beside it; an extension label certifies nothing)
+  pub fn compile(source: &Field, target: &Field, options: ArrowCastOptions) -> Result<Self>  (a column or a record; a batch schema is Field::from_arrow_schema("row", &schema))
+  pub const fn as_source(&self) -> &FieldRef  (the Arrow field an input lays out as: storage and extension identity)
+  pub fn as_target(&self) -> &Field
   pub const fn as_options(&self) -> &ArrowCastOptions
+  pub const fn is_identity(&self) -> bool
   pub fn preflight(&self) -> Result<()>
-  pub fn apply(&self, batch: RecordBatch) -> Result<RecordBatch>
+  pub fn apply(&self, serie: &Serie) -> Result<Serie>  (an identity plan hands back the same buffers; a run and another layout are refused by name)
 
 ### yggdryl::compatibility  [rust/src/compatibility.rs]
 pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
@@ -4152,14 +4143,21 @@ pub struct ProtocolField<'field>
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the family enums, the identity helpers and the serde shadow live here, the leaves in serie/)
   pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per DataType variant, spelled as it is: Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTime64(Arc<DateTime64Serie>), Date32, Date64, Time32(Arc<Time32Serie>), Time64(Arc<Time64Serie>), Duration32, Duration64 (Arc<DurationSerie>), Interval(Arc<IntervalSerie>), Bytes(Arc<BytesSerie>), String(Arc<StringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
-  pub fn empty(field: Field) -> Result<Self>  (the empty column of field)
-  pub fn with_capacity(field: Field, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
-  pub fn from_scalars(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, laid out once, taken through the door with no second proof)
-  pub fn from_arrow_array(field: Field, array: ArrayRef) -> crate::arrow::Result<Self>  (the door: the layout proven against the field's projection, absence on the validity words, a value only where the layout is not the datatype's whole contract; a sliced list's offsets rebased; no buffer copied)
-  pub fn from_arrow_batch(batch: &RecordBatch) -> crate::arrow::Result<Self>  (a record column named DEFAULT_ROOT_NAME whose children share the batch's columns)
-  pub fn from_arrow_reader(reader: BatchReader) -> crate::arrow::Result<Self>  (drains the whole stream into one column: a column is one contiguous set of buffers, so the bound is the stream)
-  pub fn into_arrow_batch(&self) -> crate::arrow::Result<RecordBatch>  (a record column only)
+  pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field)
+  pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
+  pub fn from_scalars(field: impl Into<Arc<Field>>, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, laid out once, landed proven with no second read)
+  pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> crate::arrow::Result<Self>  (Field::default_value laid out once and repeated by index; a required null field has no default)
+  pub fn from_arrow_array(field: Option<&Field>, array: ArrayRef, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: the array's own field, named item, no buffer copied, each non-contract row read once; Some: one ArrowCastPlan compiled and applied, an exact layout the identity plan sharing the buffers)
+  pub fn from_arrow_batch(root: Option<&Field>, batch: &RecordBatch, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: a record column named DEFAULT_ROOT_NAME whose children share the batch's columns; Some: cast into a non-null record root)
+  pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (SerieReader collected and joined once: the whole stream is held, the bound is the stream)
+  pub fn cast(&self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (its own field is itself; an equal layout under another name or nullability is the same buffers relabelled; otherwise one plan compiled and applied; a run is refused)
+  pub fn into_arrow_scalar(&self) -> crate::arrow::Result<arrow_array::Scalar<ArrayRef>>  (exactly one row, its buffers shared)
+  pub fn into_arrow_batch(&self) -> crate::arrow::Result<RecordBatch>  (a record column's children are the columns, an absent record row refused; any other column is the one column of a row root)
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one batch)
+  pub struct SerieReader  (one record Serie per batch of an Arrow stream under one ArrowCastPlan compiled from the stream's schema before a batch is pulled; at most one source batch held; fused after the first failure; Iterator<Item = crate::arrow::Result<Serie>>, FusedIterator, Debug)
+  pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<SerieReader>  (None: the stream's own schema as a DEFAULT_ROOT_NAME record)
+  pub fn field(&self) -> &Field
+  pub fn into_arrow_reader(self) -> BatchReader  (transport: batches reconciled to the root and never landed; the inner reader itself over an identity plan)
   pub fn field(&self) -> Option<&Field>  (None for a run)
   pub fn field_ref(&self) -> Option<&Arc<Field>>
   pub fn require_field(&self) -> Result<&Field>  (refuses a run by name)
@@ -4441,12 +4439,8 @@ pub trait DataTypeValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   fn validate(&self) -> Result<()>
   fn into_dtype(self) -> DataType
   fn from_dtype(dtype: &DataType) -> Option<Self>  (owned: a payload is Copy or one shared pointer)
-  fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided, as are the four below: the datatype is the target, and every family answers the doors through the root's one recursive walk)
+  fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided: the datatype is the target, and every family answers through the root's one recursive walk; Arrow casts are Serie's)
   fn encode_value_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::ValueStream>  (provided: the value cast to this datatype and encoded one chunk per leaf; encode_value_bytes, decode_value_bytes and decode_value_stream_bytes beside it, each through the datatype the leaf widens to)
-  fn cast_arrow_array(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::ArrayRef>
-  fn cast_arrow_scalar(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>>
-  fn cast_arrow_batch(&self, batch: arrow_array::RecordBatch, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::RecordBatch>
-  fn cast_arrow_reader(&self, reader: crate::arrow::BatchReader, options: crate::ArrowCastOptions) -> crate::arrow::Result<crate::arrow::BatchReader>
 pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Sized  (one field over one family's datatype; implemented by every FieldOf<D> and by Field as FieldValue<DataType>)
   fn name(&self) -> &str
   fn dtype(&self) -> DataType
@@ -4456,11 +4450,7 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
   fn validate(&self) -> Result<()>
   fn into_field(self) -> Field
   fn from_field(field: &Field) -> Option<&Self>
-  fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided, as are the four below: the same doors under the field, whose nullability is the one thing a datatype does not state)
-  fn cast_arrow_array(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::ArrayRef>
-  fn cast_arrow_scalar(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>>
-  fn cast_arrow_batch(&self, batch: arrow_array::RecordBatch, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::RecordBatch>
-  fn cast_arrow_reader(&self, reader: crate::arrow::BatchReader, options: crate::ArrowCastOptions) -> crate::arrow::Result<crate::arrow::BatchReader>
+  fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided: the datatype's door under the field, whose nullability is the one thing a datatype does not state; Arrow casts are Serie's)
 pub enum Children<'a>  (Sequence(slice::Iter<'a, Scalar>), Mapping(slice::Iter<'a, (Scalar, Scalar)>), Struct(btree_map::Values<'a, SmolStr, Scalar>), Column(ColumnRows<'a>); Iterator<Item = Cow<'a, Scalar>> over sequence values, mapping keys, struct values or a column's rows - borrowed where the value is already there, built where it is not; DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 pub struct ColumnRows<'a>  (the rows of one column, built one at a time as the walk reaches them; a stored row is one its field accepts, so none refuses)
 pub trait SerieValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static  (what every column leaf of Serie and every family enum owes: its field, its length, one row built on demand, a zero-copy slice, the one mutation splice - prove once, check once, write without failing - its buffers as an Arrow array, and the widening to and narrowing from Serie; Serie itself does not implement it, the run having no field)

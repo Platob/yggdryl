@@ -171,7 +171,7 @@ The value is the identifier, under the market's identity. A value shorter than t
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     venue = Field("venue", "mic")
     arrow_field = venue.into_arrow()
@@ -181,8 +181,8 @@ The value is the identifier, under the market's identity. A value shorter than t
 
     # The column holds the text itself: nothing is padded, so nothing is
     # trimmed back.
-    stored = venue.cast_arrow_array(pa.array(["XPAR", "BX"]), safe=False)
-    assert stored.to_pylist() == ["XPAR", "BX"]
+    stored = Serie.from_arrow_array(pa.array(["XPAR", "BX"]), venue, safe=False)
+    assert stored.as_py() == ["XPAR", "BX"]
     ```
 
 === "JavaScript"
@@ -190,10 +190,11 @@ The value is the identifier, under the market's identity. A value shorter than t
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.mic('venue').castArrowArray(utf8(['XPAR', 'BX']))], ['XPAR', 'BX'])
+    const stored = Serie.fromArrowArray(utf8(['XPAR', 'BX']), fields.mic('venue'))
+    assert.deepEqual([...stored.intoArrowArray()], ['XPAR', 'BX'])
     ```
 
 ## `XXXX` states no market

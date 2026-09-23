@@ -272,19 +272,20 @@ The declared width is the target: text reads into it, another number converts in
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Int32Array, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Int32Field};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let strict = ArrowCastOptions::new().with_safe(false);
-    let typed = Int32Field::unit("id", false);
+    let id = Field::new("id", DataType::Int32, false);
 
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
-    let ids: Int32Array = typed.cast_arrow_array(text, strict)?;
-    assert_eq!(ids.values(), &[1, 2]);
+    let ids = Serie::from_arrow_array(Some(&id), text, strict)?;
+    assert_eq!(ids.as_int32().expect("an int32 column").values(), &[1, 2]);
 
     // A magnitude the width cannot hold is refused, in a column and in a row.
     let wide: ArrayRef = Arc::new(StringArray::from(vec!["2147483648"]));
-    assert!(typed.cast_arrow_array(wide, strict).is_err());
+    let refused = Serie::from_arrow_array(Some(&id), wide, strict).unwrap_err().to_string();
+    assert!(refused.contains("$.id"), "{refused}");
     assert!(DataType::Int32.scalar(2_147_483_648_i64).is_err());
     ```
 
@@ -294,16 +295,17 @@ The declared width is the target: text reads into it, another number converts in
     import pyarrow as pa
     import pytest
 
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
-    ids = Field("id", "int32").cast_arrow_array(pa.array(["1", "2"]))
-    assert ids.equals(pa.array([1, 2], type=pa.int32()))
+    id_ = Field("id", "int32")
+    ids = Serie.from_arrow_array(pa.array(["1", "2"]), id_)
+    assert ids.into_arrow_array().equals(pa.array([1, 2], type=pa.int32()))
 
     # Surrounding space is not part of the number.
-    assert Field("id", "int32").cast_arrow_array(pa.array([" 7 "])).to_pylist() == [7]
+    assert Serie.from_arrow_array(pa.array([" 7 "]), id_).as_py() == [7]
 
-    with pytest.raises(ValueError):
-        Field("id", "int32").cast_arrow_array(pa.array(["2147483648"]), safe=False)
+    with pytest.raises(ValueError, match=r"\$\.id"):
+        Serie.from_arrow_array(pa.array(["2147483648"]), id_, safe=False)
 
     with pytest.raises(ValueError, match="expected int32"):
         DataType("int32").scalar(2**31)
@@ -314,11 +316,14 @@ The declared width is the target: text reads into it, another number converts in
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { DataType, fields } = require('yggdryl')
+    const { DataType, Serie, fields } = require('yggdryl')
 
-    const text = arrow.vectorFromArray(['1', '2'], new arrow.Utf8())
-    assert.deepEqual([...fields.int32('id').castArrowArray(text)], [1, 2])
+    const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
+    const ids = Serie.fromArrowArray(utf8(['1', '2']), fields.int32('id'))
+    assert.deepEqual([...ids.intoArrowArray()], [1, 2])
 
+    const wide = utf8(['2147483648'])
+    assert.throws(() => Serie.fromArrowArray(wide, fields.int32('id'), { safe: false }), /\$\.id/)
     assert.throws(() => DataType.from('int32').scalar(2 ** 31), /expected int32/)
     ```
 

@@ -27,7 +27,6 @@ use std::time::Instant;
 
 use std::sync::Arc;
 
-use yggdryl::FieldValue as _;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
     Book, Element, Event, EventColumn, MarketElement, MarketEventData, MarketOperation, Order,
@@ -36,12 +35,13 @@ use yggdryl::graph::{
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
+    ArrowCastOptions, Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord,
+    FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType,
+    PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit, Timezone, Value, Variant,
+    Version,
 };
 use yggdryl::{
-    Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord, FieldScalar, FixCode,
-    FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata,
-    Scalar, Serie, Side, State, TimeUnit, Timezone, Value, Variant, Version,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1452,11 +1452,16 @@ fn leaf_columns(rows: usize) -> (Serie, Serie) {
             .collect::<Vec<_>>(),
     );
     (
-        Serie::from_arrow_array(Field::new("count", DataType::Int64, true), Arc::new(counts))
-            .expect("an int64 column"),
         Serie::from_arrow_array(
-            Field::new("symbol", DataType::utf8(), true),
+            Some(&Field::new("count", DataType::Int64, true)),
+            Arc::new(counts),
+            ArrowCastOptions::new(),
+        )
+        .expect("an int64 column"),
+        Serie::from_arrow_array(
+            Some(&Field::new("symbol", DataType::utf8(), true)),
             Arc::new(symbols),
+            ArrowCastOptions::new(),
         )
         .expect("a utf8 column"),
     )
@@ -1584,7 +1589,8 @@ fn a_second_push_into_an_owned_column_allocates_nothing() {
                 .map(|index| i64::try_from(index).expect("a row count"))
                 .collect::<Vec<_>>(),
         );
-        Serie::from_arrow_array(field(), Arc::new(array)).expect("an int64 column")
+        Serie::from_arrow_array(Some(&field()), Arc::new(array), ArrowCastOptions::new())
+            .expect("an int64 column")
     };
 
     let mut native = Vec::new();
@@ -1641,15 +1647,12 @@ fn a_second_push_into_an_owned_column_allocates_nothing() {
     eprintln!("serie_push: native={} proven={}", native[0], proven[0]);
 }
 
-/// The two batches every cast-budget case reads, and the root they answer to.
+/// The record columns of the two batches every cast-budget case reads, the
+/// field they lay out as, and the root they answer to.
 ///
 /// The batches differ only in their values, so anything that varies between
 /// casting one and casting the other is per-batch work rather than schema work.
-fn cast_corpus() -> (
-    arrow_schema::SchemaRef,
-    [arrow_array::RecordBatch; 2],
-    Field,
-) {
+fn cast_corpus() -> (Field, [Serie; 2], Field) {
     use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
@@ -1678,15 +1681,20 @@ fn cast_corpus() -> (
         .expect("the root fields are valid"),
         false,
     );
-    (Arc::clone(&schema), [batch(0), batch(2)], root)
+    let source = Field::from_arrow_schema("row", &schema).expect("the batch schema imports");
+    let landed = |batch: RecordBatch| {
+        Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+            .expect("the batch lands as its own record column")
+    };
+    (source, [landed(batch(0)), landed(batch(2))], root)
 }
 
 #[test]
 fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
+    use yggdryl::ArrowCastPlan;
 
-    let (schema, batches, root) = cast_corpus();
-    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+    let (source, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&source, &root, ArrowCastOptions::new())
         .expect("the cast is plannable");
 
     // The budget belongs to a batch, not to the stream: applying the plan a
@@ -1695,9 +1703,12 @@ fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
     // the leak this pins - a plan that grew with every batch it saw.
     let mut index = 0;
     let (once, repeated) = counted_once_and_repeated(|| {
-        let batch = batches[index % batches.len()].clone();
+        let batch = &batches[index % batches.len()];
         index += 1;
-        black_box(plan.apply(batch).expect("the batch fits the plan"));
+        black_box(
+            plan.apply(black_box(batch))
+                .expect("the batch fits the plan"),
+        );
     });
     assert_eq!(
         repeated,
@@ -1708,33 +1719,192 @@ fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
 
 #[test]
 fn planning_once_is_what_a_reused_plan_saves_per_batch() {
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
+    use yggdryl::ArrowCastPlan;
 
-    let (schema, batches, root) = cast_corpus();
-    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+    let (source, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&source, &root, ArrowCastOptions::new())
         .expect("the cast is plannable");
-    let batch = batches[0].clone();
+    let batch = &batches[0];
 
     // Warm both paths so neither is charged for a first-call cache fill.
-    let _ = plan.apply(batch.clone());
-    let _ = root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new());
+    let _ = plan.apply(batch);
+    let _ = batch.cast(&root, ArrowCastOptions::new());
 
-    let (applied, ()) = counted(|| {
-        black_box(plan.apply(batch.clone()).expect("the batch fits the plan"));
-    });
-    let (planned, ()) = counted(|| {
+    // `Serie::cast` is the door that compiles one plan per call and applies
+    // it, so the two differ by exactly the compilation.
+    let (applied, reused) = counted(|| {
         black_box(
-            root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+            plan.apply(black_box(batch))
+                .expect("the batch fits the plan"),
+        )
+    });
+    let (planned, recompiled) = counted(|| {
+        black_box(
+            black_box(batch)
+                .cast(&root, ArrowCastOptions::new())
                 .expect("the batch fits the root"),
-        );
+        )
     });
 
     // The same batch, the same answer, and the difference is the plan: a
     // reader that compiles per batch pays that difference on every one.
+    assert_eq!(reused, recompiled, "both paths answer the same rows");
     assert!(
         planned > applied,
         "compiling per batch cost {planned} and reusing one plan cost {applied}"
     );
+}
+
+/// A stored batch keyed `0..rows` and an incoming batch updating every one of
+/// its keys, so each incoming batch folds the same rows into the same place.
+#[cfg(feature = "internals")]
+fn merge_corpus(rows: usize) -> (Field, arrow_array::RecordBatch, arrow_array::RecordBatch) {
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+
+    let field = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .expect("the merge fields are valid")
+    .required_field("row");
+    let schema = field
+        .clone()
+        .into_arrow_schema()
+        .expect("the merge root projects");
+    let ids: ArrayRef = Arc::new(Int64Array::from_iter_values(
+        0..i64::try_from(rows).expect("a small corpus"),
+    ));
+    let batch = |symbol: &str| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::clone(&ids),
+                Arc::new(StringArray::from(vec![symbol; rows])),
+            ],
+        )
+        .expect("the merge batch matches its schema")
+    };
+    (field, batch("OLD"), batch("NEW"))
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_merge_casts_every_incoming_batch_alike() {
+    use yggdryl::internals::media_merge::merged;
+
+    for rows in [2, 64] {
+        let (field, stored, incoming) = merge_corpus(rows);
+        let key = yggdryl::Selector::from_columns(["id"]);
+        let cost = |batches: usize| {
+            let stored = yggdryl::arrow::batch_reader(stored.schema(), [stored.clone()]);
+            let incoming =
+                yggdryl::arrow::batch_reader(incoming.schema(), vec![incoming.clone(); batches]);
+            counted(|| {
+                for batch in merged(stored, incoming, &field, &key, true).expect("the merge plans")
+                {
+                    black_box(batch.expect("the merged batch"));
+                }
+            })
+            .0
+        };
+        cost(1);
+
+        // Every incoming batch is cast into the field, but the cast is planned
+        // by the first alone: N batches cost the plan once and N times one
+        // batch.
+        let (none, one, two, four) = (cost(0), cost(1), cost(2), cost(4));
+        let each = two - one;
+        assert_eq!(
+            four - one,
+            3 * each,
+            "{rows} rows: every batch after the first cost {each}, but four cost {four} and one {one}"
+        );
+        assert!(
+            one - none > each,
+            "{rows} rows: the first batch cost {} and every later one {each}, so the plan was paid per batch",
+            one - none
+        );
+    }
+}
+
+/// The cost of each chunk one resumable write session is pushed.
+///
+/// Every chunk is `batches` row-less batches: a batch with no rows is shaped
+/// and joins no cadence, so a chunk costs its pull and its shaping alone.
+fn session_chunk_costs(
+    options: &yggdryl::media::RecordOptions,
+    layouts: &[&arrow_schema::SchemaRef],
+    batches: usize,
+) -> Vec<usize> {
+    use arrow_array::RecordBatch;
+
+    let mut handle = Buffer::new().with_media_type(MediaType::new(MimeType::ARROW_STREAM));
+    let mut session = yggdryl::ArrowWriteSession::overwrite(options).expect("a session");
+    let chunks: Vec<_> = layouts
+        .iter()
+        .map(|layout| {
+            yggdryl::arrow::batch_reader(
+                Arc::clone(layout),
+                vec![RecordBatch::new_empty(Arc::clone(layout)); batches],
+            )
+        })
+        .collect();
+    chunks
+        .into_iter()
+        .map(|chunk| {
+            counted(|| {
+                assert!(
+                    session
+                        .push(&mut handle, chunk)
+                        .expect("the chunk is shaped")
+                );
+            })
+            .0
+        })
+        .collect()
+}
+
+#[test]
+fn a_write_session_compiles_its_shaping_once() {
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::media::IORecordOptions as _;
+
+    let root = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .expect("the session fields are valid")
+    .required_field("row");
+    let options = yggdryl::media::RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
+        .expect("Arrow IPC options")
+        .with_field(root.clone())
+        .with_commit_row_size(1);
+    let declared = root.into_arrow_schema().expect("the session root projects");
+    // The same columns under another layout: a key admitting nulls.
+    let relaxed = Arc::new(Schema::new(vec![
+        ArrowField::new("id", ArrowDataType::Int64, true),
+        ArrowField::new("symbol", ArrowDataType::Utf8, true),
+    ]));
+    let layouts = [
+        &declared, &declared, &declared, &relaxed, &relaxed, &relaxed,
+    ];
+
+    for batches in [1, 4] {
+        session_chunk_costs(&options, &layouts, batches);
+        let costs = session_chunk_costs(&options, &layouts, batches);
+
+        // A layout's first chunk compiles its shaping, and every later chunk
+        // of it costs the same and strictly less.
+        assert_eq!(costs[1], costs[2], "{batches} batches a chunk: {costs:?}");
+        assert!(costs[1] < costs[0], "{batches} batches a chunk: {costs:?}");
+        assert_eq!(costs[4], costs[5], "{batches} batches a chunk: {costs:?}");
+        assert!(
+            costs[4] < costs[3],
+            "{batches} batches a chunk: a later chunk of a layout compiled again: {costs:?}"
+        );
+    }
 }
 
 #[test]

@@ -5,7 +5,18 @@ use std::sync::Arc;
 
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, StringArray};
-use yggdryl::{DataType, DictionarySerie, Field, Scalar, Serie, SerieValue, StructType};
+use yggdryl::{
+    ArrowCastOptions, DataType, DictionarySerie, Field, Nullability, Scalar, Serie, SerieValue,
+    StructType,
+};
+
+/// The options a refusal is pinned under: a present value is never nulled
+/// and an absent one never repaired.
+fn strict() -> ArrowCastOptions {
+    ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(Nullability::Strict)
+}
 
 /// An int8-keyed dictionary of symbols.
 fn symbols_field(nullable: bool) -> Field {
@@ -29,7 +40,12 @@ fn symbols_array() -> ArrayRef {
 
 /// [`symbols_array`] as a nullable column.
 fn symbols() -> Serie {
-    Serie::from_arrow_array(symbols_field(true), symbols_array()).expect("a dictionary column")
+    Serie::from_arrow_array(
+        Some(&symbols_field(true)),
+        symbols_array(),
+        ArrowCastOptions::new(),
+    )
+    .expect("a dictionary column")
 }
 
 /// Two rows whose keys are present, one of them pointing at an absent value.
@@ -46,7 +62,7 @@ fn absent_value_array() -> ArrayRef {
 #[test]
 fn a_required_dictionary_column_with_a_logically_null_row_is_refused_at_the_door_naming_the_column()
 {
-    let refusal = Serie::from_arrow_array(symbols_field(false), symbols_array())
+    let refusal = Serie::from_arrow_array(Some(&symbols_field(false)), symbols_array(), strict())
         .expect_err("a required column admits no absent key");
     assert!(
         refusal.to_string().contains("symbol"),
@@ -54,12 +70,17 @@ fn a_required_dictionary_column_with_a_logically_null_row_is_refused_at_the_door
     );
 
     // A key pointing at an absent value is as absent as a missing key.
-    let refusal = Serie::from_arrow_array(symbols_field(false), absent_value_array())
-        .expect_err("a required column admits no key at an absent value");
+    let refusal =
+        Serie::from_arrow_array(Some(&symbols_field(false)), absent_value_array(), strict())
+            .expect_err("a required column admits no key at an absent value");
     assert!(refusal.to_string().contains("symbol"));
 
-    let admitted = Serie::from_arrow_array(symbols_field(true), absent_value_array())
-        .expect("a nullable column admits it");
+    let admitted = Serie::from_arrow_array(
+        Some(&symbols_field(true)),
+        absent_value_array(),
+        ArrowCastOptions::new(),
+    )
+    .expect("a nullable column admits it");
     assert_eq!(admitted.null_count(), 1);
     assert!(admitted.is_null(1).unwrap());
     assert_eq!(admitted.scalar(1).unwrap(), Scalar::Null);
@@ -107,8 +128,12 @@ fn a_row_past_the_end_and_a_value_the_field_refuses_are_refused_and_nothing_move
 #[test]
 fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_key() {
     let array = symbols_array();
-    let column = Serie::from_arrow_array(symbols_field(true), Arc::clone(&array))
-        .expect("a dictionary column");
+    let column = Serie::from_arrow_array(
+        Some(&symbols_field(true)),
+        Arc::clone(&array),
+        ArrowCastOptions::new(),
+    )
+    .expect("a dictionary column");
     let leaf = column.as_dictionary().expect("a dictionary column");
 
     assert_eq!(

@@ -363,7 +363,7 @@ Arrow *schema* rather than a column, which is the one asymmetry -
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const schema = fields.struct(
       'trade',
@@ -371,15 +371,16 @@ Arrow *schema* rather than a column, which is the one asymmetry -
       { nullable: false },
     )
 
-    // A cast through the struct root answers the Arrow schema a row is written as.
-    const table = schema.castArrow(
+    // A table read under the struct root answers the Arrow schema a row is written as.
+    const batch = Serie.fromArrowBatch(
       new arrow.Table({
         id: arrow.vectorFromArray([7n], new arrow.Int64()),
         symbol: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
       }),
-    )
-    assert.deepEqual(table.schema.fields.map((field) => field.name), ['id', 'symbol'])
-    assert.equal(table.schema.fields[0].nullable, false)
+      schema,
+    ).intoArrowBatch()
+    assert.deepEqual(batch.schema.fields.map((field) => field.name), ['id', 'symbol'])
+    assert.equal(batch.schema.fields[0].nullable, false)
     ```
 
 ## Replacing and removing children

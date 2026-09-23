@@ -7,7 +7,10 @@ use arrow_array::{Array, ArrayRef, BooleanArray, Int64Array, StructArray};
 use arrow_buffer::NullBuffer;
 use arrow_data::ArrayData;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::{DataType, Field, FieldPath, Scalar, Serie, SerieValue, StructType};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, FieldPath, Nullability, Scalar, Serie, SerieValue,
+    StructType,
+};
 
 /// A nullable record root over an identifier and a flag.
 fn quotes_root() -> Field {
@@ -114,8 +117,12 @@ fn set_child_refuses_a_run_a_length_mismatch_and_a_column_that_is_not_a_record()
     );
 
     let short: ArrayRef = Arc::new(Int64Array::from(vec![10]));
-    let short = Serie::from_arrow_array(Field::new("volume", DataType::Int64, false), short)
-        .expect("an int64 column");
+    let short = Serie::from_arrow_array(
+        Some(&Field::new("volume", DataType::Int64, false)),
+        short,
+        ArrowCastOptions::new(),
+    )
+    .expect("an int64 column");
     let refusal = column
         .set_child(short)
         .expect_err("one row does not fit three");
@@ -274,7 +281,11 @@ fn a_required_child_under_a_null_record_row_is_admitted_at_the_door_and_by_a_pus
         ),
         true,
     );
-    let column = Serie::from_arrow_array(root.clone(), records).expect("a hidden absent child");
+    let strict = ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(Nullability::Strict);
+    let column = Serie::from_arrow_array(Some(&root), records, strict)
+        .expect("a hidden absent child, even strictly");
     assert!(column.is_null(1).unwrap());
     assert_eq!(column.child("price").unwrap().null_count(), 1);
 
@@ -545,8 +556,12 @@ fn a_child_is_dropped_added_and_replaced_by_name() {
     assert!(records.without_child("volume").is_err());
 
     let volumes: ArrayRef = Arc::new(Int64Array::from(vec![10, 20, 30]));
-    let volume =
-        Serie::from_arrow_array(Field::new("volume", DataType::Int64, false), volumes).unwrap();
+    let volume = Serie::from_arrow_array(
+        Some(&Field::new("volume", DataType::Int64, false)),
+        volumes,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     let mut widened = without.clone();
     widened.set_child(volume).expect("a child added");
     assert_eq!(widened.children().len(), 2);
@@ -557,8 +572,12 @@ fn a_child_is_dropped_added_and_replaced_by_name() {
 
     // The same name replaces, and the field follows the child's own.
     let volumes: ArrayRef = Arc::new(Int64Array::from(vec![Some(11), None, Some(33)]));
-    let volume =
-        Serie::from_arrow_array(Field::new("volume", DataType::Int64, true), volumes).unwrap();
+    let volume = Serie::from_arrow_array(
+        Some(&Field::new("volume", DataType::Int64, true)),
+        volumes,
+        ArrowCastOptions::new(),
+    )
+    .unwrap();
     widened.set_child(volume).expect("a child replaced");
     assert_eq!(widened.children().len(), 2);
     assert!(

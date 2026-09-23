@@ -338,13 +338,12 @@ storage it does not describe imports as that storage.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
+    // A column crossing out as a table answers the Arrow field it is written as.
     const projected = (field) =>
-      fields
-        .struct('row', [field], { nullable: false })
-        .castArrow(new arrow.Table({ [field.name]: arrow.vectorFromArray(['A'], new arrow.Utf8()) }))
+      Serie.fromArrowArray(arrow.vectorFromArray(['A'], new arrow.Utf8()), field)
+        .intoArrowBatch()
         .schema.fields[0]
 
     // Bytes are the layout; only a maximum needs a document.
@@ -366,17 +365,17 @@ is on [Cast](../cast.md).
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, BinaryArray};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field};
+    use arrow_array::{ArrayRef, BinaryArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let strict = ArrowCastOptions::new().with_safe(false);
     let blob = Field::new("blob", DataType::from_str("binary(2)")?, true);
     let bytes: ArrayRef = Arc::new(BinaryArray::from(vec![&b"ab"[..], &b"abc"[..]]));
 
     // Under `safe` a failing cell is null; strict names the row.
-    assert!(blob.cast_arrow_array(Arc::clone(&bytes), ArrowCastOptions::new())?.is_null(1));
-    let refused = blob.cast_arrow_array(bytes, strict).unwrap_err().to_string();
+    let nulled = Serie::from_arrow_array(Some(&blob), Arc::clone(&bytes), ArrowCastOptions::new())?;
+    assert!(nulled.is_null(1)?);
+    let refused = Serie::from_arrow_array(Some(&blob), bytes, strict).unwrap_err().to_string();
     assert!(refused.contains("row 1"), "{refused}");
     ```
 
@@ -386,14 +385,15 @@ is on [Cast](../cast.md).
     import pyarrow as pa
     import pytest
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     blob = Field("blob", "binary(2)")
+    bytes_ = pa.array([b"ab", b"abc"])
 
     # Under `safe` a failing cell is null; strict names the row.
-    assert blob.cast_arrow_array(pa.array([b"ab", b"abc"])).to_pylist() == [b"ab", None]
+    assert Serie.from_arrow_array(bytes_, blob).as_py() == [b"ab", None]
     with pytest.raises(ValueError, match="row 1"):
-        blob.cast_arrow_array(pa.array([b"ab", b"abc"]), safe=False)
+        Serie.from_arrow_array(bytes_, blob, safe=False)
     ```
 
 === "JavaScript"
@@ -401,7 +401,7 @@ is on [Cast](../cast.md).
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const blob = fields.bytes('blob', { max: 2 })
     const bytes = arrow.vectorFromArray(
@@ -410,8 +410,8 @@ is on [Cast](../cast.md).
     )
 
     // Under `safe` a failing cell is null; strict names the row.
-    assert.equal(blob.castArrowArray(bytes).get(1), null)
-    assert.throws(() => blob.castArrowArray(bytes, { safe: false }), /row 1/)
+    assert.equal(Serie.fromArrowArray(bytes, blob).intoArrowArray().get(1), null)
+    assert.throws(() => Serie.fromArrowArray(bytes, blob, { safe: false }), /row 1/)
     ```
 
 ## Serialized shape

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
@@ -85,7 +87,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
 
 /// Re-key one canonical struct row by the names its Field declares.
 fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Scalar> {
-    let Some(values) = value.sequence_rows() else {
+    let Some(values) = value.as_serie() else {
         // A record already carries its names; anything else is not a struct
         // row and the format writer refuses it under its own rules.
         return Ok(value);
@@ -107,7 +109,7 @@ fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Sca
             .map(|(value, child)| {
                 Ok((
                     SmolStr::new(child.name()),
-                    into_natural(value.clone(), child)?,
+                    into_natural(value.into_owned(), child)?,
                 ))
             })
             .collect::<Result<Vec<_>>>()?,
@@ -163,12 +165,12 @@ fn sequence(
     mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
     field: &Field,
 ) -> Result<Scalar> {
-    let Some(values) = value.sequence_rows() else {
+    let Some(values) = value.as_serie() else {
         return Err(invalid(field, "expected an array"));
     };
     values
         .iter()
-        .cloned()
+        .map(Cow::into_owned)
         .map(&mut prepare_value)
         .collect::<Result<Vec<_>>>()
         .map(Scalar::from_sequence)
@@ -199,9 +201,8 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values
-                .rows()
                 .iter()
-                .cloned()
+                .map(Cow::into_owned)
                 .zip(fields.iter())
                 .map(|(value, child)| prepare(value, child))
                 .collect::<Result<Vec<_>>>()

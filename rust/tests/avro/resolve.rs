@@ -38,6 +38,11 @@ mod avro {
 
         /// Write rows with the writer schema, read them back with the reader.
         fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Scalar> {
+            resolved_by(writer, &Schema::from_str(reader).unwrap(), rows)
+        }
+
+        /// [`resolved`] under a reader schema already parsed.
+        fn resolved_by(writer: &str, reader: &Schema, rows: &[&str]) -> Vec<Scalar> {
             let writer_json = yggdryl::json::from_utf8(writer).unwrap();
             let mut handle = super::buffer();
             let rows: Vec<Scalar> = rows
@@ -45,10 +50,7 @@ mod avro {
                 .map(|row| yggdryl::json::from_utf8(row).unwrap())
                 .collect();
             avro::write_container(&mut handle, &writer_json, &[], &rows).unwrap();
-            let reader = Schema::from_str(reader).unwrap();
-            avro::read_container_resolved(&handle, &reader)
-                .unwrap()
-                .rows
+            avro::read_container_resolved(&handle, reader).unwrap().rows
         }
 
         fn record(fields: &str) -> String {
@@ -179,6 +181,73 @@ mod avro {
             assert_eq!(
                 rows[0].get_key_str("quantity").and_then(Scalar::as_i64),
                 Some(31)
+            );
+        }
+
+        /// The column of `values` under `item`.
+        fn column(item: yggdryl::DataType, values: impl IntoIterator<Item = Scalar>) -> Scalar {
+            let item = yggdryl::Field::new("item", item, false);
+            Scalar::from(yggdryl::Serie::from_scalars(item, values).unwrap())
+        }
+
+        #[test]
+        fn aliases_spelled_as_columns_match_as_the_arrays_do() {
+            let aliases = |values: &[&str]| {
+                column(
+                    yggdryl::DataType::utf8(),
+                    values.iter().copied().map(Scalar::from),
+                )
+            };
+            let field = yggdryl::json::from_utf8(r#"{"name":"quantity","type":"long"}"#)
+                .unwrap()
+                .with_field("aliases", aliases(&["qty"]))
+                .unwrap();
+            let reader = yggdryl::json::from_utf8(r#"{"type":"record","name":"new_row"}"#)
+                .unwrap()
+                .with_field("aliases", aliases(&["old_row"]))
+                .unwrap()
+                .with_field("fields", Scalar::from_sequence([field]))
+                .unwrap();
+            let rows = resolved_by(
+                r#"{"type":"record","name":"old_row","fields":[{"name":"qty","type":"long"}]}"#,
+                &Schema::from_json(&reader).unwrap(),
+                &[r#"{"qty":31}"#],
+            );
+            assert_eq!(
+                rows[0].get_key_str("quantity").and_then(Scalar::as_i64),
+                Some(31)
+            );
+        }
+
+        #[test]
+        fn an_array_default_spelled_as_a_column_fills_the_missing_field() {
+            let xs =
+                yggdryl::json::from_utf8(r#"{"name":"xs","type":{"type":"array","items":"long"}}"#)
+                    .unwrap()
+                    .with_field(
+                        "default",
+                        column(
+                            yggdryl::DataType::Int64,
+                            [Scalar::from(1_i64), Scalar::from(2_i64)],
+                        ),
+                    )
+                    .unwrap();
+            let a = yggdryl::json::from_utf8(r#"{"name":"a","type":"long"}"#).unwrap();
+            let reader = yggdryl::json::from_utf8(r#"{"type":"record","name":"row"}"#)
+                .unwrap()
+                .with_field("fields", Scalar::from_sequence([a, xs]))
+                .unwrap();
+            let rows = resolved_by(
+                &record(r#"{"name":"a","type":"long"}"#),
+                &Schema::from_json(&reader).unwrap(),
+                &[r#"{"a":5}"#],
+            );
+            let xs = rows[0].get_key_str("xs").unwrap();
+            assert_eq!(
+                xs.iter()
+                    .filter_map(|value| value.as_i64())
+                    .collect::<Vec<_>>(),
+                [1, 2]
             );
         }
 

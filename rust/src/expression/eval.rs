@@ -270,7 +270,7 @@ impl Node {
                 }
                 call(function, arguments, &values, self.field.dtype())
             }
-            Kind::Cast(inner, safety) => {
+            Kind::Cast(inner, safety, _) => {
                 let held = inner.eval_ref(row)?;
                 match convert(self.field.dtype(), &held, *safety) {
                     Ok(value) => Ok(value),
@@ -338,7 +338,7 @@ pub(crate) fn keep_elements(
     list: &Scalar,
     holder: Option<&dyn Attributes>,
 ) -> Result<Scalar> {
-    let Some(items) = list.sequence_rows() else {
+    let Some(items) = list.as_serie() else {
         return Ok(Scalar::Null);
     };
     let mut kept = Vec::new();
@@ -346,11 +346,14 @@ pub(crate) fn keep_elements(
         if item.is_null() {
             continue;
         }
-        let Some(values) = struct_values(element, item) else {
-            continue;
+        let keep = match struct_values(element, &item) {
+            Some(values) => {
+                predicate.eval(&Row::new(Some(&values), holder))?.as_bool() == Some(true)
+            }
+            None => false,
         };
-        if predicate.eval(&Row::new(Some(&values), holder))?.as_bool() == Some(true) {
-            kept.push(item.clone());
+        if keep {
+            kept.push(item.into_owned());
         }
     }
     Ok(Scalar::from_sequence(kept))
@@ -747,7 +750,7 @@ fn call(
         }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {
-            let Some(items) = first.sequence_rows() else {
+            let Some(items) = first.as_serie() else {
                 return Ok(Scalar::Null);
             };
             let bound = |value: Option<&Scalar>| -> Result<Option<i64>> {
@@ -762,7 +765,7 @@ fn call(
             };
             let (from, until) =
                 resolve_range(bound(values.get(1))?, bound(values.get(2))?, items.len());
-            Scalar::from_sequence(items[from..until].iter().cloned())
+            Scalar::from(items.slice(from, until - from)?)
         }
     })
 }

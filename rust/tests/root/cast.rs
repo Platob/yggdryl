@@ -22,11 +22,18 @@ mod coverage {
         Time64NanosecondArray, TimestampSecondArray,
     };
 
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, TimeUnit, Timezone};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, TimeUnit, Timezone};
 
     fn cast(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<ArrayRef> {
-        field.cast_arrow_array(array, ArrowCastOptions::new().with_safe(false))
+        cast_with(field, array, ArrowCastOptions::new().with_safe(false))
+    }
+
+    fn cast_with(
+        field: &Field,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> yggdryl::arrow::Result<ArrayRef> {
+        Ok(Serie::from_arrow_array(Some(field), array, options)?.require_arrow_array()?)
     }
 
     #[test]
@@ -207,19 +214,10 @@ mod coverage {
         let target = DataType::Int64.nullable_field("n");
 
         // Unsafe: the unconvertible value is an error naming the cast.
-        assert!(
-            target
-                .cast_arrow_array(
-                    Arc::clone(&source),
-                    ArrowCastOptions::new().with_safe(false)
-                )
-                .is_err()
-        );
+        assert!(cast(&target, Arc::clone(&source)).is_err());
 
         // Safe: it becomes null instead.
-        let softened = target
-            .cast_arrow_array(source, ArrowCastOptions::new())
-            .unwrap();
+        let softened = cast_with(&target, source, ArrowCastOptions::new()).unwrap();
         let softened = softened.as_any().downcast_ref::<Int64Array>().unwrap();
         assert_eq!(softened.value(0), 12);
         assert!(softened.is_null(1));
@@ -335,9 +333,7 @@ mod coverage {
         assert!(message.contains("later"), "{message}");
 
         // The safe cast nulls the same row instead.
-        let read = field
-            .cast_arrow_array(refused, ArrowCastOptions::new())
-            .unwrap();
+        let read = cast_with(&field, refused, ArrowCastOptions::new()).unwrap();
         assert_eq!(
             read.as_any()
                 .downcast_ref::<Time32SecondArray>()
@@ -357,9 +353,7 @@ mod coverage {
             .unwrap()
             .nullable_field("clock");
         let inexact: ArrayRef = Arc::new(StringArray::from(vec!["00:00:00.500", "10:23"]));
-        let read = field
-            .cast_arrow_array(inexact, ArrowCastOptions::new())
-            .unwrap();
+        let read = cast_with(&field, inexact, ArrowCastOptions::new()).unwrap();
         assert_eq!(
             read.as_any()
                 .downcast_ref::<Time32SecondArray>()
@@ -422,10 +416,7 @@ mod coverage {
             "2026-08-17T10:00:00+02:00",
             "not an instant",
         ]));
-        let read = paris
-            .nullable_field("at")
-            .cast_arrow_array(mixed, ArrowCastOptions::new())
-            .unwrap();
+        let read = cast_with(&paris.nullable_field("at"), mixed, ArrowCastOptions::new()).unwrap();
         assert_eq!(
             read.as_any()
                 .downcast_ref::<TimestampSecondArray>()
@@ -475,9 +466,11 @@ mod plans {
     use arrow_schema::{
         ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef,
     };
-    use yggdryl::FieldValue as _;
-    use yggdryl::arrow::{BatchReader, cast_reader};
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::{
+        ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, SerieReader,
+        StructType,
+    };
 
     fn stored() -> SchemaRef {
         Arc::new(Schema::new(vec![
@@ -502,6 +495,16 @@ mod plans {
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+    }
+
+    /// The record field a batch of `schema` lays out as: the plan's source.
+    fn source_of(schema: &Schema) -> Field {
+        Field::from_arrow_schema("row", schema).unwrap()
+    }
+
+    /// The record column of `batch`'s rows, sharing its columns.
+    fn serie(batch: &RecordBatch) -> Serie {
+        Serie::from_arrow_batch(None, batch, ArrowCastOptions::new()).unwrap()
     }
 
     /// A reader that counts what has been pulled and refuses to be pulled again
@@ -551,18 +554,30 @@ mod plans {
 
     #[test]
     fn one_plan_answers_every_batch_of_its_schema() {
-        let plan = ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap();
-        assert_eq!(plan.as_schema().field(0).data_type(), &ArrowDataType::Int64);
-        assert_eq!(plan.as_field(), &target());
-        assert_eq!(plan.as_source_schema().as_ref(), stored().as_ref());
+        let plan =
+            ArrowCastPlan::compile(&source_of(&stored()), &target(), ArrowCastOptions::new())
+                .unwrap();
+        let schema = plan.as_target().clone().into_arrow_schema().unwrap();
+        assert_eq!(schema.field(0).data_type(), &ArrowDataType::Int64);
+        assert_eq!(plan.as_target(), &target());
+        assert_eq!(
+            plan.as_source().data_type(),
+            &ArrowDataType::Struct(stored().fields().clone())
+        );
         assert_eq!(plan.as_options(), &ArrowCastOptions::new());
+        assert!(!plan.is_identity());
 
         // Reusing the plan and casting each batch on its own are the same answer.
         for offset in 0..4 {
             let source = batch(offset);
-            let planned = plan.apply(source.clone()).unwrap();
-            let alone = target()
-                .cast_arrow_batch(source, ArrowCastOptions::new())
+            let planned = plan
+                .apply(&serie(&source))
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
+            let alone = Serie::from_arrow_batch(Some(&target()), &source, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_batch()
                 .unwrap();
             assert_eq!(planned, alone);
         }
@@ -570,7 +585,9 @@ mod plans {
 
     #[test]
     fn a_plan_refuses_a_batch_of_another_schema() {
-        let plan = ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap();
+        let plan =
+            ArrowCastPlan::compile(&source_of(&stored()), &target(), ArrowCastOptions::new())
+                .unwrap();
         let other = RecordBatch::try_new(
             Arc::new(Schema::new(vec![ArrowField::new(
                 "id",
@@ -581,15 +598,15 @@ mod plans {
         )
         .unwrap();
 
-        let message = plan.apply(other).unwrap_err().to_string();
+        let message = plan.apply(&serie(&other)).unwrap_err().to_string();
         assert!(
-            message.contains("differs from the schema this cast plan was compiled for"),
+            message.contains("this cast plan was compiled for"),
             "{message}"
         );
     }
 
     #[test]
-    fn an_exact_plan_hands_the_caller_its_own_batch_back() {
+    fn an_exact_plan_hands_the_caller_its_own_buffers_back() {
         let exact = target();
         let schema = exact.clone().into_arrow_schema().unwrap();
         let source = RecordBatch::try_new(
@@ -601,13 +618,21 @@ mod plans {
         )
         .unwrap();
 
-        let plan = ArrowCastPlan::compile(&schema, &exact, ArrowCastOptions::new()).unwrap();
-        let cast = plan.apply(source.clone()).unwrap();
+        let plan =
+            ArrowCastPlan::compile(&source_of(&schema), &exact, ArrowCastOptions::new()).unwrap();
+        assert!(plan.is_identity());
+        let cast = plan
+            .apply(&serie(&source))
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
 
-        // Not merely equal: the same schema and the same column allocations.
-        assert!(Arc::ptr_eq(&cast.schema(), &source.schema()));
+        // Not merely equal: the same schema and the same buffers. A column
+        // holds each child as its own typed array, so the `Arc` around it is
+        // new; the allocations under it are the caller's.
+        assert_eq!(cast.schema(), schema);
         for (before, after) in source.columns().iter().zip(cast.columns()) {
-            assert!(Arc::ptr_eq(before, after));
+            assert!(before.to_data().ptr_eq(&after.to_data()));
         }
     }
 
@@ -621,7 +646,7 @@ mod plans {
 
         // A required column no source carries is a schema failure, so it never
         // reaches preflight: compiling already refused it.
-        assert!(ArrowCastPlan::compile(&stored(), &missing, strict).is_err());
+        assert!(ArrowCastPlan::compile(&source_of(&stored()), &missing, strict).is_err());
 
         // A null in a required column is a row failure, so an empty preflight
         // passes and the refusal waits for a batch that has rows.
@@ -629,7 +654,7 @@ mod plans {
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("symbol"),
         ]);
-        let plan = ArrowCastPlan::compile(&stored(), &required, strict).unwrap();
+        let plan = ArrowCastPlan::compile(&source_of(&stored()), &required, strict).unwrap();
         plan.preflight().unwrap();
 
         let with_null = RecordBatch::try_new(
@@ -640,13 +665,16 @@ mod plans {
             ],
         )
         .unwrap();
-        assert!(plan.apply(with_null).is_err());
+        assert!(plan.apply(&serie(&with_null)).is_err());
     }
 
     #[test]
     fn a_reader_plans_once_and_casts_when_a_batch_is_pulled() {
         let (inner, pulled) = counted(3);
-        let reader = cast_reader(inner, &target(), ArrowCastOptions::new()).unwrap();
+        let reader =
+            SerieReader::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader();
 
         // The schema is answered before anything is pulled.
         assert_eq!(reader.schema().field(0).data_type(), &ArrowDataType::Int64);
@@ -672,7 +700,9 @@ mod plans {
             false,
         );
         let (inner, pulled) = counted(1);
-        let reader = cast_reader(inner, &exact, ArrowCastOptions::new()).unwrap();
+        let reader = SerieReader::from_arrow_reader(Some(&exact), inner, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_reader();
         drop(reader);
 
         // Nothing wrapped it, so dropping it dropped the source directly.
@@ -694,12 +724,13 @@ mod plans {
             DataType::utf8().required_field("symbol"),
         ]);
         let inner = yggdryl::arrow::batch_reader(stored(), [batch(0), broken, batch(9)]);
-        let mut reader = cast_reader(
+        let mut reader = SerieReader::from_arrow_reader(
+            Some(&required),
             inner,
-            &required,
             ArrowCastOptions::new().with_nullability(Nullability::Strict),
         )
-        .unwrap();
+        .unwrap()
+        .into_arrow_reader();
 
         assert!(reader.next().unwrap().is_ok());
         let error = reader.next().unwrap().unwrap_err();
@@ -712,7 +743,10 @@ mod plans {
     #[test]
     fn dropping_a_reader_early_releases_the_source() {
         let (inner, pulled) = counted(100);
-        let mut reader = cast_reader(inner, &target(), ArrowCastOptions::new()).unwrap();
+        let mut reader =
+            SerieReader::from_arrow_reader(Some(&target()), inner, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader();
         assert!(reader.next().unwrap().is_ok());
         drop(reader);
 
@@ -725,14 +759,15 @@ mod plans {
         fn assert_send_sync<T: Send + Sync>(_: &T) {}
 
         let plan = Arc::new(
-            ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap(),
+            ArrowCastPlan::compile(&source_of(&stored()), &target(), ArrowCastOptions::new())
+                .unwrap(),
         );
         assert_send_sync(&plan);
 
         let handles: Vec<_> = (0..4)
             .map(|offset| {
                 let plan = Arc::clone(&plan);
-                std::thread::spawn(move || plan.apply(batch(offset)).unwrap().num_rows())
+                std::thread::spawn(move || plan.apply(&serie(&batch(offset))).unwrap().len())
             })
             .collect();
         for handle in handles {
@@ -742,14 +777,20 @@ mod plans {
 
     #[test]
     fn a_cast_column_is_the_only_thing_a_plan_rebuilds() {
-        let plan = ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap();
+        let plan =
+            ArrowCastPlan::compile(&source_of(&stored()), &target(), ArrowCastOptions::new())
+                .unwrap();
         let source = batch(0);
-        let cast = plan.apply(source.clone()).unwrap();
+        let cast = plan
+            .apply(&serie(&source))
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
 
-        // `id` widened, so it is a new array; `symbol` was already exact and is
-        // the very allocation the caller handed over.
-        assert!(!Arc::ptr_eq(cast.column(0), source.column(0)));
-        assert!(Arc::ptr_eq(cast.column(1), source.column(1)));
+        // `id` widened, so it is new buffers; `symbol` was already exact and is
+        // the very buffers the caller handed over.
+        assert!(!cast.column(0).to_data().ptr_eq(&source.column(0).to_data()));
+        assert!(cast.column(1).to_data().ptr_eq(&source.column(1).to_data()));
         let ids: &Int64Array = cast.column(0).as_any().downcast_ref().unwrap();
         assert_eq!(ids.values(), &[0, 1]);
         let _: &ArrayRef = cast.column(1);
@@ -757,25 +798,27 @@ mod plans {
 
     #[test]
     fn the_four_cast_doors_are_the_same_cast_at_four_widths() {
-        // `DataTypeValue` and `FieldValue` carry the cast, so every leaf answers
-        // it and the root answers it the same way. What the four doors differ in
-        // is only what they are handed: a value, an array, a batch, a stream.
-        use yggdryl::DataTypeValue as _;
+        // `Serie`'s Arrow doors carry the cast, and `cast_scalar` carries it for
+        // one value, so every leaf answers it and the root answers it the same
+        // way. What the four doors differ in is only what they are handed: a
+        // value, an array, a batch, a stream.
         use yggdryl::arrow::batch_reader;
 
         let field = target();
 
         // A batch, and a reader over batches of the same schema. The stream is the
         // batch door repeated, so the two agree column for column.
-        let cast = field
-            .cast_arrow_batch(batch(0), ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&field), &batch(0), ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
         assert_eq!(cast.column(0).data_type(), &ArrowDataType::Int64);
 
         let (reader, _) = counted(2);
-        let streamed = field
-            .cast_arrow_reader(reader, ArrowCastOptions::new())
-            .unwrap();
+        let streamed =
+            SerieReader::from_arrow_reader(Some(&field), reader, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader();
         assert_eq!(streamed.schema(), cast.schema());
         let pulled: Vec<_> = streamed.map(std::result::Result::unwrap).collect();
         assert_eq!(pulled.len(), 2);
@@ -784,42 +827,54 @@ mod plans {
         // A reader already carrying the declared shape is handed straight back,
         // because casting it would rebuild arrays it would hand back unchanged.
         let exact = batch_reader(cast.schema(), [cast.clone()]);
-        let same: Vec<_> = field
-            .cast_arrow_reader(exact, ArrowCastOptions::new())
-            .unwrap()
-            .map(std::result::Result::unwrap)
-            .collect();
+        let same: Vec<_> =
+            SerieReader::from_arrow_reader(Some(&field), exact, ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_reader()
+                .map(std::result::Result::unwrap)
+                .collect();
         assert_eq!(same, vec![cast.clone()]);
 
         // An array and a one-row scalar, against the child that column is.
         let child = DataType::Int64.required_field("id");
         let column: ArrayRef = Arc::new(Int32Array::from(vec![7]));
-        let ids = child
-            .cast_arrow_array(Arc::clone(&column), ArrowCastOptions::new())
-            .unwrap();
+        let ids =
+            Serie::from_arrow_array(Some(&child), Arc::clone(&column), ArrowCastOptions::new())
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
         assert_eq!(
             ids.as_ref(),
             &Int64Array::from(vec![7]) as &dyn arrow_array::Array
         );
-        let scalar = child
-            .cast_arrow_scalar(Arc::clone(&column), ArrowCastOptions::new())
-            .unwrap();
+        let scalar =
+            Serie::from_arrow_array(Some(&child), Arc::clone(&column), ArrowCastOptions::new())
+                .unwrap()
+                .into_arrow_scalar()
+                .unwrap();
         assert_eq!(arrow_array::Datum::get(&scalar).0, ids.as_ref());
-        // A scalar cast is one row, and says so when it is handed more.
+        // A scalar is one row, and says so when it is handed more.
         assert!(
-            child
-                .cast_arrow_scalar(
-                    Arc::new(Int32Array::from(vec![7, 8])) as ArrayRef,
-                    ArrowCastOptions::new()
-                )
-                .is_err()
+            Serie::from_arrow_array(
+                Some(&child),
+                Arc::new(Int32Array::from(vec![7, 8])) as ArrayRef,
+                ArrowCastOptions::new()
+            )
+            .unwrap()
+            .into_arrow_scalar()
+            .is_err()
         );
 
-        // The datatype answers the same cast with no field around it, and a value
+        // A bare datatype is carried as its required `value` field, and a value
         // crosses the same boundary through `cast_scalar`.
-        let widened = DataType::Int64
-            .cast_arrow_array(Arc::clone(&column), ArrowCastOptions::new())
-            .unwrap();
+        let widened = Serie::from_arrow_array(
+            Some(&DataType::Int64.required_field("value")),
+            Arc::clone(&column),
+            ArrowCastOptions::new(),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         assert_eq!(widened.as_ref(), ids.as_ref());
         assert_eq!(
             DataType::Int64
@@ -844,8 +899,7 @@ mod batches {
 
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, StructType};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         Field::new(
@@ -869,8 +923,9 @@ mod batches {
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("symbol"),
         ]);
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
 
         assert_eq!(cast.num_columns(), 2);
@@ -900,8 +955,9 @@ mod batches {
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ]);
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
 
         assert_eq!(cast.num_columns(), 2);
@@ -918,10 +974,13 @@ mod batches {
         let column: arrow_array::ArrayRef = Arc::new(Int32Array::from(vec![7]));
         let batch = RecordBatch::try_new(schema, vec![Arc::clone(&column)]).unwrap();
 
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
-        assert!(Arc::ptr_eq(cast.column(0), &column));
+        // A column holds its leaf as its own typed array, so the `Arc` around it
+        // is new; the buffers under it are the caller's.
+        assert!(cast.column(0).to_data().ptr_eq(&column.to_data()));
     }
 
     #[test]
@@ -934,8 +993,9 @@ mod batches {
         .unwrap();
 
         let target = root([]);
-        let cast = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new())
+        let cast = Serie::from_arrow_batch(Some(&target), &batch, ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
             .unwrap();
         assert_eq!(cast.num_rows(), 3);
         assert_eq!(cast.num_columns(), 0);
@@ -1025,8 +1085,27 @@ mod typed {
     fn bits() -> ArrowCastOptions {
         ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
     }
+
+    /// `array` cast into `field`, as the array of the column that comes out.
+    fn cast_into(
+        field: &Field,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> yggdryl::arrow::Result<ArrayRef> {
+        Ok(Serie::from_arrow_array(Some(field), array, options)?.require_arrow_array()?)
+    }
+
+    /// `array` cast into a bare datatype, which a cast carries as its required
+    /// `value` field.
+    fn cast_dtype(
+        target: DataType,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> yggdryl::arrow::Result<ArrayRef> {
+        cast_into(&target.required_field("value"), array, options)
+    }
     use yggdryl::FieldValue as _;
-    use yggdryl::{DataType, EdgeAlgorithm, Field, Scalar, StructType};
+    use yggdryl::{DataType, EdgeAlgorithm, Field, Scalar, Serie, StructType};
     use yggdryl::{
         DateTimeField, GeometryField, Int32Field, Int64Field, StringField, StructField,
         UInt32Field, UInt64Field, VariantField,
@@ -1038,10 +1117,15 @@ mod typed {
         let field = Int64Field::new("id", yggdryl::Int64Type, false);
         let source: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
 
-        // The binding is an Int64Array; no downcast at the call site.
-        let ids: Int64Array = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        // The column narrows to its leaf, whose buffers are an Int64Array; no
+        // downcast at the call site.
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        let ids: &Int64Array = cast.as_int64().expect("an int64 column").array();
         assert_eq!(ids.values(), &[1, 2, 3]);
     }
 
@@ -1050,11 +1134,16 @@ mod typed {
         let field = StringField::try_new("symbol", DataType::utf8(), false).unwrap();
         let numbers: ArrayRef = Arc::new(Float64Array::from(vec![1.5, 2.5]));
 
-        // A string's layout and charset decide its array, so the binding is the
+        // A string's layout and charset decide its array, so the column is the
         // storage the field projects rather than one concrete array type.
-        let cast = field
-            .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            numbers,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let text = cast.as_any().downcast_ref::<StringArray>().unwrap();
         assert_eq!(text.value(0), "1.5");
         assert_eq!(text.value(1), "2.5");
@@ -1066,17 +1155,24 @@ mod typed {
         let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
         assert!(
-            field
-                .cast_arrow_array(Arc::clone(&text), ArrowCastOptions::new().with_safe(false))
-                .is_err()
+            Serie::from_arrow_array(
+                Some(&field.clone().into_field()),
+                Arc::clone(&text),
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .is_err()
         );
 
         // Safe casting nulls the failure, and a non-null field then defaults it.
-        let ids = field
-            .cast_arrow_array(text, ArrowCastOptions::new())
-            .unwrap();
+        let cast = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            text,
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let ids = cast.as_int64().expect("an int64 column");
         assert_eq!(ids.values(), &[1, 0]);
-        assert_eq!(ids.null_count(), 0);
+        assert_eq!(ids.array().null_count(), 0);
     }
 
     #[test]
@@ -1084,10 +1180,14 @@ mod typed {
         let field = Int64Field::new("id", yggdryl::Int64Type, true);
         let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
-        let ids = field
-            .cast_arrow_array(text, ArrowCastOptions::new())
-            .unwrap();
-        assert!(ids.is_null(1));
+        let ids = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            text,
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        assert_eq!(ids.as_int64().expect("an int64 column").value(1), None);
+        assert!(ids.is_null(1).unwrap());
     }
 
     #[test]
@@ -1123,16 +1223,28 @@ mod typed {
             ),
         ]));
 
-        let row = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
-        assert_eq!(row.num_columns(), 2);
-        assert_eq!(row.column(0).data_type(), &arrow_schema::DataType::Int64);
+        let row = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        let row = row.as_struct().expect("a struct column");
+        assert_eq!(row.children().len(), 2);
+        assert!(row.child_at(0).unwrap().as_int64().is_some());
+        assert_eq!(
+            row.child_at(0)
+                .unwrap()
+                .require_arrow_array()
+                .unwrap()
+                .data_type(),
+            &arrow_schema::DataType::Int64
+        );
     }
 
     #[test]
     fn a_parameterized_temporal_field_casts_to_a_shared_array() {
-        // A unit decides the physical width, so the result stays an ArrayRef.
+        // A unit decides the physical width, so the column's array is an ArrayRef.
         let field = DateTimeField::try_new(
             "at",
             DataType::DateTime64 {
@@ -1144,9 +1256,14 @@ mod typed {
         .unwrap();
         let source: ArrayRef = Arc::new(Int64Array::from(vec![1_700_000_000_000]));
 
-        let cast: ArrayRef = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let cast: ArrayRef = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         assert_eq!(cast.len(), 1);
         assert_eq!(
             cast.data_type(),
@@ -1160,18 +1277,30 @@ mod typed {
         let one: ArrayRef = Arc::new(Int32Array::from(vec![9]));
         let two: ArrayRef = Arc::new(Int32Array::from(vec![9, 10]));
 
-        let scalar = field
-            .cast_arrow_scalar(one, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let scalar = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            one,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_scalar()
+        .unwrap();
         let (array, is_scalar) = scalar.get();
         assert!(is_scalar);
         assert_eq!(array.len(), 1);
 
-        let message = field
-            .cast_arrow_scalar(two, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("exactly 1 value"), "{message}");
+        // The column's scalar door names the one row it takes and the count it
+        // was handed.
+        let message = Serie::from_arrow_array(
+            Some(&field.clone().into_field()),
+            two,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_scalar()
+        .unwrap_err()
+        .to_string();
+        assert!(message.contains("exactly one row, got 2"), "{message}");
     }
 
     #[test]
@@ -1181,10 +1310,15 @@ mod typed {
         let source: ArrayRef = Arc::new(Int32Array::from(vec![4]));
 
         assert_eq!(
-            borrowed
-                .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-                .unwrap()
-                .values(),
+            Serie::from_arrow_array(
+                Some(&borrowed.clone().into_field()),
+                source,
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .unwrap()
+            .as_int64()
+            .expect("an int64 column")
+            .values(),
             &[4]
         );
     }
@@ -1192,18 +1326,26 @@ mod typed {
     #[test]
     fn bits_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
         let source = UInt32Array::from(vec![0, 0x7fff_ffff, 0x8000_0000, u32::MAX]);
-        let signed = Int32Field::new("digest", yggdryl::Int32Type, true)
-            .cast_arrow_array(Arc::new(source.clone()), bits())
-            .unwrap();
+        let signed = Serie::from_arrow_array(
+            Some(&Int32Field::new("digest", yggdryl::Int32Type, true).into_field()),
+            Arc::new(source.clone()),
+            bits(),
+        )
+        .unwrap();
+        let signed = signed.as_int32().expect("an int32 column").array().clone();
         assert_eq!(signed.values(), &[0, i32::MAX, i32::MIN, -1]);
         assert!(
             signed.values().inner().ptr_eq(source.values().inner()),
             "reading the bits shares the physical value buffer"
         );
 
-        let restored = UInt32Field::new("digest", yggdryl::UInt32Type, true)
-            .cast_arrow_array(Arc::new(signed.clone()), bits())
-            .unwrap();
+        let restored = Serie::from_arrow_array(
+            Some(&UInt32Field::new("digest", yggdryl::UInt32Type, true).into_field()),
+            Arc::new(signed.clone()),
+            bits(),
+        )
+        .unwrap();
+        let restored = restored.as_uint32().expect("a uint32 column").array();
         assert_eq!(restored.values(), source.values());
         assert!(
             restored.values().inner().ptr_eq(source.values().inner()),
@@ -1211,10 +1353,16 @@ mod typed {
         );
 
         assert_eq!(
-            Int32Field::new("digest", yggdryl::Int32Type, true)
-                .cast_arrow_array(Arc::new(UInt32Array::from(Vec::<u32>::new())), bits())
-                .unwrap()
-                .len(),
+            Serie::from_arrow_array(
+                Some(&Int32Field::new("digest", yggdryl::Int32Type, true).into_field()),
+                Arc::new(UInt32Array::from(Vec::<u32>::new())),
+                bits()
+            )
+            .unwrap()
+            .as_int32()
+            .expect("an int32 column")
+            .values()
+            .len(),
             0
         );
     }
@@ -1227,15 +1375,23 @@ mod typed {
             0x8000_0000_0000_0000,
             u64::MAX,
         ]);
-        let signed = Int64Field::new("digest", yggdryl::Int64Type, true)
-            .cast_arrow_array(Arc::new(source.clone()), bits())
-            .unwrap();
+        let signed = Serie::from_arrow_array(
+            Some(&Int64Field::new("digest", yggdryl::Int64Type, true).into_field()),
+            Arc::new(source.clone()),
+            bits(),
+        )
+        .unwrap();
+        let signed = signed.as_int64().expect("an int64 column").array().clone();
         assert_eq!(signed.values(), &[0, i64::MAX, i64::MIN, -1]);
         assert!(signed.values().inner().ptr_eq(source.values().inner()));
 
-        let restored = UInt64Field::new("digest", yggdryl::UInt64Type, true)
-            .cast_arrow_array(Arc::new(signed), bits())
-            .unwrap();
+        let restored = Serie::from_arrow_array(
+            Some(&UInt64Field::new("digest", yggdryl::UInt64Type, true).into_field()),
+            Arc::new(signed),
+            bits(),
+        )
+        .unwrap();
+        let restored = restored.as_uint64().expect("a uint64 column").array();
         assert_eq!(restored.values(), source.values());
         assert!(restored.values().inner().ptr_eq(source.values().inner()));
     }
@@ -1248,22 +1404,40 @@ mod typed {
 
         // The whole point of naming a width: an integer, its opposite sign, a
         // float and raw bytes are one buffer under four readings.
-        let bytes = Field::new("digest", DataType::fixed_binary(8).unwrap(), true)
-            .cast_arrow_array(Arc::clone(&source), bits())
-            .unwrap();
+        let bytes = Serie::from_arrow_array(
+            Some(&Field::new(
+                "digest",
+                DataType::fixed_binary(8).unwrap(),
+                true,
+            )),
+            Arc::clone(&source),
+            bits(),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let stored: &FixedSizeBinaryArray = bytes.as_any().downcast_ref().unwrap();
         assert_eq!(stored.value(1), &[0xff; 8]);
 
-        let floats = Field::new("digest", DataType::Float64, true)
-            .cast_arrow_array(Arc::clone(&bytes), bits())
-            .unwrap();
+        let floats = Serie::from_arrow_array(
+            Some(&Field::new("digest", DataType::Float64, true)),
+            Arc::clone(&bytes),
+            bits(),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let floats: &Float64Array = floats.as_any().downcast_ref().unwrap();
         assert!(floats.value(1).is_nan(), "{:?}", floats.value(1));
 
         // Round-tripping the whole chain restores the exact bit pattern.
-        let restored = UInt64Field::new("digest", yggdryl::UInt64Type, true)
-            .cast_arrow_array(bytes, bits())
-            .unwrap();
+        let restored = Serie::from_arrow_array(
+            Some(&UInt64Field::new("digest", yggdryl::UInt64Type, true).into_field()),
+            bytes,
+            bits(),
+        )
+        .unwrap();
+        let restored = restored.as_uint64().expect("a uint64 column").array();
         assert_eq!(restored.values(), &[0, u64::MAX]);
         assert!(
             restored
@@ -1277,9 +1451,13 @@ mod typed {
     #[test]
     fn bits_preserve_slices_and_apply_the_target_null_contract() {
         let source = UInt64Array::from(vec![Some(3), Some(u64::MAX), None, Some(5)]).slice(1, 2);
-        let nullable = Int64Field::new("digest", yggdryl::Int64Type, true)
-            .cast_arrow_array(Arc::new(source.clone()), bits())
-            .unwrap();
+        let nullable = Serie::from_arrow_array(
+            Some(&Int64Field::new("digest", yggdryl::Int64Type, true).into_field()),
+            Arc::new(source.clone()),
+            bits(),
+        )
+        .unwrap();
+        let nullable = nullable.as_int64().expect("an int64 column").array();
         assert_eq!(nullable.len(), 2);
         assert_eq!(nullable.value(0), -1);
         assert!(nullable.is_null(1));
@@ -1287,19 +1465,23 @@ mod typed {
 
         // The reading says what the bytes mean; the nullability policy still says
         // what an absent value means.
-        let required = Int64Field::new("digest", yggdryl::Int64Type, false)
-            .cast_arrow_array(Arc::new(source.clone()), bits())
-            .unwrap();
+        let required = Serie::from_arrow_array(
+            Some(&Int64Field::new("digest", yggdryl::Int64Type, false).into_field()),
+            Arc::new(source.clone()),
+            bits(),
+        )
+        .unwrap();
+        let required = required.as_int64().expect("an int64 column").array();
         assert_eq!(required.values(), &[-1, 0]);
         assert_eq!(required.null_count(), 0);
 
-        let refused = Int64Field::new("digest", yggdryl::Int64Type, false)
-            .cast_arrow_array(
-                Arc::new(source),
-                bits().with_nullability(yggdryl::Nullability::Strict),
-            )
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&Int64Field::new("digest", yggdryl::Int64Type, false).into_field()),
+            Arc::new(source),
+            bits().with_nullability(yggdryl::Nullability::Strict),
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(refused, "required Arrow field $.digest holds 1 null values");
     }
 
@@ -1307,28 +1489,36 @@ mod typed {
     fn a_pair_that_is_not_the_same_bytes_converts_as_it_always_did() {
         // Asking for bits is a preference, not a mode: two widths that are not one
         // buffer take the ordinary numeric conversion, and its range check with it.
-        let widened = Int64Field::new("id", yggdryl::Int64Type, true)
-            .cast_arrow_array(Arc::new(Int32Array::from(vec![7])), bits())
-            .unwrap();
-        assert_eq!(widened.values(), &[7]);
+        let widened = Serie::from_arrow_array(
+            Some(&Int64Field::new("id", yggdryl::Int64Type, true).into_field()),
+            Arc::new(Int32Array::from(vec![7])),
+            bits(),
+        )
+        .unwrap();
+        assert_eq!(widened.as_int64().expect("an int64 column").values(), &[7]);
 
-        let text = Field::new("id", DataType::utf8(), true)
-            .cast_arrow_array(Arc::new(Int64Array::from(vec![7])), bits())
-            .unwrap();
+        let text = Serie::from_arrow_array(
+            Some(&Field::new("id", DataType::utf8(), true)),
+            Arc::new(Int64Array::from(vec![7])),
+            bits(),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         assert_eq!(text.data_type(), &arrow_schema::DataType::Utf8);
 
         // A datatype whose values follow a rule keeps that rule: four bytes are
         // not US-ASCII text merely because they are four bytes.
-        let refused = Field::new("ccy", DataType::fixed_ascii(4).unwrap(), true)
-            .cast_arrow_array(
-                Arc::new(
-                    arrow_array::FixedSizeBinaryArray::try_from_iter([[0xff_u8; 4]].into_iter())
-                        .unwrap(),
-                ),
-                bits().with_safe(false),
-            )
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&Field::new("ccy", DataType::fixed_ascii(4).unwrap(), true)),
+            Arc::new(
+                arrow_array::FixedSizeBinaryArray::try_from_iter([[0xff_u8; 4]].into_iter())
+                    .unwrap(),
+            ),
+            bits().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("ccy"), "{refused}");
     }
 
@@ -1337,14 +1527,21 @@ mod typed {
         let field = Int64Field::new("digest", yggdryl::Int64Type, true);
         let source: ArrayRef = Arc::new(UInt64Array::from(vec![u64::MAX]));
         assert!(
-            field
-                .cast_arrow_array(
-                    Arc::clone(&source),
-                    ArrowCastOptions::new().with_safe(false)
-                )
-                .is_err()
+            Serie::from_arrow_array(
+                Some(&field.clone().into_field()),
+                Arc::clone(&source),
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .is_err()
         );
-        assert_eq!(field.cast_arrow_array(source, bits()).unwrap().value(0), -1);
+        assert_eq!(
+            Serie::from_arrow_array(Some(&field.clone().into_field()), source, bits())
+                .unwrap()
+                .as_int64()
+                .expect("an int64 column")
+                .value(0),
+            Some(-1)
+        );
     }
 
     /// One little-endian ISO WKB point.
@@ -1397,7 +1594,12 @@ mod typed {
             DataType::from(StructType::from_fields([target]).unwrap()),
             false,
         );
-        root.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
+        Serie::from_arrow_batch(
+            Some(&root),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )?
+        .into_arrow_batch()
     }
 
     #[test]
@@ -1407,29 +1609,29 @@ mod typed {
         let point = wkb_point(1.0, 2.0);
         let source: ArrayRef = Arc::new(BinaryArray::from(vec![Some(point.as_slice()), None]));
 
-        // Valid WKB passes with the same bytes; the untyped cast is the identity.
-        let cast = field
-            .cast_arrow_array(
-                Arc::clone(&source),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
-        assert_eq!(cast.value(0), point.as_slice());
-        let identity = field
-            .to_field()
-            .cast_arrow_array(
-                Arc::clone(&source),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
-        assert!(Arc::ptr_eq(&identity, &source));
+        // Valid WKB passes with the same bytes; the cast is the identity.
+        let cast = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        assert_eq!(
+            cast.as_binary().expect("a WKB column").value(0),
+            Some(point.as_slice())
+        );
+        let identity = cast.require_arrow_array().unwrap();
+        assert!(identity.to_data().ptr_eq(&source.to_data()));
 
         // Truncated bytes are refused naming the field and the row.
         let broken: ArrayRef = Arc::new(BinaryArray::from(vec![Some([1u8, 1, 0].as_slice())]));
-        let refused = field
-            .cast_arrow_array(broken, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            broken,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("shape"), "{refused}");
         assert!(refused.contains("row 0"), "{refused}");
         assert!(refused.contains("WKB"), "{refused}");
@@ -1532,10 +1734,13 @@ mod typed {
     fn text_into_a_geospatial_target_names_the_absent_wkt_parser() {
         let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
         let source: ArrayRef = Arc::new(StringArray::from(vec!["POINT (1 2)"]));
-        let refused = field
-            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&field),
+            source,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("WKT parser"), "{refused}");
     }
 
@@ -1544,31 +1749,28 @@ mod typed {
         let field = VariantField::new("payload", yggdryl::VariantType, true);
         let storage = variant_storage_array(2);
 
-        // The identity works, and the untyped cast returns the same array.
-        let cast = field
-            .cast_arrow_array(
-                Arc::clone(&storage),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
+        // The identity works, and the column shares the caller's buffers.
+        let cast = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            Arc::clone(&storage),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
         assert_eq!(cast.len(), 2);
-        let identity = field
-            .to_field()
-            .cast_arrow_array(
-                Arc::clone(&storage),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
-        assert!(Arc::ptr_eq(&identity, &storage));
+        assert!(cast.as_variant().is_some());
+        let identity = cast.require_arrow_array().unwrap();
+        assert!(identity.to_data().ptr_eq(&storage.to_data()));
 
         // Anything else refuses by name: the column holds the two binaries
         // the encoding is, which a caller writes with `Variant::encode`.
         let numbers: ArrayRef = Arc::new(Int64Array::from(vec![7]));
-        let refused = field
-            .to_field()
-            .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&field.to_field()),
+            numbers,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("Variant::encode"), "{refused}");
     }
 
@@ -1592,10 +1794,13 @@ mod typed {
             ),
             false,
         );
-        let refused = target
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_batch(
+            Some(&target),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("Variant::scalar"), "{refused}");
     }
 
@@ -1611,8 +1816,8 @@ mod typed {
         use arrow_buffer::OffsetBuffer;
         use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
 
+        use super::cast_dtype;
         use yggdryl::DataType;
-        use yggdryl::DataTypeValue as _;
         use yggdryl::cast::ArrowCastOptions;
 
         fn dtype(expression: &str) -> DataType {
@@ -1673,8 +1878,7 @@ mod typed {
             ];
             for source in sources {
                 for target in targets {
-                    let cast = dtype(target)
-                        .cast_arrow_array(Arc::clone(&source), strict())
+                    let cast = cast_dtype(dtype(target), Arc::clone(&source), strict())
                         .unwrap_or_else(|error| {
                             panic!("{:?} -> {target}: {error}", source.data_type())
                         });
@@ -1689,10 +1893,13 @@ mod typed {
             let source: ArrayRef =
                 Arc::new(FixedSizeListArray::try_new(item, 2, values, None).unwrap());
 
-            let refused = dtype("fixed_size_list<struct<a: int32>, 4>")
-                .cast_arrow_array(source, strict())
-                .unwrap_err()
-                .to_string();
+            let refused = cast_dtype(
+                dtype("fixed_size_list<struct<a: int32>, 4>"),
+                source,
+                strict(),
+            )
+            .unwrap_err()
+            .to_string();
             assert!(refused.contains("value change"), "{refused}");
         }
 
@@ -1700,16 +1907,14 @@ mod typed {
         fn an_encoded_target_runs_the_value_rule_its_leaf_carries() {
             let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{e9}"]));
             for target in ["dictionary<int32, ascii>", "run_end_encoded<int32, ascii>"] {
-                let refused = dtype(target)
-                    .cast_arrow_array(Arc::clone(&text), strict())
+                let refused = cast_dtype(dtype(target), Arc::clone(&text), strict())
                     .unwrap_err()
                     .to_string();
                 assert!(refused.contains("non-ASCII byte"), "{target}: {refused}");
             }
 
             let wkb: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"nope"]));
-            let refused = dtype("dictionary<int32, geometry>")
-                .cast_arrow_array(wkb, strict())
+            let refused = cast_dtype(dtype("dictionary<int32, geometry>"), wkb, strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("WKB"), "{refused}");
@@ -1730,8 +1935,7 @@ mod typed {
                 } else {
                     Arc::clone(&codes)
                 };
-                let cast = dtype(target)
-                    .cast_arrow_array(source, strict())
+                let cast = cast_dtype(dtype(target), source, strict())
                     .unwrap_or_else(|error| panic!("{target}: {error}"));
                 // The declared child field keeps the extension identity Arrow's
                 // own encoding does not copy.
@@ -1773,8 +1977,7 @@ mod typed {
             for source in [dictionary, run] {
                 // The decode happens first, so the Struct child the encoding was
                 // hiding is reconciled by name rather than positionally.
-                let cast = dtype("struct<KEY: utf8>")
-                    .cast_arrow_array(Arc::clone(&source), strict())
+                let cast = cast_dtype(dtype("struct<KEY: utf8>"), Arc::clone(&source), strict())
                     .unwrap_or_else(|error| panic!("{:?}: {error}", source.data_type()));
                 let ArrowDataType::Struct(cast_fields) = cast.data_type() else {
                     panic!("a struct target answers a struct");
@@ -1786,9 +1989,7 @@ mod typed {
         #[test]
         fn a_byte_framing_reaches_every_other_one_through_binary() {
             let text: ArrayRef = Arc::new(StringArray::from(vec!["abc"]));
-            let fixed = dtype("fixed_binary(3)")
-                .cast_arrow_array(Arc::clone(&text), strict())
-                .unwrap();
+            let fixed = cast_dtype(dtype("fixed_binary(3)"), Arc::clone(&text), strict()).unwrap();
             assert_eq!(
                 fixed
                     .as_any()
@@ -1799,7 +2000,7 @@ mod typed {
                 b"abc"
             );
 
-            let back = DataType::utf8().cast_arrow_array(fixed, strict()).unwrap();
+            let back = cast_dtype(DataType::utf8(), fixed, strict()).unwrap();
             assert_eq!(
                 back.as_any()
                     .downcast_ref::<StringArray>()
@@ -1824,9 +2025,9 @@ mod typed {
 
         use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
+        use super::{cast_dtype, cast_into};
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field};
-        use yggdryl::{DataTypeValue as _, FieldValue as _};
+        use yggdryl::{DataType, Field, Serie};
 
         fn dtype(expression: &str) -> DataType {
             expression.parse().unwrap()
@@ -1861,7 +2062,9 @@ mod typed {
                 false,
             );
             Ok(Arc::clone(
-                root.cast_arrow_batch(source, options)?.column(0),
+                Serie::from_arrow_batch(Some(&root), &source, options)?
+                    .into_arrow_batch()?
+                    .column(0),
             ))
         }
 
@@ -1869,17 +2072,19 @@ mod typed {
         fn a_bound_is_checked_on_the_way_in_and_a_failing_cell_is_null_when_safe() {
             let text: ArrayRef =
                 Arc::new(StringArray::from(vec![Some("abc"), Some("abcdef"), None]));
-            let refused = dtype("utf8(4)")
-                .cast_arrow_array(Arc::clone(&text), strict())
+            let refused = cast_dtype(dtype("utf8(4)"), Arc::clone(&text), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains("at most 4 bytes"), "{refused}");
 
             // A nullable field keeps the null a failing cell became.
-            let lenient = Field::new("text", dtype("utf8(4)"), true)
-                .cast_arrow_array(text, ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(
+                &Field::new("text", dtype("utf8(4)"), true),
+                text,
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
             let lenient = lenient
                 .as_ref()
                 .as_any()
@@ -1893,16 +2098,18 @@ mod typed {
         #[test]
         fn a_code_answers_safe_and_strict_exactly_as_a_string_does() {
             let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EURO"), None]));
-            let refused = DataType::Currency
-                .cast_arrow_array(Arc::clone(&text), strict())
+            let refused = cast_dtype(DataType::Currency, Arc::clone(&text), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains("at most 3 bytes"), "{refused}");
 
-            let lenient = Field::new("ccy", DataType::Currency, true)
-                .cast_arrow_array(text, ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(
+                &Field::new("ccy", DataType::Currency, true),
+                text,
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
             let lenient = lenient
                 .as_ref()
                 .as_any()
@@ -1913,12 +2120,12 @@ mod typed {
             assert!(lenient.is_null(2));
 
             // A text source every cell of which passes is the code's own
-            // storage, so it is shared rather than copied.
+            // storage, so it is shared rather than copied. A column holds its
+            // leaf as its own typed array, so the `Arc` around it is new; the
+            // buffers under it are the caller's.
             let passing: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
-            let shared = DataType::Currency
-                .cast_arrow_array(Arc::clone(&passing), strict())
-                .unwrap();
-            assert!(Arc::ptr_eq(&shared, &passing));
+            let shared = cast_dtype(DataType::Currency, Arc::clone(&passing), strict()).unwrap();
+            assert!(shared.to_data().ptr_eq(&passing.to_data()));
 
             // A fixed binary source is trimmed of the padding its slot wrote and
             // stored as the text it spells.
@@ -1929,14 +2136,13 @@ mod typed {
                 )
                 .unwrap(),
             );
-            assert!(
-                DataType::Currency
-                    .cast_arrow_array(Arc::clone(&stored), strict())
-                    .is_err()
-            );
-            let lenient = Field::new("ccy", DataType::Currency, true)
-                .cast_arrow_array(stored, ArrowCastOptions::new())
-                .unwrap();
+            assert!(cast_dtype(DataType::Currency, Arc::clone(&stored), strict()).is_err());
+            let lenient = cast_into(
+                &Field::new("ccy", DataType::Currency, true),
+                stored,
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
             let lenient = lenient
                 .as_ref()
                 .as_any()
@@ -1951,9 +2157,7 @@ mod typed {
             let text: ArrayRef = Arc::new(StringArray::from(vec!["caf\u{e9}"]));
             let latin = batch(
                 Field::new("text", dtype("string(windows-1252)"), true),
-                dtype("string(windows-1252)")
-                    .cast_arrow_array(text, strict())
-                    .unwrap(),
+                cast_dtype(dtype("string(windows-1252)"), text, strict()).unwrap(),
             );
             let bytes = downcast::<BinaryArray>(latin.column(0).as_ref()).unwrap();
             assert_eq!(bytes.value(0), b"caf\xe9");
@@ -1976,8 +2180,7 @@ mod typed {
             // U+0101 has no windows-1252 byte, and the write seam is where that
             // is refused, naming the row.
             let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{0101}"]));
-            let refused = dtype("cp1252")
-                .cast_arrow_array(text, strict())
+            let refused = cast_dtype(dtype("cp1252"), text, strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 0"), "{refused}");
@@ -1986,9 +2189,7 @@ mod typed {
         #[test]
         fn a_fixed_width_pads_on_the_way_in_and_trims_on_the_way_out() {
             let text: ArrayRef = Arc::new(StringArray::from(vec!["ab"]));
-            let fixed = dtype("fixed_ascii(4)")
-                .cast_arrow_array(text, strict())
-                .unwrap();
+            let fixed = cast_dtype(dtype("fixed_ascii(4)"), text, strict()).unwrap();
             assert_eq!(
                 downcast::<FixedSizeBinaryArray>(fixed.as_ref())
                     .unwrap()
@@ -2011,9 +2212,7 @@ mod typed {
         #[test]
         fn a_code_reads_into_a_string_and_bare_bytes_are_taken_as_the_target_charset() {
             let codes: ArrayRef = Arc::new(StringArray::from(vec!["USD"]));
-            let currency = DataType::Currency
-                .cast_arrow_array(codes, strict())
-                .unwrap();
+            let currency = cast_dtype(DataType::Currency, codes, strict()).unwrap();
             let source = batch(Field::new("text", DataType::Currency, true), currency);
             let back = cast_column(source, dtype("utf8(8)"), strict()).unwrap();
             assert_eq!(
@@ -2026,9 +2225,7 @@ mod typed {
             );
 
             let bytes: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"caf\xe9"]));
-            let latin = dtype("string(windows-1252)")
-                .cast_arrow_array(bytes, strict())
-                .unwrap();
+            let latin = cast_dtype(dtype("string(windows-1252)"), bytes, strict()).unwrap();
             assert_eq!(
                 latin
                     .as_ref()
@@ -2055,9 +2252,9 @@ mod typed {
 
         use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
+        use super::{cast_dtype, cast_into};
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field};
-        use yggdryl::{DataTypeValue as _, FieldValue as _};
+        use yggdryl::{DataType, Field, Serie};
 
         fn dtype(expression: &str) -> DataType {
             expression.parse().unwrap()
@@ -2086,17 +2283,19 @@ mod typed {
                 Some(b"abcdef".as_slice()),
                 None,
             ]));
-            let refused = dtype("binary(4)")
-                .cast_arrow_array(Arc::clone(&cells), strict())
+            let refused = cast_dtype(dtype("binary(4)"), Arc::clone(&cells), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains("at most 4 bytes"), "{refused}");
 
             // A nullable field keeps the null a failing cell became.
-            let lenient = Field::new("payload", dtype("binary(4)"), true)
-                .cast_arrow_array(cells, ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(
+                &Field::new("payload", dtype("binary(4)"), true),
+                cells,
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
             let lenient = lenient
                 .as_ref()
                 .as_any()
@@ -2110,9 +2309,7 @@ mod typed {
         #[test]
         fn a_bounded_target_writes_its_own_layout_from_any_byte_source() {
             let text: ArrayRef = Arc::new(StringArray::from(vec!["ab"]));
-            let large = dtype("large_binary")
-                .cast_arrow_array(text, strict())
-                .unwrap();
+            let large = cast_dtype(dtype("large_binary"), text, strict()).unwrap();
             assert_eq!(
                 downcast::<LargeBinaryArray>(large.as_ref())
                     .unwrap()
@@ -2120,22 +2317,23 @@ mod typed {
                 b"ab"
             );
 
-            let fixed = dtype("fixed_binary(3)")
-                .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
-                .unwrap();
-            let view = dtype("sized_binary(3)")
-                .cast_arrow_array(fixed, strict())
-                .unwrap();
+            let fixed = cast_dtype(
+                dtype("fixed_binary(3)"),
+                Arc::new(BinaryArray::from_vec(vec![b"abc"])),
+                strict(),
+            )
+            .unwrap();
+            let view = cast_dtype(dtype("sized_binary(3)"), fixed, strict()).unwrap();
             assert_eq!(view.data_type(), &arrow_schema::DataType::Binary);
         }
 
         #[test]
         fn an_unbounded_layout_is_its_storage_and_a_declared_source_is_exact() {
             let cells: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"abc"]));
-            let plain = DataType::binary()
-                .cast_arrow_array(Arc::clone(&cells), strict())
-                .unwrap();
-            assert!(Arc::ptr_eq(&plain, &cells));
+            // A column holds its leaf as its own typed array, so the `Arc`
+            // around it is new; the buffers under it are the caller's.
+            let plain = cast_dtype(DataType::binary(), Arc::clone(&cells), strict()).unwrap();
+            assert!(plain.to_data().ptr_eq(&cells.to_data()));
 
             // A column written as `binary(4)` was measured when it was written,
             // so it comes back as the same array rather than a re-read one.
@@ -2148,17 +2346,27 @@ mod typed {
                 ),
                 false,
             );
-            let exact = root.cast_arrow_batch(source.clone(), strict()).unwrap();
-            assert!(Arc::ptr_eq(exact.column(0), source.column(0)));
+            let exact = Serie::from_arrow_batch(Some(&root), &source, strict())
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
+            assert!(
+                exact
+                    .column(0)
+                    .to_data()
+                    .ptr_eq(&source.column(0).to_data())
+            );
         }
 
         #[test]
         fn two_fixed_widths_are_a_value_change_and_say_so() {
-            let fixed = dtype("fixed_binary(3)")
-                .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
-                .unwrap();
-            let refused = dtype("fixed_binary(4)")
-                .cast_arrow_array(fixed, strict())
+            let fixed = cast_dtype(
+                dtype("fixed_binary(3)"),
+                Arc::new(BinaryArray::from_vec(vec![b"abc"])),
+                strict(),
+            )
+            .unwrap();
+            let refused = cast_dtype(dtype("fixed_binary(4)"), fixed, strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("value change"), "{refused}");
@@ -2178,10 +2386,10 @@ mod typed {
             LargeStringArray, ListArray, RunArray, StringArray, StringViewArray,
         };
 
-        use yggdryl::FieldValue as _;
+        use super::cast_into;
         use yggdryl::arrow::scalar_value;
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field, Nullability, Scalar, TimeUnit, Timezone};
+        use yggdryl::{DataType, Field, Nullability, Scalar, Serie, TimeUnit, Timezone};
 
         /// A failed conversion is an error rather than a null.
         fn conversion_error() -> ArrowCastOptions {
@@ -2349,11 +2557,11 @@ mod typed {
                 let field = Field::new("x", target, true);
                 for source in empty_sources() {
                     for options in [ArrowCastOptions::new(), conversion_error()] {
-                        let cast = field
-                            .cast_arrow_array(Arc::clone(&source), options)
-                            .unwrap_or_else(|error| {
+                        let cast = cast_into(&field, Arc::clone(&source), options).unwrap_or_else(
+                            |error| {
                                 panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
-                            });
+                            },
+                        );
                         assert_eq!(cast.len(), 1, "{}", field.dtype());
                         assert!(
                             is_null(&cast),
@@ -2371,8 +2579,7 @@ mod typed {
             for target in non_text_targets() {
                 let field = Field::new("x", target, false);
                 for source in empty_sources() {
-                    let repaired =
-                        field.cast_arrow_array(Arc::clone(&source), ArrowCastOptions::new());
+                    let repaired = cast_into(&field, Arc::clone(&source), ArrowCastOptions::new());
                     match field.default_value() {
                         Ok(default) => {
                             let repaired = repaired.unwrap_or_else(|error| {
@@ -2385,8 +2592,7 @@ mod typed {
                         Err(_) => assert!(repaired.is_err(), "{}", field.dtype()),
                     }
 
-                    let refused = field
-                        .cast_arrow_array(Arc::clone(&source), strict())
+                    let refused = cast_into(&field, Arc::clone(&source), strict())
                         .err()
                         .unwrap_or_else(|| {
                             panic!(
@@ -2412,17 +2618,14 @@ mod typed {
             let field = Field::new("x", DataType::Int32, true);
             let mixed: ArrayRef = Arc::new(StringArray::from(vec!["7", "", "not a number"]));
 
-            let lenient = field
-                .cast_arrow_array(Arc::clone(&mixed), ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(&field, Arc::clone(&mixed), ArrowCastOptions::new()).unwrap();
             let lenient = lenient.as_any().downcast_ref::<Int32Array>().unwrap();
             assert_eq!(lenient.value(0), 7);
             assert!(lenient.is_null(1));
             assert!(lenient.is_null(2));
 
             // The refusal is the misspelt cell's, and the empty one is never named.
-            let refused = field
-                .cast_arrow_array(mixed, conversion_error())
+            let refused = cast_into(&field, mixed, conversion_error())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("not a number"), "{refused}");
@@ -2433,8 +2636,7 @@ mod typed {
             // never named.
             let dates = Field::new("x", DataType::date32(), true);
             let mixed: ArrayRef = Arc::new(StringArray::from(vec!["2024-01-01", "", "not a date"]));
-            let refused = dates
-                .cast_arrow_array(mixed, conversion_error())
+            let refused = cast_into(&dates, mixed, conversion_error())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 2"), "{refused}");
@@ -2442,11 +2644,9 @@ mod typed {
 
             // Whitespace is not empty: it is a spelling no reader takes.
             let blank: ArrayRef = Arc::new(StringArray::from(vec![" "]));
-            let lenient = field
-                .cast_arrow_array(Arc::clone(&blank), ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(&field, Arc::clone(&blank), ArrowCastOptions::new()).unwrap();
             assert!(lenient.is_null(0));
-            assert!(field.cast_arrow_array(blank, conversion_error()).is_err());
+            assert!(cast_into(&field, blank, conversion_error()).is_err());
         }
 
         #[test]
@@ -2454,8 +2654,7 @@ mod typed {
             let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
             for leaf in string_leaves().into_iter().chain(byte_leaves()) {
                 let field = Field::new("x", leaf, true);
-                let cast = field
-                    .cast_arrow_array(Arc::clone(&empty), conversion_error())
+                let cast = cast_into(&field, Arc::clone(&empty), conversion_error())
                     .unwrap_or_else(|error| panic!("{}: {error}", field.dtype()));
                 assert!(!cast.is_null(0), "{}", field.dtype());
                 assert_eq!(
@@ -2469,15 +2668,18 @@ mod typed {
             // A fixed width is a rule about the payload, and an empty one is the
             // wrong width.
             assert!(
-                Field::new("x", DataType::fixed_binary(4).unwrap(), true)
-                    .cast_arrow_array(empty, conversion_error())
-                    .is_err()
+                cast_into(
+                    &Field::new("x", DataType::fixed_binary(4).unwrap(), true),
+                    empty,
+                    conversion_error()
+                )
+                .is_err()
             );
 
             // The rule reads one direction: an empty payload renders as `""`.
             let payload: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b""]));
             let field = Field::new("x", DataType::utf8(), true);
-            let text = field.cast_arrow_array(payload, conversion_error()).unwrap();
+            let text = cast_into(&field, payload, conversion_error()).unwrap();
             assert!(!text.is_null(0));
             assert_eq!(cell(&field, &text), Scalar::from(""));
         }
@@ -2549,8 +2751,7 @@ mod typed {
                     let field = Field::new("x", code.clone(), nullable);
                     for source in empty_sources() {
                         for options in [ArrowCastOptions::new(), conversion_error(), strict()] {
-                            let cast = field
-                                .cast_arrow_array(Arc::clone(&source), options)
+                            let cast = cast_into(&field, Arc::clone(&source), options)
                                 .unwrap_or_else(|error| {
                                     panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
                                 });
@@ -2564,16 +2765,18 @@ mod typed {
                 // repair, and its own default array, read back under Strict.
                 let required = Field::new("x", code.clone(), false);
                 for column in [
-                    required
-                        .cast_arrow_array(
-                            Arc::new(StringArray::from(vec![""])),
-                            ArrowCastOptions::new(),
-                        )
+                    cast_into(
+                        &required,
+                        Arc::new(StringArray::from(vec![""])),
+                        ArrowCastOptions::new(),
+                    )
+                    .unwrap(),
+                    Serie::from_default(required.clone(), 1)
+                        .unwrap()
+                        .require_arrow_array()
                         .unwrap(),
-                    required.default_arrow_array().unwrap(),
                 ] {
-                    let again = required
-                        .cast_arrow_array(column, strict())
+                    let again = cast_into(&required, column, strict())
                         .unwrap_or_else(|error| panic!("{code}: {error}"));
                     assert_eq!(cell(&required, &again), member, "{code}");
                 }
@@ -2594,11 +2797,9 @@ mod typed {
 
             let field = Field::new("x", interval, true);
             let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
-            let lenient = field
-                .cast_arrow_array(Arc::clone(&empty), ArrowCastOptions::new())
-                .unwrap();
+            let lenient = cast_into(&field, Arc::clone(&empty), ArrowCastOptions::new()).unwrap();
             assert!(lenient.is_null(0));
-            assert!(field.cast_arrow_array(empty, conversion_error()).is_err());
+            assert!(cast_into(&field, empty, conversion_error()).is_err());
         }
 
         /// A list target reads a scalar source into its item, so the item is
@@ -2612,9 +2813,7 @@ mod typed {
                 DataType::list(DataType::utf8().nullable_field("item")),
                 true,
             );
-            let cast = texts
-                .cast_arrow_array(Arc::clone(&empty), conversion_error())
-                .unwrap();
+            let cast = cast_into(&texts, Arc::clone(&empty), conversion_error()).unwrap();
             let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
             assert_eq!(list.value_length(0), 1);
             assert!(!list.values().is_null(0));
@@ -2632,7 +2831,7 @@ mod typed {
                 DataType::list(DataType::Int32.nullable_field("item")),
                 true,
             );
-            let cast = counts.cast_arrow_array(empty, conversion_error()).unwrap();
+            let cast = cast_into(&counts, empty, conversion_error()).unwrap();
             let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
             assert_eq!(list.value_length(0), 1);
             assert!(list.values().is_null(0));
@@ -2650,10 +2849,10 @@ mod strict {
         StructArray,
     };
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-    use yggdryl::FieldValue as _;
-
     use yggdryl::arrow::scalar_value;
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
+    use yggdryl::{
+        ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType,
+    };
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         Field::new(
@@ -2671,9 +2870,17 @@ mod strict {
         Arc::new(Schema::new(fields))
     }
 
+    /// `batch` cast into `target`, as the table of the column that comes out.
+    fn cast_batch(
+        target: &Field,
+        batch: &RecordBatch,
+        options: ArrowCastOptions,
+    ) -> yggdryl::arrow::Result<RecordBatch> {
+        Serie::from_arrow_batch(Some(target), batch, options)?.into_arrow_batch()
+    }
+
     fn refusal(target: &Field, batch: RecordBatch) -> String {
-        target
-            .cast_arrow_batch(batch, strict())
+        cast_batch(target, &batch, strict())
             .unwrap_err()
             .to_string()
     }
@@ -2692,9 +2899,7 @@ mod strict {
         ]);
 
         // The default policy is unchanged: the hole is filled, not reported.
-        let filled = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let filled = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(filled.column(1).null_count(), 0);
         assert_eq!(filled.num_columns(), 2);
 
@@ -2705,6 +2910,7 @@ mod strict {
 
         // The schemas alone decide it, so compiling is where it fails - a reader
         // never pulls a batch to find out.
+        let source = Field::from_arrow_schema("row", &source).unwrap();
         let message = ArrowCastPlan::compile(&source, &target, strict())
             .unwrap_err()
             .to_string();
@@ -2733,9 +2939,7 @@ mod strict {
             DataType::utf8().required_field("symbol"),
         ]);
 
-        let filled = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let filled = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(filled.column(1).null_count(), 0);
 
         assert_eq!(
@@ -2755,7 +2959,7 @@ mod strict {
         ]);
 
         for options in [ArrowCastOptions::new(), strict()] {
-            let cast = target.cast_arrow_batch(batch.clone(), options).unwrap();
+            let cast = cast_batch(&target, &batch, options).unwrap();
             assert_eq!(cast.num_columns(), 2);
             assert_eq!(cast.column(1).null_count(), 2);
         }
@@ -2778,7 +2982,7 @@ mod strict {
         let target = root([DataType::Int64.required_field("id")]);
 
         for options in [ArrowCastOptions::new(), strict()] {
-            let cast = target.cast_arrow_batch(batch.clone(), options).unwrap();
+            let cast = cast_batch(&target, &batch, options).unwrap();
             assert_eq!(cast.schema().fields().len(), 1);
             assert_eq!(cast.schema().field(0).name(), "id");
         }
@@ -2922,9 +3126,7 @@ mod strict {
 
         // safe: the failed conversion becomes null, and strictness is what then
         // decides whether that null may stand in for a declared value.
-        let repaired = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(repaired.column(0).null_count(), 0);
         assert_eq!(
             refusal(&target, batch.clone()),
@@ -2932,8 +3134,7 @@ mod strict {
         );
 
         // Unsafe: the conversion itself refuses, so strictness never sees a null.
-        let unsafe_message = target
-            .cast_arrow_batch(batch, strict().with_safe(false))
+        let unsafe_message = cast_batch(&target, &batch, strict().with_safe(false))
             .unwrap_err()
             .to_string();
         assert!(unsafe_message.contains("not a number"), "{unsafe_message}");
@@ -2944,9 +3145,7 @@ mod strict {
         let empty =
             RecordBatch::try_new(source, vec![Arc::new(StringArray::from(vec!["1", ""]))]).unwrap();
         let nullable = root([DataType::Int64.nullable_field("id")]);
-        let passed = nullable
-            .cast_arrow_batch(empty, strict().with_safe(false))
-            .unwrap();
+        let passed = cast_batch(&nullable, &empty, strict().with_safe(false)).unwrap();
         assert_eq!(passed.column(0).null_count(), 1);
         assert!(passed.column(0).is_null(1));
     }
@@ -2979,9 +3178,7 @@ mod strict {
                 .unwrap()
                 .required_field("address"),
         ]);
-        let repaired = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         let address = repaired
             .column(0)
             .as_any()
@@ -3018,9 +3215,7 @@ mod strict {
             DataType::List(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
-        let repaired = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         let counts = repaired
             .column(0)
             .as_any()
@@ -3056,9 +3251,7 @@ mod strict {
         let target = root([DataType::map(entries, false)
             .unwrap()
             .nullable_field("tags")]);
-        let repaired = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         let tags = repaired
             .column(0)
             .as_any()
@@ -3096,9 +3289,7 @@ mod strict {
         let release = DataType::Version.required_field("release");
         let target = root([release.clone()]);
 
-        let repaired = target
-            .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
-            .unwrap();
+        let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(repaired.column(0).null_count(), 0);
         assert_eq!(
             scalar_value(&release, repaired.column(0).as_ref()).unwrap(),
@@ -3121,7 +3312,7 @@ mod strict {
         let mut target = root([DataType::Int64.required_field("id"), identifier]);
         target.set_metadata([("source", "book")]).unwrap();
 
-        let cast = target.cast_arrow_batch(batch, strict()).unwrap();
+        let cast = cast_batch(&target, &batch, strict()).unwrap();
         let cast_schema = cast.schema();
         assert_eq!(
             cast_schema.metadata().get("source").map(String::as_str),
@@ -3147,9 +3338,115 @@ mod strict {
         ]);
         let target = root([DataType::Int64.required_field("id")]);
 
+        let source = Field::from_arrow_schema("row", &source).unwrap();
         let message = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
             .unwrap_err()
             .to_string();
         assert!(message.contains("ambiguous"), "{message}");
+    }
+}
+
+/// Every ingest the plan certifies writes only values its target's own
+/// contract accepts, so a column it lands is never read a second time and
+/// never holds a row [`Field::scalar`] would refuse.
+mod certification {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+
+    /// Cast `source` into a nullable `target` under the default options - the
+    /// certified path - and hold every landed row to the target's contract.
+    fn certified(target: DataType, source: ArrayRef) {
+        let field = Field::new("value", target, true);
+        // Under the default options a value the target refuses is nulled, so
+        // every input lands and every landed row is held to the contract.
+        let serie = Serie::from_arrow_array(Some(&field), source, ArrowCastOptions::new())
+            .unwrap_or_else(|error| panic!("{field}: the certified cast lands: {error}"));
+        assert!(!serie.is_empty());
+        for index in 0..serie.len() {
+            let value = serie.scalar(index).expect("a landed row reads");
+            assert!(
+                field.scalar(value.clone()).is_ok(),
+                "{field}: row {index} {value:?} landed certified but its field refuses it"
+            );
+        }
+    }
+
+    fn text(values: &[Option<&str>]) -> ArrayRef {
+        Arc::new(StringArray::from(values.to_vec()))
+    }
+
+    #[test]
+    fn the_string_ingest_writes_only_what_the_string_accepts() {
+        let spellings = text(&[
+            Some("ab"),
+            Some("abcdef"),
+            Some(""),
+            None,
+            Some("é"),
+            Some("€"),
+            Some("中"),
+        ]);
+        for target in [
+            DataType::sized_utf8(4).unwrap(),
+            DataType::fixed_ascii(3).unwrap(),
+            DataType::sized_cp1252(4).unwrap(),
+            DataType::fixed_cp1252(2).unwrap(),
+        ] {
+            certified(target, Arc::clone(&spellings));
+        }
+        let bytes: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some(b"ok".as_ref()),
+            Some(b"\xff\xfe".as_ref()),
+            Some(b"\x80".as_ref()),
+        ]));
+        certified(DataType::utf8(), Arc::clone(&bytes));
+        certified(DataType::sized_cp1252(2).unwrap(), bytes);
+    }
+
+    #[test]
+    fn the_bytes_ingest_writes_only_what_the_bound_accepts() {
+        let bytes: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some(b"ab".as_ref()),
+            Some(b"abcd".as_ref()),
+            None,
+        ]));
+        certified(DataType::sized_binary(3).unwrap(), bytes);
+    }
+
+    #[test]
+    fn the_code_ingest_writes_only_registered_members() {
+        let codes = text(&[Some("USD"), Some("usd"), Some("EURO"), Some(""), None]);
+        for target in [
+            DataType::Currency,
+            DataType::Country,
+            DataType::Side,
+            DataType::State,
+        ] {
+            certified(target, Arc::clone(&codes));
+        }
+    }
+
+    #[test]
+    fn the_uuid_url_and_urn_ingests_write_only_what_they_parse() {
+        // The UUID ingest refuses a spelling it cannot read even under
+        // `safe`, so only spellings that land are held to the contract here.
+        let uuids = text(&[
+            Some("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+            Some("67E5504410B1426F9247BB680E5FE0C8"),
+            None,
+        ]);
+        certified(DataType::Uuid, uuids);
+        let raw: ArrayRef = Arc::new(
+            FixedSizeBinaryArray::try_from_iter([[7_u8; 16], [0_u8; 16]].into_iter()).unwrap(),
+        );
+        certified(DataType::Uuid, raw);
+        // The URL and URN ingests refuse too, and rewrite what they read to
+        // its canonical text: that rewrite is what is held to the contract.
+        let urls = text(&[Some("HTTPS://Example.com/a"), Some(""), None]);
+        certified(DataType::Url, urls);
+        let urns = text(&[Some("URN:isbn:0451450523"), None]);
+        certified(DataType::Urn, urns);
     }
 }

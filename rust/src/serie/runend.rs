@@ -515,7 +515,7 @@ pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
-    proven: bool,
+    proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
     let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::RunEndEncoded(..)) {
@@ -538,9 +538,18 @@ pub(crate) fn column_of(
         DataType::Int64 => parts!(Int64Type),
         _ => return Err(internal()),
     };
-    let run_ends =
-        super::arrow::column_of(Arc::new(encoded.run_ends().clone()), run_ends, None, true)?;
-    let values = super::arrow::column_of(Arc::new(encoded.values().clone()), values, None, proven)?;
+    let run_ends = super::arrow::column_of(
+        Arc::new(encoded.run_ends().clone()),
+        run_ends,
+        None,
+        &super::arrow::Proof::Proven,
+    )?;
+    let values = super::arrow::column_of(
+        Arc::new(encoded.values().clone()),
+        values,
+        None,
+        proof.child(0),
+    )?;
     Ok(Some(
         RunEndEncodedSerie::new(field, run_ends, values, len).into_serie(),
     ))

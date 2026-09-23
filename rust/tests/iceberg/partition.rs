@@ -5,6 +5,7 @@
 //! and the duplicates a spec refuses. All of it is `yggdryl::iceberg` API.
 
 use yggdryl::iceberg::{PartitionField, PartitionSpec};
+use yggdryl::{DataType, Field, Scalar, Serie};
 
 #[test]
 fn modern_partition_json_requires_exact_identifiers() {
@@ -33,6 +34,21 @@ fn only_the_v1_array_synthesizes_field_ids() {
     let spec = PartitionSpec::from_json(&document).unwrap();
     assert_eq!(spec.spec_id, 0);
     assert_eq!(spec.fields[0].field_id, 1000);
+}
+
+/// A field array a caller hands over as a column reads as the run does, in
+/// the v1 bare shape and under a v2 spec's `fields` alike.
+#[test]
+fn a_field_column_reads_as_the_array_it_holds() -> yggdryl::Result<()> {
+    let fields = Scalar::from(Serie::empty(Field::new(
+        "item",
+        DataType::from_str("map<utf8, utf8>")?,
+        false,
+    ))?);
+    assert!(PartitionSpec::from_json(&fields)?.is_unpartitioned());
+    let document = yggdryl::json::from_utf8(r#"{"spec-id":0}"#)?.with_field("fields", fields)?;
+    assert!(PartitionSpec::from_json(&document)?.is_unpartitioned());
+    Ok(())
 }
 
 #[test]

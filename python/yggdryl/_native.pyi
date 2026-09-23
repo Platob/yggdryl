@@ -434,12 +434,38 @@ class Serie:
     def empty(field: object) -> Serie: ...
     @staticmethod
     def with_capacity(field: object, rows: int) -> Serie: ...
+    # With no field the input is the column of its own layout - an array
+    # named `item`, a batch or stream the record root `row` - sharing its
+    # buffers; with one, an exact layout shares them and any other is cast.
     @staticmethod
-    def from_arrow_array(array: object, field: object | None = None) -> Serie: ...
+    def from_arrow_array(
+        array: object,
+        field: object | None = None,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Serie: ...
     @staticmethod
-    def from_arrow_batch(batch: pyarrow.RecordBatch) -> Serie: ...
+    def from_arrow_batch(
+        batch: pyarrow.RecordBatch,
+        root: object | None = None,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Serie: ...
     @staticmethod
-    def from_arrow_reader(reader: object) -> Serie: ...
+    def from_arrow_reader(
+        reader: object,
+        root: object | None = None,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Serie: ...
+    @staticmethod
+    def from_default(field: object, rows: int = 1) -> Serie: ...
     @property
     def field(self) -> Field | None: ...
     @property
@@ -474,6 +500,17 @@ class Serie:
     def resize(self, len: int, value: object) -> None: ...
     def set_child(self, child: Serie) -> None: ...
     def set_cell(self, path: str, index: int, value: object) -> None: ...
+    # A `DataType` is the required column named `value` it declares; a run
+    # has no layout to cast.
+    def cast(
+        self,
+        field: object,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Serie: ...
+    def into_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_arrow_array(self) -> pyarrow.Array: ...
     def into_arrow_batch(self) -> pyarrow.RecordBatch: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
@@ -554,6 +591,31 @@ class StructSerie(Serie):
     @property
     def names(self) -> list[str]: ...
     def without_child(self, name: str) -> StructSerie: ...
+
+class SerieReader(Iterator[Serie]):
+    """One record ``Serie`` per batch of an Arrow stream, each cast by one plan.
+
+    The plan is compiled before a batch is pulled, so a planning failure is
+    raised by ``from_arrow_reader``. ``into_arrow_reader`` hands the batches
+    not yet pulled over as a ``pyarrow.RecordBatchReader``, after which this
+    reader is spent.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    @staticmethod
+    def from_arrow_reader(
+        reader: object,
+        root: object | None = None,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> SerieReader: ...
+    @property
+    def field(self) -> Field: ...
+    def __iter__(self) -> SerieReader: ...
+    def __next__(self) -> Serie: ...
+    def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
 
 class ScalarIterator(Iterator[Scalar]):
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -1051,39 +1113,13 @@ class DataType:
     def is_default_value(self, value: object, /) -> bool: ...
     def validate(self) -> None: ...
     def default_pyhint(self) -> object: ...
-    def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> DataType: ...
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
-    def cast_arrow_array(
-        self,
-        value: pyarrow.Array,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.Array: ...
-    def cast_arrow_batch(
-        self,
-        value: pyarrow.RecordBatch,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.RecordBatch: ...
-    def cast_arrow_scalar(
-        self,
-        value: object,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.Scalar: ...
     def into_arrow(self) -> Any: ...
     def with_fields(self, fields: Iterable[Field]) -> DataType: ...
     def into_arrow_schema(self) -> pyarrow.Schema: ...
-    def default_arrow_array(self) -> pyarrow.Array: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.
     # `indent=None` means no layout - compact JSON, flow-style YAML; an
@@ -1466,9 +1502,17 @@ class PythonMetadata:
     def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
 
 class ArrowCastPlan:
+    """One cast from a source field to a target field, compiled once.
+
+    ``source`` is a ``Field``, a ``pyarrow.Field``, or a ``pyarrow.Schema``
+    read as the record root ``row``. ``apply`` casts a ``Serie`` of that
+    layout; a ``pyarrow.RecordBatch`` or array is first the column of its
+    own layout.
+    """
+
     def __init__(
         self,
-        source: pyarrow.Schema,
+        source: FieldLike | pyarrow.Field | pyarrow.Schema,
         target: FieldLike,
         *,
         safe: bool = True,
@@ -1476,19 +1520,19 @@ class ArrowCastPlan:
         representation: Representation = "value",
     ) -> None: ...
     @property
-    def field(self) -> Field: ...
+    def source(self) -> pyarrow.Field: ...
     @property
-    def source_schema(self) -> pyarrow.Schema: ...
-    @property
-    def schema(self) -> pyarrow.Schema: ...
+    def target(self) -> Field: ...
     @property
     def safe(self) -> bool: ...
     @property
     def nullability(self) -> Nullability: ...
     @property
     def representation(self) -> Representation: ...
+    @property
+    def is_identity(self) -> bool: ...
     def preflight(self) -> None: ...
-    def apply(self, batch: pyarrow.RecordBatch) -> pyarrow.RecordBatch: ...
+    def apply(self, serie: Serie | pyarrow.Array | pyarrow.RecordBatch) -> Serie: ...
     def __repr__(self) -> str: ...
 
 class Field:
@@ -1530,23 +1574,10 @@ class Field:
     def validate_struct_root(self) -> None: ...
     def validate(self) -> None: ...
     def default_pyhint(self) -> object: ...
-    def default_arrow_array(self) -> pyarrow.Array: ...
-    def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> Field: ...
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
-    # `safe` decides whether a present value may be converted; `nullability`
-    # decides whether a declared value may be absent - "default" writes the
-    # canonical default, "strict" refuses by path.
-    def cast_arrow_array(
-        self,
-        value: pyarrow.Array,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.Array: ...
     # `cast` reconciles the batch to this root, `transform` computes every
     # column a `TRANSFORM:expression` or a `PARTITION:transform` declares, and
     # `digest` fills every holder last, over the rows as they finally stand.
@@ -1584,56 +1615,6 @@ class Field:
         nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
-    def cast_arrow_batch(
-        self,
-        value: pyarrow.RecordBatch,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.RecordBatch: ...
-    def cast_arrow_scalar(
-        self,
-        value: object,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.Scalar: ...
-    # Eager: the table is already held, so its reader is drained here.
-    def cast_arrow_table(
-        self,
-        value: pyarrow.Table,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.Table: ...
-    # Lazy: one compiled plan, one source batch at a time, nothing collected.
-    def cast_arrow_reader(
-        self,
-        value: Any,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> pyarrow.RecordBatchReader: ...
-    def cast_arrow(
-        self,
-        value: Any,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> Any: ...
-    def cast(
-        self,
-        value: Any,
-        *,
-        safe: bool = True,
-        nullability: Nullability = "default",
-        representation: Representation = "value",
-    ) -> Any: ...
     def into_arrow(self) -> Any: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.

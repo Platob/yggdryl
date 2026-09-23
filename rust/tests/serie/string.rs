@@ -5,20 +5,28 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, StringArray};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, Utf8StringSerie};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, Utf8StringSerie};
 
 /// A required utf8 column of three symbols, straight off Arrow buffers.
 fn symbols() -> Serie {
     let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT", "NVDA"]));
-    Serie::from_arrow_array(Field::new("symbol", DataType::utf8(), false), array)
-        .expect("a utf8 column")
+    Serie::from_arrow_array(
+        Some(&Field::new("symbol", DataType::utf8(), false)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 column")
 }
 
 /// A nullable utf8 column of three rows, one of them absent.
 fn names() -> Serie {
     let array: ArrayRef = Arc::new(StringArray::from(vec![Some("ab"), None, Some("cde")]));
-    Serie::from_arrow_array(Field::new("name", DataType::utf8(), true), array)
-        .expect("a utf8 column")
+    Serie::from_arrow_array(
+        Some(&Field::new("name", DataType::utf8(), true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 column")
 }
 
 /// The text every present row of `column` holds, `None` for an absent one.

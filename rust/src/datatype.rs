@@ -1288,21 +1288,6 @@ mod arrow {
             Field::new("row", self, false).into_arrow_schema()
         }
 
-        /// Materializes [`DataType::default_value`] as an exact one-row array.
-        ///
-        /// The bounded core default planner selects the value, so
-        /// [`DataType::Null`] and transparent logical wrappers with a null-only
-        /// canonical default materialize as logical null; every other datatype
-        /// materializes its present zero/empty default.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when no physically valid default exists or Arrow
-        /// cannot materialize the datatype.
-        pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-            crate::arrow::default_dtype_scalar_array(self)
-        }
-
         /// Reports whether an imported datatype can reuse its enclosing Arrow
         /// field.
         ///

@@ -258,10 +258,10 @@ unit and zone first.
 | `date64` | `Date64` | `date64` |
 
 Both projections are Arrow's own and both round-trip, so a date column crosses
-a boundary as the width it declared. A `date32` column casts to a `Date32Array`
-and a `date64` one to a `Date64Array`: the family has no single array type, so
-[the cast](../cast.md) answers an `ArrayRef` and the leaf says which to narrow
-to.
+a boundary as the width it declared. A `date32` column is a `Date32Serie` and
+a `date64` one a `Date64Serie`: the family has no single column type, so
+[the cast](../cast.md) answers a [`Serie`](../serie.md) and `as_date32` or
+`as_date64` narrows it to the leaf.
 
 ## Text
 

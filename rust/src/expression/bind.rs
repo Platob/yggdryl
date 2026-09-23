@@ -23,8 +23,11 @@
 //! which is the mechanism - not the intention - behind scalar and vectorized
 //! agreeing.
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
+use super::arrow::ColumnCast;
 use super::attribute::{Attribute, Attributes, Cost};
 use super::eval::{Row, convert};
 use super::path::FieldSegment;
@@ -96,8 +99,9 @@ pub(crate) enum Kind {
     Negate(Box<Node>),
     /// A call into the closed function set.
     Function(Function, Vec<Node>),
-    /// A conversion into this node's declared datatype.
-    Cast(Box<Node>, Safety),
+    /// A conversion into this node's declared datatype, and the column cast
+    /// the vectorized tier holds for it.
+    Cast(Box<Node>, Safety, Arc<ColumnCast>),
     /// A searched conditional.
     Case {
         /// The `when`/`then` pairs, in order.
@@ -197,7 +201,7 @@ impl Node {
             | Kind::IsNull(inner)
             | Kind::IsNotNull(inner)
             | Kind::Negate(inner)
-            | Kind::Cast(inner, _)
+            | Kind::Cast(inner, ..)
             | Kind::Glob(inner, _)
             | Kind::Like { value: inner, .. } => visit(inner),
             Kind::Compare(left, _, right) | Kind::Arithmetic(left, _, right) => {
@@ -832,7 +836,7 @@ impl Binder<'_> {
                 let cost = inner.cost + 1;
                 Node {
                     field: named(term, dtype.clone(), nullable),
-                    kind: Kind::Cast(Box::new(inner), *safety),
+                    kind: Kind::Cast(Box::new(inner), *safety, Arc::default()),
                     cost,
                 }
             }
@@ -952,7 +956,7 @@ impl Binder<'_> {
             .with_nullable(nullable);
         Ok(Node {
             field,
-            kind: Kind::Cast(Box::new(node), Safety::Strict),
+            kind: Kind::Cast(Box::new(node), Safety::Strict, Arc::default()),
             cost,
         })
     }
@@ -1230,7 +1234,7 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Function(function, arguments) => {
             Term::Function(function.clone(), arguments.iter().map(rebuild).collect())
         }
-        Kind::Cast(inner, safety) => Term::Cast(
+        Kind::Cast(inner, safety, _) => Term::Cast(
             Box::new(rebuild(inner)),
             node.field.dtype().clone(),
             *safety,

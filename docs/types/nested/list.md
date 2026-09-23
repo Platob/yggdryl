@@ -342,21 +342,17 @@ datatype is built rather than where a batch is written.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
-    const row = fields.struct('row', [fields.list('levels', fields.float64('item'))], {
-      nullable: false,
-    })
-    const table = row.castArrow(
-      new arrow.Table({
-        levels: arrow.vectorFromArray([[1.5, 2.5]], new arrow.List(
-          new arrow.Field('item', new arrow.Float64(), true),
-        )),
-      }),
+    // A column crossing out as a table answers the Arrow field it is written as.
+    const levels = Serie.fromArrowArray(
+      arrow.vectorFromArray([[1.5, 2.5]], new arrow.List(
+        new arrow.Field('item', new arrow.Float64(), true),
+      )),
+      fields.list('levels', fields.float64('item')),
     )
 
-    const projected = table.schema.fields[0]
+    const projected = levels.intoArrowBatch().schema.fields[0]
     assert.equal(projected.name, 'levels')
     assert.equal(projected.type.children[0].name, 'item')
     assert.equal(projected.metadata.get('ARROW:extension:name'), undefined)
@@ -435,7 +431,7 @@ own name - which is what keeps a list from ever growing a second child.
 - The item's name is the item's: a leaf built by a parser is named `item`, and a leaf built by hand keeps whatever it was given.
 - A value carries no layout: a cell read out of `fixed_size_list(item,3)`, `large_list` or a view is a `Run`, and its datatype is the `list` of its items; the column those cells are cut from is a [`Serie`](../serie.md) leaf of that layout.
 - A merge reaches the item: two lists of the same leaf meet at the list of the item that holds both, and two different leaves do not meet - see [Field](../field.md#merging-two-schemas).
-- `list_view` and `large_list_view` have no default Arrow JS materialization, so `defaultArrowScalar` refuses them in JavaScript while every other leaf answers.
+- `list_view` and `large_list_view` have no Arrow JS materialization, so `Serie#intoArrowScalar`, `intoArrowArray` and `intoArrowBatch` refuse them in JavaScript while every other leaf answers.
 
 ## Commands
 

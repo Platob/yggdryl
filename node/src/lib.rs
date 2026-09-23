@@ -13,6 +13,7 @@
 )]
 
 mod avro;
+mod cast;
 pub mod charset;
 pub mod coding;
 mod datatype;
@@ -51,6 +52,7 @@ pub use avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
     avro_dumps_native, avro_loads_native,
 };
+pub use cast::JsArrowCastPlan;
 pub use datatype::JsDataType;
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{
@@ -76,7 +78,7 @@ pub use iceberg::{
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
 pub use media::options::JsRecordOptions;
-pub use serie::{JsSerie, JsSerieIterator};
+pub use serie::{JsSerie, JsSerieIterator, JsSerieReader};
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
