@@ -10,15 +10,11 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Field, Scalar, StructType};
+use crate::{DataType, Field, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
-mod scalars;
-pub(crate) mod value;
-
-pub use scalars::{ArrowScalar, ArrowShape};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
 ///
@@ -817,37 +813,44 @@ pub(crate) fn projection_indices(
 /// The result type returned by Arrow record interoperability.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Materialize one validated native value as an exact one-row Arrow array.
+/// The Arrow datatype `field` projects to, without building more than it
+/// has to.
 ///
-/// The array boundary for a single scalar: the value is validated through the
-/// same schema-directed walk every row value takes - the exact Field is the
-/// authority on nullability, dictionary options, and extension identity - and
-/// then materialized under the shared physical budgets. A
-/// [`crate::FieldScalar`] is that validated half already, so
-/// [`crate::FieldScalar::into_arrow_array`] materializes without the walk.
+/// A leaf's projection is its datatype's Arrow storage, so it is answered
+/// alone rather than by building - and caching - a whole Arrow field around
+/// it, which a reader resolving its columns once would pay per reader. A
+/// nested layout states child fields, and a field whose metadata restates an
+/// Arrow extension is refused by the projection, so both borrow the
+/// projection itself.
 ///
 /// # Errors
 ///
-/// Returns an error when the value violates the Field or the physical Arrow
-/// layout cannot represent it.
-pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
-    let value = validate_scalar_value(field, value.clone())?;
-    value::array_from_values(field, &[&value])
+/// Returns an error when the field has no Arrow projection.
+pub(crate) fn projected_datatype(
+    field: &Field,
+) -> crate::Result<std::borrow::Cow<'_, arrow_schema::DataType>> {
+    if !field.dtype().is_nested() && !field.as_metadata().may_hold_arrow_extension() {
+        return Ok(std::borrow::Cow::Owned(field.dtype().to_arrow_datatype()?));
+    }
+    Ok(std::borrow::Cow::Borrowed(
+        field.as_arrow_field_ref()?.data_type(),
+    ))
 }
 
 /// Refuse an array whose physical layout is not the one `field` declares.
 ///
 /// The one owner of "this array lays out as this field's projection": the
-/// cached projection is compared, so nothing is cloned or rebuilt, and both
-/// a held Arrow value and a column take this door.
+/// datatype [`projected_datatype`] answers is compared, so a nested field's
+/// cached projection is never cloned or rebuilt, and both a held Arrow value
+/// and a column take this door.
 ///
 /// # Errors
 ///
 /// Returns an error naming the field and both datatypes when they differ,
 /// or when the field has no Arrow projection.
 pub(crate) fn require_projection(field: &Field, array: &dyn Array) -> Result<()> {
-    let expected = field.as_arrow_field_ref()?.data_type();
-    if array.data_type() == expected {
+    let expected = projected_datatype(field)?;
+    if array.data_type() == expected.as_ref() {
         return Ok(());
     }
     Err(Error::IncompatibleSchema(format!(
@@ -855,175 +858,6 @@ pub(crate) fn require_projection(field: &Field, array: &dyn Array) -> Result<()>
         array.data_type(),
         field.name()
     )))
-}
-
-/// Materialize a sequence of native values as one Arrow array.
-///
-/// A column of `field`'s own datatype, whose nullability fits, holds only
-/// rows the field accepts and answers its own buffers with no row read.
-/// Every other sequence has each element validated and canonicalized by
-/// `field`, and materialization is a single array build, not a
-/// concatenation of scalar arrays.
-///
-/// # Errors
-///
-/// Returns an error when `values` is not a sequence or an element violates
-/// `field`.
-pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
-    let serie = values.as_serie().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of array values"),
-        actual: SmolStr::new(values.kind()),
-    })?;
-    if let Some(array) = crate::value::column_fits_item(serie, field)
-        .then(|| serie.into_arrow_array())
-        .flatten()
-    {
-        return Ok(array);
-    }
-    let values = serie.rows();
-    let mut canonical = Vec::with_capacity(values.len());
-    for value in values.iter() {
-        // The field's own value contract, one value at a time: a synthetic row
-        // around each element would allocate a sequence per value and answer
-        // the same thing.
-        canonical.push(field.scalar(value.clone())?);
-    }
-    let borrowed = canonical.iter().collect::<Vec<_>>();
-    value::array_from_values(field, &borrowed)
-}
-
-/// Materialize a sequence of native struct rows as one Arrow record batch.
-///
-/// A record column of `root`'s own datatype, with no row absent, holds only
-/// rows the root accepts and its children are the batch's columns with no
-/// row read. Every other sequence has each child - an ordered row sequence
-/// or a named [`crate::structure::Struct`] - validated and canonicalized by
-/// the root Field before one columnar build.
-///
-/// # Errors
-///
-/// Returns an error when `root` is not a record root, `rows` is not a
-/// sequence, or a row violates the schema.
-pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
-    let serie = rows.as_serie().ok_or_else(|| Error::InvalidValue {
-        path: SmolStr::new_static("$"),
-        expected: SmolStr::new_static("a sequence of record values"),
-        actual: SmolStr::new(rows.kind()),
-    })?;
-    let schema = arrow_schema_from_field(root)?;
-    if let Some(array) = crate::value::column_fits_item(serie, root)
-        .then(|| serie.into_arrow_array())
-        .flatten()
-    {
-        return self::rows::batch_from_record_array(schema, &array);
-    }
-    let rows = serie.rows();
-    let mut canonical = Vec::with_capacity(rows.len());
-    for row in rows.iter() {
-        canonical.push(root.canonicalize_value(row.clone())?);
-    }
-    self::rows::batch_from_values(root, schema, &canonical)
-}
-
-/// Validate one external one-row Arrow array and decode its canonical value.
-///
-/// # Errors
-///
-/// Returns an error unless `array` has length one, has the Field's exact
-/// physical datatype, and decodes to a value satisfying all recursive Field
-/// nullability and datatype constraints. A non-nullable Field may contain a
-/// logical null only when the decoded value is exactly its datatype's
-/// canonical intrinsic default. This narrow exception keeps datatype defaults
-/// such as null-only dictionaries, unions, and run-end encodings closed under
-/// [`scalar_array`] followed by this function without admitting arbitrary
-/// selected-null values.
-pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
-    if array.len() != 1 {
-        return Err(Error::IncompatibleSchema(format!(
-            "Arrow scalar must contain exactly one value, got {}",
-            array.len()
-        )));
-    }
-    // Caller-built public DataType variants can be arbitrarily deep.
-    // Bound the shape before Arrow's recursive datatype projection so a
-    // malformed foreign scalar reports a normal schema error rather than
-    // exhausting the native stack.
-    field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
-    if array.data_type() != &expected {
-        return Err(Error::IncompatibleSchema(format!(
-            "Arrow scalar datatype {:?} differs from expected {expected:?}",
-            array.data_type()
-        )));
-    }
-    let decoded = value::value_from_array(field.dtype(), array, 0)?;
-    if let Err(error) = validate_scalar_value(field, decoded.clone()) {
-        if !field.dtype().is_default_value(&decoded)? {
-            return Err(error);
-        }
-    }
-    Ok(decoded)
-}
-
-pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scalar> {
-    // The field's own value contract, which is the same walk a column value
-    // takes with no synthetic row built around it.
-    Ok(field.scalar(value)?)
-}
-
-/// Read one Arrow array as a sequence of values, typed by `field`.
-///
-/// Every row becomes the [`Scalar`] its datatype spells - a null slot is
-/// [`Scalar::Null`] - so the result serializes through any text format exactly
-/// as the rest of the value model does.
-///
-/// # Errors
-///
-/// Returns an error when the array does not hold the field's datatype or a
-/// value cannot be represented.
-pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
-    let mut rows = Vec::with_capacity(array.len());
-    for index in 0..array.len() {
-        rows.push(super::arrow::value::value_from_array(
-            field.dtype(),
-            array,
-            index,
-        )?);
-    }
-    Ok(Scalar::from_sequence(rows))
-}
-
-/// Read one record batch as a sequence of rows.
-///
-/// Each row becomes a [`crate::serie::Run`] with one value per column, in schema
-/// order. The batch schema remains the [`RecordBatch`]'s schema rather than
-/// being duplicated inside every row.
-///
-/// # Errors
-///
-/// Returns an error when the batch's schema does not project to a record root
-/// or a value cannot be represented.
-pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar> {
-    let root = field_from_arrow_schema("row", batch.schema().as_ref())?;
-    let fields: Vec<Field> = root
-        .dtype()
-        .as_fields()
-        .ok_or_else(|| Error::IncompatibleSchema("a batch projects to a struct root".to_owned()))?
-        .to_vec();
-    let mut rows = Vec::with_capacity(batch.num_rows());
-    for index in 0..batch.num_rows() {
-        let mut values = Vec::with_capacity(batch.num_columns());
-        for (column, field) in batch.columns().iter().zip(fields.iter()) {
-            values.push(super::arrow::value::value_from_array(
-                field.dtype(),
-                column.as_ref(),
-                index,
-            )?);
-        }
-        rows.push(Scalar::from_sequence(values));
-    }
-    Ok(Scalar::from_sequence(rows))
 }
 
 /// Skip `offset` rows of a stream, then yield at most `limit` more.

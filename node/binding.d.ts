@@ -728,6 +728,13 @@ declare module './index' {
       root?: Field | string,
       options?: ArrowCastOptions,
     ): SerieReader
+    /**
+     * Read one held column as a stream of the one record serie it is: a
+     * record column as it stands, any other column as the one child of a
+     * record named `row`. A run, and a record column with an absent row,
+     * are refused.
+     */
+    function fromSerie(serie: Serie): SerieReader
   }
 
   interface SerieReader extends Iterable<Serie> {
@@ -2889,42 +2896,10 @@ declare module './index' {
     intoArrayField(): Field
     /** Infer a non-null Struct root from named record rows. */
     intoStructField(): Field
-    /** Materialize this value as an Apache Arrow scalar. */
-    intoArrowScalar(field?: Field): unknown
-    /** Materialize this sequence as an Apache Arrow Vector. */
-    intoArrowArray(field?: Field): ArrowVector
-    /** Materialize record values as one Apache Arrow RecordBatch. */
-    intoArrowBatch(field?: Field): ArrowRecordBatch
-    /** Materialize record values as an Apache Arrow Table. */
-    intoArrowTable(field?: Field): ArrowTable
   }
   namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
     function from(value: unknown, options?: CodecOptions): Scalar
-    /** Read one item from a one-item Apache Arrow Vector, cast into `field`. */
-    function fromArrowScalar(
-      value: ArrowVector,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow Vector as the sequence of its column, cast into `field`. */
-    function fromArrowArray(
-      value: ArrowVector,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow RecordBatch as the sequence of its rows, cast into `field`. */
-    function fromArrowBatch(
-      value: ArrowRecordBatch,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow Table as the sequence of its rows, cast into `field`. */
-    function fromArrowTable(
-      value: ArrowTable,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
   }
   interface Uri extends Iterable<string> {
     /** Join path components through the generic URI core. */

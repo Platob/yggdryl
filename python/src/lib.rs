@@ -25,7 +25,6 @@ use crate::uri::{
     PyArn, PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn,
 };
 
-mod arrow;
 mod avro;
 mod cast;
 mod charset;
@@ -460,7 +459,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
     module.add_class::<serie::PySerieReader>()?;
-    module.add_class::<crate::arrow::PyArrowScalar>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;
     module.add_class::<avro::PyAvroSchema>()?;
@@ -505,7 +503,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     coding::handles::register(module)?;
     media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
-    module.add_function(wrap_pyfunction!(crate::arrow::arrow_shapes, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;
     module.add_class::<crate::iobase::PyByteIterator>()?;

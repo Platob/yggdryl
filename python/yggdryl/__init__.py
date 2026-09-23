@@ -18,7 +18,6 @@ the bridge through `refresh_logging`.
 """
 
 from . import (
-    arrow,
     avro,
     charset,
     codes,
@@ -53,7 +52,6 @@ from ._native import (
     IPC_DICTIONARY_IDS_KEY,
     NULL_PARTITION,
     ArrowCastPlan,
-    ArrowScalar,
     BytesParameters,
     DataType,
     Field,
@@ -262,7 +260,6 @@ __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
     "Arn",
     "ArrowCastPlan",
-    "ArrowScalar",
     "Avro",
     "BloombergCodeField",
     "BooleanField",
@@ -381,7 +378,6 @@ __all__ = [
     "Version",
     "VersionField",
     "__version__",
-    "arrow",
     "ascii",
     "ascii_view",
     "avro",

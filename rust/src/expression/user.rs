@@ -28,6 +28,7 @@
 //! parameter declared `not null` answers null without calling, the same rule
 //! every grammar function follows; a nullable parameter receives the null.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -35,7 +36,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::term::Term;
 use super::{Function, named};
-use crate::{DataType, Error, Field, Result, Scalar, StructType};
+use crate::{DataType, Error, Field, Result, Scalar, Serie, StructType};
 
 /// The metadata property naming a signature's return field.
 const RETURNS_KEY: &str = "FUNCTION:returns";
@@ -438,42 +439,30 @@ pub trait UserFunction: Send + Sync {
 
     /// Answer one call over whole columns, `rows` long each.
     ///
-    /// `fields` type the argument columns as the evaluator resolved them and
-    /// `output` is the field the call publishes. The default fills and calls
-    /// row by row.
+    /// Each argument is the column the evaluator resolved, typed by its own
+    /// field, and `output` is the field the call publishes; an answer under
+    /// another field is cast onto it by the caller. The default reads each
+    /// row's cells, fills and calls row by row, and lays the answers out
+    /// once under `output`.
     ///
     /// # Errors
     ///
-    /// Returns a crossing failure, or whatever [`call`](Self::call) refuses.
-    fn call_arrow(
-        &self,
-        fields: &[Field],
-        arguments: &[arrow_array::ArrayRef],
-        rows: usize,
-        output: &Field,
-    ) -> Result<arrow_array::ArrayRef> {
-        let mut columns = Vec::with_capacity(arguments.len());
-        for (field, array) in fields.iter().zip(arguments) {
-            let values = crate::arrow::array_to_value(field, array.as_ref())?;
-            let Some(items) = values.as_sequence() else {
-                return Err(registry_error("expected a column to cross as a sequence"));
-            };
-            columns.push(items.to_vec());
-        }
+    /// Returns whatever [`call`](Self::call) refuses, or `output`'s refusal
+    /// of an answer.
+    fn call_arrow(&self, arguments: &[Serie], rows: usize, output: &Field) -> Result<Serie> {
         let mut answers = Vec::with_capacity(rows);
         let mut values = Vec::with_capacity(arguments.len());
         for row in 0..rows {
             values.clear();
-            for column in &columns {
-                values.push(column.get(row).cloned().unwrap_or(Scalar::Null));
+            for column in arguments {
+                values.push(column.get(row).map_or(Scalar::Null, Cow::into_owned));
             }
             answers.push(match self.signature().fill(&values)? {
                 Some(filled) => self.call(&filled)?,
                 None => Scalar::Null,
             });
         }
-        let answers = Scalar::from_sequence(answers);
-        Ok(crate::arrow::array_from_value(output, &answers)?)
+        Serie::from_scalars(output.clone(), answers)
     }
 }
 

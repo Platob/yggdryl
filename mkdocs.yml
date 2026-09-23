@@ -200,8 +200,6 @@ nav:
     - Patterns: uri/patterns.md
   - Arrow:
     - arrow/index.md
-    - Scalars: arrow/scalars.md
-    - Values: arrow/values.md
     - Schema: arrow/schema.md
     - Readers: arrow/readers.md
   - Expression:

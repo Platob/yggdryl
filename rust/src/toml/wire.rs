@@ -261,14 +261,6 @@ fn write_scalar<W: Write>(
     depth: usize,
 ) -> Result<()> {
     match value {
-        Scalar::Arrow(_) => {
-            let native = value.into_native().map_err(|error| Error::Codec {
-                format: "toml",
-                position: 0,
-                reason: error.to_string().into(),
-            })?;
-            return write_scalar(writer, &native, layout, depth);
-        }
         // A variant is the value its bytes hold, written as that value.
         Scalar::Variant(held) => {
             let held = held.scalar()?;

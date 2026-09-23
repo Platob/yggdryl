@@ -1,7 +1,8 @@
 use std::hint::black_box;
+use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, FieldRecord, Scalar};
+use yggdryl::{DataType, Field, FieldRecord, Scalar, Serie};
 use yggdryl::{Int64Field, Int64Type, StructField, StructType};
 
 pub fn benchmarks(criterion: &mut Criterion) {
@@ -103,10 +104,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // The row as the one-row column of its root, and that column as a batch.
+    let shared = Arc::new(root.clone());
     group.bench_function("into_arrow_batch", |bencher| {
         bencher.iter_batched(
             || record.clone(),
-            |record| black_box(record.into_arrow_batch().unwrap()),
+            |record| {
+                let column = Serie::from_scalars(Arc::clone(&shared), [record.into_scalar()]);
+                black_box(column.unwrap().into_arrow_batch().unwrap())
+            },
             BatchSize::SmallInput,
         );
     });

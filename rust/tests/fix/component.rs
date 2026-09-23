@@ -185,8 +185,18 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
         assert_eq!(&msg.into_row(schema).unwrap(), row);
-        let array = yggdryl::arrow::scalar_array(schema, row).unwrap();
-        let restored = yggdryl::arrow::scalar_value(schema, array.as_ref()).unwrap();
+        let array = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        let restored = yggdryl::Serie::from_arrow_array(
+            Some(schema),
+            array,
+            yggdryl::ArrowCastOptions::default(),
+        )
+        .unwrap()
+        .scalar(0)
+        .unwrap();
         assert_eq!(&restored, row);
         let restored_msg = FixMsg::from_row(Arc::clone(&registry), schema, &restored).unwrap();
         assert_eq!(&restored_msg.into_row(schema).unwrap(), row);

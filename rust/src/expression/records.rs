@@ -55,25 +55,38 @@ impl Records {
             .map_err(Error::from)
     }
 
-    /// Read a stream of Arrow batches back as rows.
+    /// Read a stream of Arrow batches back as rows, lazily.
+    ///
+    /// Each batch lands as one record column when it is pulled, and its rows
+    /// are read through the column's leaves one at a time; a batch the root
+    /// refuses, or the reader's own failure, is the item where it stands.
     ///
     /// # Errors
     ///
     /// Returns an error when the reader's schema is not one this crate can
-    /// type, or a batch cannot be read.
+    /// type.
     pub fn from_arrow_reader(reader: crate::arrow::BatchReader) -> Result<Self> {
-        let field = crate::arrow::field_from_arrow_schema(
-            crate::media::DEFAULT_ROOT_NAME,
-            &reader.schema(),
+        let batches = crate::SerieReader::from_arrow_reader(
+            None,
+            reader,
+            crate::ArrowCastOptions::default(),
         )?;
-        let rows = crate::ArrowScalar::from_reader_as(field.clone(), reader)?
-            .into_scalar()?
-            .as_sequence()
-            .map(<[Scalar]>::to_vec)
-            .unwrap_or_default();
+        let field = batches.field().clone();
+        let rows = batches.flat_map(|records| {
+            let (records, refused) = match records {
+                Ok(records) => (Some(records), None),
+                Err(error) => (None, Some(Err(Error::from(error)))),
+            };
+            let len = records.as_ref().map_or(0, crate::Serie::len);
+            refused.into_iter().chain((0..len).map(move |row| {
+                records
+                    .as_ref()
+                    .map_or(Ok(Scalar::Null), |held| held.scalar(row))
+            }))
+        });
         Ok(Self {
             field,
-            rows: Box::new(rows.into_iter().map(Ok)),
+            rows: Box::new(rows),
         })
     }
 }

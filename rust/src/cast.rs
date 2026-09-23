@@ -66,7 +66,7 @@ use crate::{DataType, Field, Scalar};
 mod kernel {
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, BooleanArray, Scalar as ArrowScalar, UInt32Array};
+    use arrow_array::{ArrayRef, BooleanArray, Scalar as ArrowDatum, UInt32Array};
     use arrow_buffer::BooleanBuffer;
     use arrow_cast::{CastOptions, cast_with_options};
     use arrow_schema::DataType as ArrowDataType;
@@ -185,8 +185,8 @@ mod kernel {
                 return Ok(scattered);
             }
             let mask = BooleanArray::new(exposure.clone(), None);
-            let placeholder = crate::arrow::value::physical_placeholder_for_field(target)?;
-            let placeholder = crate::arrow::value::array_from_values(target, &[&placeholder])?;
+            let placeholder = crate::serie::value::physical_placeholder_for_field(target)?;
+            let placeholder = crate::serie::value::array_of_rows(target, &[&placeholder])?;
             let (scattered, placeholder) = if contains_dictionary(target.dtype()) {
                 align_nested_dictionaries(
                     target,
@@ -199,7 +199,7 @@ mod kernel {
             } else {
                 (scattered, placeholder)
             };
-            let placeholder = ArrowScalar::new(placeholder);
+            let placeholder = ArrowDatum::new(placeholder);
             zip(&mask, &scattered.as_ref(), &placeholder).map_err(Into::into)
         })()?;
 
@@ -1185,7 +1185,7 @@ pub(crate) mod text {
         }
         let mask = BooleanArray::new(ours.finish(), None);
         let read_here =
-            crate::arrow::value::array_from_values(&read, &values.iter().collect::<Vec<_>>())?;
+            crate::serie::value::array_of_rows(&read, &values.iter().collect::<Vec<_>>())?;
         let cast = if refused && can_cast_types(source.data_type(), expected) {
             // Arrow reads what this crate could not at its own risk: a value
             // neither reading takes stays null, and strict mode reports it below.
@@ -2916,7 +2916,7 @@ pub(crate) mod columns {
         Array, ArrayRef, BooleanArray, Decimal256Array, DictionaryArray, FixedSizeListArray,
         Float16Array, Float32Array, Float64Array, Int16RunArray, Int32RunArray, Int64RunArray,
         LargeListArray, LargeListViewArray, ListArray, ListViewArray, MapArray, PrimitiveArray,
-        RunArray, Scalar as ArrowScalar, StructArray, UInt32Array, UnionArray, make_array,
+        RunArray, Scalar as ArrowDatum, StructArray, UInt32Array, UnionArray, make_array,
         new_null_array,
     };
     use arrow_buffer::{ArrowNativeType, BooleanBuffer, BooleanBufferBuilder};
@@ -4189,7 +4189,7 @@ pub(crate) mod columns {
             } else {
                 (array, default)
             };
-            let default = ArrowScalar::new(default);
+            let default = ArrowDatum::new(default);
             let truthy: &dyn Array = array.as_ref();
             let output = zip(&mask, &truthy, &default)?;
 
@@ -4663,9 +4663,8 @@ pub(crate) mod columns {
                     if len != 1 {
                         budget.add_array(&DataType::UInt32, len)?;
                     }
-                    let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder =
-                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder = crate::serie::value::physical_placeholder_for_field(field)?;
+                    let placeholder = crate::serie::value::array_of_rows(field, &[&placeholder])?;
                     repeat_scalar(&placeholder, len)?
                 }
                 (_, 0) => {
@@ -4682,9 +4681,8 @@ pub(crate) mod columns {
                         )
                     })?;
                     let default = default_row()?;
-                    let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder =
-                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder = crate::serie::value::physical_placeholder_for_field(field)?;
+                    let placeholder = crate::serie::value::array_of_rows(field, &[&placeholder])?;
                     let mask = BooleanArray::new(exposure.clone(), None);
                     let (default, placeholder) = if contains_dictionary(field.dtype()) {
                         align_nested_dictionaries(
@@ -4698,8 +4696,8 @@ pub(crate) mod columns {
                     } else {
                         (default, placeholder)
                     };
-                    let default = ArrowScalar::new(default);
-                    let placeholder = ArrowScalar::new(placeholder);
+                    let default = ArrowDatum::new(default);
+                    let placeholder = ArrowDatum::new(placeholder);
                     zip(&mask, &default, &placeholder)?
                 }
             };

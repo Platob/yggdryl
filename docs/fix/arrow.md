@@ -32,7 +32,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
+    use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -45,12 +45,12 @@ One column of frames in, batches out, the capture's own columns still in front o
         DataType::utf8().required_field("body"),
     ])?)
     .required_field("line");
-    let values = Scalar::from_sequence([Scalar::from_sequence([
+    let row = Scalar::from_sequence([
         Scalar::from("file:///capture.log"),
         Scalar::from(7_i64),
         Scalar::from("recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|"),
-    ])]);
-    let batch = yggdryl::arrow::batch_from_value(&capture, &values)?;
+    ]);
+    let batch = Serie::from_scalars(capture, [row])?.into_arrow_batch()?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
 
     let read = FixCodec::new(registry)
@@ -206,7 +206,7 @@ Lines to batches, with a lifecycle stage that sorts the finite capture: the walk
 
     use arrow_array::Array;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, fix_schema};
+    use yggdryl::{ArrowCastOptions, FixCodec, FixRegistry, Serie, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -223,10 +223,9 @@ Lines to batches, with a lifecycle stage that sorts the finite capture: the walk
     assert_eq!(batch.num_rows(), 2);
     let chain = batch.column_by_name("crossuuid").expect("the chain column");
     assert_eq!(chain.null_count(), 0, "every message names its chain");
-    let held = yggdryl::arrow::batch_to_value(&batch)?;
-    let at = batch.schema().index_of("crossuuid")?;
-    let chains: Vec<_> = held.as_sequence().expect("rows").iter().map(|row| row.get(at).map(std::borrow::Cow::into_owned)).collect();
-    assert_eq!(chains[0], chains[1], "one order, one chain");
+    let held = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())?;
+    let chains = held.child("crossuuid").expect("the chain column");
+    assert_eq!(chains.scalar(0)?, chains.scalar(1)?, "one order, one chain");
     ```
 
 === "Python"
@@ -346,7 +345,7 @@ A source row is read for every message it carries, so a capture answers one row 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -358,20 +357,22 @@ A source row is read for every message it carries, so a capture answers one row 
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("body"),
     ])?).required_field("capture");
-    let rows = Scalar::from_sequence([
+    let rows = [
         Scalar::from_sequence([Scalar::from(7_i64), Scalar::from(body)]),
         Scalar::from_sequence([Scalar::from(8_i64), Scalar::from(silent)]),
-    ]);
-    let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
+    ];
+    let batch = Serie::from_scalars(field, rows)?.into_arrow_batch()?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
     let reader = FixCodec::new(registry).parse_text_arrow_reader(source)?;
     let mut count = 0;
     for batch in reader {
-        let values = yggdryl::arrow::batch_to_value(&batch?)?;
-        for row in values.as_sequence().expect("rows") {
-            // Each row keeps the source row's own columns in front.
-            assert_eq!(row.get(0).as_deref(), Some(&Scalar::from(7_i64)));
-            assert_eq!(row.get(1).as_deref(), Some(&Scalar::from(body)));
+        let values = Serie::from_arrow_batch(None, &batch?, ArrowCastOptions::new())?;
+        // Each row keeps the source row's own columns in front.
+        let rownum = values.child_at(0).expect("the capture's first column");
+        let text = values.child_at(1).expect("the capture's second column");
+        for row in 0..values.len() {
+            assert_eq!(rownum.scalar(row)?, Scalar::from(7_i64));
+            assert_eq!(text.scalar(row)?, Scalar::from(body));
             count += 1;
         }
     }
@@ -547,7 +548,7 @@ A carried column returns to its place because the message carries it: a message 
 
     use arrow_array::Array;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -559,10 +560,11 @@ A carried column returns to its place because the message carries it: a message 
         "8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.000|10=0|",
         "8=FIX.4.4|35=8|11=A1|37=O1|150=F|39=2|14=100|151=0|55=AAPL|60=20260102-10:15:31.000|10=0|",
     ];
-    let batch = yggdryl::arrow::batch_from_value(
-        &capture,
-        &Scalar::from_sequence(lines.map(|line| Scalar::from_sequence([Scalar::from(line)]))),
-    )?;
+    let batch = Serie::from_scalars(
+        capture,
+        lines.map(|line| Scalar::from_sequence([Scalar::from(line)])),
+    )?
+    .into_arrow_batch()?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
 
     let read = codec.parse_text_arrow_reader(source)?;
@@ -574,14 +576,13 @@ A carried column returns to its place because the message carries it: a message 
     assert_eq!(held.num_rows(), 2);
     let cross = held.column_by_name("crossuuid").expect("the chain column");
     assert_eq!(cross.null_count(), 0);
-    let rows = yggdryl::arrow::batch_to_value(&held)?;
-    let rows = rows.as_sequence().expect("rows");
-    let at = |name: &str| held.schema().index_of(name).expect("a column");
-    assert_eq!(rows[0].get(at("crossuuid")), rows[1].get(at("crossuuid")));
-    assert_eq!(rows[1].get(at("seqnum")).as_deref(), Some(&Scalar::from(1_u64)));
-    assert!(rows[1].get(at("prevuuid")).is_some_and(|held| !held.is_null()));
+    let rows = Serie::from_arrow_batch(None, &held, ArrowCastOptions::new())?;
+    let column = |name: &str| rows.child(name).expect("a column");
+    assert_eq!(column("crossuuid").scalar(0)?, column("crossuuid").scalar(1)?);
+    assert_eq!(column("seqnum").scalar(1)?, Scalar::from(1_u64));
+    assert!(!column("prevuuid").is_null(1)?);
     // The content is what each line stated, carried through untouched.
-    assert_eq!(rows[1].get(at("ordstatus")).as_deref().and_then(Scalar::as_str), Some("2"));
+    assert_eq!(column("ordstatus").scalar(1)?.as_str(), Some("2"));
     ```
 
 ## Edges

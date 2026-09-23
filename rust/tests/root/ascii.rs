@@ -26,12 +26,13 @@ mod leaves {
     };
     use arrow_schema::DataType as ArrowDataType;
     use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-    use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
+    use yggdryl::arrow::batch_reader;
     use yggdryl::expression::Literal;
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::{
-        Charset, DataType, DataTypeId, Field, Scalar, StringEnum, StructType, Term, Url,
+        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, StringEnum,
+        StructType, Term, Url,
     };
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::{Str, StringType};
@@ -526,10 +527,16 @@ mod leaves {
 
             // A value crosses as itself in both directions.
             let value = dtype.scalar("USD").unwrap();
-            let array = scalar_array(&field, &value).unwrap();
+            let array = Serie::from_scalars(field.clone(), [value.clone()])
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
             assert_eq!(array.data_type(), &storage, "{dtype}");
             assert_eq!(
-                scalar_value(&field, array.as_ref()).unwrap(),
+                Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default())
+                    .unwrap()
+                    .scalar(0)
+                    .unwrap(),
                 value,
                 "{dtype}"
             );

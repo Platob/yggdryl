@@ -19,7 +19,6 @@ use pyo3::types::{
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
-use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
 use yggdryl::bytes::{Bytes, BytesType};
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
@@ -122,7 +121,8 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
         .map_err(|error| PyOverflowError::new_err(error.to_string()))
 }
 
-pub(crate) fn arrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
+/// One `pyarrow.Scalar` as the one-row array of its own type.
+pub(crate) fn pyarrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
     ensure_pyarrow_instance(value, "Scalar")?;
     let py = value.py();
     let values = PyList::new(py, [value])?;
@@ -146,12 +146,33 @@ fn ensure_pyarrow_instance(value: &Bound<'_, PyAny>, class: &str) -> PyResult<()
     }
 }
 
-fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
-    array_from_value(field, value).map_err(value_error)
+/// An outer Sequence as the column `field` types: a column cast once, and a
+/// run's rows each through the field's contract.
+fn sequence_serie(field: &CoreField, value: &Scalar) -> PyResult<Serie> {
+    let rows = value.as_serie().ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "expected an outer Sequence to lay out as an Arrow column, got {}",
+            value.kind()
+        ))
+    })?;
+    if rows.is_column() {
+        return rows
+            .cast(field, yggdryl::ArrowCastOptions::new())
+            .map_err(value_error);
+    }
+    Serie::from_scalars(field.clone(), rows.rows().into_owned()).map_err(value_error)
 }
 
-fn value_into_arrow_batch(field: &CoreField, value: &Scalar) -> PyResult<RecordBatch> {
-    batch_from_value(field, value).map_err(value_error)
+fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
+    sequence_serie(field, value)?
+        .require_arrow_array()
+        .map_err(value_error)
+}
+
+fn value_into_arrow_batch(root: &CoreField, value: &Scalar) -> PyResult<RecordBatch> {
+    sequence_serie(root, value)?
+        .into_arrow_batch()
+        .map_err(value_error)
 }
 
 /// Preserve the arithmetic failure categories Python's numeric protocol uses.
@@ -999,7 +1020,9 @@ impl PyScalar {
             || self.inner.inferred_scalar_field().map_err(value_error),
             core_field_from_value,
         )?;
-        let array = scalar_array(&field, &self.inner).map_err(value_error)?;
+        let array = Serie::from_scalars(field.clone(), [self.inner.clone()])
+            .and_then(|serie| serie.require_arrow_array())
+            .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &array, Some(&field))?.get_item(0)
     }
 
@@ -1596,12 +1619,6 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// equality.
 pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        // An Arrow payload is the `ArrowScalar` it is, buffers shared.
-        Scalar::Arrow(value) => Ok(Py::new(
-            py,
-            crate::arrow::PyArrowScalar::from_inner((**value).clone()),
-        )?
-        .into_any()),
         Scalar::Null => Ok(py.None()),
         Scalar::Boolean(value) => Ok(value
             .get()
@@ -1665,10 +1682,17 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::FixedSizeList(items)
         | Scalar::LargeList(items)
         | Scalar::LargeListView(items) => {
-            let items = items
-                .iter()
-                .map(|item| as_py(py, &item))
-                .collect::<PyResult<Vec<_>>>()?;
+            // A column names what its rows are, so each row reads under it.
+            let items = match items.field() {
+                Some(field) => items
+                    .iter()
+                    .map(|item| as_py_with_field(py, &item, field))
+                    .collect::<PyResult<Vec<_>>>()?,
+                None => items
+                    .iter()
+                    .map(|item| as_py(py, &item))
+                    .collect::<PyResult<Vec<_>>>()?,
+            };
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
         Scalar::Map(entries) | Scalar::SortedMap(entries) => {
@@ -1893,10 +1917,12 @@ impl Encoder {
             return Ok(value);
         }
         // A columnar object - a pyarrow container, a pandas or polars frame
-        // or series, a numpy array, an Arrow C exporter - is the Arrow scalar
-        // it already is, buffers shared rather than rows walked.
-        if let Some(arrow) = crate::arrow::try_ingest(value)? {
-            return Ok(Scalar::Arrow(std::sync::Arc::new(arrow)));
+        // or series, a numpy array, an Arrow C exporter - is the column it
+        // already is, held as a list sharing its buffers rather than rows
+        // walked. A stream is drained into that column; one Arrow scalar is
+        // its row.
+        if let Some(value) = crate::serie::columnar_value(value)? {
+            return Ok(value);
         }
         // A path is recognized by its protocol rather than by its class,
         // because every path-like object answers `__fspath__` and none of them

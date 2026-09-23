@@ -238,14 +238,25 @@ mod grammar {
             .bind(schema)
             .unwrap_or_else(|error| panic!("{text}: {error}"));
         let vectorized = bound.evaluate(&batch).unwrap();
+        let field = bound.field().clone().with_nullable(true);
+        // The vectorized column is laid out exactly as the bound field
+        // declares, so reading it back casts nothing.
+        assert_eq!(
+            vectorized.data_type(),
+            field.as_arrow_field_ref().unwrap().data_type(),
+            "{text}"
+        );
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
             // One row out of the vectorized column, through the public boundary:
             // a one-element slice is the scalar it holds.
-            let held = yggdryl::arrow::scalar_value(
-                &bound.field().clone().with_nullable(true),
-                vectorized.slice(position, 1).as_ref(),
+            let held = yggdryl::Serie::from_arrow_array(
+                Some(&field),
+                vectorized.slice(position, 1),
+                yggdryl::ArrowCastOptions::default(),
             )
+            .unwrap()
+            .scalar(0)
             .unwrap();
             assert_eq!(
                 scalar, held,
@@ -266,7 +277,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();

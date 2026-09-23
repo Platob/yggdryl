@@ -63,7 +63,6 @@ impl Scalar {
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            Self::Arrow(_) => return None,
             Self::Null
             | Self::List(_)
             | Self::ListView(_)
@@ -324,12 +323,6 @@ impl Scalar {
             _ => {}
         }
         match self {
-            // An Arrow payload hashes as the native value it holds, so the
-            // digest of a column does not depend on which side it crossed.
-            Self::Arrow(_) => match self.into_native() {
-                Ok(native) => native.feed(sink, depth),
-                Err(_) => write_null(sink),
-            },
             Self::Null => write_null(sink),
             Self::Boolean(value) => write_bool(sink, value.get()),
             Self::String(value) => write_string(sink, value.as_str()),

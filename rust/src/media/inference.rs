@@ -254,20 +254,6 @@ impl Scalar {
                     _ => Ok(DataType::list(item)),
                 }
             }
-            // An Arrow payload already carries its exact field: one pinned
-            // row is that field's datatype, and every wider shape is a list
-            // of it - of items for a column, of rows for a table or a stream.
-            Self::Arrow(value) => {
-                if value.is_scalar() {
-                    return Ok(value.dtype().clone());
-                }
-                let item = if value.shape().is_tabular() {
-                    value.root()?.with_name("item")
-                } else {
-                    value.field().clone().with_name("item")
-                };
-                Ok(DataType::list(item))
-            }
             // A mapping's keys are values, not names, so its datatype is a map
             // and not a struct; a struct in this project is described by a
             // sequence, one value per declared field.

@@ -2387,7 +2387,6 @@ mod typed {
         };
 
         use super::cast_into;
-        use yggdryl::arrow::scalar_value;
         use yggdryl::cast::ArrowCastOptions;
         use yggdryl::{DataType, Field, Nullability, Scalar, Serie, TimeUnit, Timezone};
 
@@ -2542,7 +2541,10 @@ mod typed {
         }
 
         fn cell(field: &Field, array: &ArrayRef) -> Scalar {
-            scalar_value(field, array.as_ref()).unwrap()
+            Serie::from_arrow_array(Some(field), Arc::clone(array), ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap()
         }
 
         /// Whether the one row is null as a reader sees it: a dictionary pair
@@ -2849,7 +2851,6 @@ mod strict {
         StructArray,
     };
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-    use yggdryl::arrow::scalar_value;
     use yggdryl::{
         ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType,
     };
@@ -3292,7 +3293,14 @@ mod strict {
         let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(repaired.column(0).null_count(), 0);
         assert_eq!(
-            scalar_value(&release, repaired.column(0).as_ref()).unwrap(),
+            Serie::from_arrow_array(
+                Some(&release),
+                Arc::clone(repaired.column(0)),
+                ArrowCastOptions::default()
+            )
+            .unwrap()
+            .scalar(0)
+            .unwrap(),
             release.default_value().unwrap()
         );
         assert_eq!(

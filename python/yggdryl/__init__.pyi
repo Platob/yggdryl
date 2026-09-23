@@ -1,7 +1,6 @@
 import builtins
 
 from . import (
-    arrow as arrow,
     avro as avro,
     charset as charset,
     codes as codes,
@@ -36,7 +35,6 @@ from ._native import (
     IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
     NULL_PARTITION as NULL_PARTITION,
     ArrowCastPlan as ArrowCastPlan,
-    ArrowScalar as ArrowScalar,
     BytesParameters as BytesParameters,
     DataType as DataType,
     Field as Field,

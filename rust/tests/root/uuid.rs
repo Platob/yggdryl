@@ -455,7 +455,7 @@ mod value {
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::StructType;
 
-    use yggdryl::{DataType, DataTypeId, DataTypeKind};
+    use yggdryl::{ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Serie};
     use yggdryl::{Field, Scalar};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
@@ -529,14 +529,20 @@ mod value {
         assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
         // The stored bytes are the identifier; the value reads back exact.
-        let array = yggdryl::arrow::scalar_array(&field, &Scalar::from(TEXT)).unwrap();
+        let array = Serie::from_scalars(field.clone(), [Scalar::from(TEXT)])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         let stored = array
             .as_any()
             .downcast_ref::<FixedSizeBinaryArray>()
             .unwrap();
         assert_eq!(stored.value(0), PACKED.to_be_bytes());
         assert_eq!(
-            yggdryl::arrow::scalar_value(&field, array.as_ref()).unwrap(),
+            Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
             Scalar::Uuid(yggdryl::Uuid::new(PACKED))
         );
     }

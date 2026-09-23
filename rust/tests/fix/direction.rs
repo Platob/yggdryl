@@ -658,14 +658,17 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
         .map(DataType::from)
         .unwrap()
         .required_field("capture");
-    let rows = yggdryl::Scalar::from_sequence([
+    let rows = [
         yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(b"8=FIX.4.2|35=D|10=0|".to_vec())]),
         yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(
             b"recv 8=FIX.4.2|35=D|10=0|".to_vec(),
         )]),
-    ]);
+    ];
     let batch_directions = |codec: &FixCodec| -> Vec<Option<String>> {
-        let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+        let source = yggdryl::Serie::from_scalars(field.clone(), rows.clone())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
         let reader = codec
             .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
             .unwrap();
@@ -674,10 +677,14 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
         reader
             .map(|batch| batch.unwrap())
             .flat_map(|batch| {
-                let value = yggdryl::arrow::batch_to_value(&batch).unwrap();
+                let value = yggdryl::Serie::from_arrow_batch(
+                    None,
+                    &batch,
+                    yggdryl::ArrowCastOptions::default(),
+                )
+                .unwrap();
                 value
-                    .as_sequence()
-                    .unwrap()
+                    .rows()
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[at].as_str().map(str::to_owned))
                     .collect::<Vec<_>>()

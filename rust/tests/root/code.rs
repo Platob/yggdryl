@@ -10,7 +10,6 @@ mod datatypes {
     use arrow_schema::DataType as ArrowDataType;
     use std::sync::Arc;
     use yggdryl::FieldValue as _;
-    use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
         ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie,
         StringEnum, StructType,
@@ -473,7 +472,10 @@ mod datatypes {
             // A value is stored as exactly its own bytes, and text cast into the
             // column becomes the same cell.
             let value = dtype.scalar(Scalar::from(*sample)).unwrap();
-            let stored = scalar_array(&field, &value).unwrap();
+            let stored = Serie::from_scalars(field.clone(), [value.clone()])
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
             let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
             assert_eq!(cells.value(0), *sample, "{name}");
             assert_eq!(
@@ -483,7 +485,14 @@ mod datatypes {
             );
             assert!(sample.len() <= *width, "{name}");
             assert_eq!(
-                scalar_value(&field, stored.as_ref()).unwrap(),
+                Serie::from_arrow_array(
+                    Some(&field),
+                    Arc::clone(&stored),
+                    ArrowCastOptions::default()
+                )
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
                 value,
                 "{name}"
             );

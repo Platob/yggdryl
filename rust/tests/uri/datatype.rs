@@ -9,7 +9,6 @@ use arrow_schema::DataType as ArrowDataType;
 
 use yggdryl::DataType;
 use yggdryl::FieldValue as _;
-use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, DataTypeValue as _, Field, FieldScalar, Scalar,
     Serie, StructType, Uri, UriField, UriType, Urn,
@@ -186,7 +185,10 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
     );
 
     let value = urn("urn:isbn:0451450523");
-    let stored = scalar_array(&field, &value).unwrap();
+    let stored = Serie::from_scalars(field.clone(), [value.clone()])
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
     assert_eq!(stored.data_type(), &ArrowDataType::Utf8);
     assert_eq!(
         stored
@@ -196,7 +198,13 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
             .value(0),
         "urn:isbn:0451450523"
     );
-    assert_eq!(scalar_value(&field, stored.as_ref()).unwrap(), value);
+    assert_eq!(
+        Serie::from_arrow_array(Some(&field), stored, ArrowCastOptions::default())
+            .unwrap()
+            .scalar(0)
+            .unwrap(),
+        value
+    );
 }
 
 #[test]

@@ -3,6 +3,7 @@ import {
   Field,
   Timezone,
   Scalar,
+  Serie,
   codec,
   json,
   toml,
@@ -119,14 +120,30 @@ void typedInstant
 void typedWidth
 void truthy
 
+// Arrow crosses as a Serie, and a column is one value; the Scalar Arrow
+// doors are retired with no alias.
 const arrowVector = vectorFromArray([1, 2], new Int32())
-const arrowValue: Scalar = Scalar.fromArrowArray(arrowVector)
-const nativeVector = arrowValue.intoArrowArray()
-const arrowScalar: Scalar = Scalar.fromArrowScalar(vectorFromArray([1], new Int32()))
-const nativeScalar: unknown = arrowScalar.intoArrowScalar()
+const arrowValue: Scalar = Serie.fromArrowArray(arrowVector).intoScalar()
+const arrowScalar: Scalar = Serie.fromArrowArray(vectorFromArray([1], new Int32())).scalar(0)
 const arrowTable = tableFromArrays({ id: Int32Array.from([1, 2]) })
-const tableValue: Scalar = Scalar.fromArrowTable(arrowTable)
 const rowField = new Field('row', 'struct<id:int32 not null>', false)
+const tableValue: Scalar = Serie.fromArrowBatch(arrowTable, rowField).intoScalar()
+// @ts-expect-error retired: `Serie.fromArrowArray(vector).scalar(0)`
+Scalar.fromArrowScalar(arrowVector)
+// @ts-expect-error retired: `Serie.fromArrowArray(vector).intoScalar()`
+Scalar.fromArrowArray(arrowVector)
+// @ts-expect-error retired: `Serie.fromArrowBatch(batch).intoScalar()`
+Scalar.fromArrowBatch(arrowTable.batches[0])
+// @ts-expect-error retired: `Serie.fromArrowBatch(table).intoScalar()`
+Scalar.fromArrowTable(arrowTable)
+// @ts-expect-error retired: `Serie.fromScalars(field, [value]).intoArrowScalar()`
+arrowScalar.intoArrowScalar()
+// @ts-expect-error retired: `Serie.fromScalars(field, rows).intoArrowArray()`
+arrowValue.intoArrowArray()
+// @ts-expect-error retired: `Serie.fromScalars(root, rows).intoArrowBatch()`
+tableValue.intoArrowBatch(rowField)
+// @ts-expect-error retired, with the table door: a batch is the one record shape
+tableValue.intoArrowTable(rowField)
 class TypedOrder {
   static get intoStructField(): Field {
     return rowField
@@ -136,17 +153,6 @@ const classFieldOptions: CodecOptions = { field: TypedOrder }
 const instanceFieldOptions: CodecOptions = { field: new TypedOrder() }
 const classTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', classFieldOptions)
 const instanceTypedOrder: TypedOrder = json.loads<TypedOrder>('{}', instanceFieldOptions)
-const nativeTable = tableValue.intoArrowTable(rowField)
-const batchValue: Scalar = Scalar.fromArrowBatch(arrowTable.batches[0], rowField)
-const strictBatch: Scalar = Scalar.fromArrowBatch(arrowTable.batches[0], rowField, {
-  nullability: 'strict',
-})
-const castArray: Scalar = Scalar.fromArrowArray(arrowVector, 'value: int64', { safe: false })
-// @ts-expect-error `nullability` is a closed vocabulary, not any name
-Scalar.fromArrowTable(arrowTable, rowField, { nullability: 'lenient' })
-void strictBatch
-void castArray
-const nativeBatch = batchValue.intoArrowBatch(rowField)
 const narrowNative: Scalar = json.loads('7', {
   field: new Field('value', 'int16', false),
   scalar: true,
@@ -284,10 +290,6 @@ void jsonBytes
 void jsonUtf8
 void pivot
 void lowered
-void nativeVector
-void nativeScalar
-void nativeTable
-void nativeBatch
 void rows
 void fromUrl
 void bufferedRows

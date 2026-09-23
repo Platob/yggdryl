@@ -23,7 +23,7 @@
 //! # }
 //! ```
 
-use crate::scalar::text_scalar_value;
+use crate::scalar::text_leaf_value;
 use crate::typed::define_field_types;
 use crate::value::Value;
 use crate::{DataType, MimeType, Result, Scalar};
@@ -99,7 +99,7 @@ define_field_types!(MimeTypeType, MimeType);
 // makes it a scalar.
 // ------------------------------------------------------------------------
 
-text_scalar_value!(MimeType, MimeType, DataTypeId::MimeType, DataType::MimeType);
+text_leaf_value!(MimeType, MimeType, DataTypeId::MimeType, DataType::MimeType);
 
 /// The Arrow extension name preserving [`crate::DataType::MimeType`] over its
 /// Utf8 storage.

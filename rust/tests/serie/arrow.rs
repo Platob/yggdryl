@@ -2,13 +2,15 @@
 //! what it proves, what it refuses by name, and what crosses back out.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::{
-    Array, ArrayRef, Int32Array, Int64Array, ListArray, RecordBatch, StringArray, StructArray,
+    Array, ArrayRef, Int32Array, Int64Array, ListArray, RecordBatch, RecordBatchIterator,
+    StringArray, StructArray,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::arrow::batch_reader;
+use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
     ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie, SerieReader, StructType,
 };
@@ -84,6 +86,25 @@ fn legs() -> (Field, ListArray) {
         None,
     );
     (field, lists)
+}
+
+/// Three prices, as the int64 array a caller holds.
+fn prices() -> ArrayRef {
+    Arc::new(Int64Array::from(vec![125_i64, 126, 127]))
+}
+
+/// A stream of `count` copies of [`quote_batch`].
+fn quote_stream(count: usize) -> BatchReader {
+    let batch = quote_batch();
+    batch_reader(batch.schema(), vec![batch; count])
+}
+
+/// The two rows of [`quote_batch`], as values.
+fn quote_rows() -> [Scalar; 2] {
+    [
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+        Scalar::from_sequence([Scalar::from(2_i64), Scalar::from("MSFT")]),
+    ]
 }
 
 #[test]
@@ -730,11 +751,9 @@ fn an_extension_label_is_not_a_proof() {
     );
     let refusal =
         Serie::from_arrow_batch(Some(&root), &batch, strict()).expect_err("a label proves nothing");
+    // The refusal names the row the batch holds it at, and the column.
     let message = refusal.to_string();
-    assert!(
-        message.contains("\"u\"") && message.contains("row 0"),
-        "{message}"
-    );
+    assert!(message.contains("$[0].u"), "{message}");
 }
 
 #[test]
@@ -834,4 +853,338 @@ fn a_zero_width_list_default_keeps_its_row_count() {
     assert_eq!(rows.require_arrow_array().expect("an array").len(), 3);
     let one = rows.slice(0, 1).expect("one row");
     assert!(one.into_arrow_scalar().is_ok());
+}
+
+#[test]
+fn a_held_column_counts_its_rows_and_its_table_counts_its_columns() {
+    let price = Field::new("price", DataType::Int64, false);
+    let one = Serie::from_scalars(price.clone(), [Scalar::from(125_i64)]).expect("one row");
+    assert_eq!(one.len(), 1);
+    assert_eq!(one.into_arrow_batch().expect("one column").num_columns(), 1);
+
+    let many =
+        Serie::from_arrow_array(Some(&price), prices(), ArrowCastOptions::new()).expect("a column");
+    assert_eq!(many.len(), 3);
+
+    let quotes = Serie::from_arrow_batch(None, &quote_batch(), ArrowCastOptions::new())
+        .expect("a record column");
+    assert_eq!(quotes.len(), 2);
+    assert_eq!(quotes.children().len(), 2);
+    assert_eq!(quotes.field().map(Field::name), Some("row"));
+    assert_eq!(quotes.into_arrow_batch().expect("a table").num_columns(), 2);
+
+    // A batch narrows to the struct column its rows already are.
+    let array = quotes.into_arrow_array().expect("a column");
+    let records = array
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .expect("rows are a struct column");
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.num_columns(), 2);
+}
+
+#[test]
+fn a_stream_states_its_root_before_a_batch_is_pulled_and_drains_every_batch() {
+    let pulls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&pulls);
+    let batch = quote_batch();
+    let schema = batch.schema();
+    let reader: BatchReader = Box::new(RecordBatchIterator::new(
+        std::iter::repeat_n(batch, 2).map(move |batch| {
+            counted.fetch_add(1, Ordering::Relaxed);
+            Ok(batch)
+        }),
+        schema,
+    ));
+    let series = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())
+        .expect("the reader names its root");
+    assert_eq!(series.field(), &quotes_root());
+    assert_eq!(pulls.load(Ordering::Relaxed), 0, "nothing was read");
+
+    // A stream has no length until it is drained, and draining it pulls
+    // every batch it holds.
+    let rows: usize = series
+        .map(|column| column.expect("a batch lands").len())
+        .sum();
+    assert_eq!(rows, 4);
+    assert_eq!(pulls.load(Ordering::Relaxed), 2);
+
+    // Drained into one column, the stream concatenates every batch.
+    let drained = Serie::from_arrow_reader(None, quote_stream(2), ArrowCastOptions::new())
+        .expect("the stream drains");
+    assert_eq!(drained.len(), 4);
+    assert_eq!(
+        Scalar::from(drained),
+        Scalar::from_sequence([quote_rows(), quote_rows()].concat())
+    );
+}
+
+#[test]
+fn a_record_column_with_every_row_present_is_its_own_table_whatever_its_nullability() {
+    let records = Serie::from_arrow_batch(None, &quote_batch(), ArrowCastOptions::new())
+        .expect("a record column")
+        .require_arrow_array()
+        .expect("a record array");
+    // A record column's children are the columns of its table, and a
+    // nullable one that holds no absent row states nothing a batch cannot -
+    // so it is not wrapped as the one column of another root.
+    for nullable in [false, true] {
+        let field = quotes_root().with_nullable(nullable);
+        let column = Serie::from_arrow_array(Some(&field), Arc::clone(&records), strict())
+            .expect("the records pair");
+        let table = column.into_arrow_batch().expect("a table");
+        assert_eq!(table.num_columns(), 2, "nullable {nullable}");
+        assert_eq!(table.schema().field(0).name(), "id", "nullable {nullable}");
+    }
+}
+
+#[test]
+fn a_foreign_layout_is_cast_into_the_declared_field_rather_than_misread() {
+    // Int64 values under a text field are converted by the one plan, each
+    // to its text, and never read as the bytes of a string.
+    let text = Field::new("price", DataType::utf8(), false);
+    let column =
+        Serie::from_arrow_array(Some(&text), prices(), strict()).expect("int64 casts to text");
+    assert_eq!(column.field(), Some(&text));
+    assert_eq!(
+        column.rows().as_ref(),
+        &[
+            Scalar::from("125"),
+            Scalar::from("126"),
+            Scalar::from("127")
+        ]
+    );
+}
+
+#[test]
+fn a_declared_root_types_the_record_column_down_to_its_nullability() {
+    let widened = Field::new(
+        "row",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("id", DataType::Int64, false),
+                Field::new("symbol", DataType::utf8(), true),
+            ])
+            .expect("two named children"),
+        ),
+        false,
+    );
+    // Nullability is part of the root, so the column carries the declared
+    // one - the batch's required symbol widens into a nullable one - and the
+    // rows are the rows of the batch's own schema.
+    let exact = Serie::from_arrow_batch(Some(&quotes_root()), &quote_batch(), strict())
+        .expect("the batch's own root");
+    let column = Serie::from_arrow_batch(Some(&widened), &quote_batch(), strict())
+        .expect("a required column widens into a nullable one");
+    assert_eq!(exact.field(), Some(&quotes_root()));
+    assert_eq!(column.field(), Some(&widened));
+    assert_eq!(column.rows(), exact.rows());
+}
+
+#[test]
+fn rows_cross_into_a_record_column_and_back_as_the_same_value() {
+    let column = Serie::from_scalars(quotes_root(), quote_rows()).expect("the rows materialize");
+    assert_eq!(column.len(), 2);
+    assert_eq!(
+        Scalar::from(column.clone()),
+        Scalar::from_sequence(quote_rows())
+    );
+
+    // The column streamed out and drained back in is the same one sequence.
+    let drained = Serie::from_arrow_reader(
+        None,
+        column.into_arrow_reader().expect("one batch"),
+        ArrowCastOptions::new(),
+    )
+    .expect("the stream drains");
+    assert_eq!(Scalar::from(drained), Scalar::from_sequence(quote_rows()));
+}
+
+#[test]
+fn every_held_column_widens_to_the_one_reader_a_record_write_takes() {
+    let price = Field::new("price", DataType::Int64, false);
+    let cases = [
+        (
+            Serie::from_arrow_array(Some(&price), prices(), ArrowCastOptions::new())
+                .expect("a column"),
+            3,
+        ),
+        (
+            Serie::from_arrow_batch(None, &quote_batch(), ArrowCastOptions::new())
+                .expect("a record column"),
+            2,
+        ),
+    ];
+    for (column, rows) in cases {
+        let direct = column
+            .into_arrow_reader()
+            .expect("a held column is one batch");
+        assert_eq!(
+            direct
+                .map(|batch| batch.expect("a batch reads").num_rows())
+                .sum::<usize>(),
+            rows
+        );
+        let series = SerieReader::from_serie(column).expect("a held column is one record column");
+        assert_eq!(
+            series
+                .into_arrow_reader()
+                .map(|batch| batch.expect("a batch reads").num_rows())
+                .sum::<usize>(),
+            rows
+        );
+    }
+}
+
+#[test]
+fn an_integer_column_casts_into_a_float_one_row_for_row() {
+    let source = Field::new("price", DataType::Int64, false);
+    let target = Field::new("price", DataType::Float64, false);
+    let column =
+        Serie::from_arrow_array(Some(&source), prices(), ArrowCastOptions::new()).expect("int64");
+
+    let cast = column
+        .cast(&target, ArrowCastOptions::new())
+        .expect("int64 widens to float64");
+    assert_eq!(cast.field(), Some(&target));
+    assert_eq!(cast.len(), 3);
+    assert_eq!(
+        cast.as_float64().expect("a float64 column").values(),
+        &[125.0, 126.0, 127.0]
+    );
+}
+
+#[test]
+fn one_plan_casts_every_batch_a_stream_yields() {
+    let target = Field::new(
+        "row",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("id", DataType::Float64, false),
+                Field::new("symbol", DataType::utf8(), false),
+            ])
+            .expect("two named children"),
+        ),
+        false,
+    );
+    let expected = target
+        .clone()
+        .into_arrow_schema()
+        .expect("the root projects to Arrow");
+    let batches: Vec<RecordBatch> =
+        SerieReader::from_arrow_reader(Some(&target), quote_stream(3), ArrowCastOptions::new())
+            .expect("int64 widens to float64")
+            .into_arrow_reader()
+            .map(|batch| batch.expect("a batch reads"))
+            .collect();
+
+    // The plan is compiled once from the reader schema, so every batch - not
+    // only the first - arrives under the declared root.
+    assert_eq!(batches.len(), 3);
+    for batch in &batches {
+        assert_eq!(batch.schema(), expected);
+        let rows =
+            Serie::from_arrow_batch(None, batch, ArrowCastOptions::new()).expect("a record column");
+        assert_eq!(
+            Scalar::from(rows),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from(1.0_f64), Scalar::from("AAPL")]),
+                Scalar::from_sequence([Scalar::from(2.0_f64), Scalar::from("MSFT")]),
+            ])
+        );
+    }
+}
+
+#[test]
+fn a_held_record_column_reads_as_a_stream_of_itself() {
+    let records = Serie::from_arrow_batch(None, &quote_batch(), ArrowCastOptions::new())
+        .expect("a record column");
+    let series = SerieReader::from_serie(records.clone()).expect("a record column");
+    assert_eq!(series.field(), &quotes_root());
+    let yielded = series
+        .collect::<Result<Vec<Serie>, _>>()
+        .expect("one column");
+    assert_eq!(yielded, std::slice::from_ref(&records));
+
+    // Its transport face is the one batch the column is.
+    let mut transport = SerieReader::from_serie(records)
+        .expect("a record column")
+        .into_arrow_reader();
+    let batch = transport.next().expect("a batch").expect("a table");
+    assert_eq!(batch.num_rows(), 2);
+    assert_eq!(batch.schema(), quote_batch().schema());
+    assert!(transport.next().is_none());
+}
+
+#[test]
+fn a_held_column_that_is_not_a_record_is_the_one_child_of_a_record() {
+    let price = Field::new("price", DataType::Int64, false);
+    let prices =
+        Serie::from_arrow_array(Some(&price), prices(), ArrowCastOptions::new()).expect("a column");
+    let series = SerieReader::from_serie(prices.clone()).expect("a leaf is one column");
+    assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
+    assert!(!series.field().is_nullable());
+    assert_eq!(
+        series.field().dtype().as_fields().map(<[Field]>::to_vec),
+        Some(vec![price])
+    );
+    let yielded = series
+        .collect::<Result<Vec<Serie>, _>>()
+        .expect("one column");
+    assert_eq!(yielded.len(), 1);
+    assert_eq!(yielded[0].len(), 3);
+    assert_eq!(yielded[0].child("price"), Some(&prices));
+}
+
+#[test]
+fn a_run_and_a_record_column_holding_an_absent_row_are_no_stream() {
+    assert!(SerieReader::from_serie(Serie::new(vec![Scalar::from(1_i64)])).is_err());
+
+    let root = quotes_root().with_nullable(true);
+    let records = StructArray::new(
+        vec![
+            ArrowField::new("id", ArrowDataType::Int64, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+        ]
+        .into(),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+        ],
+        Some(NullBuffer::from(vec![true, false])),
+    );
+    let serie = Serie::from_arrow_array(Some(&root), Arc::new(records), ArrowCastOptions::new())
+        .expect("a nullable record column");
+    let refusal = SerieReader::from_serie(serie).expect_err("a table states no row validity");
+    assert!(refusal.to_string().contains("1 absent rows"), "{refusal}");
+}
+
+#[test]
+fn a_duration32_column_reads_back_as_duration32_values() {
+    // Arrow lays out one duration width, so the column's storage is 64-bit
+    // and the reading resolved at the landing is what keeps the width.
+    let field = Field::new(
+        "elapsed",
+        DataType::duration32(yggdryl::TimeUnit::Second).unwrap(),
+        true,
+    );
+    let array: ArrayRef = Arc::new(arrow_array::DurationSecondArray::from(vec![Some(90), None]));
+    let landed = Serie::from_arrow_array(Some(&field), array, strict()).unwrap();
+    let laid = Serie::from_scalars(
+        field,
+        [
+            Scalar::duration32(90, yggdryl::TimeUnit::Second).unwrap(),
+            Scalar::Null,
+        ],
+    )
+    .unwrap();
+    for column in [&landed, &laid] {
+        let first = column.scalar(0).unwrap();
+        assert_eq!(first.kind(), "duration32");
+        assert_eq!(
+            first,
+            Scalar::duration32(90, yggdryl::TimeUnit::Second).unwrap()
+        );
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+    }
 }

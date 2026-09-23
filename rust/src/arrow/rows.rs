@@ -77,7 +77,7 @@ where
     let schema = arrow_schema_from_field(field)?;
     Ok(Box::new(Rows {
         rows: rows.into_iter(),
-        field: field.clone(),
+        field: Arc::new(field.clone()),
         schema,
         batch_row_size: batch_row_size.unwrap_or(DEFAULT_BATCH_ROW_SIZE).max(1),
         batch_byte_size,
@@ -173,7 +173,7 @@ impl TryFrom<Closing> for Scalar {
 /// The one bounded row-to-batch iterator.
 struct Rows<I: Iterator> {
     rows: I,
-    field: Field,
+    field: Arc<Field>,
     schema: SchemaRef,
     batch_row_size: usize,
     batch_byte_size: Option<u64>,
@@ -303,7 +303,7 @@ where
         if values.is_empty() {
             return None;
         }
-        let batch = batch_from_values(&self.field, Arc::clone(&self.schema), &values)
+        let batch = batch_of_rows(&self.field, Arc::clone(&self.schema), &values)
             .map_err(|error| ArrowError::ExternalError(Box::new(error)));
         if batch.is_err() {
             self.done = true;
@@ -340,19 +340,18 @@ where
     }
 }
 
-pub(super) fn batch_from_values(
-    field: &Field,
-    schema: SchemaRef,
-    values: &[Scalar],
-) -> Result<RecordBatch> {
+/// Lay rows the field's row contract already canonicalized out as one batch
+/// under `schema`, its projection: they land proven, so none is read again,
+/// and the batch takes the buffers as they were laid out.
+fn batch_of_rows(field: &Arc<Field>, schema: SchemaRef, values: &[Scalar]) -> Result<RecordBatch> {
     let refs: Vec<&Scalar> = values.iter().collect();
-    let array = super::value::array_from_values(field, &refs)?;
-    batch_from_record_array(schema, &array)
+    let (_, records) = crate::serie::canonical_rows(Arc::clone(field), &refs)?;
+    batch_from_record_array(schema, &records)
 }
 
 /// One batch under `schema` whose columns are a record array's children,
 /// shared.
-pub(super) fn batch_from_record_array(schema: SchemaRef, array: &ArrayRef) -> Result<RecordBatch> {
+fn batch_from_record_array(schema: SchemaRef, array: &ArrayRef) -> Result<RecordBatch> {
     let struct_array = array
         .as_any()
         .downcast_ref::<StructArray>()

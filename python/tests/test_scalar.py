@@ -17,8 +17,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, json
-from yggdryl.arrow import ArrowScalar
+from yggdryl import DataType, Field, Scalar, Serie, json
 
 @dataclass
 class Quote:
@@ -494,7 +493,8 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
 def test_arrow_scalar_round_trip_keeps_physical_type(
     scalar: pa.Scalar, kind: str
 ) -> None:
-    value = ArrowScalar.from_(scalar).into_scalar()
+    # One Arrow scalar is its row, read under its own type.
+    value = Scalar.from_(scalar)
     restored = value.into_arrow_scalar()
     assert value.kind == kind
     assert restored.type == scalar.type
@@ -506,7 +506,7 @@ def test_arrow_decimal256_scalar_round_trip() -> None:
         Decimal("1234567890123456789012345678901234567890.12"),
         pa.decimal256(50, 2),
     )
-    value = ArrowScalar.from_(scalar).into_scalar()
+    value = Scalar.from_(scalar)
     assert value.kind == "d256"
     # A Scalar retains the decimal width, coefficient, and scale, while a
     # declared Field retains spare precision that is not part of a value.
@@ -518,12 +518,15 @@ def test_arrow_decimal256_scalar_round_trip() -> None:
 
 def test_arrow_array_uses_c_data_and_requires_a_field_only_when_ambiguous() -> None:
     array = pa.array([1, None, 3], type=pa.int16())
-    value = ArrowScalar.from_(array).into_scalar()
+    # A column is held as a list sharing its buffers.
+    value = Scalar.from_(array)
+    assert value.kind == "list"
+    assert value.as_py() == [1, None, 3]
     restored = value.into_arrow_array()
     assert restored.type == array.type
     assert restored.to_pylist() == array.to_pylist()
 
-    empty = ArrowScalar.from_(pa.array([], type=pa.int16())).into_scalar()
+    empty = Scalar.from_(pa.array([], type=pa.int16()))
     with pytest.raises(ValueError, match="empty Sequence"):
         empty.into_arrow_array()
     restored_empty = empty.into_arrow_array(Field("item", "int16"))
@@ -536,13 +539,17 @@ def test_record_batch_and_table_round_trip_through_native_rows() -> None:
         names=["id", "symbol"],
     )
     field = Field.from_arrow_schema(batch.schema)
-    rows = ArrowScalar.from_(batch).into_scalar()
-    assert rows.as_py() == [[1, "A"], [2, "B"]]
+    rows = Scalar.from_(batch)
+    # A record column's rows read under its field, so each is a mapping.
+    assert rows.as_py() == [{"id": 1, "symbol": "A"}, {"id": 2, "symbol": "B"}]
+    assert rows == Scalar.from_(Serie.from_(batch))
     restored_batch = rows.into_arrow_batch(field)
     assert restored_batch.equals(batch)
 
+    # A table is a stream, so it is drained into the one column it holds.
     table = pa.Table.from_batches([batch, batch])
-    table_rows = ArrowScalar.from_(table).into_scalar()
+    table_rows = Scalar.from_(table)
+    assert len(table_rows) == 4
     restored_table = table_rows.into_arrow_table(field)
     assert restored_table.equals(table.combine_chunks())
 
@@ -588,7 +595,7 @@ def test_value_field_accessors_redirect_to_core_inference() -> None:
 
 def test_empty_rows_require_the_known_arrow_root_on_output() -> None:
     batch = pa.record_batch([pa.array([], type=pa.int32())], names=["id"])
-    rows = ArrowScalar.from_(batch).into_scalar()
+    rows = Scalar.from_(batch)
     with pytest.raises(ValueError, match="empty rows"):
         rows.into_arrow_batch()
     assert rows.into_arrow_batch(Field.from_arrow_schema(batch.schema)).equals(batch)

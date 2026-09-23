@@ -325,7 +325,7 @@ pub(crate) fn column_of(
     let maps = held::<MapArray>(&array)?;
     let entries: ArrayRef = Arc::new(maps.entries().clone());
     let (offsets, values) = rebased(maps.offsets(), &entries);
-    let entries = super::arrow::column_of(
+    let entries = super::arrow::child_of(
         Arc::new(entries_field.clone()),
         values,
         None,

@@ -10,7 +10,7 @@ use arrow_array::{ArrayRef, StringArray};
 use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
-use yggdryl::{DataType, DateTimeType, Scalar, TemporalValue as _, TimeUnit, Timezone};
+use yggdryl::{DataType, DateTimeType, Scalar, Serie, TemporalValue as _, TimeUnit, Timezone};
 use yggdryl::{DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 
 use super::doors;
@@ -221,11 +221,9 @@ pub(crate) fn interval_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     for (dtype, sample) in &leaves {
         let field = dtype.clone().nullable_field("value");
-        let column = yggdryl::arrow::array_from_value(
-            &field,
-            &Scalar::from_sequence(std::iter::repeat_n(sample.clone(), ROWS)),
-        )
-        .expect("the benchmark column is valid");
+        let column = Serie::from_scalars(field, std::iter::repeat_n(sample.clone(), ROWS))
+            .and_then(|serie| serie.require_arrow_array())
+            .expect("the benchmark column is valid");
         doors::ingest(&mut group, dtype, &column);
     }
     group.finish();

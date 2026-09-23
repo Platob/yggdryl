@@ -5,7 +5,14 @@
 //! mutable - a write lands in the buffers the column holds - so it has
 //! equality over its rows and no hash, which is Python's contract for a
 //! mutable container. Arrow crosses by sharing buffers through the C Data and
-//! C Stream interfaces, exactly as [`crate::arrow::PyArrowScalar`] does.
+//! C Stream interfaces.
+//!
+//! This is also the one place a foreign columnar object becomes a native
+//! value. `PyArrow`, pandas, polars, `NumPy` and anything implementing the
+//! Arrow C data or stream protocol is read once, by [`columnar`], as a column
+//! in hand or as a stream: a held column is a [`PySerie`], a stream is a
+//! [`PySerieReader`], and nothing else. A frame is converted by its own
+//! library, and the declared `Field` is applied by the core's one cast.
 //!
 //! A nested column is a subclass named for its leaf - `ListSerie`,
 //! `LargeListSerie`, `ListViewSerie`, `LargeListViewSerie`,
@@ -22,19 +29,27 @@ use pyo3::PyClassInitializer;
 use pyo3::class::basic::CompareOp;
 use std::sync::Mutex;
 
+use arrow_array::RecordBatch;
+use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyList, PySlice};
+use pyo3::types::{IntoPyDict, PyList, PySlice};
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::RecordOptions;
-use yggdryl::{Field as CoreField, FieldPath, MimeType, Scalar, Serie, SerieReader};
+use yggdryl::{
+    ArrowCastOptions, Field as CoreField, FieldPath, MimeType, Scalar, Serie, SerieReader,
+};
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
-    batch_reader_from_any, batch_reader_to_pyarrow, batch_to_pyarrow, record_batch_from_value,
+    Frames, batch_reader_from_any, batch_reader_from_value, batch_reader_to_pyarrow,
+    batch_to_pyarrow, columnar_reader, core_root_field_from_value, declared_by, frame_from_reader,
+    record_batch_from_value, type_name,
 };
-use crate::scalar::{PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py};
+use crate::scalar::{
+    PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, pyarrow_scalar_into_array,
+};
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
@@ -156,6 +171,306 @@ pub(crate) fn stream_of(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
     )
 }
 
+/// A foreign columnar object, read once at the boundary.
+pub(crate) enum Columnar {
+    /// A column in hand, its buffers shared.
+    Held(Serie),
+    /// One Arrow scalar: a column of one row, which as a value is that row.
+    Pinned(Serie),
+    /// A batch stream, not yet pulled.
+    Stream(BatchReader),
+}
+
+impl Columnar {
+    /// The column this object holds, draining a stream under `root`.
+    fn into_serie(self, root: Option<&CoreField>, options: ArrowCastOptions) -> PyResult<Serie> {
+        match self {
+            Self::Held(serie) | Self::Pinned(serie) => match root {
+                Some(root) => serie.cast(root, options).map_err(value_error),
+                None => Ok(serie),
+            },
+            Self::Stream(reader) => {
+                Serie::from_arrow_reader(root, reader, options).map_err(value_error)
+            }
+        }
+    }
+
+    /// The stream this object is: a held column as its one batch, and a
+    /// stream as it stands, neither pulled.
+    fn into_reader(
+        self,
+        root: Option<&CoreField>,
+        options: ArrowCastOptions,
+    ) -> PyResult<SerieReader> {
+        match self {
+            Self::Held(_) | Self::Pinned(_) => {
+                SerieReader::from_serie(self.into_serie(root, options)?).map_err(value_error)
+            }
+            Self::Stream(reader) => {
+                SerieReader::from_arrow_reader(root, reader, options).map_err(value_error)
+            }
+        }
+    }
+}
+
+/// Read a columnar Python object, or answer `None` for a value that is not
+/// one.
+///
+/// The order is deterministic and each step is one library's own conversion:
+///
+/// 1. a native `Serie`, shared, or a native `SerieReader`, taken;
+/// 2. a pandas or polars series, converted by that library;
+/// 3. a `NumPy` array;
+/// 4. a `PyArrow` container, whose exact class decides held or streamed;
+/// 5. a frame, a dataset or a scanner, or any Arrow C stream exporter;
+/// 6. anything exporting the Arrow C array protocol.
+///
+/// A frame library is recognized by the value's own type rather than by
+/// importing the library, so a caller who never installed pandas never pays
+/// an import for it.
+///
+/// # Errors
+///
+/// Returns whatever a library conversion or an Arrow C crossing raised, and a
+/// `ValueError` for a `SerieReader` already handed over.
+pub(crate) fn columnar(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
+    if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
+        return Ok(Some(Columnar::Held(serie.inner.clone())));
+    }
+    if let Ok(mut reader) = value.extract::<PyRefMut<'_, PySerieReader>>() {
+        return Ok(Some(Columnar::Stream(reader.take()?.into_arrow_reader())));
+    }
+    if let Some(series) = series_to_arrow(value)? {
+        return array_of(&series).map(Some);
+    }
+    if declared_by(value, "numpy", "ndarray") {
+        return numpy_value(value).map(Some);
+    }
+    // A held container is recognized by its exact class before the stream
+    // ladder, because a `RecordBatch` also exports a stream and reading it as
+    // one would lose the length it already knows.
+    if let Some(value) = pyarrow_value(value)? {
+        return Ok(Some(value));
+    }
+    if let Some(reader) = columnar_reader(value)? {
+        return Ok(Some(Columnar::Stream(reader)));
+    }
+    if value.hasattr("__arrow_c_array__")? {
+        return array_of(value).map(Some);
+    }
+    Ok(None)
+}
+
+/// Read a columnar object as the one column it holds, a stream drained.
+///
+/// This is what `Scalar.from_` holds a columnar argument as: a list sharing
+/// the column's buffers, its rows unread. One Arrow scalar is its row.
+///
+/// # Errors
+///
+/// [`columnar`]'s, and a stream's own.
+pub(crate) fn columnar_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Scalar>> {
+    Ok(match columnar(value)? {
+        None => None,
+        Some(Columnar::Pinned(serie)) => Some(serie.scalar(0).map_err(value_error)?),
+        Some(columnar) => Some(Scalar::from(
+            columnar.into_serie(None, ArrowCastOptions::new())?,
+        )),
+    })
+}
+
+/// Read any Python value as one column, cast into `field` when one is given.
+///
+/// A columnar object is [`columnar`]'s; any other value is read as a native
+/// [`Scalar`]: a sequence is its rows and anything else one row, under
+/// `field` or the field the value infers.
+fn serie_from_py(
+    value: &Bound<'_, PyAny>,
+    field: Option<&Bound<'_, PyAny>>,
+    options: ArrowCastOptions,
+) -> PyResult<Serie> {
+    if let Some(columnar) = columnar(value)? {
+        let name = match &columnar {
+            Columnar::Held(serie) | Columnar::Pinned(serie) => serie
+                .field()
+                .map_or(DEFAULT_ROOT, CoreField::name)
+                .to_owned(),
+            Columnar::Stream(_) => DEFAULT_ROOT.to_owned(),
+        };
+        let root = field
+            .map(|field| core_root_field_from_value(field, &name))
+            .transpose()?;
+        return columnar.into_serie(root.as_ref(), options);
+    }
+    let scalar = from_py(value).map_err(|error| {
+        PyTypeError::new_err(format!(
+            "expected a pyarrow Scalar, Array, ChunkedArray, RecordBatch, Table, \
+             RecordBatchReader, Dataset or Scanner, a pandas or polars frame or series, a numpy \
+             array, an Arrow C data or stream exporter, or a value a Scalar can hold, got {}: \
+             {error}",
+            type_name(value)
+        ))
+    })?;
+    let declared = field
+        .map(|field| core_root_field_from_value(field, DEFAULT_ROOT))
+        .transpose()?;
+    match scalar.as_serie() {
+        // A column already names its layout, so a declared field casts it.
+        Some(rows) if rows.is_column() => match declared {
+            Some(field) => rows.cast(&field, options).map_err(value_error),
+            None => Ok(rows.clone()),
+        },
+        Some(rows) => {
+            let field = match declared {
+                Some(field) => field,
+                None => scalar.inferred_array_field().map_err(value_error)?,
+            };
+            Serie::from_scalars(field, rows.rows().into_owned()).map_err(value_error)
+        }
+        None => {
+            let field = match declared {
+                Some(field) => field,
+                None => scalar.inferred_scalar_field().map_err(value_error)?,
+            };
+            Serie::from_scalars(field, [scalar]).map_err(value_error)
+        }
+    }
+}
+
+/// Read any Python value as a stream of record columns, cast into `root`.
+///
+/// A columnar object is [`columnar`]'s, a held column the one item of its
+/// stream; anything else is the rows [`stream_of`] reads, pulled one batch at
+/// a time.
+pub(crate) fn serie_reader_from_py(
+    value: &Bound<'_, PyAny>,
+    root: Option<&Bound<'_, PyAny>>,
+    options: ArrowCastOptions,
+) -> PyResult<SerieReader> {
+    let root = root
+        .map(|root| core_root_field_from_value(root, DEFAULT_ROOT))
+        .transpose()?;
+    if let Some(columnar) = columnar(value)? {
+        return columnar.into_reader(root.as_ref(), options);
+    }
+    SerieReader::from_arrow_reader(root.as_ref(), stream_of(value)?, options).map_err(value_error)
+}
+
+/// The name a record root takes when its spelling carries none, because
+/// Arrow names columns and never the record.
+const DEFAULT_ROOT: &str = "row";
+
+/// Convert one pandas or polars series to a `PyArrow` array, if it is one.
+fn series_to_arrow<'py>(value: &Bound<'py, PyAny>) -> PyResult<Option<Bound<'py, PyAny>>> {
+    if declared_by(value, "polars", "Series") {
+        return value.call_method0("to_arrow").map(Some);
+    }
+    if declared_by(value, "pandas", "Series") {
+        // pandas does not export Arrow itself, so `PyArrow` - a dependency -
+        // converts it, which behaves the same on every pandas release.
+        return value
+            .py()
+            .import("pyarrow")?
+            .getattr("Array")?
+            .call_method1("from_pandas", (value,))
+            .map(Some);
+    }
+    Ok(None)
+}
+
+/// Read one `NumPy` array as a column, or as rows when its dtype is a record.
+fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
+    let py = value.py();
+    let dimensions = value.getattr("ndim")?.extract::<usize>()?;
+    if dimensions != 1 {
+        return Err(PyTypeError::new_err(format!(
+            "expected a one-dimensional numpy array; Arrow has no {dimensions}-dimensional \
+             column, so reshape it or build a fixed_size_list column",
+        )));
+    }
+    let pyarrow = py.import("pyarrow")?;
+    let names = value.getattr("dtype")?.getattr("names")?;
+    if names.is_none() {
+        return array_of(&pyarrow.getattr("array")?.call1((value,))?);
+    }
+    // A record dtype names its members, and each member is a column: NumPy
+    // interleaves them in one buffer, so `PyArrow` converts them one at a
+    // time rather than reading the record as a struct column.
+    let names = names.try_iter()?.collect::<PyResult<Vec<_>>>()?;
+    let mut columns = Vec::with_capacity(names.len());
+    for name in &names {
+        columns.push(pyarrow.getattr("array")?.call1((value.get_item(name)?,))?);
+    }
+    let batch = pyarrow.getattr("RecordBatch")?.call_method(
+        "from_arrays",
+        (PyList::new(py, columns)?,),
+        Some(&[("names", PyList::new(py, names)?)].into_py_dict(py)?),
+    )?;
+    batch_of(&batch)
+}
+
+/// Read one `PyArrow` container by its exact class, or report it is not one.
+///
+/// The class decides the shape, which is what keeps a held table from being
+/// reported as one row and a stream from claiming a length it does not know.
+fn pyarrow_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
+    let Ok(pyarrow) = value.py().import("pyarrow") else {
+        return Ok(None);
+    };
+    if value.is_instance(&pyarrow.getattr("RecordBatch")?)? {
+        return batch_of(value).map(Some);
+    }
+    // A table may hold many chunks, and the C stream hands them over without
+    // combining them, so it crosses as a stream rather than as a copy.
+    if value.is_instance(&pyarrow.getattr("Table")?)?
+        || value.is_instance(&pyarrow.getattr("RecordBatchReader")?)?
+    {
+        return Ok(Some(Columnar::Stream(batch_reader_from_value(value)?)));
+    }
+    if value.is_instance(&pyarrow.getattr("ChunkedArray")?)? {
+        // A column is one buffer set, so the chunks are combined here rather
+        // than silently reporting only the first.
+        return array_of(&value.call_method0("combine_chunks")?).map(Some);
+    }
+    if value.is_instance(&pyarrow.getattr("Array")?)? {
+        return array_of(value).map(Some);
+    }
+    if value.is_instance(&pyarrow.getattr("Scalar")?)? {
+        let array = pyarrow_scalar_into_array(value)?;
+        let serie =
+            Serie::from_arrow_array(None, array, ArrowCastOptions::new()).map_err(value_error)?;
+        // A pinned row is a value, so its column is named as one.
+        let field = serie.require_field().map_err(value_error)?.clone();
+        let serie = serie
+            .cast(&field.with_name("value"), ArrowCastOptions::new())
+            .map_err(value_error)?;
+        return Ok(Some(Columnar::Pinned(serie)));
+    }
+    Ok(None)
+}
+
+fn batch_of(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
+    Serie::from_arrow_batch(
+        None,
+        &RecordBatch::from_pyarrow_bound(value)?,
+        ArrowCastOptions::new(),
+    )
+    .map(Columnar::Held)
+    .map_err(value_error)
+}
+
+/// One foreign column as the column of its own layout: the field it proves
+/// about itself, named `item`, and its buffers, shared.
+fn array_of(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
+    Serie::from_arrow_array(
+        None,
+        arrow_array_from_pyarrow(value)?,
+        ArrowCastOptions::new(),
+    )
+    .map(Columnar::Held)
+    .map_err(value_error)
+}
+
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 #[pymethods]
 impl PySerie {
@@ -273,6 +588,29 @@ impl PySerie {
             py,
             Serie::from_default(core_field_from_value(field)?, rows).map_err(value_error)?,
         )
+    }
+
+    /// Read any columnar object, or any value a `Scalar` holds, as one
+    /// column: of its own field, or cast into `field`.
+    ///
+    /// A `pyarrow` array, chunked array, batch or table, a pandas or polars
+    /// frame or series, a `NumPy` array and any Arrow C exporter each cross
+    /// by their own conversion, buffers shared; a stream is drained. Any
+    /// other value is read as a `Scalar`: a sequence is its rows, and
+    /// anything else one row.
+    #[staticmethod]
+    #[pyo3(name = "from_")]
+    #[pyo3(signature = (value, field = None, *, safe = true, nullability = "default", representation = "value"))]
+    fn from_(
+        py: Python<'_>,
+        value: &Bound<'_, PyAny>,
+        field: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        described(py, serie_from_py(value, field, options)?)
     }
 
     /// Rebuild a pickled serie: its rows, under its field when it had one.
@@ -535,6 +873,37 @@ impl PySerie {
         batch_reader_to_pyarrow(py, self.inner.into_arrow_reader().map_err(value_error)?)
     }
 
+    /// This column's rows as a `pyarrow.Table` of one batch.
+    fn into_arrow_table<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        self.into_arrow_reader(py)?.call_method0("read_all")
+    }
+
+    /// This column's rows as one pandas frame.
+    fn into_pandas<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        frame_from_reader(py, reader, Frames::Pandas)
+    }
+
+    /// This column's rows as one polars frame.
+    fn into_polars<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        frame_from_reader(py, reader, Frames::Polars)
+    }
+
+    /// This column as one `NumPy` array.
+    ///
+    /// `NumPy` has no counterpart for Arrow's null mask or its nested
+    /// layouts, so the crossing is allowed to copy and `PyArrow`'s own
+    /// conversion decides what each value becomes - a null becomes `nan`,
+    /// and a record row a mapping in an object array.
+    fn into_numpy<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        self.into_arrow_array(py)?.call_method(
+            "to_numpy",
+            (),
+            Some(&[("zero_copy_only", false)].into_py_dict(py)?),
+        )
+    }
+
     fn __len__(&self) -> usize {
         self.inner.len()
     }
@@ -636,11 +1005,31 @@ pub(crate) struct PySerieReader {
 }
 
 impl PySerieReader {
+    fn from_inner(reader: SerieReader) -> Self {
+        Self {
+            field: reader.field().clone(),
+            reader: Mutex::new(Some(reader)),
+        }
+    }
+
     /// The reader, or `None` once `into_arrow_reader` took it.
     fn held(&mut self) -> &mut Option<SerieReader> {
         self.reader
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Take the reader, which is what handing a stream over means.
+    fn take(&mut self) -> PyResult<SerieReader> {
+        self.held().take().ok_or_else(|| {
+            PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
+        })
+    }
+}
+
+impl From<SerieReader> for PySerieReader {
+    fn from(reader: SerieReader) -> Self {
+        Self::from_inner(reader)
     }
 }
 
@@ -665,10 +1054,37 @@ impl PySerieReader {
         let root = field_of(root)?;
         let reader = SerieReader::from_arrow_reader(root.as_ref(), stream_of(reader)?, options)
             .map_err(value_error)?;
-        Ok(Self {
-            field: reader.field().clone(),
-            reader: Mutex::new(Some(reader)),
-        })
+        Ok(Self::from_inner(reader))
+    }
+
+    /// Read any columnar object, or any rows, as a stream of record
+    /// columns: of its own schema, or cast into `root` by one plan.
+    ///
+    /// A stream - a reader, a table, a frame, a dataset - is not pulled
+    /// until the first column is asked for. A held column - a `Serie`, an
+    /// array, a batch - is the one item of its stream.
+    #[staticmethod]
+    #[pyo3(name = "from_")]
+    #[pyo3(signature = (value, root = None, *, safe = true, nullability = "default", representation = "value"))]
+    fn from_(
+        value: &Bound<'_, PyAny>,
+        root: Option<&Bound<'_, PyAny>>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Self> {
+        let options = cast_options(safe, nullability, representation)?;
+        serie_reader_from_py(value, root, options).map(Self::from_inner)
+    }
+
+    /// Read one held column as a stream of one record column: a record
+    /// column as the batch it is, any other as the one child of a `row`.
+    #[staticmethod]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
+    fn from_serie(serie: PyRef<'_, PySerie>) -> PyResult<Self> {
+        SerieReader::from_serie(serie.inner.clone())
+            .map(Self::from_inner)
+            .map_err(value_error)
     }
 
     /// The record every yielded column is typed by.
@@ -695,9 +1111,7 @@ impl PySerieReader {
     /// The batches not yet pulled, cast to the root, as a
     /// `pyarrow.RecordBatchReader`; this reader is spent afterwards.
     fn into_arrow_reader<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.held().take().ok_or_else(|| {
-            PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
-        })?;
+        let reader = self.take()?;
         batch_reader_to_pyarrow(py, reader.into_arrow_reader())
     }
 

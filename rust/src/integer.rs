@@ -323,7 +323,7 @@ pub(crate) fn validate_integer_tuple(
 
 // Each width is its own family, as `Boolean` is: the `Scalar` variant holds
 // the leaf directly, so there is no grouping enum to widen into.
-macro_rules! integer_scalar_value {
+macro_rules! integer_leaf_value {
     ($leaf:ident, $dtype:expr) => {
         impl Value for $leaf {
             fn dtype(&self) -> Result<DataType> {
@@ -344,18 +344,18 @@ macro_rules! integer_scalar_value {
     };
 }
 
-integer_scalar_value!(Int8, |_: &Int8| DataType::Int8);
-integer_scalar_value!(Int16, |_: &Int16| { DataType::Int16 });
-integer_scalar_value!(Int32, |_: &Int32| { DataType::Int32 });
-integer_scalar_value!(Int64, |_: &Int64| { DataType::Int64 });
-integer_scalar_value!(UInt8, |_: &UInt8| { DataType::UInt8 });
-integer_scalar_value!(UInt16, |_: &UInt16| { DataType::UInt16 });
-integer_scalar_value!(UInt32, |_: &UInt32| { DataType::UInt32 });
-integer_scalar_value!(UInt64, |_: &UInt64| { DataType::UInt64 });
-integer_scalar_value!(Int128, |value: &Int128| {
+integer_leaf_value!(Int8, |_: &Int8| DataType::Int8);
+integer_leaf_value!(Int16, |_: &Int16| { DataType::Int16 });
+integer_leaf_value!(Int32, |_: &Int32| { DataType::Int32 });
+integer_leaf_value!(Int64, |_: &Int64| { DataType::Int64 });
+integer_leaf_value!(UInt8, |_: &UInt8| { DataType::UInt8 });
+integer_leaf_value!(UInt16, |_: &UInt16| { DataType::UInt16 });
+integer_leaf_value!(UInt32, |_: &UInt32| { DataType::UInt32 });
+integer_leaf_value!(UInt64, |_: &UInt64| { DataType::UInt64 });
+integer_leaf_value!(Int128, |value: &Int128| {
     wide_integer_dtype(value.get().unsigned_abs())
 });
-integer_scalar_value!(UInt128, |value: &UInt128| {
+integer_leaf_value!(UInt128, |value: &UInt128| {
     wide_integer_dtype(value.get())
 });
 

@@ -4447,7 +4447,8 @@ export type JsSerieIterator = SerieIterator
 
 /**
  * One record serie per batch of a native `BatchReader`, each cast by the
- * one plan the core compiled from the stream's schema.
+ * one plan the core compiled from the stream's schema, or the one record
+ * serie a held column is.
  *
  * The reader is a stream, read once: iterating it and `intoArrowReader`
  * both consume it, and a batch's failure surfaces at the pull that read it.

@@ -192,18 +192,19 @@ both its property descriptor and its non-null native Struct `Field` result, then
 memoizes that result per class. Passing a different `name` returns a renamed
 clone and leaves the cached root untouched.
 
-Apache Arrow JS conversion is an explicit copied IPC boundary. `Scalar` exposes
-`fromArrowScalar`, `fromArrowArray`, `fromArrowBatch`, and
-`fromArrowTable`, with matching `intoArrow*` methods; an optional native
-`Field` selects and casts through the Rust Arrow engine. Empty or positional
-values need a Field when their schema cannot be inferred. A `BatchReader`
-read yields Arrow JS batches, and a write consumes a native reader, Arrow JS
-table/batch/reader, IPC bytes, named columns, or plain rows through that same
-reader path. A column is a `Serie`: `Serie.fromArrowArray`,
-`Serie.fromArrowBatch` and `Serie.fromArrowReader` land Arrow JS data under its
-own field or cast it once into the one you pass, `serie.cast` casts a column in
-hand, `SerieReader.fromArrowReader` casts a stream batch by batch under one
-plan, and `ArrowCastPlan.compile` holds one cast for every column of a layout.
+Apache Arrow JS conversion is an explicit copied IPC boundary, and a column
+is what crosses it: a `Serie`. `Serie.fromArrowArray`, `Serie.fromArrowBatch`
+and `Serie.fromArrowReader` land Arrow JS data under its own field or cast it
+once into the one you pass, and `intoArrowScalar`, `intoArrowArray` and
+`intoArrowBatch` hand a column back. A column is one value - `serie.intoScalar()`,
+or `serie.scalar(0)` for one row - and values become a column through
+`Serie.fromScalars(field, rows)`; `Scalar` has no Arrow door of its own. A
+`BatchReader` read yields Arrow JS batches, and a write consumes a native
+reader, Arrow JS table/batch/reader, IPC bytes, named columns, or plain rows
+through that same reader path. `serie.cast` casts a column in hand,
+`SerieReader.fromArrowReader` casts a stream batch by batch under one plan,
+`SerieReader.fromSerie` streams a held column as the one record serie it is,
+and `ArrowCastPlan.compile` holds one cast for every column of a layout.
 Each takes `{ safe, nullability, representation }`, an absent answer taking the
 core's default: a safe cast that repairs a required hole. Run
 `npm run bench:records` for the copied-IPC read, projection, cast, and write

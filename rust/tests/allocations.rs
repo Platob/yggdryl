@@ -2321,24 +2321,257 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
     }
 }
 
+#[cfg(feature = "internals")]
 #[test]
-fn a_typed_row_projects_without_general_row_staging() {
-    for width in [4, 64] {
-        let (field, row) = wide_row(width);
-        let record = FieldRecord::new(&field, row.clone()).unwrap();
-        let rows = Scalar::from_sequence([row]);
-        // Warm Arrow field projection caches before comparing the two doors.
-        drop(yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
-        drop(record.clone().into_arrow_batch().unwrap());
-        let (general_cost, expected) =
-            counted(|| yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
-        let prepared = record.clone();
-        let (typed_cost, actual) = counted(|| prepared.into_arrow_batch().unwrap());
-        assert_eq!(actual, expected);
-        eprintln!("{width}-column Arrow row: general={general_cost}, typed={typed_cost}");
-        assert!(
-            typed_cost < general_cost,
-            "a proven row must skip general row staging"
+fn canonical_rows_lay_out_without_a_second_proof() {
+    // A bounded string's layout is not its datatype's contract, so a landing
+    // that proves it reads every row - and a row longer than a cell holds
+    // inline is a value built. Rows that already went through the field's
+    // contract are laid out and landed proven: the cost is the buffers,
+    // whatever the row count.
+    let field = Arc::new(Field::new(
+        "note",
+        DataType::sized_utf8(64).expect("a bounded string"),
+        false,
+    ));
+    let mut counts = Vec::new();
+    for rows in [1_024_usize, 16_384] {
+        let canonical: Vec<Scalar> = (0..rows)
+            .map(|index| {
+                field
+                    .scalar(Scalar::from(format!(
+                        "a note longer than any inline cell {index:08}"
+                    )))
+                    .expect("the field's contract")
+            })
+            .collect();
+        let borrowed: Vec<&Scalar> = canonical.iter().collect();
+        let lay_out =
+            || yggdryl::internals::serie_arrow::from_canonical_rows(Arc::clone(&field), &borrowed);
+        drop(lay_out().expect("canonical rows lay out"));
+        let (allocations, column) = counted(lay_out);
+        assert_eq!(column.expect("canonical rows lay out").len(), rows);
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "laying out canonical rows cost {counts:?} at 1024 and 16384 rows: a row read again"
+    );
+}
+
+#[test]
+fn an_arrow_column_is_one_value_without_a_row() {
+    // The column is the value: wrapping it reads no row and copies no
+    // buffer, so a string column of any length costs the same.
+    let field = DataType::utf8().nullable_field("symbol");
+    let mut counts = Vec::new();
+    for rows in [4_usize, 1_024, 16_384] {
+        let array: arrow_array::ArrayRef = Arc::new(arrow_array::StringArray::from(
+            (0..rows)
+                .map(|index| format!("a symbol long enough to live off the stack {index:08}"))
+                .collect::<Vec<_>>(),
+        ));
+        let wrap = || {
+            Scalar::from(
+                Serie::from_arrow_array(
+                    Some(&field),
+                    Arc::clone(&array),
+                    ArrowCastOptions::default(),
+                )
+                .expect("the column lands"),
+            )
+        };
+        drop(wrap());
+        let (allocations, value) = counted(wrap);
+        assert_eq!(value.as_serie().map(Serie::len), Some(rows));
+        counts.push(allocations);
+    }
+    assert!(
+        counts.windows(2).all(|pair| pair[0] == pair[1]),
+        "an Arrow column became a value for {counts:?} allocations at 4, 1024 and 16384 rows"
+    );
+}
+
+#[test]
+fn proving_a_decimal_or_date64_intake_builds_nothing() {
+    // A decimal's precision and a date64's whole days are narrower than the
+    // storage, so the landing reads each row once - through the column's
+    // own reading, into a value that needs no allocation.
+    let decimal = DataType::decimal(10, 2)
+        .expect("a decimal")
+        .nullable_field("price");
+    let date = DataType::Date64.nullable_field("day");
+    for (field, build) in [
+        (
+            &decimal,
+            (|rows: usize| {
+                // The decimal's own layout, so the landing proves it and casts
+                // nothing.
+                Arc::new(
+                    arrow_array::Decimal64Array::from_iter_values(
+                        (0..rows).map(|index| i64::try_from(index).expect("fits") * 100 + 25),
+                    )
+                    .with_precision_and_scale(10, 2)
+                    .expect("a decimal column"),
+                ) as arrow_array::ArrayRef
+            }) as fn(usize) -> arrow_array::ArrayRef,
+        ),
+        (
+            &date,
+            (|rows: usize| {
+                Arc::new(arrow_array::Date64Array::from_iter_values(
+                    (0..rows).map(|index| i64::try_from(index).expect("fits") * 86_400_000),
+                )) as arrow_array::ArrayRef
+            }) as fn(usize) -> arrow_array::ArrayRef,
+        ),
+    ] {
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            let array = build(rows);
+            let land = || {
+                Serie::from_arrow_array(
+                    Some(field),
+                    Arc::clone(&array),
+                    ArrowCastOptions::default(),
+                )
+                .expect("the column lands")
+            };
+            drop(land());
+            let (allocations, column) = counted(land);
+            assert_eq!(column.len(), rows);
+            counts.push(allocations);
+        }
+        assert_eq!(
+            counts[0],
+            counts[1],
+            "proving a {} intake cost {counts:?} at 1024 and 16384 rows",
+            field.dtype()
+        );
+    }
+}
+
+/// One column per leaf a cell read must build nothing for.
+fn typed_leaf_columns() -> Vec<Serie> {
+    let zone = Timezone::from_str("Europe/Paris").expect("a zone");
+    let at = DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: zone,
+    };
+    [
+        (DataType::Int64, Scalar::from(42_i64)),
+        (DataType::Boolean, Scalar::from(true)),
+        (DataType::Float64, Scalar::from(1.5_f64)),
+        (
+            DataType::decimal(10, 2).expect("a decimal"),
+            Scalar::d128(1_025, 2),
+        ),
+        (DataType::Date64, Scalar::date64(86_400_000)),
+        (
+            at,
+            Scalar::datetime64(1_700_000_000_000_000, TimeUnit::Microsecond, zone)
+                .expect("an instant"),
+        ),
+        (
+            DataType::Duration32(TimeUnit::Second),
+            Scalar::duration32(90, TimeUnit::Second).expect("a duration"),
+        ),
+        (DataType::utf8(), Scalar::from("AAPL")),
+    ]
+    .into_iter()
+    .map(|(dtype, value)| {
+        Serie::from_scalars(dtype.nullable_field("cell"), [value, Scalar::Null])
+            .expect("a leaf column")
+    })
+    .collect()
+}
+
+#[test]
+fn a_leaf_cell_read_allocates_nothing() {
+    // A leaf reads its own typed buffer through the reading its field
+    // resolved where it landed: one buffer read and one constructor, no
+    // downcast and no value that owns memory.
+    for column in typed_leaf_columns() {
+        let dtype = column.field().expect("a column").dtype().clone();
+        free(&format!("reading a {dtype} cell"), || {
+            black_box(black_box(&column).scalar(0).expect("a cell"));
+        });
+        free(&format!("reading an absent {dtype} cell"), || {
+            black_box(black_box(&column).scalar(1).expect("a cell"));
+        });
+    }
+}
+
+#[test]
+fn a_record_row_costs_its_run_and_nothing_per_cell() {
+    // A record row is one run of its cells: the run's storage is the one
+    // allocation, and every cell under it is read without one.
+    let columns = typed_leaf_columns();
+    let root = StructType::from_fields(columns.iter().enumerate().map(|(index, column)| {
+        column
+            .field()
+            .expect("a column")
+            .clone()
+            .with_name(format!("cell_{index}"))
+    }))
+    .map(DataType::from)
+    .expect("a record")
+    .required_field("row");
+    let rows = [0_usize, 1].map(|row| {
+        Scalar::from_sequence(
+            columns
+                .iter()
+                .map(|column| column.scalar(row).expect("a cell")),
+        )
+    });
+    let records = Serie::from_scalars(root, rows).expect("a record column");
+    costs("reading a record row", 1, || {
+        black_box(black_box(&records).scalar(0).expect("a row"));
+    });
+}
+
+#[test]
+fn digesting_a_column_allocates_nothing_per_row() {
+    // Each cell is fed from the leaf it lands in, so a column's digests cost
+    // their output and nothing per row, whatever the leaf.
+    for (dtype, cell) in [
+        (
+            DataType::Int64,
+            (|index: usize| Scalar::from(i64::try_from(index).expect("fits")))
+                as fn(usize) -> Scalar,
+        ),
+        (DataType::utf8(), |index| {
+            Scalar::from(format!("{index:032}"))
+        }),
+        (DataType::decimal(18, 4).expect("a decimal"), |index| {
+            Scalar::d128(i128::try_from(index).expect("fits"), 4)
+        }),
+        (DataType::Country, |index| {
+            Scalar::from(if index % 2 == 0 { "FR" } else { "US" })
+        }),
+    ] {
+        let field = dtype.clone().nullable_field("value");
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            let array = Serie::from_scalars(field.clone(), (0..rows).map(cell))
+                .expect("a column")
+                .require_arrow_array()
+                .expect("its buffers");
+            let digest = || {
+                yggdryl::xxhash::arrow::column_digests(
+                    Arc::clone(&array),
+                    &field,
+                    yggdryl::DigestAlgorithm::Xxh3,
+                )
+                .expect("digests")
+            };
+            drop(digest());
+            let (allocations, digests) = counted(digest);
+            assert_eq!(digests.len(), rows);
+            counts.push(allocations);
+        }
+        assert_eq!(
+            counts[0], counts[1],
+            "digesting a {dtype} column cost {counts:?} at 1024 and 16384 rows"
         );
     }
 }
@@ -2685,9 +2918,13 @@ fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     use arrow_array::RecordBatchIterator;
     use yggdryl::text::{from_arrow_reader, into_arrow_batch};
 
+    // The first pull lands the batch - each column the plan locates, once -
+    // and reads its first row; no other row is read, so the pull costs the
+    // same whatever the batch holds. Every row after it reads through the
+    // landed leaves and owns only its bounded text state.
     let options = TextOptions::new();
     let mut first_cost = None;
-    for rows in [1, 64, 1024] {
+    for rows in [2, 64, 1024] {
         let lines = (0..rows).map(|index| {
             TextLine::from_bytes(
                 index,
@@ -2720,6 +2957,8 @@ fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
             *first_cost.get_or_insert(allocations),
             "first-row work grew with {rows} source rows"
         );
+        let (allocations, line) = counted(|| reader.next().unwrap().unwrap());
+        assert_eq!(line.index(), 1);
         assert!(
             allocations <= 8,
             "one decoded body owns bounded text state, got {allocations}"
@@ -3114,8 +3353,14 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
         for rows in [16_usize, 1_024, 16_384] {
             let column = ascii_cells(rows, 32);
             let (allocations, _) = counted(|| {
-                yggdryl::arrow::array_from_value(black_box(&field), black_box(&column))
-                    .expect("a string column")
+                Serie::from_scalars(
+                    black_box(&field).clone(),
+                    black_box(&column)
+                        .sequence_rows()
+                        .expect("rows")
+                        .into_owned(),
+                )
+                .expect("a string column")
             });
             counts.push(allocations);
         }
@@ -3134,7 +3379,12 @@ fn encoded_variants_build_arrow_columns_without_per_row_allocations() {
     let mut counts = Vec::new();
     for rows in [16_usize, 1_024, 16_384] {
         let column = Scalar::from_sequence((0..rows).map(|_| encoded.clone()));
-        let build = || yggdryl::arrow::array_from_value(&field, &column).unwrap();
+        let build = || {
+            Serie::from_scalars(field.clone(), column.sequence_rows().unwrap().into_owned())
+                .unwrap()
+                .require_arrow_array()
+                .unwrap()
+        };
         drop(build());
         let (allocations, array) = counted(build);
         assert_eq!(array.len(), rows);

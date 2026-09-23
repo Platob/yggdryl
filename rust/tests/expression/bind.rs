@@ -190,7 +190,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();
@@ -233,11 +235,19 @@ mod grammar {
         assert_eq!(bound.eval(&rows[0]).unwrap(), Scalar::from(3_i64));
         let batch = batch_of(&schema, &rows);
         let column = bound.evaluate(&batch).unwrap();
+        let field = bound.field().clone().with_nullable(true);
         assert_eq!(
-            yggdryl::arrow::scalar_value(
-                &bound.field().clone().with_nullable(true),
-                column.slice(0, 1).as_ref()
+            column.data_type(),
+            field.as_arrow_field_ref().unwrap().data_type()
+        );
+        assert_eq!(
+            yggdryl::Serie::from_arrow_array(
+                Some(&field),
+                column.slice(0, 1),
+                yggdryl::ArrowCastOptions::default()
             )
+            .unwrap()
+            .scalar(0)
             .unwrap(),
             Scalar::from(3_i64)
         );

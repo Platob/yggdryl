@@ -238,7 +238,7 @@ impl StructSerie {
             .iter()
             .any(Scalar::is_null)
             .then(|| {
-                crate::arrow::value::physical_placeholder_for_field(&self.field.fields()[position])
+                crate::serie::value::physical_placeholder_for_field(&self.field.fields()[position])
             })
             .transpose()?
             .unwrap_or(Scalar::Null);
@@ -426,7 +426,7 @@ pub(crate) fn column_of(
         .zip(records.columns())
         .enumerate()
         .map(|(index, (child, column))| {
-            super::arrow::column_of(
+            super::arrow::child_of(
                 Arc::new(child.clone()),
                 Arc::clone(column),
                 records.nulls(),

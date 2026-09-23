@@ -7,8 +7,8 @@
 //! batch and row cursor.
 
 use std::iter::FusedIterator;
+use std::sync::Arc;
 
-use arrow_array::{Array, ListArray, RecordBatch, StructArray};
 use arrow_schema::SchemaRef;
 use smol_str::{SmolStr, format_smolstr};
 
@@ -17,7 +17,8 @@ use super::{
     MarketEventData, MarketOperation, Order, Quote, Trade,
 };
 use crate::arrow::BatchReader;
-use crate::{DataType, Error, Field, Result, Scalar, StructType, Uuid};
+use crate::serie::{Proof, land_batch};
+use crate::{DataType, Error, Field, Result, Scalar, Serie, StructType, Uuid};
 
 const KIND: &str = "operationkind";
 const OPERATION_ROOT: &str = "marketoperation";
@@ -90,7 +91,7 @@ impl MarketOperation {
         let schema = batches.schema();
         let intake = Intake::resolve(&schema)?;
         let mut batches = batches;
-        let mut pending: Option<(RecordBatch, usize)> = None;
+        let mut pending: Option<(Serie, usize)> = None;
         let mut ordinal = 0_u64;
         let mut done = false;
         Ok(std::iter::from_fn(move || {
@@ -99,7 +100,7 @@ impl MarketOperation {
             }
             loop {
                 if let Some((batch, row)) = pending.as_mut() {
-                    if *row < batch.num_rows() {
+                    if *row < batch.len() {
                         let result = intake.operation_of(batch, *row, ordinal);
                         *row += 1;
                         ordinal += 1;
@@ -129,7 +130,19 @@ impl MarketOperation {
                         "expected the reader's declared Arrow schema, got a different batch schema",
                     )));
                 }
-                pending = Some((batch, 0));
+                // The batch lands once, proving what its layout does not; a
+                // row it refuses is named by the batch's first ordinal and
+                // its own row.
+                match land_batch(&intake.root, &batch, &Proof::Unproven) {
+                    Ok(records) => pending = Some((records, 0)),
+                    Err(error) => {
+                        done = true;
+                        return Some(Err(invalid(
+                            format_smolstr!("$[{ordinal}]"),
+                            format_smolstr!("{error}"),
+                        )));
+                    }
+                }
             }
         })
         .fuse())
@@ -188,7 +201,7 @@ impl Book {
         let schema = batches.schema();
         let intake = BookIntake::resolve(&schema)?;
         let mut batches = batches;
-        let mut pending: Option<(RecordBatch, usize)> = None;
+        let mut pending: Option<(Serie, usize)> = None;
         let mut ordinal = 0_u64;
         let mut done = false;
         Ok(std::iter::from_fn(move || {
@@ -197,7 +210,7 @@ impl Book {
             }
             loop {
                 if let Some((batch, row)) = pending.as_mut() {
-                    if *row < batch.num_rows() {
+                    if *row < batch.len() {
                         let result = intake.book_of(batch, *row, ordinal);
                         *row += 1;
                         ordinal += 1;
@@ -227,7 +240,19 @@ impl Book {
                         "expected the reader's declared Arrow schema, got a different batch schema",
                     )));
                 }
-                pending = Some((batch, 0));
+                // The batch lands once, proving what its layout does not; a
+                // row it refuses is named by the batch's first ordinal and
+                // its own row.
+                match land_batch(&intake.root, &batch, &Proof::Unproven) {
+                    Ok(records) => pending = Some((records, 0)),
+                    Err(error) => {
+                        done = true;
+                        return Some(Err(invalid(
+                            format_smolstr!("$[{ordinal}]"),
+                            format_smolstr!("{error}"),
+                        )));
+                    }
+                }
             }
         })
         .fuse())
@@ -612,7 +637,8 @@ fn validate_market_element(
 
 /// Schema facts resolved once for a streamed decode.
 struct Intake {
-    fields: Vec<Field>,
+    /// The root every batch lands under.
+    root: Arc<Field>,
 }
 
 impl Intake {
@@ -630,16 +656,11 @@ impl Intake {
             ));
         }
         Ok(Self {
-            fields: field.fields().to_vec(),
+            root: Arc::new(field),
         })
     }
 
-    fn operation_of(
-        &self,
-        batch: &RecordBatch,
-        row: usize,
-        ordinal: u64,
-    ) -> Result<MarketOperation> {
+    fn operation_of(&self, batch: &Serie, row: usize, ordinal: u64) -> Result<MarketOperation> {
         let kind = self.cell(batch, row, ordinal, 0)?;
         let Some(kind) = kind.as_str() else {
             return Err(invalid(
@@ -674,24 +695,14 @@ impl Intake {
         })
     }
 
-    fn cell(&self, batch: &RecordBatch, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
-        let field = &self.fields[column];
-        let path = format_smolstr!("$[{ordinal}].{}", field.name());
-        let value = value_from_array_at(
-            field.dtype(),
-            batch.column(column).as_ref(),
-            row,
-            path.clone(),
-        )?;
-        if matches!(value, Scalar::Null) && !field.is_nullable() {
-            return Err(invalid(path, "expected a non-null value, got null"));
-        }
-        Ok(value)
+    fn cell(&self, batch: &Serie, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
+        cell(batch, row, ordinal, column)
     }
 }
 
 struct BookIntake {
-    fields: Vec<Field>,
+    /// The root every batch lands under.
+    root: Arc<Field>,
 }
 
 impl BookIntake {
@@ -709,11 +720,11 @@ impl BookIntake {
             ));
         }
         Ok(Self {
-            fields: field.fields().to_vec(),
+            root: Arc::new(field),
         })
     }
 
-    fn book_of(&self, batch: &RecordBatch, row: usize, ordinal: u64) -> Result<Book> {
+    fn book_of(&self, batch: &Serie, row: usize, ordinal: u64) -> Result<Book> {
         let mut event = MarketEventData::default();
         let mut claims = IdentityClaims::default();
         let mut at = 0;
@@ -749,19 +760,8 @@ impl BookIntake {
         Ok(book)
     }
 
-    fn cell(&self, batch: &RecordBatch, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
-        let field = &self.fields[column];
-        let path = format_smolstr!("$[{ordinal}].{}", field.name());
-        let value = value_from_array_at(
-            field.dtype(),
-            batch.column(column).as_ref(),
-            row,
-            path.clone(),
-        )?;
-        if matches!(value, Scalar::Null) && !field.is_nullable() {
-            return Err(invalid(path, "expected a non-null value, got null"));
-        }
-        Ok(value)
+    fn cell(&self, batch: &Serie, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
+        cell(batch, row, ordinal, column)
     }
 }
 
@@ -1057,69 +1057,19 @@ fn operation_from_value(
     })
 }
 
-fn value_from_array_at(
-    dtype: &DataType,
-    array: &dyn Array,
-    index: usize,
-    path: SmolStr,
-) -> Result<Scalar> {
-    if index >= array.len() {
-        return Err(invalid(
-            path,
-            format_smolstr!("array index {index} exceeds length {}", array.len()),
-        ));
-    }
-    if array.is_null(index) {
-        return Ok(Scalar::Null);
-    }
-    match dtype {
-        DataType::Struct(fields) => {
-            let array = array
-                .as_any()
-                .downcast_ref::<StructArray>()
-                .ok_or_else(|| {
-                    invalid(
-                        path.clone(),
-                        format_smolstr!("expected a struct array, got {}", array.data_type()),
-                    )
-                })?;
-            fields
-                .iter()
-                .zip(array.columns())
-                .map(|(field, child)| {
-                    value_from_array_at(
-                        field.dtype(),
-                        child.as_ref(),
-                        index,
-                        format_smolstr!("{path}.{}", field.name()),
-                    )
-                })
-                .collect::<Result<Vec<_>>>()
-                .map(Scalar::from_sequence)
-        }
-        DataType::List(item) => {
-            let array = array.as_any().downcast_ref::<ListArray>().ok_or_else(|| {
-                invalid(
-                    path.clone(),
-                    format_smolstr!("expected a list array, got {}", array.data_type()),
-                )
-            })?;
-            let values = array.value(index);
-            (0..values.len())
-                .map(|item_index| {
-                    value_from_array_at(
-                        item.dtype(),
-                        values.as_ref(),
-                        item_index,
-                        format_smolstr!("{path}[{item_index}]"),
-                    )
-                })
-                .collect::<Result<Vec<_>>>()
-                .map(Scalar::from_sequence)
-        }
-        _ => crate::arrow::value::value_from_array(dtype, array, index)
-            .map_err(|error| invalid(path, format_smolstr!("{error}"))),
-    }
+/// One cell of a landed batch, read through its column's leaf.
+///
+/// The landing proved the column - a required one holds no absent row - so
+/// the one refusal left is the read itself, named by the row's ordinal.
+fn cell(batch: &Serie, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
+    let held = &batch.children()[column];
+    held.scalar(row).map_err(|error| {
+        let name = held.field().map_or("", Field::name);
+        invalid(
+            format_smolstr!("$[{ordinal}].{name}"),
+            format_smolstr!("{error}"),
+        )
+    })
 }
 
 /// A value's rows: lent by a run, built once by a column.

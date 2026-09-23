@@ -198,7 +198,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();
@@ -256,10 +258,13 @@ mod grammar {
                 .iter()
                 .zip(projected.columns())
                 .map(|(field, column)| {
-                    yggdryl::arrow::scalar_value(
-                        &field.clone().with_nullable(true),
-                        column.slice(position, 1).as_ref(),
+                    yggdryl::Serie::from_arrow_array(
+                        Some(&field.clone().with_nullable(true)),
+                        column.slice(position, 1),
+                        yggdryl::ArrowCastOptions::default(),
                     )
+                    .unwrap()
+                    .scalar(0)
                     .unwrap()
                 })
                 .collect();

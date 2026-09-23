@@ -2819,32 +2819,21 @@ impl CoreUserFunction for PyUserFunction {
 
     fn call_arrow(
         &self,
-        fields: &[yggdryl::Field],
-        arguments: &[arrow_array::ArrayRef],
+        arguments: &[yggdryl::Serie],
         rows: usize,
         output: &yggdryl::Field,
-    ) -> yggdryl::Result<arrow_array::ArrayRef> {
-        use yggdryl::arrow::{array_from_value, array_to_value};
-
+    ) -> yggdryl::Result<yggdryl::Serie> {
         let reference = self.signature.reference();
-        Python::attach(|py| -> yggdryl::Result<arrow_array::ArrayRef> {
+        Python::attach(|py| -> yggdryl::Result<yggdryl::Serie> {
             if self.vectorized {
-                // Whole columns cross: each argument, landed under the field
-                // the evaluator typed it by, cast onto its parameter
-                // datatype, nulls left to the callable, the answer cast onto
-                // the declared return.
+                // Whole columns cross: each argument cast onto its parameter
+                // datatype, nulls left to the callable, the answer landed
+                // under the declared return.
                 let options = yggdryl::ArrowCastOptions::new();
                 let mut columns = Vec::with_capacity(arguments.len());
-                for ((field, array), parameter) in fields
-                    .iter()
-                    .zip(arguments)
-                    .zip(self.signature.parameters())
-                {
+                for (column, parameter) in arguments.iter().zip(self.signature.parameters()) {
                     let target = parameter.clone().with_nullable(true);
-                    let cast =
-                        yggdryl::Serie::from_arrow_array(Some(field), Arc::clone(array), options)?
-                            .cast(&target, options)?
-                            .require_arrow_array()?;
+                    let cast = column.cast(&target, options)?.require_arrow_array()?;
                     columns.push(
                         arrow_array_to_pyarrow(py, &cast, Some(&target))
                             .map_err(|error| user_error(reference, &error))?,
@@ -2856,28 +2845,25 @@ impl CoreUserFunction for PyUserFunction {
                 })()
                 .map_err(|error| user_error(reference, &error))?;
                 let output = output.clone().with_nullable(true);
-                return yggdryl::Serie::from_arrow_array(Some(&output), answer, options)?
-                    .require_arrow_array();
+                return Ok(yggdryl::Serie::from_arrow_array(
+                    Some(&output),
+                    answer,
+                    options,
+                )?);
             }
-            // One attachment for the whole batch: every column crosses once,
-            // each row is filled to the signature and called, and the answers
-            // form one array.
-            let mut columns = Vec::with_capacity(arguments.len());
-            for (field, array) in fields.iter().zip(arguments) {
-                let values = array_to_value(field, array.as_ref())?;
-                columns.push(
-                    values
-                        .sequence_rows()
-                        .map(Cow::into_owned)
-                        .unwrap_or_default(),
-                );
-            }
+            // One attachment for the whole batch: each row is read off its
+            // column, filled to the signature and called, and the answers
+            // form one column.
             let mut answers = Vec::with_capacity(rows);
             let mut values = Vec::with_capacity(arguments.len());
             for row in 0..rows {
                 values.clear();
-                for column in &columns {
-                    values.push(column.get(row).cloned().unwrap_or(yggdryl::Scalar::Null));
+                for column in arguments {
+                    values.push(
+                        column
+                            .get(row)
+                            .map_or(yggdryl::Scalar::Null, Cow::into_owned),
+                    );
                 }
                 answers.push(match self.signature.fill(&values)? {
                     Some(filled) => self
@@ -2886,10 +2872,7 @@ impl CoreUserFunction for PyUserFunction {
                     None => yggdryl::Scalar::Null,
                 });
             }
-            Ok(array_from_value(
-                output,
-                &yggdryl::Scalar::from_sequence(answers),
-            )?)
+            yggdryl::Serie::from_scalars(output.clone(), answers)
         })
     }
 }

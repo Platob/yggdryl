@@ -1044,15 +1044,12 @@ impl ByteWriter for MetadataOnlyWriter {
 
 /// One column's Arrow array, built from the values the rows hold for it.
 ///
-/// `yggdryl::arrow::array_from_value` takes a column as the one sequence a
-/// caller has; a row list has to be gathered into that shape first, which is
-/// all this does.
-fn array_from_values(
-    field: &Field,
-    values: &[&Scalar],
-) -> yggdryl::arrow::Result<arrow_array::ArrayRef> {
-    let column = Scalar::from_sequence(values.iter().copied().cloned());
-    yggdryl::arrow::array_from_value(field, &column)
+/// `yggdryl::Serie::from_scalars` types a column from the rows a caller has;
+/// a row list is gathered into that column's values first, which is all this
+/// adds.
+fn column_of_rows(field: &Field, values: &[&Scalar]) -> yggdryl::Result<arrow_array::ArrayRef> {
+    yggdryl::Serie::from_scalars(field.clone(), values.iter().copied().cloned())?
+        .require_arrow_array()
 }
 
 /// Build a scratch directory unique to this test and this process.
@@ -6373,7 +6370,7 @@ mod datatype_coverage {
             .enumerate()
             .map(|(index, child)| {
                 let column: Vec<&Scalar> = rows.iter().map(|row| &row[index]).collect();
-                array_from_values(child, &column).unwrap()
+                column_of_rows(child, &column).unwrap()
             })
             .collect();
         let batch = arrow_array::RecordBatch::try_new(schema.into_arrow_schema().unwrap(), columns)
@@ -6385,8 +6382,14 @@ mod datatype_coverage {
         let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
         let mut records = Vec::new();
         for batch in reopened.scan(None).unwrap() {
-            let value = yggdryl::arrow::batch_to_value(&batch.unwrap()).unwrap();
-            records.extend(value.as_sequence().unwrap().iter().cloned());
+            let landed = yggdryl::Serie::from_arrow_batch(
+                None,
+                &batch.unwrap(),
+                yggdryl::ArrowCastOptions::default(),
+            )
+            .unwrap();
+            let value = Scalar::from(landed);
+            records.extend(value.sequence_rows().unwrap().iter().cloned());
         }
         records
     }
@@ -6565,7 +6568,7 @@ mod datatype_coverage {
                 .zip(columns.iter())
                 .map(|(child, column): (&Field, &Vec<Scalar>)| {
                     let refs: Vec<&Scalar> = column.iter().collect();
-                    array_from_values(child, &refs).unwrap()
+                    column_of_rows(child, &refs).unwrap()
                 })
                 .collect();
             arrow_array::RecordBatch::try_new(schema.clone().into_arrow_schema().unwrap(), arrays)
@@ -6588,8 +6591,14 @@ mod datatype_coverage {
 
         let mut prices = std::collections::BTreeMap::new();
         for batch in table.scan(None).unwrap() {
-            let value = yggdryl::arrow::batch_to_value(&batch.unwrap()).unwrap();
-            for row in value.as_sequence().unwrap() {
+            let landed = yggdryl::Serie::from_arrow_batch(
+                None,
+                &batch.unwrap(),
+                yggdryl::ArrowCastOptions::default(),
+            )
+            .unwrap();
+            let value = Scalar::from(landed);
+            for row in value.sequence_rows().unwrap().iter() {
                 let fields = row.as_sequence().unwrap();
                 let Some(id) = fields[0].as_i64() else {
                     panic!()

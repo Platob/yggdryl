@@ -21,8 +21,8 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Registration | `Scalar::List(Serie)`, and its four sibling leaves `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`. It adds no `DataTypeId`, no `DataType` variant and no `Field` variant of its own, and `kind()` answers that leaf's own name - `list`, `list_view`, `large_list`, `large_list_view`, `fixed_size_list` - for either a run or a column |
 | Family | `SerieValue`, implemented by every column leaf. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | The crate's own serde writes a run as its list and a column as `{"field": .., "rows": [..]}` under the `serie` tag, and reads back only that column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
-| Not `ArrowScalar` | That is the shape wrapper a value takes crossing the Arrow boundary, holding its payload opaquely; a serie is the column itself, the buffers a caller reads and writes as a collection. The two share one layout proof and nothing else |
-| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the list leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers; JavaScript as copied IPC. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
+| Arrow value | There is no Arrow wrapper beside it: a held column, table or one-row array is a `Serie`, and a stream of them is a `SerieReader`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
+| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the list leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in); JavaScript as copied IPC. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
 
 ## The leaves
 
@@ -333,13 +333,75 @@ A record column is made of child columns, and Arrow already holds each one separ
 === "Python"
 
     ```python
-    # Rust only.
+    import pyarrow as pa
+    from yggdryl import Field, Serie
+
+    root = Field("row", "struct<id: int64 not null, symbol: utf8 not null>", nullable=False)
+    records = Serie.from_scalars(root, [[1, "AAPL"], [2, "MSFT"]])
+
+    # One child is a column of its own field, over its own buffers.
+    symbols = records.child("symbol")
+    assert symbols.field.name == "symbol"
+    assert symbols.as_py() == ["AAPL", "MSFT"]
+    assert len(records.children()) == 2
+
+    # One cell of one row, proven by the leaf's field and written in place.
+    records.set_cell("id", 1, 20)
+    assert records.child("id").as_py() == [1, 20]
+
+    # Adding a child extends the field; replacing one moves a pointer.
+    volume = Serie.from_arrow_array(pa.array([10, 20]), Field("volume", "int64", nullable=False))
+    records.set_child(volume)
+    assert records.names == ["id", "symbol", "volume"]
+
+    # A column of another length is refused by name and nothing moves.
+    try:
+        records.set_child(Serie.from_scalars(Field("volume", "int64", nullable=False), [1]))
+    except ValueError as error:
+        assert "does not fit" in str(error), error
+    else:
+        raise AssertionError("a child holds exactly len rows")
+    assert len(records.children()) == 3
+
+    # Dropping a child takes its field with it; every other child is shared.
+    without = records.without_child("symbol")
+    assert without.child("symbol") is None
+    assert without.names == ["id", "volume"]
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie, fields } = require('yggdryl')
+
+    const root = Field.from('row: struct<id: int64 not null, symbol: utf8 not null> not null')
+    const records = Serie.fromScalars(root, [[1n, 'AAPL'], [2n, 'MSFT']])
+
+    // One child is a column of its own field, over its own buffers.
+    const symbols = records.child('symbol')
+    assert.equal(symbols.field.name, 'symbol')
+    assert.deepEqual(symbols.asJs(), ['AAPL', 'MSFT'])
+    assert.equal(records.children().length, 2)
+
+    // One cell of one row, proven by the leaf's field and written in place.
+    records.setCell('id', 1, 20n)
+    assert.deepEqual(records.child('id').asJs(), [1, 20])
+
+    // Adding a child extends the field; replacing one moves a pointer.
+    const volume = fields.int64('volume', { nullable: false })
+    records.setChild(Serie.fromArrowArray(arrow.vectorFromArray([10n, 20n], new arrow.Int64()), volume))
+    assert.deepEqual(records.names, ['id', 'symbol', 'volume'])
+
+    // A column of another length is refused by name and nothing moves.
+    assert.throws(() => records.setChild(Serie.fromScalars(volume, [1n])), /does not fit/)
+    assert.equal(records.children().length, 3)
+
+    // Dropping a child takes its field with it; every other child is shared.
+    const without = records.withoutChild('symbol')
+    assert.equal(without.child('symbol'), null)
+    assert.deepEqual(without.names, ['id', 'volume'])
     ```
 
 ## The nesting points back here
@@ -406,13 +468,76 @@ A record's children, a sequence's items and a mapping's entries are each a `Seri
 === "Python"
 
     ```python
-    # Rust only.
+    from yggdryl import Field, Serie
+
+    root = Field(
+        "row", "struct<id: int64 not null, tags: list<item: utf8 not null>>", nullable=False
+    )
+    column = Serie.from_scalars(root, [[1, ["a", "b"]], [2, None]])
+
+    # Every step down answers a Serie, and every one carries its own field.
+    tags = column.child("tags")
+    assert tags.offsets == [0, 2, 2]
+    assert tags.range(0) == (0, 2)
+    assert tags.range(1) is None, "an absent row cuts nothing"
+    items = tags.items()
+    assert items.field.name == "item"
+    assert items.as_py() == ["a", "b"]
+
+    # One row is the item column sliced to it, zero copy.
+    assert tags.row(0).as_py() == ["a", "b"]
+
+    # A path reaches the same column the schema walk reaches.
+    assert column.get_child_by_path("tags.item").field.name == "item"
+
+    # A row set with another item count re-cuts the offsets.
+    column.set_cell("tags", 0, ["c"])
+    tags = column.child("tags")
+    assert tags.offsets == [0, 1, 1]
+    assert len(tags.items()) == 1
+    assert tags.is_null(1)
+
+    # A schema-free run is the same type, and the one leaf with no field.
+    run = Serie([1])
+    assert run.field is None
+    assert not run.is_column
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const root = Field.from('row: struct<id: int64 not null, tags: list<item: utf8 not null>> not null')
+    const column = Serie.fromScalars(root, [[1n, ['a', 'b']], [2n, null]])
+
+    // Every step down answers a Serie, and every one carries its own field.
+    const tags = column.child('tags')
+    assert.deepEqual(tags.offsets, [0, 2, 2])
+    assert.deepEqual(tags.range(0), [0, 2])
+    assert.equal(tags.range(1), null, 'an absent row cuts nothing')
+    const items = tags.items()
+    assert.equal(items.field.name, 'item')
+    assert.deepEqual(items.asJs(), ['a', 'b'])
+
+    // One row is the item column sliced to it, zero copy.
+    assert.deepEqual(tags.row(0).asJs(), ['a', 'b'])
+
+    // A path reaches the same column the schema walk reaches.
+    assert.equal(column.getChildByPath('tags.item').field.name, 'item')
+
+    // A row set with another item count re-cuts the offsets.
+    column.setCell('tags', 0, ['c'])
+    const recut = column.child('tags')
+    assert.deepEqual(recut.offsets, [0, 1, 1])
+    assert.equal(recut.items().length, 1)
+    assert.ok(recut.isNull(1))
+
+    // A schema-free run is the same type, and the one leaf with no field.
+    const run = new Serie([1n])
+    assert.equal(run.field, null)
+    assert.equal(run.isColumn, false)
     ```
 
 ## A column is a value
@@ -481,13 +606,61 @@ A record's children, a sequence's items and a mapping's entries are each a `Seri
 === "Python"
 
     ```python
-    # Rust only.
+    from yggdryl import Field, Scalar, Serie
+
+    column = Serie.from_scalars(Field("price", "int64", nullable=False), [125, 126])
+    run = Serie([125, 126])
+    narrow = Serie.from_scalars(Field("size", "int32"), [125, 126])
+
+    # Identity is the rows: not the leaf, not the field, not the width.
+    assert column == run
+    assert column == narrow
+    assert Serie([125]) < column
+
+    # As a value it is the sequence it is, for either leaf.
+    value = column.into_scalar()
+    assert value.kind == "list"
+    assert len(value) == 2
+    assert value == Scalar.from_(run)
+    assert value.as_py() == [125, 126]
+
+    # `as_serie` reaches the column itself, its buffers shared.
+    held = value.as_serie()
+    assert held is not None and held.is_column
+    assert held == column
+
+    # Dropping the field is spelled, never implied.
+    assert column.into_run() == run
+    assert not column.into_run().is_column
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const { Serie, fields } = require('yggdryl')
+
+    const column = Serie.fromScalars(fields.int64('price', { nullable: false }), [125n, 126n])
+    const run = new Serie([125n, 126n])
+    const narrow = Serie.fromScalars(fields.int32('size'), [125, 126])
+
+    // Identity is the rows: not the leaf, not the field, not the width.
+    assert.ok(column.equals(run))
+    assert.ok(column.equals(narrow))
+    assert.ok(new Serie([125n]).compare(column) < 0)
+
+    // As a value it is the sequence it is, for either leaf.
+    const value = column.intoScalar()
+    assert.equal(value.kind, 'list')
+    assert.ok(value.equals(run.intoScalar()))
+
+    // `asSerie` reaches the column itself.
+    assert.ok(value.asSerie().isColumn)
+    assert.ok(value.asSerie().equals(column))
+
+    // Dropping the field is spelled, never implied.
+    assert.ok(column.intoRun().equals(run))
+    assert.equal(column.intoRun().isColumn, false)
     ```
 
 ## A mapping is a cut over its entries
@@ -538,13 +711,53 @@ Arrow lays a mapping out as a list of non-null key-value records, and so does th
 === "Python"
 
     ```python
-    # Rust only.
+    from yggdryl import Field, MapSerie, Serie
+
+    field = Field("weights", "map<utf8,int64>", nullable=False)
+    column = Serie.from_scalars(field, [{"AAPL": 1, "MSFT": 2}])
+    assert isinstance(column, MapSerie)
+
+    # One row in, the same row out.
+    assert column.scalar(0).kind == "map"
+    assert column.as_py() == [{"AAPL": 1, "MSFT": 2}]
+
+    # Underneath, the entries are a record column of the entries field, and
+    # the keys and the values are its two children.
+    assert column.range(0) == (0, 2)
+    assert not column.keys_sorted, "read off the field"
+    assert column.keys.as_py() == ["AAPL", "MSFT"]
+    assert column.values.as_py() == [1, 2]
+    assert column.items().field.name == "entries"
+
+    # Arrow takes it as a map, and the buffers come back without a row read.
+    array = column.into_arrow_array()
+    assert str(array.type).startswith("map<")
+    assert Serie.from_arrow_array(array, field) == column
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const field = Field.from('weights: map<utf8,int64> not null')
+    const column = Serie.fromScalars(field, [new Map([['AAPL', 1n], ['MSFT', 2n]])])
+
+    // One row in, the same row out.
+    assert.equal(column.scalar(0).kind, 'map')
+
+    // Underneath, the entries are a record column of the entries field, and
+    // the keys and the values are its two children.
+    assert.deepEqual(column.range(0), [0, 2])
+    assert.equal(column.keysSorted, false, 'read off the field')
+    assert.deepEqual(column.keys.asJs(), ['AAPL', 'MSFT'])
+    assert.deepEqual(column.values.asJs(), [1, 2])
+    assert.equal(column.items().field.name, 'entries')
+
+    // Arrow takes it as a map, and the buffers come back as copied IPC.
+    const vector = column.intoArrowArray()
+    assert.ok(Serie.fromArrowArray(vector, field).equals(column))
     ```
 
 ## Arrow: the door, and what it proves
@@ -664,15 +877,13 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
 
 `into_arrow_scalar` is one row as Arrow's scalar datum, sharing its buffers; any other length is refused naming it. `from_default(field, rows)` is `rows` copies of the field's canonical default - [`Field::default_value`](field.md) laid out once and repeated by index - and a required `null` field, which has no default, is refused. `from_arrow_reader` drains a stream into one column; [`SerieReader`](cast.md#eager-and-lazy) keeps it a stream, one record `Serie` per batch under one plan, and `into_arrow_reader` hands the batches on without landing them.
 
-`arrow::ArrowScalar` is where `Serie` ends: the shape wrapper a value takes when it crosses the Arrow boundary - one scalar, array, batch or stream under one field, with the cast door and the shape queries, holding its payload opaquely and answering `None` to every native accessor. `Serie` is the column itself. The two share one layout proof and no bridge method: `Serie::from_arrow_array(Some(&field), held.into_array()?, options)` reaches the column from a held array, and `ArrowScalar::from_array(field, serie.require_arrow_array()?)` crosses back.
+There is no Arrow wrapper beside these two. A held column - one row, a column, a table - is a `Serie`, and `Scalar::from(serie)` holds it as one list value that `Scalar::as_serie` borrows back, neither reading a row. A stream is a `SerieReader` and never a `Scalar`: `SerieReader::from_serie` reads one held column as the stream of the one batch it is, which is what a write taking a stream is handed a column as.
 
 === "Rust"
 
     ```rust
     use arrow_array::{Array, Datum, RecordBatchReader};
-    use yggdryl::{
-        ArrowCastOptions, ArrowScalar, DataType, Field, Scalar, Serie, SerieReader, StructType,
-    };
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieReader, StructType};
 
     let options = ArrowCastOptions::new();
     let field = Field::new("price", DataType::Int64, false);
@@ -691,10 +902,10 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
     assert_eq!(one.scalar(0)?, Scalar::from(0_i64));
     assert!(serie.into_arrow_scalar().is_err());
 
-    // The shape wrapper is reached through the two doors, and no third exists.
-    let crossing = ArrowScalar::from_array(field.clone(), serie.require_arrow_array()?)?;
-    assert!(crossing.is_array());
-    assert_eq!(Serie::from_arrow_array(Some(&field), crossing.into_array()?, options)?, serie);
+    // A held column is one value, and the value is the column: no row read.
+    let value = Scalar::from(serie.clone());
+    assert_eq!(value.kind(), "list");
+    assert!(value.as_serie().is_some_and(|held| held == &serie));
 
     // A leaf column is the one column of a `row` root, named as it is.
     let table = serie.into_arrow_batch()?;
@@ -726,6 +937,11 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
     assert_eq!(Serie::from_arrow_reader(Some(&root), rows.into_arrow_reader()?, options)?, rows);
     let series = SerieReader::from_arrow_reader(None, rows.into_arrow_reader()?, options)?;
     assert_eq!(series.count(), 1);
+
+    // One held column is the stream of the one batch it is.
+    let held = SerieReader::from_serie(rows.clone())?;
+    assert_eq!(held.field(), &root);
+    assert_eq!(held.collect::<Result<Vec<_>, _>>()?, vec![rows]);
     ```
 
 === "Python"
@@ -765,6 +981,10 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
     assert isinstance(rows.into_arrow_reader(), pa.RecordBatchReader)
     assert Serie.from_arrow_reader(rows.into_arrow_reader(), root) == rows
     assert [len(serie) for serie in SerieReader.from_arrow_reader(rows.into_arrow_reader())] == [1]
+
+    # A held column is one value, and one held column is a stream of one batch.
+    assert serie.into_scalar().as_serie() == serie
+    assert list(SerieReader.from_serie(rows)) == [rows]
     ```
 
 === "JavaScript"
@@ -805,6 +1025,353 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
       [...SerieReader.fromArrowReader(rows.intoArrowReader())].map((serie) => serie.length),
       [1],
     )
+
+    // A held column is one value, and one held column is a stream of one batch.
+    assert.ok(serie.intoScalar().asSerie().equals(serie))
+    const held = [...SerieReader.fromSerie(rows)]
+    assert.equal(held.length, 1)
+    assert.ok(held[0].equals(rows))
+    ```
+
+## Arrow: one row
+
+One value crosses the array boundary as a one-row column. `Serie::from_scalars(field, [value])` proves the value through the field's contract and lays it out once, and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads one back. The field is the exact one - name, nullability, dictionary options, metadata, extension identity - so a non-nullable field takes a logical null only as its datatype's canonical default. A [`FieldScalar`](scalar.md) crosses under the field it borrows the same way, its value laid out by that field rather than a synthetic one. A decoded child is a slice of its parent's buffers, so nothing is copied.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, Int64Array};
+    use yggdryl::{ArrowCastOptions, DataType, Field, FieldScalar, Scalar, Serie};
+
+    let options = ArrowCastOptions::new();
+    let field = Field::new("id", DataType::Int64, false);
+    let array = Serie::from_scalars(field.clone(), [Scalar::from(7_i64)])?.require_arrow_array()?;
+    assert_eq!(array.len(), 1);
+
+    // The exact Field reads the same one-row array back, unchanged.
+    let back = Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)?;
+    assert_eq!(back.as_i128(), Some(7));
+
+    // The value has to satisfy the Field, recursively.
+    assert!(Serie::from_scalars(field.clone(), [Scalar::Null]).is_err());
+
+    // A pairing crosses under the field it borrows.
+    let held = FieldScalar::new(&field, 7_i64)?;
+    let array: ArrayRef = Arc::new(Int64Array::from(vec![7_i64]));
+    let read = Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)?;
+    assert_eq!(FieldScalar::new(&field, read)?, held);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import Field, Scalar, Serie
+
+    field = Field("id", "int64", nullable=False)
+    assert Serie.from_scalars(field, [7]).into_arrow_scalar() == pa.scalar(7, pa.int64())
+
+    # The exact Field reads the same one-row array back, unchanged.
+    assert Serie.from_arrow_array(pa.array([7]), field).scalar(0) == Scalar.from_(7)
+
+    # The value has to satisfy the Field, recursively.
+    try:
+        Serie.from_scalars(field, [None])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a required field refuses a null")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Serie, fields } = require('yggdryl')
+
+    const field = fields.int64('id', { nullable: false })
+    assert.equal(Serie.fromScalars(field, [7n]).intoArrowScalar(), 7n)
+
+    // The exact Field reads the same one-row vector back, unchanged.
+    const vector = arrow.vectorFromArray([7n], new arrow.Int64())
+    assert.equal(Serie.fromArrowArray(vector, field).scalar(0).asJs(), 7)
+
+    // The value has to satisfy the Field, recursively.
+    assert.throws(() => Serie.fromScalars(field, [null]), /id/)
+    ```
+
+### Materialization budgets
+
+Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summed across siblings and checked before anything is allocated. The totals cover validity bitmaps, offsets, union buffers, and the values behind dictionary or run-end keys, and only what is built is charged: a dense union allocates the selected member, a sparse union every child. Phase reservations end with the phase, and the same accounting runs behind every [`ArrowCastPlan`](cast.md).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType, UnionMode};
+
+    // One logical null, one million and one mandatory physical child slots.
+    let items = Field::new(
+        "items",
+        DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001)?,
+        true,
+    );
+    let message = Serie::from_scalars(items, [Scalar::Null]).unwrap_err().to_string();
+    assert!(message.contains("expanded slots"), "{message}");
+    assert!(message.contains("expected at most 1000000"), "{message}");
+    assert!(message.contains("got 1000001"), "{message}");
+
+    // Fixed width is counted across siblings, not per column.
+    let wide = DataType::from(StructType::from_fields([
+        Field::new("left", DataType::fixed_binary(40 * 1024 * 1024)?, false),
+        Field::new("right", DataType::fixed_binary(40 * 1024 * 1024)?, false),
+    ])?);
+    let message = Serie::from_scalars(Field::new("wide", wide, true), [Scalar::Null])
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("fixed bytes"), "{message}");
+    assert!(message.contains("expected at most 67108864"), "{message}");
+
+    // A dense union's inactive branch is far past the byte budget, and is never visited.
+    let dense = DataType::union(
+        [
+            (0, Field::new("selected", DataType::Int32, false)),
+            (1, Field::new("inactive", DataType::fixed_binary(64 * 1024 * 1024 + 1)?, false)),
+        ],
+        UnionMode::Dense,
+    )?;
+    let choice = Field::new("choice", dense, false);
+    let chosen = Scalar::from_sequence([Scalar::from(0_i8), Scalar::from(11_i32)]);
+    assert_eq!(Serie::from_scalars(choice, [chosen.clone()])?.scalar(0)?, chosen);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Serie
+
+    items = Field("items", "fixed_size_list<item: int32 not null, 1000001>")
+    try:
+        Serie.from_scalars(items, [None])
+    except ValueError as error:
+        assert "expanded slots" in str(error), error
+    else:
+        raise AssertionError("the slot budget is checked before allocation")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const items = Field.from('items: fixed_size_list<item: int32 not null, 1000001>')
+    assert.throws(() => Serie.fromScalars(items, [null]), /expanded slots/)
+    ```
+
+## Arrow: every columnar runtime in
+
+Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array one combined column, a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` reads the same values as a stream, pulling nothing until the first column is asked for, and a held value is the one item of its stream. `Scalar.from_` of a columnar value is the list `Scalar` of the column it holds, its buffers shared: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
+
+=== "Rust"
+
+    ```rust
+    // Python only: Rust holds no foreign runtime to recognize, so an
+    // `ArrayRef`, a `RecordBatch` or a `BatchReader` goes through
+    // `Serie::from_arrow_array`, `from_arrow_batch` and `from_arrow_reader`.
+    ```
+
+=== "Python"
+
+    ```python
+    import numpy as np
+    import pyarrow as pa
+    from yggdryl import Scalar, Serie, SerieReader
+
+    table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+
+    # A held value is the column it holds; a stream is drained into one.
+    assert len(Serie.from_(table.to_batches()[0])) == 2
+    assert len(Serie.from_(table)) == 2
+    assert len(Serie.from_(table.to_pandas())) == 2
+    assert len(Serie.from_(pa.chunked_array([[1, 2], [3]]))) == 3
+    assert Serie.from_(np.array([1.5, 2.5])).as_py() == [1.5, 2.5]
+    assert Serie.from_(pa.scalar(7, pa.int64())).as_py() == [7]
+
+    # A record dtype names its members, so it is rows.
+    records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
+    assert Serie.from_(records).names == ["symbol", "size"]
+
+    # The declared Field is applied by the core's one cast.
+    prices = Serie.from_(pa.array([1, 2, 3]), "price: float64 not null")
+    assert prices.into_arrow_array().type == pa.float64()
+
+    # A stream stays one, and crosses once.
+    streamed = SerieReader.from_(table)
+    assert streamed.into_arrow_reader().read_all().num_rows == 2
+    try:
+        streamed.into_arrow_reader()
+    except ValueError as error:
+        assert "already handed over" in str(error)
+    else:
+        raise AssertionError("a stream is one-shot")
+
+    # As a value, a column is a list sharing its buffers, and a table's rows
+    # read under their field.
+    assert Scalar.from_(pa.array([1, 2])).as_py() == [1, 2]
+    assert Scalar.from_(table).as_py()[0] == {"symbol": "AAPL", "size": 100}
+    assert Scalar.from_(pa.scalar(7, pa.int64())).as_py() == 7
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Python only: JavaScript crosses as copied IPC through the Apache Arrow
+    // JS doors, Serie.fromArrowArray, fromArrowBatch and fromArrowReader.
+    ```
+
+### Exact map schemas
+
+A batch and its reader retain the declared Map sortedness, nested field metadata and non-null keys. Python exports share the original Arrow buffers; creating the reader and inspecting its schema pull no batch, and the schema is resolved once for the stream, not rebuilt for each batch.
+
+=== "Rust"
+
+    ```rust
+    use arrow_array::RecordBatchReader;
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, SerieReader, StructType};
+
+    let entries = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("key"),
+        DataType::utf8().nullable_field("value"),
+    ])?).required_field("entries");
+    let lookup = DataType::map(entries, true)?.nullable_field("lookup");
+    let nested = DataType::from(StructType::from_fields([lookup])?).required_field("nested");
+    let root = DataType::from(StructType::from_fields([nested])?).required_field("row");
+    let mapping = Scalar::from_mapping([
+        (Scalar::from("first"), Scalar::from("one")),
+        (Scalar::from("second"), Scalar::Null),
+    ])?;
+    let rows = Scalar::from_sequence([Scalar::from_sequence([Scalar::from_sequence([mapping])])]);
+    let source = Serie::from_scalars(root, rows.sequence_rows().expect("rows").into_owned())?
+        .into_arrow_batch()?;
+    let held = Serie::from_arrow_batch(None, &source, ArrowCastOptions::new())?;
+    let mut reader = SerieReader::from_serie(held)?.into_arrow_reader();
+    assert_eq!(reader.schema(), source.schema());
+    let result = reader.next().expect("one batch")?;
+    assert_eq!(result, source);
+    // The rows were not copied: the deepest payload, the map's key bytes, is
+    // the source's own buffer.
+    let keys = |batch: &arrow_array::RecordBatch| {
+        let nested = batch.column(0).to_data();
+        let entries = nested.child_data()[0].child_data()[0].clone();
+        entries.child_data()[0].buffers()[1].as_ptr()
+    };
+    assert_eq!(keys(&result), keys(&source));
+    assert!(reader.next().is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import SerieReader
+
+    mapping = pa.map_(pa.string(), pa.string(), keys_sorted=True)
+    nested = pa.struct([pa.field("lookup", mapping)])
+    schema = pa.schema(
+        [pa.field("nested", nested, metadata={b"owner": b"lookup"})],
+        metadata={b"owner": b"root"},
+    )
+    values = pa.array([{"lookup": [("first", "one"), ("second", None)]}], type=nested)
+    source = pa.RecordBatch.from_arrays([values], schema=schema)
+    pulled = []
+
+    def batches():
+        pulled.append("batch")
+        yield source
+
+    incoming = pa.RecordBatchReader.from_batches(schema, batches())
+    reader = SerieReader.from_(incoming).into_arrow_reader()
+    assert reader.schema.equals(schema, check_metadata=True)
+    assert pulled == []
+    result = reader.read_next_batch()
+    assert pulled == ["batch"]
+    assert result.equals(source, check_metadata=True)
+    assert result.schema.field("nested").type.field("lookup").type.keys_sorted
+    for original, exported in zip(source.column(0).buffers(), result.column(0).buffers()):
+        assert (None if original is None else original.address) == (
+            None if exported is None else exported.address
+        )
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Python only: JavaScript crosses as copied IPC, so no buffer is shared.
+    ```
+
+### A handle reads and writes it whatever it holds
+
+`IOMedia::read_arrow` is the column-shaped sibling of `read_scalar`: a record encoding answers its batch stream as a `SerieReader`, and a structured text document the one record column its rows parse into, as the stream of that one batch. `IOMedia::write_arrow` takes a `SerieReader` and is the generic write: the stream reaches `write_arrow_reader` without being collected, so every mode and every record option applies, and a held column is the one batch it is. Both take the options a record read or write takes - in Python, and in the properties beside them - and a structured text document reads only the declared `field` off them.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{
+        DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url,
+    };
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("symbol"),
+        DataType::Int64.required_field("size"),
+    ])?)
+    .required_field("row");
+    let rows = Serie::from_scalars(
+        root.clone(),
+        [Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100_i64)])],
+    )?;
+
+    let mut handle = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
+    handle.write_arrow(SerieReader::from_serie(rows.clone())?, IOMode::Overwrite, None)?;
+
+    // Rows carry the names their Field declares, one document per row.
+    let text = String::from_utf8(handle.read_all_bytes()?)?;
+    assert!(text.contains(r#""symbol":"AAPL""#), "{text}");
+
+    // Read back under the same declaration: a structured document takes its
+    // field from any record encoding's options.
+    let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
+    let read = handle.read_arrow(Some(&declared))?;
+    assert_eq!(read.collect::<Result<Vec<_>, _>>()?, vec![rows]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+    from yggdryl import IOBase, Serie, SerieReader
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "quotes.jsonl")
+    handle.write_arrow(pa.table({"symbol": ["AAPL"], "size": [100]}))
+
+    assert b'"symbol":"AAPL"' in handle.read_bytes()
+    read = handle.read_arrow()
+    assert isinstance(read, SerieReader)
+    assert len(Serie.from_(read)) == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust and Python only: JavaScript reads and writes records through
+    // readArrowReader and the write*ArrowReader family.
     ```
 
 ## Encodings cross as their parts
@@ -847,13 +1414,47 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 === "Python"
 
     ```python
-    # Rust only.
+    from yggdryl import Field, Serie
+
+    field = Field("symbol", "dictionary(int8,utf8)")
+    column = Serie.from_scalars(field, ["AAPL", "MSFT", None, "AAPL"])
+
+    # The values are a column; absence is the keys'.
+    assert column.items().as_py() == ["AAPL", "MSFT"]
+    assert column.null_count() == 1
+    assert column.is_null(2)
+    assert column.scalar(1).as_py() == "MSFT"
+
+    # A write interns: a value already held moves one key and the vocabulary
+    # stays two long.
+    column.push("AAPL")
+    assert len(column) == 5
+    assert column.scalar(4).as_py() == "AAPL"
+    assert len(column.items()) == 2
+    assert str(column.into_arrow_array().type) == "dictionary<values=string, indices=int8, ordered=0>"
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const field = Field.from('symbol: dictionary(int8,utf8)')
+    const column = Serie.fromScalars(field, ['AAPL', 'MSFT', null, 'AAPL'])
+
+    // The values are a column; absence is the keys'.
+    assert.deepEqual(column.items().asJs(), ['AAPL', 'MSFT'])
+    assert.equal(column.nullCount(), 1)
+    assert.ok(column.isNull(2))
+    assert.equal(column.scalar(1).asJs(), 'MSFT')
+
+    // A write interns: a value already held moves one key and the vocabulary
+    // stays two long.
+    column.push('AAPL')
+    assert.equal(column.length, 5)
+    assert.equal(column.scalar(4).asJs(), 'AAPL')
+    assert.equal(column.items().length, 2)
     ```
 
 ## Edges
@@ -871,6 +1472,11 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `SerieReader`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one.
 - `from_arrow_batch`, `from_arrow_reader` and `SerieReader` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
 - `into_arrow_scalar` takes exactly one row and refuses any other count by name. `from_default` refuses a field with no default: a required `null` field has none.
+- Laying rows out past 1,000,000 expanded slots or 64 MiB of fixed bytes, summed across siblings -> `Error::PhysicalLimit` before anything is allocated; an allocator refusal or an overflowing `rows * width` -> `Error::Allocation`; a dense union's inactive branch past the budget is never visited. A field datatype deeper than the bound is a schema error before Arrow's recursive projection, never a stack exhaustion.
+- `SerieReader::from_serie` refuses a run, which names no layout, and a record column holding an absent row, which a batch cannot state; any other column is the one child of a `row` root. It reads nothing and casts nothing.
+- A structured text document is one frame around its rows, so `IOMedia::write_arrow` takes only `IOMode::Overwrite` for one; append and merge go through `write_arrow_reader`. A media type that names neither a record encoding this build implements nor a structured text format -> `Error::InvalidRecord` naming it.
+- Python: a `SerieReader` crosses once - after `into_arrow_reader`, or after `Serie.from_` or `SerieReader.from_` took it, it is refused with `ValueError`. A NumPy array of more than one dimension -> `TypeError`. `into_numpy` copies, because NumPy has no null mask and no nested layout: a null becomes `nan`, and a record row a mapping in an object array.
+- JavaScript has no C Data consumer, so there is no `from_` ladder there and nothing crosses zero copy: every door is copied IPC.
 - A run is one shared slice: every write copies it, so building one `push` at a time is quadratic. `Scalar::from_sequence` and `Serie::new` build one from values in hand, in one allocation.
 - A column and a run of equal rows are equal and hash alike, and so are two columns of equal rows under different fields or widths: identity is the rows and nothing else, exactly as a `Scalar`'s is.
 - `Serie::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the run; `Serie::rows`, `Scalar::sequence_rows`, `get` and `iter` read either, building a column's rows and keeping none. Reading a column's rows twice reads them twice.
@@ -886,6 +1492,7 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- serie
     cargo test --features "internals parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test serie
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- sequence column leaf
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- structured::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^serie/'
     ```
 
@@ -893,6 +1500,7 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/test_serie.py python/tests/test_cast.py
+    python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     ```
 
 === "JavaScript"

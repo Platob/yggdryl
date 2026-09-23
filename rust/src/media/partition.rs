@@ -104,7 +104,11 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
             &inferred
         }
     };
-    let array = crate::FieldScalar::new(field, value.clone())?.into_arrow_array()?;
+    // The pairing is the field's value contract, so its one row lays out
+    // with no second pass.
+    let typed = crate::FieldScalar::new(field, value.clone())?;
+    let row = crate::serie::from_canonical_rows(Arc::new(field.clone()), &[typed.value()])?;
+    let array = row.require_arrow_array()?;
     match ArrayFormatter::try_new(array.as_ref(), &partition_format()) {
         Ok(formatter) => Ok(smol_str::SmolStr::new(formatter.value(0).to_string())),
         // Arrow's formatter carries no timezone database, so a zoned instant

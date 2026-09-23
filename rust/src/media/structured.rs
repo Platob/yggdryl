@@ -5,7 +5,7 @@
 //! does not name them and no reader in [`crate::iobase`] speaks them. This
 //! module is the one bridge between them and Arrow, and it holds no format
 //! knowledge of its own - framing, limits, and every leaf spelling stay with
-//! [`crate::text`], and every value crossing stays with [`crate::arrow`].
+//! [`crate::text`], and every value crossing stays with [`crate::Serie`].
 //!
 //! The two directions are deliberately asymmetric, because the formats are:
 //!
@@ -22,11 +22,10 @@ use std::collections::VecDeque;
 
 use smol_str::SmolStr;
 
-use crate::arrow::{ArrowScalar, BatchReader};
 use crate::text::{Format, Formatting, Plan};
-use crate::{Error, Field, IOBase, Result, Scalar};
+use crate::{Error, Field, IOBase, Result, Scalar, Serie, SerieReader};
 
-/// Read a handle's structured text document as one Arrow value.
+/// Read a handle's structured text document as one record column.
 ///
 /// `field` is the root the rows land under. Without one the rows name their
 /// own root, inferred from what the document proves - which is the same rule
@@ -39,10 +38,7 @@ use crate::{Error, Field, IOBase, Result, Scalar};
 /// # Errors
 ///
 /// Returns a read, decompression, format, parse, inference, or cast failure.
-pub(crate) fn read_arrow<H: IOBase + ?Sized>(
-    handle: &H,
-    field: Option<&Field>,
-) -> Result<ArrowScalar> {
+pub(crate) fn read_arrow<H: IOBase + ?Sized>(handle: &H, field: Option<&Field>) -> Result<Serie> {
     let format = Format::from_handle(handle)?;
     let name = field.map_or(crate::media::DEFAULT_ROOT_NAME, Field::name);
     let documents = crate::text::from_io_all(handle)?;
@@ -55,22 +51,20 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(
     };
     // Every row goes through the field's own value contract, which is what
     // restates a document's number at the scale a decimal column declares and
-    // its text at the unit a temporal one does. The batch build canonicalizes
-    // again on the way in; that second pass is the price of the first being
-    // the only thing that reads a document's spellings.
+    // its text at the unit a temporal one does - and is why the rows are laid
+    // out with no second pass.
     let canonical = rows
         .sequence_rows()
         .unwrap_or_default()
         .iter()
         .map(|row| root.from_natural_value(row.clone()))
         .collect::<Result<Vec<_>>>()?;
-    Ok(ArrowScalar::from_rows(
-        &root,
-        &Scalar::from_sequence(canonical),
-    )?)
+    let borrowed: Vec<&Scalar> = canonical.iter().collect();
+    crate::serie::from_canonical_rows(std::sync::Arc::new(root), &borrowed)
 }
 
-/// Replace a handle's contents with one Arrow value as structured text.
+/// Replace a handle's contents with a stream of record columns as
+/// structured text.
 ///
 /// Rows are restated in their natural named shape by
 /// [`Field::into_natural_value`](crate::Field::into_natural_value), so a row
@@ -86,14 +80,14 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(
 /// Returns a schema, value, encoding, compression, or write failure.
 pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     handle: &mut H,
-    value: ArrowScalar,
+    value: SerieReader,
     formatting: Formatting,
 ) -> Result<()> {
     let plan = Plan::infer(handle)?;
     let format = plan.format();
-    let root = value.root()?;
+    let root = value.field().clone();
     let name = SmolStr::new(root.name());
-    let batches = value.into_reader()?;
+    let batches = value;
 
     let mut encoded = Vec::new();
     {
@@ -158,7 +152,8 @@ fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
     }
 }
 
-/// The rows of a batch stream, in their natural named shape, one at a time.
+/// The rows of a stream of record columns, in their natural named shape, one
+/// at a time.
 ///
 /// The writer this feeds takes an iterator with no failure channel, so a row
 /// that cannot be restated stops the iteration and is reported by
@@ -166,14 +161,14 @@ fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
 /// partial document, because nothing reaches the handle until the encoder is
 /// finished.
 struct Rows {
-    batches: Option<BatchReader>,
+    batches: Option<SerieReader>,
     root: Field,
     buffered: VecDeque<Scalar>,
     failure: Option<Error>,
 }
 
 impl Rows {
-    const fn new(batches: BatchReader, root: Field) -> Self {
+    const fn new(batches: SerieReader, root: Field) -> Self {
         Self {
             batches: Some(batches),
             root,
@@ -187,7 +182,8 @@ impl Rows {
         self.failure.map_or(Ok(()), Err)
     }
 
-    /// Refill the buffer from the next batch, or report the end of the stream.
+    /// Refill the buffer from the next column, or report the end of the
+    /// stream.
     fn fill(&mut self) -> Result<bool> {
         let Some(batches) = self.batches.as_mut() else {
             return Ok(false);
@@ -196,17 +192,10 @@ impl Rows {
             self.batches = None;
             return Ok(false);
         };
-        let batch = batch.map_err(crate::arrow::from_reader_error)?;
-        let rows = crate::arrow::batch_to_value(&batch)?;
-        let Some(rows) = rows.as_sequence() else {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: SmolStr::new_static("a record batch reads back as a sequence of rows"),
-            });
-        };
-        for row in rows {
+        let records = batch?;
+        for row in 0..records.len() {
             self.buffered
-                .push_back(self.root.into_natural_value(row.clone())?);
+                .push_back(self.root.into_natural_value(records.scalar(row)?)?);
         }
         Ok(true)
     }

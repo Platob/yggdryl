@@ -11,8 +11,6 @@ const {
   arrowBatchFromIPC,
   arrowBatchIntoIPC,
   arrowScalarFromIPC,
-  arrowScalarIntoIPC,
-  arrowTableFromIPC,
   arrowTableIntoIPC,
   arrowVectorFromIPC,
   arrowVectorIntoIPC,
@@ -213,22 +211,6 @@ const nativeTermArithmetic = Object.freeze({
   divide: NativeTerm.prototype._divideNative,
   remainder: NativeTerm.prototype._remainderNative,
 })
-const nativeScalarFromArrowScalar =
-  NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowArray =
-  NativeScalar._fromArrowArrayIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowBatch =
-  NativeScalar._fromArrowBatchIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowTable =
-  NativeScalar._fromArrowTableIpcNative.bind(NativeScalar)
-const nativeScalarIntoArrowScalar =
-  NativeScalar.prototype._intoArrowScalarIpcNative
-const nativeScalarIntoArrowArray =
-  NativeScalar.prototype._intoArrowArrayIpcNative
-const nativeScalarIntoArrowBatch =
-  NativeScalar.prototype._intoArrowBatchIpcNative
-const nativeScalarIntoArrowTable =
-  NativeScalar.prototype._intoArrowTableIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -276,10 +258,6 @@ for (const nativeName of [
 ]) {
   delete NativeTerm.prototype[nativeName]
 }
-delete NativeScalar.prototype._intoArrowScalarIpcNative
-delete NativeScalar.prototype._intoArrowArrayIpcNative
-delete NativeScalar.prototype._intoArrowBatchIpcNative
-delete NativeScalar.prototype._intoArrowTableIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -382,10 +360,6 @@ const Scalar = publicNativeClass(
     '_fromJsNative',
     '_fromDecimalPartsNative',
     '_fromTemporalPartsNative',
-    '_fromArrowScalarIpcNative',
-    '_fromArrowArrayIpcNative',
-    '_fromArrowBatchIpcNative',
-    '_fromArrowTableIpcNative',
   ]),
 )
 const PartitionSpec = publicNativeClass(
@@ -1249,45 +1223,6 @@ function nativeBatchReader(reader, label) {
   )
 }
 
-Object.defineProperties(Scalar, {
-  fromArrowScalar: {
-    value(value, field, options) {
-      return nativeScalarFromArrowScalar(
-        arrowScalarIntoIPC(value),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowArray: {
-    value(value, field, options) {
-      return nativeScalarFromArrowArray(
-        arrowVectorIntoIPC(value, 'Scalar.fromArrowArray input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowBatch: {
-    value(value, field, options) {
-      return nativeScalarFromArrowBatch(
-        arrowBatchIntoIPC(value, 'Scalar.fromArrowBatch input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowTable: {
-    value(value, field, options) {
-      return nativeScalarFromArrowTable(
-        arrowTableIntoIPC(value, 'Scalar.fromArrowTable input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-})
-
 // The scalar kinds a list layout reports, each read by position.
 const LIST_KINDS = new Set([
   'list',
@@ -1362,38 +1297,6 @@ Object.defineProperties(Scalar.prototype, {
         throw new TypeError('remove requires a string key')
       }
       return Reflect.apply(nativeScalarRemove, this, [Scalar.from(key)])
-    },
-  },
-  intoArrowScalar: {
-    value(field) {
-      return arrowScalarFromIPC(
-        Reflect.apply(nativeScalarIntoArrowScalar, this, [field]),
-        'Scalar.intoArrowScalar output',
-      )
-    },
-  },
-  intoArrowArray: {
-    value(field) {
-      return arrowVectorFromIPC(
-        Reflect.apply(nativeScalarIntoArrowArray, this, [field]),
-        'Scalar.intoArrowArray output',
-      )
-    },
-  },
-  intoArrowBatch: {
-    value(field) {
-      return arrowBatchFromIPC(
-        Reflect.apply(nativeScalarIntoArrowBatch, this, [field]),
-        'Scalar.intoArrowBatch output',
-      )
-    },
-  },
-  intoArrowTable: {
-    value(field) {
-      return arrowTableFromIPC(
-        Reflect.apply(nativeScalarIntoArrowTable, this, [field]),
-        'Scalar.intoArrowTable output',
-      )
     },
   },
   toJSON: {
@@ -1854,13 +1757,14 @@ Object.defineProperty(Scalar.prototype, 'asSerie', {
 const NativeSerieReader = binding.SerieReader
 const nativeSerieReader = Object.freeze({
   fromArrowReader: NativeSerieReader._fromArrowReaderNative.bind(NativeSerieReader),
+  fromSerie: NativeSerieReader._fromSerieNative.bind(NativeSerieReader),
   next: NativeSerieReader.prototype._nextNative,
 })
 delete NativeSerieReader.prototype._nextNative
 const SerieReader = publicNativeClass(
   NativeSerieReader,
   'SerieReader',
-  new Set(['_fromArrowReaderNative']),
+  new Set(['_fromArrowReaderNative', '_fromSerieNative']),
 )
 Object.defineProperty(SerieReader, 'fromArrowReader', {
   configurable: true,
@@ -1870,6 +1774,16 @@ Object.defineProperty(SerieReader, 'fromArrowReader', {
       optionalField(root),
       ...castOptionArgs(options),
     )
+  },
+})
+// A held column is a stream of the one record serie it is.
+Object.defineProperty(SerieReader, 'fromSerie', {
+  configurable: true,
+  value(serie) {
+    if (!(serie instanceof NativeSerie)) {
+      throw new TypeError('SerieReader.fromSerie takes a Serie')
+    }
+    return nativeSerieReader.fromSerie(serie)
   },
 })
 Object.defineProperty(SerieReader.prototype, Symbol.iterator, {

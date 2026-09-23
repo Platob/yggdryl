@@ -2,21 +2,31 @@
 
 Pins ``python/yggdryl/serie.py`` and the ``python/src/serie.rs`` redirects
 under it: every verb answers what the core ``Serie`` answers, and Arrow
-crosses in and out by sharing buffers.
+crosses in and out by sharing buffers. It is also the one boundary a foreign
+columnar object crosses: a held column is a ``Serie``, a stream is a
+``SerieReader``, and nothing else.
 """
 
 from __future__ import annotations
 
 import copy
+import importlib
+import pathlib
 import pickle
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
+import yggdryl
 from yggdryl import (
+    ArrowCastPlan,
     DataType,
     Field,
+    IOBase,
     FixedSizeListSerie,
     LargeListSerie,
     LargeListViewSerie,
@@ -478,3 +488,564 @@ class TestNested:
         assert isinstance(slim, StructSerie) and slim.names == ["id"]
         assert isinstance(orders.scalar(0).as_serie(), Serie)
         assert isinstance(orders.into_scalar().as_serie(), StructSerie)
+
+
+pandas = pytest.importorskip("pandas")
+polars = pytest.importorskip("polars")
+
+
+def quote_table() -> pa.Table:
+    return pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+
+
+def quote_root() -> Field:
+    return Field(
+        "row",
+        "struct<symbol: utf8 not null, size: int64 not null>",
+        nullable=False,
+    )
+
+
+def buffer_locations(array: pa.Array) -> list[tuple[int, int] | None]:
+    return [
+        None if buffer is None else (buffer.address, buffer.size)
+        for buffer in array.buffers()
+    ]
+
+
+class TestFrom:
+    def test_the_arrow_shape_wrapper_is_retired(self) -> None:
+        assert not hasattr(yggdryl, "ArrowScalar")
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("yggdryl.arrow")
+
+    def test_a_held_batch_is_the_record_column_of_its_rows(self) -> None:
+        records = Serie.from_(quote_table().to_batches()[0])
+        assert type(records) is StructSerie
+        assert len(records) == 2
+        assert records.names == ["symbol", "size"]
+
+    def test_a_table_is_a_stream_and_is_drained(self) -> None:
+        records = Serie.from_(quote_table())
+        assert len(records) == 2
+        assert records.names == ["symbol", "size"]
+
+    def test_a_column_and_a_pinned_row_are_told_apart(self) -> None:
+        assert len(Serie.from_(pa.array([1, 2, 3]))) == 3
+        pinned = Serie.from_(pa.scalar(7, pa.int64()))
+        assert len(pinned) == 1
+        assert pinned.field == Field("value", "int64", nullable=False)
+        # As a value, one Arrow scalar is its row rather than a list of one.
+        assert Scalar.from_(pa.scalar(7, pa.int64())).as_py() == 7
+
+    def test_a_chunked_column_is_combined_rather_than_truncated(self) -> None:
+        assert len(Serie.from_(pa.chunked_array([[1, 2], [3]]))) == 3
+
+    def test_a_reader_crosses_without_being_pulled(self) -> None:
+        reader = SerieReader.from_(quote_table().to_reader())
+        assert reader.field == Field.from_arrow_schema(quote_table().schema)
+        assert reader.into_arrow_reader().read_all().num_rows == 2
+        assert len(Serie.from_(quote_table().to_reader())) == 2
+
+    def test_a_pandas_frame_is_converted_by_pandas(self) -> None:
+        assert len(Serie.from_(quote_table().to_pandas())) == 2
+
+    def test_a_polars_frame_and_its_lazy_form_both_name_rows(self) -> None:
+        frame = polars.from_arrow(quote_table())
+        for source in (frame, frame.lazy()):
+            assert len(Serie.from_(source)) == 2
+
+    def test_a_series_is_one_column_in_either_library(self) -> None:
+        for series in (
+            pandas.Series([1, 2, 3], name="size"),
+            polars.Series("size", [1, 2, 3]),
+        ):
+            assert Serie.from_(series).as_py() == [1, 2, 3]
+
+    def test_a_plain_numpy_array_is_one_column(self) -> None:
+        column = Serie.from_(np.array([1.5, 2.5]))
+        assert column.field is not None
+        assert column.field.dtype == DataType("float64")
+        assert column.into_arrow_array().to_pylist() == [1.5, 2.5]
+
+    def test_a_numpy_record_dtype_names_its_members_so_it_is_rows(self) -> None:
+        records = np.array(
+            [("AAPL", 100), ("MSFT", 250)],
+            dtype=[("symbol", "U4"), ("size", "i8")],
+        )
+        column = Serie.from_(records)
+        assert type(column) is StructSerie
+        assert len(column) == 2
+        assert column.into_arrow_batch().column_names == ["symbol", "size"]
+
+    def test_more_than_one_numpy_dimension_is_refused_by_name(self) -> None:
+        with pytest.raises(TypeError, match="one-dimensional"):
+            Serie.from_(np.zeros((2, 2)))
+
+    def test_any_other_value_is_read_as_a_scalar(self) -> None:
+        # A sequence is its rows, typed by the field it infers.
+        rows = Serie.from_([1, None, 3])
+        assert rows.is_column
+        assert rows.as_py() == [1, None, 3]
+        # Anything else is one row.
+        assert Serie.from_(7).as_py() == [7]
+        assert Serie.from_(7, price()).field == price()
+        with pytest.raises(ValueError, match="empty Sequence"):
+            Serie.from_([])
+        assert len(Serie.from_([], price())) == 0
+
+    def test_a_native_serie_is_shared_rather_than_re_read(self) -> None:
+        column = Serie.from_(pa.array([1, 2, 3]))
+        again = Serie.from_(column)
+        assert again == column
+        assert buffer_locations(again.into_arrow_array()) == buffer_locations(
+            column.into_arrow_array()
+        )
+
+
+class TestDeclaredField:
+    def test_the_declared_field_casts_in_rust(self) -> None:
+        column = Serie.from_(pa.array([1, 2, 3]), "price: float64 not null")
+        assert column.field == Field("price", "float64", nullable=False)
+        assert column.into_arrow_array().type == pa.float64()
+
+    def test_a_declared_root_reorders_and_retypes_a_table(self) -> None:
+        declared = Field(
+            "row",
+            "struct<size: decimal128(12, 2) not null, symbol: utf8 not null>",
+            nullable=False,
+        )
+        column = Serie.from_(quote_table(), declared)
+        assert column.into_arrow_table().column_names == ["size", "symbol"]
+        reader = SerieReader.from_(quote_table(), declared)
+        assert reader.field == declared
+
+    def test_safe_decides_whether_a_failed_conversion_is_null_or_an_error(self) -> None:
+        text = pa.array(["not a number"])
+        # `safe` is Arrow's own answer: a supported conversion that fails
+        # becomes null when it is true, and an error when it is false.
+        nulled = Serie.from_(text, "size: int64", safe=True)
+        assert nulled.into_arrow_array().to_pylist() == [None]
+
+        with pytest.raises(ValueError, match="Cannot cast"):
+            Serie.from_(text, "size: int64", safe=False)
+
+
+class TestCrossings:
+    def test_a_held_column_shares_its_buffers_back_and_stays_readable(self) -> None:
+        held = Serie.from_(quote_table().to_batches()[0])
+        assert held.into_arrow_batch().num_rows == 2
+        assert held.into_pandas().shape == (2, 2)
+        assert held.into_polars().height == 2
+        assert len(held) == 2
+
+    def test_a_stream_crosses_once_and_says_so(self) -> None:
+        streamed = SerieReader.from_(quote_table())
+        assert streamed.into_arrow_reader().read_all().num_rows == 2
+        with pytest.raises(ValueError, match="already handed over"):
+            streamed.into_arrow_reader()
+        with pytest.raises(ValueError, match="already handed over"):
+            Serie.from_(streamed)
+
+    def test_every_arrow_export_answers_its_own_pyarrow_class(self) -> None:
+        batch = quote_table().to_batches()[0]
+        assert isinstance(Serie.from_(batch).into_arrow_batch(), pa.RecordBatch)
+        assert isinstance(Serie.from_(batch).into_arrow_table(), pa.Table)
+        assert isinstance(Serie.from_(batch).into_arrow_reader(), pa.RecordBatchReader)
+        assert isinstance(Serie.from_(pa.array([1])).into_arrow_array(), pa.Array)
+        assert isinstance(
+            Serie.from_(pa.scalar(1, pa.int64())).into_arrow_scalar(), pa.Scalar
+        )
+
+    def test_only_a_one_row_column_becomes_an_arrow_scalar(self) -> None:
+        with pytest.raises(ValueError, match="one row"):
+            Serie.from_(pa.array([1, 2, 3])).into_arrow_scalar()
+
+    def test_numpy_takes_every_column_back(self) -> None:
+        assert list(Serie.from_(pa.array([1, 2, 3])).into_numpy()) == [1, 2, 3]
+        assert Serie.from_(pa.scalar(7, pa.int64())).into_numpy().tolist() == [7]
+
+        # NumPy has no counterpart for Arrow's null mask or its nested
+        # layouts, so both are allowed to copy rather than being refused.
+        nulled = Serie.from_(pa.array([1, None, 3])).into_numpy()
+        assert np.isnan(nulled[1])
+
+        # A struct column has no NumPy layout, so PyArrow's own conversion
+        # answers an object array of mappings rather than a record array.
+        rows = Serie.from_(quote_table().to_batches()[0]).into_numpy()
+        assert rows[0] == {"symbol": "AAPL", "size": 100}
+
+    def test_a_columnar_scalar_is_a_list_sharing_the_columns_buffers(self) -> None:
+        array = pa.array([1, 2, 3])
+        value = Scalar.from_(array)
+        assert value.kind == "list"
+        assert value.as_py() == [1, 2, 3]
+        held = value.as_serie()
+        assert held is not None and held.is_column
+        assert buffer_locations(held.into_arrow_array()) == buffer_locations(array)
+        # A stream is never a Scalar: it is drained into the column it holds.
+        assert Scalar.from_(quote_table()).as_py() == [
+            {"symbol": "AAPL", "size": 100},
+            {"symbol": "MSFT", "size": 250},
+        ]
+        assert Scalar.from_({"rows": quote_table().to_batches()[0]}).as_py() == {
+            "rows": [
+                {"symbol": "AAPL", "size": 100},
+                {"symbol": "MSFT", "size": 250},
+            ]
+        }
+
+    def test_as_py_names_what_the_field_types(self) -> None:
+        rows = Serie.from_(quote_table().to_batches()[0], quote_root()).as_py()
+        assert rows == [
+            {"symbol": "AAPL", "size": 100},
+            {"symbol": "MSFT", "size": 250},
+        ]
+        assert Serie.from_(pa.array([1, 2])).as_py() == [1, 2]
+        assert Serie.from_(pa.scalar(7, pa.int64())).as_py() == [7]
+
+
+class TestReaderFrom:
+    def test_a_held_column_is_the_one_item_of_its_stream(self) -> None:
+        records = Serie.from_arrow_batch(quotes())
+        reader = SerieReader.from_serie(records)
+        assert reader.field == records.field
+        assert list(reader) == [records]
+
+    def test_any_other_column_is_the_one_child_of_a_row(self) -> None:
+        column = Serie.from_scalars(price(), [1, 2])
+        reader = SerieReader.from_serie(column)
+        assert reader.field == Field("row", DataType.from_fields([price()]), nullable=False)
+        (only,) = list(reader)
+        assert only.child("price") == column
+
+    def test_a_record_column_holding_an_absent_row_is_refused(self) -> None:
+        records = Serie.from_(pa.array([{"id": 1}, None]))
+        assert type(records) is StructSerie
+        with pytest.raises(ValueError, match="absent rows"):
+            SerieReader.from_serie(records)
+
+    def test_from_reads_held_and_streamed_values_alike(self) -> None:
+        for value in (quotes(), pa.Table.from_batches([quotes()]), Serie.from_(quotes())):
+            reader = SerieReader.from_(value)
+            assert Serie.from_(reader) == Serie.from_arrow_batch(quotes())
+        rows = SerieReader.from_([{"id": 1, "symbol": "AAPL"}])
+        assert Serie.from_(rows).as_py() == [{"id": 1, "symbol": "AAPL"}]
+
+
+class TestHandles:
+    @pytest.mark.parametrize(
+        "name", ["quotes.json", "quotes.jsonl", "quotes.yaml", "quotes.toml"]
+    )
+    def test_every_structured_format_round_trips_a_table(
+        self, tmp_path: pathlib.Path, name: str
+    ) -> None:
+        handle = IOBase(tmp_path / name)
+        handle.write_arrow(quote_table())
+
+        read = handle.read_arrow(field=quote_root())
+        assert isinstance(read, SerieReader)
+        assert Serie.from_(read).as_py() == [
+            {"symbol": "AAPL", "size": 100},
+            {"symbol": "MSFT", "size": 250},
+        ]
+
+    def test_a_record_encoding_answers_its_stream(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.write_arrow(quote_table())
+
+        read = handle.read_arrow()
+        assert isinstance(read, SerieReader)
+        assert read.into_arrow_reader().read_all().num_rows == 2
+
+    def test_a_document_is_written_whole_so_only_an_overwrite_applies(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.json")
+        with pytest.raises(ValueError, match="overwrite"):
+            handle.write_arrow(quote_table(), "append")
+
+    def test_a_record_encoding_appends(self, tmp_path: pathlib.Path) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.write_arrow(quote_table())
+        handle.write_arrow(quote_table(), "append")
+        assert handle.read_arrow().into_arrow_reader().read_all().num_rows == 4
+
+    def test_a_frame_a_serie_and_a_reader_reach_the_same_publication_path(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.jsonl")
+        handle.write_arrow(quote_table().to_pandas())
+        assert len(Serie.from_(handle.read_arrow(field=quote_root()))) == 2
+
+        column = IOBase(tmp_path / "column.arrows")
+        column.write_arrow(Serie.from_(quote_table()))
+        copied = IOBase(tmp_path / "copied.arrows")
+        copied.write_arrow(column.read_arrow())
+        assert copied.read_arrow().into_arrow_reader().read_all().equals(quote_table())
+
+
+def declared_batch(keys_sorted: bool) -> tuple[Field, pa.RecordBatch]:
+    mapping = pa.map_(pa.string(), pa.string(), keys_sorted=keys_sorted)
+    lookup = pa.field("lookup", mapping, metadata={b"owner": b"lookup"})
+    nested = pa.field("nested", pa.struct([lookup]), metadata={b"owner": b"nested"})
+    history = pa.field("history", pa.list_(lookup), metadata={b"owner": b"history"})
+    category = Field("category", "dictionary(int16,utf8)")
+    category.set_dictionary_options(29, True)
+    category.metadata["owner"] = "category"
+    root = Field(
+        "row",
+        DataType.from_fields(
+            [Field.from_arrow(field) for field in [lookup, nested, history]] + [category]
+        ),
+        nullable=False,
+    )
+    root.metadata["owner"] = "root"
+    schema = root.into_arrow_schema()
+    values = [None, [], [("first", "one"), ("second", None)]]
+    arrays = [
+        pa.array(values, type=mapping),
+        pa.array([{"lookup": value} for value in values], type=nested.type),
+        pa.array([[value] for value in values], type=history.type),
+        pa.DictionaryArray.from_arrays(
+            pa.array([0, None, 1], type=pa.int16()),
+            pa.array(["one", "two"]),
+            ordered=True,
+        ),
+    ]
+    return root, pa.RecordBatch.from_arrays(arrays, schema=schema)
+
+
+@pytest.mark.parametrize("whole_schema", [False, True])
+def test_schema_capsule_import_calls_the_exporter_once_without_python_field_attributes(
+    whole_schema: bool,
+) -> None:
+    root, batch = declared_batch(True)
+    foreign = batch.schema if whole_schema else batch.schema.field("nested")
+    calls = 0
+
+    class SchemaExporter:
+        def __arrow_c_schema__(self) -> object:
+            nonlocal calls
+            calls += 1
+            return foreign.__arrow_c_schema__()
+
+    source = SchemaExporter()
+    assert not hasattr(source, "type")
+    if whole_schema:
+        imported = Field.from_arrow_schema(source, name=root.name)
+        assert imported == root
+        assert imported.into_arrow_schema().equals(batch.schema, check_metadata=True)
+    else:
+        imported = Field.from_arrow(source)
+        assert imported == root.dtype["nested"]
+        assert imported.into_arrow().equals(foreign, check_metadata=True)
+    assert calls == 1
+
+
+@pytest.mark.parametrize("keys_sorted", [False, True])
+@pytest.mark.parametrize("streamed", [False, True])
+def test_batch_exports_preserve_nested_map_flags_metadata_and_shared_buffers(
+    keys_sorted: bool, streamed: bool
+) -> None:
+    root, source = declared_batch(keys_sorted)
+    held = Serie.from_(source)
+    if streamed:
+        reader = SerieReader.from_serie(held).into_arrow_reader()
+        assert reader.schema.equals(source.schema, check_metadata=True)
+        result = reader.read_next_batch()
+        with pytest.raises(StopIteration):
+            reader.read_next_batch()
+    else:
+        result = held.into_arrow_batch()
+
+    assert result.num_rows == source.num_rows == 3
+    assert result.schema.equals(source.schema, check_metadata=True)
+    assert result.equals(source, check_metadata=True)
+    restored = Field.from_arrow_schema(result.schema, name=root.name)
+    assert restored == root
+    assert restored.dtype["category"].dictionary_id == 29
+    assert restored.dtype["category"].dictionary_is_ordered is True
+    assert restored.metadata["owner"] == "root"
+    for mapping in [
+        result.schema.field("lookup").type,
+        result.schema.field("nested").type.field("lookup").type,
+        result.schema.field("history").type.value_type,
+    ]:
+        assert mapping.keys_sorted is keys_sorted
+        assert not mapping.key_field.nullable
+        assert mapping.item_field.nullable
+    for original, exported in zip(source.columns, result.columns):
+        assert buffer_locations(exported) == buffer_locations(original)
+    assert buffer_locations(result.column(3).dictionary) == buffer_locations(
+        source.column(3).dictionary
+    )
+
+
+@pytest.mark.parametrize("streamed", [False, True])
+def test_batch_exports_keep_nonzero_row_counts_with_no_columns(streamed: bool) -> None:
+    empty = pa.array([{}, {}, {}], type=pa.struct([]))
+    source = pa.RecordBatch.from_struct_array(empty).replace_schema_metadata(
+        {b"owner": b"empty"}
+    )
+    held = Serie.from_(source)
+    result = (
+        held.into_arrow_reader().read_next_batch()
+        if streamed
+        else held.into_arrow_batch()
+    )
+    assert result.num_columns == 0
+    assert result.num_rows == 3
+    assert result.schema.equals(source.schema, check_metadata=True)
+
+
+def test_reader_export_pulls_one_batch_at_a_time_and_fuses_after_a_source_error() -> None:
+    source = pa.record_batch({"value": [1, 2, 3]})
+    pulled: list[str] = []
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        pulled.append("first")
+        yield source
+        pulled.append("failure")
+        raise ValueError("batch source refused")
+
+    incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
+    reader = SerieReader.from_(incoming).into_arrow_reader()
+    assert pulled == []
+    assert reader.schema.equals(source.schema, check_metadata=True)
+    assert pulled == []
+    first = reader.read_next_batch()
+    assert pulled == ["first"]
+    assert first.equals(source)
+    assert buffer_locations(first.column(0)) == buffer_locations(source.column(0))
+    with pytest.raises(pa.ArrowInvalid, match="batch source refused"):
+        reader.read_next_batch()
+    assert pulled == ["first", "failure"]
+    for _ in range(2):
+        with pytest.raises(StopIteration):
+            reader.read_next_batch()
+    assert pulled == ["first", "failure"]
+
+
+def test_reader_export_can_be_consumed_by_a_python_worker_thread() -> None:
+    _, source = declared_batch(True)
+    constructed_on = threading.get_ident()
+    pulled_on: list[int] = []
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for _ in range(2):
+            pulled_on.append(threading.get_ident())
+            yield source
+
+    incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
+    reader = SerieReader.from_(incoming).into_arrow_reader()
+    assert pulled_on == []
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        exported = pool.submit(lambda: list(reader)).result(timeout=10)
+    assert len(exported) == len(pulled_on) == 2
+    assert all(thread != constructed_on for thread in pulled_on)
+    for result in exported:
+        assert result.equals(source, check_metadata=True)
+        for original, column in zip(source.columns, result.columns):
+            assert buffer_locations(column) == buffer_locations(original)
+
+
+@pytest.mark.parametrize("streamed", [False, True])
+def test_batch_exports_rehydrate_registered_extension_identity_without_copying(
+    streamed: bool,
+) -> None:
+    class BatchExtension(pa.ExtensionType):
+        def __init__(self) -> None:
+            super().__init__(pa.int32(), "tests.serie.batch-export")
+
+        def __arrow_ext_serialize__(self) -> bytes:
+            return b"v1"
+
+        @classmethod
+        def __arrow_ext_deserialize__(
+            cls, storage_type: pa.DataType, serialized: bytes
+        ) -> BatchExtension:
+            assert storage_type == pa.int32()
+            assert serialized == b"v1"
+            return cls()
+
+    extension = BatchExtension()
+    pa.register_extension_type(extension)
+    try:
+        storage = pa.array([1, None, 3], type=pa.int32())
+        array = pa.ExtensionArray.from_storage(extension, storage)
+        schema = pa.schema(
+            [pa.field("payload", extension, metadata={b"owner": b"payload"})],
+            metadata={b"owner": b"extension"},
+        )
+        source = pa.RecordBatch.from_arrays([array], schema=schema)
+        held = Serie.from_(source)
+        if streamed:
+            reader = held.into_arrow_reader()
+            assert reader.schema.equals(schema, check_metadata=True)
+            result = reader.read_next_batch()
+        else:
+            result = held.into_arrow_batch()
+        assert result.equals(source, check_metadata=True)
+        assert result.schema.equals(schema, check_metadata=True)
+        assert result.column(0).type == extension
+        assert result.column(0).type.__arrow_ext_serialize__() == b"v1"
+        assert buffer_locations(result.column(0).storage) == buffer_locations(storage)
+    finally:
+        pa.unregister_extension_type(extension.extension_name)
+
+
+@pytest.mark.parametrize("keys_sorted", [False, True])
+@pytest.mark.parametrize("scalar", [False, True])
+def test_nonexact_datatype_cast_exports_nested_map_flags_and_metadata(
+    keys_sorted: bool, scalar: bool
+) -> None:
+    def nested(value_type: pa.DataType) -> pa.DataType:
+        return pa.struct(
+            [
+                pa.field(
+                    "lookup",
+                    pa.map_(pa.string(), value_type, keys_sorted=keys_sorted),
+                    metadata={b"owner": b"lookup"},
+                )
+            ]
+        )
+
+    source = pa.array(
+        [{"lookup": [("first", 1), ("second", None)]}, {"lookup": None}],
+        type=nested(pa.int16()),
+    )
+    expected_type = nested(pa.int64())
+    target = Field("value", DataType.from_arrow(expected_type), nullable=False)
+    result: pa.Scalar | pa.Array
+    if scalar:
+        original = source[0]
+        result = Serie.from_arrow_array(source.slice(0, 1), target).into_arrow_scalar()
+        assert result.as_py() == original.as_py()
+    else:
+        original = source
+        result = Serie.from_arrow_array(original, target).into_arrow_array()
+        assert result.to_pylist() == original.to_pylist()
+    assert result is not original
+    assert result.type.equals(expected_type, check_metadata=True)
+    mapping = result.type.field("lookup")
+    assert mapping.metadata == {b"owner": b"lookup"}
+    assert mapping.type.keys_sorted is keys_sorted
+    assert not mapping.type.key_field.nullable
+    assert mapping.type.item_field.nullable
+
+
+@pytest.mark.parametrize("keys_sorted", [False, True])
+def test_exact_map_batch_casts_share_the_callers_buffers(keys_sorted: bool) -> None:
+    _, batch = declared_batch(keys_sorted)
+    source = batch.select(["lookup", "nested", "history"]).replace_schema_metadata(None)
+    field = Field.from_arrow_schema(source.schema, name="row")
+    plan = ArrowCastPlan(source.schema, field)
+    assert plan.is_identity
+
+    for cast in (Serie.from_arrow_batch(source, field), plan.apply(source)):
+        assert cast.field == field
+        shared = cast.into_arrow_batch()
+        assert shared.equals(source)
+        for column, original in zip(shared.columns, source.columns):
+            assert buffer_locations(column) == buffer_locations(original)

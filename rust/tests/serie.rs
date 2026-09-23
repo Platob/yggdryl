@@ -36,5 +36,7 @@ mod string;
 mod structure;
 #[path = "serie/union.rs"]
 mod union;
+#[path = "serie/value.rs"]
+mod value;
 #[path = "serie/variant.rs"]
 mod variant;

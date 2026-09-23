@@ -312,9 +312,12 @@ macro_rules! serie_family {
     };
 }
 
-mod arrow;
+pub(crate) mod arrow;
 pub use arrow::SerieReader;
-pub(crate) use arrow::{Proof, default_array, default_dtype_array, land};
+pub(crate) use arrow::{
+    Proof, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
+    land_batch, land_resolved, land_under, proven_cell,
+};
 mod boolean;
 mod bytes;
 mod datatype;
@@ -328,6 +331,7 @@ mod runend;
 mod string;
 mod structure;
 mod union;
+pub(crate) mod value;
 mod variant;
 
 pub use boolean::BooleanSerie;
@@ -2855,8 +2859,8 @@ impl Serie {
     /// Return every row's buffers as one Arrow array, or `None` for a run.
     ///
     /// The buffers are shared, never copied. A run declares no field, so it
-    /// names no Arrow layout; lay one out with
-    /// [`crate::arrow::array_from_value`] under the field it should have.
+    /// names no Arrow layout; lay one out with [`Self::from_scalars`] under
+    /// the field it should have.
     pub fn into_arrow_array(&self) -> Option<ArrayRef> {
         column!(
             self,

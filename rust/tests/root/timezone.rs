@@ -503,7 +503,6 @@ mod zones {
     use arrow_schema::DataType as ArrowDataType;
 
     use yggdryl::DataType;
-    use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
         ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie, StructType,
         Timezone, TimezoneField,
@@ -624,7 +623,10 @@ mod zones {
         );
 
         let value = zone("America/New_York");
-        let stored = scalar_array(&field, &value).unwrap();
+        let stored = Serie::from_scalars(field.clone(), [value.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_eq!(stored.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             stored
@@ -634,7 +636,13 @@ mod zones {
                 .value(0),
             "America/New_York"
         );
-        assert_eq!(scalar_value(&field, stored.as_ref()).unwrap(), value);
+        assert_eq!(
+            Serie::from_arrow_array(Some(&field), stored, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
+            value
+        );
     }
 
     #[test]

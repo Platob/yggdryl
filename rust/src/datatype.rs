@@ -731,11 +731,13 @@ impl DataType {
             | Self::Float32
             | Self::Float64
             | Self::DateTime64 { .. }
-            | Self::Duration32(_)
             | Self::Duration64(_)
             | Self::Interval(_)
             | Self::Date32
             | Self::Uuid => true,
+            // Arrow lays out one duration width, so a `duration32` count is
+            // stored wider than its contract and read once where it lands.
+            Self::Duration32(_) => false,
             Self::String(string) => matches!(
                 string,
                 crate::string::StringType::Utf8String

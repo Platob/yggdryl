@@ -20,35 +20,27 @@ use std::hash::Hasher;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Date64Array,
-    Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array, DurationMicrosecondArray,
-    DurationMillisecondArray, DurationNanosecondArray, DurationSecondArray, FixedSizeBinaryArray,
-    Float16Array, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
-    LargeBinaryArray, LargeStringArray, RecordBatch, RecordBatchOptions, StringArray,
-    StringViewArray, StructArray, Time32MillisecondArray, Time32SecondArray,
-    Time64MicrosecondArray, Time64NanosecondArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
-    UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BooleanArray, FixedSizeBinaryArray, RecordBatch, RecordBatchOptions,
+    StructArray, UInt32Array, UInt64Array,
 };
 use arrow_buffer::NullBuffer;
 use arrow_select::zip::zip;
 
-use crate::TemporalKind;
 use crate::arrow::{Error, Result};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Nullability, Representation};
 use crate::metadata::is_all_sources;
-use crate::string::is_text_storage;
+use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{BytesType, Str, StringType};
-use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit};
+use crate::{Serie, Str, StringSerie};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
     holder_accepts, is_digest_source,
 };
 use super::scalar::{
-    write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
-    write_signed, write_string, write_temporal, write_unsigned,
+    write_binary, write_bool, write_float, write_null, write_sequence_header, write_signed,
+    write_string, write_unsigned,
 };
 use crate::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 
@@ -729,16 +721,25 @@ fn fill_struct<S: ArrowDigestState>(
     for holder in &plan.holders {
         let field = &fields[holder.index];
         let original = Arc::clone(&columns[holder.index]);
+        // The holder's own column lands once and is read per row through
+        // its leaf; a forced pass reads none of it.
+        let stored = if force {
+            None
+        } else {
+            Some(land_under(
+                Arc::new(field.clone()),
+                Arc::clone(&original),
+                parent_nulls,
+                &Proof::Unproven,
+            )?)
+        };
         let mut mask = Vec::with_capacity(row_count);
         for row in 0..row_count {
             let visible = parent_nulls.is_none_or(|nulls| nulls.is_valid(row));
-            let recompute = if !visible {
-                false
-            } else if force {
-                true
-            } else {
-                crate::arrow::value::value_from_array(field.dtype(), original.as_ref(), row)?
-                    == holder.default
+            let recompute = match &stored {
+                _ if !visible => false,
+                None => true,
+                Some(stored) => stored.scalar(row)? == holder.default,
             };
             mask.push(recompute);
         }
@@ -760,6 +761,9 @@ fn fill_struct<S: ArrowDigestState>(
             )?),
             None => None,
         };
+        // Each column a selection starts from lands once, beneath the
+        // record's validity, after every holder before this one filled it.
+        let landed = landed_roots(&columns, fields, &holder.selected, parent_nulls)?;
         let mut values = Vec::with_capacity(row_count);
         let mut worker = if holder.use_prototype {
             FillState::Prototype(prototype.clone())
@@ -771,7 +775,7 @@ fn fill_struct<S: ArrowDigestState>(
             if selected {
                 write_sequence_header(&mut worker, holder.selected.len());
                 for steps in &holder.selected {
-                    feed_selection(&mut worker, &columns, fields, steps, row)?;
+                    feed_selection(&mut worker, &landed, steps, row)?;
                 }
             }
             values.push(worker.answer());
@@ -804,64 +808,76 @@ fn fill_struct<S: ArrowDigestState>(
     Ok((columns, changed))
 }
 
+/// Land the root columns `selected` starts from, each once.
+fn landed_roots(
+    columns: &[ArrayRef],
+    fields: &[Field],
+    selected: &[Vec<usize>],
+    parent_nulls: Option<&NullBuffer>,
+) -> Result<Vec<Option<Serie>>> {
+    let mut landed: Vec<Option<Serie>> = vec![None; columns.len()];
+    for root in selected.iter().filter_map(|steps| steps.first().copied()) {
+        if landed[root].is_none() {
+            landed[root] = Some(land_under(
+                Arc::new(fields[root].clone()),
+                Arc::clone(&columns[root]),
+                parent_nulls,
+                &Proof::Unproven,
+            )?);
+        }
+    }
+    Ok(landed)
+}
+
 fn feed_selection(
     digester: &mut impl Hasher,
-    root_arrays: &[ArrayRef],
-    root_fields: &[Field],
+    roots: &[Option<Serie>],
     steps: &[usize],
     row: usize,
 ) -> Result<()> {
-    let mut arrays = root_arrays;
-    let mut fields = root_fields;
-    for (depth, index) in steps.iter().copied().enumerate() {
-        let field = &fields[index];
-        let array = arrays[index].as_ref();
-        if depth + 1 == steps.len() {
-            return feed_selected_cell(digester, field, array, row);
-        }
-        if array.is_null(row) {
+    let Some((first, below)) = steps.split_first() else {
+        return Err(Error::IncompatibleSchema(
+            "a digest selection cannot have an empty path".to_owned(),
+        ));
+    };
+    let mut column = roots[*first].as_ref().ok_or(Error::Internal {
+        site: "xxhash::arrow::feed_selection",
+    })?;
+    for index in below {
+        if column.is_null(row)? {
             write_null(digester);
             return Ok(());
         }
-        let nested = downcast::<StructArray>(array)?;
-        arrays = nested.columns();
-        fields = field.fields();
+        column = column.child_at(*index).ok_or(Error::Internal {
+            site: "xxhash::arrow::feed_selection",
+        })?;
     }
-    Err(Error::IncompatibleSchema(
-        "a digest selection cannot have an empty path".to_owned(),
-    ))
+    feed_selected_cell(digester, column, row)
 }
 
 /// Feed a selected holder by its unsigned digest payload, independent of the
 /// signed or unsigned same-width Arrow storage chosen for that payload.
-fn feed_selected_cell(
-    digester: &mut impl Hasher,
-    field: &Field,
-    array: &dyn Array,
-    index: usize,
-) -> Result<()> {
-    if field.as_digest().is_holder() && !array.is_null(index) {
-        match field.dtype() {
-            DataType::Int32 => {
-                let value = downcast::<Int32Array>(array)?.value(index);
-                write_unsigned(
-                    digester,
-                    u128::from(u32::from_ne_bytes(value.to_ne_bytes())),
-                );
-                return Ok(());
-            }
-            DataType::Int64 => {
-                let value = downcast::<Int64Array>(array)?.value(index);
-                write_unsigned(
-                    digester,
-                    u128::from(u64::from_ne_bytes(value.to_ne_bytes())),
-                );
-                return Ok(());
-            }
-            _ => {}
+fn feed_selected_cell(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result<()> {
+    if column
+        .field()
+        .is_some_and(|field| field.as_digest().is_holder())
+    {
+        if let Some(value) = column.as_int32().and_then(|held| held.value(index)) {
+            write_unsigned(
+                digester,
+                u128::from(u32::from_ne_bytes(value.to_ne_bytes())),
+            );
+            return Ok(());
+        }
+        if let Some(value) = column.as_int64().and_then(|held| held.value(index)) {
+            write_unsigned(
+                digester,
+                u128::from(u64::from_ne_bytes(value.to_ne_bytes())),
+            );
+            return Ok(());
         }
     }
-    feed_cell(digester, field.dtype(), array, index)
+    feed_cell(digester, column, index)
 }
 
 /// Digest every row of a batch, in schema order.
@@ -931,24 +947,20 @@ pub(crate) fn row_digests_with<S: ArrowDigestState>(
         .iter()
         .map(|field| Field::from_arrow_field_ref(Arc::clone(field)).map_err(Error::from))
         .collect::<Result<_>>()?;
-    let columns = batch.columns();
-    let selected: Vec<usize> = fields
-        .iter()
-        .enumerate()
-        .filter_map(|(index, field)| is_digest_source(field).then_some(index))
-        .collect();
+    // Each contributing column lands once and is read through its leaf.
+    let selected = fields
+        .into_iter()
+        .zip(batch.columns())
+        .filter(|(field, _)| is_digest_source(field))
+        .map(|(field, column)| land(Arc::new(field), Arc::clone(column), &Proof::Unproven))
+        .collect::<Result<Vec<Serie>>>()?;
     let mut digests = Vec::with_capacity(batch.num_rows());
     let mut digester = prototype.clone();
     for index in 0..batch.num_rows() {
         digester.reset();
         write_sequence_header(&mut digester, selected.len());
-        for &column in &selected {
-            feed_cell(
-                &mut digester,
-                fields[column].dtype(),
-                columns[column].as_ref(),
-                index,
-            )?;
+        for column in &selected {
+            feed_cell(&mut digester, column, index)?;
         }
         digests.push(digester.answer());
     }
@@ -998,20 +1010,18 @@ pub(crate) fn column_digests_with<S: ArrowDigestState>(
     array: ArrayRef,
     field: &Field,
 ) -> Result<Vec<Digest>> {
-    let array = crate::Serie::from_arrow_array(
+    let column = Serie::from_arrow_array(
         Some(field),
         array,
         ArrowCastOptions::new()
             .with_safe(false)
             .with_nullability(Nullability::Strict),
-    )?
-    .require_arrow_array()?;
-    let array = array.as_ref();
-    let mut digests = Vec::with_capacity(array.len());
+    )?;
+    let mut digests = Vec::with_capacity(column.len());
     let mut digester = prototype.clone();
-    for index in 0..array.len() {
+    for index in 0..column.len() {
         digester.reset();
-        feed_cell(&mut digester, field.dtype(), array, index)?;
+        feed_cell(&mut digester, &column, index)?;
         digests.push(digester.answer());
     }
     Ok(digests)
@@ -1027,22 +1037,18 @@ pub(crate) fn collect(
     nulls: Option<NullBuffer>,
 ) -> ArrayRef {
     match algorithm {
-        DigestAlgorithm::Xxh32 => Arc::new(UInt32Array::new(
-            digests
-                .iter()
-                .filter_map(|digest| digest.as_u32())
-                .collect::<Vec<_>>()
-                .into(),
-            nulls,
-        )),
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => Arc::new(UInt64Array::new(
-            digests
-                .iter()
-                .filter_map(|digest| digest.as_u64())
-                .collect::<Vec<_>>()
-                .into(),
-            nulls,
-        )),
+        // Reserved once for every digest: a filtered collect has no size to
+        // reserve by and would grow the buffer as it fills.
+        DigestAlgorithm::Xxh32 => {
+            let mut values = Vec::with_capacity(digests.len());
+            values.extend(digests.iter().filter_map(|digest| digest.as_u32()));
+            Arc::new(UInt32Array::new(values.into(), nulls))
+        }
+        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => {
+            let mut values = Vec::with_capacity(digests.len());
+            values.extend(digests.iter().filter_map(|digest| digest.as_u64()));
+            Arc::new(UInt64Array::new(values.into(), nulls))
+        }
         DigestAlgorithm::Xxh128 => {
             // The canonical big-endian bytes, because no Arrow integer is 128
             // bits wide and a pair of `u64` columns would put the wire order
@@ -1068,240 +1074,44 @@ pub(crate) fn collect(
     }
 }
 
-/// Feed one cell's canonical bytes, reading the buffer where the layout allows.
+/// Feed one cell's canonical bytes, reading the buffer where the leaf lends
+/// it.
 ///
-/// The fallback is the shared scalar boundary, so every datatype family the
-/// core can read is covered; the buffer arms exist only to skip materializing
-/// a value whose bytes are already sitting in the column.
-fn feed_cell(
-    digester: &mut impl Hasher,
-    dtype: &DataType,
-    array: &dyn Array,
-    index: usize,
-) -> Result<()> {
+/// Every other leaf reads its value through the reading it resolved where
+/// it landed - no downcast, no dispatch on the datatype - and feeds it
+/// through [`Scalar::write_bytes`](crate::Scalar::write_bytes), which is
+/// what the buffer arms spell without the value: a code holds its text to
+/// the width its standard fixes, a temporal its unit and zone, a nested
+/// layout composes its children.
+fn feed_cell(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result<()> {
     // A union or a run-end encoding hides its own validity, so absence there
-    // is the child's answer rather than the parent's, exactly as the scalar
-    // boundary reads it.
-    if array.is_null(index) && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_)) {
+    // is the child's answer rather than the parent's, exactly as its value
+    // reads it.
+    if !matches!(column, Serie::Union(_) | Serie::RunEndEncoded(_)) && column.is_null(index)? {
         write_null(digester);
         return Ok(());
     }
-    match dtype {
-        DataType::Null => write_null(digester),
-        DataType::Boolean => write_bool(digester, downcast::<BooleanArray>(array)?.value(index)),
-        DataType::Int8 => write_signed(
-            digester,
-            i128::from(downcast::<Int8Array>(array)?.value(index)),
-        ),
-        DataType::Int16 => write_signed(
-            digester,
-            i128::from(downcast::<Int16Array>(array)?.value(index)),
-        ),
-        DataType::Int32 => write_signed(
-            digester,
-            i128::from(downcast::<Int32Array>(array)?.value(index)),
-        ),
-        DataType::Int64 => write_signed(
-            digester,
-            i128::from(downcast::<Int64Array>(array)?.value(index)),
-        ),
-        DataType::UInt8 => write_unsigned(
-            digester,
-            u128::from(downcast::<UInt8Array>(array)?.value(index)),
-        ),
-        DataType::UInt16 => write_unsigned(
-            digester,
-            u128::from(downcast::<UInt16Array>(array)?.value(index)),
-        ),
-        DataType::UInt32 => write_unsigned(
-            digester,
-            u128::from(downcast::<UInt32Array>(array)?.value(index)),
-        ),
-        DataType::UInt64 => write_unsigned(
-            digester,
-            u128::from(downcast::<UInt64Array>(array)?.value(index)),
-        ),
-        DataType::Float16 => write_float(
-            digester,
-            f64::from(downcast::<Float16Array>(array)?.value(index).to_f32()),
-        ),
-        DataType::Float32 => write_float(
-            digester,
-            f64::from(downcast::<Float32Array>(array)?.value(index)),
-        ),
-        DataType::Float64 => write_float(digester, downcast::<Float64Array>(array)?.value(index)),
+    match column {
+        Serie::Null(_) => write_null(digester),
+        Serie::Boolean(held) => write_bool(digester, held.value(index).unwrap_or_default()),
+        Serie::Int8(held) => write_signed(digester, i128::from(held.values()[index])),
+        Serie::Int16(held) => write_signed(digester, i128::from(held.values()[index])),
+        Serie::Int32(held) => write_signed(digester, i128::from(held.values()[index])),
+        Serie::Int64(held) => write_signed(digester, i128::from(held.values()[index])),
+        Serie::UInt8(held) => write_unsigned(digester, u128::from(held.values()[index])),
+        Serie::UInt16(held) => write_unsigned(digester, u128::from(held.values()[index])),
+        Serie::UInt32(held) => write_unsigned(digester, u128::from(held.values()[index])),
+        Serie::UInt64(held) => write_unsigned(digester, u128::from(held.values()[index])),
+        Serie::Float16(held) => write_float(digester, f64::from(held.values()[index].to_f32())),
+        Serie::Float32(held) => write_float(digester, f64::from(held.values()[index])),
+        Serie::Float64(held) => write_float(digester, held.values()[index]),
         // A string digests as its characters, whatever charset holds them:
         // the digest is of the value, and the charset is how it is stored.
-        DataType::String(parameters) => feed_string(digester, *parameters, array, index)?,
+        Serie::String(held) => feed_string(digester, column, held, index)?,
         // Bytes digest as their payload, whichever layout holds them.
-        DataType::Bytes(parameters) => write_binary(
-            digester,
-            match parameters {
-                BytesType::FixedBinary(_) => downcast::<FixedSizeBinaryArray>(array)?.value(index),
-                BytesType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
-                BytesType::BinaryView | BytesType::LargeBinaryView => {
-                    downcast::<BinaryViewArray>(array)?.value(index)
-                }
-                BytesType::Binary | BytesType::SizedBinary(_) => {
-                    downcast::<BinaryArray>(array)?.value(index)
-                }
-            },
-        ),
-        DataType::Decimal32 { scale, .. } => write_decimal(
-            digester,
-            i256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
-            *scale,
-        ),
-        DataType::Decimal64 { scale, .. } => write_decimal(
-            digester,
-            i256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
-            *scale,
-        ),
-        DataType::Decimal128 { scale, .. } => write_decimal(
-            digester,
-            i256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
-            *scale,
-        ),
-        DataType::Decimal256 { scale, .. } => write_decimal(
-            digester,
-            i256::from_le_bytes(
-                downcast::<Decimal256Array>(array)?
-                    .value(index)
-                    .to_le_bytes(),
-            ),
-            *scale,
-        ),
-        DataType::Date32 => temporal(
-            digester,
-            TemporalKind::Date,
-            i64::from(downcast::<Date32Array>(array)?.value(index)),
-            TimeUnit::Day,
-            &Timezone::NAIVE,
-        ),
-        DataType::Date64 => temporal(
-            digester,
-            TemporalKind::Date,
-            downcast::<Date64Array>(array)?.value(index),
-            TimeUnit::Millisecond,
-            &Timezone::NAIVE,
-        ),
-        DataType::Time32(unit) => {
-            let count = match unit {
-                TimeUnit::Second => downcast::<Time32SecondArray>(array)?.value(index),
-                TimeUnit::Millisecond => downcast::<Time32MillisecondArray>(array)?.value(index),
-                _ => return fallback(digester, dtype, array, index),
-            };
-            temporal(
-                digester,
-                TemporalKind::Time,
-                i64::from(count),
-                *unit,
-                &Timezone::NAIVE,
-            );
-        }
-        DataType::Time64(unit) => {
-            let count = match unit {
-                TimeUnit::Microsecond => downcast::<Time64MicrosecondArray>(array)?.value(index),
-                TimeUnit::Nanosecond => downcast::<Time64NanosecondArray>(array)?.value(index),
-                _ => return fallback(digester, dtype, array, index),
-            };
-            temporal(digester, TemporalKind::Time, count, *unit, &Timezone::NAIVE);
-        }
-        DataType::DateTime64 { unit, timezone } => {
-            let count = match unit {
-                TimeUnit::Second => downcast::<TimestampSecondArray>(array)?.value(index),
-                TimeUnit::Millisecond => downcast::<TimestampMillisecondArray>(array)?.value(index),
-                TimeUnit::Microsecond => downcast::<TimestampMicrosecondArray>(array)?.value(index),
-                TimeUnit::Nanosecond => downcast::<TimestampNanosecondArray>(array)?.value(index),
-                _ => return fallback(digester, dtype, array, index),
-            };
-            temporal(digester, TemporalKind::DateTime, count, *unit, timezone);
-        }
-        DataType::Duration64(unit) => {
-            let count = match unit {
-                TimeUnit::Second => downcast::<DurationSecondArray>(array)?.value(index),
-                TimeUnit::Millisecond => downcast::<DurationMillisecondArray>(array)?.value(index),
-                TimeUnit::Microsecond => downcast::<DurationMicrosecondArray>(array)?.value(index),
-                TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
-                _ => return fallback(digester, dtype, array, index),
-            };
-            temporal(
-                digester,
-                TemporalKind::Duration,
-                count,
-                *unit,
-                &Timezone::NAIVE,
-            );
-        }
-        // Everything below reads through the shared scalar boundary. The arms
-        // are spelled out rather than caught by `_` so a datatype added to the
-        // model is a compile error here, not a silent fallback: a code holds
-        // its text to the width its standard fixes, an identifier and a
-        // version restate their canonical text, an interval and a 32-bit
-        // duration validate components the buffer alone does not fix, a
-        // geospatial payload carries its own tag, and every list, struct, map,
-        // union, dictionary, and run-end layout composes child values instead
-        // of holding one buffer. A variant refuses by name there, because its
-        // binary encoding lands with the Iceberg v3 layer.
-        DataType::Duration32(_)
-        | DataType::Interval(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::MicCode
-        | DataType::CfiCode
-        | DataType::IsinCode
-        | DataType::CusipCode
-        | DataType::SedolCode
-        | DataType::BloombergCode
-        | DataType::FIGICode
-        | DataType::Side
-        | DataType::State
-        | DataType::TimeInForce
-        | DataType::Uuid
-        | DataType::Version
-        | DataType::Url
-        | DataType::Urn
-        | DataType::Timezone
-        | DataType::MimeType
-        | DataType::MediaType
-        | DataType::List(_)
-        | DataType::ListView(_)
-        | DataType::FixedSizeList(..)
-        | DataType::LargeList(_)
-        | DataType::LargeListView(_)
-        | DataType::Struct(_)
-        | DataType::Union(..)
-        | DataType::Dictionary(_)
-        | DataType::Map(_)
-        | DataType::SortedMap(_)
-        | DataType::RunEndEncoded(_)
-        | DataType::Variant
-        | DataType::Geometry(_)
-        | DataType::Geography(_) => return fallback(digester, dtype, array, index),
+        Serie::Bytes(held) => write_binary(digester, held.value_bytes(index).unwrap_or_default()),
+        _ => column.scalar(index)?.write_bytes(digester),
     }
-    Ok(())
-}
-
-/// Feed a temporal read straight from a buffer.
-fn temporal(
-    digester: &mut impl Hasher,
-    family: TemporalKind,
-    count: i64,
-    unit: TimeUnit,
-    zone: &Timezone,
-) {
-    write_temporal(digester, family, count, unit, zone);
-}
-
-/// Feed one cell through the shared scalar boundary.
-fn fallback(
-    digester: &mut impl Hasher,
-    dtype: &DataType,
-    array: &dyn Array,
-    index: usize,
-) -> Result<()> {
-    let value = crate::arrow::value::value_from_array(dtype, array, index)?;
-    value.write_bytes(digester);
     Ok(())
 }
 
@@ -1319,35 +1129,32 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
 /// Feed one string cell as the characters a [`Str`] read from it holds.
 ///
 /// Text storage was validated when it was written, so the cell is fed
-/// straight from the buffer - the characters [`Str::from_storage`] would
-/// hold, without the value. Binary storage goes through [`Str::from_bytes`],
-/// the one door bytes take into a string value: a fixed slot is trimmed of
-/// its padding, and a legacy charset is transcribed rather than refused.
+/// straight from the run it lies in - the characters [`Str::from_storage`]
+/// would hold, without the value. Binary storage goes through
+/// [`Str::from_bytes`], the one door bytes take into a string value: a fixed
+/// slot is trimmed of its padding, and a legacy charset is transcribed rather
+/// than refused.
 fn feed_string(
     digester: &mut impl Hasher,
-    parameters: StringType,
-    array: &dyn Array,
+    column: &Serie,
+    text: &StringSerie,
     index: usize,
 ) -> Result<()> {
-    if !parameters.is_fixed() && is_text_storage(parameters) {
-        let cell = match (parameters.is_view(), parameters.is_large()) {
-            (true, _) => downcast::<StringViewArray>(array)?.value(index),
-            (false, true) => downcast::<LargeStringArray>(array)?.value(index),
-            // A maximum is the column's rule; the storage it fills is plain.
-            (false, false) => downcast::<StringArray>(array)?.value(index),
-        };
-        write_string(digester, cell);
-        return Ok(());
-    }
-    let cell = if parameters.is_fixed() {
-        downcast::<FixedSizeBinaryArray>(array)?.value(index)
-    } else {
-        match (parameters.is_view(), parameters.is_large()) {
-            (true, _) => downcast::<BinaryViewArray>(array)?.value(index),
-            (false, true) => downcast::<LargeBinaryArray>(array)?.value(index),
-            (false, false) => downcast::<BinaryArray>(array)?.value(index),
+    let characters = match text {
+        StringSerie::Utf8(held) => held.value(index),
+        StringSerie::LargeUtf8(held) => held.value(index),
+        StringSerie::Utf8View(held) => held.value(index),
+        stored => {
+            let Some(DataType::String(parameters)) = column.field().map(Field::dtype) else {
+                return Err(Error::Internal {
+                    site: "xxhash::arrow::feed_string",
+                });
+            };
+            let bytes = stored.value_bytes(index).unwrap_or_default();
+            write_string(digester, &Str::from_bytes(bytes, *parameters)?);
+            return Ok(());
         }
     };
-    write_string(digester, &Str::from_bytes(cell, parameters)?);
+    write_string(digester, characters.unwrap_or_default());
     Ok(())
 }

@@ -784,7 +784,7 @@ impl FixedSizeListSerie {
         let placeholder = rows
             .iter()
             .any(Scalar::is_null)
-            .then(|| crate::arrow::value::physical_placeholder_for_field(item_field(&self.field)))
+            .then(|| crate::serie::value::physical_placeholder_for_field(item_field(&self.field)))
             .transpose()?
             .unwrap_or(Scalar::Null);
         let mut items = Vec::with_capacity(rows.len() * self.width);
@@ -1023,7 +1023,7 @@ fn view_column<O: ListLeaf>(
         views.nulls(),
         views.values(),
     )?;
-    let items = super::arrow::column_of(item, values, None, proof.child(0))?;
+    let items = super::arrow::child_of(item, values, None, proof.child(0))?;
     Ok(OffsetListViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
 }
 
@@ -1054,13 +1054,13 @@ pub(crate) fn column_of(
         ArrowDataType::List(_) => {
             let lists = held::<GenericListArray<i32>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::column_of(item, values, None, proof.child(0))?;
+            let items = super::arrow::child_of(item, values, None, proof.child(0))?;
             OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::LargeList(_) => {
             let lists = held::<GenericListArray<i64>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::column_of(item, values, None, proof.child(0))?;
+            let items = super::arrow::child_of(item, values, None, proof.child(0))?;
             OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::ListView(_) => view_column::<i32>(field, item, &array, proof)?,
@@ -1074,7 +1074,7 @@ pub(crate) fn column_of(
                 .values()
                 .slice(lists.offset() * width, lists.len() * width);
             let hidden = lists.nulls().map(|nulls| nulls.expand(width));
-            let items = super::arrow::column_of(item, values, hidden.as_ref(), proof.child(0))?;
+            let items = super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0))?;
             FixedSizeListSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
                 .into_serie()
         }

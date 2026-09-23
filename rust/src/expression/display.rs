@@ -528,7 +528,6 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Map(_)
         | Scalar::SortedMap(_)
         | Scalar::Struct(_) => None,
-        Scalar::Arrow(_) => None,
     }
 }
 

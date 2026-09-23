@@ -258,7 +258,7 @@ assert_eq!(rows, 3);
 - A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a required column missing under [`strict`](../types/cast.md#strict-nullability) -> `SerieReader::from_arrow_reader` returns `Err` rather than a reader that fails on its first batch.
 - A batch the plan refuses -> reported at the pull that reads it, and the reader is fused after it.
 - Dropping a `SerieReader` or its transport face before it is drained -> the source is dropped with it, so a C stream behind it is released there.
-- Python batch export caches the exact schema before any pull, retains [nested Map flags and shared buffers](values.md#exact-map-schemas), and releases the native reader on exhaustion or failure. A batch with no columns still retains its row count.
+- Python batch export caches the exact schema before any pull, retains [nested Map flags and shared buffers](../types/serie.md#exact-map-schemas), and releases the native reader on exhaustion or failure. A batch with no columns still retains its row count.
 
 ## Commands
 

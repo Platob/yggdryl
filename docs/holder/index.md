@@ -1532,7 +1532,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     writeRecords(records, mode, options?) -> void | Promise<void>
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_arrow` / `write_arrow` answer an [ArrowScalar](../arrow/values.md) whatever the handle holds.
+Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_arrow` / `write_arrow` answer and take a [`SerieReader`](../types/serie.md#a-handle-reads-and-writes-it-whatever-it-holds) whatever the handle holds.
 
 === "Rust"
 

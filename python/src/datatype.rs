@@ -20,7 +20,7 @@ use crate::field::PyField;
 use crate::parameters::{
     PyBytesParameters, PyStringParameters, core_bytes_parameters, core_string_parameters,
 };
-use crate::scalar::{PyScalar, arrow_scalar_into_array, from_py};
+use crate::scalar::{PyScalar, from_py, pyarrow_scalar_into_array};
 use crate::{
     FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
@@ -160,14 +160,16 @@ pub(crate) fn core_arrow_scalar<'py>(
     let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
         yggdryl::Serie::from_arrow_array(
             Some(&field),
-            arrow_scalar_into_array(value)?,
+            pyarrow_scalar_into_array(value)?,
             ArrowCastOptions::new().with_safe(safe),
         )
         .map_err(value_error)?
         .require_arrow_array()
         .map_err(value_error)?
     } else {
-        yggdryl::arrow::scalar_array(&field, &from_py(value)?).map_err(value_error)?
+        yggdryl::Serie::from_scalars(field, [from_py(value)?])
+            .and_then(|serie| serie.require_arrow_array())
+            .map_err(value_error)?
     };
     arrow_array_to_pyarrow(py, &array, None)?.get_item(0)
 }

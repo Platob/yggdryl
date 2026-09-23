@@ -166,8 +166,10 @@ mod dataset {
             .expect("the batch schema reads");
         let mut rows = Vec::new();
         for batch in batches {
-            let held = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
-            for row in held.as_sequence().expect("rows") {
+            let held =
+                yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::default())
+                    .expect("the batch reads");
+            for row in held.rows().iter() {
                 rows.push(row.as_sequence().expect("a row").to_vec());
             }
         }
@@ -273,11 +275,17 @@ mod dataset {
         });
         assert_eq!(round_trip, canonical_rows);
 
-        let record_batches = profiled("ulbridge FieldRecord into_arrow_batch", || {
+        let root = Arc::new(target.clone());
+        let record_batches = profiled("ulbridge FieldRecord one-row Serie batch", || {
             records
                 .iter()
                 .cloned()
-                .map(|record| record.into_arrow_batch().expect("a one-row batch"))
+                .map(|record| {
+                    yggdryl::Serie::from_scalars(Arc::clone(&root), [record.into_scalar()])
+                        .expect("a canonical record")
+                        .into_arrow_batch()
+                        .expect("a one-row batch")
+                })
                 .collect::<Vec<_>>()
         });
         assert_eq!(record_batches.len(), ROWS);
@@ -922,9 +930,10 @@ mod pipeline {
 
     /// One column of one batch, by position, as the values it holds.
     fn column_at(batch: &RecordBatch, at: usize) -> Vec<Scalar> {
-        let rows = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
-        rows.as_sequence()
-            .expect("rows")
+        let held =
+            yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::default())
+                .expect("the batch reads");
+        held.rows()
             .iter()
             .map(|row| row.as_sequence().expect("a row")[at].clone())
             .collect()

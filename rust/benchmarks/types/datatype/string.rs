@@ -16,7 +16,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::StringType;
-use yggdryl::{Charset, DataType, Scalar, Str};
+use yggdryl::{ArrowCastOptions, Charset, DataType, Field, Scalar, Serie, Str};
 
 use super::doors;
 
@@ -72,6 +72,25 @@ fn cell(charset: Charset, width: usize, high: bool) -> Vec<u8> {
         .into_owned()
 }
 
+/// Lay a column's rows out as the Arrow array `field` types.
+fn lay_out(field: &Arc<Field>, rows: &[Scalar]) -> ArrayRef {
+    Serie::from_scalars(Arc::clone(field), rows.iter().cloned())
+        .and_then(|serie| serie.require_arrow_array())
+        .expect("the benchmark column is valid")
+}
+
+/// Land an array as the column `field` types, held as one value, and build
+/// its rows back out of it.
+fn read_back(field: &Field, array: &ArrayRef) -> Vec<Scalar> {
+    let column = Serie::from_arrow_array(Some(field), Arc::clone(array), ArrowCastOptions::new())
+        .map(Scalar::from)
+        .expect("the built column reads back");
+    column
+        .sequence_rows()
+        .expect("a column reads back as a sequence")
+        .into_owned()
+}
+
 /// Time a column across Arrow in both directions.
 fn column_round_trip(
     group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
@@ -79,22 +98,19 @@ fn column_round_trip(
     dtype: &DataType,
     column: &Scalar,
 ) {
-    let field = dtype.clone().nullable_field("value");
+    let field = Arc::new(dtype.clone().nullable_field("value"));
+    let column = column
+        .as_sequence()
+        .expect("the benchmark column is a run of values");
     group.bench_function(
         BenchmarkId::new(format!("{label}_write"), ROWS),
         |bencher| {
-            bencher.iter(|| {
-                yggdryl::arrow::array_from_value(black_box(&field), black_box(column))
-                    .expect("the benchmark column is valid")
-            });
+            bencher.iter(|| lay_out(black_box(&field), black_box(column)));
         },
     );
-    let array = yggdryl::arrow::array_from_value(&field, column).expect("the column builds");
+    let array = lay_out(&field, column);
     group.bench_function(BenchmarkId::new(format!("{label}_read"), ROWS), |bencher| {
-        bencher.iter(|| {
-            yggdryl::arrow::array_to_value(black_box(&field), black_box(array.as_ref()))
-                .expect("the built column reads back")
-        });
+        bencher.iter(|| read_back(black_box(&field), black_box(&array)));
     });
 }
 

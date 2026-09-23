@@ -247,7 +247,10 @@ fn window<R: RunEndIndexType + PrimitiveLeaf>(
     field: Arc<Field>,
     offset: usize,
     length: usize,
-) -> (Serie, Range<usize>) {
+) -> (Serie, Range<usize>)
+where
+    R::Native: Into<Scalar>,
+{
     let runs = if length == 0 {
         0..0
     } else {
@@ -260,7 +263,12 @@ fn window<R: RunEndIndexType + PrimitiveLeaf>(
             .iter()
             .map(|end| R::Native::usize_as((end.as_usize() - offset).min(length))),
     );
-    (PrimitiveSerie::<R>::new(field, rebased).into_serie(), runs)
+    // Run ends are plain integers, read as they are stored.
+    let reading = crate::serie::value::read_native::<R::Native>;
+    (
+        PrimitiveSerie::<R>::new(field, rebased, reading).into_serie(),
+        runs,
+    )
 }
 
 impl RunEndEncodedSerie {
@@ -538,13 +546,13 @@ pub(crate) fn column_of(
         DataType::Int64 => parts!(Int64Type),
         _ => return Err(internal()),
     };
-    let run_ends = super::arrow::column_of(
+    let run_ends = super::arrow::child_of(
         Arc::new(encoded.run_ends().clone()),
         run_ends,
         None,
         &super::arrow::Proof::Proven,
     )?;
-    let values = super::arrow::column_of(
+    let values = super::arrow::child_of(
         Arc::new(encoded.values().clone()),
         values,
         None,

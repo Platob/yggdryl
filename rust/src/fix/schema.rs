@@ -631,11 +631,14 @@ pub(super) struct Column {
     pub(super) tag: Option<i32>,
     pub(super) counter: Option<i32>,
     /// Whether the column is the crate's own arrival record, declared
-    /// exactly as [`entries_field`] declares it: [`entry_scalar`] writes
-    /// what [`entry_item`] declares, leaf for leaf, so the value it builds
-    /// is canonical under the column as built and is not walked twice
-    /// more to prove it. A caller's own `fixentries` column of another
-    /// shape is fitted as every column is.
+    /// exactly as [`entries_field`] declares it, of leaves whose layout is
+    /// their contract: [`entry_scalar`] writes what [`entry_item`]
+    /// declares, leaf for leaf, and the landing still checks every level's
+    /// projection and absence, so the field contract has nothing left to
+    /// read and the value is not walked twice more to prove it. A caller's
+    /// own `fixentries` column of another shape, or an arrival record that
+    /// ever grows a leaf narrower than its storage, is fitted as every
+    /// column is.
     pub(super) entries: bool,
     /// Whether another column of the plan carries the same tag. A holder
     /// keeps one fact per tag, so a row stating one tag twice is left where
@@ -672,7 +675,9 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
             None => column.as_fix().counter()?,
         };
         let entries = column.name() == FIXENTRIES_COLUMN
-            && entries_field().is_ok_and(|declared| declared.dtype() == column.dtype());
+            && entries_field().is_ok_and(|declared| {
+                declared.dtype() == column.dtype() && declared.dtype().layout_is_contract()
+            });
         columns.push(Column {
             tag,
             counter,
@@ -1856,18 +1861,17 @@ impl super::FixMsg {
         Self::rebuilt(registry, schema, &value)
     }
 
-    /// [`Self::from_row`] for a row read straight out of an Arrow batch
-    /// under `schema`: the array reader answered it in the schema's own
-    /// canonical form, so it is validated against the schema - a null
+    /// [`Self::from_row`] for a row of a record column landed under
+    /// `schema`: the landing proved every row against the schema - a null
     /// where the schema requires a value, a text past the bound a column
-    /// states, which Arrow does not police below the root - and rebuilt as
-    /// it stands rather than canonicalized a second time.
-    pub(super) fn from_arrow_row(
+    /// states, a code no registry holds - and the column answers it in the
+    /// schema's own canonical form, so it is rebuilt as it stands, neither
+    /// validated nor canonicalized a second time.
+    pub(super) fn from_landed_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
         row: &crate::Scalar,
     ) -> Result<Self> {
-        crate::value::validate_row(schema, row)?;
         Self::rebuilt(registry, schema, row)
     }
 

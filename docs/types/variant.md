@@ -291,7 +291,7 @@ which is exactly what Parquet, Avro and Iceberg require of them.
     ```
 
 JavaScript has no field-level Arrow export: a variant column crosses there
-through a value's `intoArrowArray(field)`.
+as a column, `Serie.fromScalars(field, rows).intoArrowArray()`.
 
 ## What a value writes as
 

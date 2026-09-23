@@ -1,17 +1,28 @@
-//! `rust/src/arrow/value.rs`: what a value carries into an Arrow column,
-//! and what comes back out.
+//! `rust/src/serie/value.rs`: what a value carries into an Arrow column,
+//! and what comes back out - through the `Serie` doors that lay rows out and
+//! read a cell back.
 
-use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, Scalar, TimeUnit};
+use arrow_array::ArrayRef;
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, TimeUnit};
+
+/// Lay one value out as the one-row column `field` types.
+fn lay_out(field: &Field, value: &Scalar) -> yggdryl::Result<ArrayRef> {
+    Serie::from_scalars(field.clone(), [value.clone()])?.require_arrow_array()
+}
+
+/// Read row 0 of an Arrow array back as the value `field` types.
+fn read_back(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<Scalar> {
+    Ok(Serie::from_arrow_array(Some(field), array, ArrowCastOptions::default())?.scalar(0)?)
+}
 
 fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
     let field = Field::new("column", dtype, true);
-    let array = scalar_array(&field, &value).expect("the value materializes");
-    scalar_value(&field, array.as_ref()).expect("the column decodes")
+    let array = lay_out(&field, &value).expect("the value materializes");
+    read_back(&field, array).expect("the column decodes")
 }
 
 mod widths {
-    use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
+    use super::{DataType, Field, Scalar, TimeUnit, lay_out, round_trip};
     use yggdryl::BytesType;
     use yggdryl::{DataTypeId, i256};
 
@@ -106,7 +117,7 @@ mod widths {
     #[test]
     fn a_fixed_width_takes_exactly_its_width() {
         let field = Field::new("key", DataType::fixed_binary(6).unwrap(), true);
-        assert!(scalar_array(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
+        assert!(lay_out(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
     }
 
     #[test]
@@ -233,14 +244,14 @@ mod widths {
 
         // A string spells a payload, and the column stores those bytes - the
         // same reading a text column takes into a binary one.
-        let stored = scalar_array(&field, &Scalar::from("AAPL")).unwrap();
+        let stored = lay_out(&field, &Scalar::from("AAPL")).unwrap();
         assert_eq!(
-            yggdryl::arrow::scalar_value(&field, stored.as_ref()).unwrap(),
+            super::read_back(&field, stored).unwrap(),
             Scalar::from(b"AAPL".to_vec())
         );
 
         // A value with no byte spelling is named rather than dropped.
-        let error = scalar_array(&field, &Scalar::from_sequence([Scalar::from(1_i64)]))
+        let error = lay_out(&field, &Scalar::from_sequence([Scalar::from(1_i64)]))
             .unwrap_err()
             .to_string();
         assert!(error.contains("binary"), "{error}");
@@ -250,17 +261,20 @@ mod widths {
 mod bulk {
 
     use yggdryl::StructType;
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     #[test]
     fn one_native_sequence_builds_one_arrow_array() {
         let field = DataType::Int64.nullable_field("id");
-        let values = Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)]);
-        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
-        assert_eq!(
-            yggdryl::arrow::array_to_value(&field, array.as_ref()).unwrap(),
-            Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)])
-        );
+        let rows = [Scalar::from(1), Scalar::Null, Scalar::from(3)];
+        let array = Serie::from_scalars(field.clone(), rows.clone())
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        // The array read back is one value - the column - equal to the run
+        // of the rows it holds.
+        let column = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default());
+        assert_eq!(Scalar::from(column.unwrap()), Scalar::from_sequence(rows));
     }
 
     #[test]
@@ -278,9 +292,14 @@ mod bulk {
             Scalar::from_struct([("id", Scalar::from(2))]).unwrap(),
         ]);
 
-        let batch = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+        let rows = rows.sequence_rows().unwrap().into_owned();
+        let batch = Serie::from_scalars(root.clone(), rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let read = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::default()).unwrap();
         assert_eq!(
-            yggdryl::arrow::batch_to_value(&batch).unwrap(),
+            Scalar::from(read),
             Scalar::from_sequence([
                 Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]),
                 Scalar::from_sequence([Scalar::from(2), Scalar::Null]),
@@ -289,20 +308,23 @@ mod bulk {
     }
 
     #[test]
-    fn bulk_builders_refuse_non_sequence_inputs() {
+    fn bulk_builders_refuse_a_row_their_field_refuses() {
         let field = Field::new("id", DataType::Int64, false);
-        assert!(yggdryl::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
+        assert!(Serie::from_scalars(field.clone(), [Scalar::from("AAPL")]).is_err());
 
+        // A record root takes records, and a bare number is not one.
         let root = StructType::from_fields([field])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-        assert!(yggdryl::arrow::batch_from_value(&root, &Scalar::from(1)).is_err());
+        assert!(Serie::from_scalars(root, [Scalar::from(1)]).is_err());
     }
 }
 
 mod restating {
-    use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
+    use std::sync::Arc;
+
+    use super::{DataType, Field, Scalar, TimeUnit, lay_out, round_trip};
     use yggdryl::Timezone;
 
     #[test]
@@ -323,7 +345,7 @@ mod restating {
         // A coefficient that cannot be restated without losing a digit is
         // refused rather than rounded.
         let field = Field::new("price", column, true);
-        assert!(scalar_array(&field, &Scalar::d128(1_055, 3)).is_err());
+        assert!(lay_out(&field, &Scalar::d128(1_055, 3)).is_err());
     }
 
     #[test]
@@ -382,7 +404,7 @@ mod restating {
             },
             true,
         );
-        let error = scalar_array(
+        let error = lay_out(
             &seconds,
             &Scalar::datetime64(1_500, TimeUnit::Millisecond, yggdryl::Timezone::NAIVE).unwrap(),
         )
@@ -398,8 +420,8 @@ mod restating {
         assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 
         let too_wide = i64::from(i32::MAX) + 1;
-        assert!(scalar_array(&field, &Scalar::from(too_wide)).is_err());
+        assert!(lay_out(&field, &Scalar::from(too_wide)).is_err());
         let foreign = arrow_array::DurationSecondArray::from(vec![too_wide]);
-        assert!(yggdryl::arrow::scalar_value(&field, &foreign).is_err());
+        assert!(super::read_back(&field, Arc::new(foreign)).is_err());
     }
 }

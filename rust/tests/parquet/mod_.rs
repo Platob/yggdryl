@@ -401,13 +401,22 @@ mod internal {
             .next()
             .unwrap()
             .unwrap();
-        let read: Vec<yggdryl::Scalar> = (0..batch.num_rows())
+        // The column is the variant field's own layout, so landing it casts
+        // nothing: each row reads as the value it was written as.
+        let payload = DataType::Variant.nullable_field("payload");
+        assert_eq!(
+            batch.column(0).data_type(),
+            payload.clone().into_arrow_field().unwrap().data_type()
+        );
+        let column = yggdryl::Serie::from_arrow_array(
+            Some(&payload),
+            Arc::clone(batch.column(0)),
+            ArrowCastOptions::default(),
+        )
+        .unwrap();
+        let read: Vec<yggdryl::Scalar> = (0..column.len())
             .map(|row| {
-                let held = yggdryl::arrow::scalar_value(
-                    &DataType::Variant.nullable_field("payload"),
-                    batch.column(0).slice(row, 1).as_ref(),
-                )
-                .unwrap();
+                let held = column.scalar(row).unwrap();
                 let yggdryl::Scalar::Variant(variant) = held else {
                     panic!("a variant value, got {held:?}");
                 };
@@ -558,10 +567,19 @@ mod internal {
         .next()
         .unwrap()
         .unwrap();
-        let held = yggdryl::arrow::scalar_value(
-            &DataType::Variant.nullable_field("payload"),
-            batch.column(0).slice(0, 1).as_ref(),
+        let payload = DataType::Variant.nullable_field("payload");
+        assert_eq!(
+            batch.column(0).data_type(),
+            payload.clone().into_arrow_field().unwrap().data_type(),
+            "the column is the variant field's own layout, so landing it casts nothing"
+        );
+        let held = yggdryl::Serie::from_arrow_array(
+            Some(&payload),
+            batch.column(0).slice(0, 1),
+            ArrowCastOptions::default(),
         )
+        .unwrap()
+        .scalar(0)
         .unwrap();
         let yggdryl::Scalar::Variant(variant) = held else {
             panic!("a variant value, got {held:?}");

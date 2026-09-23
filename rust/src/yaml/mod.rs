@@ -766,14 +766,6 @@ fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
 /// Write one scalar or empty collection as one token.
 fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Arrow(_) => {
-            let native = value.into_native().map_err(|error| Error::Codec {
-                format: "yaml",
-                position: 0,
-                reason: error.to_string().into(),
-            })?;
-            return write_inline(writer, &native);
-        }
         // A variant reached `write_node` first, which wrote the value its
         // bytes hold; only an empty one can arrive here.
         Scalar::Variant(held) => {

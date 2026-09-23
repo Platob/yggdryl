@@ -557,7 +557,6 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
         return Err(refuse(0, "a value nested deeper than the parse limit"));
     }
     match value {
-        Scalar::Arrow(_) => collect_keys(&value.into_native()?, depth, keys)?,
         Scalar::List(held)
         | Scalar::ListView(held)
         | Scalar::FixedSizeList(held)
@@ -751,7 +750,6 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         ));
     }
     match value {
-        Scalar::Arrow(_) => write_value(&value.into_native()?, keys, depth, out)?,
         Scalar::Null => out.push(PRIMITIVE | (NULL << 2)),
         Scalar::Boolean(held) => {
             let id = if held.get() { TRUE } else { FALSE };

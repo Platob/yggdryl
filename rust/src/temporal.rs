@@ -145,7 +145,7 @@ pub(crate) mod casts {
         let mut unspelled = false;
         for index in 0..rows {
             let text = if is_exposed(exposure, index) && array.is_valid(index) {
-                crate::arrow::value::value_from_array(&source_type, array.as_ref(), index)?
+                crate::serie::value::value_from_array(&source_type, array.as_ref(), index)?
                     .into_temporal_text()
             } else {
                 None

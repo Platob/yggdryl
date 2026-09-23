@@ -427,51 +427,81 @@ mod pairing {
     }
 
     mod arrow {
+        use std::sync::Arc;
 
+        use arrow_array::ArrayRef;
         use yggdryl::StructType;
-        use yggdryl::{DataType, Field, FieldScalar, Scalar};
+        use yggdryl::{ArrowCastOptions, DataType, Field, FieldScalar, Scalar, Serie};
+
+        /// Lay a pairing out as the one-row column of its field.
+        fn lay_out(typed: &FieldScalar<'_>) -> yggdryl::Result<ArrayRef> {
+            Serie::from_scalars(typed.field().clone(), [typed.value().clone()])?
+                .require_arrow_array()
+        }
+
+        /// Read row 0 of an Arrow array back as the pairing `field` types.
+        fn read_back(field: &Field, array: ArrayRef) -> yggdryl::Result<FieldScalar<'_>> {
+            let column = Serie::from_arrow_array(Some(field), array, ArrowCastOptions::default())?;
+            FieldScalar::new(field, column.scalar(0)?)
+        }
 
         #[test]
         fn a_pairing_round_trips_through_its_one_row_arrow_array() {
             let field = Field::new("size", DataType::Int64, false);
             let typed = FieldScalar::new(&field, 7_i64).unwrap();
-            let array = typed.clone().into_arrow_array().unwrap();
+            let array = lay_out(&typed).unwrap();
             assert_eq!(array.len(), 1);
-            assert_eq!(
-                FieldScalar::from_arrow_array(&field, array.as_ref()).unwrap(),
-                typed
-            );
+            assert_eq!(read_back(&field, array).unwrap(), typed);
         }
 
         #[test]
-        fn a_decode_refuses_a_foreign_array_that_is_not_one_exact_row() {
+        fn a_read_refuses_a_missing_row_and_casts_a_foreign_layout() {
             let field = Field::new("size", DataType::Int64, false);
-            let array = FieldScalar::new(&field, 7_i64)
-                .unwrap()
-                .into_arrow_array()
-                .unwrap();
-            // Zero rows are not a scalar, and neither is another datatype.
-            let error = FieldScalar::from_arrow_array(&field, array.slice(0, 0).as_ref())
-                .expect_err("zero rows are not a scalar")
+            let array = lay_out(&FieldScalar::new(&field, 7_i64).unwrap()).unwrap();
+            // Zero rows land as the empty column: it is not one Arrow scalar,
+            // and it holds no row to pair.
+            let empty = Serie::from_arrow_array(
+                Some(&field),
+                array.slice(0, 0),
+                ArrowCastOptions::default(),
+            )
+            .unwrap();
+            let error = empty.into_arrow_scalar().unwrap_err().to_string();
+            assert!(error.contains("exactly one row, got 0"), "{error}");
+            let error = read_back(&field, array.slice(0, 0))
+                .expect_err("zero rows hold no row to pair")
                 .to_string();
-            assert!(error.contains("exactly one value"), "{error}");
+            assert!(error.contains("row 0 is past the 0 rows"), "{error}");
+            // Another layout is cast into the field, so an int64 that fits
+            // pairs as the int32 it narrows to...
             let narrow = Field::new("size", DataType::Int32, false);
-            let error = FieldScalar::from_arrow_array(&narrow, array.as_ref())
-                .expect_err("an int64 array is not an int32 scalar")
-                .to_string();
-            assert!(error.contains("differs from expected"), "{error}");
+            assert_eq!(
+                read_back(&narrow, Arc::clone(&array)).unwrap(),
+                FieldScalar::new(&narrow, 7_i32).unwrap()
+            );
+            // ...and one that does not is refused by name, never truncated.
+            let wide = lay_out(&FieldScalar::new(&field, i64::MAX).unwrap()).unwrap();
+            let error = Serie::from_arrow_array(
+                Some(&narrow),
+                wide,
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .expect_err("an int64 past the int32 range is not an int32")
+            .to_string();
+            assert!(error.contains("field $.size"), "{error}");
+            assert!(
+                error.contains("Can't cast value 9223372036854775807 to type Int32"),
+                "{error}"
+            );
         }
 
         #[test]
         fn a_null_projects_under_a_nullable_field_and_nowhere_else() {
             let nullable = Field::new("size", DataType::Int64, true);
             let absent = FieldScalar::new(&nullable, Scalar::Null).unwrap();
-            let array = absent.clone().into_arrow_array().unwrap();
+            let array = lay_out(&absent).unwrap();
             assert!(arrow_array::Array::is_null(array.as_ref(), 0));
-            assert_eq!(
-                FieldScalar::from_arrow_array(&nullable, array.as_ref()).unwrap(),
-                absent
-            );
+            assert_eq!(read_back(&nullable, array).unwrap(), absent);
             // A required field never holds the null, so nothing projects - not
             // even under the Null datatype, whose only value it is: the pairing
             // is the field's own contract, with no canonical-default exception.
@@ -483,7 +513,7 @@ mod pairing {
             );
             let nothing = DataType::Null.shared_field().unwrap();
             let typed = FieldScalar::new(nothing, Scalar::Null).unwrap();
-            assert_eq!(typed.into_arrow_array().unwrap().len(), 1);
+            assert_eq!(lay_out(&typed).unwrap().len(), 1);
         }
 
         #[test]
@@ -497,11 +527,11 @@ mod pairing {
             .required_field("row");
             let row = Scalar::from_sequence([Scalar::from(7_i64), Scalar::from("XNAS")]);
             let typed = FieldScalar::new(&structure, row.clone()).unwrap();
-            let array = typed.into_arrow_array().unwrap();
+            let array = lay_out(&typed).unwrap();
             // Arrow and the validator use the same schema-ordered row sequence.
-            let decoded = FieldScalar::from_arrow_array(&structure, array.as_ref()).unwrap();
+            let decoded = read_back(&structure, Arc::clone(&array)).unwrap();
             assert_eq!(decoded.value(), &row);
-            assert_eq!(decoded.into_arrow_array().unwrap().as_ref(), array.as_ref());
+            assert_eq!(lay_out(&decoded).unwrap().as_ref(), array.as_ref());
         }
 
         #[test]
@@ -510,8 +540,8 @@ mod pairing {
             // the field stores, which is what a second projection expects.
             let field = Field::new("ratio", DataType::Float16, true);
             let typed = FieldScalar::new(&field, 1.5_f64).unwrap();
-            let array = typed.clone().into_arrow_array().unwrap();
-            let decoded = FieldScalar::from_arrow_array(&field, array.as_ref()).unwrap();
+            let array = lay_out(&typed).unwrap();
+            let decoded = read_back(&field, array).unwrap();
             assert_eq!(decoded, typed);
             assert_eq!(decoded.value().id(), yggdryl::DataTypeId::Float16);
         }
@@ -824,25 +854,43 @@ mod records {
     }
 
     mod arrow {
-        use arrow_array::Array;
+        use arrow_array::{Array, RecordBatch};
 
         use super::{DataType, Field, FieldRecord, Scalar, row, schema};
-        use yggdryl::StructType;
+        use yggdryl::{ArrowCastOptions, Serie, StructType};
+
+        /// Lay rows out as the table of `root`.
+        fn lay_out(
+            root: &Field,
+            rows: impl IntoIterator<Item = Scalar>,
+        ) -> yggdryl::Result<RecordBatch> {
+            Ok(Serie::from_scalars(root.clone(), rows)?.into_arrow_batch()?)
+        }
+
+        /// Read row `row` of a table back as the record `root` types.
+        fn read_back<'a>(
+            root: &'a Field,
+            batch: &RecordBatch,
+            row: usize,
+        ) -> yggdryl::Result<FieldRecord<'a>> {
+            let column = Serie::from_arrow_batch(Some(root), batch, ArrowCastOptions::default())?;
+            FieldRecord::new(root, column.scalar(row)?)
+        }
 
         #[test]
         fn a_row_round_trips_through_a_one_row_batch() {
             let schema = schema();
             let record = FieldRecord::new(&schema, row()).unwrap();
-            let batch = record.clone().into_arrow_batch().unwrap();
+            let batch = lay_out(&schema, [record.clone().into_scalar()]).unwrap();
             assert_eq!(batch.num_rows(), 1);
             assert_eq!(batch.num_columns(), 3);
-            let decoded = FieldRecord::from_arrow_batch(&schema, &batch, 0).unwrap();
+            let decoded = read_back(&schema, &batch, 0).unwrap();
             assert_eq!(decoded, record);
             assert_eq!(decoded.into_scalar(), row());
         }
 
         #[test]
-        fn direct_projection_keeps_root_and_child_arrow_contracts() {
+        fn a_typed_row_lays_out_as_its_source_row_keeping_arrow_contracts() {
             let nested = StructType::from_fields([DataType::Int64.required_field("price")])
                 .map(DataType::from)
                 .unwrap()
@@ -864,72 +912,65 @@ mod records {
                 [("owner", "trading")],
             )
             .unwrap();
-            let record = FieldRecord::new(
-                &schema,
-                Scalar::from_sequence([Scalar::from("USD"), Scalar::from("AAPL"), Scalar::Null]),
-            )
-            .unwrap();
-            let general = yggdryl::arrow::batch_from_value(
-                &schema,
-                &Scalar::from_sequence([record.clone().into_scalar()]),
-            )
-            .unwrap();
-            let direct = record.clone().into_arrow_batch().unwrap();
+            let raw =
+                Scalar::from_sequence([Scalar::from("USD"), Scalar::from("AAPL"), Scalar::Null]);
+            let record = FieldRecord::new(&schema, raw.clone()).unwrap();
+            // The typed row lays out as the row it was typed from: the root's
+            // contract, applied once, is what both columns hold.
+            let typed = lay_out(&schema, [record.clone().into_scalar()]).unwrap();
+            let untyped = lay_out(&schema, [raw]).unwrap();
 
-            assert_eq!(direct, general);
+            assert_eq!(typed, untyped);
             assert_eq!(
-                direct.schema().metadata().get("owner").map(String::as_str),
+                typed.schema().metadata().get("owner").map(String::as_str),
                 Some("trading")
             );
-            assert!(direct.column(2).is_null(0));
-            assert_eq!(
-                FieldRecord::from_arrow_batch(&schema, &direct, 0).unwrap(),
-                record
-            );
+            assert!(typed.column(2).is_null(0));
+            assert_eq!(read_back(&schema, &typed, 0).unwrap(), record);
         }
 
         #[test]
-        fn direct_projection_keeps_one_empty_struct_row() {
+        fn a_typed_empty_struct_row_lays_out_as_one_row() {
             let schema = DataType::from(StructType::from_fields([]).unwrap()).required_field("row");
             let record = FieldRecord::new(&schema, Scalar::from_sequence([])).unwrap();
 
-            let batch = record.clone().into_arrow_batch().unwrap();
+            let batch = lay_out(&schema, [record.clone().into_scalar()]).unwrap();
 
             assert_eq!(batch.num_rows(), 1);
             assert_eq!(batch.num_columns(), 0);
-            assert_eq!(
-                FieldRecord::from_arrow_batch(&schema, &batch, 0).unwrap(),
-                record
-            );
+            assert_eq!(read_back(&schema, &batch, 0).unwrap(), record);
         }
 
         #[test]
-        fn direct_projection_keeps_physical_materialization_limits() {
+        fn a_typed_row_keeps_physical_materialization_limits() {
             let large =
                 DataType::fixed_size_list(DataType::Int64.required_field("item"), 1_000_001)
                     .unwrap()
                     .nullable_field("large");
             let schema =
                 DataType::from(StructType::from_fields([large]).unwrap()).required_field("row");
-            let record = FieldRecord::new(&schema, Scalar::from_sequence([Scalar::Null])).unwrap();
-            let general = yggdryl::arrow::batch_from_value(
-                &schema,
-                &Scalar::from_sequence([record.clone().into_scalar()]),
-            )
-            .unwrap_err();
-            let direct = record.into_arrow_batch().unwrap_err();
-            assert_eq!(direct.to_string(), general.to_string());
+            let raw = Scalar::from_sequence([Scalar::Null]);
+            let record = FieldRecord::new(&schema, raw.clone()).unwrap();
+            // The typed row is refused by the budget exactly as the row it was
+            // typed from, before anything is allocated.
+            let typed = lay_out(&schema, [record.into_scalar()]).unwrap_err();
+            let untyped = lay_out(&schema, [raw]).unwrap_err();
+            assert_eq!(typed.to_string(), untyped.to_string());
+            let message = typed.to_string();
+            assert!(message.contains("expanded slots"), "{message}");
+            assert!(message.contains("expected at most 1000000"), "{message}");
+            assert!(message.contains("got 1000001"), "{message}");
         }
 
         #[test]
         fn a_batch_row_is_read_under_the_field_the_batch_was_written_under() {
             let schema = schema();
-            let rows = Scalar::from_sequence([
+            let rows = [
                 row(),
                 Scalar::from_sequence([Scalar::from(8_i64), Scalar::Null, Scalar::d128(1, 2)]),
-            ]);
-            let batch = yggdryl::arrow::batch_from_value(&schema, &rows).unwrap();
-            let second = FieldRecord::from_arrow_batch(&schema, &batch, 1).unwrap();
+            ];
+            let batch = lay_out(&schema, rows).unwrap();
+            let second = read_back(&schema, &batch, 1).unwrap();
             assert_eq!(second["id"].as_i64(), Some(8));
             assert!(second["symbol"].is_null());
             assert_eq!(second.as_str("symbol"), None);
@@ -937,22 +978,25 @@ mod records {
             // at the field's scale, so it is the value the row was built from.
             assert_eq!(second["price"].value(), &Scalar::d128(1, 2));
 
-            let past = FieldRecord::from_arrow_batch(&schema, &batch, 2)
-                .unwrap_err()
-                .to_string();
-            assert!(past.contains("row 2"), "{past}");
+            let past = read_back(&schema, &batch, 2).unwrap_err().to_string();
+            assert!(past.contains("row 2 is past the 2 rows"), "{past}");
 
+            // A narrower root is a projection of the table by name, so the row
+            // it reads holds only the columns it names.
             let narrower = StructType::from_fields([Field::new("id", DataType::Int64, false)])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("row");
-            let refused = FieldRecord::from_arrow_batch(&narrower, &batch, 0)
-                .unwrap_err()
-                .to_string();
-            assert!(refused.contains("columns"), "{refused}");
+            let projected = read_back(&narrower, &batch, 1).unwrap();
+            assert_eq!(projected.len(), 1);
+            assert_eq!(projected["id"].as_i64(), Some(8));
 
             let nullable = schema.clone().with_nullable(true);
-            assert!(FieldRecord::from_arrow_batch(&nullable, &batch, 0).is_err());
+            let refused = read_back(&nullable, &batch, 0).unwrap_err().to_string();
+            assert!(
+                refused.contains("cast target Struct Field must be non-nullable"),
+                "{refused}"
+            );
         }
     }
 }

@@ -3,7 +3,7 @@
 //! `reader` is what every record I/O method hands back, so what it pulls, when
 //! it pulls it, and what it answers after a row that does not convert is
 //! reached through `yggdryl::internals`. Everything a caller can observe is in
-//! `rust/tests/arrow/value.rs` and `rust/tests/arrow/mod_.rs`.
+//! `rust/tests/serie/value.rs` and `rust/tests/arrow/mod_.rs`.
 
 #[cfg(feature = "internals")]
 mod widening {
@@ -250,7 +250,7 @@ mod row_values {
         use yggdryl::StructType;
 
         use arrow_array::{Int64Array, RecordBatch, StringArray};
-        use yggdryl::{DataType, Scalar, arrow};
+        use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie};
 
         fn batch() -> RecordBatch {
             let schema = StructType::from_fields([
@@ -274,8 +274,12 @@ mod row_values {
 
         #[test]
         fn a_batch_reads_as_schema_ordered_row_sequences() {
-            let value = arrow::batch_to_value(&batch()).unwrap();
-            let rows = value.as_sequence().expect("a sequence of rows");
+            // The batch lands as one record column, and the column is the one
+            // value its rows are.
+            let value = Scalar::from(
+                Serie::from_arrow_batch(None, &batch(), ArrowCastOptions::default()).unwrap(),
+            );
+            let rows = value.sequence_rows().expect("a sequence of rows");
             assert_eq!(rows.len(), 2);
             assert_eq!(
                 rows[0].as_sequence(),
@@ -290,8 +294,10 @@ mod row_values {
         #[test]
         fn an_array_reads_as_the_sequence_its_values_spell() {
             let field = DataType::Int64.nullable_field("id");
-            let array = Int64Array::from(vec![Some(5_i64), None]);
-            let value = arrow::array_to_value(&field, &array).unwrap();
+            let array = Arc::new(Int64Array::from(vec![Some(5_i64), None]));
+            let value = Scalar::from(
+                Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default()).unwrap(),
+            );
             assert_eq!(
                 value,
                 Scalar::from_sequence([Scalar::from(5), Scalar::Null])

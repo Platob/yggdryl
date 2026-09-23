@@ -222,8 +222,12 @@ fn format_arrow_reader_answers_the_batches_format_messages_answers_rows() {
     assert_eq!(held.fields().len(), target.fields().len());
 
     let batches: Vec<_> = formatted.map(|batch| batch.unwrap()).collect();
-    let rows = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
-    let batched = &rows.as_sequence().expect("rows")[0];
+    let rows =
+        yggdryl::Serie::from_arrow_batch(None, &batches[0], yggdryl::ArrowCastOptions::default())
+            .unwrap()
+            .rows()
+            .into_owned();
+    let batched = &rows[0];
     let direct = codec
         .format_messages(messages.into_iter().map(Ok).collect::<Vec<_>>(), &target)
         .next()

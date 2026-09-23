@@ -14,7 +14,7 @@
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
-| `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
+| Columns | a held column is `Scalar::List(Serie)`: `Scalar::from(serie)` wraps it and `as_serie` borrows it back, neither reading a row, so a columnar value crosses a boundary as the list it is, buffers shared ([Serie](serie.md#a-column-is-a-value)). A stream is never a `Scalar` |
 | `Scalar::Variant` | one Apache Parquet Variant metadata dictionary and value payload; `into_variant` encodes any supported scalar and `from_variant` decodes it, while `DataType::encode_variant` / `decode_variant` apply one declared type |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Families | one value enum per family with several leaves - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial`, `Nested` - each a `FamilyValue`; `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial`, `as_nested` narrow a `Scalar` to one by value, `None` for another kind |
@@ -293,7 +293,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `List` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -389,7 +389,7 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     assert.equal(Scalar.from([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
-See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured documents](../media/index.md#json).
+See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured documents](../media/index.md#json).
 
 ## Edges
 
@@ -415,7 +415,7 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 - [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
-- `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
+- One row crosses Arrow as a one-row column: `Serie::from_scalars(field, [value])` lays it out and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads it back ([Serie: one row](serie.md#arrow-one-row)); a `FieldScalar` has no Arrow door of its own.
 
 ## Commands
 

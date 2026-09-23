@@ -405,11 +405,38 @@ mod scalars {
 
     use arrow_array::types::Int8Type;
     use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
-    use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
-        DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StructType, TimeUnit, Timezone,
-        UnionMode,
+        ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Nullability, Scalar, Serie,
+        StructType, TimeUnit, Timezone, UnionMode,
     };
+
+    /// Lay one value out as the one-row column `field` types.
+    fn lay_out(field: &Field, value: &Scalar) -> yggdryl::Result<ArrayRef> {
+        Serie::from_scalars(field.clone(), [value.clone()])?.require_arrow_array()
+    }
+
+    /// Read row 0 of an Arrow array back as the value `field` types, the array
+    /// taking the door under `options`.
+    fn read_back_under(
+        field: &Field,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> yggdryl::arrow::Result<Scalar> {
+        Ok(Serie::from_arrow_array(Some(field), array, options)?.scalar(0)?)
+    }
+
+    /// Read row 0 of an Arrow array back under the door's default options.
+    fn read_back(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<Scalar> {
+        read_back_under(field, array, ArrowCastOptions::default())
+    }
+
+    /// The door's refusing options: a failed conversion and an absent row a
+    /// required field cannot hold are errors rather than repairs.
+    fn refusing() -> ArrowCastOptions {
+        ArrowCastOptions::new()
+            .with_safe(false)
+            .with_nullability(Nullability::Strict)
+    }
 
     fn representative_types() -> Vec<DataType> {
         let item = || Field::new("item", DataType::Int32, true);
@@ -499,13 +526,13 @@ mod scalars {
                 .and_then(|serie| Ok(serie.require_arrow_array()?))
                 .unwrap_or_else(|error| panic!("{} Arrow default failed: {error}", dtype.kind()));
             assert_eq!(array.len(), 1);
-            // The default reads back through a non-nullable Field, which is exactly
-            // what the foreign-array importer's canonical-default exception exists
-            // to accept.
+            // The default reads back through a non-nullable Field: the door lands
+            // it under that field, the null datatype's null-only default included.
             let field = Field::new("value", dtype.clone(), false);
             // The Arrow reading spells temporals and decimals with their unit,
             // zone, or scale; the canonical default recognizes both spellings.
-            let read = scalar_value(&field, array.as_ref()).unwrap();
+            let read = read_back(&field, Arc::clone(&array))
+                .unwrap_or_else(|error| panic!("{} read failed: {error}", dtype.kind()));
             assert!(
                 dtype.is_default_value(&read).unwrap(),
                 "{} read {read:?} is not the default {expected:?}",
@@ -517,8 +544,10 @@ mod scalars {
             // both directions. A leaf borrows the field the crate keeps for its
             // datatype; a nested datatype has none and pairs under the local one.
             let shared = dtype.shared_field().unwrap_or(&field);
-            let typed = FieldScalar::from_arrow_array(shared, array.as_ref())
+            let decoded = read_back(shared, Arc::clone(&array))
                 .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", dtype.kind()));
+            let typed = FieldScalar::new(shared, decoded)
+                .unwrap_or_else(|error| panic!("{} typed pairing failed: {error}", dtype.kind()));
             assert_eq!(typed.dtype(), &dtype);
             assert!(
                 dtype.is_default_value(typed.value()).unwrap(),
@@ -526,8 +555,7 @@ mod scalars {
                 dtype.kind(),
                 typed.value()
             );
-            let reprojected = typed
-                .into_arrow_array()
+            let reprojected = lay_out(typed.field(), typed.value())
                 .unwrap_or_else(|error| panic!("{} reprojection failed: {error}", dtype.kind()));
             assert_eq!(reprojected.as_ref(), array.as_ref());
         }
@@ -601,58 +629,89 @@ mod scalars {
             .unwrap();
         assert_eq!(array.len(), 1);
         assert!(array.is_null(0));
-        assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), Scalar::Null);
+        assert_eq!(read_back(&field, array).unwrap(), Scalar::Null);
 
         assert!(Serie::from_default(Field::new("never", DataType::Null, false), 1).is_err());
     }
 
     #[test]
-    fn foreign_arrays_reject_wrong_lengths_types_and_recursive_nullability() {
+    fn foreign_arrays_are_cast_and_refuse_a_missing_row_or_a_required_null() {
         let array = Serie::from_default(DataType::Int32.required_field("value"), 1)
             .unwrap()
             .require_arrow_array()
             .unwrap();
-        assert!(
-            scalar_value(&Field::new("value", DataType::Int64, false), array.as_ref()).is_err()
-        );
-        assert!(
-            scalar_value(
-                &Field::new("value", DataType::Int32, false),
-                array.slice(0, 0).as_ref(),
+        // Another layout is cast into the field rather than refused: an int32
+        // widens into an int64 exactly...
+        assert_eq!(
+            read_back(
+                &Field::new("value", DataType::Int64, false),
+                Arc::clone(&array)
             )
-            .is_err()
+            .unwrap(),
+            Scalar::from(0_i64)
         );
+        // ...and a layout no cast reaches is refused, naming it.
+        let record = StructType::from_fields([DataType::Int32.required_field("a")])
+            .map(DataType::from)
+            .unwrap();
+        let error = read_back(&Field::new("value", record, false), Arc::clone(&array))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("unsupported Arrow record datatype struct"),
+            "{error}"
+        );
+        // Zero rows land as the empty column, which holds no row to read.
+        let error = read_back(
+            &Field::new("value", DataType::Int32, false),
+            array.slice(0, 0),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("row 0 is past the 0 rows"), "{error}");
 
+        // A null under a required field is an absent row: repaired to the
+        // field's default by the door's default policy, refused by path under
+        // the strict one.
         let nullable_child = Serie::from_default(Field::new("child", DataType::Int32, true), 1)
             .unwrap()
             .require_arrow_array()
             .unwrap();
-        assert!(
-            scalar_value(
-                &Field::new("child", DataType::Int32, false),
-                nullable_child.as_ref(),
-            )
-            .is_err()
+        let required = Field::new("child", DataType::Int32, false);
+        let error = read_back_under(&required, Arc::clone(&nullable_child), refusing())
+            .unwrap_err()
+            .to_string();
+        assert_eq!(error, "required Arrow field $.child holds 1 null values");
+        assert_eq!(
+            read_back(&required, nullable_child).unwrap(),
+            Scalar::from(0_i32)
         );
-        assert!(scalar_array(&Field::new("child", DataType::Int32, false), &Scalar::Null).is_err());
+        assert!(lay_out(&required, &Scalar::Null).is_err());
     }
 
     #[test]
-    fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_not() {
-        let intrinsic_defaults = [
-            DataType::dictionary(DataType::Int8, DataType::Null).unwrap(),
-            DataType::union(
-                [(5, Field::new("nothing", DataType::Null, true))],
-                UnionMode::Dense,
-            )
-            .unwrap(),
-            DataType::run_end_encoded(
-                Field::new("run_ends", DataType::Int16, false),
-                Field::new("values", DataType::Null, true),
-            )
-            .unwrap(),
-        ];
-        for dtype in intrinsic_defaults {
+    fn null_valued_wrappers_round_trip_but_a_selected_null_member_does_not() {
+        // A dictionary or a run-end pair over the null datatype holds its null
+        // default as its one value, and it reads back through a non-nullable
+        // Field. A union selecting its null member holds a row the required
+        // field does not accept, so under that field it is an absent row: with
+        // no default to repair it, the default policy refuses it too.
+        let dictionary = DataType::dictionary(DataType::Int8, DataType::Null).unwrap();
+        let union = DataType::union(
+            [(5, Field::new("nothing", DataType::Null, true))],
+            UnionMode::Dense,
+        )
+        .unwrap();
+        let encoded = DataType::run_end_encoded(
+            Field::new("run_ends", DataType::Int16, false),
+            Field::new("values", DataType::Null, true),
+        )
+        .unwrap();
+        let refusals = (
+            "invalid DefaultValue datatype: $.value: non-nullable field has only a logical-null default",
+            "required Arrow field $.value holds 1 null values",
+        );
+        for (dtype, refused) in [(dictionary, None), (union, Some(refusals)), (encoded, None)] {
             let expected = dtype.default_value().unwrap();
             // A required field whose datatype's only default is null has no
             // default - `Field::default_value` refuses it by design - so the
@@ -663,19 +722,27 @@ mod scalars {
                 .unwrap()
                 .require_arrow_array()
                 .unwrap();
-            // The canonical-default exception admits the logical-null default back
-            // through a non-nullable Field...
             let field = Field::new("value", dtype.clone(), false);
-            assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), expected);
-            // ...while a typed pairing is the field's own contract with no such
-            // exception: it holds the null-only default under a nullable Field
-            // and projects exactly what the field-directed boundary projects.
-            assert!(FieldScalar::new(&field, expected.clone()).is_err());
             let holder = field.clone().with_nullable(true);
+            assert_eq!(read_back(&holder, Arc::clone(&array)).unwrap(), expected);
+            match refused {
+                None => assert_eq!(read_back(&field, Arc::clone(&array)).unwrap(), expected),
+                Some((repairing, strict)) => {
+                    let error = read_back(&field, Arc::clone(&array)).unwrap_err();
+                    assert_eq!(error.to_string(), repairing, "{dtype}");
+                    let error =
+                        read_back_under(&field, Arc::clone(&array), refusing()).unwrap_err();
+                    assert_eq!(error.to_string(), strict, "{dtype}");
+                }
+            }
+            // A typed pairing is the field's own contract: it refuses the
+            // null-only default under the non-nullable Field, holds it under the
+            // nullable one, and lays out exactly what the default laid out.
+            assert!(FieldScalar::new(&field, expected.clone()).is_err());
             let typed = FieldScalar::new(&holder, expected.clone()).unwrap();
             assert_eq!(
-                typed.into_arrow_array().unwrap().as_ref(),
-                scalar_array(&holder, &expected).unwrap().as_ref()
+                lay_out(typed.field(), typed.value()).unwrap().as_ref(),
+                array.as_ref()
             );
         }
 
@@ -693,12 +760,21 @@ mod scalars {
             .require_arrow_array()
             .unwrap();
         assert_ne!(
-            scalar_value(&nullable, selected_null.as_ref()).unwrap(),
+            read_back(&nullable, Arc::clone(&selected_null)).unwrap(),
             union.default_value().unwrap()
         );
-        assert!(
-            scalar_value(&Field::new("choice", union, false), selected_null.as_ref(),).is_err()
+        // Under a required field the selected null is an absent row: repaired
+        // to the union's own default by the default policy, and refused by path
+        // under the strict one - never read back as itself.
+        let required = Field::new("choice", union.clone(), false);
+        assert_eq!(
+            read_back(&required, Arc::clone(&selected_null)).unwrap(),
+            union.default_value().unwrap()
         );
+        let error = read_back_under(&required, selected_null, refusing())
+            .unwrap_err()
+            .to_string();
+        assert_eq!(error, "required Arrow field $.choice holds 1 null values");
     }
 
     #[test]
@@ -712,7 +788,7 @@ mod scalars {
             .unwrap(),
         );
         assert_eq!(
-            scalar_value(&Field::new("encoded", dtype, true), array.as_ref()).unwrap(),
+            read_back(&Field::new("encoded", dtype, true), array).unwrap(),
             Scalar::Null
         );
     }
@@ -727,11 +803,11 @@ mod scalars {
             .unwrap()
             .require_arrow_array()
             .unwrap();
-        scalar_value(&Field::new("value", maximum.clone(), false), array.as_ref()).unwrap();
+        read_back(&Field::new("value", maximum.clone(), false), array).unwrap();
 
         let overdeep = DataType::list(Field::new("item", maximum, false));
         let unrelated: ArrayRef = Arc::new(Int32Array::from(vec![0]));
-        let error = scalar_value(&Field::new("value", overdeep, false), unrelated.as_ref())
+        let error = read_back(&Field::new("value", overdeep, false), unrelated)
             .unwrap_err()
             .to_string();
         assert!(error.contains("hard limit"), "{error}");

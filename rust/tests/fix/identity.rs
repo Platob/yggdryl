@@ -753,8 +753,18 @@ mod identifiers {
         let row = read.into_row(&schema).unwrap();
         let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
         assert_eq!(rebuilt.get_identifiers(), read.get_identifiers());
-        let array = yggdryl::arrow::scalar_array(&schema, &row).unwrap();
-        let roundtrip = yggdryl::arrow::scalar_value(&schema, array.as_ref()).unwrap();
+        let array = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        let roundtrip = yggdryl::Serie::from_arrow_array(
+            Some(&schema),
+            array,
+            yggdryl::ArrowCastOptions::default(),
+        )
+        .unwrap()
+        .scalar(0)
+        .unwrap();
         assert_eq!(roundtrip, row);
     }
 

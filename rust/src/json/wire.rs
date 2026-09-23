@@ -18,10 +18,6 @@ impl Serialize for JsonRef<'_> {
         S: Serializer,
     {
         match self.0 {
-            Scalar::Arrow(_) => {
-                let native = self.0.into_native().map_err(S::Error::custom)?;
-                JsonRef(&native).serialize(serializer)
-            }
             // A variant is the value its bytes hold: JSON writes that, which
             // is what every other variant reader shows.
             Scalar::Variant(value) => {

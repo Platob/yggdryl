@@ -2304,12 +2304,13 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         .map(DataType::from)
         .expect("a capture shape")
         .required_field("capture");
-    let values = Scalar::from_sequence(
-        rows.iter()
-            .map(|row| Scalar::from_sequence([Scalar::from(row.clone())]))
-            .collect::<Vec<_>>(),
-    );
-    let batch = yggdryl::arrow::batch_from_value(&capture, &values).expect("an Arrow batch");
+    let values = rows
+        .iter()
+        .map(|row| Scalar::from_sequence([Scalar::from(row.clone())]));
+    let batch = yggdryl::Serie::from_scalars(capture, values)
+        .expect("rows the capture accepts")
+        .into_arrow_batch()
+        .expect("an Arrow batch");
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]);
     let streamed: Vec<_> = codec
         .parse_text_arrow_reader(source)
@@ -3934,11 +3935,13 @@ mod threads {
                 .unwrap(),
         )
         .required_field("capture");
-        let values = yggdryl::Scalar::from_sequence(
-            rows.iter()
-                .map(|row| yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(*row)])),
-        );
-        yggdryl::arrow::batch_from_value(&field, &values).unwrap()
+        let values = rows
+            .iter()
+            .map(|row| yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(*row)]));
+        yggdryl::Serie::from_scalars(field, values)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
     }
 
     const TWO_FRAMES: &str = "8=FIX.4.4|35=D|11=FIRST|10=0| 8=FIX.4.4|35=D|11=SECOND|10=0|";

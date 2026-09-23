@@ -1716,3 +1716,43 @@ mod text {
         }
     }
 }
+
+#[test]
+fn a_batch_read_proves_each_row_as_it_takes_it() {
+    use arrow_array::RecordBatchIterator;
+    use arrow_array::cast::AsArray as _;
+    use yggdryl::text::{TextBytes, TextLine, TextOptions, from_arrow_reader, into_arrow_batch};
+
+    // Wider than the ten bytes a state is: text the layout holds and the
+    // datatype refuses.
+    const WIDE: &str = "NOT-A-STATE-CODE";
+    let options = TextOptions::new();
+    let lines = (0..3).map(|index| {
+        TextLine::from_bytes(
+            index,
+            TextBytes::from_bytes("one body").unwrap(),
+            std::sync::Arc::new(TextOptions::new()),
+        )
+        .unwrap()
+    });
+    let batch = into_arrow_batch(lines, &options).unwrap();
+    let at = batch.schema().index_of("state").expect("a state column");
+    let mut states: Vec<Option<&str>> = batch.column(at).as_string::<i32>().iter().collect();
+    states[1] = Some(WIDE);
+    let mut columns = batch.columns().to_vec();
+    columns[at] = std::sync::Arc::new(arrow_array::StringArray::from(states));
+    let forged = arrow_array::RecordBatch::try_new(batch.schema(), columns).unwrap();
+
+    // A line is read one row at a time, so nothing refuses the batch before
+    // its first row: each row is proven as it is taken, and the refusal
+    // names the row that states the value.
+    let source = RecordBatchIterator::new([Ok(forged.clone())], forged.schema());
+    let mut read = from_arrow_reader(Box::new(source), &options).unwrap();
+    assert_eq!(read.next().unwrap().unwrap().index(), 0);
+    let refused = read
+        .next()
+        .unwrap()
+        .expect_err("row 1 states no state")
+        .to_string();
+    assert!(refused.contains("$[1].state"), "{refused}");
+}

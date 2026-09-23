@@ -9,7 +9,6 @@ use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
 use yggdryl::DataType;
-use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
     MediaTypeField, MimeType, MimeTypeField, Scalar, Serie, StructType,
@@ -192,7 +191,10 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
         );
         assert_eq!(Field::from_arrow_field(&arrow).unwrap().dtype(), &dtype);
 
-        let array = scalar_array(&field, &value).unwrap();
+        let array = Serie::from_scalars(field.clone(), [value.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             array
@@ -202,7 +204,13 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
                 .value(0),
             stored_text
         );
-        assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), value);
+        assert_eq!(
+            Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
+            value
+        );
     }
 }
 

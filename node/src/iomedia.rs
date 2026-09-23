@@ -31,7 +31,7 @@ fn consumed() -> napi::Error {
 }
 
 /// Encode `batches` as one Arrow IPC stream under `schema`.
-fn encoded(schema: &SchemaRef, batches: &[RecordBatch]) -> Result<Buffer> {
+pub(crate) fn encoded(schema: &SchemaRef, batches: &[RecordBatch]) -> Result<Buffer> {
     let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
     for batch in batches {
         writer.write(batch).map_err(napi_error)?;

@@ -35,6 +35,7 @@ test('the private Arrow bridges stay outside the public surface', () => {
     assert.equal(name in Serie.prototype, false, name)
   }
   assert.equal(Object.hasOwn(SerieReader, '_fromArrowReaderNative'), false)
+  assert.equal(Object.hasOwn(SerieReader, '_fromSerieNative'), false)
   assert.equal('_nextNative' in SerieReader.prototype, false)
   // The retired Field and DataType casts have no alias.
   for (const name of [
@@ -327,6 +328,52 @@ test('a SerieReader hands its stream back as a reader, read once', () => {
   assert.throws(
     () => SerieReader.fromArrowReader(partial, required),
     /SerieReader\.fromArrowReader takes a native BatchReader/,
+  )
+})
+
+test('a held record column is a stream of the one serie it is', () => {
+  const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
+  const reader = SerieReader.fromSerie(records)
+  assert.ok(reader.field.equals(trades()))
+  const series = [...reader]
+  assert.equal(series.length, 1)
+  assert.ok(series[0] instanceof StructSerie)
+  assert.ok(series[0].equals(records))
+  // Drained, it ends quietly, and hands back no second batch.
+  assert.deepEqual([...reader], [])
+
+  // Handed back as a reader, the held column is the one batch it is.
+  const table = SerieReader.fromSerie(records).intoArrowReader().intoTable()
+  assert.equal(table.batches.length, 1)
+  assert.deepEqual([...table.getChild('symbol')], ['AAPL', 'MSFT'])
+})
+
+test('a held column that is not a record comes back under a record root', () => {
+  const ids = Serie.fromScalars(fields.int64('id'), [1n, 2n, null])
+  const reader = SerieReader.fromSerie(ids)
+  assert.equal(reader.field.name, 'row')
+  assert.equal(reader.field.nullable, false)
+  assert.deepEqual(
+    Array.from(reader.field.dtype, (child) => child.name),
+    ['id'],
+  )
+  const [records, ...rest] = [...reader]
+  assert.deepEqual(rest, [])
+  assert.ok(records instanceof StructSerie)
+  assert.ok(records.child('id').equals(ids))
+})
+
+test('a held record column with an absent row, and a run, are refused', () => {
+  const nullable = Field.from('row: struct<id: int64>')
+  const absent = Serie.fromScalars(nullable, [{ id: 1n }, null])
+  assert.throws(
+    () => SerieReader.fromSerie(absent),
+    /record column "row" holds 1 absent rows, which a table cannot state/,
+  )
+  assert.throws(() => SerieReader.fromSerie(new Serie([1, 2])), /run/)
+  assert.throws(
+    () => SerieReader.fromSerie(narrow([1], ['AAPL'])),
+    /SerieReader\.fromSerie takes a Serie/,
   )
 })
 

@@ -21,7 +21,6 @@ use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::arrow::PyArrowScalar;
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
@@ -1541,12 +1540,12 @@ impl PyIOBase {
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
-    /// Read this resource's rows as one `ArrowScalar`, whatever it holds.
+    /// Read this resource's rows as a `SerieReader`, whatever it holds.
     ///
-    /// The Arrow-shaped sibling of `read_scalar`, and the one read that does
+    /// The column-shaped sibling of `read_scalar`, and the one read that does
     /// not need the caller to know first what the resource is: a record
     /// encoding answers its batch stream and a structured text document
-    /// answers the batch its rows parse into.
+    /// answers the one record column its rows parse into.
     ///
     /// `options` and the properties beside it shape the read as they shape
     /// every record read; a structured text document reads only the declared
@@ -1556,20 +1555,21 @@ impl PyIOBase {
         &self,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<PyArrowScalar> {
+    ) -> PyResult<crate::serie::PySerieReader> {
         let options = self.arrow_options(options, properties)?;
         self.inner()?
             .read_arrow(options.as_ref())
-            .map(PyArrowScalar::from_inner)
+            .map(crate::serie::PySerieReader::from)
             .map_err(crate::holder::fs::storage_error)
     }
 
     /// Write any Arrow-convertible object as this resource's rows.
     ///
-    /// The value crosses through `ArrowScalar`, so a `pyarrow` container, a
-    /// pandas or polars frame, a `NumPy` array, and an Arrow C stream exporter
-    /// all reach the same publication path. A structured text document is one
-    /// frame around its rows, so only `overwrite` applies to one.
+    /// The value crosses as a `SerieReader`, so a `Serie`, a `pyarrow`
+    /// container, a pandas or polars frame, a `NumPy` array, and an Arrow C
+    /// stream exporter all reach the same publication path. A structured text
+    /// document is one frame around its rows, so only `overwrite` applies to
+    /// one.
     ///
     /// This is the generic write: whatever shape the value holds reaches the
     /// primitive that takes it as it stands, so `options` and the properties
@@ -1585,7 +1585,7 @@ impl PyIOBase {
     ) -> PyResult<()> {
         let options = self.arrow_options(options, properties)?;
         let value =
-            crate::arrow::arrow_scalar_from_py(value, None, yggdryl::ArrowCastOptions::new())?;
+            crate::serie::serie_reader_from_py(value, None, yggdryl::ArrowCastOptions::new())?;
         let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
         self.inner_mut()?
             .write_arrow(value, mode, options.as_ref())
@@ -2604,7 +2604,7 @@ impl PyIOBase {
                 reader,
                 field,
                 from_dict,
-                rows: yggdryl::Scalar::from_sequence([]),
+                rows: yggdryl::Serie::default(),
                 next: 0,
             },
         )
@@ -3143,10 +3143,10 @@ impl PyIOBaseIterator {
 
 /// Lazy native iterator over a resource's rows as mappings or dataclasses.
 ///
-/// One batch is lowered at a time through the core value boundary, so every
-/// value crosses under its datatype - an ASCII width reads back trimmed, a
-/// nested struct crosses as a mapping - and nothing binding-side reinterprets
-/// storage. A requested dataclass is built from that mapping by
+/// One batch lands at a time as one record column, and each row is read off
+/// it under its datatype - an ASCII width reads back trimmed, a nested struct
+/// crosses as a mapping - so nothing binding-side reinterprets storage. A
+/// requested dataclass is built from that mapping by
 /// `yggdryl._classes.from_dict`, one row at a time.
 #[pyclass(name = "RecordIterator", module = "yggdryl._native", unsendable)]
 pub(crate) struct PyRecordIterator {
@@ -3154,7 +3154,7 @@ pub(crate) struct PyRecordIterator {
     field: yggdryl::Field,
     from_dict: Option<(Py<PyAny>, Py<PyAny>)>,
     // The current batch's rows and the next one to hand out.
-    rows: yggdryl::Scalar,
+    rows: yggdryl::Serie,
     next: usize,
 }
 
@@ -3170,7 +3170,8 @@ impl PyRecordIterator {
 
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         loop {
-            if let Some(row) = self.rows.get(self.next) {
+            if self.next < self.rows.len() {
+                let row = self.rows.scalar(self.next).map_err(value_error)?;
                 self.next += 1;
                 let record = crate::scalar::as_py_with_field(py, &row, &self.field)?;
                 return match &self.from_dict {
@@ -3181,8 +3182,12 @@ impl PyRecordIterator {
             // The read and the lowering run without the GIL.
             let Some(rows) = py.detach(|| {
                 self.reader.next().map(|batch| {
-                    yggdryl::arrow::batch_to_value(&batch.map_err(value_error)?)
-                        .map_err(value_error)
+                    yggdryl::Serie::from_arrow_batch(
+                        None,
+                        &batch.map_err(value_error)?,
+                        yggdryl::ArrowCastOptions::new(),
+                    )
+                    .map_err(value_error)
                 })
             }) else {
                 return Ok(None);

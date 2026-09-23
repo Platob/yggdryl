@@ -2150,6 +2150,301 @@ mod write {
     }
 }
 
+mod record_columns {
+    //! `read_arrow` and `write_arrow` over the record encodings: a stream of
+    //! record columns in, and the same rows back out, under the stored
+    //! schema or a declared root.
+
+    use super::handle;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{
+        ArrowCastOptions, DataType, Field, IOMedia, IOMode, MediaType, MimeType, Scalar, Serie,
+        SerieReader, StructType,
+    };
+
+    /// The non-null record root the rows land under.
+    fn record(fields: impl IntoIterator<Item = Field>) -> Field {
+        StructType::from_fields(fields)
+            .map(DataType::from)
+            .expect("the root datatype is valid")
+            .required_field("row")
+    }
+
+    fn quote_root() -> Field {
+        record([
+            DataType::utf8().required_field("symbol"),
+            DataType::Int64.required_field("size"),
+        ])
+    }
+
+    fn quote_rows() -> Vec<Scalar> {
+        vec![
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100_i64)]),
+            Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(250_i64)]),
+        ]
+    }
+
+    /// The stream of one record column a write takes, over `rows`.
+    fn stream_of(root: &Field, rows: Vec<Scalar>) -> SerieReader {
+        let column = Serie::from_scalars(root.clone(), rows).expect("the rows materialize");
+        SerieReader::from_serie(column).expect("a record column is one stream")
+    }
+
+    fn quotes() -> SerieReader {
+        stream_of(&quote_root(), quote_rows())
+    }
+
+    /// Record options carrying the declared root a read lands under.
+    fn declaring(field: &Field) -> RecordOptions {
+        let mut options = RecordOptions::for_media_type(&MediaType::new(MimeType::ARROW_STREAM))
+            .expect("the IPC encoding is built in");
+        options.set_field(field.clone());
+        options
+    }
+
+    /// Every row a stream of record columns yields, as one sequence.
+    fn drained(reader: SerieReader) -> Scalar {
+        let columns = reader
+            .collect::<Result<Vec<Serie>, _>>()
+            .expect("every batch lands");
+        Scalar::from_sequence(columns.iter().flat_map(|column| column.rows().into_owned()))
+    }
+
+    /// The rows `name` holds after `quotes()` was written to it.
+    fn stored(name: &str) -> SerieReader {
+        let mut target = handle(name);
+        target
+            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .unwrap_or_else(|error| panic!("{name} writes: {error}"));
+        target
+            .read_arrow(None)
+            .unwrap_or_else(|error| panic!("{name} reads: {error}"))
+    }
+
+    fn nested_root() -> Field {
+        record([
+            StructType::from_fields([
+                DataType::utf8().required_field("mic"),
+                DataType::Int64.required_field("rank"),
+            ])
+            .map(DataType::from)
+            .expect("the child datatype is valid")
+            .required_field("venue"),
+            DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),
+            DataType::utf8().nullable_field("note"),
+            DataType::Decimal128 {
+                precision: 12,
+                scale: 2,
+            }
+            .required_field("price"),
+            DataType::date32().required_field("day"),
+        ])
+    }
+
+    fn nested_rows() -> Vec<Scalar> {
+        vec![
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("XPAR"), Scalar::from(1_i64)]),
+                Scalar::from_sequence([Scalar::from(100_i64), Scalar::from(250_i64)]),
+                Scalar::from("lit"),
+                Scalar::d128(12_550, 2),
+                Scalar::date32(19_876),
+            ]),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i64)]),
+                Scalar::from_sequence([]),
+                Scalar::Null,
+                Scalar::d128(1, 2),
+                Scalar::date32(0),
+            ]),
+        ]
+    }
+
+    #[test]
+    fn every_unconditional_record_encoding_round_trips_under_its_stored_schema() {
+        for name in ["quotes.arrows", "quotes.avro"] {
+            let read = stored(name);
+            // The root is the stored schema, stated before a batch is pulled.
+            assert_eq!(read.field(), &quote_root(), "{name}");
+            assert_eq!(drained(read), Scalar::from_sequence(quote_rows()), "{name}");
+        }
+    }
+
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn parquet_round_trips_the_same_rows_under_the_same_root() {
+        let read = stored("quotes.parquet");
+        assert_eq!(read.field(), &quote_root());
+        assert_eq!(drained(read), Scalar::from_sequence(quote_rows()));
+    }
+
+    #[test]
+    fn an_append_keeps_the_rows_a_record_encoding_already_holds() {
+        let mut target = handle("quotes.arrows");
+        target
+            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .expect("the rows write");
+        target
+            .write_arrow(quotes(), IOMode::Append, None)
+            .expect("the rows append");
+
+        let read = target.read_arrow(None).expect("the rows read");
+        assert_eq!(
+            drained(read),
+            Scalar::from_sequence([quote_rows(), quote_rows()].concat())
+        );
+    }
+
+    #[test]
+    fn a_declared_root_casts_the_rows_a_record_encoding_stored() {
+        let mut target = handle("quotes.arrows");
+        target
+            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .expect("the rows write");
+
+        let declared = record([
+            DataType::utf8().required_field("symbol"),
+            DataType::Decimal128 {
+                precision: 12,
+                scale: 4,
+            }
+            .required_field("size"),
+        ]);
+        let read = target
+            .read_arrow(Some(&declaring(&declared)))
+            .expect("the declared root casts the stored int64 column");
+
+        assert_eq!(read.field(), &declared);
+        assert_eq!(
+            drained(read),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::d128(1_000_000, 4)]),
+                Scalar::from_sequence([Scalar::from("MSFT"), Scalar::d128(2_500_000, 4)]),
+            ])
+        );
+    }
+
+    #[test]
+    fn one_plan_lands_every_batch_a_stored_stream_yields_under_the_declared_root() {
+        let batch = Serie::from_scalars(quote_root(), quote_rows())
+            .expect("the rows materialize")
+            .into_arrow_batch()
+            .expect("a record column is one table");
+        let stream = SerieReader::from_arrow_reader(
+            None,
+            yggdryl::arrow::batch_reader(batch.schema(), vec![batch; 3]),
+            ArrowCastOptions::default(),
+        )
+        .expect("the reader names its root");
+        let mut target = handle("stream.arrows");
+        target
+            .write_arrow(stream, IOMode::Overwrite, None)
+            .expect("the stream writes");
+
+        let declared = record([
+            DataType::utf8().required_field("symbol"),
+            DataType::Float64.required_field("size"),
+        ]);
+        let columns = target
+            .read_arrow(Some(&declaring(&declared)))
+            .expect("the plan compiles from the stored schema")
+            .collect::<Result<Vec<Serie>, _>>()
+            .expect("every batch lands");
+
+        // The plan is compiled once, so every batch - not only the first -
+        // lands under the declared root.
+        assert_eq!(columns.len(), 3);
+        for column in columns {
+            assert_eq!(column.field(), Some(&declared));
+            assert_eq!(
+                Scalar::from(column),
+                Scalar::from_sequence([
+                    Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100.0_f64)]),
+                    Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(250.0_f64)]),
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_table_round_trips_and_keeps_the_columns_it_declared() {
+        let empty = Serie::from_scalars(quote_root(), []).expect("no rows still materialize");
+        assert_eq!(empty.len(), 0);
+
+        let mut target = handle("empty.arrows");
+        target
+            .write_arrow(
+                SerieReader::from_serie(empty).expect("a record column is one stream"),
+                IOMode::Overwrite,
+                None,
+            )
+            .expect("the rows write");
+
+        let read = target.read_arrow(None).expect("the rows read");
+        // The schema is what an empty table carries, so it is the whole claim.
+        assert_eq!(read.field(), &quote_root());
+        assert_eq!(drained(read), Scalar::from_sequence([]));
+    }
+
+    #[test]
+    fn a_thousand_rows_survive_the_round_trip_in_order() {
+        let rows: Vec<Scalar> = (0..1_000_i64)
+            .map(|index| {
+                Scalar::from_sequence([Scalar::from(format!("S{index}")), Scalar::from(index)])
+            })
+            .collect();
+
+        let mut target = handle("wide.arrows");
+        target
+            .write_arrow(
+                stream_of(&quote_root(), rows.clone()),
+                IOMode::Overwrite,
+                None,
+            )
+            .expect("the rows write");
+
+        let read = target.read_arrow(None).expect("the rows read");
+        assert_eq!(drained(read), Scalar::from_sequence(rows));
+    }
+
+    #[test]
+    fn nested_children_keep_their_values_in_a_record_encoding() {
+        let mut target = handle("nested.arrows");
+        target
+            .write_arrow(
+                stream_of(&nested_root(), nested_rows()),
+                IOMode::Overwrite,
+                None,
+            )
+            .expect("the rows write");
+
+        let read = target
+            .read_arrow(Some(&declaring(&nested_root())))
+            .expect("the rows read");
+        assert_eq!(drained(read), Scalar::from_sequence(nested_rows()));
+    }
+
+    #[test]
+    fn a_record_encoding_names_every_nested_child_it_stored() {
+        let mut target = handle("nested.arrows");
+        target
+            .write_arrow(
+                stream_of(&nested_root(), nested_rows()),
+                IOMode::Overwrite,
+                None,
+            )
+            .expect("the rows write");
+
+        // Nothing is declared on the read: the struct child, the list item,
+        // the nullable column, the decimal, and the temporal all come back
+        // named and parameterized by the schema the write stored.
+        let read = target
+            .read_arrow(None)
+            .expect("the stored schema names the columns");
+        assert_eq!(read.field(), &nested_root());
+    }
+}
+
 mod shape {
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;

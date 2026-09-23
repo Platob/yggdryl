@@ -788,7 +788,7 @@ here is a whole day.
     let message = Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())
         .unwrap_err()
         .to_string();
-    assert!(message.contains("\"u\"") && message.contains("row 0"), "{message}");
+    assert!(message.contains("$[0].u"), "{message}");
 
     // A kernel moves the bytes; the field's rule still reads them.
     let day = Field::new("day", DataType::Date64, false);
@@ -813,7 +813,7 @@ here is a whole day.
         try:
             Serie.from_arrow_batch(labelled, claimed)
         except ValueError as error:
-            assert '"u"' in str(error) and "row 0" in str(error), error
+            assert "$[0].u" in str(error), error
         else:
             raise AssertionError("a label proves nothing")
 
@@ -842,7 +842,7 @@ here is a whole day.
     const labelled = new arrow.Table(new arrow.Schema([url]), plain.batches)
     const root = Field.from('row: struct<u: url> not null')
     for (const claimed of [root, undefined]) {
-      assert.throws(() => Serie.fromArrowBatch(labelled, claimed), /column "u" row 0/)
+      assert.throws(() => Serie.fromArrowBatch(labelled, claimed), /\$\[0\]\.u/)
     }
 
     // A kernel moves the bytes; the field's rule still reads them.

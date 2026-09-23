@@ -150,7 +150,7 @@ impl UnionSerie {
         let (type_id, member) = self.members().get(position).expect(ALIGNED);
         let sparse = matches!(self.mode(), UnionMode::Sparse);
         let placeholder = (sparse && rows.iter().any(|row| branch(row).0 != type_id))
-            .then(|| crate::arrow::value::physical_placeholder_for_field(member))
+            .then(|| crate::serie::value::physical_placeholder_for_field(member))
             .transpose()?;
         Ok(rows
             .iter()
@@ -204,7 +204,7 @@ impl UnionSerie {
     /// crate's one scalar-array boundary.
     fn laid_out(&self, rows: &[Scalar]) -> ArrayRef {
         let borrowed: Vec<&Scalar> = rows.iter().collect();
-        crate::arrow::value::array_from_values(&self.field, &borrowed).expect(CHECKED)
+        crate::serie::value::array_of_rows(&self.field, &borrowed).expect(CHECKED)
     }
 
     /// Take `joined` - this column's storage - as this column, through the
@@ -472,16 +472,25 @@ fn reached(
     type_ids: &ScalarBuffer<i8>,
     offsets: Option<&ScalarBuffer<i32>>,
     len: usize,
+    parent: Option<&NullBuffer>,
 ) -> NullBuffer {
+    // A row the record above leaves absent selects nothing: Arrow leaves
+    // its slot unspecified, so the member it names is not reached there.
+    let present = |row: usize| {
+        parent.is_none_or(|above| above.len() != type_ids.len() || above.is_valid(row))
+    };
     let Some(offsets) = offsets else {
         return NullBuffer::new(BooleanBuffer::from_iter(
-            type_ids.iter().map(|id| *id == type_id),
+            type_ids
+                .iter()
+                .enumerate()
+                .map(|(row, id)| *id == type_id && present(row)),
         ));
     };
     let mut bits = BooleanBufferBuilder::new(len);
     bits.append_n(len, false);
-    for (id, offset) in type_ids.iter().zip(offsets.iter()) {
-        if *id != type_id {
+    for (row, (id, offset)) in type_ids.iter().zip(offsets.iter()).enumerate() {
+        if *id != type_id || !present(row) {
             continue;
         }
         if let Some(at) = usize::try_from(*offset).ok().filter(|at| *at < len) {
@@ -495,15 +504,15 @@ fn reached(
 /// for a layout that is not one.
 ///
 /// Each member takes the door with its own field and the rows the type ids
-/// reach as its parent, so a required member is judged only where a row is
-/// its, and an inactive slot's placeholder is never read.
+/// reach as its parent - rows a record above leaves absent reach none - so
+/// a required member is judged only where a present row is its, and an
+/// inactive slot's placeholder is never read.
 pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Union(..)) {
         return Ok(None);
     }
@@ -518,8 +527,8 @@ pub(crate) fn column_of(
         .zip(arrays)
         .enumerate()
         .map(|(index, ((type_id, member), child))| {
-            let reached = reached(type_id, &type_ids, offsets.as_ref(), child.len());
-            super::arrow::column_of(
+            let reached = reached(type_id, &type_ids, offsets.as_ref(), child.len(), parent);
+            super::arrow::child_of(
                 Arc::new(member.clone()),
                 child,
                 Some(&reached),

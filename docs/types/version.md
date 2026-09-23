@@ -263,7 +263,7 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
     const stored = Serie.fromArrowArray(text, release, { safe: false })
     assert.deepEqual(Array.from(stored.intoArrowArray()), ['5.0.1'])
     // A scalar crosses as the canonical spelling its column stores.
-    assert.equal(fields.version('release').dtype.scalar('5.0.300').intoArrowScalar(release), '5.0.300')
+    assert.equal(Serie.fromScalars(release, ['5.0.300']).intoArrowScalar(), '5.0.300')
     ```
 
 ## Numeric order, not lexicographic

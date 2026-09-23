@@ -776,7 +776,11 @@ impl PartitionTransform {
         source: &arrow_array::ArrayRef,
     ) -> Result<Option<arrow_array::ArrayRef>> {
         use arrow_array::cast::AsArray;
-        use arrow_array::types::Int64Type;
+        use arrow_array::types::{
+            Int64Type, TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
+            TimestampSecondType,
+        };
+        use arrow_schema::TimeUnit as ArrowTimeUnit;
 
         let (seconds, unit) = match (self.transform, source.data_type()) {
             (Transform::Void, _) => return Ok(None),
@@ -789,13 +793,21 @@ impl PartitionTransform {
         };
         let step = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit)).unwrap_or(1)
             * seconds;
-        // A timestamp is its count, so the reinterpretation copies nothing;
+        // A timestamp is its count, read straight off its values buffer;
         // flooring keeps an instant before the epoch in its own period.
-        let counts =
-            arrow_cast::cast(source, &arrow_schema::DataType::Int64).map_err(Error::Arrow)?;
-        let keys: arrow_array::Int64Array = counts
-            .as_primitive::<Int64Type>()
-            .unary(|count| count.div_euclid(step));
+        macro_rules! floored {
+            ($unit:ty) => {
+                source
+                    .as_primitive::<$unit>()
+                    .unary::<_, Int64Type>(|count| count.div_euclid(step))
+            };
+        }
+        let keys: arrow_array::Int64Array = match unit {
+            ArrowTimeUnit::Second => floored!(TimestampSecondType),
+            ArrowTimeUnit::Millisecond => floored!(TimestampMillisecondType),
+            ArrowTimeUnit::Microsecond => floored!(TimestampMicrosecondType),
+            ArrowTimeUnit::Nanosecond => floored!(TimestampNanosecondType),
+        };
         Ok(Some(std::sync::Arc::new(keys)))
     }
 

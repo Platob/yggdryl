@@ -135,7 +135,6 @@ pub mod zstd;
 pub use crate::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
-pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
 pub use charset::Charset;
@@ -386,6 +385,7 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
+    pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;

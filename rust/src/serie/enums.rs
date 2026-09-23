@@ -386,13 +386,13 @@ pub(crate) fn column_of(
         DataType::UInt64 => parts!(UInt64Type),
         _ => return Err(internal()),
     };
-    let keys = super::arrow::column_of(
+    let keys = super::arrow::child_of(
         Arc::new(Field::new(field.name(), dictionary.key().clone(), true)),
         keys,
         None,
         &super::arrow::Proof::Proven,
     )?;
-    let values = super::arrow::column_of(
+    let values = super::arrow::child_of(
         Arc::new(Field::new(field.name(), dictionary.value().clone(), true)),
         values,
         None,

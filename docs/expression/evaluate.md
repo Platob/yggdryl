@@ -9,9 +9,9 @@ Application over every target: the streamed Arrow tier, native records, the boun
 | Owns | the Arrow tier, `apply_arrow_reader` / `apply_arrow_batch` / `apply_arrow_array` on every layer, `apply_records`, `Bound::evaluate` / `filter` / `filter_reader`, `Bound::statistics_prune` / `statistics_certainty` over `Bounds`, `Table::plan_matching` / `scan_matching` |
 | Reader first | `apply_arrow_reader` binds once and wraps the stream; `apply_arrow_batch` is one batch through that same reader, so nothing is collected and one batch returned unchanged is the caller's own |
 | Arrow tier | An optimization of the row tier, never a second definition; a property test asserts equality on every operator, nulls and `nan` included |
-| Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else runs the row evaluator and gathers, which is slower |
+| Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else lands each column the node reads once as a [`Serie`](../types/serie.md), runs the row evaluator over its rows and lays the answers out as one column, which is slower |
 | Zero-copy | A mask keeping every row hands back the input batch; a projection of bare columns reorders `ArrayRef`s and touches no buffer; `select *` and a same-type cast are skipped at bind |
-| Records | `apply_records(schema, rows)` binds once against `schema`, or the first record's own datatype, and streams canonical rows; `Records::into_arrow_reader` batches them, `from_arrow_reader` reads them back |
+| Records | `apply_records(schema, rows)` binds once against `schema`, or the first record's own datatype, and streams canonical rows; `Records::into_arrow_reader` batches them, `from_arrow_reader` reads them back one landed batch at a time, through a `SerieReader` |
 | Parameters | Rust `bind_with(&field, &[(name, Scalar)])`; Python `bind(field, parameters=None)`; JavaScript `bind(fieldLike, parameters?)` takes a `Scalar` record or a plain object; one core binder |
 | Order | `order by` is the one section that collects; `offset` and `limit` slice views without copying |
 | Bindings | every application in all three; `Bounds` statistics in Rust and Python |

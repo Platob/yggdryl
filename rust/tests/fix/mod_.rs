@@ -5275,9 +5275,10 @@ mod capture {
 
     /// One column of one batch, by position.
     fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
-        let held = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
-        held.as_sequence()
-            .expect("rows")
+        let held =
+            yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::default())
+                .expect("the batch reads");
+        held.rows()
             .iter()
             .map(|row| {
                 row.as_sequence()
@@ -5631,7 +5632,11 @@ mod capture {
                 ])
             },
         ));
-        let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
+        let rows = value.as_sequence().expect("a run of rows").to_vec();
+        let source = yggdryl::Serie::from_scalars(field, rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
         let batch = codec
             .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
             .expect("the batch door opens")

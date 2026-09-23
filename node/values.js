@@ -89,14 +89,6 @@ function arrowTableFromIPC(input, label = 'Arrow table') {
   }
 }
 
-function arrowScalarIntoIPC(value) {
-  const runtime = arrow()
-  if (!runtime.isArrowVector(value) || value.length !== 1) {
-    throw new TypeError('Scalar.fromArrowScalar expects a one-item Arrow Vector')
-  }
-  return arrowVectorIntoIPC(value, 'Scalar.fromArrowScalar input')
-}
-
 function arrowVectorIntoIPC(value, label = 'Arrow array input') {
   const runtime = arrow()
   if (!runtime.isArrowVector(value)) {
@@ -126,8 +118,6 @@ module.exports = {
   arrowBatchFromIPC,
   arrowBatchIntoIPC,
   arrowScalarFromIPC,
-  arrowScalarIntoIPC,
-  arrowTableFromIPC,
   arrowTableIntoIPC,
   arrowVectorFromIPC,
   arrowVectorIntoIPC,

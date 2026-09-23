@@ -115,23 +115,9 @@ impl Iterator for ValueStream {
         }
         match frame {
             Frame::Name(name) => write_name(&mut chunk, &name),
-            // An Arrow-held value is the native value it holds, made here
-            // so its children are the stream's own frames.
-            Frame::Value(Scalar::Arrow(_)) => match frame_value(&frame).into_native() {
-                Ok(native) => self.push_children(&native, &mut chunk),
-                Err(_) => chunk.push(DataTypeId::Null.as_u8()),
-            },
             Frame::Value(value) => self.push_children(&value, &mut chunk),
         }
         Some(chunk)
-    }
-}
-
-/// The value one frame holds.
-fn frame_value(frame: &Frame) -> &Scalar {
-    match frame {
-        Frame::Value(value) => value,
-        Frame::Name(_) => unreachable!("a name frame holds no value"),
     }
 }
 
@@ -168,12 +154,6 @@ fn encode_whole(root: &Scalar, out: &mut Vec<u8>) {
     while let Some(frame) = pending.pop() {
         match frame {
             Child::Name(name) => write_name(out, name),
-            // An Arrow-held value is the native value it holds: made here,
-            // and encoded whole while it is in hand.
-            Child::Value(value @ Scalar::Arrow(_)) => match value.into_native() {
-                Ok(native) => encode_whole(&native, out),
-                Err(_) => out.push(DataTypeId::Null.as_u8()),
-            },
             Child::Value(value) => {
                 children.clear();
                 encode(value, out, &mut children);
@@ -240,10 +220,9 @@ fn write_clock(chunk: &mut Vec<u8>, id: DataTypeId, unit: TimeUnit, zone: Option
 /// Appends one value's own bytes to `chunk`, and answers the children a
 /// nested value has in order - a list's values, a map's key then value per
 /// entry, a struct's name then value per entry - for the caller to write
-/// after it. An Arrow-held value is the caller's to make native first.
+/// after it.
 fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec<Child<'value>>) {
     match value {
-        Scalar::Arrow(_) => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Null => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Boolean(held) => {
             chunk.push(DataTypeId::Boolean.as_u8());

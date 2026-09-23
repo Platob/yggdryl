@@ -12,12 +12,16 @@
 //!
 //! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
 //! native `BatchReader`, every batch cast by the one plan the core compiled
-//! when the reader was built.
+//! when the reader was built, or the one record serie a held column is.
 
 use std::borrow::Cow;
+use std::io::Cursor;
 use std::ops::Range;
+use std::sync::Arc;
 
-use arrow_array::RecordBatch;
+use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
+use arrow_ipc::reader::StreamReader;
+use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Generator, Result, Uint8Array};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
@@ -27,11 +31,10 @@ use yggdryl::{
 
 use crate::datatype::JsDataType;
 use crate::field::JsField;
-use crate::iomedia::JsBatchReader;
+use crate::iomedia::{JsBatchReader, encoded};
 use crate::napi_error;
 use crate::text::codec::{
-    JsScalar, arrow_array_ipc, arrow_batches, checked_depth, ensure_one_column, value_to_transport,
-    value_to_transport_with_field,
+    JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
@@ -96,6 +99,35 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
     values.iter().map(|value| (*value).into() as f64).collect()
 }
 
+/// The schema and batches of one Arrow IPC stream; an empty stream names no
+/// schema and is refused.
+fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+    if bytes.is_empty() {
+        return Err(napi_error("Arrow IPC input is empty and has no schema"));
+    }
+    let mut reader =
+        StreamReader::try_new(Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+    let schema = reader.schema();
+    let batches = reader
+        .by_ref()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(napi_error)?;
+    Ok((schema, batches))
+}
+
+/// One column under `field` as the one-column Arrow IPC stream Arrow JS
+/// reads a vector from.
+fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
+    let schema = Arc::new(Schema::new([field
+        .clone()
+        .into_arrow_field_ref()
+        .map_err(napi_error)?]));
+    let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
+    let batch =
+        RecordBatch::try_new_with_options(schema, vec![array], &options).map_err(napi_error)?;
+    encoded(&batch.schema(), std::slice::from_ref(&batch))
+}
+
 /// The column a one-column Arrow IPC stream holds, through the core array
 /// door: of its own layout under the `item` field the core names an array
 /// by, or cast into `field` under `options`.
@@ -104,28 +136,32 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
 /// nothing is cast there - and its one child's buffers take the array door
 /// once: one plan however many batches the vector crossed as. The IPC
 /// column's own name and nullability are the bridge's, never the caller's.
-pub(crate) fn column_from_ipc(
+fn column_from_ipc(
     bytes: &[u8],
-    label: &str,
     field: Option<&CoreField>,
     options: ArrowCastOptions,
 ) -> Result<Serie> {
     let (schema, batches) = arrow_batches(bytes)?;
-    ensure_one_column(&schema, label)?;
+    if schema.fields().len() != 1 {
+        return Err(napi_error(format!(
+            "Serie IPC must contain exactly one column, got {}",
+            schema.fields().len()
+        )));
+    }
     let reader = yggdryl::arrow::batch_reader(schema, batches);
     let records =
         Serie::from_arrow_reader(None, reader, ArrowCastOptions::new()).map_err(napi_error)?;
     let column = records
         .as_struct()
         .and_then(|records| records.child_at(0))
-        .ok_or_else(|| napi_error(format!("{label} IPC has no value column")))?;
+        .ok_or_else(|| napi_error("Serie IPC has no value column"))?;
     let array = column.require_arrow_array().map_err(napi_error)?;
     Serie::from_arrow_array(field, array, options).map_err(napi_error)
 }
 
 /// The record column an Arrow IPC stream's batches hold: of its own schema,
 /// or cast into `root` under `options`.
-pub(crate) fn records_from_ipc(
+fn records_from_ipc(
     bytes: &[u8],
     root: Option<&CoreField>,
     options: ArrowCastOptions,
@@ -190,13 +226,8 @@ impl JsSerie {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
-        column_from_ipc(
-            &bytes,
-            "Serie",
-            field.as_ref().map(|field| &field.inner),
-            options,
-        )
-        .map(Self::from_core)
+        column_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
+            .map(Self::from_core)
     }
 
     /// Decode one Arrow JS record batch or table as a record column, cast
@@ -796,7 +827,8 @@ impl JsSerie {
 }
 
 /// One record serie per batch of a native `BatchReader`, each cast by the
-/// one plan the core compiled from the stream's schema.
+/// one plan the core compiled from the stream's schema, or the one record
+/// serie a held column is.
 ///
 /// The reader is a stream, read once: iterating it and `intoArrowReader`
 /// both consume it, and a batch's failure surfaces at the pull that read it.
@@ -814,6 +846,17 @@ pub struct JsSerieReader {
 /// The refusal a second consumer of one stream reads.
 fn serie_reader_consumed() -> napi::Error {
     napi_error("this SerieReader has already been consumed; a stream is read once")
+}
+
+impl JsSerieReader {
+    /// Wrap one undrained core reader, keeping the root it names.
+    fn from_core(inner: SerieReader) -> Self {
+        Self {
+            root: inner.field().clone(),
+            inner: Some(inner),
+            taken: false,
+        }
+    }
 }
 
 #[napi]
@@ -835,11 +878,18 @@ impl JsSerieReader {
             options,
         )
         .map_err(napi_error)?;
-        Ok(Self {
-            root: inner.field().clone(),
-            inner: Some(inner),
-            taken: false,
-        })
+        Ok(Self::from_core(inner))
+    }
+
+    /// Read one held column as a stream of one record serie: a record column
+    /// as it stands, any other column as the one child of a record named
+    /// `row`. Nothing is cast or copied; a run, and a record column holding
+    /// an absent row, are refused.
+    #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
+    pub fn from_serie(serie: &JsSerie) -> Result<Self> {
+        SerieReader::from_serie(serie.inner.clone())
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// The record every yielded serie is typed by.

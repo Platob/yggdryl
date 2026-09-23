@@ -739,7 +739,7 @@ mod value {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use smol_str::SmolStr;
 
-    use crate::scalar::text_scalar_value;
+    use crate::scalar::text_leaf_value;
     use crate::value::Value;
     use crate::{DataType, Error, Result, Scalar, hashing::stable_hash_display};
 
@@ -1291,7 +1291,7 @@ mod value {
         }
     }
 
-    text_scalar_value!(Timezone, Timezone, DataTypeId::Timezone, DataType::Timezone);
+    text_leaf_value!(Timezone, Timezone, DataTypeId::Timezone, DataType::Timezone);
 }
 
 /// The Arrow extension name preserving [`crate::DataType::Timezone`] over its

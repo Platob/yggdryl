@@ -41,6 +41,7 @@ use arrow_buffer::{ArrowNativeType, Buffer, MutableBuffer, NullBuffer, OffsetBuf
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
+use crate::serie::value::RunReading;
 use crate::value::SerieValue;
 use crate::{DataType, DataTypeKind, Field, Result, Scalar};
 
@@ -128,7 +129,7 @@ pub(crate) fn is_text(dtype: &DataType) -> bool {
 /// surfaces by name.
 fn lay_out<A: Array + Clone + 'static>(field: &Field, rows: &[Scalar]) -> Result<A> {
     let borrowed: Vec<&Scalar> = rows.iter().collect();
-    let array = crate::arrow::value::array_from_values(field, &borrowed)?;
+    let array = crate::serie::value::array_of_rows(field, &borrowed)?;
     Ok(array.as_any().downcast_ref::<A>().cloned().expect(LAID_OUT))
 }
 
@@ -281,15 +282,24 @@ pub(crate) fn splice_run<T: ByteArrayType>(
 pub struct ByteSerie<T: ByteArrayType, K: ByteKind> {
     field: Arc<Field>,
     values: GenericByteArray<T>,
+    /// How a run reads as the field's value, resolved from the field once
+    /// where the column landed.
+    reading: RunReading<T::Native>,
     kind: PhantomData<K>,
 }
 
 impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
-    /// Pair a field with the buffers that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, values: GenericByteArray<T>) -> Self {
+    /// Pair a field with the buffers that hold its rows and the reading its
+    /// datatype resolved to.
+    pub(crate) const fn new(
+        field: Arc<Field>,
+        values: GenericByteArray<T>,
+        reading: RunReading<T::Native>,
+    ) -> Self {
         Self {
             field,
             values,
+            reading,
             kind: PhantomData,
         }
     }
@@ -392,11 +402,10 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(crate::arrow::value::value_from_array(
-            self.field.dtype(),
-            &self.values,
-            index,
-        )?)
+        match self.value(index) {
+            Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
+            None => Ok(Scalar::Null),
+        }
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -404,6 +413,7 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
         Ok(Self::new(
             Arc::clone(&self.field),
             self.values.slice(offset, length),
+            self.reading,
         ))
     }
 
@@ -433,7 +443,7 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
 
 impl<T: ByteArrayType, K: ByteKind> Clone for ByteSerie<T, K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone())
+        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
     }
 }
 
@@ -486,15 +496,24 @@ byte_leaf!(
 pub struct ByteViewSerie<T: ByteViewType, K: ByteKind> {
     field: Arc<Field>,
     values: GenericByteViewArray<T>,
+    /// How a run reads as the field's value, resolved from the field once
+    /// where the column landed.
+    reading: RunReading<T::Native>,
     kind: PhantomData<K>,
 }
 
 impl<T: ByteViewType, K: ByteKind> ByteViewSerie<T, K> {
-    /// Pair a field with the buffers that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, values: GenericByteViewArray<T>) -> Self {
+    /// Pair a field with the buffers that hold its rows and the reading its
+    /// datatype resolved to.
+    pub(crate) const fn new(
+        field: Arc<Field>,
+        values: GenericByteViewArray<T>,
+        reading: RunReading<T::Native>,
+    ) -> Self {
         Self {
             field,
             values,
+            reading,
             kind: PhantomData,
         }
     }
@@ -592,11 +611,10 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(crate::arrow::value::value_from_array(
-            self.field.dtype(),
-            &self.values,
-            index,
-        )?)
+        match self.value(index) {
+            Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
+            None => Ok(Scalar::Null),
+        }
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -604,6 +622,7 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
         Ok(Self::new(
             Arc::clone(&self.field),
             self.values.slice(offset, length),
+            self.reading,
         ))
     }
 
@@ -633,7 +652,7 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
 
 impl<T: ByteViewType, K: ByteKind> Clone for ByteViewSerie<T, K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone())
+        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
     }
 }
 
@@ -684,15 +703,24 @@ view_leaf!(
 pub struct FixedSerie<K: ByteKind> {
     field: Arc<Field>,
     values: FixedSizeBinaryArray,
+    /// How a slot reads as the field's value, resolved from the field once
+    /// where the column landed.
+    reading: RunReading<[u8]>,
     kind: PhantomData<K>,
 }
 
 impl<K: ByteKind> FixedSerie<K> {
-    /// Pair a field with the buffer that holds its rows.
-    pub(crate) const fn new(field: Arc<Field>, values: FixedSizeBinaryArray) -> Self {
+    /// Pair a field with the buffer that holds its rows and the reading its
+    /// datatype resolved to.
+    pub(crate) const fn new(
+        field: Arc<Field>,
+        values: FixedSizeBinaryArray,
+        reading: RunReading<[u8]>,
+    ) -> Self {
         Self {
             field,
             values,
+            reading,
             kind: PhantomData,
         }
     }
@@ -835,11 +863,10 @@ where
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(crate::arrow::value::value_from_array(
-            self.field.dtype(),
-            &self.values,
-            index,
-        )?)
+        match self.value(index) {
+            Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
+            None => Ok(Scalar::Null),
+        }
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -847,6 +874,7 @@ where
         Ok(Self::new(
             Arc::clone(&self.field),
             self.values.slice(offset, length),
+            self.reading,
         ))
     }
 
@@ -876,7 +904,7 @@ where
 
 impl<K: ByteKind> Clone for FixedSerie<K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone())
+        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
     }
 }
 
@@ -918,6 +946,41 @@ fixed_leaf!(
     FixedBytesSerie, Octets
 );
 
+impl crate::StringSerie {
+    /// Borrow row `index`'s bytes where they lie - in the payload an offset
+    /// run points into, in a view's buffer, or in a fixed slot - with no
+    /// value built: `None` where the row is absent or past the end.
+    ///
+    /// The bytes are the storage as it stands: text in the charset its field
+    /// declares, and a fixed slot with its padding. [`SerieValue::scalar`]
+    /// is the reading that decodes them.
+    pub fn value_bytes(&self, index: usize) -> Option<&[u8]> {
+        match self {
+            Self::Utf8(column) => column.value(index).map(str::as_bytes),
+            Self::LargeUtf8(column) => column.value(index).map(str::as_bytes),
+            Self::Utf8View(column) => column.value(index).map(str::as_bytes),
+            Self::Binary(column) => column.value(index),
+            Self::LargeBinary(column) => column.value(index),
+            Self::BinaryView(column) => column.value(index),
+            Self::Fixed(column) => column.value(index),
+        }
+    }
+}
+
+impl crate::BytesSerie {
+    /// Borrow row `index`'s bytes where they lie - in the payload an offset
+    /// run points into, in a view's buffer, or in a fixed slot - with no
+    /// value built: `None` where the row is absent or past the end.
+    pub fn value_bytes(&self, index: usize) -> Option<&[u8]> {
+        match self {
+            Self::Binary(column) => column.value(index),
+            Self::LargeBinary(column) => column.value(index),
+            Self::BinaryView(column) => column.value(index),
+            Self::Fixed(column) => column.value(index),
+        }
+    }
+}
+
 /// Build the column `field` types out of a byte-run array, or answer `None`
 /// for a layout that is not one.
 ///
@@ -935,51 +998,60 @@ pub(crate) fn column_of(
         BinaryStringSerie, BinaryViewStringSerie, FixedStringSerie, LargeBinaryStringSerie,
         LargeUtf8StringSerie, Utf8StringSerie, Utf8ViewStringSerie,
     };
+    use crate::serie::value::{binary_reading, text_reading};
 
     let _ = (parent, proof);
     let text = is_text(field.dtype());
+    // The layout is the array's; the reading is the field's, resolved here
+    // once so a cell read is one run borrowed and one constructor.
+    let dtype = field.dtype();
     Ok(Some(match array.data_type() {
         ArrowDataType::Utf8 => {
-            Utf8StringSerie::new(field, held::<GenericByteArray<Utf8Type>>(&array)?).into_serie()
+            let runs = held::<GenericByteArray<Utf8Type>>(&array)?;
+            Utf8StringSerie::new(Arc::clone(&field), runs, text_reading(dtype)?).into_serie()
         }
         ArrowDataType::LargeUtf8 => {
-            LargeUtf8StringSerie::new(field, held::<GenericByteArray<LargeUtf8Type>>(&array)?)
-                .into_serie()
+            let runs = held::<GenericByteArray<LargeUtf8Type>>(&array)?;
+            LargeUtf8StringSerie::new(Arc::clone(&field), runs, text_reading(dtype)?).into_serie()
         }
         ArrowDataType::Utf8View => {
-            Utf8ViewStringSerie::new(field, held::<GenericByteViewArray<StringViewType>>(&array)?)
-                .into_serie()
+            let runs = held::<GenericByteViewArray<StringViewType>>(&array)?;
+            Utf8ViewStringSerie::new(Arc::clone(&field), runs, text_reading(dtype)?).into_serie()
         }
         ArrowDataType::Binary => {
             let runs = held::<GenericByteArray<BinaryType>>(&array)?;
+            let reading = binary_reading(dtype)?;
             if text {
-                BinaryStringSerie::new(field, runs).into_serie()
+                BinaryStringSerie::new(Arc::clone(&field), runs, reading).into_serie()
             } else {
-                BinarySerie::new(field, runs).into_serie()
+                BinarySerie::new(Arc::clone(&field), runs, reading).into_serie()
             }
         }
         ArrowDataType::LargeBinary => {
             let runs = held::<GenericByteArray<LargeBinaryType>>(&array)?;
+            let reading = binary_reading(dtype)?;
             if text {
-                LargeBinaryStringSerie::new(field, runs).into_serie()
+                LargeBinaryStringSerie::new(Arc::clone(&field), runs, reading).into_serie()
             } else {
-                LargeBinarySerie::new(field, runs).into_serie()
+                LargeBinarySerie::new(Arc::clone(&field), runs, reading).into_serie()
             }
         }
         ArrowDataType::BinaryView => {
             let runs = held::<GenericByteViewArray<BinaryViewType>>(&array)?;
+            let reading = binary_reading(dtype)?;
             if text {
-                BinaryViewStringSerie::new(field, runs).into_serie()
+                BinaryViewStringSerie::new(Arc::clone(&field), runs, reading).into_serie()
             } else {
-                BinaryViewSerie::new(field, runs).into_serie()
+                BinaryViewSerie::new(Arc::clone(&field), runs, reading).into_serie()
             }
         }
         ArrowDataType::FixedSizeBinary(_) => {
             let runs = held::<FixedSizeBinaryArray>(&array)?;
+            let reading = binary_reading(dtype)?;
             if text {
-                FixedStringSerie::new(field, runs).into_serie()
+                FixedStringSerie::new(Arc::clone(&field), runs, reading).into_serie()
             } else {
-                FixedBytesSerie::new(field, runs).into_serie()
+                FixedBytesSerie::new(Arc::clone(&field), runs, reading).into_serie()
             }
         }
         _ => return Ok(None),

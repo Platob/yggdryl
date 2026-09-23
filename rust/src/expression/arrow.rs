@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use arrow_array::{
     Array, ArrayRef, BooleanArray, Datum, FixedSizeListArray, LargeListArray, ListArray,
-    RecordBatch, RecordBatchOptions, RecordBatchReader, Scalar as ArrowScalar, StructArray,
+    RecordBatch, RecordBatchOptions, RecordBatchReader, Scalar as ArrowDatum, StructArray,
     UInt32Array, UInt64Array,
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, OffsetBuffer};
@@ -47,10 +47,10 @@ use super::bind::{Bound, Kind, Node, StepKind};
 use super::eval::{Row, keep_elements};
 use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
-use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
-use crate::{Field, Scalar};
+use crate::serie::{Proof, land};
+use crate::{Field, Scalar, Serie};
 
 /// One evaluated operand: a full column, or one value standing for every row.
 ///
@@ -69,7 +69,7 @@ impl Vector {
     fn datum(&self) -> Box<dyn Datum + '_> {
         match self {
             Self::Column(array) => Box::new(array.clone()),
-            Self::Constant(array) => Box::new(ArrowScalar::new(array.clone())),
+            Self::Constant(array) => Box::new(ArrowDatum::new(array.clone())),
         }
     }
 
@@ -491,7 +491,8 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
     // is answered once and pinned.
     if !node.reads_rows() {
         let value = node.eval(&Row::new(None))?;
-        return Ok(Vector::Constant(array_from_values(&node.field, &[&value])?));
+        let pinned = Serie::from_scalars(node.field.clone(), [value])?;
+        return Ok(Vector::Constant(pinned.require_arrow_array()?));
     }
     match &node.kind {
         Kind::Column(index) => Ok(Vector::Column(context.column(*index)?)),
@@ -585,18 +586,26 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
         Kind::Function(super::Function::User(reference), arguments) => {
             let rows = context.batch.num_rows();
             let registered = super::user::lookup_function(reference)?;
-            let mut fields = Vec::with_capacity(arguments.len());
             let mut columns = Vec::with_capacity(arguments.len());
             for argument in arguments {
-                fields.push(argument.field.clone());
-                columns.push(evaluate(argument, context)?.into_column(rows)?);
+                // An evaluated vector lays out as its node's field, so it
+                // lands as that column with no plan to compile per batch.
+                let array = evaluate(argument, context)?.into_column(rows)?;
+                columns.push(crate::serie::land(
+                    Arc::new(argument.field.clone()),
+                    array,
+                    &crate::serie::Proof::Unproven,
+                )?);
             }
-            Ok(Vector::Column(registered.call_arrow(
-                &fields,
-                &columns,
-                rows,
-                &node.field,
-            )?))
+            let answered = registered.call_arrow(&columns, rows, &node.field)?;
+            let answered = answered.cast(&node.field, ArrowCastOptions::default())?;
+            if answered.len() != rows {
+                return Err(Error::IncompatibleSchema(format!(
+                    "user function {reference} answered {} rows for a batch of {rows}",
+                    answered.len()
+                )));
+            }
+            Ok(Vector::Column(answered.require_arrow_array()?))
         }
         // Arithmetic, the string functions, and the constructors have no
         // kernel available here, so they take the row evaluator. It is the
@@ -660,15 +669,14 @@ fn segment_array(
         FieldSegment::Field(_) | FieldSegment::Key(_) | FieldSegment::Where(_) => {}
     }
     // No kernel: a map key, a dictionary-encoded container, a list layout
-    // without offsets. The row walk answers, gathered into a column.
-    let rows = array.len();
-    let mut values = Vec::with_capacity(rows);
-    for row in 0..rows {
-        let value = value_from_array(field.dtype(), array.as_ref(), row)?;
-        values.push(segment.apply_scalar(field, &value)?);
+    // without offsets. The row walk answers over the column landed once,
+    // gathered into a column.
+    let column = land(Arc::new(field.clone()), Arc::clone(array), &Proof::Unproven)?;
+    let mut values = Vec::with_capacity(column.len());
+    for row in 0..column.len() {
+        values.push(segment.apply_scalar(field, &column.scalar(row)?)?);
     }
-    let borrowed: Vec<&Scalar> = values.iter().collect();
-    array_from_values(reached, &borrowed)
+    Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?)
 }
 
 /// The elements of every list a predicate keeps, as one list column.
@@ -693,13 +701,12 @@ fn kept_elements(
     })?;
     let rows = array.len();
     let Some(layout) = offsets(array) else {
+        let column = land(Arc::new(field.clone()), Arc::clone(array), &Proof::Unproven)?;
         let mut values = Vec::with_capacity(rows);
         for row in 0..rows {
-            let value = value_from_array(field.dtype(), array.as_ref(), row)?;
-            values.push(keep_elements(element, predicate, &value)?);
+            values.push(keep_elements(element, predicate, &column.scalar(row)?)?);
         }
-        let borrowed: Vec<&Scalar> = values.iter().collect();
-        return array_from_values(reached, &borrowed);
+        return Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?);
     };
     // Only the run of flattened elements the rows cover is asked about: a
     // sliced batch shares its child array with the rows around it.
@@ -989,20 +996,27 @@ fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
     let rows = context.batch.num_rows();
     let indices = node.column_indices();
     let mut row = vec![Scalar::Null; context.schema.field_len()];
+    // Each column the node reads lands once, and a row reads each cell
+    // through its leaf.
     let mut columns = Vec::with_capacity(indices.len());
     for index in &indices {
         let field = context.schema.get_field(*index).ok_or_else(|| {
             Error::IncompatibleSchema(format!("expected the schema to carry column {index}"))
         })?;
-        columns.push((*index, field.dtype().clone(), context.column(*index)?));
+        let column = land(
+            Arc::new(field.clone()),
+            context.column(*index)?,
+            &Proof::Unproven,
+        )?;
+        columns.push((*index, column));
     }
     let mut answers = Vec::with_capacity(rows);
     for position in 0..rows {
-        for (index, dtype, array) in &columns {
-            row[*index] = value_from_array(dtype, array.as_ref(), position)?;
+        for (index, column) in &columns {
+            row[*index] = column.scalar(position)?;
         }
         answers.push(node.eval(&Row::new(Some(&row)))?);
     }
-    let borrowed: Vec<&Scalar> = answers.iter().collect();
-    Ok(Vector::Column(array_from_values(&node.field, &borrowed)?))
+    let answered = Serie::from_scalars(node.field.clone(), answers)?;
+    Ok(Vector::Column(answered.require_arrow_array()?))
 }

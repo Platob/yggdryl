@@ -40,6 +40,13 @@ for (const serie of series) {
   void landed
 }
 const stream: BatchReader = series.intoArrowReader()
+// A held column is a stream of the one record serie it is.
+const held: SerieReader = SerieReader.fromSerie(records)
+
+// @ts-expect-error a held stream takes a Serie, not an Arrow table
+SerieReader.fromSerie(table)
+// @ts-expect-error the private native bridge is hidden
+SerieReader._fromSerieNative
 
 // @ts-expect-error an Arrow door takes an Arrow Vector, not a JavaScript array
 Serie.fromArrowArray([0])
@@ -60,3 +67,4 @@ void scalar
 void back
 void typedBy
 void stream
+void held

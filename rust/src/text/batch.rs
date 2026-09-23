@@ -11,7 +11,8 @@ use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions as _;
-use crate::{DataType, Result, Scalar};
+use crate::serie::Proof;
+use crate::{DataType, Result, Scalar, Serie};
 
 use super::line::{LineSource, TextLine};
 use super::options::TextOptions;
@@ -250,6 +251,10 @@ fn locate(schema: &arrow_schema::Schema, column: &TextColumn) -> Option<usize> {
 struct Intake {
     positions: Vec<Option<usize>>,
     field: crate::Field,
+    /// Each plan column's field as a batch column lands under it: the
+    /// column's own datatype, admitting absence, so a null is refused per
+    /// row by the column's own contract rather than for the whole batch.
+    landing: Vec<Arc<crate::Field>>,
     /// Where the `body` column sits in the plan.
     ///
     /// Read before any other cell, because a line is the line it holds and
@@ -264,27 +269,40 @@ struct Intake {
     start_rownum: i64,
     /// The options every line read back is built under, shared once.
     options: Arc<TextOptions>,
+    /// The schema the columns were resolved against: a batch sharing it
+    /// needs no layout proven again.
+    schema: arrow_schema::SchemaRef,
 }
 
 impl Intake {
     fn resolve(
         plan: &TextPlan,
-        schema: &arrow_schema::Schema,
+        schema: &arrow_schema::SchemaRef,
         options: &TextOptions,
     ) -> Result<Self> {
         let field = plan.field(SmolStr::new(options.name()))?;
+        let landing: Vec<Arc<crate::Field>> = field
+            .fields()
+            .iter()
+            .map(|child| Arc::new(child.clone().with_nullable(true)))
+            .collect();
         let mut positions = Vec::with_capacity(plan.columns().len());
-        for (column, child) in plan.columns().iter().zip(field.fields()) {
+        // Each located column's depth bound and layout are proven here, once
+        // per reader, against the field each batch lands under - a
+        // nullability does not change the datatype - so a batch sharing
+        // this schema lands without proving either again.
+        for (column, child) in plan.columns().iter().zip(&landing) {
             let at = locate(schema, column);
             if let Some(at) = at {
-                let expected = child.clone().into_arrow_field_ref()?;
+                child.dtype().validate_bounded()?;
+                let expected = crate::arrow::projected_datatype(child)?;
                 let actual = schema.field(at);
-                if expected.data_type() != actual.data_type() {
+                if expected.as_ref() != actual.data_type() {
                     return Err(crate::Error::InvalidRecord {
                         path: smol_str::format_smolstr!("$.{}", column.name),
                         reason: smol_str::format_smolstr!(
                             "expected Arrow datatype {:?}, got {:?}",
-                            expected.data_type(),
+                            expected.as_ref(),
                             actual.data_type()
                         ),
                     });
@@ -309,11 +327,13 @@ impl Intake {
         Ok(Self {
             positions,
             field,
+            landing,
             body_at,
             capture_size: options.capture_names().len(),
             captures_located,
             start_rownum: options.start_rownum.unwrap_or_default(),
             options: Arc::new(options.clone()),
+            schema: Arc::clone(schema),
         })
     }
 }
@@ -337,9 +357,10 @@ pub fn from_arrow_batch(
 ) -> Result<Vec<TextLine>> {
     let plan = options.line_plan()?;
     let intake = Intake::resolve(&plan, batch.schema_ref(), options)?;
+    let landed = intake.land(&plan, batch, 0)?;
     let mut lines = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
-        lines.push(line_of(&plan, &intake, batch, row, row as u64)?);
+        lines.push(line_of(&plan, &intake, &landed, row, row as u64)?);
     }
     Ok(lines)
 }
@@ -361,7 +382,7 @@ pub fn from_arrow_reader(
     let schema = batches.schema();
     let intake = Intake::resolve(&plan, &schema, options)?;
     let mut batches = batches;
-    let mut pending: Option<(arrow_array::RecordBatch, usize)> = None;
+    let mut pending: Option<(Landed, usize)> = None;
     let mut ordinal = 0_u64;
     let mut done = false;
     Ok(std::iter::from_fn(move || {
@@ -370,7 +391,7 @@ pub fn from_arrow_reader(
         }
         loop {
             if let Some((batch, row)) = pending.as_mut() {
-                if *row < batch.num_rows() {
+                if *row < batch.rows {
                     let result = line_of(&plan, &intake, batch, *row, ordinal);
                     *row += 1;
                     ordinal += 1;
@@ -402,17 +423,80 @@ pub fn from_arrow_reader(
                     ),
                 }));
             }
-            pending = Some((batch, 0));
+            match intake.land(&plan, &batch, ordinal) {
+                Ok(landed) => pending = Some((landed, 0)),
+                Err(error) => {
+                    done = true;
+                    return Some(Err(error));
+                }
+            }
         }
     })
     .fuse())
+}
+
+/// One batch, each column the plan locates landed once under its plan
+/// column's field. A line is read one row at a time, so the landing proves
+/// no row: each cell the row reads is proven as it is taken, and a row not
+/// yet asked for is not read at all.
+struct Landed {
+    /// One column per plan column, where the batch carries it.
+    columns: Vec<Option<Serie>>,
+    rows: usize,
+}
+
+impl Intake {
+    /// Land `batch`'s located columns, naming a refused one by the batch's
+    /// first row.
+    fn land(
+        &self,
+        plan: &TextPlan,
+        batch: &arrow_array::RecordBatch,
+        ordinal: u64,
+    ) -> Result<Landed> {
+        // A batch sharing the schema the columns were resolved against lays
+        // each column out as that schema says, which resolving already
+        // compared; any other batch proves its own layout.
+        let resolved = Arc::ptr_eq(batch.schema_ref(), &self.schema);
+        let mut columns = Vec::with_capacity(self.landing.len());
+        for ((column, field), at) in plan
+            .columns()
+            .iter()
+            .zip(&self.landing)
+            .zip(&self.positions)
+        {
+            let Some(at) = *at else {
+                columns.push(None);
+                continue;
+            };
+            let (field, array) = (Arc::clone(field), Arc::clone(batch.column(at)));
+            let landed = if resolved {
+                crate::serie::land_resolved(field, array, &Proof::OnRead)
+            } else {
+                crate::serie::land(field, array, &Proof::OnRead)
+            };
+            columns.push(Some(landed.map_err(|error| {
+                super::arrow::row_error(
+                    ordinal,
+                    None,
+                    None,
+                    &column.name,
+                    smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
+                )
+            })?));
+        }
+        Ok(Landed {
+            columns,
+            rows: batch.num_rows(),
+        })
+    }
 }
 
 /// One line read back out of one batch row.
 fn line_of(
     plan: &TextPlan,
     intake: &Intake,
-    batch: &arrow_array::RecordBatch,
+    batch: &Landed,
     row: usize,
     ordinal: u64,
 ) -> Result<TextLine> {
@@ -425,11 +509,11 @@ fn line_of(
     )?;
     let mut captures = vec![None; intake.capture_size];
     // The plan built the field one child per column, so the three walk together.
-    for (index, ((column, child), at)) in plan
+    for (index, ((column, child), held)) in plan
         .columns()
         .iter()
         .zip(intake.field.fields())
-        .zip(&intake.positions)
+        .zip(&batch.columns)
         .enumerate()
     {
         // The body made the line above; restating it here would drop every
@@ -437,10 +521,10 @@ fn line_of(
         if index == intake.body_at {
             continue;
         }
-        let Some(at) = *at else {
+        let Some(held) = held else {
             continue;
         };
-        let value = cell_of(batch, at, row, ordinal, line.sourceurl(), column, child)?;
+        let value = cell_of(held, row, ordinal, line.sourceurl(), column, child)?;
         apply(
             &mut line,
             &mut captures,
@@ -467,7 +551,7 @@ fn line_of(
 fn body_of(
     plan: &TextPlan,
     intake: &Intake,
-    batch: &arrow_array::RecordBatch,
+    batch: &Landed,
     row: usize,
     ordinal: u64,
 ) -> Result<super::TextBytes> {
@@ -476,12 +560,28 @@ fn body_of(
     // No line yet, so no URL to locate the refusal by: the row's own
     // `sourceurl` is one of the columns read after this one.
     let refused = |reason| super::arrow::row_error(ordinal, None, None, &column.name, reason);
-    let Some(at) = intake.positions[intake.body_at] else {
+    let Some(held) = &batch.columns[intake.body_at] else {
         return Err(refused(SmolStr::new_static(
             "expected a body column, got a batch that carries none",
         )));
     };
-    let value = cell_of(batch, at, row, ordinal, None, column, child)?;
+    // Text whose layout is its whole contract lends its run where it lies;
+    // any other reads, and so proves, its value.
+    if let Some(text) = held
+        .as_string()
+        .filter(|text| !matches!(text, crate::StringSerie::Fixed(_)))
+        .filter(|_| child.dtype().layout_is_contract())
+    {
+        if let Some(run) = text.value_bytes(row) {
+            return super::TextBytes::from_bytes(run).map_err(|error| {
+                refused(smol_str::format_smolstr!(
+                    "{}",
+                    crate::text::elide_display(&error)
+                ))
+            });
+        }
+    }
+    let value = cell_of(held, row, ordinal, None, column, child)?;
     // A cell that states nothing at all is no row; an empty one is the line
     // a row header consumed whole, whose captures are what it states, and a
     // read emits those - so a read back takes them.
@@ -496,15 +596,16 @@ fn body_of(
     Ok(body)
 }
 
-/// One cell, read at the datatype and under the nullability its column
-/// declares.
+/// One cell of a landed column, read at the datatype and under the
+/// nullability its column declares.
 ///
-/// The plan's `nullable` is the check: a null under a column that cannot
-/// hold one is refused here, by the column's name, rather than reaching a
-/// builder that would answer for the whole batch.
+/// The landing proved no row, so a present value whose layout is not its
+/// datatype's whole contract is proven here, as it is taken. The plan's
+/// `nullable` is the other check: a null under a column that cannot hold
+/// one is refused here, by the column's name and the row, rather than
+/// reaching a builder that would answer for the whole batch.
 fn cell_of(
-    batch: &arrow_array::RecordBatch,
-    at: usize,
+    held: &Serie,
     row: usize,
     ordinal: u64,
     url: Option<&crate::Url>,
@@ -522,10 +623,11 @@ fn cell_of(
             smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
         )
     };
-    let value =
-        crate::arrow::value::value_from_array(child.dtype(), batch.column(at).as_ref(), row)
-            .map_err(|error| refused(&error))?;
-    child.scalar(value).map_err(|error| refused(&error))
+    let value = crate::serie::proven_cell(child, held, row).map_err(|error| refused(&error))?;
+    if value.is_null() {
+        return child.scalar(value).map_err(|error| refused(&error));
+    }
+    Ok(value)
 }
 
 /// The bytes one read value carries, whichever way it spells them.

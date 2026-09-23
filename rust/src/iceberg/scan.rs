@@ -27,7 +27,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
+use arrow_array::RecordBatch;
 use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -1057,20 +1057,18 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Res
         batch.schema().fields().iter().map(Arc::clone).collect();
     let mut columns = batch.columns().to_vec();
     for (field, value) in missing {
-        let scalar = crate::arrow::scalar_array(field, value)
+        // The value lays out once under its field and repeats by index.
+        let column = crate::Serie::from_scalars(field.clone(), [value.clone()])
+            .map_err(crate::arrow::Error::from)
+            .and_then(|row| row.repeat(0, batch.num_rows()))
+            .and_then(|column| Ok(column.require_arrow_array()?))
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        columns.push(repeat(&scalar, batch.num_rows())?);
+        columns.push(column);
         fields.push(field.clone().into_arrow_field_ref()?);
     }
     let schema =
         Arc::new(ArrowSchema::new(fields).with_metadata(batch.schema().metadata().clone()));
     RecordBatch::try_new(schema, columns).map_err(Error::Arrow)
-}
-
-/// Repeat one value into a column of `rows` rows.
-fn repeat(value: &ArrayRef, rows: usize) -> Result<ArrayRef> {
-    let indices = UInt32Array::from(vec![0_u32; rows]);
-    arrow_select::take::take(value.as_ref(), &indices, None).map_err(Error::Arrow)
 }
 
 /// Pair each identity partition column's Field with the manifest's value.

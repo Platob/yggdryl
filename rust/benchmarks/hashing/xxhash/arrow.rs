@@ -7,7 +7,7 @@ use criterion::Criterion;
 
 use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, UInt64Array};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{DataType, DigestAlgorithm, Field, StructType};
+use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, Serie, StructType};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
@@ -47,34 +47,27 @@ fn buffered_batch() -> RecordBatch {
 /// otherwise identical to [`buffered_batch`], which is what makes the two rows
 /// a like-for-like comparison of the two paths rather than of two schemas.
 fn fallback_batch() -> RecordBatch {
-    use yggdryl::Scalar;
-
-    let rows = |values: Vec<Scalar>| Scalar::from_sequence(values);
     let dictionary = DataType::from_str("dictionary<int32, utf8>").expect("a valid dictionary");
-    let columns: Vec<(Field, Scalar)> = vec![
+    let columns: Vec<(Field, Vec<Scalar>)> = vec![
         (
             Field::new("id", DataType::Int64, false),
-            rows((0..ROWS as i64).map(Scalar::from).collect()),
+            (0..ROWS as i64).map(Scalar::from).collect(),
         ),
         (
             Field::new("symbol", dictionary.clone(), false),
-            rows(
-                (0..ROWS)
-                    .map(|index| Scalar::from(if index % 2 == 0 { "AAPL" } else { "MSFT" }))
-                    .collect(),
-            ),
+            (0..ROWS)
+                .map(|index| Scalar::from(if index % 2 == 0 { "AAPL" } else { "MSFT" }))
+                .collect(),
         ),
         (
             Field::new("price", DataType::Float64, false),
-            rows(
-                (0..ROWS)
-                    .map(|index| Scalar::from(187.23 + index as f64 / 100.0))
-                    .collect(),
-            ),
+            (0..ROWS)
+                .map(|index| Scalar::from(187.23 + index as f64 / 100.0))
+                .collect(),
         ),
         (
             Field::new("venue", dictionary, false),
-            rows((0..ROWS).map(|_| Scalar::from("XNAS")).collect()),
+            (0..ROWS).map(|_| Scalar::from("XNAS")).collect(),
         ),
     ];
 
@@ -82,7 +75,9 @@ fn fallback_batch() -> RecordBatch {
     let mut arrays: Vec<arrow_array::ArrayRef> = Vec::with_capacity(columns.len());
     for (field, values) in columns {
         arrays.push(
-            yggdryl::arrow::array_from_value(&field, &values).expect("a valid column fixture"),
+            Serie::from_scalars(field.clone(), values)
+                .and_then(|serie| serie.require_arrow_array())
+                .expect("a valid column fixture"),
         );
         fields.push(
             field
@@ -187,9 +182,10 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("materialized_rows", |bencher| {
         bencher.iter(|| {
-            let rows = yggdryl::arrow::batch_to_value(black_box(&buffered))
+            let rows = Serie::from_arrow_batch(None, black_box(&buffered), ArrowCastOptions::new())
+                .map(Scalar::from)
                 .expect("the batch reads as rows");
-            rows.as_sequence()
+            rows.sequence_rows()
                 .expect("a sequence of rows")
                 .iter()
                 .map(|row| row.digest(DigestAlgorithm::Xxh3))

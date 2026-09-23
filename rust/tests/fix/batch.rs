@@ -78,11 +78,29 @@ fn capture_reader(lines: &[&str], rows: usize) -> BatchReader {
                     .map(|line| Scalar::from_sequence([Scalar::from(line.as_bytes().to_vec())]))
                     .collect::<Vec<_>>(),
             );
-            yggdryl::arrow::batch_from_value(&field, &values).unwrap()
+            lay_out(&field, &values)
         })
         .collect();
     let schema = field.into_arrow_schema().unwrap();
     yggdryl::arrow::batch_reader(schema, batches)
+}
+
+/// Lay a run of rows out as the Arrow table of `root`'s column.
+fn lay_out(root: &yggdryl::Field, rows: &Scalar) -> RecordBatch {
+    let rows = rows.as_sequence().expect("a run of rows").to_vec();
+    yggdryl::Serie::from_scalars(root.clone(), rows)
+        .expect("rows the root accepts")
+        .into_arrow_batch()
+        .expect("a record column is a table")
+}
+
+/// Every row of one batch, each the run of its columns, read back under the
+/// batch's own schema.
+fn rows_of(batch: &RecordBatch) -> Vec<Scalar> {
+    yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::default())
+        .expect("the projected rows")
+        .rows()
+        .into_owned()
 }
 
 /// The whole capture, one input batch.
@@ -132,11 +150,7 @@ fn first_tag_value(batch: &RecordBatch, tag: i32) -> Scalar {
 
 /// One projected scalar in the first row of a batch, by position.
 fn first_at(batch: &RecordBatch, index: usize) -> Scalar {
-    let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
-    rows.as_sequence().expect("rows")[0]
-        .as_sequence()
-        .expect("columns")[index]
-        .clone()
+    rows_of(batch)[0].as_sequence().expect("columns")[index].clone()
 }
 
 #[test]
@@ -459,7 +473,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
         error.to_string()
     };
     let source = |field: yggdryl::Field, rows: Scalar| {
-        let batch = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+        let batch = lay_out(&field, &rows);
         yggdryl::arrow::batch_reader(batch.schema(), [batch])
     };
     let frame = Scalar::from(b"8=FIX.4.4|35=D|11=A|10=0|".to_vec());
@@ -1977,8 +1991,7 @@ fn a_walk_keeps_each_rows_own_cells_with_its_own_message() {
     // The reader stated the body of each line in the row it made: the parse
     // door is the one door that can, because the message holds none of it.
     let body_of = |batch: &RecordBatch, row: usize| {
-        let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
-        let columns = rows.as_sequence().expect("rows")[row].clone();
+        let columns = rows_of(batch)[row].clone();
         let columns = columns.as_sequence().expect("columns").to_vec();
         let at = batch.schema().index_of("body").expect("a body column");
         let exec = batch.schema().index_of("execid").expect("an execid column");
@@ -2101,7 +2114,7 @@ fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
             .map(|body| Scalar::from_sequence([Scalar::from(*body)]))
             .collect::<Vec<_>>(),
     );
-    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
+    let batch = lay_out(&capture, &values);
     let read = batches(
         codec
             .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
@@ -2213,7 +2226,7 @@ fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_dire
         Scalar::from("Receive"),
         Scalar::from(BULK_CONFIG.to_vec()),
     ])]);
-    let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+    let source = lay_out(&field, &rows);
     // One byte a batch: a batch a message, so a row that expanded would be
     // seen as the several batches it made. A bulk document expands into
     // nothing: one `unknown` row, carrying the source row's own columns.
@@ -2255,7 +2268,7 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
         Scalar::from("ignored"),
     ])]);
-    let batch = yggdryl::arrow::batch_from_value(&capture, &rows).expect("a capture batch");
+    let batch = lay_out(&capture, &rows);
     let schema = batch.schema();
     let read = codec()
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]))
@@ -2279,11 +2292,8 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
 
     let read = batches(read);
     assert_eq!(row_count(&read), 1);
-    let held = yggdryl::arrow::batch_to_value(&read[0]).expect("a value");
-    let row = held.as_sequence().expect("one row")[0]
-        .as_sequence()
-        .expect("its columns")
-        .to_vec();
+    let held = rows_of(&read[0]);
+    let row = held[0].as_sequence().expect("its columns").to_vec();
     assert_eq!(row[0].as_str(), Some("file:///capture.log"));
     assert_eq!(row[1].as_i64(), Some(7));
     assert_eq!(row[2].as_str(), Some("session-a"));
@@ -2292,6 +2302,81 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         .position(|held| held == "msgtype")
         .expect("the msgtype column");
     assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
+}
+
+/// A batch lands whole before its first row is read: a `state` cell no
+/// `State` accepts is refused at the landing, naming its row and its
+/// column, and never read as a message.
+#[test]
+fn a_fix_batch_with_an_invalid_state_code_is_refused_at_the_landing() {
+    use arrow_array::cast::AsArray as _;
+
+    // Wider than the ten bytes a state is.
+    const WIDE: &str = "NOT-A-STATE-CODE";
+    let codec = codec();
+    let read = batches(codec.parse_text_arrow_reader(source()).unwrap());
+    let batch = &read[0];
+    assert!(batch.num_rows() > 1, "a second row to refuse");
+    // Untouched, the batch reads back as its messages.
+    let intact = codec
+        .messages(yggdryl::arrow::batch_reader(
+            batch.schema(),
+            [batch.clone()],
+        ))
+        .collect::<yggdryl::Result<Vec<FixMsg>>>()
+        .expect("the batch's own rows");
+    assert_eq!(intact.len(), batch.num_rows());
+
+    // The state column is text under the state extension, so a code wider
+    // than a state is text the layout holds and the datatype refuses.
+    let at = batch.schema().index_of("state").expect("a state column");
+    let mut codes: Vec<Option<&str>> = batch.column(at).as_string::<i32>().iter().collect();
+    codes[1] = Some(WIDE);
+    let mut columns = batch.columns().to_vec();
+    columns[at] = Arc::new(arrow_array::StringArray::from(codes));
+    let forged = RecordBatch::try_new(batch.schema(), columns).unwrap();
+    let mut messages = codec.messages(yggdryl::arrow::batch_reader(forged.schema(), [forged]));
+    let refused = messages
+        .next()
+        .expect("an item")
+        .expect_err("the landing refuses the batch before its first row")
+        .to_string();
+    assert!(
+        refused.starts_with("invalid record value at $[1].state: "),
+        "{refused}"
+    );
+    assert!(refused.contains("at most 10 bytes"), "{refused}");
+    assert!(messages.next().is_none(), "the refusal ends the stream");
+
+    // A capture carrying a state column lands the same way at the parse door.
+    let capture = StructType::from_fields([
+        DataType::binary().required_field("body"),
+        DataType::State.nullable_field("state"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("capture");
+    let frame = b"8=FIX.4.4|35=D|11=A|10=0|".as_slice();
+    let carried = RecordBatch::try_new(
+        capture.into_arrow_schema().unwrap(),
+        vec![
+            Arc::new(arrow_array::BinaryArray::from_vec(vec![frame; 2])),
+            Arc::new(arrow_array::StringArray::from(vec!["20NEW", WIDE])),
+        ],
+    )
+    .unwrap();
+    let mut parsed = codec
+        .parse_arrow_messages(yggdryl::arrow::batch_reader(carried.schema(), [carried]))
+        .unwrap();
+    let refused = parsed
+        .next()
+        .expect("an item")
+        .expect_err("the landing refuses the capture before its first row")
+        .to_string();
+    assert!(
+        refused.starts_with("invalid record value at $[1].state: "),
+        "{refused}"
+    );
 }
 
 #[test]

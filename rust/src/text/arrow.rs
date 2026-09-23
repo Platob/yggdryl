@@ -5,8 +5,7 @@ use std::io::{BufRead, BufReader, Chain, Read, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
-use arrow_array::cast::AsArray as _;
-use arrow_array::{Array as _, RecordBatch};
+use arrow_array::RecordBatch;
 use arrow_schema::{DataType as ArrowDataType, Schema};
 use regex::bytes::CaptureLocations;
 use regex_automata::dfa::{
@@ -1602,7 +1601,12 @@ fn render_batches(
 /// `binary` column may hold anything, and rendering one would write bytes no
 /// reader of the file could read back as the rows they were. The three
 /// layouts Arrow spells a string in are one spelling here.
-struct BodyColumn(usize);
+struct BodyColumn {
+    /// Where the column sits in every batch.
+    at: usize,
+    /// The field every batch's column lands under, read off the schema once.
+    field: Arc<crate::Field>,
+}
 
 impl BodyColumn {
     fn resolve(schema: &Schema) -> Result<Self> {
@@ -1623,7 +1627,11 @@ impl BodyColumn {
                 ),
             });
         }
-        Ok(Self(index))
+        let field = crate::Field::from_arrow_field(schema.field(index))?;
+        Ok(Self {
+            at: index,
+            field: Arc::new(field),
+        })
     }
 
     fn render(
@@ -1633,9 +1641,14 @@ impl BodyColumn {
         terminator: &[u8],
         output: &mut Vec<u8>,
     ) -> Result<()> {
-        let body = Bodies::of(batch.column(self.0))?;
+        let column = crate::serie::land(
+            Arc::clone(&self.field),
+            Arc::clone(batch.column(self.at)),
+            &crate::serie::Proof::Unproven,
+        )?;
+        let body = Bodies::of(&column)?;
         for row in 0..batch.num_rows() {
-            let Some(value) = body.get(row) else {
+            let Some(value) = body.get(row)? else {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$[{row}].body"),
                     reason: SmolStr::new_static("expected a non-null line body"),
@@ -1650,7 +1663,6 @@ impl BodyColumn {
                     reason: SmolStr::new_static("expected a line body, got an empty one"),
                 });
             }
-            let value = value.as_bytes();
             let contains_break = if flexible {
                 memchr::memchr2(b'\n', b'\r', value).is_some()
             } else {
@@ -1681,61 +1693,50 @@ fn is_string_layout(dtype: &ArrowDataType) -> bool {
     }
 }
 
-/// One `body` column, whichever of Arrow's string layouts it came in.
+/// One landed `body` column, narrowed once to where its text lies.
 ///
-/// A dictionary-encoded string column - what Arrow JS infers for a plain
-/// record's string - is unpacked once per batch into the layout it encodes,
-/// so every row after that is one offset read.
-struct Bodies {
-    column: arrow_array::ArrayRef,
-    layout: StringLayout,
+/// Every string layout lends each row's run where it lies. A
+/// dictionary-encoded string column - what Arrow JS infers for a plain
+/// record's string - reads each row through its key into the values it
+/// points at, so nothing is unpacked.
+enum Bodies<'a> {
+    Runs(&'a crate::StringSerie),
+    Encoded {
+        keys: &'a crate::Serie,
+        values: &'a crate::StringSerie,
+    },
 }
 
-#[derive(Clone, Copy)]
-enum StringLayout {
-    Utf8,
-    LargeUtf8,
-    Utf8View,
-}
-
-impl Bodies {
-    fn of(column: &arrow_array::ArrayRef) -> Result<Self> {
-        let column = match column.data_type() {
-            ArrowDataType::Dictionary(_, values) if is_string_layout(values) => {
-                arrow_cast::cast(column, values)?
-            }
-            _ => Arc::clone(column),
+impl<'a> Bodies<'a> {
+    fn of(column: &'a crate::Serie) -> Result<Self> {
+        let text = |serie: &'a crate::Serie| {
+            serie.as_string().ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$.body"),
+                reason: format_smolstr!(
+                    "expected a utf8 body column, got {}",
+                    serie.field().map_or(&DataType::Null, crate::Field::dtype)
+                ),
+            })
         };
-        let layout = match column.data_type() {
-            ArrowDataType::Utf8 => StringLayout::Utf8,
-            ArrowDataType::LargeUtf8 => StringLayout::LargeUtf8,
-            ArrowDataType::Utf8View => StringLayout::Utf8View,
-            other => {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.body"),
-                    reason: format_smolstr!("expected a utf8 body column, got {other}"),
-                });
-            }
-        };
-        Ok(Self { column, layout })
+        Ok(match column.as_dictionary() {
+            Some(encoded) => Self::Encoded {
+                keys: encoded.keys(),
+                values: text(encoded.values())?,
+            },
+            None => Self::Runs(text(column)?),
+        })
     }
 
     /// The body of one row, `None` where the row has none.
-    fn get(&self, row: usize) -> Option<&str> {
-        match self.layout {
-            StringLayout::Utf8 => {
-                let held = self.column.as_string::<i32>();
-                held.is_valid(row).then(|| held.value(row))
-            }
-            StringLayout::LargeUtf8 => {
-                let held = self.column.as_string::<i64>();
-                held.is_valid(row).then(|| held.value(row))
-            }
-            StringLayout::Utf8View => {
-                let held = self.column.as_string_view();
-                held.is_valid(row).then(|| held.value(row))
-            }
-        }
+    fn get(&self, row: usize) -> Result<Option<&'a [u8]>> {
+        Ok(match self {
+            Self::Runs(runs) => runs.value_bytes(row),
+            Self::Encoded { keys, values } => keys
+                .scalar(row)?
+                .as_i128()
+                .and_then(|key| usize::try_from(key).ok())
+                .and_then(|key| values.value_bytes(key)),
+        })
     }
 }
 

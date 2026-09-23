@@ -196,7 +196,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();

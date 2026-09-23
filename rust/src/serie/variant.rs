@@ -126,7 +126,7 @@ impl VariantSerie {
     /// `from_scalars` builds from the same rows.
     pub(crate) fn write(&mut self, range: Range<usize>, rows: Vec<Scalar>) {
         let borrowed: Vec<&Scalar> = rows.iter().collect();
-        let pair = crate::arrow::value::array_from_values(&self.field, &borrowed).expect(LAID_OUT);
+        let pair = crate::serie::value::array_of_rows(&self.field, &borrowed).expect(LAID_OUT);
         let (metadata, value, nulls) = runs_of(pair.as_ref()).expect(LAID_OUT);
         let present: Vec<bool> = (0..pair.len())
             .map(|row| nulls.as_ref().is_none_or(|nulls| nulls.is_valid(row)))
