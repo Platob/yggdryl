@@ -706,31 +706,21 @@ mod text {
     }
 
     #[test]
-    fn line_uuid_lists_are_sorted_unique_when_stated() {
+    fn line_sources_are_sorted_unique_when_stated() {
         let mut line = TextLine::from_bytes(
             0,
             TextBytes::from_bytes(b"body").unwrap(),
             Arc::new(TextOptions::new()),
         )
         .unwrap();
-        line.set_parentuuids(vec![
-            Uuid::from_v8(3),
-            Uuid::from_v8(1),
-            Uuid::from_v8(3),
-            Uuid::from_v8(2),
-        ]);
         line.set_srcuuids(vec![Uuid::from_v8(2), Uuid::from_v8(1), Uuid::from_v8(2)]);
-        assert_eq!(
-            line.get_parentuuids(),
-            [Uuid::from_v8(1), Uuid::from_v8(2), Uuid::from_v8(3)]
-        );
         assert_eq!(line.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
     }
 
-    /// The nineteen event columns every line batch opens with, in front of the
+    /// The eighteen event columns every line batch opens with, in front of the
     /// line's own: the line is an event of the graph, and a message parsed out
-    /// of it contains the same nineteen under the same names and datatypes.
-    const EVENT_COLUMNS: [&str; 19] = [
+    /// of it contains the same eighteen under the same names and datatypes.
+    const EVENT_COLUMNS: [&str; 18] = [
         "currunix",
         "creaunix",
         "execunix",
@@ -746,7 +736,6 @@ mod text {
         "crosshashcode",
         "prevuuid",
         "seqnum",
-        "parentuuids",
         "srcuuids",
         "identifiers",
         "state",
@@ -970,7 +959,7 @@ mod text {
             // code leaves the capture that dates the line out, which
             // `digest_event` feeds. It last moved when the code became the
             // event's own facts rather than the cross code, the row and the
-            // body - the header's captures, its parents, its state, its place
+            // body - the header's captures, its state, its place
             // and what it follows, with the body behind them.
             assert_eq!(line.get_currhashcode(), 9_607_804_996_582_312_670);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
@@ -981,9 +970,8 @@ mod text {
             let later = self::line(&body.replace("10:15:30Z", "10:15:31Z"), &options);
             assert_eq!(later.get_currhashcode(), line.get_currhashcode());
             assert_ne!(later.get_curruuid(), line.get_curruuid());
-            // A line is read from a handle: no source, and no parent until a
-            // walk states one.
-            assert!(line.get_srcuuids().is_empty() && line.get_parentuuids().is_empty());
+            // A line is read from a handle: no source.
+            assert!(line.get_srcuuids().is_empty());
             // The same bytes, instant, physical sequence and absent cross seed
             // derive the same identity.
             assert_eq!(
@@ -1066,7 +1054,7 @@ mod text {
 
             // The captures feed the event columns themselves, not duplicate
             // text columns behind them: all three are consumed, so the row is
-            // the nineteen and the body, and nothing else. A row read back
+            // the eighteen and the body, and nothing else. A row read back
             // states every one of the facts again.
             let source = self::line(
                 "2026-01-02T10:15:31Z 2026-01-02T10:15:32Z 2026-01-02T10:15:33Z body",
@@ -1560,11 +1548,7 @@ mod text {
             assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
             assert_eq!(second.get_prevunix(), Some(first.get_currunix()));
             assert_eq!(second.get_seqnum(), 1);
-            assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
-            assert_eq!(
-                third.get_parentuuids(),
-                [first.get_curruuid(), second.get_curruuid()]
-            );
+            assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
             assert!(third.get_state().is_done());
             assert!(walked.iter().all(|line| line.get_srcuuids().is_empty()));
             assert!(
@@ -1602,7 +1586,7 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            // The batch opens with the nineteen event columns the line is stated
+            // The batch opens with the eighteen event columns the line is stated
             // in, and the body closes it. Captured facts feed their own event
             // columns - every capture this header declares is one, so no capture
             // column is left - while `seqnum` and `crosscode` state the line's

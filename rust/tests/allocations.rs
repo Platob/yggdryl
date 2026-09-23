@@ -2000,7 +2000,14 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// Per-slot `Vec` buffers are gone: every unique ordinary field has one
 /// inline scalar, and the fallback `BeginString` contributes once, saving
 /// `pairs + 1` allocations from this path.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 35), (64, 38)];
+///
+/// The arrival record the parse settles is held behind one shared
+/// allocation, so a clone of the message - every walk keeps one - shares the
+/// record rather than deriving it again: one more per message, whatever its
+/// width. The table of names a lookup past the tag index falls back to is
+/// sized once for every child rather than grown a doubling at a time, which
+/// is nothing at four pairs, three fewer at sixteen and five at sixty-four.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 32), (16, 33), (64, 34)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -2050,7 +2057,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (31, 37)), (16, (35, 65)), (64, (38, 164))];
+    [(4, (32, 38)), (16, (33, 63)), (64, (34, 160))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -2145,7 +2152,9 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
 ///
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 77), (16, 137)];
+/// The arrival record's one shared allocation is in both, as it is in
+/// [`FIX_LINE_COSTS`].
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 78), (16, 138)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -2185,7 +2194,9 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// widths again, so that the claim is the constant and not a number that
 /// happens to be equal.
 ///
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 34), (64, 37)];
+/// The arrival record's one shared allocation and the name table sized once
+/// are in all three, as they are in [`FIX_LINE_COSTS`].
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 32), (64, 33)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -2489,19 +2500,19 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// is the page, and a line is the range of it the splitter cut, so the
 /// header off its front, the strips off its edges and the byte limit off
 /// its tail move two offsets and copy nothing. With the copy, the assertion
-/// below counts 37 for 16 rows and the same 14 over the copy for 1 024 -
+/// below counts 36 for 16 rows and the same 13 over the copy for 1 024 -
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// Five of the fourteen are the nineteen event columns the plan compiles once
-/// per read: the two identity lists, the names' map and the state's own type
+/// Four of the thirteen are the eighteen event columns the plan compiles once
+/// per read: the identity list, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
 ///
 /// A read now shares what it was addressed by rather than where that
 /// resolves to, and the count did not move: the location is a narrowing of
 /// the identifier rather than a second value beside it, so the read still
 /// holds one reference-counted source and a row still clones one handle.
-const TEXT_LINES_ONCE: usize = 14;
+const TEXT_LINES_ONCE: usize = 13;
 
 /// What a reader that keeps its lines pays on top: two per window it had to
 /// leave behind.

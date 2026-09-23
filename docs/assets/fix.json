@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6271,
+    "fields": 6270,
     "groups": 582,
     "enumFields": 2027,
     "codesets": 736,
@@ -105,10 +105,10 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 128,
+    "columns": 127,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 28,
+    "datatypes": 27,
     "dtypes": [
       [
         "int32",
@@ -196,10 +196,6 @@
       ],
       [
         "isin",
-        1
-      ],
-      [
-        "list(field(\"parentuuid\",uuid,nullable=false,metadata={}))",
         1
       ],
       [
@@ -79524,27 +79520,6 @@
         },
         "name": "crossuuid",
         "nullable": false
-      },
-      {
-        "dtype": {
-          "field": {
-            "dtype": {
-              "type": "uuid"
-            },
-            "metadata": {},
-            "name": "parentuuid",
-            "nullable": false
-          },
-          "type": "list"
-        },
-        "metadata": {
-          "FIX:tag": "65041",
-          "FIX:transient": "false",
-          "description": "The identities of the events this one descends from, sorted and unique.",
-          "display": "ParentUuids"
-        },
-        "name": "parentuuids",
-        "nullable": true
       },
       {
         "dtype": {
@@ -291493,13 +291468,6 @@
         "x": "The event's place in its chain: how many came before it."
       },
       {
-        "c": "parentuuids",
-        "t": 65041,
-        "n": "ParentUuids",
-        "y": "list(field(\"parentuuid\",uuid,nullable=false,metadata={}))",
-        "x": "The identities of the events this one descends from, sorted and unique."
-      },
-      {
         "c": "srcuuids",
         "t": 65051,
         "n": "SrcUuids",
@@ -292422,7 +292390,6 @@
         "identifiers": {
           "clordid": "ORDER-1"
         },
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1706790896123000000",
         "state": "00UNKNOWN",
@@ -292757,7 +292724,6 @@
           "execid": "E-1",
           "orderid": "O-9"
         },
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1706790897900000000",
         "state": "80FILLED",
@@ -293198,7 +293164,6 @@
         "identifiers": {
           "clordid": "ORDER-2"
         },
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -296306,7 +296271,6 @@
         "currhashcode": "10882375343426412268",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -296610,7 +296574,6 @@
         "currhashcode": "12145694549879713580",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -296845,7 +296808,6 @@
         "currhashcode": "14334419292297887460",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1706788800000000000",
         "state": "00UNKNOWN",
@@ -297013,7 +296975,6 @@
         "currhashcode": "17855387864844002379",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1706790901000000000",
         "state": "00UNKNOWN",
@@ -297211,7 +297172,6 @@
         "currhashcode": "14833405603331524372",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -297480,7 +297440,6 @@
           "orderid": "O-9",
           "origclordid": "ORDER-1"
         },
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -297802,7 +297761,6 @@
         "currhashcode": "16395903705174682042",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298109,7 +298067,6 @@
         "currhashcode": "8149546502507768640",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298513,7 +298470,6 @@
         "currhashcode": "2548086238863956385",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298838,7 +298794,6 @@
         "currhashcode": "12554896926520859798",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299065,7 +299020,6 @@
         "identifiers": {
           "clordid": "ORDER-4"
         },
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299279,7 +299233,6 @@
         "currhashcode": "8066959481080282367",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299484,7 +299437,6 @@
         "currhashcode": "17689539441271598566",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299711,7 +299663,6 @@
         "currhashcode": "14132669717197402441",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299942,7 +299893,6 @@
         "currhashcode": "15086527165268785016",
         "crosshashcode": "0",
         "identifiers": {},
-        "parentuuids": [],
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",

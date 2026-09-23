@@ -287,7 +287,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             message.set_seqnum(0);
             message.set_prevunix(None);
             message.set_prevuuid(None);
-            message.set_parentuuids(Vec::new());
             message.set_snapunix(None);
             message.finalize();
             message

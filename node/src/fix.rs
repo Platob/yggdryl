@@ -1006,8 +1006,6 @@ pub struct FixEventView {
     /// The identifiers the message is known by, scheme to value, sorted.
     #[napi(ts_type = "Record<string, string>")]
     pub identifiers: BTreeMap<String, String>,
-    /// The sorted unique UUIDs of the messages this one descends from.
-    pub parentuuids: Vec<String>,
     /// The sorted unique UUIDs of the elements this one was read from: the
     /// text line it was parsed out of, and none for one parsed from bytes.
     pub srcuuids: Vec<String>,
@@ -1158,7 +1156,6 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         currhashcode: BigInt::from(event.get_currhashcode()),
         crosshashcode: BigInt::from(event.get_crosshashcode()),
         identifiers: identifiers_view(event),
-        parentuuids: parents_view(event),
         srcuuids: sources_view(event),
         currunix: instant(event.get_currunix()),
         state: event.get_state().as_str().to_owned(),
@@ -1212,15 +1209,6 @@ fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
         .get_identifiers()
         .iter()
         .map(|(scheme, value)| (scheme.clone(), value.clone()))
-        .collect()
-}
-
-/// The parents an event states, each as its text.
-fn parents_view(event: &MarketEventData) -> Vec<String> {
-    event
-        .get_parentuuids()
-        .iter()
-        .map(ToString::to_string)
         .collect()
 }
 
@@ -1566,15 +1554,9 @@ impl JsFixMsg {
         self.inner.get_prevuuid().map(|uuid| uuid.to_string())
     }
 
-    /// The sorted unique identities of the messages this one descends from.
-    #[napi(getter)]
-    pub fn parentuuids(&self) -> Vec<String> {
-        parents_view(self.inner.event())
-    }
-
     /// The sorted unique identities of the elements this one was read from:
     /// the text line it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never lineage: no walk moves it.
+    /// never its chain: no walk moves it.
     #[napi(getter)]
     pub fn srcuuids(&self) -> Vec<String> {
         sources_view(self.inner.event())
@@ -2799,9 +2781,8 @@ impl JsFixCodec {
     /// instant, and each is stated as the one after the live message it
     /// follows - the last message of its chain, under the cross identity its
     /// cross code derives, still alive - so a chained message carries its
-    /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain,
-    /// the whole chain before it as its `parentuuids` and the chain's `creaunix`,
-    /// and is settled again around them. A message no live one precedes is
+    /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain and
+    /// the chain's `creaunix`, and is settled again around them. A message no live one precedes is
     /// answered as it came. The loader turns the iterable into the pull
     /// function this takes; a failure of the iterable throws and ends the
     /// stream. The walk reads the structured message first: one whose
@@ -3006,14 +2987,14 @@ pub fn fix_schema_tags() -> Vec<f64> {
 ///
 /// The event's instant `currunix` and the chain's `creaunix`, `execunix`,
 /// `recdunix`, `refrecdunix`, `prevunix`, `snapunix` and `exprtime`; the identities `currhashcode`,
-/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
-/// `parentuuids` list; the `srcuuids` list of the lines it was read from;
+/// `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`; the `srcuuids`
+/// list of the lines it was read from;
 /// the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
 /// and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
 /// `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
 /// which whoever read the line states on the row and no message holds; the
 /// `nofixentries` that counts the content record; and the generic
-/// `marketoperationid` shared with market operations. Thirty-two in all,
+/// `marketoperationid` shared with market operations. Thirty-one in all,
 /// each a fact no FIX dictionary publishes, at the datatype its graph column
 /// names.
 ///

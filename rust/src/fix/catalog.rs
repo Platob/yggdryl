@@ -464,7 +464,7 @@ pub(super) fn column_shape(field: &Field) -> Result<()> {
 /// Only in this crate's own tag block. A wire tag carries one value, so a
 /// dialect handing the dictionary a list under one is stating a group badly
 /// and is told so; the crate's columns answer no wire tag at all, and a list
-/// is what `parentuuids` is.
+/// is what `srcuuids` is.
 fn is_column_list(field: &Field) -> bool {
     let crate_tag = field
         .as_fix()

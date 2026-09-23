@@ -1,6 +1,6 @@
 //! A FIX message: its typed facts, its row, and the registry that types it.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
@@ -10,6 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::build::stated;
 use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
+use super::registry::FixMap;
 use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::sequence::SequenceType;
@@ -222,14 +223,16 @@ pub struct FixMsg {
     /// the tag's decimal spelling - and both end in a child found by name.
     /// Derived from the field alone, and derived lazily, so a message nobody
     /// projects pays nothing for it.
-    named: OnceLock<HashMap<SmolStr, usize>>,
+    named: OnceLock<FixMap<SmolStr, usize>>,
     /// Group positions keyed by their `FIX:counter`, separate from tag values.
     groups: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
     /// The row read as a tree, derived on the first ask and dropped by
-    /// every write.
-    entries: OnceLock<Vec<FixEntry>>,
+    /// every write. Shared, so a clone - which states the same row - keeps
+    /// the tree for the cost of a reference count rather than deriving it
+    /// again.
+    entries: OnceLock<Arc<[FixEntry]>>,
     /// The capture's own cells: what the row this message was read from
     /// said for itself, each under the column's name. Provenance and never
     /// content - outside the code, the entries and the wire - stated back at
@@ -885,39 +888,56 @@ impl FixMsg {
     /// writes.
     pub(super) fn replace_content(&mut self, field: Field, values: Vec<Scalar>) -> Result<()> {
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
-        let mut members = Vec::with_capacity(field.fields().len());
+        let mut content = Vec::with_capacity(field.fields().len());
         let mut kept = Vec::with_capacity(values.len());
         for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(values) {
-            match column.tag {
+            let is_content = match column.tag {
                 Some(tag) if identity::is_typed_tag(tag) => {
                     if !value.is_null() {
                         self.record(tag, &value);
                     }
+                    false
                 }
                 // The capture's own column, which no restatement of the
                 // content can make a fact of the message: read past, as
                 // every other door reads it past.
-                Some(tag) if identity::is_capture_tag(tag) => {}
+                Some(tag) if identity::is_capture_tag(tag) => false,
                 None if child.name().contains('.') => {
                     if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
                         self.metadata
                             .insert(SmolStr::new(child.name()), SmolStr::new(held));
                     }
+                    false
                 }
-                _ => {
-                    members.push(child.clone());
-                    kept.push(value);
-                }
+                _ => true,
+            };
+            content.push(is_content);
+            if is_content {
+                kept.push(value);
             }
         }
-        self.field = Field::new_with_metadata(
-            field.name(),
-            DataType::from(StructType::from_unique_fields(members)),
-            field.is_nullable(),
-            field.as_metadata().clone(),
-        );
+        // Where every child is content, the root handed in is the row's
+        // own and its plan is the one just read.
+        let plan = if kept.len() == field.fields().len() {
+            self.field = field;
+            plan
+        } else {
+            let members = field
+                .fields()
+                .iter()
+                .zip(&content)
+                .filter(|(_, is_content)| **is_content)
+                .map(|(child, _)| child.clone())
+                .collect();
+            self.field = Field::new_with_metadata(
+                field.name(),
+                DataType::from(StructType::from_unique_fields(members)),
+                field.is_nullable(),
+                field.as_metadata().clone(),
+            );
+            super::schema::column_plan_of(&self.field, &self.registry)?
+        };
         self.value = Scalar::from_sequence(kept);
-        let plan = super::schema::column_plan_of(&self.field, &self.registry)?;
         self.tags = tag_positions(&plan);
         self.groups = group_positions(&self.field, &self.registry);
         self.named = OnceLock::new();
@@ -1535,10 +1555,11 @@ impl FixMsg {
     /// intake's own clock - takes `TransactTime(60)` as its instant where it
     /// states one with a clock, and a resend's `OrigSendingTime(122)` as its
     /// creation where that is earlier, its stand-in sending clock moved to
-    /// the same instant, and is enriched again around them - restated under
-    /// the rules its date selects, filled and settled - exactly as a parse
-    /// dated there would have built it. A stated sending clock stands: the
-    /// parse dated the message by what it said, and the walk does not
+    /// the same instant, and is enriched again around them - filled and
+    /// settled - exactly as a parse dated there would have built it: the row
+    /// the parse restated is the row a parse dated there restates, because a
+    /// rule reads the row and never the clock. A stated sending clock stands:
+    /// the parse dated the message by what it said, and the walk does not
     /// second-guess it. No delay bounds this one: a clock nobody stated is
     /// no reference to measure a distance from, which is why the parse's own
     /// [`FixCodec::official_time_delay_ms`](super::FixCodec::official_time_delay_ms)
@@ -1578,7 +1599,7 @@ impl FixMsg {
             self.event.set_creaunix(Some(origin));
         }
         let registry = Arc::clone(&self.registry);
-        super::enrich::enrich(&registry, self)
+        super::enrich::enrich_restated(&registry, self)
     }
 
     /// The event this message is: every fact the three graph traits answer,
@@ -1677,7 +1698,7 @@ impl FixMsg {
     /// and the capture are the holders' to answer.
     #[must_use]
     pub fn entries(&self) -> &[FixEntry] {
-        self.entries.get_or_init(|| self.derive_entries())
+        self.entries.get_or_init(|| self.derive_entries().into())
     }
 
     /// The row read as a tree.
@@ -2384,7 +2405,8 @@ impl FixMsg {
     /// spelling.
     fn fallback_index(&self, tag: i32) -> Option<usize> {
         let named = self.named.get_or_init(|| {
-            let mut named = HashMap::new();
+            let mut named = FixMap::default();
+            named.reserve(self.field.fields().len());
             for (index, child) in self.field.fields().iter().enumerate() {
                 named.entry(SmolStr::new(child.name())).or_insert(index);
             }
@@ -2721,7 +2743,8 @@ fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Ve
         .filter_map(|child| super::schema::tag_and_counter(registry, child).1)
         .collect();
     let counted = |child: &Field| {
-        !child.dtype().is_nested()
+        !counters.is_empty()
+            && !child.dtype().is_nested()
             && super::schema::tag_and_counter(registry, child)
                 .0
                 .is_some_and(|tag| counters.contains(&tag))
@@ -2877,9 +2900,8 @@ impl From<FixMsg> for MarketEventData {
 }
 
 impl Clone for FixMsg {
-    /// The message, without its caches: the name table and the entries are
-    /// derived from the row, rebuilt by the clone on its own first ask
-    /// rather than copied.
+    /// The message, without its name table, which the clone rebuilds on its
+    /// own first ask; the entries, derived from the same row, are shared.
     fn clone(&self) -> Self {
         Self {
             registry: Arc::clone(&self.registry),
@@ -2896,7 +2918,7 @@ impl Clone for FixMsg {
             groups: self.groups.clone(),
             field: self.field.clone(),
             value: self.value.clone(),
-            entries: OnceLock::new(),
+            entries: self.entries.clone(),
             carried: self.carried.clone(),
         }
     }
@@ -2992,14 +3014,6 @@ impl Element for FixMsg {
 
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
         self.event.set_identifiers(identifiers);
-    }
-
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.event.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.event.set_parentuuids(parents);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {

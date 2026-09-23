@@ -1,4 +1,4 @@
-//! `rust/src/graph/column.rs`: the nineteen columns every event schema opens
+//! `rust/src/graph/column.rs`: the eighteen columns every event schema opens
 //! with, each stating back exactly the fact it read.
 
 use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
@@ -21,7 +21,6 @@ fn every_column_states_back_what_it_read() {
     event.set_crosshashcode(4);
     event.set_prevuuid(Some(Uuid::from_v8(5)));
     event.set_seqnum(6);
-    event.set_parentuuids(vec![Uuid::from_v8(7), Uuid::from_v8(8)]);
     event.set_srcuuids(vec![Uuid::from_v8(9)]);
     event.set_identifiers([("OrderID".to_owned(), "O-1".to_owned())].into());
     event.set_state(State::read("Filled").expect("a state"));
@@ -50,7 +49,6 @@ fn every_column_states_back_what_it_read() {
     assert_eq!(again.get_crosshashcode(), 4);
     assert_eq!(again.get_prevuuid(), Some(Uuid::from_v8(5)));
     assert_eq!(again.get_seqnum(), 6);
-    assert_eq!(again.get_parentuuids(), event.get_parentuuids());
     assert_eq!(again.get_srcuuids(), event.get_srcuuids());
     assert_eq!(again.get_identifiers(), event.get_identifiers());
     assert_eq!(again.get_state(), event.get_state());
@@ -105,7 +103,6 @@ fn a_null_clears_and_nothing_stated_is_none() {
             "crosshashcode",
             "prevuuid",
             "seqnum",
-            "parentuuids",
             "srcuuids",
             "identifiers",
             "state",

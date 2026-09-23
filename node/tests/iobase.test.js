@@ -27,7 +27,7 @@ const EVENT_COLUMNS = [
   'currunix', 'creaunix', 'execunix', 'recdunix', 'refrecdunix',
   'exprtime', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
-  'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
+  'prevuuid', 'seqnum', 'srcuuids', 'identifiers', 'state',
 ]
 
 // A small Hive-partitioned lake with one private staging area, so listing,
@@ -835,7 +835,7 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     batches.map((batch) => batch.numRows),
     [1, 1, 1],
   )
-  // The nineteen event columns lead the row, the line's own behind them.
+  // The eighteen event columns lead the row, the line's own behind them.
   const schemaFields = batches[0].schema.fields
   assert.deepEqual(
     schemaFields.slice(0, EVENT_COLUMNS.length).map((field) => field.name),

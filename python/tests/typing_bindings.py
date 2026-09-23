@@ -1455,7 +1455,6 @@ fix_message_currunix: int = fix_message.currunix
 fix_message_state: Scalar = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
-fix_message_parentuuids: list[Scalar] = fix_message.parentuuids
 fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
 fix_message_identifiers: dict[str, str] = fix_message.identifiers
 fix_message_marketoperationid: int | None = fix_message.marketoperationid
@@ -1494,7 +1493,6 @@ fix_event_crosscode: str = fix_message_event.crosscode
 fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
-fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
@@ -1777,7 +1775,7 @@ assert isinstance(fix_message_state, Scalar) and isinstance(fix_message_side, Sc
 assert isinstance(fix_message_price, Scalar) and isinstance(fix_message_quantity, Scalar)
 assert isinstance(fix_message_currency, Scalar)
 assert fix_message_prevuuid is None or fix_message_prevuuid
-assert isinstance(fix_message_parentuuids, list) and isinstance(fix_message_crosscode, str)
+assert isinstance(fix_message_crosscode, str)
 assert isinstance(fix_message_srcuuids, list) and isinstance(fix_event_srcuuids, list)
 assert isinstance(fix_message_entries, list)
 assert isinstance(fix_header_beginstring, str) and isinstance(fix_header_msgtype, str)
@@ -1826,7 +1824,7 @@ assert fix_event_askpx is None or fix_event_askpx
 assert fix_event_askqty is None or fix_event_askqty
 assert fix_event_askcurrency is None or fix_event_askcurrency
 assert fix_event_askunit is None or fix_event_askunit
-assert isinstance(fix_event_identifiers, dict) and isinstance(fix_event_parentuuids, list)
+assert isinstance(fix_event_identifiers, dict)
 assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, Scalar) and isinstance(fix_event_side, Scalar)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)

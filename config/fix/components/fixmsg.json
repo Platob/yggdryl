@@ -257,17 +257,6 @@
         }
       },
       {
-        "name": "parentuuids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "parentuuids",
-          "FIX:tag": "65041"
-        }
-      },
-      {
         "name": "srcuuids",
         "dtype": {
           "type": "null"

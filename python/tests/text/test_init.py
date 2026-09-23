@@ -28,8 +28,8 @@ ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
-# The nineteen event columns every line batch opens with: the line as the
-# event it is, the same nineteen a FIX row parsed out of it opens with.
+# The eighteen event columns every line batch opens with: the line as the
+# event it is, the same eighteen a FIX row parsed out of it opens with.
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
@@ -46,7 +46,6 @@ EVENT_COLUMNS = [
     "crosshashcode",
     "prevuuid",
     "seqnum",
-    "parentuuids",
     "srcuuids",
     "identifiers",
     "state",
@@ -205,7 +204,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     assert located.startswith("file:///") and located.endswith("app.log")
     assert table.column("crosscode").to_pylist() == [located] * 3
 
-    # The nineteen event columns every row opens with: the line as the event
+    # The eighteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
     # placed by its row number, named by the captures it matched - and a
     # null wherever it states nothing.
@@ -228,7 +227,6 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "crosshashcode": table.column("crosshashcode")[row].as_py(),
             "prevuuid": None,
             "seqnum": seqnum,
-            "parentuuids": None,
             "srcuuids": None,
             "identifiers": identifiers,
             "state": "00UNKNOWN",

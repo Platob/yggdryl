@@ -31,7 +31,7 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the nineteen say more than the column
+//! sentence, and join on it. Nine of the eighteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
 //! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
@@ -181,10 +181,6 @@ pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 /// shares, where the message names one.
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_040, "crossuuid");
 
-/// The tag and name carrying the identities of the messages this one
-/// descends from.
-pub const PARENTUUIDS_TAG_NAME: (i32, &str) = (65_041, "parentuuids");
-
 /// The tag and name carrying the message's place in its chain: how many
 /// came before it.
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");
@@ -286,7 +282,7 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 /// as the message's merge reference.
 pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
 
-/// The graph event column one crate tag is, for the nineteen that are one.
+/// The graph event column one crate tag is, for the eighteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -344,7 +340,7 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 20] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 19] = [
     CURRUNIX_TAG_NAME.0,
     EXECUNIX_TAG_NAME.0,
     RECDUNIX_TAG_NAME.0,
@@ -361,7 +357,6 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 20] = [
     CROSSUUID_TAG_NAME.0,
     CROSSCODE_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
-    PARENTUUIDS_TAG_NAME.0,
     NOFIXENTRIES_TAG_NAME.0,
     SOURCEURL_TAG_NAME.0,
     SRCUUIDS_TAG_NAME.0,
@@ -385,7 +380,7 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the nineteen [`EventColumn`]s, which owns all three: a text
+    /// One of the eighteen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
@@ -544,7 +539,7 @@ impl Crated {
 /// The order is the tags', because that is the order a schema, a document
 /// and [`fix_crate_fields`] all walk them in. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 32] = [
+const CRATED: [Crated; 31] = [
     Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
     Crated::own(
         MSGCTXID_TAG_NAME,
@@ -603,7 +598,6 @@ const CRATED: [Crated; 32] = [
     ),
     Crated::event(CURRUUID_TAG_NAME, EventColumn::CurrUuid),
     Crated::event(CROSSUUID_TAG_NAME, EventColumn::CrossUuid),
-    Crated::event(PARENTUUIDS_TAG_NAME, EventColumn::ParentUuids),
     Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum),
     Crated::event(CROSSCODE_TAG_NAME, EventColumn::CrossCode).saying(
         "The identifier every message of one lifecycle shares: OrderID, \
@@ -698,7 +692,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 32);
+/// assert_eq!(held.len(), 31);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -

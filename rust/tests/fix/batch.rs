@@ -700,16 +700,15 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     assert_eq!(pulls.get(), 4);
 }
 
-/// A walked message descends from the whole of its chain.
+/// A walked message names its predecessor and keeps its own source.
 ///
-/// Its parents are every message before it in the chain, sorted by UUID and
-/// deduplicated - the lineage the walk carries forward - while `prevuuid`
-/// names the immediate predecessor. Its sources stay its own line's: provenance names what a
-/// node was read from and never what it follows, so nothing of a
+/// `prevuuid` names the immediate predecessor, and nothing records the
+/// chain further back. Its sources stay its own line's: provenance names
+/// what a node was read from and never what it follows, so nothing of a
 /// predecessor's source reaches its successor. Walked again, the chain is
 /// the same chain under the same identities.
 #[test]
-fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
+fn a_walked_message_names_its_predecessor_and_keeps_its_own_source() {
     const LINES: [&[u8]; 3] = [
         b"8=FIX.4.4|35=D|11=CHAIN-1|55=AAPL|54=1|38=100|52=20260102-10:15:30|10=0|",
         b"8=FIX.4.4|35=8|11=CHAIN-1|37=O-1|17=E-1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|52=20260102-10:15:31|10=0|",
@@ -736,16 +735,12 @@ fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
         .collect();
     assert_eq!(walked.len(), 3);
     let identities: Vec<_> = walked.iter().map(Element::get_curruuid).collect();
-    assert!(
-        walked[0].get_parentuuids().is_empty(),
-        "the first of a chain descends from nothing"
-    );
-    assert_eq!(walked[1].get_parentuuids(), [identities[0]]);
     assert_eq!(
-        walked[2].get_parentuuids(),
-        [identities[0], identities[1]],
-        "the whole chain as a sorted identity set"
+        walked[0].get_prevuuid(),
+        None,
+        "the first of a chain follows nothing"
     );
+    assert_eq!(walked[1].get_prevuuid(), Some(identities[0]));
     assert_eq!(walked[2].get_prevuuid(), Some(identities[1]));
     for (message, source) in walked.iter().zip(&sources) {
         assert_eq!(
@@ -759,7 +754,6 @@ fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
         .map(Result::unwrap)
         .collect();
     for (before, after) in walked.iter().zip(&again) {
-        assert_eq!(after.get_parentuuids(), before.get_parentuuids());
         assert_eq!(after.get_srcuuids(), before.get_srcuuids());
         assert_eq!(after.get_prevuuid(), before.get_prevuuid());
         assert_eq!(after.get_curruuid(), before.get_curruuid());
@@ -874,7 +868,6 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
         assert_eq!(arrow.get_curruuid(), direct.get_curruuid());
         assert_eq!(arrow.get_currhashcode(), direct.get_currhashcode());
         assert_eq!(arrow.get_prevuuid(), direct.get_prevuuid());
-        assert_eq!(arrow.get_parentuuids(), direct.get_parentuuids());
         assert_eq!(arrow.get_state(), direct.get_state());
         assert_eq!(arrow.get_seqnum(), direct.get_seqnum());
         assert_eq!(arrow.get_currunix(), direct.get_currunix());
@@ -1611,12 +1604,12 @@ fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
 }
 
 /// The three steps - the lines as a batch, the messages parsed out of it,
-/// the lifecycle's rows - each contain the nineteen columns every event is
+/// the lifecycle's rows - each contain the eighteen columns every event is
 /// stated in, under one name and one datatype, and join on them: a
 /// message's `srcuuids` is the `curruuid` its line's batch states, read off
 /// that column rather than recomputed, and a chained message's `prevuuid`
-/// and `parentuuids` are the `curruuid` of the messages before it, its
-/// `state` the furthest the chain reached.
+/// is the `curruuid` of the message before it, its `state` the furthest the
+/// chain reached.
 #[test]
 fn the_three_steps_join_on_the_columns_every_event_states() {
     use yggdryl::graph::EventColumn;
@@ -1644,7 +1637,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     lines[1].set_curruuid(yggdryl::Uuid::from_v8(7));
     let identities: Vec<yggdryl::Uuid> = lines.iter().map(Element::get_curruuid).collect();
 
-    // Step 1: the lines as a batch, opening with the nineteen as fields.
+    // Step 1: the lines as a batch, opening with the eighteen as fields.
     let carrier = yggdryl::text::into_arrow_batch(lines.clone(), &options).unwrap();
     let stated = yggdryl::Field::from_arrow_schema("lines", &carrier.schema()).unwrap();
     let expected = EventColumn::fields().unwrap();
@@ -1660,7 +1653,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     }
 
     // Step 2: the messages parsed out of the batch, each stating the line
-    // the carrier said it was as its one source, and the same nineteen under
+    // the carrier said it was as its one source, and the same eighteen under
     // the row's own names and datatypes.
     let parsed = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
@@ -1704,7 +1697,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         messages[1].get_refrecdunix(),
         Some(1_704_190_530_100_000_000)
     );
-    // The row's own nineteen name the message, never the line it came from.
+    // The row's own eighteen name the message, never the line it came from.
     assert_ne!(messages[0].get_curruuid(), identities[0]);
     assert_eq!(messages[0].get_currunix(), 1_704_190_530_000_000_000);
 
@@ -1722,7 +1715,6 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
         .collect();
     assert_eq!(chained.len(), 2);
     assert_eq!(chained[1].get_prevuuid(), Some(chained[0].get_curruuid()));
-    assert_eq!(chained[1].get_parentuuids(), [chained[0].get_curruuid()]);
     assert_eq!(chained[1].get_seqnum(), 1);
     assert!(
         chained[1].get_state().is_done(),

@@ -1198,16 +1198,16 @@ def test_the_crate_map_groups_are_groups_a_message_may_reference(tmp_path: Any) 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 32 definitions in tag
-# order from 65003, 30 scalar graph/category/identifier facts and two Map
+# What the crate itself adds beside the specification: 31 definitions in tag
+# order from 65003, 29 scalar graph/category/identifier facts and two Map
 # groups. The six normalized identifiers are crate columns; CFI remains FIX's
 # standard tag 461, as do prices, quantities and lanes.
-CRATED = 32
-# What ``FixRegistry()`` holds: those 30 scalar crate fields, SendingTime (52)
+CRATED = 31
+# What ``FixRegistry()`` holds: those 29 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the two Map groups. ``len`` counts groups;
-# iteration walks the 32 scalars alone.
-SEEDED = 34
-SEEDED_SCALARS = 32
+# iteration walks the 31 scalars alone.
+SEEDED = 33
+SEEDED_SCALARS = 31
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1595,7 +1595,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 30 scalar event, category and
+    # In tag order, one block from 65003: 29 scalar event, category and
     # normalized-identifier facts plus the two Maps. ISIN, CUSIP, SEDOL,
     # Bloomberg, FIGI and MIC are crate columns; CFI keeps FIX's standard tag 461.
     # Price, quantity and lanes remain their standard FIX fields.
@@ -1615,7 +1615,6 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "msgsessionid",
         "curruuid",
         "crossuuid",
-        "parentuuids",
         "seqnum",
         "crosscode",
         "metadata",
@@ -2244,7 +2243,6 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.crosshashcode == event.crosshashcode
     assert message.identifiers == event.identifiers
     assert message.msgcat == message.marketoperationid == event.marketoperationid == 10
-    assert message.parentuuids == event.parentuuids == []
     assert message.srcuuids == event.srcuuids == []
     assert message.state == event.state
     assert message.seqnum == event.seqnum
@@ -2805,10 +2803,10 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
     assert raw.srcuuids == []
     assert raw.curruuid == message.curruuid
     assert raw.currhashcode == message.currhashcode
-    # A walk carries the chain as parents and leaves every source its own.
+    # A walk links the chain by predecessor and leaves every source its own.
     walked = list(codec.lifecycle(codec.parse_text_lines(lines)))
     assert [held.srcuuids for held in walked] == [[line.curruuid] for line in lines]
-    assert walked[-1].parentuuids == [held.curruuid for held in walked[:-1]]
+    assert walked[-1].prevuuid == walked[-2].curruuid
 
 
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
@@ -2831,9 +2829,6 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     for earlier, later in zip(walked, walked[1:]):
         assert later.prevuuid == earlier.curruuid
         assert later.event().prevunix == earlier.currunix
-    # A walked message descends from the chain's sorted identity set.
-    for at, later in enumerate(walked):
-        assert later.parentuuids == [held.curruuid for held in walked[:at]]
     # The lifecycle's own creation instant is carried forward.
     assert {held.event().creaunix for held in walked} == {walked[0].event().creaunix}
     # The state moves with the messages.
