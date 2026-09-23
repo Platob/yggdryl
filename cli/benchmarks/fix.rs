@@ -34,7 +34,7 @@ impl Fixture {
         ])?)
         .required_field("Party");
         registry.create_definition(FixCategory::Components, party.clone())?;
-        let mut group = DataType::list(party).nullable_field("Parties");
+        let mut group = DataType::serie(party).nullable_field("Parties");
         group.as_fix_mut().set_counter(1)?;
         group.as_fix_mut().set_component("Party")?;
         registry.create_definition(FixCategory::Groups, group)?;

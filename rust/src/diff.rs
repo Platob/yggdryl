@@ -105,11 +105,11 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         return true;
     }
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => Arc::ptr_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => Arc::ptr_eq(left, right),
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
             left_size == right_size && Arc::ptr_eq(left, right)
         }
         (D::Struct(left), D::Struct(right)) => left.shares_storage_with(right),
@@ -349,13 +349,13 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => {
+            (D::Serie(left), D::Serie(right))
+            | (D::SerieView(left), D::SerieView(right))
+            | (D::LargeSerie(left), D::LargeSerie(right))
+            | (D::LargeSerieView(left), D::LargeSerieView(right)) => {
                 self.push_field_property(left, right, &path, "item");
             }
-            (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
                 if left_size != right_size {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "length"),
@@ -920,11 +920,11 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => fields_equal(left, right, false),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => fields_equal(left, right, false),
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
             left_size == right_size && fields_equal(left, right, false)
         }
         (D::Struct(left), D::Struct(right)) => {
@@ -1109,11 +1109,11 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => field_layout_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => field_layout_eq(left, right),
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
             left_size == right_size && field_layout_eq(left, right)
         }
         (D::Struct(left), D::Struct(right)) => {

@@ -333,7 +333,7 @@ Arrow's own field conversion, which drops it.
 
 ## A map is not transparent to a path
 
-A [list](list.md#a-list-is-transparent-to-a-path) hides its item from a dotted
+A [serie](sequence.md#a-serie-is-transparent-to-a-path) hides its item from a dotted
 path; a map does not. Its one child is the `entries` field, addressed by name,
 so a key is never a borrowed schema child and `mapping['entries']` names
 nothing: a key is a value, and a schema walk only ever crosses fields.

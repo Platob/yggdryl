@@ -29,8 +29,8 @@ use yggdryl::{
     Side, State, TimeInForce,
 };
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
-    Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
+    DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
+    Float64, Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -474,11 +474,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             value.nanoseconds(),
             value.unit(),
         ),
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             let values = values
                 .iter()
                 .map(|value| scalar_pickle_state(py, &value))
@@ -548,6 +548,23 @@ where
         time_unit(&unit)?,
         Timezone::from_str(&zone).map_err(value_error)?,
     ))
+}
+
+/// The serie layout a pickle tag names: a sequence's `Scalar.kind`
+/// (`serie`, `serie_view`, ...), or the legacy spelling (`list`,
+/// `list_view`, ...) a state written before the rename carries - both read
+/// through the one table [`DataTypeId`] parses.
+fn serie_pickle_layout(tag: &str) -> Option<DataTypeId> {
+    tag.parse::<DataTypeId>().ok().filter(|id| {
+        matches!(
+            id,
+            DataTypeId::Serie
+                | DataTypeId::SerieView
+                | DataTypeId::FixedSizeSerie
+                | DataTypeId::LargeSerie
+                | DataTypeId::LargeSerieView
+        )
+    })
 }
 
 /// Rebuild one exact native scalar from the private pickle/repr state.
@@ -789,24 +806,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(Scalar::Interval)
                 .map_err(value_error)
         }
-        "list" | "list_view" | "fixed_size_list" | "large_list" | "large_list_view" => {
-            let payload = payload()?;
-            let values = payload
-                .cast::<PyTuple>()
-                .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
-            let values = values
-                .iter()
-                .map(|value| scalar_from_pickle_state(&value, depth + 1))
-                .collect::<PyResult<Vec<_>>>()?;
-            let serie = Serie::new(values);
-            Ok(match tag.as_str() {
-                "list_view" => Scalar::ListView(serie),
-                "fixed_size_list" => Scalar::FixedSizeList(serie),
-                "large_list" => Scalar::LargeList(serie),
-                "large_list_view" => Scalar::LargeListView(serie),
-                _ => Scalar::List(serie),
-            })
-        }
         "map" | "sorted_map" => {
             let payload = payload()?;
             let entries = payload
@@ -859,10 +858,36 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .collect::<PyResult<Vec<_>>>()?;
             Scalar::from_struct(entries).map_err(value_error)
         }
-        _ => Err(PyValueError::new_err(format!(
-            "unknown Scalar pickle tag {tag:?}"
-        ))),
+        _ => match serie_pickle_layout(&tag) {
+            Some(layout) => serie_from_pickle_state(layout, &payload()?, depth),
+            None => Err(PyValueError::new_err(format!(
+                "unknown Scalar pickle tag {tag:?}"
+            ))),
+        },
     }
+}
+
+/// Rebuild one sequence scalar of `layout` from its tuple of item states.
+fn serie_from_pickle_state(
+    layout: DataTypeId,
+    payload: &Bound<'_, PyAny>,
+    depth: usize,
+) -> PyResult<Scalar> {
+    let values = payload
+        .cast::<PyTuple>()
+        .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
+    let values = values
+        .iter()
+        .map(|value| scalar_from_pickle_state(&value, depth + 1))
+        .collect::<PyResult<Vec<_>>>()?;
+    let serie = Serie::new(values);
+    Ok(match layout {
+        DataTypeId::SerieView => Scalar::SerieView(serie),
+        DataTypeId::FixedSizeSerie => Scalar::FixedSizeSerie(serie),
+        DataTypeId::LargeSerie => Scalar::LargeSerie(serie),
+        DataTypeId::LargeSerieView => Scalar::LargeSerieView(serie),
+        _ => Scalar::Serie(serie),
+    })
 }
 
 #[pymethods]
@@ -1677,11 +1702,11 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::DateTime64(datetime) => datetime_as_py(py, value, datetime.timezone()),
         Scalar::Duration32(_) | Scalar::Duration64(_) => duration_as_py(py, value),
         Scalar::Interval(interval) => interval_as_py(py, interval),
-        Scalar::List(items)
-        | Scalar::ListView(items)
-        | Scalar::FixedSizeList(items)
-        | Scalar::LargeList(items)
-        | Scalar::LargeListView(items) => {
+        Scalar::Serie(items)
+        | Scalar::SerieView(items)
+        | Scalar::FixedSizeSerie(items)
+        | Scalar::LargeSerie(items)
+        | Scalar::LargeSerieView(items) => {
             // A column names what its rows are, so each row reads under it.
             let items = match items.field() {
                 Some(field) => items
@@ -1724,11 +1749,11 @@ pub(crate) fn as_py_with_field(
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
-                Scalar::List(values)
-                | Scalar::ListView(values)
-                | Scalar::FixedSizeList(values)
-                | Scalar::LargeList(values)
-                | Scalar::LargeListView(values)
+                Scalar::Serie(values)
+                | Scalar::SerieView(values)
+                | Scalar::FixedSizeSerie(values)
+                | Scalar::LargeSerie(values)
+                | Scalar::LargeSerieView(values)
                     if values.len() == fields.len() =>
                 {
                     for (child, value) in fields.iter().zip(values.iter()) {
@@ -1756,18 +1781,18 @@ pub(crate) fn as_py_with_field(
             }
             Ok(output.into_any().unbind())
         }
-        sequence_dtype @ (CoreDataType::List(_)
-        | CoreDataType::ListView(_)
-        | CoreDataType::FixedSizeList(..)
-        | CoreDataType::LargeList(_)
-        | CoreDataType::LargeListView(_)) => {
+        sequence_dtype @ (CoreDataType::Serie(_)
+        | CoreDataType::SerieView(_)
+        | CoreDataType::FixedSizeSerie(..)
+        | CoreDataType::LargeSerie(_)
+        | CoreDataType::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
             let child = sequence.item();
             let values = value.as_serie().ok_or_else(|| {
                 PyValueError::new_err(format!(
-                    "expected a typed list sequence, got {}",
+                    "expected a typed serie sequence, got {}",
                     value.kind()
                 ))
             })?;
@@ -1860,11 +1885,11 @@ fn mapping_to_python(py: Python<'_>, entries: &[(Scalar, Scalar)]) -> PyResult<P
 /// reads a tuple of pairs back as a mapping.
 fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        Scalar::List(items)
-        | Scalar::ListView(items)
-        | Scalar::FixedSizeList(items)
-        | Scalar::LargeList(items)
-        | Scalar::LargeListView(items) => {
+        Scalar::Serie(items)
+        | Scalar::SerieView(items)
+        | Scalar::FixedSizeSerie(items)
+        | Scalar::LargeSerie(items)
+        | Scalar::LargeSerieView(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py_key(py, &item))
@@ -1918,7 +1943,7 @@ impl Encoder {
         }
         // A columnar object - a pyarrow container, a pandas or polars frame
         // or series, a numpy array, an Arrow C exporter - is the column it
-        // already is, held as a list sharing its buffers rather than rows
+        // already is, held as a serie sharing its buffers rather than rows
         // walked. A stream is drained into that column; one Arrow scalar is
         // its row.
         if let Some(value) = crate::serie::columnar_value(value)? {

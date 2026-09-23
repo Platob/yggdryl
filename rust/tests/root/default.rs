@@ -51,11 +51,11 @@ mod datatypes {
             DataType::fixed_ascii(4).unwrap(),
             DataType::fixed_ascii(8).unwrap(),
             DataType::fixed_ascii(16).unwrap(),
-            DataType::list(item()),
-            DataType::list_view(item()),
-            DataType::fixed_size_list(item(), 2).unwrap(),
-            DataType::large_list(item()),
-            DataType::large_list_view(item()),
+            DataType::serie(item()),
+            DataType::serie_view(item()),
+            DataType::fixed_size_serie(item(), 2).unwrap(),
+            DataType::large_serie(item()),
+            DataType::large_serie_view(item()),
             StructType::from_fields([
                 Field::new("required", DataType::Int32, false),
                 Field::new("optional", DataType::utf8(), true),
@@ -166,7 +166,7 @@ mod datatypes {
         );
 
         let fixed =
-            DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 3).unwrap();
+            DataType::fixed_size_serie(Field::new("item", DataType::Int32, true), 3).unwrap();
         assert_eq!(
             fixed.default_value().unwrap().as_sequence().unwrap(),
             &[Scalar::Null, Scalar::Null, Scalar::Null]
@@ -234,7 +234,7 @@ mod datatypes {
             DataType::Duration64(TimeUnit::DayTime),
             DataType::Interval(TimeUnit::Second),
             DataType::Bytes(BytesType::FixedBinary(0)),
-            DataType::FixedSizeList(
+            DataType::FixedSizeSerie(
                 std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
                 -1,
             ),
@@ -263,10 +263,10 @@ mod datatypes {
 
         let mut maximum = DataType::Int32;
         for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {
-            maximum = DataType::list(Field::new("a.b", maximum, false));
+            maximum = DataType::serie(Field::new("a.b", maximum, false));
         }
         assert!(maximum.default_value().is_ok());
-        let overdeep = DataType::list(Field::new("a.b", maximum, false));
+        let overdeep = DataType::serie(Field::new("a.b", maximum, false));
         let error = overdeep.default_value().unwrap_err().to_string();
         assert!(error.contains("hard limit"), "{error}");
 
@@ -275,7 +275,7 @@ mod datatypes {
             DataType::fixed_binary(40 * 1024 * 1024).unwrap(),
             false,
         );
-        let multiplicative = DataType::fixed_size_list(large_child, 2).unwrap();
+        let multiplicative = DataType::fixed_size_serie(large_child, 2).unwrap();
         let error = multiplicative.default_value().unwrap_err().to_string();
         assert!(error.contains("byte safety limit"), "{error}");
     }
@@ -315,10 +315,11 @@ mod datatypes {
 
     #[test]
     fn null_only_nested_layouts_obey_physical_field_constraints() {
-        let zero = DataType::fixed_size_list(Field::new("item", DataType::Null, false), 0).unwrap();
+        let zero =
+            DataType::fixed_size_serie(Field::new("item", DataType::Null, false), 0).unwrap();
         assert_eq!(zero.default_value().unwrap(), Scalar::from_sequence([]));
         let positive =
-            DataType::fixed_size_list(Field::new("item", DataType::Null, false), 1).unwrap();
+            DataType::fixed_size_serie(Field::new("item", DataType::Null, false), 1).unwrap();
         assert!(positive.default_value().is_err());
 
         let required_null = DataType::from(
@@ -371,7 +372,7 @@ mod datatypes {
     #[test]
     fn a_column_is_the_default_exactly_where_its_run_is() -> yggdryl::Result<()> {
         let item = || Field::new("item", DataType::Int64, false);
-        let fixed = DataType::fixed_size_list(item(), 2)?;
+        let fixed = DataType::fixed_size_serie(item(), 2)?;
         let pair = DataType::from(StructType::from_fields([
             DataType::Int64.required_field("a"),
             DataType::Int64.required_field("b"),
@@ -476,11 +477,11 @@ mod scalars {
             DataType::ascii_view(),
             DataType::fixed_cp1252(3).unwrap(),
             DataType::from_str("sized_cp1252(8)").unwrap(),
-            DataType::list(item()),
-            DataType::list_view(item()),
-            DataType::fixed_size_list(item(), 2).unwrap(),
-            DataType::large_list(item()),
-            DataType::large_list_view(item()),
+            DataType::serie(item()),
+            DataType::serie_view(item()),
+            DataType::fixed_size_serie(item(), 2).unwrap(),
+            DataType::large_serie(item()),
+            DataType::large_serie_view(item()),
             StructType::from_fields([
                 Field::new("required", DataType::Int32, false),
                 Field::new("optional", DataType::utf8(), true),
@@ -797,7 +798,7 @@ mod scalars {
     fn foreign_arrays_preflight_deep_caller_built_schemas_before_arrow_projection() {
         let mut maximum = DataType::Int32;
         for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {
-            maximum = DataType::list(Field::new("item", maximum, false));
+            maximum = DataType::serie(Field::new("item", maximum, false));
         }
         let array = Serie::from_default(maximum.clone().required_field("value"), 1)
             .unwrap()
@@ -805,7 +806,7 @@ mod scalars {
             .unwrap();
         read_back(&Field::new("value", maximum.clone(), false), array).unwrap();
 
-        let overdeep = DataType::list(Field::new("item", maximum, false));
+        let overdeep = DataType::serie(Field::new("item", maximum, false));
         let unrelated: ArrayRef = Arc::new(Int32Array::from(vec![0]));
         let error = read_back(&Field::new("value", overdeep, false), unrelated)
             .unwrap_err()

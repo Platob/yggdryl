@@ -2402,7 +2402,7 @@ mod widths {
         assert!(DataType::fixed_ascii(16).unwrap() < bounded_ascii(3));
         assert!(bounded_ascii(3) < DataType::cp1252());
         assert!(DataType::cp1252() < DataType::Country);
-        assert!(DataType::Country < DataType::list(DataType::utf8().nullable_field("item")));
+        assert!(DataType::Country < DataType::serie(DataType::utf8().nullable_field("item")));
         assert_eq!(
             DataType::fixed_ascii(8)
                 .unwrap()

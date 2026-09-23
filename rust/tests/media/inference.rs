@@ -134,24 +134,24 @@ mod containers {
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]
-    fn a_sequence_names_the_list_of_what_its_children_agree_on() {
+    fn a_sequence_names_the_serie_of_what_its_children_agree_on() {
         let prices = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
         assert_eq!(
             prices.dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::Int64, false))
+            DataType::serie(Field::new("item", DataType::Int64, false))
         );
 
         // A null child agrees with anything and makes the item nullable.
         let sparse = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]);
         assert_eq!(
             sparse.dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::utf8(), true))
+            DataType::serie(Field::new("item", DataType::utf8(), true))
         );
 
         // Nothing but nulls names the null column, which is a real Arrow type.
         assert_eq!(
             Scalar::from_sequence([]).dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::Null, true))
+            DataType::serie(Field::new("item", DataType::Null, true))
         );
     }
 
@@ -177,8 +177,8 @@ mod containers {
                 .unwrap(),
         ]);
         let dtype = rows.dtype().unwrap();
-        let DataType::List(item) = dtype else {
-            panic!("expected a list")
+        let DataType::Serie(item) = dtype else {
+            panic!("expected a serie")
         };
         let fields = item.dtype().as_fields().expect("record fields");
         assert_eq!(fields[0].name(), "id");
@@ -264,7 +264,7 @@ mod refusals {
 
         assert_eq!(
             widened.dtype().unwrap(),
-            yggdryl::DataType::list(yggdryl::Field::new(
+            yggdryl::DataType::serie(yggdryl::Field::new(
                 "item",
                 yggdryl::DataType::Float64,
                 false

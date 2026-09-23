@@ -265,7 +265,7 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
             if let Some(id) = type_json.get_key_str("element-id").and_then(Scalar::as_i64) {
                 item.set_parquet_field_id(field_id(id, name)?);
             }
-            Ok(Field::new(name, DataType::list(item), nullable))
+            Ok(Field::new(name, DataType::serie(item), nullable))
         }
         Some("map") => {
             let key_json = type_json.get_key_str("key").ok_or_else(|| {
@@ -356,7 +356,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
             ("type", Scalar::from("struct")),
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),
-        DataType::List(item) | DataType::LargeList(item) | DataType::ListView(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) | DataType::SerieView(item) => {
             let mut object = vec![(Scalar::from("type"), Scalar::from("list"))];
             if let Some(id) = item.parquet_field_id()? {
                 object.push((Scalar::from("element-id"), json_integer(i64::from(id))));

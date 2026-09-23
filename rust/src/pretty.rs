@@ -15,7 +15,7 @@
 //! Each level shows the name, the datatype, nullability, and only the
 //! attributes that are actually set - a `dictionary_id` of `0` or empty
 //! metadata is noise, and the compact form already omits them. Nested `Struct`,
-//! `List`, and `Map` children recurse one indent deeper, and metadata renders
+//! `Serie`, and `Map` children recurse one indent deeper, and metadata renders
 //! as indented key-value lines rather than one braced blob. The output is
 //! stable across runs: nothing here iterates a hash map.
 //!
@@ -86,14 +86,14 @@ impl DataType {
     /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let rows = DataType::list(
+    /// let rows = DataType::serie(
     ///     DataType::from(StructType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     /// );
     ///
     /// assert_eq!(
     ///     rows.into_pretty_str(),
     ///     "\
-    /// list
+    /// serie
     ///   item: struct[1], nullable
     ///     venue: utf8, nullable",
     /// );
@@ -184,17 +184,17 @@ fn write_dtype(
 /// Write the one-line head of a datatype: its family and its parameters.
 ///
 /// A nested datatype's *children* are lines of their own, so the head names the
-/// family alone - `struct`, `list` - while a leaf spells itself in full.
+/// family alone - `struct`, `serie` - while a leaf spells itself in full.
 fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Result {
     use DataType as D;
     match dtype {
         D::Struct(fields) => write!(formatter, "struct[{}]", fields.len()),
-        D::List(_) => formatter.write_str("list"),
-        D::ListView(_) => formatter.write_str("list_view"),
-        D::LargeList(_) => formatter.write_str("large_list"),
-        D::LargeListView(_) => formatter.write_str("large_list_view"),
-        D::FixedSizeList(_, length) => {
-            write!(formatter, "fixed_size_list[{length}]")
+        D::Serie(_) => formatter.write_str("serie"),
+        D::SerieView(_) => formatter.write_str("serie_view"),
+        D::LargeSerie(_) => formatter.write_str("large_serie"),
+        D::LargeSerieView(_) => formatter.write_str("large_serie_view"),
+        D::FixedSizeSerie(_, length) => {
+            write!(formatter, "fixed_size_serie[{length}]")
         }
         map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
             let map = &map_dtype
@@ -232,11 +232,11 @@ fn write_children(
             }
             Ok(())
         }
-        D::List(field)
-        | D::ListView(field)
-        | D::LargeList(field)
-        | D::LargeListView(field)
-        | D::FixedSizeList(field, _) => {
+        D::Serie(field)
+        | D::SerieView(field)
+        | D::LargeSerie(field)
+        | D::LargeSerieView(field)
+        | D::FixedSizeSerie(field, _) => {
             formatter.write_str("\n")?;
             write_field(formatter, field, columns)
         }

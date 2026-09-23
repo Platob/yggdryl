@@ -1,8 +1,12 @@
-"""Nested, encoded, and collection field factories."""
+"""Nested, encoded, and collection field factories.
+
+The serie layouts have their own module: :mod:`yggdryl.serie` holds
+``serie``, ``large_serie``, ``serie_view``, ``large_serie_view`` and
+``fixed_size_serie``.
+"""
 
 from __future__ import annotations
 
-import builtins
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, cast
 
@@ -14,26 +18,10 @@ from ._common import (
 )
 from ._typing import TypedField
 
-_ItemT = TypeVar("_ItemT")
 _KeyT = TypeVar("_KeyT")
 _ValueT = TypeVar("_ValueT")
 
 if TYPE_CHECKING:
-    ListField: TypeAlias = TypedField[
-        Literal["list"], builtins.list[_ItemT]
-    ]
-    ListViewField: TypeAlias = TypedField[
-        Literal["list_view"], builtins.list[_ItemT]
-    ]
-    FixedSizeListField: TypeAlias = TypedField[
-        Literal["fixed_size_list"], builtins.list[_ItemT | None]
-    ]
-    LargeListField: TypeAlias = TypedField[
-        Literal["large_list"], builtins.list[_ItemT]
-    ]
-    LargeListViewField: TypeAlias = TypedField[
-        Literal["large_list_view"], builtins.list[_ItemT]
-    ]
     StructField: TypeAlias = TypedField[Literal["struct"], object]
     UnionField: TypeAlias = TypedField[Literal["union"], object]
     DenseUnionField: TypeAlias = UnionField
@@ -45,66 +33,9 @@ if TYPE_CHECKING:
         Literal["run_end_encoded"], _ValueT | None
     ]
 else:
-    ListField = ListViewField = FixedSizeListField = Field
-    LargeListField = LargeListViewField = StructField = UnionField = Field
+    StructField = UnionField = Field
     DenseUnionField = Field
     DictionaryField = MapField = RunEndEncodedField = Field
-
-
-def list(
-    name: str,
-    item: TypedField[Any, _ItemT] | Field,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> ListField[_ItemT]:
-    value = DataType._list("list", item)
-    return new_field(ListField, name, value, nullable, metadata)
-
-
-def list_view(
-    name: str,
-    item: TypedField[Any, _ItemT] | Field,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> ListViewField[_ItemT]:
-    value = DataType._list("list_view", item)
-    return new_field(ListViewField, name, value, nullable, metadata)
-
-
-def fixed_size_list(
-    name: str,
-    item: TypedField[Any, _ItemT] | Field,
-    length: int,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> FixedSizeListField[_ItemT]:
-    value = DataType._list("fixed_size_list", item, length)
-    return new_field(FixedSizeListField, name, value, nullable, metadata)
-
-
-def large_list(
-    name: str,
-    item: TypedField[Any, _ItemT] | Field,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> LargeListField[_ItemT]:
-    value = DataType._list("large_list", item)
-    return new_field(LargeListField, name, value, nullable, metadata)
-
-
-def large_list_view(
-    name: str,
-    item: TypedField[Any, _ItemT] | Field,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> LargeListViewField[_ItemT]:
-    value = DataType._list("large_list_view", item)
-    return new_field(LargeListViewField, name, value, nullable, metadata)
 
 
 def struct(
@@ -208,22 +139,12 @@ def run_end_encoded(
 __all__ = [
     "DenseUnionField",
     "DictionaryField",
-    "FixedSizeListField",
-    "LargeListField",
-    "LargeListViewField",
-    "ListField",
-    "ListViewField",
     "MapField",
     "RunEndEncodedField",
     "StructField",
     "UnionField",
     "dense_union",
     "dictionary",
-    "fixed_size_list",
-    "large_list",
-    "large_list_view",
-    "list",
-    "list_view",
     "map",
     "map_of",
     "run_end_encoded",

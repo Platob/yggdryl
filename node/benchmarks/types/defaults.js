@@ -40,11 +40,11 @@ const child = fields.struct(
   [fields.int32('quantity', { nullable: false }), fields.utf8('sku')],
   { nullable: false },
 )
-const nested = fields.fixedSizeList('children', child, 4, { nullable: false })
+const nested = fields.fixedSizeSerie('children', child, 4, { nullable: false })
 const sparkSource = fields.struct('payload', [
   fields.uint8('small'),
   fields.largeUtf8('text'),
-  fields.listView('items', fields.float16('item')),
+  fields.serieView('items', fields.float16('item')),
 ])
 
 // Resolve Apache Arrow JS and its schema support before timing scalar IPC

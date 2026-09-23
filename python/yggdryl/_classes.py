@@ -938,8 +938,8 @@ def _error(path: str, expected: object, value: object, detail: str | None = None
     return TypeError(message)
 
 
-_LIST_DATA_TYPE_KINDS = frozenset(
-    {"list", "large_list", "list_view", "large_list_view", "fixed_size_list"}
+_SERIE_DATA_TYPE_IDS = frozenset(
+    {"serie", "large_serie", "serie_view", "large_serie_view", "fixed_size_serie"}
 )
 
 
@@ -955,7 +955,7 @@ def _physical_dtype(field: NativeField) -> DataType:
         return dtype
 
 
-def _validate_physical_list_length(
+def _validate_physical_serie_length(
     value: cabc.Sized,
     field: NativeField | None,
     *,
@@ -964,10 +964,10 @@ def _validate_physical_list_length(
     if field is None:
         return
     dtype = _physical_dtype(field)
-    expected = dtype._fixed_size_list_length()
+    expected = dtype._fixed_size_serie_length()
     if expected is not None and len(value) != expected:
         raise TypeError(
-            f"{path}: fixed-size-list arrow_type requires exactly {expected} "
+            f"{path}: fixed-size-serie arrow_type requires exactly {expected} "
             f"items, got {len(value)}"
         )
 
@@ -1152,7 +1152,7 @@ def _physical_positional_child(
     return dtype[index]
 
 
-def _physical_list_child(
+def _physical_serie_child(
     field: NativeField | None,
     *,
     path: str,
@@ -1164,7 +1164,7 @@ def _physical_list_child(
         # Nested Arrow map keys are represented at the Python boundary as an
         # association list whose tuple shape is the physical entries Struct.
         return dtype[0]
-    if dtype.id not in _LIST_DATA_TYPE_KINDS:
+    if dtype.id not in _SERIE_DATA_TYPE_IDS:
         raise TypeError(
             f"{path}: logical collection annotation is incompatible with "
             f"physical arrow_type {dtype}"
@@ -1755,7 +1755,7 @@ def _convert_collection(
         raise _error(path, hint, value)
     arguments = get_args(hint)
     item_hint = arguments[0] if arguments else Any
-    item_field = _physical_list_child(physical_field, path=path)
+    item_field = _physical_serie_child(physical_field, path=path)
     converted = (
         _convert(
             item,
@@ -1778,7 +1778,7 @@ def _convert_collection(
         result = collections.deque(converted, maxlen=maxlen)
     else:
         result = list(converted)
-    _validate_physical_list_length(result, physical_field, path=path)
+    _validate_physical_serie_length(result, physical_field, path=path)
     return result
 
 
@@ -2116,7 +2116,7 @@ def _convert(
         items = list(value)
         arguments = get_args(hint)
         if not arguments:
-            item_field = _physical_list_child(physical_field, path=path)
+            item_field = _physical_serie_child(physical_field, path=path)
             converted_tuple = tuple(
                 _convert(
                     item,
@@ -2128,7 +2128,7 @@ def _convert(
                 )
                 for index, item in enumerate(items)
             )
-            _validate_physical_list_length(
+            _validate_physical_serie_length(
                 converted_tuple, physical_field, path=path
             )
             return converted_tuple
@@ -2140,11 +2140,11 @@ def _convert(
                     owner,
                     f"{path}[{index}]",
                     errors,
-                    physical_field=_physical_list_child(physical_field, path=path),
+                    physical_field=_physical_serie_child(physical_field, path=path),
                 )
                 for index, item in enumerate(items)
             )
-            _validate_physical_list_length(
+            _validate_physical_serie_length(
                 converted_tuple, physical_field, path=path
             )
             return converted_tuple
@@ -2232,7 +2232,7 @@ def _convert(
                     f"{path}[{index}][0]",
                     errors,
                     physical_field=_physical_positional_child(
-                        _physical_list_child(physical_field, path=path),
+                        _physical_serie_child(physical_field, path=path),
                         0,
                         path=f"{path}[{index}][0]",
                     ),
@@ -2244,7 +2244,7 @@ def _convert(
                     f"{path}[{index}][1]",
                     errors,
                     physical_field=_physical_positional_child(
-                        _physical_list_child(physical_field, path=path),
+                        _physical_serie_child(physical_field, path=path),
                         1,
                         path=f"{path}[{index}][1]",
                     ),
@@ -2554,7 +2554,7 @@ def _export(
         }
     if isinstance(value, list):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(physical_field, path="into_dict")
+        item_field = _physical_serie_child(physical_field, path="into_dict")
         return [
             _export(
                 item,
@@ -2585,12 +2585,12 @@ def _export(
             )
         elif len(arguments) == 2 and arguments[1] is Ellipsis:
             item_hints = (arguments[0],) * len(value)
-            repeated_item_field = _physical_list_child(
+            repeated_item_field = _physical_serie_child(
                 physical_field, path="into_dict"
             )
         elif not arguments and physical_field is not None:
             dtype = _physical_dtype(physical_field)
-            if dtype.id in _LIST_DATA_TYPE_KINDS:
+            if dtype.id in _SERIE_DATA_TYPE_IDS:
                 item_hints = (Any,) * len(value)
                 repeated_item_field = dtype[0]
             else:
@@ -2618,7 +2618,7 @@ def _export(
         return converted
     if isinstance(value, set):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(physical_field, path="into_dict")
+        item_field = _physical_serie_child(physical_field, path="into_dict")
         return {
             _export(
                 item,
@@ -2631,7 +2631,7 @@ def _export(
         }
     if isinstance(value, frozenset):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(physical_field, path="into_dict")
+        item_field = _physical_serie_child(physical_field, path="into_dict")
         return frozenset(
             _export(
                 item,
@@ -2644,7 +2644,7 @@ def _export(
         )
     if isinstance(value, collections.deque):
         item_hint = arguments[0] if arguments else Any
-        item_field = _physical_list_child(physical_field, path="into_dict")
+        item_field = _physical_serie_child(physical_field, path="into_dict")
         return collections.deque(
             (
                 _export(

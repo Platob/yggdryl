@@ -36,7 +36,7 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
         Field::new("wide", DataType::UInt64, true),
         Field::new(
             "items",
-            DataType::large_list(Field::new("item", DataType::utf8_view(), true)),
+            DataType::large_serie(Field::new("item", DataType::utf8_view(), true)),
             false,
         ),
         Field::new(
@@ -51,8 +51,8 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
     let fields = transformed.as_fields().unwrap();
     assert_eq!(fields[0].dtype(), &DataType::Int16);
     assert_eq!(fields[1].dtype(), &DataType::decimal128(20, 0).unwrap());
-    let DataType::List(item) = fields[2].dtype() else {
-        panic!("expected normalized list");
+    let DataType::Serie(item) = fields[2].dtype() else {
+        panic!("expected normalized serie");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
     assert!(item.is_nullable());
@@ -72,16 +72,16 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
         (DataType::large_utf8(), DataType::utf8()),
         (DataType::utf8_view(), DataType::utf8()),
         (
-            DataType::list_view(Field::new("item", DataType::UInt16, true)),
-            DataType::list(Field::new("item", DataType::Int32, true)),
+            DataType::serie_view(Field::new("item", DataType::UInt16, true)),
+            DataType::serie(Field::new("item", DataType::Int32, true)),
         ),
         (
-            DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 4).unwrap(),
-            DataType::list(Field::new("item", DataType::Int32, false)),
+            DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), 4).unwrap(),
+            DataType::serie(Field::new("item", DataType::Int32, false)),
         ),
         (
-            DataType::large_list_view(Field::new("item", DataType::utf8_view(), true)),
-            DataType::list(Field::new("item", DataType::utf8(), true)),
+            DataType::large_serie_view(Field::new("item", DataType::utf8_view(), true)),
+            DataType::serie(Field::new("item", DataType::utf8(), true)),
         ),
         (
             DataType::decimal32(7, 2).unwrap(),
@@ -214,7 +214,7 @@ fn a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing() {
 }
 
 #[test]
-fn polars_keeps_unsigned_integers_and_fixed_size_lists() {
+fn polars_keeps_unsigned_integers_and_fixed_size_series() {
     // Spark widens unsigned integers; Polars has them natively.
     assert_eq!(
         DataType::UInt32
@@ -227,15 +227,15 @@ fn polars_keeps_unsigned_integers_and_fixed_size_lists() {
         DataType::Int64
     );
 
-    // Polars `Array` keeps the fixed-length layout; Spark degrades to a list.
-    let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 3).unwrap();
+    // Polars `Array` keeps the fixed-length layout; Spark degrades to a serie.
+    let fixed = DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), 3).unwrap();
     assert_eq!(
         fixed.clone().into_scheme_compat(&Scheme::POLARS).unwrap(),
         fixed
     );
     assert_eq!(
         fixed.into_scheme_compat(&Scheme::SPARK).unwrap(),
-        DataType::list(Field::new("item", DataType::Int32, false))
+        DataType::serie(Field::new("item", DataType::Int32, false))
     );
 }
 
@@ -309,7 +309,7 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
 fn every_target_reports_a_path_for_a_nested_failure() {
     let nested = StructType::from_fields(vec![Field::new(
         "outer",
-        DataType::list(Field::new(
+        DataType::serie(Field::new(
             "item",
             DataType::DateTime64 {
                 unit: TimeUnit::Second,
@@ -357,7 +357,7 @@ fn negative_decimal_scale_names_the_offending_scale() {
 fn compatibility_preflight_reports_its_own_operation_kind() {
     let mut nested = DataType::Int32;
     for _ in 0..DataType::PARSE_RECURSION_LIMIT {
-        nested = DataType::list(Field::new("item", nested, false));
+        nested = DataType::serie(Field::new("item", nested, false));
     }
     for (scheme, expected_kind) in [
         (Scheme::ARROW, "ArrowCompatibility"),
@@ -432,12 +432,12 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
 
     let dictionary = DataType::dictionary(
         DataType::Int16,
-        DataType::list(Field::new("item", DataType::UInt16, true)),
+        DataType::serie(Field::new("item", DataType::UInt16, true)),
     )
     .unwrap();
     let transformed = dictionary.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::List(item) = transformed else {
-        panic!("expected logical dictionary list");
+    let DataType::Serie(item) = transformed else {
+        panic!("expected logical dictionary serie");
     };
     assert_eq!(item.dtype(), &DataType::Int32);
 
@@ -485,7 +485,7 @@ fn spark_rejects_nested_extension_storage_before_rewriting() {
         [("ARROW:extension:name", "example.byte")],
     )
     .unwrap();
-    let source = DataType::list(child);
+    let source = DataType::serie(child);
     let error = source
         .into_scheme_compat(&Scheme::SPARK)
         .unwrap_err()
@@ -674,12 +674,12 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
 }
 
 #[test]
-fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_list() {
+fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_serie() {
     let source = StructType::from_fields([
         Field::new("id", DataType::UInt16, false),
         Field::new(
             "tags",
-            DataType::large_list(Field::new("item", DataType::utf8_view(), true)),
+            DataType::large_serie(Field::new("item", DataType::utf8_view(), true)),
             false,
         ),
         Field::new(
@@ -703,8 +703,8 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
 
     assert_eq!(fields[0].dtype(), &DataType::Int32);
     assert!(!fields[0].is_nullable());
-    let DataType::List(item) = fields[1].dtype() else {
-        panic!("expected a normalized list");
+    let DataType::Serie(item) = fields[1].dtype() else {
+        panic!("expected a normalized serie");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
     assert!(item.is_nullable());
@@ -719,11 +719,11 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     assert_eq!(entries[0].dtype(), &DataType::utf8());
     assert_eq!(entries[1].dtype(), &DataType::Int32);
 
-    // A fixed-size list has no Iceberg equivalent, so it degrades to a list.
-    let fixed = DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 3).unwrap();
+    // A fixed-size serie has no Iceberg equivalent, so it degrades to a serie.
+    let fixed = DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), 3).unwrap();
     assert_eq!(
         fixed.into_scheme_compat(&Scheme::ICEBERG).unwrap(),
-        DataType::list(Field::new("item", DataType::Int32, false))
+        DataType::serie(Field::new("item", DataType::Int32, false))
     );
 
     // A union has none, and says so where it is.

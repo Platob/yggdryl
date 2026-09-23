@@ -426,14 +426,14 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
 /// and the rewrite that follow read one run; anything else as it is.
 fn into_row(value: Scalar) -> Scalar {
     match value {
-        Scalar::List(serie)
-        | Scalar::ListView(serie)
-        | Scalar::FixedSizeList(serie)
-        | Scalar::LargeList(serie)
-        | Scalar::LargeListView(serie)
+        Scalar::Serie(serie)
+        | Scalar::SerieView(serie)
+        | Scalar::FixedSizeSerie(serie)
+        | Scalar::LargeSerie(serie)
+        | Scalar::LargeSerieView(serie)
             if serie.is_column() =>
         {
-            Scalar::List(Serie::Run(serie.into_run()))
+            Scalar::Serie(Serie::Run(serie.into_run()))
         }
         other => other,
     }
@@ -442,14 +442,14 @@ fn into_row(value: Scalar) -> Scalar {
 /// [`into_row`] over a borrowed value: a run or a record is lent.
 fn as_row(value: &Scalar) -> Cow<'_, Scalar> {
     match value {
-        Scalar::List(serie)
-        | Scalar::ListView(serie)
-        | Scalar::FixedSizeList(serie)
-        | Scalar::LargeList(serie)
-        | Scalar::LargeListView(serie)
+        Scalar::Serie(serie)
+        | Scalar::SerieView(serie)
+        | Scalar::FixedSizeSerie(serie)
+        | Scalar::LargeSerie(serie)
+        | Scalar::LargeSerieView(serie)
             if serie.is_column() =>
         {
-            Cow::Owned(Scalar::List(Serie::Run(serie.clone().into_run())))
+            Cow::Owned(Scalar::Serie(Serie::Run(serie.clone().into_run())))
         }
         _ => Cow::Borrowed(value),
     }
@@ -1011,11 +1011,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::List(field)
-        | D::ListView(field)
-        | D::FixedSizeList(field, _)
-        | D::LargeList(field)
-        | D::LargeListView(field) => {
+        D::Serie(field)
+        | D::SerieView(field)
+        | D::FixedSizeSerie(field, _)
+        | D::LargeSerie(field)
+        | D::LargeSerieView(field) => {
             canonical_sequence(field, value).map(|held| declared(dtype, value, held))
         }
         D::Struct(fields) => canonical_struct(fields, value),
@@ -1204,7 +1204,7 @@ fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> 
     Ok((Scalar::Interval(interval), true))
 }
 
-/// A list value may stay a column: one of the exact item field is answered
+/// A serie value may stay a column: one of the exact item field is answered
 /// untouched, because its door proved every row; any other sequence is read
 /// row by row and, where it was a column, answers the run of its rows.
 /// A canonical sequence or mapping moved into the variant `dtype` declares,
@@ -1777,14 +1777,14 @@ fn validate_dtype_value(
                 .map_err(|_| expected("mediatype", value)),
             _ => Err(expected("mediatype", value)),
         },
-        D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
+        D::Serie(field) | D::SerieView(field) | D::LargeSerie(field) | D::LargeSerieView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
-        D::FixedSizeList(field, size) => validate_sequence(
+        D::FixedSizeSerie(field, size) => validate_sequence(
             field,
             value,
             usize::try_from(*size).ok(),
-            "fixed_size_list",
+            dtype.name(),
             depth + 1,
         ),
         D::Struct(fields) => validate_struct(fields, value, depth + 1),

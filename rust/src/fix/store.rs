@@ -289,13 +289,13 @@ impl Resolver<'_> {
                 }
                 Some(DataType::from(StructType::from_fields(resolved)?))
             }
-            DataType::List(item) | DataType::LargeList(item) => {
+            DataType::Serie(item) | DataType::LargeSerie(item) => {
                 let (item, child_height) = self.occurrence(item, depth + 1)?;
                 height = child_height + 1;
-                Some(if matches!(field.dtype(), DataType::List(_)) {
-                    DataType::list(item)
+                Some(if matches!(field.dtype(), DataType::Serie(_)) {
+                    DataType::serie(item)
                 } else {
-                    DataType::large_list(item)
+                    DataType::large_serie(item)
                 })
             }
             map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
@@ -361,10 +361,11 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| compact(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?)),
-        DataType::List(item) => Some(DataType::list(compact(item.as_ref().clone(), false)?)),
-        DataType::LargeList(item) => {
-            Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
-        }
+        DataType::Serie(item) => Some(DataType::serie(compact(item.as_ref().clone(), false)?)),
+        DataType::LargeSerie(item) => Some(DataType::large_serie(compact(
+            item.as_ref().clone(),
+            false,
+        )?)),
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()

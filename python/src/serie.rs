@@ -14,11 +14,11 @@
 //! [`PySerieReader`], and nothing else. A frame is converted by its own
 //! library, and the declared `Field` is applied by the core's one cast.
 //!
-//! A nested column is a subclass named for its leaf - `ListSerie`,
-//! `LargeListSerie`, `ListViewSerie`, `LargeListViewSerie`,
-//! `FixedSizeListSerie`, `MapSerie`, `StructSerie` - adding the verbs that
+//! A nested column is a subclass named for its leaf - `SerieSerie`,
+//! `LargeSerieSerie`, `SerieViewSerie`, `LargeSerieViewSerie`,
+//! `FixedSizeSerieSerie`, `MapSerie`, `StructSerie` - adding the verbs that
 //! leaf lends: its offsets, the rows it cuts, its entries. Every serie handed
-//! out goes through [`described`], so a record's child, a list's items and
+//! out goes through [`described`], so a record's child, a serie's items and
 //! one row of them come back as their own leaf, all the way down. A write
 //! never changes a column's leaf, so the class an object has stays true.
 
@@ -85,11 +85,11 @@ pub(crate) fn described(py: Python<'_>, serie: Serie) -> PyResult<Py<PyAny>> {
     let base = PyClassInitializer::from(PySerie::from_inner(serie));
     Ok(match leaf {
         Leaf::Other => Py::new(py, base)?.into_any(),
-        Leaf::List => Py::new(py, base.add_subclass(PyListSerie))?.into_any(),
-        Leaf::LargeList => Py::new(py, base.add_subclass(PyLargeListSerie))?.into_any(),
-        Leaf::ListView => Py::new(py, base.add_subclass(PyListViewSerie))?.into_any(),
-        Leaf::LargeListView => Py::new(py, base.add_subclass(PyLargeListViewSerie))?.into_any(),
-        Leaf::FixedSizeList => Py::new(py, base.add_subclass(PyFixedSizeListSerie))?.into_any(),
+        Leaf::Serie => Py::new(py, base.add_subclass(PySerieSerie))?.into_any(),
+        Leaf::LargeSerie => Py::new(py, base.add_subclass(PyLargeSerieSerie))?.into_any(),
+        Leaf::SerieView => Py::new(py, base.add_subclass(PySerieViewSerie))?.into_any(),
+        Leaf::LargeSerieView => Py::new(py, base.add_subclass(PyLargeSerieViewSerie))?.into_any(),
+        Leaf::FixedSizeSerie => Py::new(py, base.add_subclass(PyFixedSizeSerieSerie))?.into_any(),
         Leaf::Map => Py::new(py, base.add_subclass(PyMapSerie))?.into_any(),
         Leaf::Struct => Py::new(py, base.add_subclass(PyStructSerie))?.into_any(),
     })
@@ -113,11 +113,11 @@ type PickleArguments = (Vec<PyScalar>, Option<PyField>);
 #[derive(Clone, Copy)]
 enum Leaf {
     Other,
-    List,
-    LargeList,
-    ListView,
-    LargeListView,
-    FixedSizeList,
+    Serie,
+    LargeSerie,
+    SerieView,
+    LargeSerieView,
+    FixedSizeSerie,
     Map,
     Struct,
 }
@@ -125,11 +125,11 @@ enum Leaf {
 impl Leaf {
     fn of(serie: &Serie) -> Self {
         match serie {
-            Serie::List(_) => Self::List,
-            Serie::LargeList(_) => Self::LargeList,
-            Serie::ListView(_) => Self::ListView,
-            Serie::LargeListView(_) => Self::LargeListView,
-            Serie::FixedSizeList(_) => Self::FixedSizeList,
+            Serie::Serie(_) => Self::Serie,
+            Serie::LargeSerie(_) => Self::LargeSerie,
+            Serie::SerieView(_) => Self::SerieView,
+            Serie::LargeSerieView(_) => Self::LargeSerieView,
+            Serie::FixedSizeSerie(_) => Self::FixedSizeSerie,
             Serie::Map(_) | Serie::SortedMap(_) => Self::Map,
             Serie::Struct(_) => Self::Struct,
             _ => Self::Other,
@@ -263,7 +263,7 @@ pub(crate) fn columnar(value: &Bound<'_, PyAny>) -> PyResult<Option<Columnar>> {
 
 /// Read a columnar object as the one column it holds, a stream drained.
 ///
-/// This is what `Scalar.from_` holds a columnar argument as: a list sharing
+/// This is what `Scalar.from_` holds a columnar argument as: a serie sharing
 /// the column's buffers, its rows unread. One Arrow scalar is its row.
 ///
 /// # Errors
@@ -385,7 +385,7 @@ fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<Columnar> {
     if dimensions != 1 {
         return Err(PyTypeError::new_err(format!(
             "expected a one-dimensional numpy array; Arrow has no {dimensions}-dimensional \
-             column, so reshape it or build a fixed_size_list column",
+             column, so reshape it or build a fixed_size_serie column",
         )));
     }
     let pyarrow = py.import("pyarrow")?;
@@ -635,7 +635,7 @@ impl PySerie {
         self.inner.field().cloned().map(PyField::from_inner)
     }
 
-    /// `list(<the field named item>)` for a column; agreed out of a run's rows.
+    /// `serie(<the field named item>)` for a column; agreed out of a run's rows.
     #[getter]
     fn dtype(&self) -> PyResult<PyDataType> {
         self.inner
@@ -1130,29 +1130,29 @@ macro_rules! nested {
 }
 
 nested!(
-    PyListSerie,
-    "ListSerie",
-    "A list column: `int32` offsets over one item column."
+    PySerieSerie,
+    "SerieSerie",
+    "A serie column: `int32` offsets over one item column."
 );
 nested!(
-    PyLargeListSerie,
-    "LargeListSerie",
-    "A large list column: `int64` offsets over one item column."
+    PyLargeSerieSerie,
+    "LargeSerieSerie",
+    "A large serie column: `int64` offsets over one item column."
 );
 nested!(
-    PyListViewSerie,
-    "ListViewSerie",
-    "A list-view column: `int32` offsets and sizes over one item column."
+    PySerieViewSerie,
+    "SerieViewSerie",
+    "A serie-view column: `int32` offsets and sizes over one item column."
 );
 nested!(
-    PyLargeListViewSerie,
-    "LargeListViewSerie",
-    "A large list-view column: `int64` offsets and sizes over one item column."
+    PyLargeSerieViewSerie,
+    "LargeSerieViewSerie",
+    "A large serie-view column: `int64` offsets and sizes over one item column."
 );
 nested!(
-    PyFixedSizeListSerie,
-    "FixedSizeListSerie",
-    "A fixed-size list column: `width` items per row."
+    PyFixedSizeSerieSerie,
+    "FixedSizeSerieSerie",
+    "A fixed-size serie column: `width` items per row."
 );
 nested!(
     PyMapSerie,
@@ -1170,8 +1170,8 @@ fn pair(range: Option<std::ops::Range<usize>>) -> Option<(usize, usize)> {
     range.map(|range| (range.start, range.end))
 }
 
-/// Emit the verbs every offsets-cut list leaf lends, over its core leaf.
-macro_rules! offset_list {
+/// Emit the verbs every offsets-cut serie leaf lends, over its core leaf.
+macro_rules! offset_serie {
     ($class:ident, $narrow:ident) => {
         #[pymethods]
         impl $class {
@@ -1205,11 +1205,11 @@ macro_rules! offset_list {
     };
 }
 
-offset_list!(PyListSerie, as_list);
-offset_list!(PyLargeListSerie, as_large_list);
+offset_serie!(PySerieSerie, as_serie);
+offset_serie!(PyLargeSerieSerie, as_large_serie);
 
-/// Emit the verbs every list-view leaf lends, over its core leaf.
-macro_rules! view_list {
+/// Emit the verbs every serie-view leaf lends, over its core leaf.
+macro_rules! view_serie {
     ($class:ident, $narrow:ident) => {
         #[pymethods]
         impl $class {
@@ -1249,18 +1249,18 @@ macro_rules! view_list {
     };
 }
 
-view_list!(PyListViewSerie, as_list_view);
-view_list!(PyLargeListViewSerie, as_large_list_view);
+view_serie!(PySerieViewSerie, as_serie_view);
+view_serie!(PyLargeSerieViewSerie, as_large_serie_view);
 
 #[pymethods]
-impl PyFixedSizeListSerie {
+impl PyFixedSizeSerieSerie {
     /// How many items every row holds.
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
     #[getter]
     fn width(slf: PyRef<'_, Self>) -> usize {
         slf.as_super()
             .inner
-            .as_fixed_size_list()
+            .as_fixed_size_serie()
             .expect(LEAF)
             .width()
     }
@@ -1271,7 +1271,7 @@ impl PyFixedSizeListSerie {
         pair(
             slf.as_super()
                 .inner
-                .as_fixed_size_list()
+                .as_fixed_size_serie()
                 .expect(LEAF)
                 .range(index),
         )
@@ -1284,7 +1284,7 @@ impl PyFixedSizeListSerie {
         let row = slf
             .as_super()
             .inner
-            .as_fixed_size_list()
+            .as_fixed_size_serie()
             .expect(LEAF)
             .row(index);
         row.map(|row| described(py, row)).transpose()

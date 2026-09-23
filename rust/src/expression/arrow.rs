@@ -679,13 +679,13 @@ fn segment_array(
     Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?)
 }
 
-/// The elements of every list a predicate keeps, as one list column.
+/// The elements of every serie a predicate keeps, as one serie column.
 ///
 /// The predicate runs once over the flattened elements the rows cover, as
 /// the batch of the element struct's children; the answer is read as a
 /// certainty and a null element is dropped with it; the kept elements are
 /// one `filter`; and the offsets are rebuilt from how many each row kept. A
-/// null list stays null through the input's own mask. A layout with no
+/// null serie stays null through the input's own mask. A layout with no
 /// offsets to rebuild takes the row walk, which answers the same thing.
 fn kept_elements(
     field: &Field,
@@ -693,9 +693,9 @@ fn kept_elements(
     array: &ArrayRef,
     predicate: &Node,
 ) -> Result<ArrayRef> {
-    let element = super::path::list_item(reached.dtype()).ok_or_else(|| {
+    let element = reached.dtype().serie_item().ok_or_else(|| {
         Error::IncompatibleSchema(format!(
-            "expected a list of structs to keep elements of, got {}",
+            "expected a serie of structs to keep elements of, got {}",
             reached.dtype()
         ))
     })?;
@@ -718,7 +718,7 @@ fn kept_elements(
     let window = layout.values().slice(first, last.saturating_sub(first));
     let Some(structs) = window.as_any().downcast_ref::<StructArray>() else {
         return Err(Error::IncompatibleSchema(format!(
-            "expected a list of structs to keep elements of, got a list of {}",
+            "expected a serie of structs to keep elements of, got a serie of {}",
             window.data_type()
         )));
     };
@@ -763,7 +763,7 @@ fn kept_elements(
         | arrow_schema::DataType::FixedSizeList(item, _) => Arc::clone(item),
         other => {
             return Err(Error::IncompatibleSchema(format!(
-                "expected a list to keep elements of, got {other}"
+                "expected a serie to keep elements of, got {other}"
             )));
         }
     };

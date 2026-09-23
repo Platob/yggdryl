@@ -23,7 +23,7 @@ fn a_column_restates_as_the_run_of_its_rows() {
     let (values, run) = column(DataType::Int64, &int64s);
     for spelling in [
         "row: struct<a: int64, b: int64>",
-        "xs: list<int64 not null>",
+        "xs: serie<int64 not null>",
     ] {
         let field = Field::from_str(spelling).unwrap();
         assert_eq!(
@@ -44,7 +44,7 @@ fn a_base64_column_reads_as_the_run_of_its_rows() {
     let texts = [Scalar::from("AQI="), Scalar::from("AwQ=")];
     let (values, run) = column(DataType::utf8(), &texts);
     for spelling in [
-        "xs: list<binary not null>",
+        "xs: serie<binary not null>",
         "row: struct<a: binary, b: binary>",
     ] {
         let field = Field::from_str(spelling).unwrap();

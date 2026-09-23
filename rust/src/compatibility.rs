@@ -81,8 +81,8 @@ impl Target {
         matches!(self, Self::Arrow | Self::Spark | Self::Iceberg)
     }
 
-    /// Whether the engine keeps a fixed-length list layout distinct from a list.
-    const fn supports_fixed_size_list(self) -> bool {
+    /// Whether the engine keeps a fixed-size serie layout distinct from a serie.
+    const fn supports_fixed_size_serie(self) -> bool {
         matches!(self, Self::Arrow | Self::Polars)
     }
 }
@@ -147,28 +147,28 @@ impl Field {
 fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
     match dtype {
-        D::List(field) => {
+        D::Serie(field) => {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
-                Ok((D::list(field), true))
+                Ok((D::serie(field), true))
             } else {
                 Ok((dtype.clone(), false))
             }
         }
-        D::FixedSizeList(field, length) if target.supports_fixed_size_list() => {
+        D::FixedSizeSerie(field, length) if target.supports_fixed_size_serie() => {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
-                Ok((D::fixed_size_list(field, *length)?, true))
+                Ok((D::fixed_size_serie(field, *length)?, true))
             } else {
                 Ok((dtype.clone(), false))
             }
         }
-        D::ListView(field)
-        | D::FixedSizeList(field, _)
-        | D::LargeList(field)
-        | D::LargeListView(field) => {
+        D::SerieView(field)
+        | D::FixedSizeSerie(field, _)
+        | D::LargeSerie(field)
+        | D::LargeSerieView(field) => {
             let (field, _) = normalize_item(target, field, path)?;
-            Ok((D::list(field), true))
+            Ok((D::serie(field), true))
         }
         D::Struct(fields) => normalize_struct(target, dtype, fields, path),
         D::Union(..) if !target.supports_union() => incompatible(
@@ -195,7 +195,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
             target,
             path,
             format_smolstr!(
-                "{} has no first-class map type; use a list of key/value structs",
+                "{} has no first-class map type; use a serie of key/value structs",
                 target.engine()
             ),
         ),

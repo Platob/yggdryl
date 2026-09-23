@@ -581,7 +581,7 @@ mod encoding {
     }
 
     #[test]
-    fn a_list_column_encodes_as_the_run_of_its_rows() {
+    fn a_serie_column_encodes_as_the_run_of_its_rows() {
         let object = Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap();
         let cases = [
             (

@@ -222,19 +222,19 @@ pub enum Scalar {
     Geography(Geography),
     /// Many values under 32-bit offsets: a run, or a column of its item.
     ///
-    /// Each of the five sequence variants is the list layout the value
+    /// Each of the five sequence variants is the serie layout the value
     /// declares - what [`Scalar::dtype`] answers and what a column crossing
     /// Arrow is laid out as. The rows are its identity: two sequences of
     /// equal rows are equal whichever layout declares them.
-    List(Serie),
+    Serie(Serie),
     /// Many values under 32-bit offsets and sizes.
-    ListView(Serie),
+    SerieView(Serie),
     /// Exactly as many values per row as the declaring field fixes.
-    FixedSizeList(Serie),
+    FixedSizeSerie(Serie),
     /// Many values under 64-bit offsets.
-    LargeList(Serie),
+    LargeSerie(Serie),
     /// Many values under 64-bit offsets and sizes.
-    LargeListView(Serie),
+    LargeSerieView(Serie),
     /// An insertion-ordered mapping of arbitrary keys.
     Map(Map),
     /// A mapping whose keys are held sorted.
@@ -464,25 +464,15 @@ impl Serialize for Scalar {
                 }
             }
             Self::Interval(value) => tagged(serializer, "interval", value),
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => {
-                // A column carries the field that types it, which its rows
-                // alone cannot say, so it writes under its layout's column tag.
-                let (rows_tag, column_tag) = match self {
-                    Self::ListView(_) => ("list_view", "list_view_serie"),
-                    Self::FixedSizeList(_) => ("fixed_size_list", "fixed_size_list_serie"),
-                    Self::LargeList(_) => ("large_list", "large_list_serie"),
-                    Self::LargeListView(_) => ("large_list_view", "large_list_view_serie"),
-                    _ => ("list", "serie"),
-                };
-                match values.as_slice() {
-                    Some(rows) => tagged(serializer, rows_tag, &rows),
-                    None => tagged(serializer, column_tag, values),
-                }
-            }
+            // One tag per layout, the layout's own name. A run writes its
+            // rows; a column writes the field that types them beside them,
+            // which its rows alone cannot say - and the payload's shape says
+            // which of the two it is.
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => tagged(serializer, self.kind(), values),
             Self::Map(entries) => tagged(serializer, "map", &entries.as_slice()),
             Self::SortedMap(entries) => tagged(serializer, "sorted_map", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
@@ -548,6 +538,57 @@ impl<'de> Deserialize<'de> for Scalar {
                 }
 
                 deserializer.deserialize_map(Visitor)
+            }
+        }
+
+        /// A serie's payload in either shape the wire holds it: a run's rows,
+        /// or a column's field beside its rows.
+        enum Held {
+            Rows(Vec<Scalar>),
+            Column(Serie),
+        }
+
+        impl<'de> Deserialize<'de> for Held {
+            fn deserialize<D: Deserializer<'de>>(
+                deserializer: D,
+            ) -> std::result::Result<Self, D::Error> {
+                struct Visitor;
+
+                impl<'de> serde::de::Visitor<'de> for Visitor {
+                    type Value = Held;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a serie's rows, or its field beside its rows")
+                    }
+
+                    fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                        self,
+                        seq: A,
+                    ) -> std::result::Result<Held, A::Error> {
+                        Vec::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+                            .map(Held::Rows)
+                    }
+
+                    fn visit_map<A: serde::de::MapAccess<'de>>(
+                        self,
+                        map: A,
+                    ) -> std::result::Result<Held, A::Error> {
+                        Serie::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                            .map(Held::Column)
+                    }
+                }
+
+                deserializer.deserialize_any(Visitor)
+            }
+        }
+
+        impl Held {
+            /// The serie either shape holds.
+            fn into_serie(self) -> Serie {
+                match self {
+                    Self::Rows(values) => Serie::new(values),
+                    Self::Column(column) => column,
+                }
             }
         }
 
@@ -617,16 +658,19 @@ impl<'de> Deserialize<'de> for Scalar {
             Duration32(Temporal32),
             Duration64(Temporal64),
             Interval(crate::interval::Interval),
-            List(Vec<Scalar>),
-            ListView(Vec<Scalar>),
-            FixedSizeList(Vec<Scalar>),
-            LargeList(Vec<Scalar>),
-            LargeListView(Vec<Scalar>),
-            Serie(Serie),
-            ListViewSerie(Serie),
-            FixedSizeListSerie(Serie),
-            LargeListSerie(Serie),
-            LargeListViewSerie(Serie),
+            // The serie family's tags before it took its own names - the rows
+            // under `list`, a column under `serie` or `<layout>_serie` - each
+            // still read, whichever shape the payload has.
+            #[serde(alias = "list")]
+            Serie(Held),
+            #[serde(alias = "list_view", alias = "list_view_serie")]
+            SerieView(Held),
+            #[serde(alias = "fixed_size_list", alias = "fixed_size_list_serie")]
+            FixedSizeSerie(Held),
+            #[serde(alias = "large_list", alias = "large_list_serie")]
+            LargeSerie(Held),
+            #[serde(alias = "large_list_view", alias = "large_list_view_serie")]
+            LargeSerieView(Held),
             Map(Vec<(Scalar, Scalar)>),
             SortedMap(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
@@ -812,16 +856,12 @@ impl<'de> Deserialize<'de> for Scalar {
                     .map_err(D::Error::custom)
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
-            StructuralWire::List(values) => Ok(Self::from_sequence(values)),
-            StructuralWire::ListView(values) => Ok(Self::ListView(Serie::new(values))),
-            StructuralWire::FixedSizeList(values) => Ok(Self::FixedSizeList(Serie::new(values))),
-            StructuralWire::LargeList(values) => Ok(Self::LargeList(Serie::new(values))),
-            StructuralWire::LargeListView(values) => Ok(Self::LargeListView(Serie::new(values))),
-            StructuralWire::Serie(column) => Ok(Self::List(column)),
-            StructuralWire::ListViewSerie(column) => Ok(Self::ListView(column)),
-            StructuralWire::FixedSizeListSerie(column) => Ok(Self::FixedSizeList(column)),
-            StructuralWire::LargeListSerie(column) => Ok(Self::LargeList(column)),
-            StructuralWire::LargeListViewSerie(column) => Ok(Self::LargeListView(column)),
+            StructuralWire::Serie(Held::Rows(values)) => Ok(Self::from_sequence(values)),
+            StructuralWire::Serie(Held::Column(column)) => Ok(Self::Serie(column)),
+            StructuralWire::SerieView(held) => Ok(Self::SerieView(held.into_serie())),
+            StructuralWire::FixedSizeSerie(held) => Ok(Self::FixedSizeSerie(held.into_serie())),
+            StructuralWire::LargeSerie(held) => Ok(Self::LargeSerie(held.into_serie())),
+            StructuralWire::LargeSerieView(held) => Ok(Self::LargeSerieView(held.into_serie())),
             StructuralWire::Map(entries) => Self::from_mapping(entries).map_err(D::Error::custom),
             StructuralWire::SortedMap(entries) => Self::from_mapping(entries)
                 .map(|mapping| match mapping {
@@ -949,12 +989,12 @@ impl Ord for Scalar {
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
             }
-            Self::List(left)
-            | Self::ListView(left)
-            | Self::FixedSizeList(left)
-            | Self::LargeList(left)
-            | Self::LargeListView(left) => {
-                same_kind!((Self::List(right) | Self::ListView(right) | Self::FixedSizeList(right) | Self::LargeList(right) | Self::LargeListView(right)) => left.cmp(right))
+            Self::Serie(left)
+            | Self::SerieView(left)
+            | Self::FixedSizeSerie(left)
+            | Self::LargeSerie(left)
+            | Self::LargeSerieView(left) => {
+                same_kind!((Self::Serie(right) | Self::SerieView(right) | Self::FixedSizeSerie(right) | Self::LargeSerie(right) | Self::LargeSerieView(right)) => left.cmp(right))
             }
             Self::Map(left) | Self::SortedMap(left) => {
                 same_kind!((Self::Map(right) | Self::SortedMap(right)) => left.cmp(right))
@@ -1046,11 +1086,11 @@ impl Hash for Scalar {
             Self::Bytes(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
-            Self::List(value)
-            | Self::ListView(value)
-            | Self::FixedSizeList(value)
-            | Self::LargeList(value)
-            | Self::LargeListView(value) => {
+            Self::Serie(value)
+            | Self::SerieView(value)
+            | Self::FixedSizeSerie(value)
+            | Self::LargeSerie(value)
+            | Self::LargeSerieView(value) => {
                 0_isize.hash(state);
                 value.hash(state);
             }
@@ -1171,11 +1211,11 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Time32(_) | Scalar::Time64(_) => 8,
         Scalar::DateTime64(_) => 9,
         Scalar::Duration32(_) | Scalar::Duration64(_) => 10,
-        Scalar::List(_)
-        | Scalar::ListView(_)
-        | Scalar::FixedSizeList(_)
-        | Scalar::LargeList(_)
-        | Scalar::LargeListView(_) => 11,
+        Scalar::Serie(_)
+        | Scalar::SerieView(_)
+        | Scalar::FixedSizeSerie(_)
+        | Scalar::LargeSerie(_)
+        | Scalar::LargeSerieView(_) => 11,
         Scalar::Map(_) | Scalar::SortedMap(_) => 12,
         Scalar::Struct(_) => 13,
         Scalar::Geometry(_) | Scalar::Geography(_) => 14,
@@ -1203,7 +1243,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::MimeType(_) => 22,
         Scalar::MediaType(_) => 23,
         // 24 was the Arrow payload, since retired: a held column is the
-        // list it is, and ranks at 11.
+        // serie it is, and ranks at 11.
         Scalar::Urn(_) => 25,
         // A variant is its own kind, ranked after the containers it can
         // hold: the bytes say what is inside, and nothing else orders by
@@ -1216,7 +1256,7 @@ impl Scalar {
     /// Return the most specific datatype identifier the value itself proves.
     ///
     /// Nested values report their most-general shape; a [`Field`](crate::Field)
-    /// narrows a sequence to a list, fixed-size list, struct, or union. Static
+    /// narrows a sequence to a serie, fixed-size serie, struct, or union. Static
     /// enum members report UTF-8 because their column representation remains a
     /// field-level choice.
     pub const fn id(&self) -> DataTypeId {
@@ -1272,11 +1312,11 @@ impl Scalar {
             Self::Bytes(bytes) => bytes.parameters().id(),
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(_) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Serie(_) => DataTypeId::Serie,
+            Self::SerieView(_) => DataTypeId::SerieView,
+            Self::FixedSizeSerie(_) => DataTypeId::FixedSizeSerie,
+            Self::LargeSerie(_) => DataTypeId::LargeSerie,
+            Self::LargeSerieView(_) => DataTypeId::LargeSerieView,
             Self::Map(_) => DataTypeId::Map,
             Self::SortedMap(_) => DataTypeId::SortedMap,
             Self::Struct(_) => DataTypeId::Struct,
@@ -1353,11 +1393,11 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
-            Self::List(_) => "list",
-            Self::ListView(_) => "list_view",
-            Self::FixedSizeList(_) => "fixed_size_list",
-            Self::LargeList(_) => "large_list",
-            Self::LargeListView(_) => "large_list_view",
+            Self::Serie(_) => "serie",
+            Self::SerieView(_) => "serie_view",
+            Self::FixedSizeSerie(_) => "fixed_size_serie",
+            Self::LargeSerie(_) => "large_serie",
+            Self::LargeSerieView(_) => "large_serie_view",
             Self::Map(_) => "map",
             Self::SortedMap(_) => "sorted_map",
             Self::Struct(_) => "struct",
@@ -1368,7 +1408,7 @@ impl Scalar {
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::List(Serie::Run(Run::new(Arc::clone(
+        Self::Serie(Serie::Run(Run::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
         ))))
     }
@@ -1386,7 +1426,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::List(Serie::Run(Run::new(values)))
+            Self::Serie(Serie::Run(Run::new(values)))
         })
     }
 
@@ -1408,7 +1448,7 @@ impl Scalar {
         for (index, value) in unique.iter_mut().enumerate() {
             *value = at(index)?;
         }
-        Ok(Self::List(Serie::Run(Run::new(values))))
+        Ok(Self::Serie(Serie::Run(Run::new(values))))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
@@ -1634,11 +1674,11 @@ impl Scalar {
     /// which stores no value to lend.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.as_slice(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.as_slice(),
             _ => None,
         }
     }
@@ -1646,11 +1686,11 @@ impl Scalar {
     /// Return any sequence - a run or a column - without allocating.
     pub fn as_serie(&self) -> Option<&Serie> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => Some(values),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => Some(values),
             _ => None,
         }
     }
@@ -1661,11 +1701,11 @@ impl Scalar {
     /// field accepts, so building them cannot refuse.
     pub fn sequence_rows(&self) -> Option<Cow<'_, [Self]>> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => Some(values.rows()),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => Some(values.rows()),
             _ => None,
         }
     }
@@ -1689,11 +1729,11 @@ impl Scalar {
     /// Return the number of direct children or mapping entries.
     pub fn len(&self) -> usize {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.len(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.len(),
             Self::Map(entries) | Self::SortedMap(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
@@ -1736,11 +1776,11 @@ impl Scalar {
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.iter(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.iter(),
             Self::Map(entries) | Self::SortedMap(entries) => {
                 Children::Mapping(entries.as_slice().iter())
             }
@@ -1771,11 +1811,11 @@ impl Scalar {
     pub const fn is_container(&self) -> bool {
         matches!(
             self,
-            Self::List(_)
-                | Self::ListView(_)
-                | Self::FixedSizeList(_)
-                | Self::LargeList(_)
-                | Self::LargeListView(_)
+            Self::Serie(_)
+                | Self::SerieView(_)
+                | Self::FixedSizeSerie(_)
+                | Self::LargeSerie(_)
+                | Self::LargeSerieView(_)
                 | Self::Map(_)
                 | Self::SortedMap(_)
                 | Self::Struct(_)
@@ -1822,11 +1862,11 @@ impl Scalar {
             Self::Duration32(value) => value,
             Self::Duration64(value) => value,
             Self::Interval(value) => value,
-            Self::List(value)
-            | Self::ListView(value)
-            | Self::FixedSizeList(value)
-            | Self::LargeList(value)
-            | Self::LargeListView(value) => value,
+            Self::Serie(value)
+            | Self::SerieView(value)
+            | Self::FixedSizeSerie(value)
+            | Self::LargeSerie(value)
+            | Self::LargeSerieView(value) => value,
             Self::Map(value) | Self::SortedMap(value) => value,
             Self::Struct(value) => value,
             Self::Null
@@ -1901,11 +1941,11 @@ impl Scalar {
             Self::Map(_) | Self::SortedMap(_) | Self::Struct(_) => {
                 self.get_key_str(segment).map(Cow::Borrowed)
             }
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_) => self.get(segment.parse::<usize>().ok()?),
+            Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_) => self.get(segment.parse::<usize>().ok()?),
             _ => None,
         }
     }

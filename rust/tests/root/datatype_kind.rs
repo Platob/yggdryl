@@ -20,7 +20,7 @@ mod nested {
         crate::scalar::assert_family_round_trip(
             vec![
                 (
-                    Scalar::List(sequence.clone()),
+                    Scalar::Serie(sequence.clone()),
                     yggdryl::Value::dtype(&sequence).unwrap(),
                 ),
                 (
@@ -36,11 +36,11 @@ mod nested {
             &Scalar::from(1_i64),
         );
 
-        // A nested value answers the datatype its children name: a list of the
+        // A nested value answers the datatype its children name: a serie of the
         // items, a map of the keys and values, a struct of the fields.
         assert_eq!(
-            Scalar::List(sequence).dtype().unwrap(),
-            DataType::list(DataType::Int64.required_field("item"))
+            Scalar::Serie(sequence).dtype().unwrap(),
+            DataType::serie(DataType::Int64.required_field("item"))
         );
         assert_eq!(
             Scalar::Map(mapping).dtype().unwrap(),

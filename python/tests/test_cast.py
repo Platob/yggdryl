@@ -318,7 +318,7 @@ class TestArrowNullability:
 
         # A collection is one step of that path too, spelled with brackets.
         listed = Field(
-            "row", DataType("struct<users: list<struct<zip: string not null>>>"), False
+            "row", DataType("struct<users: serie<struct<zip: string not null>>>"), False
         )
         rows = pa.record_batch(
             {

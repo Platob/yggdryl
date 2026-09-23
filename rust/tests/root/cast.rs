@@ -78,7 +78,7 @@ mod coverage {
     }
 
     #[test]
-    fn list_wrappers_change_layout_and_cast_their_children() {
+    fn serie_wrappers_change_layout_and_cast_their_children() {
         let mut builder = ListBuilder::new(Int32Builder::new());
         builder.values().append_value(1);
         builder.values().append_value(2);
@@ -89,7 +89,7 @@ mod coverage {
 
         // List<Int32> -> LargeList<Int64>: the offset width and the child change.
         let large = cast(
-            &DataType::from_str("large_list<int64>")
+            &DataType::from_str("large_serie<int64>")
                 .unwrap()
                 .nullable_field("xs"),
             Arc::clone(&list),
@@ -110,7 +110,7 @@ mod coverage {
             2,
         ));
         let unsized_list = cast(
-            &DataType::from_str("list<int32>")
+            &DataType::from_str("serie<int32>")
                 .unwrap()
                 .nullable_field("xs"),
             fixed,
@@ -123,7 +123,7 @@ mod coverage {
     }
 
     #[test]
-    fn structs_reconcile_by_name_inside_a_list() {
+    fn structs_reconcile_by_name_inside_a_serie() {
         // List<Struct{id, name}> -> List<Struct{ID: int64}>: the dedicated arms
         // recurse, select case-insensitively, and drop the extra column.
         let ids = Int32Array::from(vec![1, 2]);
@@ -154,7 +154,7 @@ mod coverage {
         ));
         let list: ArrayRef = Arc::new(ListArray::new(child, offsets, Arc::new(entries), None));
 
-        let target = DataType::from_str("list<struct<ID: int64>>")
+        let target = DataType::from_str("serie<struct<ID: int64>>")
             .unwrap()
             .nullable_field("rows");
         let narrowed = cast(&target, list).unwrap();
@@ -1804,7 +1804,7 @@ mod typed {
         assert!(refused.contains("Variant::scalar"), "{refused}");
     }
 
-    /// Every wrapper reads what the value inside it reads: a list layout is a
+    /// Every wrapper reads what the value inside it reads: a serie layout is a
     /// layout, an encoding is a layout, and a byte framing is a framing.
     mod layouts {
         use std::sync::Arc;
@@ -1828,7 +1828,7 @@ mod typed {
             ArrowCastOptions::new().with_safe(false)
         }
 
-        /// Two rows of two `{a: int32}` values, under every list layout in turn.
+        /// Two rows of two `{a: int32}` values, under every serie layout in turn.
         fn struct_items() -> (Arc<ArrowField>, ArrayRef) {
             let fields: ArrowFields =
                 vec![Arc::new(ArrowField::new("a", ArrowDataType::Int32, true))].into();
@@ -1842,7 +1842,7 @@ mod typed {
         }
 
         #[test]
-        fn every_list_layout_reads_every_other_one_through_a_struct_child() {
+        fn every_serie_layout_reads_every_other_one_through_a_struct_child() {
             let (item, values) = struct_items();
             let offsets = OffsetBuffer::new(vec![0, 2, 4].into());
             let sources: Vec<ArrayRef> = vec![
@@ -1870,11 +1870,11 @@ mod typed {
                 ),
             ];
             let targets = [
-                "list<struct<a: int32>>",
-                "large_list<struct<a: int32>>",
-                "list_view<struct<a: int32>>",
-                "large_list_view<struct<a: int32>>",
-                "fixed_size_list<struct<a: int32>, 2>",
+                "serie<struct<a: int32>>",
+                "large_serie<struct<a: int32>>",
+                "serie_view<struct<a: int32>>",
+                "large_serie_view<struct<a: int32>>",
+                "fixed_size_serie<struct<a: int32>, 2>",
             ];
             for source in sources {
                 for target in targets {
@@ -1894,7 +1894,7 @@ mod typed {
                 Arc::new(FixedSizeListArray::try_new(item, 2, values, None).unwrap());
 
             let refused = cast_dtype(
-                dtype("fixed_size_list<struct<a: int32>, 4>"),
+                dtype("fixed_size_serie<struct<a: int32>, 4>"),
                 source,
                 strict(),
             )
@@ -2804,15 +2804,15 @@ mod typed {
             assert!(cast_into(&field, empty, conversion_error()).is_err());
         }
 
-        /// A list target reads a scalar source into its item, so the item is
+        /// A serie target reads a scalar source into its item, so the item is
         /// what answers: a text item keeps the empty cell, a numeric one does not.
         #[test]
-        fn a_list_target_answers_for_its_item() {
+        fn a_serie_target_answers_for_its_item() {
             let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
 
             let texts = Field::new(
                 "x",
-                DataType::list(DataType::utf8().nullable_field("item")),
+                DataType::serie(DataType::utf8().nullable_field("item")),
                 true,
             );
             let cast = cast_into(&texts, Arc::clone(&empty), conversion_error()).unwrap();
@@ -2830,7 +2830,7 @@ mod typed {
 
             let counts = Field::new(
                 "x",
-                DataType::list(DataType::Int32.nullable_field("item")),
+                DataType::serie(DataType::Int32.nullable_field("item")),
                 true,
             );
             let cast = cast_into(&counts, empty, conversion_error()).unwrap();
@@ -3044,7 +3044,7 @@ mod strict {
     }
 
     #[test]
-    fn a_required_list_item_is_named_under_its_list() {
+    fn a_required_serie_item_is_named_under_its_serie() {
         let mut builder = ListBuilder::new(Int32Builder::new());
         builder.values().append_value(1);
         builder.values().append_null();
@@ -3058,7 +3058,7 @@ mod strict {
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
 
         let target = root([
-            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+            DataType::Serie(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
         assert_eq!(
@@ -3200,7 +3200,7 @@ mod strict {
             "required Arrow field $.address.zip holds 1 null values"
         );
 
-        // A list item.
+        // A serie item.
         let mut builder = ListBuilder::new(StringBuilder::new());
         builder.values().append_value("7");
         builder.values().append_value("");
@@ -3213,7 +3213,7 @@ mod strict {
         )]);
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
         let target = root([
-            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+            DataType::Serie(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
         let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();

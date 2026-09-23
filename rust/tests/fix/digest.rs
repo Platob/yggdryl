@@ -374,11 +374,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
-    // The identities a message was read from are a list of UUIDs, each item
+    // The identities a message was read from are a serie of UUIDs, each item
     // stated.
     assert_eq!(
         typed("srcuuids"),
-        &DataType::list(DataType::uuid().required_field("srcuuid"))
+        &DataType::serie(DataType::uuid().required_field("srcuuid"))
     );
     assert!(field("srcuuids").is_nullable());
     for name in ["currunix", "creaunix"] {

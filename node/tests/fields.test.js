@@ -18,7 +18,7 @@ test('internal typed-factory bridges stay outside the public package surface', (
     '_temporal',
     '_fixedSizeBinary',
     '_decimal',
-    '_list',
+    '_serie',
     '_fromFields',
     '_union',
     '_variant',
@@ -38,6 +38,11 @@ test('internal typed-factory bridges stay outside the public package surface', (
   }
   assert.equal(new DataType('int32').constructor, DataType)
   assert.equal(new Field('id', 'int32').constructor, Field)
+  // The serie factories carry the layouts' own names; the list names are
+  // retired, with no alias.
+  for (const name of ['list', 'listView', 'fixedSizeList', 'largeList', 'largeListView']) {
+    assert.equal(name in fields, false, name)
+  }
   assert.equal(Object.hasOwn(new DataType('int32').constructor, '_simple'), false)
 })
 
@@ -265,11 +270,11 @@ test('typed field factories cover every native datatype variant', () => {
     ['timezone', fields.timezone('value')],
     ['mimetype', fields.mimetype('value')],
     ['mediatype', fields.mediatype('value')],
-    ['list', fields.list('value', item)],
-    ['list_view', fields.listView('value', item)],
-    ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
-    ['large_list', fields.largeList('value', item)],
-    ['large_list_view', fields.largeListView('value', item)],
+    ['serie', fields.serie('value', item)],
+    ['serie_view', fields.serieView('value', item)],
+    ['fixed_size_serie', fields.fixedSizeSerie('value', item, 3)],
+    ['large_serie', fields.largeSerie('value', item)],
+    ['large_serie_view', fields.largeSerieView('value', item)],
     ['struct', fields.struct('value', [item])],
     ['union', fields.union('value', [[3, item]], 'dense')],
     ['dictionary', fields.dictionary('value', 'int16', 'utf8')],
@@ -579,7 +584,7 @@ test('nested factories preserve exact child metadata and dictionary state', () =
   })
   item.setDictionaryOptions(42n, true)
 
-  const values = fields.list('values', item, {
+  const values = fields.serie('values', item, {
     metadata: new Map([['owner', 'events']]),
   })
   const child = values.dtype.getFieldAt(0)

@@ -8,7 +8,8 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const arrow = require('apache-arrow')
-const { BatchReader, DataType, Field, Serie, SerieReader, StructSerie, fields } = require('yggdryl')
+const binding = require('yggdryl')
+const { BatchReader, DataType, Field, Serie, SerieReader, StructSerie, fields } = binding
 
 const trades = () =>
   fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
@@ -50,6 +51,38 @@ test('the private Arrow bridges stay outside the public surface', () => {
   }
   assert.equal('defaultArrowScalar' in DataType.prototype, false)
   assert.equal('fromArrowTable' in Serie, false)
+})
+
+test('a serie layout is handed out as its leaf class, with the verbs it lends', () => {
+  const item = fields.int64('item', { nullable: false })
+  const rows = [[1, 2], [3, 4]]
+  for (const [factory, leaf, verbs] of [
+    [fields.serie('values', item), binding.SerieSerie, ['offsets']],
+    [fields.largeSerie('values', item), binding.LargeSerieSerie, ['offsets']],
+    [fields.serieView('values', item), binding.SerieViewSerie, ['offsets', 'sizes']],
+    [fields.largeSerieView('values', item), binding.LargeSerieViewSerie, ['offsets', 'sizes']],
+    [fields.fixedSizeSerie('values', item, 2), binding.FixedSizeSerieSerie, ['width']],
+  ]) {
+    const serie = Serie.fromScalars(factory, rows)
+    assert.ok(serie instanceof leaf, leaf.name)
+    assert.ok(serie instanceof Serie, leaf.name)
+    assert.equal(serie.field.dtype.id, factory.dtype.id, leaf.name)
+    assert.deepEqual(serie.asJs(), rows, leaf.name)
+    for (const verb of verbs) assert.notEqual(serie[verb], undefined, `${leaf.name}.${verb}`)
+    assert.deepEqual(serie.row(1).asJs(), [3, 4], leaf.name)
+    assert.throws(() => new leaf(), /handed out by Serie/)
+  }
+  assert.equal(Serie.fromScalars(fields.fixedSizeSerie('values', item, 2), rows).width, 2)
+  // The leaf classes carry the layout's own name; the list names are retired.
+  for (const name of [
+    'ListSerie',
+    'LargeListSerie',
+    'ListViewSerie',
+    'LargeListViewSerie',
+    'FixedSizeListSerie',
+  ]) {
+    assert.equal(name in binding, false, name)
+  }
 })
 
 test('an int32 vector lands under an int64 field, and its own field without one', () => {

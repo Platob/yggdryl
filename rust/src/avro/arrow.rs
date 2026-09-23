@@ -91,7 +91,7 @@ fn dtype_from(
         Node::Array(items) => {
             let (item_type, nullable) = dtype_from(items, schema, visiting)?;
             (
-                DataType::list(Field::new("item", item_type, nullable)),
+                DataType::serie(Field::new("item", item_type, nullable)),
                 false,
             )
         }
@@ -294,7 +294,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ),
             ])
         }
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             let mut items = node_json(item.dtype(), item.name(), counter)?;
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);

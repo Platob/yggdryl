@@ -18,7 +18,7 @@
 | `Hashed<H>` | Answers from its running state and never reads the bytes back, but only while that state covers the whole value: writes strictly sequential from offset 0, counted after `flush`. A positional write makes the next digest re-stream and re-arm, with an identical answer |
 | Value feed | `write_bytes` is a total prefix-free feed: one [`DataTypeId`](types/datatype.md) tag byte, then the family's canonical form, integers little-endian ([Encoding](#encoding)); `as_value_bytes` is the payload alone - no tag, no length - borrowed, never allocating, `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](types/field.md), [`Uri`](uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
-| Row digests | `row_digests` hashes the selected values as one `Scalar::List` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
+| Row digests | `row_digests` hashes the selected values as one `Scalar::Serie` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Holders | A holder's `DIGEST:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `DIGEST:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
 | `TxHash` | `unit`, `unix`, `digest`; the digest is exactly what `xxhash` answers for the same bytes, so `txhash` defines no second hash. Spelled `<unix>@<unit>:<algorithm>:<hex>`, `from_str` the exact inverse; two units or two algorithms are never equal |
 | TxHash bytes | The instant as a big-endian `i64`, then the digest's canonical bytes: 12, 16, or 24 bytes for XXH32, the two 64-bit algorithms, XXH3-128. Stored as `fixed_size_binary[12|16|24]`; sixteen bytes imply XXH3-64, the project default |
@@ -510,13 +510,13 @@ The bytes moved once, together, when the identifiers were laid out by family: ev
 | `DateTime64` | `datetime64` | as above |
 | `Duration32`/`Duration64` | `duration64` | as above |
 | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
-| `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
+| `Sequence` | `serie` (`0x91`, the byte it fed as `list`) | element count `u64` little-endian, then each element's feed |
 | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
 | `Struct` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
 
 ## Digest holders and row digests
 
-A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::List` of its non-holder columns in schema order, element count included, and the answer never builds one.
+A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::Serie` of its non-holder columns in schema order, element count included, and the answer never builds one.
 
 === "Rust"
 
@@ -639,7 +639,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     assert.deepEqual([...filled.getChild('row_digest')], [digest, digest])
     ```
 
-Each visible row is framed as an ordered `Scalar::List` and streamed through the canonical value feed. Nested Struct holders are filled deepest first.
+Each visible row is framed as an ordered `Scalar::Serie` and streamed through the canonical value feed. Nested Struct holders are filled deepest first.
 
 | Holder setting | Effect |
 | --- | --- |
@@ -1351,8 +1351,8 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - A `currency` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `DIGEST:sources` or `DIGEST:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
-- A path through a list, map, or union -> that value is selected whole, never traversed.
-- A holder, or `DIGEST:sources`/`DIGEST:algorithm`, under a list, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
+- A path through a serie, map, or union -> that value is selected whole, never traversed.
+- A holder, or `DIGEST:sources`/`DIGEST:algorithm`, under a serie, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
 - A holder that selects itself or another holder in the same Struct -> refused.
 - A Struct with several direct holders -> ambiguous; name the intended nested holder by a path.
 - A holder column missing from the batch -> added in the position the root declares.
@@ -1380,13 +1380,13 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - Python `True` or JavaScript `true` as an instant -> `TypeError`, never `1`.
 - JavaScript `number` instants -> safe integers only; a fraction or a wider number is refused.
 - An instant column shorter or longer than the batch -> refused by length.
-- A text, boolean, float, list, or dictionary column as the instant -> refused by datatype; it is read as a column, never per cell.
+- A text, boolean, float, serie, or dictionary column as the instant -> refused by datatype; it is read as a column, never per cell.
 - A `uint64` instant above `i64::MAX` -> refused naming the value.
 - An empty batch -> an empty coupled column of the right width.
 - A null instant -> a null coupled cell in every column function; the digest functions answer no nulls, so a coupled column carries exactly the instant column's nulls.
 - `compose` with a digest column of another width -> refused naming the expected width; `int32` and `int64` are read as the same bits `uint32` and `uint64` hold.
 - `decompose` on a `fixed_size_binary` of another width -> refused naming the coupled width.
-- A `DIGEST:time` path through a list, map, union, dictionary, or run-end layout -> refused by path, as a holder there is.
+- A `DIGEST:time` path through a serie, map, union, dictionary, or run-end layout -> refused by path, as a holder there is.
 - `DIGEST:time` or `DIGEST:unit` off a holder -> refused as belonging only to a holder.
 - Nested Structs -> the instant is read after nested holders are final, and a row null at any Struct above the leaf is null.
 - A seeded `TxHasher` -> its seed and secret reach every holder sharing its algorithm's width, as `Digester::apply_arrow_batch` states; the holder's own `DIGEST:unit` always wins over the hasher's.

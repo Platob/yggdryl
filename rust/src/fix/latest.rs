@@ -56,9 +56,9 @@ use crate::{DataType, Field, Plan, Result, Scalar, StructType};
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
 /// Held unpacked while the pass works on it - a group's occurrences as
-/// levels of their own rather than as the List value they pack into - so a
+/// levels of their own rather than as the Serie value they pack into - so a
 /// member written into one occurrence is an ordinary child write, and the
-/// List is rebuilt once at the end as the union of what its occurrences
+/// Serie is rebuilt once at the end as the union of what its occurrences
 /// hold, exactly as the builder rebuilds one.
 #[derive(Clone, Default)]
 struct Level {
@@ -71,7 +71,7 @@ enum Child {
     /// A scalar child, or a nested value no repeating group declares, which
     /// is kept exactly as it is.
     Flat(Field, Scalar),
-    /// A repeating group: its List field, and each occurrence unpacked -
+    /// A repeating group: its Serie field, and each occurrence unpacked -
     /// `None` where the row states no occurrence at that index.
     Group(Field, Vec<Option<Level>>),
 }
@@ -118,12 +118,12 @@ struct FieldWrite {
 enum Write {
     Field(FieldWrite),
     /// One occurrence of a repeating group: merged into the occurrence at
-    /// `occurrence`, appended when there is none; the List itself created
-    /// from `list` when the level holds none. The counter child is set to
+    /// `occurrence`, appended when there is none; the Serie itself created
+    /// from `serie` when the level holds none. The counter child is set to
     /// the count the group then has.
     Group {
         at: Option<usize>,
-        list: Option<Field>,
+        serie: Option<Field>,
         occurrence: Option<usize>,
         members: Vec<Write>,
         counter: FieldWrite,
@@ -142,7 +142,7 @@ impl Level {
         }
     }
 
-    /// The fields and values this level packs back into, every group a List
+    /// The fields and values this level packs back into, every group a Serie
     /// of the union of its occurrences' members.
     fn pack(self) -> Result<(Vec<Field>, Vec<Scalar>)> {
         let mut fields = Vec::with_capacity(self.children.len());
@@ -150,7 +150,7 @@ impl Level {
         for child in self.children {
             let (field, value) = match child {
                 Child::Flat(field, value) => (field, value),
-                Child::Group(list, occurrences) => pack_group(list, occurrences)?,
+                Child::Group(serie, occurrences) => pack_group(serie, occurrences)?,
             };
             fields.push(field);
             values.push(value);
@@ -174,7 +174,7 @@ impl Level {
 
     /// The group child headed by `counter`, else the one named `name`.
     ///
-    /// A declared group stating no occurrence - a null List a schema
+    /// A declared group stating no occurrence - a null Serie a schema
     /// declared - is that group too: a fill into it opens it rather than
     /// standing a second child of the name beside it.
     fn position_of_group(&self, counter: i32, name: &str) -> Option<usize> {
@@ -222,15 +222,15 @@ impl Level {
             Write::Field(write) => self.write_field(write),
             Write::Group {
                 at,
-                list,
+                serie,
                 occurrence,
                 members,
                 counter,
             } => {
-                let at = match (at, list) {
+                let at = match (at, serie) {
                     (Some(at), _) => at,
-                    (None, Some(list)) => {
-                        self.children.push(Child::Group(list, Vec::new()));
+                    (None, Some(serie)) => {
+                        self.children.push(Child::Group(serie, Vec::new()));
                         self.children.len() - 1
                     }
                     (None, None) => return,
@@ -347,7 +347,7 @@ impl Level {
             });
     }
 
-    /// Brings every scalar counter in step with the merged List it counts.
+    /// Brings every scalar counter in step with the merged Serie it counts.
     fn sync_group_counts(&mut self, registry: &FixRegistry) -> Result<()> {
         for child in &mut self.children {
             if let Child::Group(_, occurrences) = child {
@@ -382,7 +382,7 @@ impl Level {
 
 /// The FIX identity one child states. A group is named by its counter; a
 /// scalar by its tag. Shape remains part of the identity because the scalar
-/// counter and the List it counts legitimately share one numeric tag.
+/// counter and the Serie it counts legitimately share one numeric tag.
 fn child_tag(registry: &FixRegistry, child: &Child) -> Option<i32> {
     let field = child.field();
     let (tag, counter) = tag_and_counter(registry, field);
@@ -513,7 +513,7 @@ impl Child {
 
     /// One child, its occurrences unpacked when it is a repeating group.
     ///
-    /// A group is a List of Structs carrying `FIX:counter`; a List no counter
+    /// A group is a Serie of Structs carrying `FIX:counter`; a Serie no counter
     /// heads is a repeated flat field and stays whole, because the registry's
     /// scalar field cannot hold it.
     fn unpack(field: Field, value: Scalar) -> Self {
@@ -536,14 +536,14 @@ impl Child {
     }
 }
 
-/// One group packed back into its List: the item is the union of every
+/// One group packed back into its Serie: the item is the union of every
 /// occurrence's members in first-seen order, each nullable because an
 /// occurrence need not state one, exactly as the builder closes a group.
 ///
-/// A group holding no occurrence keeps the List it arrived as: there is
+/// A group holding no occurrence keeps the Serie it arrived as: there is
 /// nothing to rebuild the item from, and the declared shape is the best
 /// statement of what its occurrences would hold.
-fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Scalar)> {
+fn pack_group(serie: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Scalar)> {
     let mut finished: Vec<Option<(Vec<Field>, Vec<Scalar>)>> =
         Vec::with_capacity(occurrences.len());
     for occurrence in occurrences {
@@ -551,7 +551,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
     }
     if finished.iter().all(Option::is_none) {
         let rows = finished.into_iter().map(|_| Scalar::Null);
-        return Ok((list, Scalar::from_sequence(rows)));
+        return Ok((serie, Scalar::from_sequence(rows)));
     }
     let mut members: Vec<Field> = Vec::new();
     for (fields, _) in finished.iter().flatten() {
@@ -566,7 +566,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
     }
     // The union took each member once by name.
     let mut item = DataType::from(StructType::from_unique_fields(members))
-        .required_field(occurrence_name(&list));
+        .required_field(occurrence_name(&serie));
     if finished.iter().any(Option::is_none) {
         item.set_nullable(true);
     }
@@ -588,17 +588,17 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
         }))
     });
     let rows = Scalar::from_sequence(rows);
-    let dtype = match list.dtype() {
-        DataType::LargeList(_) => DataType::large_list(item),
-        _ => DataType::list(item),
+    let dtype = match serie.dtype() {
+        DataType::LargeSerie(_) => DataType::large_serie(item),
+        _ => DataType::serie(item),
     };
-    // The List's own metadata travels as the one it is rather than as a map
+    // The Serie's own metadata travels as the one it is rather than as a map
     // rebuilt from its entries for every group of every message.
     let rebuilt = Field::new_with_metadata(
-        list.name(),
+        serie.name(),
         dtype,
-        list.is_nullable(),
-        list.as_metadata().clone(),
+        serie.is_nullable(),
+        serie.as_metadata().clone(),
     );
     Ok((rebuilt, rows))
 }
@@ -661,13 +661,13 @@ fn named_literals(term: &Term) -> Vec<SmolStr> {
 
 /// The members of the one occurrence a group projection states.
 ///
-/// A group occurrence is spelled `[{member: term, ...}] as group`: a list of
-/// exactly one record, because a rule fills one occurrence and the List is
+/// A group occurrence is spelled `[{member: term, ...}] as group`: a serie of
+/// exactly one record, because a rule fills one occurrence and the Serie is
 /// what the row holds a group as. The grammar reads `{member: term}` as a
 /// map whose keys are paths, and a member is the one name its key spells;
 /// anything else names no occurrence.
 fn occurrence_members(term: &Term) -> Option<Vec<(SmolStr, &Term)>> {
-    let Term::List(items) = term else {
+    let Term::Serie(items) = term else {
         return None;
     };
     match items.as_ref() {
@@ -867,7 +867,7 @@ impl<'msg> Restater<'msg> {
     /// and carrying no replacement rule that could fire; every group
     /// occurrence is such a level in turn. Canonicalizing such a level
     /// keeps every child as it is, no rule restates one, and the group
-    /// packs back to the List it arrived as - so the pass would rebuild
+    /// packs back to the Serie it arrived as - so the pass would rebuild
     /// the level it was handed. A child the dictionary does not know is
     /// kept as it is either way, and a nested child no group declares is
     /// too.
@@ -922,10 +922,10 @@ impl<'msg> Restater<'msg> {
                 if let (Some(members), Some(rows)) =
                     (super::schema::item_fields(field), value.as_serie())
                 {
-                    // The List as `pack_group` would rebuild it: a List and
+                    // The Serie as `pack_group` would rebuild it: a Serie and
                     // not a map, its item nullable exactly where an
                     // occurrence is null, and every member nullable.
-                    let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
+                    let (DataType::Serie(item) | DataType::LargeSerie(item)) = field.dtype() else {
                         return false;
                     };
                     if item.is_nullable() != (rows.null_count() != 0) {
@@ -1077,16 +1077,16 @@ impl<'msg> Restater<'msg> {
                     out.push(Child::Flat(field, value));
                 }
                 (Some(Decision::Drop), _) => {}
-                (None, Child::Group(list, occurrences)) => {
+                (None, Child::Group(serie, occurrences)) => {
                     let mut restated = Vec::with_capacity(occurrences.len());
                     for occurrence in occurrences {
                         restated.push(
                             occurrence
-                                .map(|held| self.level(held, Some(list.name())))
+                                .map(|held| self.level(held, Some(serie.name())))
                                 .transpose()?,
                         );
                     }
-                    out.push(Child::Group(list, restated));
+                    out.push(Child::Group(serie, restated));
                 }
                 (Some(Decision::Untouched) | None, child) => out.push(child),
             }
@@ -1549,7 +1549,7 @@ impl<'msg> Restater<'msg> {
         let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
         let at = level.position_of_group(counter_tag, definition.name());
         let empty: Vec<Option<Level>> = Vec::new();
-        let (list, occurrences) = match at {
+        let (serie, occurrences) = match at {
             Some(at) => match &level.children[at] {
                 Child::Group(_, occurrences) => (None, occurrences),
                 // A declared group stating no occurrence, opened on apply.
@@ -1560,9 +1560,9 @@ impl<'msg> Restater<'msg> {
                 if level.names(definition.name()) {
                     return None;
                 }
-                let mut list = definition.clone();
-                list.set_nullable(true);
-                (Some(list), &empty)
+                let mut serie = definition.clone();
+                serie.set_nullable(true);
+                (Some(serie), &empty)
             }
         };
         // The literal members, typed as their fields hold them, decide which
@@ -1620,7 +1620,7 @@ impl<'msg> Restater<'msg> {
         };
         Some(Write::Group {
             at,
-            list,
+            serie,
             occurrence: matched,
             members: planned,
             counter,
@@ -1646,7 +1646,7 @@ impl<'msg> Restater<'msg> {
         let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
         let at = level.position_of_group(counter_tag, definition.name());
         let empty: Vec<Option<Level>> = Vec::new();
-        let (list, occurrences) = match at {
+        let (serie, occurrences) = match at {
             Some(at) => match &level.children[at] {
                 Child::Group(_, occurrences) => (None, occurrences),
                 Child::Flat(_, value) if value.is_null() => (None, &empty),
@@ -1656,9 +1656,9 @@ impl<'msg> Restater<'msg> {
                 if level.names(definition.name()) {
                     return None;
                 }
-                let mut list = definition.clone();
-                list.set_nullable(true);
-                (Some(list), &empty)
+                let mut serie = definition.clone();
+                serie.set_nullable(true);
+                (Some(serie), &empty)
             }
         };
         let mut constants: Vec<(i32, Scalar)> = Vec::new();
@@ -1698,7 +1698,7 @@ impl<'msg> Restater<'msg> {
         };
         Some(Write::Group {
             at,
-            list,
+            serie,
             occurrence: matched,
             members: planned,
             counter,

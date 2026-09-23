@@ -217,7 +217,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 
 ## Identity and family
 
-`id` names the variant, `kind` its family; both drop parameters and touch no nested state. A family is the range of identifier bytes its `DataTypeKind` owns - `DataTypeKind::range`, from `DataTypeKind::id` to `DataTypeKind::last` - so `kind` is the family whose range `id` is in and `DataTypeKind::contains` asks it of one identifier; the temporal range holds five families, and `DataTypeId::temporal_family` names which.
+`id` names the variant, `kind` its family; both drop parameters and touch no nested state. A family is the range of identifier bytes its `DataTypeKind` owns - `DataTypeKind::range`, from `DataTypeKind::id` to `DataTypeKind::last` - so `kind` is the family whose range `id` is in and `DataTypeKind::contains` asks it of one identifier; the temporal range holds five families, and `DataTypeId::temporal_family` names which. `DataTypeId::from_str` reads each identifier's `as_str` name, ignoring case, and also the five names the [serie layouts](nested/sequence.md#datatype) had before they took their own, `DataTypeId::LEGACY_NAMES`, which nothing writes.
 
 === "Rust"
 
@@ -488,7 +488,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     ```rust
     use yggdryl::{DataType, StructType};
 
-    let rows = DataType::list(
+    let rows = DataType::serie(
         DataType::from(StructType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     );
 
@@ -499,7 +499,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(format!("{rows:#}"), rows.into_pretty_str().to_string());
     assert_eq!(
         format!("{rows:#}"),
-        "list\n  item: struct[1], nullable\n    venue: utf8, nullable",
+        "serie\n  item: struct[1], nullable\n    venue: utf8, nullable",
     );
     ```
 
@@ -536,7 +536,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
         Field::new("wide", DataType::UInt64, true),
         Field::new(
             "text",
-            DataType::large_list(DataType::utf8_view().nullable_field("item")),
+            DataType::large_serie(DataType::utf8_view().nullable_field("item")),
             false,
         ),
     ])?);
@@ -547,7 +547,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(rewritten[1].dtype(), &DataType::decimal128(20, 0)?);
     assert_eq!(
         rewritten[2].dtype(),
-        &DataType::list(DataType::utf8().nullable_field("item"))
+        &DataType::serie(DataType::utf8().nullable_field("item"))
     );
 
     // Arrow is a validated clone; Polars keeps the unsigned integers Spark has to widen.
@@ -619,8 +619,8 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | target | rewrite |
 | --- | --- |
 | `arrow` | validated clone |
-| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, fixed-size list -> list |
-| `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and fixed-size list |
+| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie` |
+| `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
@@ -638,7 +638,7 @@ assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 
 // A valid value validates without allocating, recursing through every child.
-let value = DataType::list(Field::new(
+let value = DataType::serie(Field::new(
     "item",
     DataType::decimal128(18, 4)?,
     true,
@@ -652,7 +652,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ## Edges
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
-- `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a fixed-size list default over that byte limit fails the same way.
+- `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a `fixed_size_serie` default over that byte limit fails the same way.
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.

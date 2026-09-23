@@ -268,7 +268,7 @@ fn operation_field() -> Result<Field> {
     fields.push(kind);
     fields.extend(EventColumn::fields()?);
     fields.extend(MarketColumn::fields()?);
-    fields.push(DataType::list(execution_field()?).nullable_field("executions"));
+    fields.push(DataType::serie(execution_field()?).nullable_field("executions"));
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(OPERATION_ROOT))
 }
 
@@ -286,7 +286,7 @@ fn book_field() -> Result<Field> {
     fields.extend(MarketColumn::fields()?);
     fields.push(side_field("bid")?);
     fields.push(side_field("ask")?);
-    fields.push(DataType::list(execution_field()?).required_field("executions"));
+    fields.push(DataType::serie(execution_field()?).required_field("executions"));
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(BOOK_ROOT))
 }
 
@@ -299,8 +299,8 @@ fn side_field(name: &'static str) -> Result<Field> {
             .collect::<Result<Vec<_>>>()?,
     );
     fields.extend(MarketColumn::fields()?);
-    fields.push(DataType::list(operation_field()?).required_field("live"));
-    fields.push(DataType::list(operation_field()?).required_field("deltas"));
+    fields.push(DataType::serie(operation_field()?).required_field("live"));
+    fields.push(DataType::serie(operation_field()?).required_field("deltas"));
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(name))
 }
 
@@ -340,18 +340,18 @@ fn checked_book_row(book: &Book, ordinal: u64) -> Result<Scalar> {
     for (name, side) in [("bid", book.bid()), ("ask", book.ask())] {
         for (index, operation) in side.live().enumerate() {
             validate_event_for_write(operation, |field| {
-                NestedList::SideLive(name).field_path(ordinal, index, field)
+                NestedSerie::SideLive(name).field_path(ordinal, index, field)
             })?;
         }
         for (index, operation) in side.deltas().iter().enumerate() {
             validate_event_for_write(operation, |field| {
-                NestedList::SideDeltas(name).field_path(ordinal, index, field)
+                NestedSerie::SideDeltas(name).field_path(ordinal, index, field)
             })?;
         }
     }
     for (index, execution) in book.executions().iter().enumerate() {
         validate_event_for_write(execution, |field| {
-            NestedList::Executions.field_path(ordinal, index, field)
+            NestedSerie::Executions.field_path(ordinal, index, field)
         })?;
     }
 
@@ -746,9 +746,9 @@ impl BookIntake {
         at += 1;
         let executions = executions_from_value(
             &self.cell(batch, row, ordinal, at)?,
-            || NestedList::Executions.path(ordinal),
-            |index| NestedList::Executions.item_path(ordinal, index),
-            |index, name| NestedList::Executions.field_path(ordinal, index, name),
+            || NestedSerie::Executions.path(ordinal),
+            |index| NestedSerie::Executions.item_path(ordinal, index),
+            |index, name| NestedSerie::Executions.field_path(ordinal, index, name),
         )?;
         let book = Book::from_parts(event, bid, ask, executions)
             .map_err(|error| prefix_invalid(error, || format_smolstr!("$[{ordinal}]")))?;
@@ -766,13 +766,13 @@ impl BookIntake {
 }
 
 #[derive(Clone, Copy)]
-enum NestedList {
+enum NestedSerie {
     SideLive(&'static str),
     SideDeltas(&'static str),
     Executions,
 }
 
-impl NestedList {
+impl NestedSerie {
     fn path(self, ordinal: u64) -> SmolStr {
         match self {
             Self::SideLive(side) => format_smolstr!("$[{ordinal}].{side}.live"),
@@ -832,9 +832,9 @@ fn side_from_value(value: &Scalar, ordinal: u64, side_name: &'static str) -> Res
         at += 1;
     }
     let mut stated = element.clone();
-    let live = operations_from_value(&values[at], ordinal, NestedList::SideLive(side_name))?;
+    let live = operations_from_value(&values[at], ordinal, NestedSerie::SideLive(side_name))?;
     at += 1;
-    let deltas = operations_from_value(&values[at], ordinal, NestedList::SideDeltas(side_name))?;
+    let deltas = operations_from_value(&values[at], ordinal, NestedSerie::SideDeltas(side_name))?;
     let side = BookSide::from_parts(element, live, deltas)
         .map_err(|error| prefix_invalid(error, || side_path(ordinal, side_name)))?;
     claims.validate(&side, |name| side_field_path(ordinal, side_name, name))?;
@@ -849,7 +849,7 @@ fn side_from_value(value: &Scalar, ordinal: u64, side_name: &'static str) -> Res
 fn operations_from_value(
     value: &Scalar,
     ordinal: u64,
-    path: NestedList,
+    path: NestedSerie,
 ) -> Result<Vec<MarketOperation>> {
     sequence(value, || path.path(ordinal), "a market-operation list")?
         .iter()
@@ -999,7 +999,7 @@ where
 fn operation_from_value(
     value: &Scalar,
     ordinal: u64,
-    path: NestedList,
+    path: NestedSerie,
     index: usize,
 ) -> Result<MarketOperation> {
     let values = sequence(

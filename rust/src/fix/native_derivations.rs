@@ -133,7 +133,7 @@ fn supports_secaltids(registry: &FixRegistry) -> bool {
     if group.name() != "secaltids" || group.as_fix().counter().ok().flatten() != Some(454) {
         return false;
     }
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Serie(item) = group.dtype() else {
         return false;
     };
     if item.name() != "secaltid" || !matches!(item.dtype(), DataType::Struct(_)) {

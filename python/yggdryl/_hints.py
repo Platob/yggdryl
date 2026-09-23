@@ -460,12 +460,12 @@ class _Inference:
                 ]
             )
             item_field = Field("item", item, nullable=False)
-            return DataType._list("list", item_field)
+            return DataType._serie("serie", item_field)
         if origin is tuple:
             if hint is typing.Tuple:
-                return self._list(Any, path=path, depth=depth)
+                return self._serie(Any, path=path, depth=depth)
             if len(arguments) == 2 and arguments[1] is Ellipsis:
-                return self._list(arguments[0], path=path, depth=depth)
+                return self._serie(arguments[0], path=path, depth=depth)
             fields = [
                 self.field(
                     f"_{index}",
@@ -478,7 +478,7 @@ class _Inference:
             return _struct_datatype(fields)
         if origin in _sequence_origins():
             item_hint = arguments[0] if arguments else Any
-            return self._list(item_hint, path=path, depth=depth)
+            return self._serie(item_hint, path=path, depth=depth)
         if origin is type:
             return _native_datatype("utf8")
         if origin in _callable_origins():
@@ -508,7 +508,7 @@ class _Inference:
             if direct == "complex":
                 return _complex_datatype("float64")
             if direct == "range":
-                return self._list(int, path=path, depth=depth)
+                return self._serie(int, path=path, depth=depth)
             return _native_datatype(direct)
 
         if hint is Version:
@@ -566,23 +566,23 @@ class _Inference:
         if issubclass(hint, cabc.Mapping):
             return self._map(Any, Any, path=path, depth=depth)
         if issubclass(hint, tuple) and not _is_named_tuple(hint):
-            return self._list(Any, path=path, depth=depth)
+            return self._serie(Any, path=path, depth=depth)
         if issubclass(hint, _sequence_classes()):
-            return self._list(Any, path=path, depth=depth)
+            return self._serie(Any, path=path, depth=depth)
         if _is_struct_class(hint):
             return self._struct_class(hint, bindings={}, path=path, depth=depth)
         # Arbitrary leaf classes have a stable string representation but no
         # richer lossless Arrow primitive. Utf8 is the conservative boundary.
         return _native_datatype("utf8")
 
-    def _list(self, item_hint: object, *, path: str, depth: int) -> DataType:
+    def _serie(self, item_hint: object, *, path: str, depth: int) -> DataType:
         item = self.field(
             "item",
             item_hint,
             path=f"{path}[]",
             depth=depth + 1,
         )
-        return DataType._list("list", item)
+        return DataType._serie("serie", item)
 
     def _map(
         self,

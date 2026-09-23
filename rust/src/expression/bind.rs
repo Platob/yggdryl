@@ -103,8 +103,8 @@ pub(crate) enum Kind {
     },
     /// A struct built from its children, in declared order.
     Struct(Vec<Node>),
-    /// A list built from its elements.
-    List(Vec<Node>),
+    /// A serie built from its elements.
+    Serie(Vec<Node>),
     /// A map built from its entries.
     Map(Vec<(Node, Node)>),
 }
@@ -142,11 +142,11 @@ impl Step {
 
     /// The element struct a predicate step keeps elements of.
     ///
-    /// Total for a predicate step: binding typed the field as a list of the
+    /// Total for a predicate step: binding typed the field as a serie of the
     /// element struct, so the item is there to borrow.
     pub(crate) fn element(&self) -> Option<&Field> {
         match &self.kind {
-            StepKind::Where(_) => super::path::list_item(self.field.dtype()),
+            StepKind::Where(_) => self.field.dtype().serie_item(),
             StepKind::Segment(_) => None,
         }
     }
@@ -183,7 +183,7 @@ impl Node {
             | Kind::In(_, operands)
             | Kind::Function(_, operands)
             | Kind::Struct(operands)
-            | Kind::List(operands) => {
+            | Kind::Serie(operands) => {
                 if let Kind::In(value, _) = &self.kind {
                     visit(value);
                 }
@@ -802,9 +802,9 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Term::List(items) => {
+            Term::Serie(items) => {
                 let field = term.field(self.schema)?;
-                let target = list_item_type(&field);
+                let target = serie_item_type(&field);
                 let mut lowered = Vec::with_capacity(items.len());
                 for item in items.iter() {
                     lowered.push(self.lower(item, target.as_ref())?);
@@ -812,7 +812,7 @@ impl Binder<'_> {
                 let cost = lowered.iter().map(|node| node.cost).sum::<u32>();
                 Node {
                     field,
-                    kind: Kind::List(lowered),
+                    kind: Kind::Serie(lowered),
                     cost,
                 }
             }
@@ -1032,9 +1032,9 @@ fn arithmetic_operand_type(field: &Field, left: DataType, right: DataType) -> Op
     Some(field.dtype().clone())
 }
 
-/// The declared element type of a list field.
-fn list_item_type(field: &Field) -> Option<DataType> {
-    super::path::list_item(field.dtype()).map(|item| item.dtype().clone())
+/// The declared element type of a serie field.
+fn serie_item_type(field: &Field) -> Option<DataType> {
+    field.dtype().serie_item().map(|item| item.dtype().clone())
 }
 
 /// The declared key and value types of a map field.
@@ -1172,7 +1172,7 @@ pub(crate) fn rebuild(node: &Node) -> Term {
                 .zip(children.iter().map(rebuild))
                 .collect(),
         ),
-        Kind::List(items) => Term::List(items.iter().map(rebuild).collect()),
+        Kind::Serie(items) => Term::Serie(items.iter().map(rebuild).collect()),
         Kind::Map(entries) => Term::Map(
             entries
                 .iter()

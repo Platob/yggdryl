@@ -68,9 +68,9 @@ fn a_run_widens_to_a_sequence_scalar_and_narrows_back_only_from_a_run() {
     assert_eq!(scalar.as_sequence(), Some(run.as_slice()));
     assert_eq!(
         Value::dtype(&run).unwrap(),
-        DataType::list(Field::new("item", DataType::Int64, false))
+        DataType::serie(Field::new("item", DataType::Int64, false))
     );
-    assert_eq!(Value::dtype(&run).unwrap().id(), DataTypeId::List);
+    assert_eq!(Value::dtype(&run).unwrap().id(), DataTypeId::Serie);
 
     // A column is the same scalar variant and not this leaf.
     let column = Serie::from_scalars(
@@ -78,7 +78,7 @@ fn a_run_widens_to_a_sequence_scalar_and_narrows_back_only_from_a_run() {
         [Scalar::from(1_i64), Scalar::from(2_i64)],
     )
     .unwrap();
-    let held = Scalar::List(column);
+    let held = Scalar::Serie(column);
     assert_eq!(Run::from_scalar(&held), None);
     assert_eq!(held.as_sequence(), None);
     assert_eq!(Run::from_scalar(&Scalar::from(1_i64)), None);
@@ -113,21 +113,21 @@ fn a_write_through_the_serie_root_copies_the_run_once_and_the_shared_slice_stays
 #[test]
 fn a_sequence_datatype_holds_one_item_field_in_five_layouts() {
     let item = Field::new("item", DataType::Int32, true);
-    let sequence = DataType::list(item.clone())
+    let sequence = DataType::serie(item.clone())
         .as_serie_type()
-        .expect("a list");
+        .expect("a serie");
     assert_eq!(sequence.item(), &item);
     assert_eq!(sequence.fixed_length(), None);
     assert!(!sequence.is_view());
     assert!(!sequence.is_large());
     assert!(
-        DataType::large_list_view(item.clone())
+        DataType::large_serie_view(item.clone())
             .as_serie_type()
             .unwrap()
             .is_view()
     );
     assert_eq!(
-        DataType::fixed_size_list(item, 3)
+        DataType::fixed_size_serie(item, 3)
             .unwrap()
             .as_serie_type()
             .unwrap()

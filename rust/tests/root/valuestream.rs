@@ -312,7 +312,7 @@ mod stream {
             value.into_value_bytes(),
             [
                 VALUE_STREAM_VERSION,
-                DataTypeId::List.as_u8(),
+                DataTypeId::Serie.as_u8(),
                 2,
                 DataTypeId::Int8.as_u8(),
                 1,
@@ -420,7 +420,7 @@ mod stream {
         // A placeholder is a valid tag for nothing, so a family gains a leaf
         // without a stream written before it moving.
         let position =
-            Scalar::decode_value_bytes(&[0, DataTypeId::List.as_u8(), 1, 0x2f]).unwrap_err();
+            Scalar::decode_value_bytes(&[0, DataTypeId::Serie.as_u8(), 1, 0x2f]).unwrap_err();
         assert!(position.to_string().contains("decimal"), "{position}");
     }
 

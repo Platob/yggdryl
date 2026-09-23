@@ -182,15 +182,15 @@ mod nested {
 
     #[test]
     fn merging_reaches_into_every_nested_layout() {
-        // Lists merge their item.
+        // Series merge their item.
         assert_eq!(
-            DataType::list(DataType::Int32.nullable_field("item"))
+            DataType::serie(DataType::Int32.nullable_field("item"))
                 .merge_with(
-                    &DataType::list(DataType::Int64.nullable_field("item")),
+                    &DataType::serie(DataType::Int64.nullable_field("item")),
                     true
                 )
                 .unwrap(),
-            DataType::list(DataType::Int64.nullable_field("item")),
+            DataType::serie(DataType::Int64.nullable_field("item")),
         );
 
         // Maps merge through their entries.

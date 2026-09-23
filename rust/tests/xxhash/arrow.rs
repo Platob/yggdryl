@@ -621,8 +621,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "list",
-                    DataType::list(Field::new("item", DataType::Int64, true)),
+                    "serie",
+                    DataType::serie(Field::new("item", DataType::Int64, true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -633,8 +633,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "list_view",
-                    DataType::list_view(Field::new("item", DataType::Int64, true)),
+                    "serie_view",
+                    DataType::serie_view(Field::new("item", DataType::Int64, true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -645,8 +645,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "fixed_size_list",
-                    DataType::fixed_size_list(Field::new("item", DataType::Int64, true), 2)
+                    "fixed_size_serie",
+                    DataType::fixed_size_serie(Field::new("item", DataType::Int64, true), 2)
                         .unwrap(),
                     true,
                 ),
@@ -658,8 +658,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "large_list",
-                    DataType::large_list(Field::new("item", DataType::utf8(), true)),
+                    "large_serie",
+                    DataType::large_serie(Field::new("item", DataType::utf8(), true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -670,8 +670,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "large_list_view",
-                    DataType::large_list_view(Field::new("item", DataType::utf8(), true)),
+                    "large_serie_view",
+                    DataType::large_serie_view(Field::new("item", DataType::utf8(), true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -1552,11 +1552,11 @@ mod columns {
         let item = element.clone().required_field("item");
 
         let layouts = [
-            DataType::list(item.clone()),
-            DataType::list_view(item.clone()),
-            DataType::large_list(item.clone()),
-            DataType::large_list_view(item.clone()),
-            DataType::fixed_size_list(item.clone(), 1).unwrap(),
+            DataType::serie(item.clone()),
+            DataType::serie_view(item.clone()),
+            DataType::large_serie(item.clone()),
+            DataType::large_serie_view(item.clone()),
+            DataType::fixed_size_serie(item.clone(), 1).unwrap(),
             DataType::map_of(DataType::utf8(), element.clone(), false).unwrap(),
             DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
                 .unwrap(),

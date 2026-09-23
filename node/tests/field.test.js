@@ -437,7 +437,7 @@ test('dictionary field options remain native value state', () => {
 })
 
 test('malformed fields never use a permissive fallback', () => {
-  assert.throws(() => Field.fromString('name: list<'))
+  assert.throws(() => Field.fromString('name: serie<'))
 })
 
 test('a protocol view is a Map over one namespace of bare names', () => {
@@ -861,7 +861,7 @@ test('JSON reads every shape and writes bytes', () => {
 test('every format carries the same nested shape', () => {
   const deep = new Field(
     'row',
-    DataType.from('struct<levels:list<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>'),
+    DataType.from('struct<levels:serie<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>'),
     false,
   )
 
@@ -871,7 +871,7 @@ test('every format carries the same nested shape', () => {
   // Nesting is carried, not flattened into a string.
   const document = JSON.parse(deep.toJSONBytes().toString())
   const levels = document.dtype.fields[0].dtype
-  assert.equal(levels.type, 'list')
+  assert.equal(levels.type, 'serie')
   assert.equal(levels.field.dtype.fields[0].name, 'sym')
   assert.equal(document.dtype.fields[1].dtype.type, 'map')
 })
@@ -881,7 +881,7 @@ test('unnesting flattens structs and exploding reaches inside collections', () =
     'row',
     DataType.from(
       'struct<id:int64 not null,line:struct<px:float64 not null>,' +
-        'levels:list<float64>,tags:map<utf8,int64>>',
+        'levels:serie<float64>,tags:map<utf8,int64>>',
     ),
     false,
   )
@@ -892,7 +892,7 @@ test('unnesting flattens structs and exploding reaches inside collections', () =
     ['id', 'line.px', 'levels', 'tags'],
   )
 
-  // A leaf under a nullable ancestor is nullable, and a list is a leaf here.
+  // A leaf under a nullable ancestor is nullable, and a serie is a leaf here.
   assert.equal(leaves[0].nullable, false)
   assert.equal(leaves[1].nullable, true)
 
@@ -907,7 +907,7 @@ test('unnesting flattens structs and exploding reaches inside collections', () =
     ['id', 'line', 'levels', 'tags'],
   )
   assert.ok(exploded[0].dtype.equals(DataType.from('int64')), 'not a collection')
-  assert.ok(exploded[2].dtype.equals(DataType.from('float64')), 'a list answers its item')
+  assert.ok(exploded[2].dtype.equals(DataType.from('float64')), 'a serie answers its item')
   assert.equal(exploded[3].dtype.length, 2, 'a map answers its entries struct')
 
   // A datatype answers the same, so descending never changes the calls.

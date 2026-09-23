@@ -568,11 +568,11 @@ fn write_node<W: Write>(
         return write_node(writer, &held.scalar()?, columns, position, width);
     }
     match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values)
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
             if !values.is_empty() =>
         {
             if position == Position::AfterKey {
@@ -900,11 +900,11 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             )?,
             _ => return Err(codec_error(0, "invalid interval layout")),
         },
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
@@ -985,11 +985,11 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values)
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
             if !values.is_empty() =>
         {
             writer.write_all(b"[")?;

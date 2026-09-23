@@ -284,8 +284,8 @@ fn absent(error: &CoreError) -> PyErr {
 /// FIX field definitions resolved by tag, by name, or by dotted path.
 ///
 /// One namespace of scalar fields, components and repeating groups, each
-/// reached through the field doors alone: a Struct is a component, a List of
-/// Structs or a Map a group, and a message a component carrying
+/// reached through the field doors alone: a Struct is a component, a Serie
+/// of Structs or a Map a group, and a message a component carrying
 /// `FIX:msgtype`. The registry is mutable, so it is unhashable and compares
 /// by the fields it holds. It is held as an `Arc` because a
 /// [`FixMsg`][PyFixMsg] links the very registry it was resolved against, a
@@ -896,7 +896,7 @@ impl PyFixRegistry {
 
     /// Add a field, answering the one it replaced.
     ///
-    /// Filed by its shape: a Struct is a component, a List of Structs or a
+    /// Filed by its shape: a Struct is a component, a Serie of Structs or a
     /// Map a group, anything else a scalar field. A scalar arriving on a tag
     /// another field holds under another name is a field of its own, added
     /// beside the holder, which gains the arrival's name as an alias; a
@@ -1391,7 +1391,7 @@ impl PyFixFieldIterator {
 /// core canonicalizes a nested `Record` and not a mapping. The declared field
 /// is what says which of the two a `dict` meant, exactly as it does in the
 /// other direction, so the rewrite happens only where the field is a Struct
-/// and only through a List's item; a `Map` field keeps its mapping and every
+/// and only through a Serie's item; a `Map` field keeps its mapping and every
 /// other value crosses untouched. Nothing is typed, ordered or validated
 /// here - that is `Field::canonicalize_value`'s work, on what this hands it.
 fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
@@ -1425,11 +1425,11 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
                 .and_then(|named| Scalar::from_struct(named).ok())
                 .unwrap_or(value)
         }
-        sequence_dtype @ (CoreDataType::List(_)
-        | CoreDataType::ListView(_)
-        | CoreDataType::FixedSizeList(..)
-        | CoreDataType::LargeList(_)
-        | CoreDataType::LargeListView(_)) => {
+        sequence_dtype @ (CoreDataType::Serie(_)
+        | CoreDataType::SerieView(_)
+        | CoreDataType::FixedSizeSerie(..)
+        | CoreDataType::LargeSerie(_)
+        | CoreDataType::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
@@ -1459,7 +1459,7 @@ type MsgPickle = (Py<PyAny>, (String, Py<PyAny>, String));
 /// the graph vocabulary answers, the standard `header()`, what the
 /// `capture()` said about the line, the free `text` and a bridge's own
 /// `metadata` - and the row holds everything else the message states: the
-/// dictionary's fields, groups as lists beside their counter, components
+/// dictionary's fields, groups as series beside their counter, components
 /// as structs. The schema is one non-null Struct `Field` - the only row
 /// schema - and the value the row it declares, so a mapping input is
 /// canonicalized into that order by the core exactly as every other row is,
@@ -2210,11 +2210,12 @@ impl PyFixMsg {
     /// its neighbours, which is what makes two rows of one capture
     /// comparable at all. The capture's own columns answer null - the one
     /// the crate tags, `sourceurl`, and every column no tag and no counter
-    /// names - because a message holds no fact for any of
-    /// them; the capture readers state them on the row instead. The `fixentries` list holds only residual
-    /// content, counted by `nofixentries`; projected values remain in their columns. A value a column will not
-    /// hold is that column's null; a column that cannot be null keeps the
-    /// refusal as a `ValueError`.
+    /// names - because a message holds no fact for any of them; the capture
+    /// readers state them on the row instead. The `fixentries` serie holds
+    /// only residual content, counted by `nofixentries`; projected values
+    /// remain in their columns. A value a column will not hold is that
+    /// column's null; a column that cannot be null keeps the refusal as a
+    /// `ValueError`.
     #[allow(clippy::wrong_self_convention)]
     fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
@@ -2912,7 +2913,7 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// rest - because a table is read by time and joined by identity; then the
 /// standard header, the fields a consumer reads, the four groups worth
 /// persisting whole, the trailer, `MsgDirection` (385), and the one
-/// `fixentries` list that closes every row with residual content under the
+/// `fixentries` serie that closes every row with residual content under the
 /// `nofixentries` that counts it. Projected content stays in its columns.
 /// Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a

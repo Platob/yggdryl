@@ -64,11 +64,11 @@ impl Scalar {
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
             Self::Null
-            | Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_)
+            | Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_)
             | Self::Map(_)
             | Self::SortedMap(_)
             | Self::Struct(_)
@@ -197,7 +197,7 @@ impl Scalar {
     /// | `DateTime64` | `datetime64` | as above |
     /// | `Duration32`/`Duration64` | `duration64` | as above |
     /// | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
-    /// | `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
+    /// | `Sequence` | `serie` | element count `u64` little-endian, then each element's feed |
     /// | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
     /// | `Record` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
     ///
@@ -370,11 +370,11 @@ impl Scalar {
             Self::Bytes(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => {
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => {
                 let rows = values.rows();
                 write_sequence_header(sink, rows.len());
                 for value in rows.iter() {
@@ -688,7 +688,7 @@ pub(super) fn write_geospatial(sink: &mut impl Hasher, bytes: &[u8]) {
 /// columns, which is what lets a row digest be built without materializing the
 /// row.
 pub(super) fn write_sequence_header(sink: &mut impl Hasher, count: usize) {
-    write_tag(sink, DataTypeId::List);
+    write_tag(sink, DataTypeId::Serie);
     write_len(sink, count);
 }
 

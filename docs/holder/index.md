@@ -1389,7 +1389,7 @@ Both stream [`pstream_bytes`](#streams-and-cursors) and retain one bounded chunk
 
 ### Structured values
 
-The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::List`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
+The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
 
 === "Rust"
 
@@ -1426,7 +1426,7 @@ The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `f
     field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
     assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
     value = handle.read_scalar(field, cls=Scalar)
-    assert value.kind == "list"
+    assert value.kind == "serie"
     ```
 
 === "JavaScript"
@@ -1445,7 +1445,7 @@ The media type selects JSON, YAML or TOML and any outer gzip, zlib or zstd; a `f
     assert.deepEqual(handle.readScalar(field), { quantity: 2, symbol: 'AAPL' })
     const value = handle.readScalar({ field, scalar: true })
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'list')
+    assert.equal(value.kind, 'serie')
     ```
 
 ### Streaming adapters
@@ -1646,7 +1646,7 @@ Default append and merge shape once and delegate to `overwrite_arrow_reader`. `r
 
 ### Native rows
 
-A row is anything `TryInto<Scalar>`: an ordered `Scalar::List` under `options.field`, or a `Scalar::Struct` resolved to that order. The bindings take plain objects and dataclasses, and JavaScript `readRecords(Class)` builds instances.
+A row is anything `TryInto<Scalar>`: an ordered `Scalar::Serie` under `options.field`, or a `Scalar::Struct` resolved to that order. The bindings take plain objects and dataclasses, and JavaScript `readRecords(Class)` builds instances.
 
 ```rust
 use yggdryl::media::IORecordOptions;

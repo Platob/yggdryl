@@ -152,16 +152,16 @@ pub enum DataType {
     /// Many of one item field under 32-bit offsets.
     ///
     /// [`SerieType`](crate::SerieType) is the typed field's payload: [`Self::as_serie_type`], and
-    /// [`Self::list_item`] reads the item of any of the five layouts.
-    List(Arc<Field>),
+    /// [`Self::serie_item`] reads the item of any of the five layouts.
+    Serie(Arc<Field>),
     /// Many of one item field under 32-bit offsets and sizes.
-    ListView(Arc<Field>),
+    SerieView(Arc<Field>),
     /// Exactly `size` of one item field per row.
-    FixedSizeList(Arc<Field>, i32),
+    FixedSizeSerie(Arc<Field>, i32),
     /// Many of one item field under 64-bit offsets.
-    LargeList(Arc<Field>),
+    LargeSerie(Arc<Field>),
     /// Many of one item field under 64-bit offsets and sizes.
-    LargeListView(Arc<Field>),
+    LargeSerieView(Arc<Field>),
     /// Named children in declaration order: a row, a group occurrence, a
     /// mapping's key and value.
     Struct(StructType),
@@ -344,11 +344,11 @@ impl DataType {
             Self::Timezone => DataTypeId::Timezone,
             Self::MimeType => DataTypeId::MimeType,
             Self::MediaType => DataTypeId::MediaType,
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Serie(_) => DataTypeId::Serie,
+            Self::SerieView(_) => DataTypeId::SerieView,
+            Self::FixedSizeSerie(..) => DataTypeId::FixedSizeSerie,
+            Self::LargeSerie(_) => DataTypeId::LargeSerie,
+            Self::LargeSerieView(_) => DataTypeId::LargeSerieView,
             Self::Struct(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
@@ -399,7 +399,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let id = DataType::Int64.named_field("id", false);
-    /// let tags = DataType::list(DataType::utf8().named_field("item", true))
+    /// let tags = DataType::serie(DataType::utf8().named_field("item", true))
     ///     .named_field("tags", true);
     ///
     /// assert_eq!(id.name(), "id");
@@ -484,12 +484,12 @@ impl DataType {
             // the constructor would have refused for want of a width. This
             // is where it stops, before it reaches a boundary.
             Self::String(parameters) => parameters.validate(),
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => field.validate(),
-            Self::FixedSizeList(field, length) => {
-                validate_non_negative("FixedSizeList", "length", *length)?;
+            Self::Serie(field)
+            | Self::SerieView(field)
+            | Self::LargeSerie(field)
+            | Self::LargeSerieView(field) => field.validate(),
+            Self::FixedSizeSerie(field, length) => {
+                validate_non_negative("FixedSizeSerie", "length", *length)?;
                 field.validate()
             }
             Self::Struct(fields) => validate_fields(fields.as_fields(), "Struct"),
@@ -553,13 +553,13 @@ impl Ord for DataType {
             | (D::Duration64(left), D::Duration64(right))
             | (D::Interval(left), D::Interval(right)) => left.cmp(right),
             (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => cmp_fields(left, right),
+            (D::Serie(left), D::Serie(right))
+            | (D::SerieView(left), D::SerieView(right))
+            | (D::LargeSerie(left), D::LargeSerie(right))
+            | (D::LargeSerieView(left), D::LargeSerieView(right)) => cmp_fields(left, right),
             (
-                D::FixedSizeList(left_field, left_size),
-                D::FixedSizeList(right_field, right_size),
+                D::FixedSizeSerie(left_field, left_size),
+                D::FixedSizeSerie(right_field, right_size),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
             (D::Struct(left), D::Struct(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
@@ -663,11 +663,11 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::CfiCode => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
-        DataType::List(_) => 36,
-        DataType::ListView(_) => 37,
-        DataType::FixedSizeList(..) => 38,
-        DataType::LargeList(_) => 39,
-        DataType::LargeListView(_) => 40,
+        DataType::Serie(_) => 36,
+        DataType::SerieView(_) => 37,
+        DataType::FixedSizeSerie(..) => 38,
+        DataType::LargeSerie(_) => 39,
+        DataType::LargeSerieView(_) => 40,
         DataType::Struct(_) => 41,
         DataType::Union(..) => 42,
         DataType::Dictionary(_) => 43,
@@ -755,11 +755,11 @@ impl DataType {
                 .as_fields()
                 .iter()
                 .all(|field| field.dtype().layout_is_contract()),
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => item.dtype().layout_is_contract(),
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => item.dtype().layout_is_contract(),
             Self::Map(map) | Self::SortedMap(map) => map.entries.dtype().layout_is_contract(),
             Self::Union(members, _) => members
                 .iter()
@@ -854,7 +854,7 @@ impl Index<&str> for DataType {
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let items = DataType::list(DataType::utf8().nullable_field("item"));
+/// let items = DataType::serie(DataType::utf8().nullable_field("item"));
 /// assert_eq!(items[0].name(), "item");
 /// # Ok(())
 /// # }
@@ -970,11 +970,11 @@ mod arrow {
                 | R::Decimal64 { .. }
                 | R::Decimal128 { .. }
                 | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = &sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1013,11 +1013,11 @@ mod arrow {
             use DataType as R;
             match self {
                 R::DateTime64 { .. } => datetime::into_arrow_storage(self),
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1178,11 +1178,11 @@ mod arrow {
         pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema> {
             use DataType as R;
             let parts = match &self {
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = &sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1300,11 +1300,11 @@ mod arrow {
         /// allocating an Arrow copy.
         pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
             match self {
-                Self::List(item)
-                | Self::ListView(item)
-                | Self::FixedSizeList(item, _)
-                | Self::LargeList(item)
-                | Self::LargeListView(item) => item.arrow_import_is_projection_equivalent(),
+                Self::Serie(item)
+                | Self::SerieView(item)
+                | Self::FixedSizeSerie(item, _)
+                | Self::LargeSerie(item)
+                | Self::LargeSerieView(item) => item.arrow_import_is_projection_equivalent(),
                 Self::Struct(fields) => fields
                     .iter()
                     .all(Field::arrow_import_is_projection_equivalent),

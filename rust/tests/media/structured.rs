@@ -340,7 +340,7 @@ fn nested_children_keep_their_values_in_every_document_that_carries_them() {
         .map(DataType::from)
         .expect("the child datatype is valid")
         .required_field("venue"),
-        DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),
+        DataType::serie(DataType::Int64.required_field("item")).required_field("sizes"),
         DataType::utf8().nullable_field("note"),
         DataType::Decimal128 {
             precision: 12,

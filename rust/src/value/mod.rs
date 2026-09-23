@@ -33,7 +33,7 @@
 //! a column. The root is [`Serie`] - one column leaf per storage layout,
 //! beside the schema-free [`Run`] a row canonicalizes to - and
 //! [`SerieValue`] is what each column leaf owes it. A serie is a value as
-//! well, because it *is* the value a list holds, `Scalar::List(Serie)`:
+//! well, because it *is* the value a serie holds, `Scalar::Serie(Serie)`:
 //! [`Serie`] implements [`Value`] and [`NestedValue`], and nothing about a
 //! column is a second value model. It does not implement [`SerieValue`],
 //! whose every method answers from a field, because the run leaf declares

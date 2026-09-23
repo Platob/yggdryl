@@ -14,7 +14,7 @@
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
-| Columns | a held column is `Scalar::List(Serie)`: `Scalar::from(serie)` wraps it and `as_serie` borrows it back, neither reading a row, so a columnar value crosses a boundary as the list it is, buffers shared ([Serie](serie.md#a-column-is-a-value)). A stream is never a `Scalar` |
+| Columns | a held column is `Scalar::Serie(Serie)`: `Scalar::from(serie)` wraps it and `Scalar::as_serie` borrows it back, neither reading a row, so a columnar value crosses a boundary as the serie it is, buffers shared ([Serie](serie.md#a-column-is-a-value)). A stream is never a `Scalar` |
 | `Scalar::Variant` | one Apache Parquet Variant metadata dictionary and value payload; `into_variant` encodes any supported scalar and `from_variant` decodes it, while `DataType::encode_variant` / `decode_variant` apply one declared type |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Families | a family is the range of `DataTypeId` bytes its `DataTypeKind` owns, not a type: `family()` is the kind whose range `id()` is in, and `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number` are range checks; the value is the leaf its variant holds ([Families](#families)) |
@@ -135,7 +135,7 @@ assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 
 ## Families are id ranges { #families }
 
-A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-and-family) bytes its `DataTypeKind` owns - `DataTypeKind::range`, from the family's own number `DataTypeKind::id` to `DataTypeKind::last` - so which family a value is in is which range its identifier is in. `Scalar::family` answers that kind for `Scalar::id`, `DataTypeKind::contains` asks it of one identifier, and `is_integer`, `is_decimal`, `is_temporal`, `is_code` and `is_number` are the same range checks spelled on the value. Nothing narrows a `Scalar` to a family: the value is the leaf its variant holds, so a reader matches the variant, or borrows the leaf with its `Value::from_scalar` and widens it back with `into_scalar`. What the leaves of one family share is a leaf contract - `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue`, `NestedValue` - implemented beside each leaf, and the [readers](#widths-and-readers) read across a family's widths without naming one. The temporal range holds five families of its own, and `DataTypeId::temporal_family` names which: `date`, `time`, `datetime`, `duration` or `interval`, `None` outside it. A nested value is one of nine leaves: the five sequence layouts (`List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`), `Map` and `SortedMap`, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children. The ranges, `contains` and `temporal_family` are Rust only; Python and JavaScript read `family` and `id` off the value.
+A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-and-family) bytes its `DataTypeKind` owns - `DataTypeKind::range`, from the family's own number `DataTypeKind::id` to `DataTypeKind::last` - so which family a value is in is which range its identifier is in. `Scalar::family` answers that kind for `Scalar::id`, `DataTypeKind::contains` asks it of one identifier, and `is_integer`, `is_decimal`, `is_temporal`, `is_code` and `is_number` are the same range checks spelled on the value. Nothing narrows a `Scalar` to a family: the value is the leaf its variant holds, so a reader matches the variant, or borrows the leaf with its `Value::from_scalar` and widens it back with `into_scalar`. What the leaves of one family share is a leaf contract - `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue`, `NestedValue` - implemented beside each leaf, and the [readers](#widths-and-readers) read across a family's widths without naming one. The temporal range holds five families of its own, and `DataTypeId::temporal_family` names which: `date`, `time`, `datetime`, `duration` or `interval`, `None` outside it. A nested value is one of nine leaves: the five [serie layouts](nested/sequence.md) (`Serie`, `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie`), `Map` and `SortedMap`, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children. The ranges, `contains` and `temporal_family` are Rust only; Python and JavaScript read `family` and `id` off the value.
 
 === "Rust"
 
@@ -168,10 +168,11 @@ A family is not a type: it is the range of [`DataTypeId`](datatype.md#identity-a
     assert!(price.is_decimal() && !price.is_integer());
     assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
 
-    // A sequence is the nested family's list leaf.
+    // A sequence is the nested family's serie leaf.
     let items = Scalar::from_sequence([Scalar::from(1_i64)]);
     assert_eq!(items.family(), DataTypeKind::Nested);
-    assert!(matches!(items, Scalar::List(_)));
+    assert!(matches!(items, Scalar::Serie(_)));
+    assert_eq!(items.kind(), "serie");
     ```
 
 === "Python"
@@ -270,7 +271,7 @@ Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(I
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
-| containers | `List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`, `Map`, `SortedMap`, `Record`, `Variant`; each of the five list variants holds a [`Serie`](serie.md) - a schema-free `Run`, or a column of one field - and `kind()` answers `list`, `list_view`, `large_list`, `large_list_view` or `fixed_size_list` by leaf, `as_sequence` lending a run's values and `sequence_rows` reading any of the five |
+| containers | `Serie`, `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie`, `Map`, `SortedMap`, `Record`, `Variant`; each of the five serie variants holds a [`Serie`](serie.md) - a schema-free `Run`, or a column of one field - and `kind()` answers `serie`, `serie_view`, `large_serie`, `large_serie_view` or `fixed_size_serie` by leaf, `as_sequence` lending a run's values, `sequence_rows` reading any of the five and `as_serie` borrowing the `Serie` itself; the wire tags the five were written under before the rename, `list`, `list_view`, `large_list`, `large_list_view` and `fixed_size_list`, and a column's `list_view_serie`, `fixed_size_list_serie`, `large_list_serie` and `large_list_view_serie`, still read |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
 
@@ -328,7 +329,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 
 | item | rule |
 | --- | --- |
-| rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `List` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
+| rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Serie` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
 | accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, `id` and its [family](#families) with the range checks `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar

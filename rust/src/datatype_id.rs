@@ -190,16 +190,16 @@ pub enum DataTypeId {
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
     // Nested: 0x90..0xaf
-    /// Variable list with 32-bit offsets.
-    List = 0x91,
-    /// Variable list with 64-bit offsets.
-    LargeList = 0x92,
-    /// Variable list-view with 32-bit offsets.
-    ListView = 0x93,
-    /// Variable list-view with 64-bit offsets.
-    LargeListView = 0x94,
-    /// Fixed-length list.
-    FixedSizeList = 0x95,
+    /// A serie of items behind 32-bit offsets.
+    Serie = 0x91,
+    /// A serie of items behind 64-bit offsets.
+    LargeSerie = 0x92,
+    /// A serie of items behind 32-bit offsets and sizes.
+    SerieView = 0x93,
+    /// A serie of items behind 64-bit offsets and sizes.
+    LargeSerieView = 0x94,
+    /// A serie of exactly one length of items.
+    FixedSizeSerie = 0x95,
     /// Ordered struct fields.
     Struct = 0x96,
     /// Arrow map entries.
@@ -294,11 +294,11 @@ impl DataTypeId {
         Self::BloombergCode,
         Self::FIGICode,
         Self::Uuid,
-        Self::List,
-        Self::LargeList,
-        Self::ListView,
-        Self::LargeListView,
-        Self::FixedSizeList,
+        Self::Serie,
+        Self::LargeSerie,
+        Self::SerieView,
+        Self::LargeSerieView,
+        Self::FixedSizeSerie,
         Self::Struct,
         Self::Map,
         Self::SortedMap,
@@ -369,11 +369,11 @@ impl DataTypeId {
             Self::Uuid => "uuid",
             Self::LargeBinaryView => "large_binary_view",
             Self::SizedBinary => "sized_binary",
-            Self::List => "list",
-            Self::ListView => "list_view",
-            Self::FixedSizeList => "fixed_size_list",
-            Self::LargeList => "large_list",
-            Self::LargeListView => "large_list_view",
+            Self::Serie => "serie",
+            Self::SerieView => "serie_view",
+            Self::FixedSizeSerie => "fixed_size_serie",
+            Self::LargeSerie => "large_serie",
+            Self::LargeSerieView => "large_serie_view",
             Self::Struct => "struct",
             Self::Union => "union",
             Self::Dictionary => "dictionary",
@@ -533,11 +533,11 @@ impl DataTypeId {
                 | Self::LargeCp1252StringView
                 | Self::FixedCp1252String
                 | Self::SizedCp1252String
-                | Self::List
-                | Self::ListView
-                | Self::FixedSizeList
-                | Self::LargeList
-                | Self::LargeListView
+                | Self::Serie
+                | Self::SerieView
+                | Self::FixedSizeSerie
+                | Self::LargeSerie
+                | Self::LargeSerieView
                 | Self::Struct
                 | Self::Union
                 | Self::Dictionary
@@ -607,11 +607,11 @@ impl DataTypeId {
     pub const fn is_nested(self) -> bool {
         matches!(
             self,
-            Self::List
-                | Self::ListView
-                | Self::FixedSizeList
-                | Self::LargeList
-                | Self::LargeListView
+            Self::Serie
+                | Self::SerieView
+                | Self::FixedSizeSerie
+                | Self::LargeSerie
+                | Self::LargeSerieView
                 | Self::Struct
                 | Self::Union
                 | Self::Map
@@ -706,13 +706,52 @@ const FROM_U8: [Option<DataTypeId>; 256] = {
     table
 };
 
+impl DataTypeId {
+    /// The names the serie family was spelled with before it took its own,
+    /// each still read as the identifier it names.
+    ///
+    /// Written by nothing - [`Self::as_str`] spells every identifier - and
+    /// read by every door that reads a datatype's name: [`FromStr`], the type
+    /// grammar, the serde tags and both bindings, so a schema, a document or
+    /// a pickle written before the rename still reads.
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    ///
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::from_str("large_list")?, DataTypeId::LargeSerie);
+    /// assert_eq!(DataTypeId::LargeSerie.as_str(), "large_serie");
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
+    pub const LEGACY_NAMES: [(&'static str, Self); 5] = [
+        ("list", Self::Serie),
+        ("list_view", Self::SerieView),
+        ("fixed_size_list", Self::FixedSizeSerie),
+        ("large_list", Self::LargeSerie),
+        ("large_list_view", Self::LargeSerieView),
+    ];
+
+    /// The identifier one of [`Self::LEGACY_NAMES`] names, ignoring case, or
+    /// nothing for any other word.
+    pub fn from_legacy_name(value: &str) -> Option<Self> {
+        Self::LEGACY_NAMES
+            .into_iter()
+            .find(|(name, _)| value.eq_ignore_ascii_case(name))
+            .map(|(_, id)| id)
+    }
+}
+
 impl FromStr for DataTypeId {
     type Err = Error;
 
+    /// An identifier's name, or one of its [legacy names](Self::LEGACY_NAMES),
+    /// ignoring case.
     fn from_str(value: &str) -> Result<Self> {
         Self::ALL
             .into_iter()
             .find(|id| value.eq_ignore_ascii_case(id.as_str()))
+            .or_else(|| Self::from_legacy_name(value))
             .ok_or_else(|| Error::UnknownDataType(format_smolstr!("{value}")))
     }
 }

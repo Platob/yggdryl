@@ -25,7 +25,7 @@ fn parties() -> Field {
         .map(DataType::from)
         .unwrap()
         .required_field("SubParty");
-    let mut nested = DataType::large_list(subparty).required_field("SubParties");
+    let mut nested = DataType::large_serie(subparty).required_field("SubParties");
     nested.as_fix_mut().set_counter(802).unwrap();
     let attribution = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
         .map(DataType::from)
@@ -40,13 +40,13 @@ fn parties() -> Field {
     .map(DataType::from)
     .unwrap()
     .required_field("Party");
-    let mut group = DataType::list(item).required_field("Parties");
+    let mut group = DataType::serie(item).required_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group
 }
 
 #[test]
-fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
+fn plans_flatten_components_preserve_serie_width_and_project_nullable_members() {
     let source = parties();
     let plan = GroupPlan::from_field(&source).unwrap();
     assert_eq!(plan.columns_len(), 4);
@@ -56,7 +56,7 @@ fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
     assert!(plan.column(1).is_nullable());
     let (column, nested) = plan.nested(802).unwrap();
     assert_eq!(column, 3);
-    assert!(matches!(nested.field().dtype(), DataType::LargeList(_)));
+    assert!(matches!(nested.field().dtype(), DataType::LargeSerie(_)));
     assert_eq!(nested.tag_index(523), Some(0));
     let row = plan.row(vec![
         Scalar::from("broker"),
@@ -73,8 +73,8 @@ fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
             Scalar::Null,
         ])
     );
-    let DataType::List(item) = source.dtype() else {
-        panic!("list")
+    let DataType::Serie(item) = source.dtype() else {
+        panic!("serie")
     };
     assert!(!item.fields()[0].is_nullable());
 }
@@ -112,7 +112,7 @@ fn registry_clones_share_plans_and_replacements_recompile_once() {
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
-    let mut replacement = DataType::list(item).required_field("Parties");
+    let mut replacement = DataType::serie(item).required_field("Parties");
     replacement.as_fix_mut().set_counter(453).unwrap();
     registry
         .update_definition(FixCategory::Groups, replacement)

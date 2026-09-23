@@ -1951,7 +1951,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
     let rows: usize = typed.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 0, "a payload of `D` carries no message");
 
-    // The entries column is a list, not a payload: naming it is refused
+    // The entries column is a serie, not a payload: naming it is refused
     // before a row is read rather than answered as rows of nothing.
     let refused = codec
         .with_payload_column("fixentries")

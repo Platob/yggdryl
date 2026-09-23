@@ -1232,7 +1232,7 @@ mod schema_documents {
         let message = schema_from_json("row", &yggdryl::json::from_utf8("[1, 2]").unwrap())
             .unwrap_err()
             .to_string();
-        assert!(message.contains("got list"), "{message}");
+        assert!(message.contains("got serie"), "{message}");
     }
 
     #[test]
@@ -6490,7 +6490,7 @@ mod datatype_coverage {
         .map(DataType::from)
         .unwrap();
         let deep = StructType::from_fields([
-            DataType::List(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
+            DataType::Serie(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
             DataType::map_of(DataType::utf8(), point.clone(), false)
                 .unwrap()
                 .nullable_field("m"),
@@ -6500,7 +6500,7 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             point.clone().nullable_field("p"),
-            DataType::List(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
+            DataType::Serie(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
         ];
 
         let point_value =

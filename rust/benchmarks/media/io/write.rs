@@ -242,7 +242,7 @@ fn nested_wide() -> (Field, RecordBatch) {
         .expect("a nested struct")
         .required_field("details"),
     );
-    fields.push(DataType::list(DataType::Int32.required_field("item")).required_field("tags"));
+    fields.push(DataType::serie(DataType::Int32.required_field("item")).required_field("tags"));
     let field = StructType::from_fields(fields)
         .map(DataType::from)
         .expect("a wide nested root")

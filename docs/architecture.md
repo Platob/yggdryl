@@ -46,7 +46,7 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 
 | Rule | Consequence |
 | --- | --- |
-| A schema is a field | A non-null Struct [`Field`](types/field.md) is the only row schema; `Scalar::Struct` is named input that canonicalizes to an ordered `Scalar::List`. |
+| A schema is a field | A non-null Struct [`Field`](types/field.md) is the only row schema; `Scalar::Struct` is named input that canonicalizes to an ordered `Scalar::Serie`. |
 | Protocol metadata is a view | `field.as_fix()` and `field.as_iceberg()` borrow the same field, `field.as_digest()` names row-digest roles, `field.as_identity()` and `field.as_partition()` give generic metadata; none copies state. |
 | Storage is one trait | [`IOBase`](holder/index.md) is positional (`pread`, `pwrite`); construction touches nothing, absent reads are empty, writes create. |
 | Listings are iterators | `ls`, `glob`, and predicate listings yield `Result` items lazily and fuse at the first failure. |

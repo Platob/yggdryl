@@ -462,11 +462,11 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => crate::json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::List(values)
-            | Scalar::ListView(values)
-            | Scalar::FixedSizeList(values)
-            | Scalar::LargeList(values)
-            | Scalar::LargeListView(values) => {
+            Scalar::Serie(values)
+            | Scalar::SerieView(values)
+            | Scalar::FixedSizeSerie(values)
+            | Scalar::LargeSerie(values)
+            | Scalar::LargeSerieView(values) => {
                 crate::json::into_writer_all_with_formatting(values.iter(), writer, formatting)
             }
             value => crate::json::into_writer_all_with_formatting(
@@ -672,11 +672,11 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::List(values)
-            | Scalar::ListView(values)
-            | Scalar::FixedSizeList(values)
-            | Scalar::LargeList(values)
-            | Scalar::LargeListView(values) => {
+            Scalar::Serie(values)
+            | Scalar::SerieView(values)
+            | Scalar::FixedSizeSerie(values)
+            | Scalar::LargeSerie(values)
+            | Scalar::LargeSerieView(values) => {
                 for value in values.iter() {
                     visit(&value, child_depth, maximum, format)?;
                 }

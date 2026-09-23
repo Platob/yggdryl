@@ -1,13 +1,13 @@
-//! The columns a sequence field is stored in: the five list layouts, each
+//! The columns a sequence field is stored in: the five serie layouts, each
 //! an item column under its own cut.
 //!
-//! [`OffsetListSerie<O>`] is the offsets cut - [`ListSerie`] at 32 bits,
-//! [`LargeListSerie`] at 64 - [`OffsetListViewSerie<O>`] the viewed cut
-//! with offsets and sizes side by side, and [`FixedSizeListSerie`] no cut
+//! [`OffsetSerie<O>`] is the offsets cut - [`SerieSerie`] at 32 bits,
+//! [`LargeSerieSerie`] at 64 - [`OffsetViewSerie<O>`] the viewed cut
+//! with offsets and sizes side by side, and [`FixedSizeSerieSerie`] no cut
 //! at all, every row `width` items. The items are one [`Serie`] of the item
 //! field, so a caller reading every item of every row reads one column
-//! rather than walking rows, and [`OffsetListSerie::row`] is that column
-//! sliced to one row, zero copy. No list leaf has a typed writer: rows are
+//! rather than walking rows, and [`OffsetSerie::row`] is that column
+//! sliced to one row, zero copy. No serie leaf has a typed writer: rows are
 //! sequences, `splice` is the writer, and the item column is not mutably
 //! reachable, which is what keeps the cut and the items aligned.
 //!
@@ -38,33 +38,33 @@ use crate::{DataType, Field, Result, Scalar};
 
 /// The invariant every nested column keeps: its children are aligned, so
 /// the Arrow array assembles.
-const ALIGNED: &str = "a list column's cut ends at its items: no public path misaligns them";
+const ALIGNED: &str = "a serie column's cut ends at its items: no public path misaligns them";
 
 /// The invariant a write carries in from `check`: it ran on these rows
 /// under this field, so a placeholder it built builds again.
 const CHECKED: &str = "check ran on these rows: a placeholder it built, write builds again";
 
 /// Which leaves of the root one offset width widens to.
-pub trait ListLeaf: OffsetSizeTrait + Send + Sync + 'static {
+pub trait OffsetLeaf: OffsetSizeTrait + Send + Sync + 'static {
     /// The offsets leaf's name, as its debug rendering spells it.
     const NAME: &'static str;
     /// The viewed leaf's name, as its debug rendering spells it.
     const VIEW_NAME: &'static str;
 
     /// Widen an offsets column of this width to the serie root.
-    fn into_list_serie(column: OffsetListSerie<Self>) -> Serie;
+    fn into_serie(column: OffsetSerie<Self>) -> Serie;
 
     /// Narrow a serie root to an offsets column of this width.
-    fn from_list_serie(serie: &Serie) -> Option<&OffsetListSerie<Self>>;
+    fn from_serie(serie: &Serie) -> Option<&OffsetSerie<Self>>;
 
     /// Widen a viewed column of this width to the serie root.
-    fn into_list_view_serie(column: OffsetListViewSerie<Self>) -> Serie;
+    fn into_view_serie(column: OffsetViewSerie<Self>) -> Serie;
 
     /// Narrow a serie root to a viewed column of this width.
-    fn from_list_view_serie(serie: &Serie) -> Option<&OffsetListViewSerie<Self>>;
+    fn from_view_serie(serie: &Serie) -> Option<&OffsetViewSerie<Self>>;
 }
 
-/// The item field a list-shaped field repeats, as Arrow spells it.
+/// The item field a serie field repeats, as Arrow spells it.
 fn item_field_ref(field: &Field) -> arrow_schema::FieldRef {
     match field.as_arrow_field_ref().expect(ALIGNED).data_type() {
         ArrowDataType::List(item)
@@ -72,18 +72,18 @@ fn item_field_ref(field: &Field) -> arrow_schema::FieldRef {
         | ArrowDataType::ListView(item)
         | ArrowDataType::LargeListView(item)
         | ArrowDataType::FixedSizeList(item, _) => Arc::clone(item),
-        _ => unreachable!("a sequence field projects to a list layout"),
+        _ => unreachable!("a sequence field projects to a serie layout"),
     }
 }
 
 /// The item field a sequence field repeats.
 fn item_field(field: &Field) -> &Arc<Field> {
     match field.dtype() {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => item,
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => item,
         _ => unreachable!("a sequence column's field is a sequence field: the door paired them"),
     }
 }
@@ -155,7 +155,7 @@ fn extended<O: OffsetSizeTrait>(buffer: ScalarBuffer<O>, values: &[O]) -> Scalar
 ///
 /// The cut is rebased: its first offset is 0 and its last is the item
 /// count, so a column that grows knows where its items end.
-pub struct OffsetListSerie<O: OffsetSizeTrait> {
+pub struct OffsetSerie<O: OffsetSizeTrait> {
     field: Arc<Field>,
     offsets: OffsetBuffer<O>,
     items: Serie,
@@ -163,12 +163,12 @@ pub struct OffsetListSerie<O: OffsetSizeTrait> {
 }
 
 /// A column of sequences, 32-bit offsets.
-pub type ListSerie = OffsetListSerie<i32>;
+pub type SerieSerie = OffsetSerie<i32>;
 
 /// A column of sequences, 64-bit offsets.
-pub type LargeListSerie = OffsetListSerie<i64>;
+pub type LargeSerieSerie = OffsetSerie<i64>;
 
-impl<O: OffsetSizeTrait> OffsetListSerie<O> {
+impl<O: OffsetSizeTrait> OffsetSerie<O> {
     /// Pair a sequence field with its cut and the column it cuts.
     pub(crate) const fn new(
         field: Arc<Field>,
@@ -281,7 +281,7 @@ impl<O: OffsetSizeTrait> OffsetListSerie<O> {
     }
 }
 
-impl<O: ListLeaf> SerieValue for OffsetListSerie<O> {
+impl<O: OffsetLeaf> SerieValue for OffsetSerie<O> {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -356,15 +356,15 @@ impl<O: ListLeaf> SerieValue for OffsetListSerie<O> {
     }
 
     fn into_serie(self) -> Serie {
-        O::into_list_serie(self)
+        O::into_serie(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        O::from_list_serie(value)
+        O::from_serie(value)
     }
 }
 
-impl<O: OffsetSizeTrait> Clone for OffsetListSerie<O> {
+impl<O: OffsetSizeTrait> Clone for OffsetSerie<O> {
     fn clone(&self) -> Self {
         Self::new(
             Arc::clone(&self.field),
@@ -375,13 +375,13 @@ impl<O: OffsetSizeTrait> Clone for OffsetListSerie<O> {
     }
 }
 
-impl<O: ListLeaf> fmt::Debug for OffsetListSerie<O> {
+impl<O: OffsetLeaf> fmt::Debug for OffsetSerie<O> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         super::debug_column(self, O::NAME, formatter)
     }
 }
 
-serie_leaf!(OffsetListSerie<O: ListLeaf>);
+serie_leaf!(OffsetSerie<O: OffsetLeaf>);
 
 // ------------------------------------------------------------------------
 // Views: offsets and sizes side by side, kept compact.
@@ -397,7 +397,7 @@ serie_leaf!(OffsetListSerie<O: ListLeaf>);
 /// it reaches, a slice rebases its window, and every write keeps the cut
 /// compact - so a write is the offsets cut's write, with the sizes beside
 /// it.
-pub struct OffsetListViewSerie<O: OffsetSizeTrait> {
+pub struct OffsetViewSerie<O: OffsetSizeTrait> {
     field: Arc<Field>,
     offsets: ScalarBuffer<O>,
     sizes: ScalarBuffer<O>,
@@ -406,12 +406,12 @@ pub struct OffsetListViewSerie<O: OffsetSizeTrait> {
 }
 
 /// A column of sequence views, 32-bit offsets.
-pub type ListViewSerie = OffsetListViewSerie<i32>;
+pub type SerieViewSerie = OffsetViewSerie<i32>;
 
 /// A column of sequence views, 64-bit offsets.
-pub type LargeListViewSerie = OffsetListViewSerie<i64>;
+pub type LargeSerieViewSerie = OffsetViewSerie<i64>;
 
-impl<O: OffsetSizeTrait> OffsetListViewSerie<O> {
+impl<O: OffsetSizeTrait> OffsetViewSerie<O> {
     /// Pair a sequence field with its compact views and the column they
     /// view.
     pub(crate) const fn new(
@@ -571,7 +571,7 @@ impl<O: OffsetSizeTrait> OffsetListViewSerie<O> {
     }
 }
 
-impl<O: ListLeaf> SerieValue for OffsetListViewSerie<O> {
+impl<O: OffsetLeaf> SerieValue for OffsetViewSerie<O> {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -648,15 +648,15 @@ impl<O: ListLeaf> SerieValue for OffsetListViewSerie<O> {
     }
 
     fn into_serie(self) -> Serie {
-        O::into_list_view_serie(self)
+        O::into_view_serie(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        O::from_list_view_serie(value)
+        O::from_view_serie(value)
     }
 }
 
-impl<O: OffsetSizeTrait> Clone for OffsetListViewSerie<O> {
+impl<O: OffsetSizeTrait> Clone for OffsetViewSerie<O> {
     fn clone(&self) -> Self {
         Self::new(
             Arc::clone(&self.field),
@@ -668,42 +668,43 @@ impl<O: OffsetSizeTrait> Clone for OffsetListViewSerie<O> {
     }
 }
 
-impl<O: ListLeaf> fmt::Debug for OffsetListViewSerie<O> {
+impl<O: OffsetLeaf> fmt::Debug for OffsetViewSerie<O> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         super::debug_column(self, O::VIEW_NAME, formatter)
     }
 }
 
-serie_leaf!(OffsetListViewSerie<O: ListLeaf>);
+serie_leaf!(OffsetViewSerie<O: OffsetLeaf>);
 
-/// Tie one offset width to the two leaves it widens through.
-macro_rules! list_leaf {
-    ($offset:ty, $list:ident, $view:ident) => {
-        impl ListLeaf for $offset {
-            const NAME: &'static str = stringify!($list);
+/// Tie one offset width to the two leaves it widens through, each named as
+/// its own alias so a leaf debugs under the name a caller spells it by.
+macro_rules! offset_leaf {
+    ($offset:ty, $serie:ident, $view:ident) => {
+        impl OffsetLeaf for $offset {
+            const NAME: &'static str = stringify!($serie);
             const VIEW_NAME: &'static str = stringify!($view);
 
-            fn into_list_serie(column: OffsetListSerie<Self>) -> Serie {
+            fn into_serie(column: OffsetSerie<Self>) -> Serie {
                 super::Leaf::root(column)
             }
 
-            fn from_list_serie(serie: &Serie) -> Option<&OffsetListSerie<Self>> {
+            fn from_serie(serie: &Serie) -> Option<&OffsetSerie<Self>> {
                 super::Leaf::narrow(serie)
             }
 
-            fn into_list_view_serie(column: OffsetListViewSerie<Self>) -> Serie {
+            fn into_view_serie(column: OffsetViewSerie<Self>) -> Serie {
                 super::Leaf::root(column)
             }
 
-            fn from_list_view_serie(serie: &Serie) -> Option<&OffsetListViewSerie<Self>> {
+            fn from_view_serie(serie: &Serie) -> Option<&OffsetViewSerie<Self>> {
                 super::Leaf::narrow(serie)
             }
         }
     };
 }
 
-list_leaf!(i32, List, ListView);
-list_leaf!(i64, LargeList, LargeListView);
+offset_leaf!(i32, SerieSerie, SerieViewSerie);
+offset_leaf!(i64, LargeSerieSerie, LargeSerieViewSerie);
 
 // ------------------------------------------------------------------------
 // Fixed size: no cut, every row `width` items.
@@ -714,7 +715,7 @@ list_leaf!(i64, LargeList, LargeListView);
 /// The items hold `len * width` rows; a null row holds `width` placeholder
 /// items and a cleared bit.
 #[derive(Clone)]
-pub struct FixedSizeListSerie {
+pub struct FixedSizeSerieSerie {
     field: Arc<Field>,
     width: usize,
     items: Serie,
@@ -722,7 +723,7 @@ pub struct FixedSizeListSerie {
     rows: usize,
 }
 
-impl FixedSizeListSerie {
+impl FixedSizeSerieSerie {
     /// Pair a fixed-size sequence field with the column its rows tile.
     pub(crate) const fn new(
         field: Arc<Field>,
@@ -834,7 +835,7 @@ impl FixedSizeListSerie {
     }
 }
 
-impl SerieValue for FixedSizeListSerie {
+impl SerieValue for FixedSizeSerieSerie {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -915,13 +916,13 @@ impl SerieValue for FixedSizeListSerie {
     }
 }
 
-impl fmt::Debug for FixedSizeListSerie {
+impl fmt::Debug for FixedSizeSerieSerie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_column(self, "FixedSizeListSerie", formatter)
+        super::debug_column(self, "FixedSizeSerieSerie", formatter)
     }
 }
 
-serie_leaf!(FixedSizeListSerie);
+serie_leaf!(FixedSizeSerieSerie);
 
 // ------------------------------------------------------------------------
 // The door: each layout's buffers taken as they are, its cut rebased.
@@ -1010,7 +1011,7 @@ fn rebased_views<O: OffsetSizeTrait>(
 
 /// The viewed column of one offset width: its views rebased, its items
 /// through the door with the item field and no parent.
-fn view_column<O: ListLeaf>(
+fn view_column<O: OffsetLeaf>(
     field: Arc<Field>,
     item: Arc<Field>,
     array: &ArrayRef,
@@ -1024,7 +1025,7 @@ fn view_column<O: ListLeaf>(
         views.values(),
     )?;
     let items = super::arrow::child_of(item, values, None, proof.child(0))?;
-    Ok(OffsetListViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
+    Ok(OffsetViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
 }
 
 /// Build the column `field` types out of a list-layout array, or answer
@@ -1055,13 +1056,13 @@ pub(crate) fn column_of(
             let lists = held::<GenericListArray<i32>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
             let items = super::arrow::child_of(item, values, None, proof.child(0))?;
-            OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
+            OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::LargeList(_) => {
             let lists = held::<GenericListArray<i64>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
             let items = super::arrow::child_of(item, values, None, proof.child(0))?;
-            OffsetListSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
+            OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::ListView(_) => view_column::<i32>(field, item, &array, proof)?,
         ArrowDataType::LargeListView(_) => view_column::<i64>(field, item, &array, proof)?,
@@ -1075,7 +1076,7 @@ pub(crate) fn column_of(
                 .slice(lists.offset() * width, lists.len() * width);
             let hidden = lists.nulls().map(|nulls| nulls.expand(width));
             let items = super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0))?;
-            FixedSizeListSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
+            FixedSizeSerieSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
                 .into_serie()
         }
         _ => return Ok(None),

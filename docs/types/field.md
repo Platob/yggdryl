@@ -174,10 +174,10 @@ Each lookup exists by position, by path, or either:
         DataType::Int64.required_field("id"),
         DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?)
             .nullable_field("line"),
-        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+        DataType::serie(DataType::Float64.nullable_field("item")).nullable_field("levels"),
     ])?);
 
-    // Structs flatten to leaves; the list stays one column.
+    // Structs flatten to leaves; the serie stays one column.
     let leaves = row.unnest_fields();
     let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
     assert_eq!(names, ["id", "line.px", "levels"]);
@@ -197,7 +197,7 @@ Each lookup exists by position, by path, or either:
     ```python
     from yggdryl import DataType
 
-    row = DataType("struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>")
+    row = DataType("struct<id:int64 not null,line:struct<px:float64 not null>,levels:serie<float64>>")
 
     leaves = row.unnest_fields()
     assert [leaf.name for leaf in leaves] == ["id", "line.px", "levels"]
@@ -215,7 +215,7 @@ Each lookup exists by position, by path, or either:
     const assert = require('node:assert/strict')
     const { DataType } = require('yggdryl')
 
-    const row = DataType.from('struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>')
+    const row = DataType.from('struct<id:int64 not null,line:struct<px:float64 not null>,levels:serie<float64>>')
 
     const leaves = row.unnestFields()
     assert.deepEqual(leaves.map((leaf) => leaf.name), ['id', 'line.px', 'levels'])
@@ -966,9 +966,9 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - nullable root -> `validate_struct_root` refuses.
 - Python `field(x, idx=..., path=...)` naming more than one -> refused.
 - an optional lookup -> `Option` in Rust, `None` in Python, `null` in JavaScript.
-- `unnest_fields` -> a list or map stays one leaf column; a leaf under a nullable ancestor is nullable.
+- `unnest_fields` -> a serie or map stays one leaf column; a leaf under a nullable ancestor is nullable.
 - `unnest_fields` names -> each one resolves through `field_by_path`.
-- `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
+- `explode_fields` -> a serie gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
 - both projections -> a list of fields, not a node; `DataType::from(StructType::from_fields(..)?)` rebuilds one.
 - `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
@@ -977,7 +977,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.
 - boolean beside datetime, decimal beside float -> refused.
 - `order["a.b"]` -> a child literally named `a.b` wins over `a` then `b`.
-- list or run-end node -> exactly one or two children; grow and shrink refuse.
+- serie or run-end node -> exactly one or two children; grow and shrink refuse.
 - Python `DataType[...] = ...` -> refused; it points at the owning `Field`.
 - Python first `hash(field)` -> locks mutation on that wrapper; `copy.copy` unlocks; `stable_hash()` never locks.
 - binding metadata and protocol views -> unhashable; Rust's borrowed protocol view is not `Borrow<Field>`.

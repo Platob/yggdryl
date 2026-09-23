@@ -21,7 +21,8 @@ use arrow_array::{
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 
 use super::{
-    Serie, boolean, bytes, enums, list, mapping, null, primitive, runend, structure, union, variant,
+    Serie, boolean, bytes, enums, mapping, null, primitive, runend, sequence, structure, union,
+    variant,
 };
 use arrow_schema::{ArrowError, Field as ArrowField, SchemaRef};
 
@@ -97,11 +98,11 @@ fn lands_as_is(dtype: &DataType) -> bool {
             .as_fields()
             .iter()
             .all(|field| lands_as_is(field.dtype())),
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => lands_as_is(item.dtype()),
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => lands_as_is(item.dtype()),
         DataType::Map(map) | DataType::SortedMap(map) => lands_as_is(map.entries.dtype()),
         leaf => leaf.layout_is_contract(),
     }
@@ -304,7 +305,7 @@ pub(crate) fn child_of(
         bytes::column_of,
         variant::column_of,
         structure::column_of,
-        list::column_of,
+        sequence::column_of,
         mapping::column_of,
         union::column_of,
         enums::column_of,
@@ -426,7 +427,7 @@ fn refused_cell(
                     refused_cell(child, column.as_ref(), row, &path.field(child.name()))
                 })
         }
-        DataType::List(item) => {
+        DataType::Serie(item) => {
             let list = array.as_list_opt::<i32>()?;
             items(
                 list.values(),
@@ -434,7 +435,7 @@ fn refused_cell(
                 item,
             )
         }
-        DataType::LargeList(item) => {
+        DataType::LargeSerie(item) => {
             let list = array.as_list_opt::<i64>()?;
             items(
                 list.values(),
@@ -442,7 +443,7 @@ fn refused_cell(
                 item,
             )
         }
-        DataType::FixedSizeList(item, _) => {
+        DataType::FixedSizeSerie(item, _) => {
             let list = array.as_fixed_size_list_opt()?;
             let start = list.value_offset(row).as_usize();
             items(

@@ -33,7 +33,7 @@ impl GroupPlan {
         check_depth(&field, depth)?;
         let item = super::catalog::occurrence_of(&field).ok_or_else(|| Error::InvalidRecord {
             path: field.name().into(),
-            reason: "expected a FIX group List, LargeList or Map".into(),
+            reason: "expected a FIX group Serie, LargeSerie or Map".into(),
         })?;
         let mut columns = Vec::new();
         let mut paths = Vec::new();
@@ -147,8 +147,10 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
                 .map(|child| nullable_layout(child, true, depth + 1))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::List(item) => DataType::list(nullable_layout(item, false, depth + 1)?),
-        DataType::LargeList(item) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
+        DataType::Serie(item) => DataType::serie(nullable_layout(item, false, depth + 1)?),
+        DataType::LargeSerie(item) => {
+            DataType::large_serie(nullable_layout(item, false, depth + 1)?)
+        }
         // Native maps are already complete values, not sparse wire groups:
         // their entry and key nullability must remain exactly as declared.
         _ => field.dtype().clone(),

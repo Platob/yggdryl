@@ -70,7 +70,7 @@ fn quotes() -> Serie {
     .expect("two quote rows")
 }
 
-/// A record column of two orders, each a list of legs (records of a price)
+/// A record column of two orders, each a serie of legs (records of a price)
 /// and a mapping of tags, so a schema path crosses all three nestings.
 fn orders() -> Serie {
     let leg = Field::new(
@@ -96,7 +96,7 @@ fn orders() -> Serie {
         DataType::from(
             StructType::from_fields([
                 Field::new("id", DataType::Int64, false),
-                Field::new("legs", DataType::list(leg), false),
+                Field::new("legs", DataType::serie(leg), false),
                 Field::new("tags", DataType::map(entries, false).unwrap(), true),
             ])
             .unwrap(),
@@ -193,7 +193,7 @@ fn every_constructor_answers_the_leaf_it_names() {
     assert!(refusal.to_string().contains("price"), "{refusal}");
 
     // The root widens into a scalar.
-    assert_eq!(Scalar::from(laid_out.clone()), Scalar::List(laid_out));
+    assert_eq!(Scalar::from(laid_out.clone()), Scalar::Serie(laid_out));
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn both_leaves_answer_the_same_reads_at_different_costs() {
         );
         assert_eq!(
             serie.dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::Int64, false))
+            DataType::serie(Field::new("item", DataType::Int64, false))
         );
         assert_eq!(serie.clone().into_run().as_slice().len(), 3);
         assert!(serie.children().is_empty());
@@ -253,14 +253,14 @@ fn both_leaves_answer_the_same_reads_at_different_costs() {
     // An empty run names a null item; an empty column names its field's.
     assert_eq!(
         Serie::new(Vec::<Scalar>::new()).dtype().unwrap(),
-        DataType::list(Field::new("item", DataType::Null, true))
+        DataType::serie(Field::new("item", DataType::Null, true))
     );
     assert_eq!(
         Serie::empty(Field::new("price", DataType::Int64, true))
             .unwrap()
             .dtype()
             .unwrap(),
-        DataType::list(Field::new("item", DataType::Int64, true))
+        DataType::serie(Field::new("item", DataType::Int64, true))
     );
 }
 
@@ -307,10 +307,10 @@ fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
     let larger = Serie::new(vec![Scalar::from(126_i64)]);
     assert!(larger > column);
     assert_eq!(
-        Scalar::List(column.clone()),
+        Scalar::Serie(column.clone()),
         Scalar::from_sequence(run.rows().iter().cloned())
     );
-    assert_eq!(hashed(&Scalar::List(column)), hashed(&Scalar::List(run)));
+    assert_eq!(hashed(&Scalar::Serie(column)), hashed(&Scalar::Serie(run)));
 }
 
 #[test]
@@ -741,10 +741,10 @@ fn a_record_column_lends_its_children_by_name_position_and_path() {
 }
 
 #[test]
-fn a_schema_path_sees_through_a_list_and_addresses_a_mapping_through_its_entries() {
+fn a_schema_path_sees_through_a_serie_and_addresses_a_mapping_through_its_entries() {
     let orders = orders();
-    let legs = orders.child("legs").expect("a list child");
-    let legs_items = legs.items().expect("a list column has items");
+    let legs = orders.child("legs").expect("a serie child");
+    let legs_items = legs.items().expect("a serie column has items");
     assert_eq!(legs_items.len(), 3);
     assert_eq!(
         legs_items.field().map(Field::name),
@@ -752,11 +752,11 @@ fn a_schema_path_sees_through_a_list_and_addresses_a_mapping_through_its_entries
         "the item column carries the item field"
     );
 
-    // A list is transparent to its item: `legs.price` and `legs.item.price`
+    // A serie is transparent to its item: `legs.price` and `legs.item.price`
     // reach the one price column under the item record.
     let prices = orders
         .get_child_by_path(&FieldPath::from_str("legs.price").unwrap())
-        .expect("through the list");
+        .expect("through the serie");
     assert_eq!(prices.as_int64().unwrap().values(), &[10, 11, 20]);
     let spelled = orders
         .get_child_by_path(&FieldPath::from_str("legs.item.price").unwrap())
@@ -934,7 +934,7 @@ fn a_sliced_column_grows_on_its_own_once_the_original_is_dropped() {
 
 #[test]
 fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
-    // The root's own serde: a run is a list, a column is the wire.
+    // The root's own serde: a run is an array, a column is the wire.
     let listed = serde_json::to_string(&run()).unwrap();
     assert!(listed.starts_with('['), "{listed}");
     let wire = serde_json::to_string(&column()).unwrap();
@@ -945,30 +945,28 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
     assert_eq!(back.field().map(Field::name), Some("price"));
     assert!(back.is_column());
 
-    // A list is not a column wire: a run is never spelled through the
+    // An array is not a column wire: a run is never spelled through the
     // root's own serde, and the refusal names the tag.
-    let refusal = serde_json::from_str::<Serie>(&listed).expect_err("a list is a run");
+    let refusal = serde_json::from_str::<Serie>(&listed).expect_err("an array is a run");
     assert!(refusal.to_string().contains("`serie`"), "{refusal}");
     assert!(serde_json::from_str::<Serie>("[]").is_err());
-    let refusal = serde_json::from_str::<Scalar>(r#"{"type":"serie","value":[125,126]}"#)
-        .expect_err("a list under the column tag");
-    assert!(refusal.to_string().contains("`serie`"), "{refusal}");
 
-    // Under a scalar, the tag tells the two apart both ways.
-    let run = Scalar::List(run());
+    // Under a scalar, one `serie` tag carries both, and the payload's shape
+    // tells them apart both ways: the run's rows, or the column's document.
+    let run = Scalar::Serie(run());
     let document = serde_json::to_string(&run).unwrap();
-    assert!(document.contains("\"list\""), "{document}");
+    assert_eq!(document, format!(r#"{{"type":"serie","value":{listed}}}"#));
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, run);
     assert!(back.as_serie().is_some_and(|serie| !serie.is_column()));
 
-    let column = Scalar::List(column());
+    let column = Scalar::Serie(column());
     let document = serde_json::to_string(&column).unwrap();
-    assert!(document.contains("\"serie\""), "{document}");
+    assert_eq!(document, format!(r#"{{"type":"serie","value":{wire}}}"#));
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, column);
     assert!(back.as_serie().is_some_and(Serie::is_column));
-    assert_eq!(back.kind(), "list");
+    assert_eq!(back.kind(), "serie");
     assert!(serde_json::from_str::<Scalar>(r#"{"serie":[125,126]}"#).is_err());
 
     // The wire carries the field's contract: a row it refuses does not read.
@@ -982,16 +980,16 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
 fn the_root_is_a_value_and_converts_from_and_into_its_neighbours() {
     let serie = column();
     assert_eq!(Value::dtype(&serie).unwrap(), serie.dtype().unwrap());
-    assert_eq!(Scalar::from(serie.clone()), Scalar::List(serie.clone()));
+    assert_eq!(Scalar::from(serie.clone()), Scalar::Serie(serie.clone()));
     assert_eq!(
-        <Serie as Value>::from_scalar(&Scalar::List(serie.clone())),
+        <Serie as Value>::from_scalar(&Scalar::Serie(serie.clone())),
         Some(&serie)
     );
     assert_eq!(<Serie as Value>::from_scalar(&Scalar::Null), None);
-    assert_eq!(Scalar::List(serie.clone()).as_serie(), Some(&serie));
-    assert_eq!(Scalar::List(serie.clone()).len(), 3);
+    assert_eq!(Scalar::Serie(serie.clone()).as_serie(), Some(&serie));
+    assert_eq!(Scalar::Serie(serie.clone()).len(), 3);
     assert_eq!(
-        Scalar::List(serie.clone()).get(2).as_deref(),
+        Scalar::Serie(serie.clone()).get(2).as_deref(),
         Some(&Scalar::from(127_i64))
     );
 

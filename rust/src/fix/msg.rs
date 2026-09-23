@@ -2495,7 +2495,7 @@ impl FixMsg {
     /// resolves the path once. A named segment resolves as
     /// [`Self::get_by_name`] does - the registry's canonical spelling first,
     /// then an exact match - and an indexed segment takes one occurrence of
-    /// the List a repeating group is, which is what reaching a member
+    /// the Serie a repeating group is, which is what reaching a member
     /// needs: `Parties[0].PartyID`.
     ///
     /// A bare decimal is a name and not a position, exactly as it is one
@@ -2621,7 +2621,7 @@ impl FixMsg {
     }
 
     /// One step of a path: into a Struct child by name, or into one
-    /// occupancy of the List a repeating group is.
+    /// occupancy of the Serie a repeating group is.
     fn descend(
         &self,
         field: &Field,
@@ -2636,11 +2636,11 @@ impl FixMsg {
                     value.get(index)?.into_owned(),
                 ))
             }
-            DataType::List(item)
-            | DataType::LargeList(item)
-            | DataType::FixedSizeList(item, _)
-            | DataType::ListView(item)
-            | DataType::LargeListView(item) => {
+            DataType::Serie(item)
+            | DataType::LargeSerie(item)
+            | DataType::FixedSizeSerie(item, _)
+            | DataType::SerieView(item)
+            | DataType::LargeSerieView(item) => {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
@@ -2779,7 +2779,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let (tag, counter) = super::schema::tag_and_counter(registry, field);
     let tag = tag.unwrap_or(0);
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             let occurrences = value.as_serie()?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.

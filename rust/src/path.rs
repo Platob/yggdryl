@@ -24,7 +24,7 @@ pub enum Segment<'a> {
     Field(&'a str),
     /// A positional element of a sequence.
     Index(usize),
-    /// The element field of a list layout.
+    /// The element field of a serie layout.
     Item,
     /// The entries struct of a map layout.
     MapEntries,

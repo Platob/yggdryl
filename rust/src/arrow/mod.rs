@@ -963,7 +963,7 @@ fn dictionary_path_text(path: &[usize]) -> String {
 /// Collect non-default dictionary IDs by field position.
 ///
 /// A dictionary's value datatype is transparent to the path: it introduces no
-/// Field of its own, while any Struct/List/Map/Union/RunEndEncoded fields below
+/// Field of its own, while any Struct/Serie/Map/Union/RunEndEncoded fields below
 /// that value do.  Thus every path component always means "the child Field at
 /// this position", including the uncommon dictionary-of-struct shape.
 fn collect_dictionary_ids_in_dtype(

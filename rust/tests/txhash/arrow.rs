@@ -868,8 +868,8 @@ mod columns {
         listed.as_digest_mut().remove_time().unwrap();
         listed.as_digest_mut().remove_role().unwrap();
         listed.as_digest_mut().insert("time", "event").unwrap();
-        let list = Field::new("list", DataType::list(listed), false);
-        let error = struct_root([event_field(), symbol_field(), list])
+        let serie = Field::new("serie", DataType::serie(listed), false);
+        let error = struct_root([event_field(), symbol_field(), serie])
             .as_digest()
             .apply_arrow_batch(&batch(
                 &[event_field(), symbol_field()],

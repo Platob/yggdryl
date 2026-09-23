@@ -233,10 +233,10 @@ mod grammar {
     }
 
     #[test]
-    fn bare_interval_defaults_before_postfix_list_wrapping() {
+    fn bare_interval_defaults_before_postfix_serie_wrapping() {
         let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
-        let list = DataType::list(Field::new("item", interval, true));
-        let nested_list = DataType::list(Field::new("item", list.clone(), true));
+        let list = DataType::serie(Field::new("item", interval, true));
+        let nested_list = DataType::serie(Field::new("item", list.clone(), true));
 
         assert_eq!(DataType::from_str("interval[]").unwrap(), list);
         assert_eq!(DataType::from_str("interval[][]").unwrap(), nested_list);
@@ -344,11 +344,11 @@ mod grammar {
             DataType::decimal64(18, 2).unwrap(),
             DataType::decimal128(38, 2).unwrap(),
             DataType::decimal256(76, 2).unwrap(),
-            DataType::list(DataType::Int32.nullable_field("item")),
-            DataType::large_list(DataType::Int32.nullable_field("item")),
-            DataType::list_view(DataType::Int32.nullable_field("item")),
-            DataType::large_list_view(DataType::Int32.nullable_field("item")),
-            DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap(),
+            DataType::serie(DataType::Int32.nullable_field("item")),
+            DataType::large_serie(DataType::Int32.nullable_field("item")),
+            DataType::serie_view(DataType::Int32.nullable_field("item")),
+            DataType::large_serie_view(DataType::Int32.nullable_field("item")),
+            DataType::fixed_size_serie(DataType::Int32.nullable_field("item"), 4).unwrap(),
             DataType::from(StructType::from_fields([DataType::Int32.required_field("a")]).unwrap()),
             DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap(),
             DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap(),
@@ -390,8 +390,8 @@ mod grammar {
         for (named, expected) in [
             ("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap()),
             ("fixed_binary(16)", DataType::fixed_binary(16).unwrap()),
-            ("fixed_size_list(int32, 4)", {
-                DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap()
+            ("fixed_size_serie(int32, 4)", {
+                DataType::fixed_size_serie(DataType::Int32.nullable_field("item"), 4).unwrap()
             }),
         ] {
             assert_eq!(named.parse::<DataType>().unwrap(), expected, "{named}");
@@ -482,9 +482,9 @@ mod grammar {
 
     #[test]
     fn a_field_spelled_without_nullability_is_nullable_wherever_it_sits() {
-        let expected = DataType::list(Field::new("a", DataType::Int32, true));
+        let expected = DataType::serie(Field::new("a", DataType::Int32, true));
         assert_eq!(
-            "list(field(\"a\",int32))".parse::<DataType>().unwrap(),
+            "serie(field(\"a\",int32))".parse::<DataType>().unwrap(),
             expected
         );
         assert_eq!(
@@ -520,7 +520,7 @@ mod grammar {
 }
 
 mod aliases {
-    use yggdryl::DataType;
+    use yggdryl::{DataType, Field};
 
     #[test]
     fn scalar_aliases_and_balanced_outer_wrappers_normalize() {
@@ -553,6 +553,130 @@ mod aliases {
         );
         assert_eq!(DataType::from_str("bytea").unwrap(), DataType::binary());
     }
+
+    #[test]
+    fn the_list_spellings_read_as_the_serie_layouts_and_display_the_serie_spelling() {
+        let item = || DataType::Int64.nullable_field("item");
+        let named = || Field::new("px", DataType::Int64, false);
+        // Each layout: every spelling the grammar reads for it - its own
+        // word, underscored and folded, then the list word it was spelled
+        // with before it took its own, underscored, folded and cased - the
+        // datatype they all read as, and the one spelling it displays.
+        let layouts = [
+            (
+                &[
+                    "serie<int64>",
+                    "SERIE<int64>",
+                    "list<int64>",
+                    "LIST<int64>",
+                    "List<int64>",
+                    "array<int64>",
+                ][..],
+                DataType::serie(item()),
+                "serie(field(\"item\",int64,nullable=true,metadata={}))",
+            ),
+            (
+                &[
+                    "serie_view<int64>",
+                    "serieview<int64>",
+                    "list_view<int64>",
+                    "listview<int64>",
+                    "ListView<int64>",
+                    "LIST_VIEW<int64>",
+                    "arrayview<int64>",
+                ][..],
+                DataType::serie_view(item()),
+                "serie_view(field(\"item\",int64,nullable=true,metadata={}))",
+            ),
+            (
+                &[
+                    "large_serie<int64>",
+                    "largeserie<int64>",
+                    "large_list<int64>",
+                    "largelist<int64>",
+                    "LargeList<int64>",
+                    "LARGE_LIST<int64>",
+                    "LARGE-LIST<int64>",
+                    "largearray<int64>",
+                ][..],
+                DataType::large_serie(item()),
+                "large_serie(field(\"item\",int64,nullable=true,metadata={}))",
+            ),
+            (
+                &[
+                    "large_serie_view<int64>",
+                    "largeserieview<int64>",
+                    "large_list_view<int64>",
+                    "largelistview<int64>",
+                    "LargeListView<int64>",
+                    "LARGE_LIST_VIEW<int64>",
+                    "largearrayview<int64>",
+                ][..],
+                DataType::large_serie_view(item()),
+                "large_serie_view(field(\"item\",int64,nullable=true,metadata={}))",
+            ),
+            (
+                &[
+                    "fixed_size_serie(int64, 3)",
+                    "fixedsizeserie(int64, 3)",
+                    "fixed_size_list(int64, 3)",
+                    "fixedsizelist(int64, 3)",
+                    "FixedSizeList(int64, 3)",
+                    "FIXED_SIZE_LIST(int64, 3)",
+                    "fixedarray(int64, 3)",
+                ][..],
+                DataType::fixed_size_serie(item(), 3).unwrap(),
+                "fixed_size_serie(field(\"item\",int64,nullable=true,metadata={}),3)",
+            ),
+            (
+                &[
+                    "serie(field(\"px\", int64, false))",
+                    "list(field(\"px\", int64, false))",
+                ][..],
+                DataType::serie(named()),
+                "serie(field(\"px\",int64,nullable=false,metadata={}))",
+            ),
+            (
+                &[
+                    "fixed_size_serie(field(\"px\", int64, false), 3)",
+                    "fixed_size_list(field(\"px\", int64, false), 3)",
+                    "fixedsizelist(field(\"px\", int64, false), 3)",
+                ][..],
+                DataType::fixed_size_serie(named(), 3).unwrap(),
+                "fixed_size_serie(field(\"px\",int64,nullable=false,metadata={}),3)",
+            ),
+        ];
+        for (spellings, expected, displayed) in layouts {
+            assert_eq!(expected.to_string(), displayed);
+            for spelling in spellings {
+                let read = DataType::from_str(spelling)
+                    .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+                assert_eq!(read, expected, "{spelling}");
+                assert_eq!(read.to_string(), displayed, "{spelling}");
+                assert_eq!(DataType::from_str(&read.to_string()).unwrap(), expected);
+            }
+        }
+        // Nested, the old word reads at every depth and displays the new one.
+        let nested = DataType::from_str("list<large_list<fixed_size_list(int64, 2)>>").unwrap();
+        assert_eq!(
+            nested,
+            DataType::serie(
+                DataType::large_serie(
+                    DataType::fixed_size_serie(item(), 2)
+                        .unwrap()
+                        .nullable_field("item")
+                )
+                .nullable_field("item")
+            )
+        );
+        let displayed = nested.to_string();
+        assert!(
+            displayed
+                .starts_with("serie(field(\"item\",large_serie(field(\"item\",fixed_size_serie("),
+            "{displayed}"
+        );
+        assert!(!displayed.contains("list"), "{displayed}");
+    }
 }
 
 mod families {
@@ -580,14 +704,14 @@ mod families {
             [("doc", "nested, metadata")],
         )
         .unwrap();
-        let value = DataType::list(item);
+        let value = DataType::serie(item);
 
         let canonical = value.to_string();
         assert_eq!(DataType::from_str(&canonical).unwrap(), value);
         let json = value.clone().into_json().unwrap();
         let structural: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(structural.is_object());
-        assert_eq!(structural["type"], "list");
+        assert_eq!(structural["type"], "serie");
         assert_eq!(structural["field"]["dtype"]["type"], "struct");
         assert_eq!(DataType::from_json(&json).unwrap(), value);
         assert_eq!(

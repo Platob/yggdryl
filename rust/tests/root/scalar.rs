@@ -243,7 +243,7 @@ mod internal {
         );
         let held = serie::Run::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
-            leaf_display(&Scalar::List(yggdryl::Serie::Run(held.clone())))
+            leaf_display(&Scalar::Serie(yggdryl::Serie::Run(held.clone())))
                 .unwrap()
                 .to_string(),
             held.to_string()
@@ -517,16 +517,16 @@ mod values {
         let left = Scalar::from_sequence([]);
         let right = Scalar::from_sequence([]);
         let (
-            Scalar::List(left)
-            | Scalar::ListView(left)
-            | Scalar::FixedSizeList(left)
-            | Scalar::LargeList(left)
-            | Scalar::LargeListView(left),
-            Scalar::List(right)
-            | Scalar::ListView(right)
-            | Scalar::FixedSizeList(right)
-            | Scalar::LargeList(right)
-            | Scalar::LargeListView(right),
+            Scalar::Serie(left)
+            | Scalar::SerieView(left)
+            | Scalar::FixedSizeSerie(left)
+            | Scalar::LargeSerie(left)
+            | Scalar::LargeSerieView(left),
+            Scalar::Serie(right)
+            | Scalar::SerieView(right)
+            | Scalar::FixedSizeSerie(right)
+            | Scalar::LargeSerie(right)
+            | Scalar::LargeSerieView(right),
         ) = (&left, &right)
         else {
             unreachable!();
@@ -1363,7 +1363,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     let sequence = serie::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
-    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
+    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::Serie);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
     assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
@@ -1507,7 +1507,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::List(yggdryl::Serie::Run(serie::Run::new(Arc::from([
+    let sequence = Scalar::Serie(yggdryl::Serie::Run(serie::Run::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ]))));
@@ -1579,7 +1579,7 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
-        (Scalar::from_sequence([Scalar::from(1_i32)]), "list"),
+        (Scalar::from_sequence([Scalar::from(1_i32)]), "serie"),
         (
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))]).unwrap(),
             "map",
@@ -1839,7 +1839,7 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         Serie::from_scalars(
             Field::new(
                 "leg",
-                DataType::list(Field::new("item", DataType::Int64, true)),
+                DataType::serie(Field::new("item", DataType::Int64, true)),
                 true,
             ),
             [Scalar::from_sequence([
@@ -1863,8 +1863,8 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         Some(&Scalar::from(3_i64))
     );
     assert_eq!((&column).into_iter().count(), (&run).into_iter().count());
-    assert_eq!(column.kind(), "list");
-    assert_eq!(column.id(), DataTypeId::List);
+    assert_eq!(column.kind(), "serie");
+    assert_eq!(column.id(), DataTypeId::Serie);
     assert_eq!(column.dtype().unwrap(), run.dtype().unwrap());
 }
 
@@ -1914,6 +1914,74 @@ fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
 }
 
 #[test]
+fn every_serie_layout_writes_one_tag_and_reads_the_tags_it_was_written_under() {
+    let rows = [Scalar::from(1_i64), Scalar::Null, Scalar::from(3_i64)];
+    let field = Field::new("size", DataType::Int64, true);
+    let run = || Serie::new(rows.to_vec());
+    let column = || Serie::from_scalars(field.clone(), rows.clone()).unwrap();
+    // Each layout: the variant, the one tag it writes, and the two it was
+    // written under before - a run's rows under the list word, a column's
+    // document under `<list word>_serie`, the 32-bit one's under `serie`.
+    type Layout = fn(Serie) -> Scalar;
+    let layouts: [(Layout, &str, &str, &str); 5] = [
+        (Scalar::Serie, "serie", "list", "serie"),
+        (
+            Scalar::SerieView,
+            "serie_view",
+            "list_view",
+            "list_view_serie",
+        ),
+        (
+            Scalar::FixedSizeSerie,
+            "fixed_size_serie",
+            "fixed_size_list",
+            "fixed_size_list_serie",
+        ),
+        (
+            Scalar::LargeSerie,
+            "large_serie",
+            "large_list",
+            "large_list_serie",
+        ),
+        (
+            Scalar::LargeSerieView,
+            "large_serie_view",
+            "large_list_view",
+            "large_list_view_serie",
+        ),
+    ];
+    for (layout, tag, rows_tag, column_tag) in layouts {
+        for held in [layout(run()), layout(column())] {
+            let is_column = held.as_serie().is_some_and(Serie::is_column);
+            // One tag per layout, the payload's shape saying run or column.
+            let document = serde_json::to_value(&held).unwrap();
+            assert_eq!(document["type"], tag, "{document}");
+            assert_eq!(held.kind(), tag);
+            assert_eq!(document["value"].is_array(), !is_column, "{document}");
+            assert_eq!(document["value"].is_object(), is_column, "{document}");
+            // The document is the value: reading it back writes it again
+            // byte for byte, the layout and the shape both kept.
+            let back: Scalar = serde_json::from_value(document.clone()).unwrap();
+            assert_eq!(back, held);
+            assert_eq!(back.as_serie().map(Serie::is_column), Some(is_column));
+            assert_eq!(serde_json::to_value(&back).unwrap(), document);
+
+            // The tag it was written under before reads as the same value,
+            // and so does the other old tag of its layout, whichever shape
+            // the payload has.
+            let written_before = if is_column { column_tag } else { rows_tag };
+            for legacy in [written_before, rows_tag, column_tag] {
+                let mut old = document.clone();
+                old["type"] = serde_json::Value::from(legacy);
+                let read: Scalar =
+                    serde_json::from_value(old).unwrap_or_else(|error| panic!("{legacy}: {error}"));
+                assert_eq!(serde_json::to_value(&read).unwrap(), document, "{legacy}");
+            }
+        }
+    }
+}
+
+#[test]
 fn a_column_writes_through_every_wire_as_its_run_does() {
     let (column, run) = column_and_run();
 
@@ -1946,11 +2014,12 @@ fn a_column_writes_through_every_wire_as_its_run_does() {
         run
     );
 
-    // The crate's own serde is the one wire that tells the two apart: a run
-    // under `list`, a column with its field under `serie`, and each
-    // reads back as what it was.
+    // The crate's own serde is the one wire that tells the two apart: one
+    // `serie` tag, whose payload is a run's rows or a column's field beside
+    // its rows, and each reads back as what it was.
     let run_document = serde_json::to_value(&run).unwrap();
-    assert_eq!(run_document["type"], "list");
+    assert_eq!(run_document["type"], "serie");
+    assert!(run_document["value"].is_array(), "{run_document}");
     let column_document = serde_json::to_value(&column).unwrap();
     assert_eq!(column_document["type"], "serie");
     assert_eq!(column_document["value"]["field"]["name"], "size");
@@ -1965,10 +2034,14 @@ fn a_column_writes_through_every_wire_as_its_run_does() {
     let read: Scalar = serde_json::from_value(run_document).unwrap();
     assert!(read.as_serie().is_some_and(|serie| !serie.is_column()));
     assert_eq!(read, run);
-    // A list under the `serie` tag is refused naming the wire.
+    // A payload that is neither shape is refused naming both.
     let refused = serde_json::from_value::<Scalar>(serde_json::json!({
         "type": "serie",
-        "value": [1, 2, 3],
-    }));
-    assert!(refused.is_err());
+        "value": 3,
+    }))
+    .expect_err("a number is no serie");
+    assert!(
+        refused.to_string().contains("field beside its rows"),
+        "{refused}"
+    );
 }

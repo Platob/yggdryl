@@ -16,7 +16,7 @@
 //! Physical identity is part of an exact scalar: `large_utf8`, `binary_view`,
 //! `Date64`, and every other leaf name themselves rather than collapsing to a
 //! related layout. Only a newly inferred nested collection needs a layout
-//! choice: a run names the ordinary `List`
+//! choice: a run names the ordinary `Serie`
 //! layout because the values carry no offset width, and an enum names `utf8`
 //! because its generic identity is not an Arrow datatype.
 //!
@@ -32,7 +32,7 @@
 //! );
 //! assert_eq!(
 //!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
-//!     DataType::list(yggdryl::Field::new("item", DataType::utf8(), true)),
+//!     DataType::serie(yggdryl::Field::new("item", DataType::utf8(), true)),
 //! );
 //! # Ok(())
 //! # }
@@ -73,7 +73,7 @@ impl Scalar {
     /// Infer the exact item Field for one outer Sequence.
     ///
     /// The stable name is `item`, matching the child name [`Self::dtype`]
-    /// gives an inferred List. Empty sequences are ambiguous and require a
+    /// gives an inferred Serie. Empty sequences are ambiguous and require a
     /// declared Field.
     pub fn inferred_array_field(&self) -> Result<Field> {
         let Some(values) = self.as_serie() else {
@@ -93,7 +93,7 @@ impl Scalar {
             .map(|field| field.with_name("item"))
             .ok_or_else(|| {
                 unnameable(SmolStr::new_static(
-                    "an outer Sequence did not infer one List item Field",
+                    "an outer Sequence did not infer one Serie item Field",
                 ))
             })
     }
@@ -127,7 +127,7 @@ impl Scalar {
         }
         let item = self.dtype()?.get_field(0).cloned().ok_or_else(|| {
             unnameable(SmolStr::new_static(
-                "named Record rows did not infer one List item Field",
+                "named Record rows did not infer one Serie item Field",
             ))
         })?;
         let root = item.with_name("row").with_nullable(false);
@@ -223,11 +223,11 @@ impl Scalar {
             Self::Interval(value) => DataType::interval(value.unit()),
             // A column carries its field and is read; a run has its item
             // agreed back out of its rows.
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => {
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => {
                 let item = match values.field() {
                     Some(field) => field.clone().with_name("item"),
                     None => {
@@ -238,20 +238,20 @@ impl Scalar {
                 };
                 // The variant is the layout the value declares.
                 match self {
-                    Self::ListView(_) => Ok(DataType::list_view(item)),
-                    Self::LargeList(_) => Ok(DataType::large_list(item)),
-                    Self::LargeListView(_) => Ok(DataType::large_list_view(item)),
-                    Self::FixedSizeList(_) => DataType::fixed_size_list(
+                    Self::SerieView(_) => Ok(DataType::serie_view(item)),
+                    Self::LargeSerie(_) => Ok(DataType::large_serie(item)),
+                    Self::LargeSerieView(_) => Ok(DataType::large_serie_view(item)),
+                    Self::FixedSizeSerie(_) => DataType::fixed_size_serie(
                         item,
                         i32::try_from(values.len()).map_err(|_| Error::InvalidDataType {
-                            kind: "FixedSizeList",
+                            kind: "FixedSizeSerie",
                             reason: smol_str::format_smolstr!(
-                                "{} items are past a fixed size list's i32 width",
+                                "{} items are past a fixed size serie's i32 width",
                                 values.len()
                             ),
                         })?,
                     ),
-                    _ => Ok(DataType::list(item)),
+                    _ => Ok(DataType::serie(item)),
                 }
             }
             // A mapping's keys are values, not names, so its datatype is a map

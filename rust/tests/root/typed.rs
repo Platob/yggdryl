@@ -216,7 +216,7 @@ mod pairing {
         // A nested value names a datatype with no shared field.
         let column = Scalar::from_sequence([Scalar::from(1_i64)]);
         let refused = FieldScalar::infer(column).unwrap_err().to_string();
-        assert!(refused.contains("list"), "{refused}");
+        assert!(refused.contains("serie"), "{refused}");
         assert!(refused.contains("FieldScalar::new"), "{refused}");
 
         // A value that names no single datatype has no pairing to build.
@@ -944,7 +944,7 @@ mod records {
         #[test]
         fn a_typed_row_keeps_physical_materialization_limits() {
             let large =
-                DataType::fixed_size_list(DataType::Int64.required_field("item"), 1_000_001)
+                DataType::fixed_size_serie(DataType::Int64.required_field("item"), 1_000_001)
                     .unwrap()
                     .nullable_field("large");
             let schema =

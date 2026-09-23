@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `fields` | Tagged scalar `Field`; group counters are `int32` | The tag and the folded name together; the id is derived from the pair on every read, never stored |
 | `components` | Named Struct `Field`; one carrying `FIX:msgtype` is a message - non-null, owned by an immutable `MsgType` singleton, borrowed through `msgtype` | Folded name; `FIX:msgtype` carries the complete wire code |
-| `groups` | Named List/LargeList of a non-null Struct occurrence, or Map with a non-null entries Struct | Folded name; a List/LargeList names its separate scalar counter, while a crate Map uses its own tag as `FIX:counter` |
+| `groups` | Named Serie/LargeSerie of a non-null Struct occurrence, or Map with a non-null entries Struct | Folded name; a Serie/LargeSerie names its separate scalar counter, while a crate Map uses its own tag as `FIX:counter` |
 
 | Aspect | Rule |
 | --- | --- |
@@ -18,8 +18,8 @@
 | Replacements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; a registry states a rule of its own on the field as `FIX:replacements`, which wins whole over the table for that field, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
 | Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
-| Definition tags | Components and List/LargeList groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
-| Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a List/LargeList of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
+| Definition tags | Components and Serie/LargeSerie groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
+| Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
 | References | `FIX:field`, `FIX:component`, and `FIX:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
@@ -46,13 +46,13 @@
     party_id.as_fix_mut().set_tag(448)?;
     let mut registry = FixRegistry::from_fields([counter, party_id])?;
 
-    // One door files each by its shape: a Struct is a component, a List of
+    // One door files each by its shape: a Struct is a component, a Serie of
     // one a group, and a scalar a field.
     let mut member = registry.field(448)?.clone();
     member.as_fix_mut().set_field_ref("PartyID")?;
     let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
     registry.insert(party.clone())?;
-    let mut parties = DataType::list(party).nullable_field("Parties");
+    let mut parties = DataType::serie(party).nullable_field("Parties");
     parties.as_fix_mut().set_counter(453)?;
     parties.as_fix_mut().set_component("Party")?;
     registry.insert(parties)?;
@@ -88,13 +88,13 @@
     party_id.fix.tag = 448
     registry = FixRegistry.from_fields([counter, party_id])
 
-    # One door files each by its shape: a Struct is a component, a List of one a
+    # One door files each by its shape: a Struct is a component, a Serie of one a
     # group, and a scalar a field.
     member = registry.field(448)
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
     registry.insert(party)
-    parties = yggdryl.list("Parties", party)
+    parties = yggdryl.serie("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
     registry.insert(parties)
@@ -128,13 +128,13 @@
     partyId.fix.tag = 448
     const registry = fix.FixRegistry.fromFields([counter, partyId])
 
-    // One door files each by its shape: a Struct is a component, a List of one a
+    // One door files each by its shape: a Struct is a component, a Serie of one a
     // group, and a scalar a field.
     const member = registry.field(448)
     member.fix.fieldRef = 'PartyID'
     const party = fields.struct('Party', [member], { nullable: false })
     registry.insert(party)
-    const parties = fields.list('Parties', party)
+    const parties = fields.serie('Parties', party)
     parties.fix.counter = 453
     parties.fix.component = 'Party'
     registry.insert(parties)
@@ -289,10 +289,10 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
 | `field_by_name(name)` | The canonical fold, then an alias fold |
 | `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
-| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` List, `65020` the `identifiers` Map - while the counter itself answers `field(453)` |
+| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65020` the `identifiers` Map - while the counter itself answers `field(453)` |
 | `MsgType::get_group_by_tag(tag)` | Unique group within that message's structure |
 
-The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a list, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
+The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a serie, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
 A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `identifiers` and `metadata` are reached by their canonical name or their counter, never by scalar `field_by_tag(65020)`; their key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
@@ -529,12 +529,12 @@ Every one has a `get_` twin answering absence rather than raising it. The size a
 
 | Operation | Contract |
 | --- | --- |
-| `insert` | Files the field by its shape - a Struct as a component, a List/LargeList of a Struct or a Map as a group, anything else as a scalar - and replaces only the same identity, answering what it replaced; a held tag under another name is added beside the holder, which gains the arrival's name as an alias; a canonical name, alias or alternate tag another field holds is a conflict |
+| `insert` | Files the field by its shape - a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar - and replaces only the same identity, answering what it replaced; a held tag under another name is added beside the holder, which gains the arrival's name as an alias; a canonical name, alias or alternate tag another field holds is a conflict |
 | `update` | Merges metadata for the existing identity - same tag and folded name - using the native per-key rules; a definition is replaced whole |
 | `add_field` | The lenient twin: `true` where the field arrived, `false` where it folded into one the registry held |
 | `remove` | Takes a scalar, a component or a group by any key; returns no field when absent or still referenced |
 
-These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A component or List/LargeList group stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has. A crate Map group instead declares its own reserved tag and matching counter.
+These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A component or Serie/LargeSerie group stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has. A crate Map group instead declares its own reserved tag and matching counter.
 
 === "Rust"
 
@@ -901,7 +901,7 @@ One rule is one plan, and the plan's vocabulary is the whole of what a rule can 
 | the source's own value | `maxfloor as displayqty` | the source column, re-typed for the target |
 | another column | `onbehalfofcompid as hopcompid` | that column's stated value at the same level; unstated, the rule does not apply |
 | a join | `concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate` | the wire texts concatenated, every part stated; a day is spelled with two digits, which is how it completes a month-year |
-| a group occurrence | `[{partyid: execbroker, partyrole: '1'}] as parties` | one occurrence of that repeating group at this level - a list of one record, a member per column - and a member may itself be an occurrence |
+| a group occurrence | `[{partyid: execbroker, partyrole: '1'}] as parties` | one occurrence of that repeating group at this level - a serie of one record, a member per column - and a member may itself be an occurrence |
 | the held value | `where rule80a = 'A'` | the entry applies to that value of the source; a `MultipleCharValue` source, several codes in one text, is asked with `contains(execinst, 'T')`; a `state` column compares by the code's spelling |
 | the message type | `where :msgtype in ('8', 'AE')` | the root's `MsgType(35)`, crossing as a parameter because it is a fact about the message rather than a column of the level |
 | the enclosing group | `where :group = 'allocgrp'` | the repeating group the level is an occurrence of, the same way; null at the root |
@@ -1368,8 +1368,8 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 ## Edges
 
 - A scalar without `FIX:tag`, a nested tagged field, or a nullable message root is refused.
-- A List/LargeList group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent. A crate Map group instead requires matching reserved `FIX:tag`/`FIX:counter` values that no scalar canonical or alternate tag occupies; its entries Struct and key remain non-null.
-- A component or List/LargeList group carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused. The crate Map's own reserved tag is not a derived definition tag.
+- A Serie/LargeSerie group needs a valid `int32` counter and non-null Struct occurrence; the serie's own nullability is independent. A crate Map group instead requires matching reserved `FIX:tag`/`FIX:counter` values that no scalar canonical or alternate tag occupies; its entries Struct and key remain non-null.
+- A component or Serie/LargeSerie group carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused. The crate Map's own reserved tag is not a derived definition tag.
 - A derived tag names a definition this crate derived rather than a tag anyone published; a definition keeps the tag it already has through an update, and one arriving on a tag another definition holds derives afresh.
 - Missing, cyclic, contradictory, or over-depth references fail at intake with location; the nesting limit is 64.
 - Removing a referenced definition fails atomically; delete dependents before their sources.

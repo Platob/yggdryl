@@ -20,19 +20,19 @@ fn union_value(type_id: i8, payload: Scalar) -> Scalar {
     Scalar::from_sequence([Scalar::from(type_id), payload])
 }
 
-fn fixed_list_field(name: &str, length: i32, nullable: bool) -> Field {
+fn fixed_serie_field(name: &str, length: i32, nullable: bool) -> Field {
     Field::new(
         name,
-        DataType::fixed_size_list(Field::new("item", DataType::Int32, false), length).unwrap(),
+        DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), length).unwrap(),
         nullable,
     )
 }
 
 #[test]
-fn nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation() {
+fn nullable_fixed_serie_rejects_hidden_slot_expansion_before_allocation() {
     let field = Field::new(
         "items",
-        DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001).unwrap(),
+        DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), 1_000_001).unwrap(),
         true,
     );
     let error = lay_out(&field, &Scalar::Null).unwrap_err();
@@ -45,8 +45,8 @@ fn nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation() {
 #[test]
 fn sparse_union_joins_selected_and_inactive_children_into_one_budget() {
     let fields = [
-        (1, fixed_list_field("selected", 600_000, true)),
-        (2, fixed_list_field("inactive", 600_000, true)),
+        (1, fixed_serie_field("selected", 600_000, true)),
+        (2, fixed_serie_field("inactive", 600_000, true)),
     ];
     let sparse = DataType::union(fields, UnionMode::Sparse).unwrap();
     let error = lay_out(
@@ -172,7 +172,7 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
         )
     };
     let wrappers = [
-        DataType::list(Field::new("item", required_null_struct(), false)),
+        DataType::serie(Field::new("item", required_null_struct(), false)),
         DataType::dictionary(DataType::Int8, required_null_struct()).unwrap(),
         DataType::map_of(DataType::Int32, required_null_struct(), false).unwrap(),
         DataType::run_end_encoded(
@@ -221,7 +221,7 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
     let field = Field::new("outer", structure, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 
-    let fixed = DataType::fixed_size_list(Field::new("item", impossible(), false), 2).unwrap();
+    let fixed = DataType::fixed_size_serie(Field::new("item", impossible(), false), 2).unwrap();
     let field = Field::new("outer", fixed, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 

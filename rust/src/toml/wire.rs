@@ -160,11 +160,11 @@ fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
         _ if value.is_integer() && value.as_i64().is_none() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
             for value in values.iter() {
@@ -351,11 +351,11 @@ fn write_scalar<W: Write>(
             )?,
             _ => return Err(codec_error("invalid interval layout")),
         },
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => write_sequence(writer, values, layout, depth)?,
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => write_sequence(writer, values, layout, depth)?,
         Scalar::Struct(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {

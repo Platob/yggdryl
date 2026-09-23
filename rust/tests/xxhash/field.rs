@@ -188,7 +188,7 @@ mod xxhash_arrow {
             StructType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
         );
         let root = root([
-            DataType::list(element.required_field("item")).nullable_field("events"),
+            DataType::serie(element.required_field("item")).nullable_field("events"),
             holder("row_digest", DataType::UInt64),
         ]);
 

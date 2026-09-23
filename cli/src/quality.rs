@@ -207,7 +207,7 @@ fn check_codesets(report: &mut Report, registry: &FixRegistry) {
 
 /// A group with no item struct is a group nothing can be read out of.
 fn shaped_group(report: &mut Report, field: &Field, named: &str) {
-    let Some(item) = list_item(field) else {
+    let Some(item) = serie_item(field) else {
         return;
     };
     if item.dtype().as_fields().is_none() {
@@ -215,14 +215,14 @@ fn shaped_group(report: &mut Report, field: &Field, named: &str) {
             level: Level::Warn,
             check: "groups",
             subject: named.to_owned(),
-            detail: "is a list whose item is not a struct".to_owned(),
+            detail: "is a serie whose item is not a struct".to_owned(),
         });
     }
 }
 
-/// A list field's item, where it is one.
-fn list_item(field: &Field) -> Option<&Field> {
-    field.dtype().list_item()
+/// A serie field's item, where it is one.
+fn serie_item(field: &Field) -> Option<&Field> {
+    field.dtype().serie_item()
 }
 
 /// Prints a report the way a person reads it.

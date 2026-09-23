@@ -24,6 +24,53 @@ fn names_are_unique() {
 }
 
 #[test]
+fn every_legacy_name_reads_as_its_identifier_and_is_never_written() {
+    let names = [
+        ("list", DataTypeId::Serie, "serie"),
+        ("list_view", DataTypeId::SerieView, "serie_view"),
+        (
+            "fixed_size_list",
+            DataTypeId::FixedSizeSerie,
+            "fixed_size_serie",
+        ),
+        ("large_list", DataTypeId::LargeSerie, "large_serie"),
+        (
+            "large_list_view",
+            DataTypeId::LargeSerieView,
+            "large_serie_view",
+        ),
+    ];
+    assert_eq!(DataTypeId::LEGACY_NAMES.len(), names.len());
+    for ((legacy, id), (name, expected, spelled)) in DataTypeId::LEGACY_NAMES.into_iter().zip(names)
+    {
+        assert_eq!((legacy, id), (name, expected));
+        let capitalized = format!("{}{}", legacy[..1].to_uppercase(), &legacy[1..]);
+        for text in [legacy.to_owned(), legacy.to_uppercase(), capitalized] {
+            assert_eq!(DataTypeId::from_str(&text).unwrap(), id, "{text}");
+            assert_eq!(text.parse::<DataTypeId>().unwrap(), id, "{text}");
+            assert_eq!(DataTypeId::from_legacy_name(&text), Some(id), "{text}");
+            let quoted = format!("\"{text}\"");
+            assert_eq!(
+                serde_json::from_str::<DataTypeId>(&quoted).unwrap(),
+                id,
+                "{text}"
+            );
+        }
+        // Read, never written: the identifier spells its own name, and no
+        // identifier's name is a legacy one.
+        assert_eq!(id.as_str(), spelled);
+        assert_eq!(id.to_string(), spelled);
+        assert_eq!(
+            serde_json::to_string(&id).unwrap(),
+            format!("\"{spelled}\"")
+        );
+        assert!(DataTypeId::ALL.iter().all(|other| other.as_str() != legacy));
+        assert_eq!(DataTypeId::from_legacy_name(spelled), None);
+    }
+    assert_eq!(DataTypeId::from_legacy_name("array"), None);
+}
+
+#[test]
 fn every_kind_is_reachable() {
     for kind in DataTypeKind::ALL {
         assert!(
@@ -198,11 +245,11 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::BloombergCode, 0x7b),
         (DataTypeId::FIGICode, 0x7c),
         (DataTypeId::Uuid, 0x81),
-        (DataTypeId::List, 0x91),
-        (DataTypeId::LargeList, 0x92),
-        (DataTypeId::ListView, 0x93),
-        (DataTypeId::LargeListView, 0x94),
-        (DataTypeId::FixedSizeList, 0x95),
+        (DataTypeId::Serie, 0x91),
+        (DataTypeId::LargeSerie, 0x92),
+        (DataTypeId::SerieView, 0x93),
+        (DataTypeId::LargeSerieView, 0x94),
+        (DataTypeId::FixedSizeSerie, 0x95),
         (DataTypeId::Struct, 0x96),
         (DataTypeId::Map, 0x97),
         (DataTypeId::SortedMap, 0x98),
@@ -420,11 +467,11 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
         (
             K::Nested,
             &[
-                DataTypeId::List,
-                DataTypeId::LargeList,
-                DataTypeId::ListView,
-                DataTypeId::LargeListView,
-                DataTypeId::FixedSizeList,
+                DataTypeId::Serie,
+                DataTypeId::LargeSerie,
+                DataTypeId::SerieView,
+                DataTypeId::LargeSerieView,
+                DataTypeId::FixedSizeSerie,
                 DataTypeId::Struct,
                 DataTypeId::Map,
                 DataTypeId::SortedMap,

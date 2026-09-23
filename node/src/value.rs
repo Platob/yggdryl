@@ -110,13 +110,13 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::MediaType => JsValueHint::String,
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
-        // struct projects positionally, exactly like a list.
+        // struct projects positionally, exactly like a serie.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
-        | D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)
+        | D::Serie(_)
+        | D::SerieView(_)
+        | D::FixedSizeSerie(..)
+        | D::LargeSerie(_)
+        | D::LargeSerieView(_)
         | D::Struct(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
         // `{ typeId, value }` object rather than a positional sequence.
@@ -169,11 +169,11 @@ fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result
     }
     match dtype {
         D::Null => Null.into_unknown(env),
-        sequence_dtype @ (D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)) => {
+        sequence_dtype @ (D::Serie(_)
+        | D::SerieView(_)
+        | D::FixedSizeSerie(..)
+        | D::LargeSerie(_)
+        | D::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
@@ -447,11 +447,11 @@ fn sequence_to_js<'env>(
 ) -> Result<Unknown<'env>> {
     let values = value
         .as_serie()
-        .ok_or_else(|| napi_error("invalid native list record value"))?;
+        .ok_or_else(|| napi_error("invalid native serie record value"))?;
     let mut output = env.create_array(u32::try_from(values.len()).unwrap_or(u32::MAX))?;
     for (index, value) in values.iter().enumerate() {
         let js_index = u32::try_from(index)
-            .map_err(|_| napi_error("list index exceeds the JavaScript array limit"))?;
+            .map_err(|_| napi_error("serie index exceeds the JavaScript array limit"))?;
         output.set(js_index, projected_value_to_js(env, field, &value)?)?;
     }
     output.into_unknown(env)

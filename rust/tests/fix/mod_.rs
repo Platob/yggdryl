@@ -96,7 +96,7 @@ mod internal {
             .map(DataType::from)
             .unwrap()
             .required_field("MemberComponent");
-        let mut field = DataType::list(item).nullable_field(name);
+        let mut field = DataType::serie(item).nullable_field(name);
         field.as_fix_mut().set_counter(tag).unwrap();
         field
     }
@@ -139,7 +139,7 @@ mod internal {
     }
 
     /// The crate's own scalars, or its own groups - the Maps - in the order
-    /// every registry iterates them. `srcuuids` is a List of non-null
+    /// every registry iterates them. `srcuuids` is a Serie of non-null
     /// scalars, which is one column rather than a group, so it is filed among
     /// the fields and walks with them.
     fn crate_names_of(groups: bool) -> Vec<&'static str> {
@@ -2028,7 +2028,7 @@ mod internal {
         party_id.as_fix_mut().set_tag(448).unwrap();
         let mut role = DataType::Int32.nullable_field("PartyRole");
         role.as_fix_mut().set_tag(452).unwrap();
-        let mut group = DataType::list(
+        let mut group = DataType::serie(
             StructType::from_fields([party_id.clone(), role])
                 .map(DataType::from)
                 .unwrap()
@@ -2373,7 +2373,7 @@ mod internal {
 
     #[test]
     fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
-        // A Struct inserts as a component and a List of Structs as a group, so
+        // A Struct inserts as a component and a Serie of Structs as a group, so
         // the tag such a field states is a definition's, derived into the
         // definition block: a wire tag on one is refused, naming the block, and
         // the registry stands as it was.
@@ -2383,7 +2383,7 @@ mod internal {
             DataType::from(StructType::from_fields([tagged("Member", 9_001)]).unwrap());
         for dtype in [
             occurrence.clone(),
-            DataType::list(occurrence.required_field("item")),
+            DataType::serie(occurrence.required_field("item")),
         ] {
             let mut field = dtype.nullable_field("InvalidWireField");
             field.as_fix_mut().set_tag(453).unwrap();
@@ -2391,10 +2391,10 @@ mod internal {
             assert!(error.to_string().contains("100000"), "{error}");
             assert_eq!(registry, original);
         }
-        // A List of scalars and a dictionary-encoded Struct are neither a
+        // A Serie of scalars and a dictionary-encoded Struct are neither a
         // definition nor a wire field: refused as the scalar they are not.
         for dtype in [
-            DataType::list(DataType::utf8().required_field("item")),
+            DataType::serie(DataType::utf8().required_field("item")),
             DataType::dictionary(
                 DataType::Int32,
                 DataType::from(StructType::from_fields([tagged("Member", 9_002)]).unwrap()),
@@ -2717,7 +2717,7 @@ mod internal {
             .map(DataType::from)
             .unwrap()
             .required_field("Party");
-        let mut group = DataType::list(item).nullable_field("Parties");
+        let mut group = DataType::serie(item).nullable_field("Parties");
         group.as_fix_mut().set_counter(453).unwrap();
         let instrument = StructType::from_fields([tagged("Symbol", 55)])
             .map(DataType::from)
@@ -4195,7 +4195,7 @@ mod internal {
                 assert_eq!(registry.get_field_by_counter(tag), Some(field), "{name}");
                 continue;
             }
-            let DataType::List(item) = field.dtype() else {
+            let DataType::Serie(item) = field.dtype() else {
                 panic!("{}", field.dtype());
             };
             let display = field
@@ -4247,7 +4247,7 @@ mod internal {
             &DataType::Int32
         );
         for field in registry.definitions(FixCategory::Groups) {
-            let DataType::List(item) = field.dtype() else {
+            let DataType::Serie(item) = field.dtype() else {
                 assert!(
                     matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_)),
                     "{}: a group is a List, or one of the crate's Maps",
@@ -4405,13 +4405,13 @@ mod internal {
             .iter()
             .find(|field| field.name() == column)
             .unwrap_or_else(|| panic!("a {column} column"));
-        let DataType::List(item) = held.dtype() else {
-            panic!("a list, got {}", held.dtype());
+        let DataType::Serie(item) = held.dtype() else {
+            panic!("a serie, got {}", held.dtype());
         };
         // Exactly three fixentry levels on every root-to-leaf path, each with the
         // same four members - the tag, the name the dictionary gives it, the
         // value as the wire spells it - the fourth a fixentries that is a
-        // non-null deeper list twice and the nullable text leaf at the bottom.
+        // non-null deeper serie twice and the nullable text leaf at the bottom.
         let mut held = item;
         for level in 1..=3 {
             assert_eq!(held.name(), "fixentry", "{column} level {level}");
@@ -4436,7 +4436,7 @@ mod internal {
             assert!(members[2].is_nullable(), "{column} level {level} value");
             let tail = &members[3];
             match tail.dtype() {
-                DataType::List(deeper) if level < 3 => {
+                DataType::Serie(deeper) if level < 3 => {
                     assert!(!tail.is_nullable(), "{column} level {level} tail");
                     held = deeper;
                 }
@@ -4761,7 +4761,7 @@ mod internal {
             assert!(names.iter().any(|name| name == read), "{read}");
         }
         let group = schema.get_field("secaltids").expect("the group");
-        assert!(matches!(group.dtype(), DataType::List(_)));
+        assert!(matches!(group.dtype(), DataType::Serie(_)));
         assert!(names.iter().any(|held| held == "settlcurrfxrate"));
         // The edit reads a column another rule already read, so the working
         // schema is no wider.
@@ -5450,7 +5450,7 @@ mod capture {
         let group = bridge
             .by_name("parties")
             .expect("the group the counter heads");
-        let parties = group.as_sequence().expect("a list");
+        let parties = group.as_sequence().expect("a serie");
         assert_eq!(parties.len(), 1);
         let party = parties[0].as_sequence().expect("one occurrence");
         assert!(

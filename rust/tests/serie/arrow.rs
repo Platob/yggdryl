@@ -71,12 +71,12 @@ fn narrow_quote_batch() -> RecordBatch {
     .expect("two rows")
 }
 
-/// A required int64 list field, and three lists - `[1, 2]`, `[3]`,
+/// A required int64 serie field, and three lists - `[1, 2]`, `[3]`,
 /// `[4, 5]` - over one child of five.
 fn legs() -> (Field, ListArray) {
     let field = Field::new(
         "legs",
-        DataType::list(Field::new("item", DataType::Int64, false)),
+        DataType::serie(Field::new("item", DataType::Int64, false)),
         false,
     );
     let lists = ListArray::new(
@@ -376,13 +376,13 @@ fn a_sliced_list_array_is_rebased_onto_the_items_it_reaches() {
     // grows knows where its items end.
     let middle: ArrayRef = Arc::new(lists.slice(1, 1));
     let mut column = Serie::from_arrow_array(Some(&field), middle, ArrowCastOptions::new())
-        .expect("a sliced list");
+        .expect("a sliced serie");
     assert_eq!(column.len(), 1);
     assert_eq!(
         column.scalar(0).unwrap(),
         Scalar::from_sequence([Scalar::from(3_i64)])
     );
-    let leaf = column.as_list().expect("a list column");
+    let leaf = column.as_serie().expect("a serie column");
     assert_eq!(leaf.offsets().as_ref(), &[0, 1]);
     assert_eq!(leaf.items().as_int64().unwrap().values(), &[3]);
     column
@@ -399,8 +399,8 @@ fn a_sliced_list_array_is_rebased_onto_the_items_it_reaches() {
     // A tail slice is rebased the same way, its items sliced to match.
     let tail: ArrayRef = Arc::new(lists.slice(1, 2));
     let column = Serie::from_arrow_array(Some(&field), tail, ArrowCastOptions::new())
-        .expect("a sliced list");
-    let leaf = column.as_list().expect("a list column");
+        .expect("a sliced serie");
+    let leaf = column.as_serie().expect("a serie column");
     assert_eq!(leaf.offsets().as_ref(), &[0, 1, 3]);
     assert_eq!(leaf.items().as_int64().unwrap().values(), &[3, 4, 5]);
 
@@ -409,8 +409,8 @@ fn a_sliced_list_array_is_rebased_onto_the_items_it_reaches() {
     let offsets = lists.offsets().inner().inner().clone();
     let whole: ArrayRef = Arc::new(lists);
     let column = Serie::from_arrow_array(Some(&field), whole, ArrowCastOptions::new())
-        .expect("a list column");
-    let leaf = column.as_list().expect("a list column");
+        .expect("a serie column");
+    let leaf = column.as_serie().expect("a serie column");
     assert_eq!(leaf.offsets().as_ref(), &[0, 2, 3, 5]);
     assert!(leaf.offsets().inner().inner().ptr_eq(&offsets));
     assert_eq!(leaf.items().len(), 5);
@@ -422,7 +422,7 @@ fn an_empty_column_names_its_datatype_and_a_reserved_one_is_still_empty() {
     assert!(empty.is_empty());
     assert_eq!(
         empty.dtype().unwrap(),
-        DataType::list(Field::new("item", DataType::Int64, false))
+        DataType::serie(Field::new("item", DataType::Int64, false))
     );
 
     let reserved = Serie::with_capacity(Field::new("price", DataType::Int64, true), 64).unwrap();
@@ -842,10 +842,10 @@ fn a_nullable_record_over_an_uninhabited_child_defaults_to_an_absent_row() {
 }
 
 #[test]
-fn a_zero_width_list_default_keeps_its_row_count() {
+fn a_zero_width_serie_default_keeps_its_row_count() {
     let empty = Field::new(
         "empty",
-        DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 0).expect("width 0"),
+        DataType::fixed_size_serie(Field::new("item", DataType::Int32, true), 0).expect("width 0"),
         false,
     );
     let rows = Serie::from_default(empty, 3).expect("three rows");

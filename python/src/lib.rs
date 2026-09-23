@@ -451,11 +451,11 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
     module.add_class::<serie::PySerie>()?;
-    module.add_class::<serie::PyListSerie>()?;
-    module.add_class::<serie::PyLargeListSerie>()?;
-    module.add_class::<serie::PyListViewSerie>()?;
-    module.add_class::<serie::PyLargeListViewSerie>()?;
-    module.add_class::<serie::PyFixedSizeListSerie>()?;
+    module.add_class::<serie::PySerieSerie>()?;
+    module.add_class::<serie::PyLargeSerieSerie>()?;
+    module.add_class::<serie::PySerieViewSerie>()?;
+    module.add_class::<serie::PyLargeSerieViewSerie>()?;
+    module.add_class::<serie::PyFixedSizeSerieSerie>()?;
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
     module.add_class::<serie::PySerieReader>()?;

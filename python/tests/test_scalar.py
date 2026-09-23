@@ -67,12 +67,12 @@ def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
 
 
 def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
-    field = Field("items", "list<int32>", nullable=False)
+    field = Field("items", "serie<int32>", nullable=False)
     dtype = Scalar.from_(field.dtype)
     field_value = Scalar.from_(field)
 
     assert dtype.kind == "map"
-    assert dtype.as_py()["type"] == "list"  # type: ignore[index]
+    assert dtype.as_py()["type"] == "serie"  # type: ignore[index]
     assert field_value.kind == "map"
     assert field_value.as_py()["name"] == "items"  # type: ignore[index]
 
@@ -449,7 +449,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         "map",
         (
             (("string", "row"), record_state),
-            (("i16", 7), ("list", (("f32", 0x3FC0_0000), ("null",)))),
+            (("i16", 7), ("serie", (("f32", 0x3FC0_0000), ("null",)))),
         ),
     )
     states = [*scalar_states, *code_states, record_state, mapping_state]
@@ -468,6 +468,31 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
     assert Scalar._from_pickle(mapping_state).kind == "map"
     with pytest.raises(ValueError, match="unknown"):
         Scalar._from_pickle(("future", None))
+
+
+@pytest.mark.parametrize(
+    ("legacy", "kind"),
+    [
+        ("list", "serie"),
+        ("list_view", "serie_view"),
+        ("fixed_size_list", "fixed_size_serie"),
+        ("large_list", "large_serie"),
+        ("large_list_view", "large_serie_view"),
+    ],
+)
+def test_a_sequence_state_written_under_its_list_tag_still_loads(legacy: str, kind: str) -> None:
+    # A repr written before the serie rename tags a sequence with the Arrow
+    # list word its layout was spelled by; the same state loads as that
+    # layout, and represents itself again under the serie name.
+    items = (("i64", 1), ("null",), ("i64", 3))
+    value = Scalar._from_pickle((legacy, items))
+
+    assert value.kind == kind
+    assert value == Scalar._from_pickle((kind, items))
+    assert value.as_py() == [1, None, 3]
+    assert repr(value).startswith(f"Scalar._from_pickle(('{kind}',")
+    represented = eval(repr(value), {"Scalar": Scalar})
+    assert represented == value and represented.kind == kind
 
 
 @pytest.mark.parametrize(
@@ -518,9 +543,9 @@ def test_arrow_decimal256_scalar_round_trip() -> None:
 
 def test_arrow_array_uses_c_data_and_requires_a_field_only_when_ambiguous() -> None:
     array = pa.array([1, None, 3], type=pa.int16())
-    # A column is held as a list sharing its buffers.
+    # A column is held as a serie sharing its buffers.
     value = Scalar.from_(array)
-    assert value.kind == "list"
+    assert value.kind == "serie"
     assert value.as_py() == [1, None, 3]
     restored = value.into_arrow_array()
     assert restored.type == array.type

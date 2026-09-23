@@ -682,7 +682,7 @@ export declare class DataType {
    * Every leaf under this node, named by its dotted path.
    *
    * Struct nesting flattens all the way down, and a leaf under a nullable
-   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * ancestor is nullable. Collections are leaves: a serie or a map is one
    * column, and `explodeFields` is what reaches inside one. Every name this
    * answers is one `fieldByPath` resolves.
    */
@@ -690,7 +690,7 @@ export declare class DataType {
   /**
    * This node's children with every collection replaced by what it holds.
    *
-   * A list answers its item, a map its entries, a dictionary or run-end
+   * A serie answers its item, a map its entries, a dictionary or run-end
    * node the values it encodes, and anything else itself - so the result
    * names the same columns in the same order. One level only, so the depth
    * is the caller's decision.
@@ -925,7 +925,7 @@ export declare class Field {
    * Every leaf under this node, named by its dotted path.
    *
    * Struct nesting flattens all the way down, and a leaf under a nullable
-   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * ancestor is nullable. Collections are leaves: a serie or a map is one
    * column, and `explodeFields` is what reaches inside one. Every name this
    * answers is one `fieldByPath` resolves.
    */
@@ -933,7 +933,7 @@ export declare class Field {
   /**
    * This node's children with every collection replaced by what it holds.
    *
-   * A list answers its item, a map its entries, a dictionary or run-end
+   * A serie answers its item, a map its entries, a dictionary or run-end
    * node the values it encodes, and anything else itself - so the result
    * names the same columns in the same order. One level only, so the depth
    * is the caller's decision.
@@ -1705,7 +1705,7 @@ export type JsFixMessages = FixMessages
  * graph traits' facts - the standard header, what the line said about the
  * capture it was written for, the `Text(58)` and the metadata a bridge
  * spelled under its own namespaces. The row holds everything else the message states: the
- * dictionary fields, groups as lists beside their counter, components as
+ * dictionary fields, groups as series beside their counter, components as
  * structs. The schema is one non-null Struct `Field` - the only row schema -
  * and a plain object crosses as the record the core canonicalizes into that
  * order exactly as every other row is; a child stating a typed fact fills
@@ -2269,7 +2269,7 @@ export declare class FixRegistry {
    * Add a field, answering the one it replaced.
    *
    * A definition is filed by the shape it has: a Struct inserts as a
-   * component - a message when it carries `FIX:msgtype` - a List of
+   * component - a message when it carries `FIX:msgtype` - a Serie of
    * Structs or a Map as a group, and anything else as a scalar field.
    */
   insert(field: Field): Field | null
@@ -4388,7 +4388,7 @@ export declare class Serie {
   constructor(rows?: Array<Scalar> | undefined | null)
   /** The field a column carries, or `null` for a run. */
   get field(): Field | null
-  /** `list(<the field named item>)` for a column; agreed out of a run's rows. */
+  /** `serie(<the field named item>)` for a column; agreed out of a run's rows. */
   get dtype(): DataType
   /** Whether this is a column rather than a schema-free run. */
   get isColumn(): boolean
@@ -5081,14 +5081,14 @@ export declare class Term {
   /** Read a struct child by name, resolved case-insensitively. */
   child(name: string): Term
   /**
-   * Read a list element by position, counting back from the end when
+   * Read a serie element by position, counting back from the end when
    * negative.
    */
   at(index: number): Term
   /**
-   * Read a run of list elements, `start` inclusive and `end` exclusive;
+   * Read a run of serie elements, `start` inclusive and `end` exclusive;
    * either bound counts back from the end when negative, and an absent
-   * one is the list's own edge.
+   * one is the serie's own edge.
    */
   slice(start?: number | undefined | null, end?: number | undefined | null): Term
   /** Read a map value by key. */
@@ -6732,7 +6732,7 @@ export interface FixHeaderView {
  * The crate's own columns lead - its clocks, then its identities, then the
  * rest it knows - then the header, the fields a consumer reads, the groups
  * worth persisting whole, the trailer, `MsgDirection` (385), and the one
- * list that closes every row: `fixentries`, the whole content record,
+ * serie that closes every row: `fixentries`, the whole content record,
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `FIX:tag`,

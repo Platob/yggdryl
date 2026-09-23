@@ -321,7 +321,7 @@ mod arrow {
             DataType::from(
                 StructType::from_fields([
                     catalog,
-                    Field::new("labels", DataType::list(item), true),
+                    Field::new("labels", DataType::serie(item), true),
                 ])
                 .unwrap(),
             ),
@@ -1578,7 +1578,7 @@ mod generic {
         );
 
         // A nested type composes without naming the inner type twice.
-        let tags = DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags");
+        let tags = DataType::serie(DataType::utf8().nullable_field("item")).nullable_field("tags");
         assert!(tags.dtype().is_nested());
         assert_eq!(tags.name(), "tags");
     }
@@ -1627,7 +1627,7 @@ mod generic {
     fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
+            DataType::serie(DataType::utf8().nullable_field("item")).nullable_field("tags"),
             StructType::from_fields([DataType::Int32.required_field("depth")])
                 .map(DataType::from)
                 .unwrap()
@@ -1638,7 +1638,7 @@ mod generic {
         .required_field("row");
 
         // Numbering is depth first in declaration order, over every child a
-        // layout has - a list's item and a map's entries included.
+        // layout has - a serie's item and a map's entries included.
         assert_eq!(schema.assign_parquet_field_ids(1).unwrap(), 6);
         assert_eq!(schema.max_parquet_field_id().unwrap(), Some(5));
         assert_eq!(
@@ -1689,11 +1689,11 @@ mod generic {
 
     #[test]
     fn a_datatype_rebuilds_any_layout_from_replacement_children() {
-        let list = DataType::list(DataType::Int32.nullable_field("item"));
+        let list = DataType::serie(DataType::Int32.nullable_field("item"));
         assert_eq!(
             list.with_fields([DataType::Int64.nullable_field("item")])
                 .unwrap(),
-            DataType::list(DataType::Int64.nullable_field("item"))
+            DataType::serie(DataType::Int64.nullable_field("item"))
         );
 
         // A union keeps its type ids and its mode; only the members change.
@@ -1743,7 +1743,7 @@ mod generic {
         let mut order = StructType::from_fields([
             DataType::Int64.required_field("id"),
             line.clone(),
-            DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
+            DataType::serie(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
             DataType::map_of(DataType::utf8(), DataType::Int64, false)
                 .unwrap()
                 .nullable_field("counts"),
@@ -1759,7 +1759,7 @@ mod generic {
         assert_eq!(order.dtype()["id"].dtype(), &DataType::Int64);
         assert_eq!(order.dtype()[1].name(), "line");
 
-        // Chained descent, two levels and through a List and a Map.
+        // Chained descent, two levels and through a Serie and a Map.
         assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
         assert_eq!(order["tags"][0].name(), "tag");
         assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::utf8());
@@ -1878,11 +1878,11 @@ mod nested {
     #[test]
     fn nested_markers_cover_every_child_layout() {
         let item = || Field::new("item", DataType::utf8(), true);
-        assert_typed_marker::<yggdryl::SerieType>(DataType::list(item()));
-        assert_typed_marker::<yggdryl::SerieType>(DataType::list_view(item()));
-        assert_typed_marker::<yggdryl::SerieType>(DataType::fixed_size_list(item(), 3).unwrap());
-        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list(item()));
-        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::serie(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::serie_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::fixed_size_serie(item(), 3).unwrap());
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_serie(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_serie_view(item()));
         assert_typed_marker::<yggdryl::StructType>(DataType::from(
             StructType::from_fields([item()]).unwrap(),
         ));
@@ -1934,8 +1934,8 @@ mod nested {
         assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
         assert_eq!(order["line"]["qty"].dtype(), &DataType::Int64);
 
-        // Through a List item and a Map entry, the same way.
-        let items = DataType::list(order.clone().with_name("item"));
+        // Through a Serie item and a Map entry, the same way.
+        let items = DataType::serie(order.clone().with_name("item"));
         assert_eq!(items[0]["id"].dtype(), &DataType::Int64);
         assert_eq!(items["item"]["line"]["price"].dtype(), &DataType::Float64);
 
@@ -2038,12 +2038,15 @@ mod nested {
     #[test]
     fn a_datatype_replaces_removes_and_keeps_its_layout() {
         // A position replaces through every layout, keeping it.
-        let mut list = DataType::list(DataType::Int32.nullable_field("item"));
+        let mut list = DataType::serie(DataType::Int32.nullable_field("item"));
         list.set_field_at(0, DataType::Int64.nullable_field("item"))
             .unwrap();
-        assert_eq!(list, DataType::list(DataType::Int64.nullable_field("item")));
+        assert_eq!(
+            list,
+            DataType::serie(DataType::Int64.nullable_field("item"))
+        );
 
-        // Growing or shrinking is a struct's business: a list holds exactly one
+        // Growing or shrinking is a struct's business: a serie holds exactly one
         // child, so it refuses rather than quietly becoming a struct.
         let message = list
             .set_field_by_path("extra", DataType::utf8().nullable_field("extra"))
@@ -2051,7 +2054,10 @@ mod nested {
             .to_string();
         assert!(message.contains("a struct field"), "{message}");
         assert!(list.remove_field_at(0).is_err());
-        assert_eq!(list, DataType::list(DataType::Int64.nullable_field("item")));
+        assert_eq!(
+            list,
+            DataType::serie(DataType::Int64.nullable_field("item"))
+        );
 
         // A struct grows by an unresolved name and shrinks by either key.
         let mut row = DataType::from(
@@ -2079,7 +2085,7 @@ mod nested {
             .map(DataType::from)
             .unwrap()
             .nullable_field("line"),
-            DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+            DataType::serie(DataType::Float64.nullable_field("item")).nullable_field("levels"),
         ])
         .map(DataType::from)
         .unwrap()
@@ -2088,7 +2094,7 @@ mod nested {
         let leaves = row.unnest_fields();
         let names: Vec<&str> = leaves.iter().map(Field::name).collect();
 
-        // Structs flatten all the way down; a list is a leaf, not its item.
+        // Structs flatten all the way down; a serie is a leaf, not its item.
         assert_eq!(names, ["id", "line.px", "line.meta.ccy", "levels"]);
 
         // A leaf under a nullable ancestor is nullable, because a null parent
@@ -2115,7 +2121,7 @@ mod nested {
     fn exploding_replaces_each_collection_with_what_it_holds() {
         let row = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+            DataType::serie(DataType::Float64.nullable_field("item")).nullable_field("levels"),
             DataType::map_of(DataType::utf8(), DataType::Int64, true)
                 .unwrap()
                 .nullable_field("tags"),
@@ -2139,7 +2145,7 @@ mod nested {
         assert_eq!(
             exploded[1].dtype(),
             &DataType::Float64,
-            "a list answers its item"
+            "a serie answers its item"
         );
         assert!(
             exploded[2].dtype().as_fields().is_some(),
@@ -2152,12 +2158,12 @@ mod nested {
         );
 
         // The column keeps its name and is nullable when the collection or its
-        // element is: an absent list yields no element.
+        // element is: an absent serie yields no element.
         assert!(exploded[1].is_nullable());
 
         // One level only, so the depth is the caller's decision.
-        let deep = StructType::from_fields([DataType::list(
-            DataType::list(DataType::Int64.nullable_field("item")).nullable_field("item"),
+        let deep = StructType::from_fields([DataType::serie(
+            DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("item"),
         )
         .nullable_field("deep")])
         .map(DataType::from)
@@ -2178,7 +2184,7 @@ mod declared {
     fn canonical_display_json_and_arrow_round_trip() {
         let field = Field::new(
             "items",
-            DataType::list(Field::new("item", DataType::utf8(), true)),
+            DataType::serie(Field::new("item", DataType::utf8(), true)),
             false,
         )
         .try_with_metadata("source", "a, b")

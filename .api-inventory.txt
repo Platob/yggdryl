@@ -209,8 +209,10 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
   pub const ALL: [Self; 84] = [all exact datatype identifiers in canonical declaration order, including FIGICode];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position)
-  pub fn from_str(value: &str) -> Result<Self>
-  pub const fn as_str(self) -> &'static str
+  pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
+  pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
+  pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
+  pub fn from_legacy_name(value: &str) -> Option<Self>  (one of LEGACY_NAMES, ignoring case; nothing for any other word)
   pub const fn as_u8(self) -> u8  (one byte laid out by family: the family's own number first, `DataTypeKind::id`, then its leaves in the family's range; the tag the digest feed and the variant encoding write)
   pub const fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names; none for a family's own number, a placeholder in a family's range, or a byte past every family)
   pub const fn kind(self) -> DataTypeKind  (the family whose DataTypeKind::range the byte is in)
@@ -731,7 +733,7 @@ pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");  (nullable uint64: 
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_048, "crosscode");  (utf8: the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131) or MDReqID(262); `crosshashcode` and `crossuuid` derive from it)
 pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.*`, `ullink.*` - each under the key as the bridge spelled it, folded)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `commit`, passed over on read)
-pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");  (nullable `list<uuid>` of required `srcuuid` items, display `SrcUuids`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never its chain - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
+pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");  (nullable `serie<uuid>` of required `srcuuid` items, display `SrcUuids`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never its chain - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
 pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state` code, written on every row a message writes, display `State`: the state the message reached - `OrdStatus(39)`, else `ExecType(150)`, `00UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
 pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");  (nullable clock, display `ExprTime`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");  (nullable `int32`: the stable market-operation/business-category ID obtained by resolving the message definition's symbolic `FIX:msgcat` through `msgcatcodeset`)
@@ -747,7 +749,7 @@ pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");  (nullabl
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");  (FIX's own tag and name, never a second tag)
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const fn is_crate_tag(tag: i32) -> bool
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; 31 definitions in tag order - 29 scalar fields, with the `srcuuids` list among them, and the `identifiers` and `metadata` Map groups. `msgcat`, six normalized identifiers including `figicode` (65061), and the nullable execution, recording and merge-reference clocks `execunix` (65062), `recdunix` (65063) and `refrecdunix` (65064) are crate columns while `CFICode(461)` remains standard; every registry holds them from construction; a store writes them and reads a stored copy past)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; 31 definitions in tag order - 29 scalar fields, with the `srcuuids` serie among them, and the `identifiers` and `metadata` Map groups. `msgcat`, six normalized identifiers including `figicode` (65061), and the nullable execution, recording and merge-reference clocks `execunix` (65062), `recdunix` (65063) and `refrecdunix` (65064) are crate columns while `CFICode(461)` remains standard; every registry holds them from construction; a store writes them and reads a stored copy past)
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 
@@ -826,7 +828,7 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, Scalar)>, K: Into<FixKey<'key>>  (several `set`s with one rebuild; the later of two writes to one child lands; one refusal refuses them all)
   pub fn with_value<'key>(self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self>  (the consuming twin of `set`)
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (a typed fact cleared on its holder, a row child taken out, either answered; None for a key reaching nothing, a capture column among them - which `set` refuses rather than answering None)
-  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, content rebuilt from projected typed columns plus residual `fixentries` - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the list it is; every capture column is carried - the one the crate tags, sourceurl, and every column no tag and no counter names, each non-null cell under its column's name - and none reaches an entry, a digest or a `body=` on the wire; a column whose name holds a `.` is a bridge's own statement and lands in the metadata; `into_row` states each carried cell again at its column; a row without that column rebuilds its projected typed facts; `from_row` then `into_row` preserves the canonical row and semantic identity, not original arrival order or wire spelling; refuses a row the schema does not hold or an entries column that is not a residual entry)
+  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, content rebuilt from projected typed columns plus residual `fixentries` - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the serie it is; every capture column is carried - the one the crate tags, sourceurl, and every column no tag and no counter names, each non-null cell under its column's name - and none reaches an entry, a digest or a `body=` on the wire; a column whose name holds a `.` is a bridge's own statement and lands in the metadata; `into_row` states each carried cell again at its column; a row without that column rebuilds its projected typed facts; `from_row` then `into_row` preserves the canonical row and semantic identity, not original arrival order or wire spelling; refuses a row the schema does not hold or an entries column that is not a residual entry)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (in schema.rs; each column filled by its tag or its group's counter, a column carrying neither by the child of its name; the capture's own columns answer the cell the message carries under the column's name, null where it carries none, because no message holds a fact for them, a value a nullable column will not hold as that column's null; tag 52 only where the message stated it; the residual entries close the row under `fixentries`)
   pub fn dated_by_transaction(self) -> Result<Self>  (the message dated by the TransactTime(60) it states with a clock where the parse supplied its sending clock - a carrier's, the default, the intake's - created at an earlier OrigSendingTime(122), its stand-in sending clock moved with it, and enriched again under the rules its date selects; a stated SendingTime stands, a day-only TransactTime dates nothing; what `lifecycle` reads before it walks)
   pub fn carried(&self) -> &[(SmolStr, Scalar)]  (the capture's own cells the message carries, each under the column it was read from: where the line was read from, its place in the object, the body it was cut from, when it was recorded; provenance and never content - none is an entry, none reaches the wire or the currhashcode - and `into_row` states each again at its column; empty for a message parsed from bytes, a row's for one parsed out of or read back from a row)
@@ -923,7 +925,7 @@ pub struct FixRegistry  (one namespace of scalar fields, components and groups, 
   pub fn field_by_id(&self, id: FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>  (the tag's canonical holder, then an alternate; two fields may hold one tag under two names, and the first holder answers; a definition tag in `[DEFINITION_TAG_MIN, DEFINITION_TAG_MAX)` answers the component or group it identifies; a Map group's counter answers nothing here)
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
-  pub fn get_field_by_counter(&self, tag: i32) -> Option<&Field>  (the repeating group the counter `tag` opens - `453` the `Parties` List, `65020` the `identifiers` Map; two groups on one counter name nothing; the counter itself is `get_field_by_tag`'s)
+  pub fn get_field_by_counter(&self, tag: i32) -> Option<&Field>  (the repeating group the counter `tag` opens - `453` the `Parties` Serie, `65020` the `identifiers` Map; two groups on one counter name nothing; the counter itself is `get_field_by_tag`'s)
   pub fn field_by_counter(&self, tag: i32) -> Result<&Field>  (absence or ambiguity raised)
   pub fn get_field_by_name(&self, name: &str) -> Option<&Field>  (a scalar by the canonical fold, then an alias fold; then a component, then a group of that name)
   pub fn field_by_name(&self, name: &str) -> Result<&Field>
@@ -932,7 +934,7 @@ pub struct FixRegistry  (one namespace of scalar fields, components and groups, 
   pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
   pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
-  pub fn insert(&mut self, field: Field) -> Result<Option<Field>>  (a Struct inserts as a component, a List/LargeList of a Struct or a Map as a group, anything else as a scalar; replaces the same identity only, answering what it replaced; a held tag under another name adds the arrival beside the holder, which gains the arrival's name as an alias)
+  pub fn insert(&mut self, field: Field) -> Result<Option<Field>>  (a Struct inserts as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar; replaces the same identity only, answering what it replaced; a held tag under another name adds the arrival beside the holder, which gains the arrival's name as an alias)
   pub fn update(&mut self, field: Field) -> Result<()>  (merges metadata for the existing identity under the per-key rules; a definition is replaced whole)
   pub fn add_field(&mut self, field: Field) -> Result<bool>  (true = arrived; a stored identity or a folded stored name/alias merges, a held tag under another name adds beside the holder, a nested field folds into the component or group of its name)
   pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)> where I: IntoIterator<Item = Field>,  (added, merged) under add_field's rules, one staged mutation
@@ -957,7 +959,7 @@ pub const BODY_TAGS: [i32; 50]
 pub const GROUP_TAGS: [i32; 3]
 pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the residual entry record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tag/name/value/fixentries, three levels materialized and the rest folded into a JSON utf8 leaf)
 pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event is observed, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the four groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the residual record's counter: 122 tags. Price(44), OrderQty(38) and Quantity(53) are among them, each exact and stated once; what a message is about is what `MarketElement::get_price` and `get_quantity` read off them, and no column of this crate's restates either)
-pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 127 columns with the shipped dictionary; `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
+pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a Serie group beside its counter and a Map group on its own; 127 columns with the shipped dictionary; `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a capture's own columns in front of the fixed ones, less any whose folded name a FIX column takes; each carried column is made nullable whatever the capture declared, because only a pass holding the source row can state one)
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own FIX:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)
@@ -1296,12 +1298,12 @@ pub enum EventColumn { CurrUnix, CreaUnix, ExecUnix, RecdUnix, RefRecdUnix, Expr
   pub const fn name(self) -> &'static str  (the fact's, as the traits spell it: `currunix` .. `state`)
   pub const fn display(self) -> &'static str
   pub const fn description(self) -> &'static str
-  pub fn datatype(self) -> Result<DataType>  (nanosecond UTC clocks; `Uuid`; `utf8` for the cross code; `UInt64` for the codes and the place; `list<uuid>` with the item named `srcuuid`; a sorted `map<utf8, utf8>`; `State`)
+  pub fn datatype(self) -> Result<DataType>  (nanosecond UTC clocks; `Uuid`; `utf8` for the cross code; `UInt64` for the codes and the place; `serie<uuid>` with the item named `srcuuid`; a sorted `map<utf8, utf8>`; `State`)
   pub const fn nullable(self) -> bool  (false for `currunix`, the two identities and the two codes; true for every fact the traits answer as an option or as nothing, and for the state, always answered but with no neutral member for an empty cell)
   pub fn field(self) -> Result<Field>  (name, datatype, nullability, display and description)
   pub fn fields() -> Result<Vec<Field>>  (every column in `ALL`'s order)
   pub fn of_name(name: &str) -> Option<Self>  (by name, whatever the case)
-  pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar>  (what the event states under the column, none where it states no fact: an empty code, list or map, a place of zero, an absent instant)
+  pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar>  (what the event states under the column, none where it states no fact: an empty code, serie or map, a place of zero, an absent instant)
   pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar)  (states a cell back through the traits; a null clears the fact, a value the fact's type refuses is silence)
 
 ### yggdryl::graph::market_column  [rust/src/graph/market_column.rs]
@@ -1432,7 +1434,7 @@ pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketOperati
 impl From<MarketOperation> for Result<MarketOperation>  (the infallible operation-stream input)
 impl From<Book> for Result<Book>  (the infallible book-stream input)
 impl MarketOperation
-  pub fn field() -> Result<Field>  (required `marketoperation` struct: `operationkind`, `EventColumn::ALL`, `MarketColumn::ALL`, nullable `executions`; the list contains bare Event+Market execution structs and is non-null only for `trade`)
+  pub fn field() -> Result<Field>  (required `marketoperation` struct: `operationkind`, `EventColumn::ALL`, `MarketColumn::ALL`, nullable `executions`; the serie contains bare Event+Market execution structs and is non-null only for `trade`)
   pub fn arrow_reader<I>(operations: I, batch_row_size: Option<usize>, batch_byte_size: Option<u64>) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<Self>>, I::IntoIter: Send + 'static  (lazy canonical validation and streamed encoding bounded independently by rows and approximate scalar bytes; a bound always admits one row)
   pub fn from_arrow_reader(batches: BatchReader) -> Result<impl FusedIterator<Item = Result<Self>> + Send + 'static>  (validates the canonical schema once, holds one batch and row cursor, reconstructs and canonicalizes a trade from its required non-null execution list while refusing that list on every other kind, validates every UUID/hash against the finalized row, and fuses after a row or reader error)
 impl Book
@@ -3656,14 +3658,15 @@ pub enum DataType
   pub fn dictionary(key: Self, value: Self) -> Result<Self>
 
 ### yggdryl::serie::datatype  [rust/src/serie/datatype.rs]  (the serie family's datatype: five layouts over one item, and Run, the schema-free run a row is; re-exported at the root)
-  pub enum SerieType  (#[non_exhaustive]; List, ListView, FixedSizeList(_, i32), LargeList, LargeListView, each holding Arc<Field>)
+  pub enum SerieType  (#[non_exhaustive]; Serie, SerieView, FixedSizeSerie(_, i32), LargeSerie, LargeSerieView, each holding Arc<Field>)
   pub fn item(&self) -> &Field  (the one child every leaf repeats, so a reader walking children never branches on the layout)
   pub fn item_ref(&self) -> &Arc<Field>
-  pub fn list(item: Field) -> Self
-  pub fn list_view(item: Field) -> Self
-  pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
-  pub fn large_list(item: Field) -> Self
-  pub fn large_list_view(item: Field) -> Self
+  pub fn serie(item: Field) -> Self
+  pub fn serie_view(item: Field) -> Self
+  pub fn fixed_size_serie(item: Field, length: i32) -> Result<Self>
+  pub fn large_serie(item: Field) -> Self
+  pub fn large_serie_view(item: Field) -> Self
+  pub fn serie_item(&self) -> Option<&Field>  (on DataType: the item field of any of the five serie layouts, borrowed; None for any other datatype)
   pub struct Run  (the schema-free ordered run a row canonicalizes to: one shared Arc<[Scalar]>, one allocation to build, the one leaf of Serie that declares no field; Clone is a pointer bump; Eq/Ord/Hash = the slice's; Display = {:?} of the slice; Default empty)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self
   pub fn as_slice(&self) -> &[Scalar]
@@ -3798,11 +3801,11 @@ pub enum DataType
   pub struct RunEndEncodedType
   pub const fn run_ends(&self) -> &Field
   pub const fn values(&self) -> &Field
-  pub fn list(item: Field) -> Self
-  pub fn list_view(item: Field) -> Self
-  pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
-  pub fn large_list(item: Field) -> Self
-  pub fn large_list_view(item: Field) -> Self
+  pub fn serie(item: Field) -> Self
+  pub fn serie_view(item: Field) -> Self
+  pub fn fixed_size_serie(item: Field, length: i32) -> Result<Self>
+  pub fn large_serie(item: Field) -> Self
+  pub fn large_serie_view(item: Field) -> Self
   pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self> where I: IntoIterator<Item = (i8, Field)>,
   pub fn variant<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn dictionary(key: Self, value: Self) -> Result<Self>
@@ -4035,7 +4038,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, List, ListView, FixedSizeList, LargeList, LargeListView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the list it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -4078,7 +4081,7 @@ pub struct ProtocolField<'field>
   pub fn without_field(&self, name: &str) -> Result<Self>
 
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
-  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), List, ListView, FixedSizeList, LargeList, LargeListView, Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
+  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
@@ -4107,7 +4110,7 @@ pub struct ProtocolField<'field>
   pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>>  (borrowed for a run, built for a column)
   pub fn rows(&self) -> Cow<'_, [Scalar]>  (borrows a run, builds a column's rows)
   pub fn iter(&self) -> Children<'_>  (Children::Sequence for a run, Children::Column for a column; item Cow<'_, Scalar>)
-  pub fn dtype(&self) -> Result<DataType>  (a column: a list of its field named item; a run: agreed out of its rows)
+  pub fn dtype(&self) -> Result<DataType>  (a column: a serie of its field named item; a run: agreed out of its rows)
   pub fn as_run(&self) -> Option<&Run>
   pub fn as_slice(&self) -> Option<&[Scalar]>  (the run's values; None for a column)
   pub const fn is_column(&self) -> bool
@@ -4133,12 +4136,12 @@ pub struct ProtocolField<'field>
   pub fn resize(&mut self, len: usize, value: Scalar) -> Result<()>  (proves value once and writes clones)
   pub fn set_child(&mut self, child: Self) -> Result<()>  (a record column only: replaces the child of child's name or adds one, extending the field; refuses a run, a length other than len and a non-record column, each by name)
   pub fn set_cell(&mut self, path: &FieldPath, index: usize, value: Scalar) -> Result<()>  (a record column only: descends path through record children by name and writes one slot in place; refuses an absent row on the way)
-  pub fn as_null(&self) -> Option<&NullSerie>  // and as_boolean, as_struct, as_map (Map and SortedMap), as_union, as_run_end_encoded, as_variant, as_int8 .. as_uint64, as_float16/32/64, as_decimal32/64/128/256, as_date32, as_date64, as_time32_second, as_time32_millisecond, as_time64_microsecond, as_time64_nanosecond, as_datetime_second/millisecond/microsecond/nanosecond, as_duration_second/millisecond/microsecond/nanosecond, as_interval_year_month/day_time/month_day_nano, as_utf8, as_large_utf8, as_utf8_view, as_binary_string, as_large_binary_string, as_binary_view_string, as_fixed_string, as_binary, as_large_binary, as_binary_view, as_fixed_bytes, as_list, as_large_list, as_list_view, as_large_list_view, as_fixed_size_list, as_dictionary: one per leaf, a direct match on its variant - as_utf8 also reaches the code, Version, Url, Urn, Timezone, MimeType and MediaType variants, as_fixed_bytes Uuid, as_binary Geometry and Geography; allocation free
+  pub fn as_null(&self) -> Option<&NullSerie>  // and as_boolean, as_struct, as_map (Map and SortedMap), as_union, as_run_end_encoded, as_variant, as_int8 .. as_uint64, as_float16/32/64, as_decimal32/64/128/256, as_date32, as_date64, as_time32_second, as_time32_millisecond, as_time64_microsecond, as_time64_nanosecond, as_datetime_second/millisecond/microsecond/nanosecond, as_duration_second/millisecond/microsecond/nanosecond, as_interval_year_month/day_time/month_day_nano, as_utf8, as_large_utf8, as_utf8_view, as_binary_string, as_large_binary_string, as_binary_view_string, as_fixed_string, as_binary, as_large_binary, as_binary_view, as_fixed_bytes, as_serie, as_large_serie, as_serie_view, as_large_serie_view, as_fixed_size_serie, as_dictionary: one per leaf, a direct match on its variant - as_utf8 also reaches the code, Version, Url, Urn, Timezone, MimeType and MediaType variants, as_fixed_bytes Uuid, as_binary Geometry and Geography; as_serie narrows a column to its SerieSerie leaf, where Scalar::as_serie borrows the whole Serie a value holds; allocation free
   pub fn get_null_mut(&mut self) -> Option<&mut NullSerie>  // and get_<leaf>_mut for every as_<leaf> above: through Arc::make_mut, the leaf struct copied once when the column is shared; only the typed writers of a leaf can write through it, and they validate nullability
   impl Value for Serie
   impl NestedValue for Serie  (children answers Children::Sequence for a run and Children::Column for a column)
   impl Serialize for Serie  (a run as its values; a column as the private SerieWire, its field beside its rows)
-  impl Deserialize for Serie  (the column wire alone; a list is refused naming the `serie` tag)
+  impl Deserialize for Serie  (the column wire alone; bare rows are refused naming the wire, a run being read through a Scalar's serie tag)
   impl From<Run> for Serie
   impl From<Serie> for Scalar
   impl FromIterator<Scalar> for Serie  (a run)
@@ -4233,34 +4236,38 @@ pub struct ProtocolField<'field>
   pub fn without_child(&self, name: &str) -> Result<Self>  (a new column sharing every other child)
   impl SerieValue for StructSerie
 
-### yggdryl::serie::list  [rust/src/serie/list.rs]  (the five list layouts: an offsets cut, a viewed cut kept compact, or width items per row, each over one item column; every cut is rebased)
-  pub trait ListLeaf: OffsetSizeTrait + Send + Sync + 'static  (ties one offset width to the offsets leaf and the viewed leaf it widens through)
-  pub struct OffsetListSerie<O: OffsetSizeTrait>
-  pub type ListSerie = OffsetListSerie<i32>
-  pub type LargeListSerie = OffsetListSerie<i64>
+### yggdryl::serie::sequence  [rust/src/serie/sequence.rs]  (the five serie layouts: an offsets cut, a viewed cut kept compact, or width items per row, each over one item column; every cut is rebased)
+  pub trait OffsetLeaf: OffsetSizeTrait + Send + Sync + 'static  (ties one offset width to the offsets leaf and the viewed leaf it widens through)
+  fn into_serie(column: OffsetSerie<Self>) -> Serie
+  fn from_serie(serie: &Serie) -> Option<&OffsetSerie<Self>>
+  fn into_view_serie(column: OffsetViewSerie<Self>) -> Serie
+  fn from_view_serie(serie: &Serie) -> Option<&OffsetViewSerie<Self>>
+  pub struct OffsetSerie<O: OffsetSizeTrait>
+  pub type SerieSerie = OffsetSerie<i32>
+  pub type LargeSerieSerie = OffsetSerie<i64>
   pub const fn items(&self) -> &Serie
   pub const fn offsets(&self) -> &OffsetBuffer<O>
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn range(&self, index: usize) -> Option<Range<usize>>  (the item range row index occupies; None when absent or past the end)
   pub fn row(&self, index: usize) -> Option<Serie>  (the item column sliced to that row, zero copy)
-  impl SerieValue for OffsetListSerie<O>
-  pub struct OffsetListViewSerie<O: OffsetSizeTrait>  (views compact: row i starts where row i - 1 ended; the door rebases a foreign layout onto exactly the items it reaches)
-  pub type ListViewSerie = OffsetListViewSerie<i32>
-  pub type LargeListViewSerie = OffsetListViewSerie<i64>
+  impl SerieValue for OffsetSerie<O>
+  pub struct OffsetViewSerie<O: OffsetSizeTrait>  (views compact: row i starts where row i - 1 ended; the door rebases a foreign layout onto exactly the items it reaches)
+  pub type SerieViewSerie = OffsetViewSerie<i32>
+  pub type LargeSerieViewSerie = OffsetViewSerie<i64>
   pub const fn items(&self) -> &Serie
   pub const fn offsets(&self) -> &ScalarBuffer<O>
   pub const fn sizes(&self) -> &ScalarBuffer<O>
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn range(&self, index: usize) -> Option<Range<usize>>
   pub fn row(&self, index: usize) -> Option<Serie>
-  impl SerieValue for OffsetListViewSerie<O>
-  pub struct FixedSizeListSerie  (width items per row and no cut; a null row holds width placeholder items and a cleared bit)
+  impl SerieValue for OffsetViewSerie<O>
+  pub struct FixedSizeSerieSerie  (width items per row and no cut; a null row holds width placeholder items and a cleared bit)
   pub const fn width(&self) -> usize
   pub const fn items(&self) -> &Serie
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn range(&self, index: usize) -> Option<Range<usize>>
   pub fn row(&self, index: usize) -> Option<Serie>
-  impl SerieValue for FixedSizeListSerie
+  impl SerieValue for FixedSizeSerieSerie
 
 ### yggdryl::serie::mapping  [rust/src/serie/mapping.rs]  (one column of mappings: the offsets cut, and the entries record column under it)
   pub struct MapSerie  (held by Serie::Map and Serie::SortedMap)

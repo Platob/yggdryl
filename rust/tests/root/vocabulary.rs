@@ -335,7 +335,7 @@ mod logical {
         }
 
         // A name types a column wherever a datatype is accepted, and a
-        // postfix list still applies to it.
+        // postfix serie still applies to it.
         let row: DataType = "struct<ccy: Currency, px: Price, legs: Qty[]>"
             .parse()
             .unwrap();

@@ -227,7 +227,7 @@ struct Slot {
     /// Whether this slot is a repeating group, whatever it has been given.
     ///
     /// A group whose counter arrived and whose members did not is still a
-    /// group, and the empty list is what says the count was not met.
+    /// group, and the empty serie is what says the count was not met.
     group: bool,
     /// The group members, when this slot is a repeating group.
     ///
@@ -1998,7 +1998,7 @@ impl Slot {
     /// This slot as one child field and its value.
     fn into_child(self) -> Result<(Field, Scalar)> {
         // A group whose counter arrived and whose members did not is a group
-        // holding nothing, not a scalar: the empty list is what lets the
+        // holding nothing, not a scalar: the empty serie is what lets the
         // count it stated be compared with what the row actually holds.
         if self.group && self.occurrences.is_empty() {
             if matches!(&self.values, SlotValues::Empty) {
@@ -2008,15 +2008,15 @@ impl Slot {
             // An unlabeled value cannot type as a component. Preserve its
             // raw entry and occurrence position; the typed occurrence is null.
             let mut item = match self.field.dtype() {
-                DataType::List(item) | DataType::LargeList(item) => item.as_ref().clone(),
+                DataType::Serie(item) | DataType::LargeSerie(item) => item.as_ref().clone(),
                 _ => DataType::from(StructType::from_fields([])?)
                     .required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);
             let values =
                 Scalar::from_sequence((0..self.values.as_slice().len()).map(|_| Scalar::Null));
-            let list = list_of(&self.field, item);
-            return Ok((list, values));
+            let serie = serie_of(&self.field, item);
+            return Ok((serie, values));
         }
         if self.occurrences.is_empty() {
             // A value that would not type is null, and a field a null lands
@@ -2047,17 +2047,17 @@ impl Slot {
                 unreachable!("a repeated field has many values")
             };
             let values = Scalar::from_sequence(values);
-            let list = list_of(&self.field, item);
-            return Ok((list, values));
+            let serie = serie_of(&self.field, item);
+            return Ok((serie, values));
         }
 
-        // A group is a List of its named component. Occurrence indices retain
+        // A group is a Serie of its named component. Occurrence indices retain
         // gaps as null and never shift subsequent entries.
         // In first-seen order across every occurrence, so a member only the
         // second occurrence carries is still a column and still in its
         // arrival place. Nullable, because an occurrence need not state one.
         // Every occurrence becomes its members' fields and values first -
-        // a nested group closing into its own list field on the way - so
+        // a nested group closing into its own serie field on the way - so
         // the item's fields are read off finished children.
         let mut finished: Vec<Option<Vec<(Field, Scalar)>>> =
             Vec::with_capacity(self.occurrences.len());
@@ -2095,7 +2095,7 @@ impl Slot {
         // An occurrence nobody stated is a gap and is dropped; the rest are
         // sorted by what they state and an occurrence restating another is
         // dropped, so two sources of one group - a wire and a bridge's
-        // restatement of it - merge into one list a consumer compares
+        // restatement of it - merge into one serie a consumer compares
         // whatever order either wrote.
         let mut rows: Vec<(String, Scalar)> = Vec::with_capacity(finished.len());
         for occurrence in finished.into_iter().flatten() {
@@ -2123,18 +2123,18 @@ impl Slot {
             item.set_nullable(true);
         }
         let rows: Vec<Scalar> = rows.into_iter().map(|(_, row)| row).collect();
-        let list = list_of(&self.field, item);
-        Ok((list, Scalar::from_sequence(rows)))
+        let serie = serie_of(&self.field, item);
+        Ok((serie, Scalar::from_sequence(rows)))
     }
 }
 
-/// The List a slot closes as: its field's name and metadata - the metadata
+/// The Serie a slot closes as: its field's name and metadata - the metadata
 /// shared as the one it is, never rebuilt from its entries - over `item`,
 /// required.
-fn list_of(field: &Field, item: Field) -> Field {
+fn serie_of(field: &Field, item: Field) -> Field {
     Field::new_with_metadata(
         field.name(),
-        DataType::list(item),
+        DataType::serie(item),
         false,
         field.as_metadata().clone(),
     )

@@ -961,7 +961,7 @@ fn a_typed_price_outside_decimal18_is_refused_instead_of_becoming_zero() {
         .map(DataType::from)
         .unwrap()
         .required_field("MDEntry");
-    let mut entries = DataType::list(item).required_field("MDEntries");
+    let mut entries = DataType::serie(item).required_field("MDEntries");
     entries.as_fix_mut().set_counter(268).unwrap();
     let counter = tagged("NoMDEntries", 268, DataType::Int32);
     let registry = Arc::new(

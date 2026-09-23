@@ -262,7 +262,7 @@ mod identifiers {
         let mut order = tagged("clordid", 11);
         order.as_fix_mut().set_names(["ClientOrder"]).unwrap();
         order.as_fix_mut().set_tags(&[9001]).unwrap();
-        let nested = DataType::list(
+        let nested = DataType::serie(
             StructType::from_fields([tagged("execid", 17)])
                 .map(DataType::from)
                 .unwrap()
@@ -563,7 +563,7 @@ mod identifiers {
         for group in [false, true] {
             let definition = |field: Field| {
                 if group {
-                    let mut group = DataType::list(field).nullable_field("orders");
+                    let mut group = DataType::serie(field).nullable_field("orders");
                     group.as_fix_mut().set_counter(9001).unwrap();
                     group
                 } else {

@@ -238,11 +238,11 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
-        DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
-        DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
-        DataType::LargeList(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
-        DataType::LargeListView(child) => {
+        DataType::Serie(child) => list_array::<i32>(child, values, ListKind::List)?,
+        DataType::SerieView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
+        DataType::FixedSizeSerie(child, size) => fixed_size_list_array(child, *size, values)?,
+        DataType::LargeSerie(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
+        DataType::LargeSerieView(child) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
         DataType::Struct(fields) => struct_array(fields, values)?,
@@ -760,22 +760,22 @@ pub(crate) fn value_from_array(
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce => cell!(StringArray, text_reading(dtype)?),
-        DataType::List(child) => {
+        DataType::Serie(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
-        DataType::ListView(child) => list_value(
+        DataType::SerieView(child) => list_value(
             child,
             downcast::<ListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::FixedSizeList(child, _) => list_value(
+        DataType::FixedSizeSerie(child, _) => list_value(
             child,
             downcast::<FixedSizeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::LargeList(child) => list_value(
+        DataType::LargeSerie(child) => list_value(
             child,
             downcast::<LargeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::LargeListView(child) => list_value(
+        DataType::LargeSerieView(child) => list_value(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,
@@ -995,7 +995,7 @@ impl<'a, 'f> ItemsArray<'a, 'f> {
 type ListParts<O> = (Vec<O>, Vec<O>, ArrayRef, Option<NullBuffer>);
 
 fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<O>> {
-    let items = list_items(child, values, "a sequence for a list column")?;
+    let items = list_items(child, values, "a sequence for a serie column")?;
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut sizes = Vec::with_capacity(values.len());
     let mut validity = Vec::with_capacity(values.len());
@@ -1105,10 +1105,10 @@ fn cast_scalar<O: Offset, T: Offset>(values: Vec<O>) -> Result<ScalarBuffer<T>> 
 }
 
 fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result<ArrayRef> {
-    let size_usize =
-        usize::try_from(size).map_err(|_| invalid_value("a fixed list size within usize", size))?;
+    let size_usize = usize::try_from(size)
+        .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
     let physical_len = values.len().checked_mul(size_usize).ok_or_else(|| {
-        physical_limit_error("fixed-size-list slots", values.len(), MAX_PHYSICAL_SLOTS)
+        physical_limit_error("fixed-size-serie slots", values.len(), MAX_PHYSICAL_SLOTS)
     })?;
     let null_rows = values
         .iter()
@@ -1117,7 +1117,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     let hidden_rows = checked_physical_mul(
         null_rows,
         size_usize,
-        "fixed-size-list slots",
+        "fixed-size-serie slots",
         MAX_PHYSICAL_SLOTS,
     )?;
     if hidden_rows != 0 {
@@ -1129,9 +1129,9 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     let placeholder = has_parent_null
         .then(|| physical_placeholder_for_field(child))
         .transpose()?;
-    let items = list_items(child, values, "a sequence for a fixed-size-list column")?;
+    let items = list_items(child, values, "a sequence for a fixed-size-serie column")?;
     let mut array = ItemsArray::new(child);
-    array.reserve(physical_len, "fixed-size-list child slots")?;
+    array.reserve(physical_len, "fixed-size-serie child slots")?;
     let mut validity = Vec::with_capacity(values.len());
     for held in &items {
         let Some(held) = held else {
@@ -1144,7 +1144,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
         };
         if held.len() != size_usize {
             return Err(invalid_value(
-                &format!("a fixed list of exactly {size_usize} items"),
+                &format!("a fixed serie of exactly {size_usize} items"),
                 held.len(),
             ));
         }

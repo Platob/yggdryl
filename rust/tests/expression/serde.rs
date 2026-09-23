@@ -66,4 +66,23 @@ mod grammar {
         let document = filter.clone().into_json().unwrap();
         assert_eq!(Filter::from_json(&document).unwrap(), filter);
     }
+
+    #[test]
+    fn a_serie_constructor_written_as_list_still_reads() {
+        // The `[a, b]` constructor was written under `list` before the family
+        // took its own name; that document reads as the same term, and writes
+        // back under `serie`.
+        let parsed: Term = "[a, 2]".parse().unwrap();
+        let document = parsed.clone().into_json().unwrap();
+        assert!(document.contains("\"serie\""), "{document}");
+        let legacy = document.replacen("\"serie\"", "\"list\"", 1);
+        assert_eq!(Term::from_json(&legacy).unwrap(), parsed, "{legacy}");
+        let filter: Filter = "[a, 2] = b".parse().unwrap();
+        let legacy = filter
+            .clone()
+            .into_json()
+            .unwrap()
+            .replacen("\"serie\"", "\"list\"", 1);
+        assert_eq!(Filter::from_json(&legacy).unwrap(), filter, "{legacy}");
+    }
 }

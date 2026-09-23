@@ -291,7 +291,7 @@ pub(crate) fn write_at(
             }
             formatter.write_char(')')
         }
-        Term::List(items) => {
+        Term::Serie(items) => {
             formatter.write_char('[')?;
             for (index, item) in items.iter().enumerate() {
                 if index != 0 {
@@ -520,11 +520,11 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Duration64(_)
         | Scalar::Interval(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
-        Scalar::List(_)
-        | Scalar::ListView(_)
-        | Scalar::FixedSizeList(_)
-        | Scalar::LargeList(_)
-        | Scalar::LargeListView(_)
+        Scalar::Serie(_)
+        | Scalar::SerieView(_)
+        | Scalar::FixedSizeSerie(_)
+        | Scalar::LargeSerie(_)
+        | Scalar::LargeSerieView(_)
         | Scalar::Map(_)
         | Scalar::SortedMap(_)
         | Scalar::Struct(_) => None,
@@ -538,7 +538,7 @@ fn write_constructed(
     value: &Scalar,
 ) -> fmt::Result {
     // The element type is carried by the cast around the constructor, so a
-    // list of nothing still knows what it is a list of.
+    // serie of nothing still knows what it is a serie of.
     write!(formatter, "cast(")?;
     if let (Some(fields), Some(values)) = (dtype.as_fields(), value.sequence_rows()) {
         write_struct_constructor(formatter, fields, &values)?;
@@ -567,11 +567,11 @@ fn write_struct_constructor(
 
 fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     match value {
-        Scalar::List(items)
-        | Scalar::ListView(items)
-        | Scalar::FixedSizeList(items)
-        | Scalar::LargeList(items)
-        | Scalar::LargeListView(items) => {
+        Scalar::Serie(items)
+        | Scalar::SerieView(items)
+        | Scalar::FixedSizeSerie(items)
+        | Scalar::LargeSerie(items)
+        | Scalar::LargeSerieView(items) => {
             formatter.write_char('[')?;
             for (index, item) in items.iter().enumerate() {
                 if index != 0 {

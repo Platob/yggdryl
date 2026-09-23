@@ -117,7 +117,7 @@ mod avro {
                     DataType::Int64.required_field("id"),
                     DataType::utf8().nullable_field("symbol"),
                     DataType::Float64.nullable_field("price"),
-                    DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
+                    DataType::serie(DataType::Int64.required_field("item")).required_field("legs"),
                 ])
                 .map(DataType::from)
                 .unwrap(),

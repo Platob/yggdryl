@@ -336,7 +336,7 @@ mod residual {
             .map(DataType::from)
             .expect("a party occurrence")
             .required_field("party");
-        let mut parties = DataType::list(party).nullable_field("parties");
+        let mut parties = DataType::serie(party).nullable_field("parties");
         parties.as_fix_mut().set_counter(453).expect("NoPartyIDs");
         let root = StructType::from_fields([parties])
             .map(DataType::from)
@@ -455,9 +455,9 @@ mod residual {
         .map(DataType::from)
         .expect("a vendor row")
         .required_field("vendor_row");
-        let vendor_rows = DataType::list(vendor_row).nullable_field("vendor_rows");
+        let vendor_rows = DataType::serie(vendor_row).nullable_field("vendor_rows");
         let vendor_tag = DataType::utf8().required_field("tag");
-        let vendor_tags = DataType::list(vendor_tag).nullable_field("vendor_tags");
+        let vendor_tags = DataType::serie(vendor_tag).nullable_field("vendor_tags");
         let root = StructType::from_fields([vendor_rows, vendor_tags])
             .map(DataType::from)
             .expect("an unknown source root")
@@ -706,7 +706,7 @@ mod unresolved {
         let mut counter = DataType::Int32.nullable_field("norows");
         counter.as_fix_mut().set_tag(90_001).unwrap();
         registry.insert(counter).unwrap();
-        let mut group = DataType::list(
+        let mut group = DataType::serie(
             StructType::from_fields([tagged("scopedvalue", 90_002)])
                 .map(DataType::from)
                 .unwrap()

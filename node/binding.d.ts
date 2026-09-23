@@ -260,11 +260,11 @@ export type DataTypeId =
   | 'timezone'
   | 'mimetype'
   | 'mediatype'
-  | 'list'
-  | 'list_view'
-  | 'fixed_size_list'
-  | 'large_list'
-  | 'large_list_view'
+  | 'serie'
+  | 'serie_view'
+  | 'fixed_size_serie'
+  | 'large_serie'
+  | 'large_serie_view'
   | 'struct'
   | 'union'
   | 'dictionary'
@@ -367,11 +367,11 @@ interface DataTypeKindById {
   timezone: 'text'
   mimetype: 'text'
   mediatype: 'text'
-  list: 'nested'
-  list_view: 'nested'
-  fixed_size_list: 'nested'
-  large_list: 'nested'
-  large_list_view: 'nested'
+  serie: 'nested'
+  serie_view: 'nested'
+  fixed_size_serie: 'nested'
+  large_serie: 'nested'
+  large_serie_view: 'nested'
   struct: 'nested'
   union: 'nested'
   dictionary: 'nested'
@@ -954,27 +954,27 @@ export type SideField = FieldOf<'side', string>
 export type StateField = FieldOf<'state', string>
 /** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
-export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
-export type ListViewField<V = unknown> = FieldOf<
-  'list_view',
+export type SerieField<V = unknown> = FieldOf<'serie', V[], string, unknown>
+export type SerieViewField<V = unknown> = FieldOf<
+  'serie_view',
   V[],
   string,
   unknown
 >
-export type FixedSizeListField<V = unknown> = FieldOf<
-  'fixed_size_list',
+export type FixedSizeSerieField<V = unknown> = FieldOf<
+  'fixed_size_serie',
   V[],
   string,
   unknown
 >
-export type LargeListField<V = unknown> = FieldOf<
-  'large_list',
+export type LargeSerieField<V = unknown> = FieldOf<
+  'large_serie',
   V[],
   string,
   unknown
 >
-export type LargeListViewField<V = unknown> = FieldOf<
-  'large_list_view',
+export type LargeSerieViewField<V = unknown> = FieldOf<
+  'large_serie_view',
   V[],
   string,
   unknown
@@ -1179,32 +1179,32 @@ export interface FieldsNamespace {
     options?: FieldOptions,
   ): FixedCp1252Field
   sizedCp1252(name: string, max: number, options?: FieldOptions): SizedCp1252Field
-  list<F extends Field>(
+  serie<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): ListField<TypedFieldValue<F>>
-  listView<F extends Field>(
+  ): SerieField<TypedFieldValue<F>>
+  serieView<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): ListViewField<TypedFieldValue<F>>
-  fixedSizeList<F extends Field>(
+  ): SerieViewField<TypedFieldValue<F>>
+  fixedSizeSerie<F extends Field>(
     name: string,
     item: F,
     length: number,
     options?: FieldOptions,
-  ): FixedSizeListField<TypedFieldValue<F>>
-  largeList<F extends Field>(
+  ): FixedSizeSerieField<TypedFieldValue<F>>
+  largeSerie<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): LargeListField<TypedFieldValue<F>>
-  largeListView<F extends Field>(
+  ): LargeSerieField<TypedFieldValue<F>>
+  largeSerieView<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): LargeListViewField<TypedFieldValue<F>>
+  ): LargeSerieViewField<TypedFieldValue<F>>
   struct(
     name: string,
     children: Iterable<Field>,
@@ -1715,7 +1715,7 @@ export interface FieldsNamespace {
     max: number,
     options?: O,
   ): NamedField<'sized_cp1252', string, N, O>
-  list<
+  serie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1723,8 +1723,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  listView<
+  ): NamedField<'serie', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  serieView<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1732,8 +1732,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  fixedSizeList<
+  ): NamedField<'serie_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  fixedSizeSerie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1743,13 +1743,13 @@ export interface FieldsNamespace {
     length: number,
     options?: O,
   ): NamedField<
-    'fixed_size_list',
+    'fixed_size_serie',
     TypedFieldValue<F>[],
     N,
     O,
     TypedFieldInput<F>[]
   >
-  largeList<
+  largeSerie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1757,8 +1757,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'large_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  largeListView<
+  ): NamedField<'large_serie', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  largeSerieView<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1767,7 +1767,7 @@ export interface FieldsNamespace {
     item: F,
     options?: O,
   ): NamedField<
-    'large_list_view',
+    'large_serie_view',
     TypedFieldValue<F>[],
     N,
     O,

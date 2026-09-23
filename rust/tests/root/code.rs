@@ -192,7 +192,7 @@ mod datatypes {
             );
             let refused = dtype
                 .merge_with(
-                    &DataType::list(DataType::Int64.nullable_field("item")),
+                    &DataType::serie(DataType::Int64.nullable_field("item")),
                     false,
                 )
                 .unwrap_err();

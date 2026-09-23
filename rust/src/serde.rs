@@ -610,20 +610,20 @@ enum DataTypeRef<'a> {
     MimeType {},
     #[serde(rename = "mediatype")]
     MediaType {},
-    List {
+    Serie {
         field: &'a Field,
     },
-    ListView {
+    SerieView {
         field: &'a Field,
     },
-    FixedSizeList {
+    FixedSizeSerie {
         field: &'a Field,
         length: i32,
     },
-    LargeList {
+    LargeSerie {
         field: &'a Field,
     },
-    LargeListView {
+    LargeSerieView {
         field: &'a Field,
     },
     Struct {
@@ -758,14 +758,14 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Timezone => Self::Timezone {},
             D::MimeType => Self::MimeType {},
             D::MediaType => Self::MediaType {},
-            D::List(field) => Self::List { field },
-            D::ListView(field) => Self::ListView { field },
-            D::FixedSizeList(field, length) => Self::FixedSizeList {
+            D::Serie(field) => Self::Serie { field },
+            D::SerieView(field) => Self::SerieView { field },
+            D::FixedSizeSerie(field, length) => Self::FixedSizeSerie {
                 field,
                 length: *length,
             },
-            D::LargeList(field) => Self::LargeList { field },
-            D::LargeListView(field) => Self::LargeListView { field },
+            D::LargeSerie(field) => Self::LargeSerie { field },
+            D::LargeSerieView(field) => Self::LargeSerieView { field },
             D::Struct(fields) => Self::Struct {
                 fields: fields.as_fields(),
             },
@@ -912,20 +912,26 @@ enum DataTypeWire {
     MimeType {},
     #[serde(rename = "mediatype")]
     MediaType {},
-    List {
+    // The serie family's tags before it took its own names, still read.
+    #[serde(alias = "list")]
+    Serie {
         field: Field,
     },
-    ListView {
+    #[serde(alias = "list_view")]
+    SerieView {
         field: Field,
     },
-    FixedSizeList {
+    #[serde(alias = "fixed_size_list")]
+    FixedSizeSerie {
         field: Field,
         length: i32,
     },
-    LargeList {
+    #[serde(alias = "large_list")]
+    LargeSerie {
         field: Field,
     },
-    LargeListView {
+    #[serde(alias = "large_list_view")]
+    LargeSerieView {
         field: Field,
     },
     Struct {
@@ -1036,11 +1042,13 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Timezone {} => Self::Timezone,
             DataTypeWire::MimeType {} => Self::MimeType,
             DataTypeWire::MediaType {} => Self::MediaType,
-            DataTypeWire::List { field } => Self::list(field),
-            DataTypeWire::ListView { field } => Self::list_view(field),
-            DataTypeWire::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
-            DataTypeWire::LargeList { field } => Self::large_list(field),
-            DataTypeWire::LargeListView { field } => Self::large_list_view(field),
+            DataTypeWire::Serie { field } => Self::serie(field),
+            DataTypeWire::SerieView { field } => Self::serie_view(field),
+            DataTypeWire::FixedSizeSerie { field, length } => {
+                Self::fixed_size_serie(field, length)?
+            }
+            DataTypeWire::LargeSerie { field } => Self::large_serie(field),
+            DataTypeWire::LargeSerieView { field } => Self::large_serie_view(field),
             DataTypeWire::Struct { fields } => Self::from(StructType::from_fields(fields)?),
             DataTypeWire::Union { mode, fields } => Self::union(
                 fields
@@ -1109,7 +1117,7 @@ impl DataType {
     /// A tagged mapping - `{"type": "decimal128", "precision": 9, "scale": 2}` -
     /// whose keys are emitted in a fixed order so two equal datatypes produce
     /// byte-identical output in every format. Nested datatypes recurse through
-    /// the same conversion, so a struct's children, a list's item, a map's key
+    /// the same conversion, so a struct's children, a serie's item, a map's key
     /// and value, a union's variants, and a dictionary's index and value are
     /// all described the one way.
     ///
@@ -1234,25 +1242,25 @@ impl DataType {
                     entries.push((key("fixed"), Scalar::from(fixed)));
                 }
             }
-            D::List(field) => {
-                tag("list");
+            D::Serie(field) => {
+                tag("serie");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::ListView(field) => {
-                tag("list_view");
+            D::SerieView(field) => {
+                tag("serie_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::FixedSizeList(field, length) => {
-                tag("fixed_size_list");
+            D::FixedSizeSerie(field, length) => {
+                tag("fixed_size_serie");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
                 entries.push((key("length"), Scalar::from(*length)));
             }
-            D::LargeList(field) => {
-                tag("large_list");
+            D::LargeSerie(field) => {
+                tag("large_serie");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::LargeListView(field) => {
-                tag("large_list_view");
+            D::LargeSerieView(field) => {
+                tag("large_serie_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
             D::Struct(fields) => {
@@ -1346,8 +1354,8 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let list = DataType::list(DataType::utf8().nullable_field("item"));
-    /// assert_eq!(DataType::from_value(list.clone().into_value())?, list);
+    /// let serie = DataType::serie(DataType::utf8().nullable_field("item"));
+    /// assert_eq!(DataType::from_value(serie.clone().into_value())?, serie);
     /// # Ok(())
     /// # }
     /// ```
@@ -1505,11 +1513,15 @@ impl DataType {
                 let fixed = at("fixed").map(|_| bound("fixed")).transpose()?;
                 Self::string(string_parameters(layout, charset, max, fixed)?)?
             }
-            "list" => Self::list(child("field")?),
-            "list_view" => Self::list_view(child("field")?),
-            "fixed_size_list" => Self::fixed_size_list(child("field")?, width("length")?)?,
-            "large_list" => Self::large_list(child("field")?),
-            "large_list_view" => Self::large_list_view(child("field")?),
+            // Each layout's own tag, and the list tag it was written under
+            // before the family took its own name.
+            "serie" | "list" => Self::serie(child("field")?),
+            "serie_view" | "list_view" => Self::serie_view(child("field")?),
+            "fixed_size_serie" | "fixed_size_list" => {
+                Self::fixed_size_serie(child("field")?, width("length")?)?
+            }
+            "large_serie" | "large_list" => Self::large_serie(child("field")?),
+            "large_serie_view" | "large_list_view" => Self::large_serie_view(child("field")?),
             "struct" => {
                 let fields = at("fields")
                     .and_then(Scalar::as_serie)

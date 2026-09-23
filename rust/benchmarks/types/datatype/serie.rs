@@ -21,7 +21,7 @@ use yggdryl::{
 /// --all-targets` under a second in a debug build.
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
-/// Legs per order row in the struct-of-list case.
+/// Legs per order row in the struct-of-serie case.
 const LEGS: usize = 4;
 
 /// One non-null 64-bit column field.
@@ -74,13 +74,13 @@ fn quotes_array() -> ArrayRef {
     Arc::new(StructArray::try_new(fields, vec![ids, symbols], None).expect("two equal columns"))
 }
 
-/// One non-null record root of an identifier and a list of int64 legs.
+/// One non-null record root of an identifier and a serie of int64 legs.
 fn orders_root() -> Field {
     let fields = StructType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new(
             "legs",
-            DataType::list(Field::new("item", DataType::Int64, false)),
+            DataType::serie(Field::new("item", DataType::Int64, false)),
             false,
         ),
     ])
@@ -102,7 +102,7 @@ fn orders_column() -> Serie {
         orders_root(),
         (0..ROWS).map(|index| order_row(i64::try_from(index).expect("a row count fits i64"))),
     )
-    .expect("a record column of lists")
+    .expect("a record column of series")
 }
 
 /// One nullable run-end field of UTF-8 states over `int32` run ends.
@@ -262,8 +262,8 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // A nested write: one record whose child is a list, pushed down through
-    // the record's write into the list's cut and the items under it.
+    // A nested write: one record whose child is a serie, pushed down through
+    // the record's write into the serie's cut and the items under it.
     let next = i64::try_from(ROWS).expect("a row count fits i64");
     group.bench_function("struct_of_list_push", |bencher| {
         bencher.iter_batched(

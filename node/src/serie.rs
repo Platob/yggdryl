@@ -2,10 +2,10 @@
 //! schema-free run or as the Arrow buffers of one field.
 //!
 //! [`JsSerie`] owns only the core value and redirects every verb to it. The
-//! verbs one nested leaf lends - a list's offsets and rows, a map's entries,
+//! verbs one nested leaf lends - a serie's offsets and rows, a map's entries,
 //! a record's names - are private natives here; `binding.js` publishes them
-//! on `ListSerie`, `LargeListSerie`, `ListViewSerie`, `LargeListViewSerie`,
-//! `FixedSizeListSerie`, `MapSerie` and `StructSerie`, the subclasses every
+//! on `SerieSerie`, `LargeSerieSerie`, `SerieViewSerie`, `LargeSerieViewSerie`,
+//! `FixedSizeSerieSerie`, `MapSerie` and `StructSerie`, the subclasses every
 //! serie is handed out as by the leaf `_leafNative` names, so nesting reads
 //! typed all the way down. Arrow crosses as copied IPC, as it does for every
 //! other value of this binding.
@@ -271,7 +271,7 @@ impl JsSerie {
         self.inner.field().cloned().map(JsField::from_core)
     }
 
-    /// `list(<the field named item>)` for a column; agreed out of a run's rows.
+    /// `serie(<the field named item>)` for a column; agreed out of a run's rows.
     #[napi(getter)]
     pub fn dtype(&self) -> Result<JsDataType> {
         self.inner
@@ -294,16 +294,16 @@ impl JsSerie {
         length
     }
 
-    /// Which nested leaf this is - `list`, `largeList`, `listView`,
-    /// `largeListView`, `fixedSizeList`, `map`, `struct` - or `null`.
+    /// Which nested leaf this is - `serie`, `largeSerie`, `serieView`,
+    /// `largeSerieView`, `fixedSizeSerie`, `map`, `struct` - or `null`.
     #[napi(getter, js_name = "_leafNative", skip_typescript)]
     pub fn leaf_native(&self) -> Option<&'static str> {
         match &self.inner {
-            Serie::List(_) => Some("list"),
-            Serie::LargeList(_) => Some("largeList"),
-            Serie::ListView(_) => Some("listView"),
-            Serie::LargeListView(_) => Some("largeListView"),
-            Serie::FixedSizeList(_) => Some("fixedSizeList"),
+            Serie::Serie(_) => Some("serie"),
+            Serie::LargeSerie(_) => Some("largeSerie"),
+            Serie::SerieView(_) => Some("serieView"),
+            Serie::LargeSerieView(_) => Some("largeSerieView"),
+            Serie::FixedSizeSerie(_) => Some("fixedSizeSerie"),
             Serie::Map(_) | Serie::SortedMap(_) => Some("map"),
             Serie::Struct(_) => Some("struct"),
             _ => None,
@@ -645,7 +645,7 @@ impl JsSerie {
     // The verbs one nested leaf lends, published on its subclass.
     // ------------------------------------------------------------------
 
-    /// A list, list-view or map leaf's offsets.
+    /// A serie, serie-view or map leaf's offsets.
     ///
     /// # Panics
     ///
@@ -654,22 +654,22 @@ impl JsSerie {
     #[napi(js_name = "_offsetsNative", skip_typescript)]
     pub fn offsets_native(&self) -> Vec<f64> {
         let serie = &self.inner;
-        if let Some(leaf) = serie.as_list() {
+        if let Some(leaf) = serie.as_serie() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_large_list() {
+        if let Some(leaf) = serie.as_large_serie() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_list_view() {
+        if let Some(leaf) = serie.as_serie_view() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_large_list_view() {
+        if let Some(leaf) = serie.as_large_serie_view() {
             return numbers(leaf.offsets());
         }
         numbers(serie.as_map().expect(LEAF).offsets())
     }
 
-    /// A list-view leaf's sizes.
+    /// A serie-view leaf's sizes.
     ///
     /// # Panics
     ///
@@ -677,13 +677,13 @@ impl JsSerie {
     /// reads.
     #[napi(js_name = "_sizesNative", skip_typescript)]
     pub fn sizes_native(&self) -> Vec<f64> {
-        match self.inner.as_list_view() {
+        match self.inner.as_serie_view() {
             Some(leaf) => numbers(leaf.sizes()),
-            None => numbers(self.inner.as_large_list_view().expect(LEAF).sizes()),
+            None => numbers(self.inner.as_large_serie_view().expect(LEAF).sizes()),
         }
     }
 
-    /// A fixed-size list leaf's width.
+    /// A fixed-size serie leaf's width.
     ///
     /// # Panics
     ///
@@ -692,7 +692,7 @@ impl JsSerie {
     #[napi(js_name = "_widthNative", skip_typescript)]
     pub fn width_native(&self) -> f64 {
         #[allow(clippy::cast_precision_loss)]
-        let width = self.inner.as_fixed_size_list().expect(LEAF).width() as f64;
+        let width = self.inner.as_fixed_size_serie().expect(LEAF).width() as f64;
         width
     }
 
@@ -706,15 +706,15 @@ impl JsSerie {
     pub fn range_native(&self, index: f64) -> Result<Option<Vec<f64>>> {
         let index = position(index, "index")?;
         let serie = &self.inner;
-        let range = if let Some(leaf) = serie.as_list() {
+        let range = if let Some(leaf) = serie.as_serie() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_large_list() {
+        } else if let Some(leaf) = serie.as_large_serie() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_list_view() {
+        } else if let Some(leaf) = serie.as_serie_view() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_large_list_view() {
+        } else if let Some(leaf) = serie.as_large_serie_view() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_fixed_size_list() {
+        } else if let Some(leaf) = serie.as_fixed_size_serie() {
             leaf.range(index)
         } else {
             serie.as_map().expect(LEAF).range(index)
@@ -732,15 +732,15 @@ impl JsSerie {
     pub fn row_native(&self, index: f64) -> Result<Option<JsSerie>> {
         let index = position(index, "index")?;
         let serie = &self.inner;
-        let row = if let Some(leaf) = serie.as_list() {
+        let row = if let Some(leaf) = serie.as_serie() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_large_list() {
+        } else if let Some(leaf) = serie.as_large_serie() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_list_view() {
+        } else if let Some(leaf) = serie.as_serie_view() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_large_list_view() {
+        } else if let Some(leaf) = serie.as_large_serie_view() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_fixed_size_list() {
+        } else if let Some(leaf) = serie.as_fixed_size_serie() {
             leaf.row(index)
         } else {
             serie.as_map().expect(LEAF).row(index)

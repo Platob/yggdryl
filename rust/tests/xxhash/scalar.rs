@@ -281,7 +281,7 @@ mod xxhash {
                     Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
                     DataTypeId::Duration64,
                 ),
-                (Scalar::from_sequence([]), DataTypeId::List),
+                (Scalar::from_sequence([]), DataTypeId::Serie),
                 (
                     Scalar::from_struct([] as [(&str, Scalar); 0]).unwrap(),
                     DataTypeId::Struct,
@@ -377,7 +377,7 @@ mod xxhash {
                 yggdryl::Field::new("symbol", yggdryl::DataType::utf8(), true),
                 yggdryl::Field::new(
                     "legs",
-                    yggdryl::DataType::list(yggdryl::Field::new(
+                    yggdryl::DataType::serie(yggdryl::Field::new(
                         "item",
                         yggdryl::DataType::Int32,
                         true,

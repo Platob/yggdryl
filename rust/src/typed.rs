@@ -45,7 +45,7 @@ mod record {
     /// exact match, so a key the field refuses the row refuses too.
     ///
     /// Building one canonicalizes through the field's row walk, so an ordered
-    /// [`Scalar::List`](Scalar) and a named [`Scalar::Struct`](Scalar) are
+    /// [`Scalar::Serie`](Scalar) and a named [`Scalar::Struct`](Scalar) are
     /// both accepted, and the cells are exactly what
     /// [`Field::canonicalize_value`] answers. Top-level row construction uses
     /// only the cells' `Vec`; nested canonicalization owns any storage its
@@ -433,8 +433,8 @@ mod shared {
         ///     price.shared_field().unwrap()
         /// ));
         /// // A nested datatype has no shared field: pair it under your own.
-        /// let list = DataType::list(Field::new("item", DataType::Int64, true));
-        /// assert!(list.shared_field().is_none());
+        /// let serie = DataType::serie(Field::new("item", DataType::Int64, true));
+        /// assert!(serie.shared_field().is_none());
         /// # Ok(())
         /// # }
         /// ```
@@ -602,7 +602,7 @@ impl<'a> FieldScalar<'a> {
     /// crate prebuilt for that datatype, so a leaf value becomes a typed value
     /// without building a field - the pairing borrows a field that lives for
     /// the whole program. A datatype with no shared field, such as a struct
-    /// or a list, is paired through [`Self::new`] under a field of the
+    /// or a serie, is paired through [`Self::new`] under a field of the
     /// caller's own.
     ///
     /// ```
@@ -616,7 +616,7 @@ impl<'a> FieldScalar<'a> {
     ///
     /// let row = Scalar::from_sequence([Scalar::from(1_i64)]);
     /// let refused = FieldScalar::infer(row).unwrap_err().to_string();
-    /// assert!(refused.contains("list"), "{refused}");
+    /// assert!(refused.contains("serie"), "{refused}");
     /// # Ok(())
     /// # }
     /// ```

@@ -10,7 +10,7 @@ contributed the field say is ``branches``, a sorted list of names that a caller
 filters on and no lookup consults. The registry is one namespace:
 :class:`FixRegistry` resolves scalar fields, components and repeating groups by
 identifier, by tag, by counter, by name or by dotted path - a Struct is a
-component, a List of Structs or a Map a group, a message a component carrying
+component, a Serie of Structs or a Map a group, a message a component carrying
 ``FIX:msgtype``, each filed by :meth:`FixRegistry.insert` under the shape it
 has - and persists them as JSON shards through any ``IOBase`` location, the
 fixed row among them as ``components/fixmsg.json``. Every registry holds the
@@ -57,7 +57,7 @@ held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
-groups as lists beside their counter, components as structs. The graph
+groups as series beside their counter, components as structs. The graph
 facts a consumer reads most are the message's own properties too. A lookup
 by a typed tag - a header tag, a crate column, the event's own ``15``,
 ``54``, ``461`` and the four lane tags, ``58`` - answers the holder, typed as
@@ -133,7 +133,7 @@ header, the fields a consumer reads, the four groups worth persisting whole,
 the trailer and ``MsgDirection`` (385) - each spelled by the dictionary's
 folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;
-the tag stays on each column's ``FIX:tag``. One ``fixentries`` list closes
+the tag stays on each column's ``FIX:tag``. One ``fixentries`` serie closes
 the row with the whole content under the ``nofixentries`` that counts it,
 where an unresolved key has tag 0; ``beginstring``, ``currunix``, ``creaunix``,
 ``currhashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
@@ -150,7 +150,7 @@ field the file produces, and :meth:`FixRegistry.dialects` lists the names any
 field or definition carries.
 
 Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
-separate list of ``Party`` components, reached by its name or by
+separate serie of ``Party`` components, reached by its name or by
 :meth:`FixRegistry.field_by_counter`. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
 tag is its counter.

@@ -861,7 +861,7 @@ def test_deep_union_keeps_terminal_variant_tags() -> None:
     dtype = DeepVariant.into_field().dtype["payload"].dtype
     raw: object = "terminal"
     for _ in range(depth):
-        assert dtype.id == "list"
+        assert dtype.id == "serie"
         dtype = dtype[0].dtype
         raw = [raw]
 

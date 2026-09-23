@@ -933,11 +933,11 @@ pub(crate) mod text {
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
             DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
-            DataType::List(item)
-            | DataType::LargeList(item)
-            | DataType::ListView(item)
-            | DataType::LargeListView(item)
-            | DataType::FixedSizeList(item, _) => keeps_empty_text(item.dtype()),
+            DataType::Serie(item)
+            | DataType::LargeSerie(item)
+            | DataType::SerieView(item)
+            | DataType::LargeSerieView(item)
+            | DataType::FixedSizeSerie(item, _) => keeps_empty_text(item.dtype()),
             code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
             _ => false,
         }
@@ -2058,19 +2058,21 @@ impl ArrayCastPlan {
             // fixed sizes are a different row shape rather than a layout, and
             // that pair is refused below by name.
             (
-                DataType::List(child)
-                | DataType::LargeList(child)
-                | DataType::ListView(child)
-                | DataType::LargeListView(child)
-                | DataType::FixedSizeList(child, _),
+                DataType::Serie(child)
+                | DataType::LargeSerie(child)
+                | DataType::SerieView(child)
+                | DataType::LargeSerieView(child)
+                | DataType::FixedSizeSerie(child, _),
                 ArrowDataType::List(source_child)
                 | ArrowDataType::LargeList(source_child)
                 | ArrowDataType::ListView(source_child)
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
-                    (dtype, source_type)
+                if let (
+                    DataType::FixedSizeSerie(_, size),
+                    ArrowDataType::FixedSizeList(_, source),
+                ) = (dtype, source_type)
                 {
                     if size != source {
                         return Err(Error::Unsupported {
@@ -2944,11 +2946,11 @@ pub(crate) mod columns {
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
                 DataType::Dictionary(_) => true,
-                DataType::List(field)
-                | DataType::ListView(field)
-                | DataType::FixedSizeList(field, _)
-                | DataType::LargeList(field)
-                | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
+                DataType::Serie(field)
+                | DataType::SerieView(field)
+                | DataType::FixedSizeSerie(field, _)
+                | DataType::LargeSerie(field)
+                | DataType::LargeSerieView(field) => contains_dictionary(field.dtype()),
                 DataType::Struct(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
@@ -3054,7 +3056,7 @@ pub(crate) mod columns {
                         replace_array_children(right, right_children, budget)?,
                     ))
                 }
-                DataType::List(child) => {
+                DataType::Serie(child) => {
                     let left_list = downcast::<ListArray>(left.as_ref())?;
                     let right_list = downcast::<ListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3096,7 +3098,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeList(child) => {
+                DataType::LargeSerie(child) => {
                     let left_list = downcast::<LargeListArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3128,7 +3130,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::ListView(child) => {
+                DataType::SerieView(child) => {
                     let left_list = downcast::<ListViewArray>(left.as_ref())?;
                     let right_list = downcast::<ListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3170,7 +3172,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeListView(child) => {
+                DataType::LargeSerieView(child) => {
                     let left_list = downcast::<LargeListViewArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3202,7 +3204,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeSerie(child, size) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
                     let width = usize::try_from(*size).map_err(|_| {
@@ -4977,11 +4979,11 @@ pub(crate) mod columns {
             | DataType::Union(..)
             | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
-            DataType::List(child)
-            | DataType::ListView(child)
-            | DataType::FixedSizeList(child, _)
-            | DataType::LargeList(child)
-            | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
+            DataType::Serie(child)
+            | DataType::SerieView(child)
+            | DataType::FixedSizeSerie(child, _)
+            | DataType::LargeSerie(child)
+            | DataType::LargeSerieView(child) => requires_yggdryl_key_comparator(child.dtype()),
             DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
@@ -5162,7 +5164,7 @@ pub(crate) mod columns {
                         .cmp(DecimalText::new(right_values[right]).as_bytes())
                 })
             }
-            DataType::List(child) => {
+            DataType::Serie(child) => {
                 let left_source = downcast::<ListArray>(left.as_ref())?;
                 let right_source = downcast::<ListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5184,7 +5186,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::LargeList(child) => {
+            DataType::LargeSerie(child) => {
                 let left_source = downcast::<LargeListArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5206,7 +5208,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::ListView(child) => {
+            DataType::SerieView(child) => {
                 let left_source = downcast::<ListViewArray>(left.as_ref())?;
                 let right_source = downcast::<ListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5231,7 +5233,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::LargeListView(child) => {
+            DataType::LargeSerieView(child) => {
                 let left_source = downcast::<LargeListViewArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5256,7 +5258,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::FixedSizeList(child, size) => {
+            DataType::FixedSizeSerie(child, size) => {
                 let left_values =
                     Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
                 let right_values =
@@ -5656,11 +5658,11 @@ pub(crate) mod columns {
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
             DataType::Struct(_) | DataType::Map(_) | DataType::SortedMap(_) => true,
-            DataType::List(field)
-            | DataType::ListView(field)
-            | DataType::FixedSizeList(field, _)
-            | DataType::LargeList(field)
-            | DataType::LargeListView(field) => contains_struct(field.dtype()),
+            DataType::Serie(field)
+            | DataType::SerieView(field)
+            | DataType::FixedSizeSerie(field, _)
+            | DataType::LargeSerie(field)
+            | DataType::LargeSerieView(field) => contains_struct(field.dtype()),
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
@@ -5673,11 +5675,11 @@ pub(crate) mod columns {
     pub(crate) fn is_reconcilable_nested(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::List(_)
-                | DataType::ListView(_)
-                | DataType::FixedSizeList(_, _)
-                | DataType::LargeList(_)
-                | DataType::LargeListView(_)
+            DataType::Serie(_)
+                | DataType::SerieView(_)
+                | DataType::FixedSizeSerie(_, _)
+                | DataType::LargeSerie(_)
+                | DataType::LargeSerieView(_)
                 | DataType::Struct(_)
                 | DataType::Union(_, _)
                 | DataType::Dictionary(_)

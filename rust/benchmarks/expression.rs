@@ -326,7 +326,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// A predicate segment: one predicate over every element of every list, one
+/// A predicate segment: one predicate over every element of every serie, one
 /// filter, and rebuilt offsets - against the row tier doing the same walk.
 fn predicate_path_benchmarks(criterion: &mut Criterion) {
     const LEGS: usize = 4;
@@ -334,7 +334,7 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
         "trades",
         StructType::from_fields([Field::new(
             "legs",
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([
                     Field::new("ccy", DataType::utf8(), true),
                     Field::new("size", DataType::Int64, true),

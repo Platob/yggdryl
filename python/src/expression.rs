@@ -268,7 +268,7 @@ fn verb_from_str(value: &str) -> PyResult<CoreVerb> {
     })
 }
 
-/// Read one path step: a struct child, a list position, or a map key.
+/// Read one path step: a struct child, a serie position, or a map key.
 fn segment_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSegment> {
     if value.is_instance_of::<PyString>() {
         return Ok(CoreSegment::field(value.extract::<String>()?));
@@ -753,15 +753,15 @@ impl PyTerm {
         Self::from_core(self.inner.clone().child(name))
     }
 
-    /// Read a list element by position, counting back from the end when
+    /// Read a serie element by position, counting back from the end when
     /// negative.
     fn at(&self, index: i64) -> Self {
         Self::from_core(self.inner.clone().at(index))
     }
 
-    /// Read a run of list elements, `start` inclusive and `end` exclusive;
+    /// Read a run of serie elements, `start` inclusive and `end` exclusive;
     /// either bound counts back from the end when negative, and an absent
-    /// one is the list's own edge.
+    /// one is the serie's own edge.
     #[pyo3(signature = (start = None, end = None))]
     fn slice(&self, start: Option<i64>, end: Option<i64>) -> Self {
         Self::from_core(self.inner.clone().slice(start, end))
@@ -769,7 +769,7 @@ impl PyTerm {
 
     /// Append a whole path of steps at once.
     ///
-    /// A `str` step is a struct child, an `int` is a list position, and any
+    /// A `str` step is a struct child, an `int` is a serie position, and any
     /// other value is a map key, typed through the shared value rules.
     fn path(&self, segments: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut steps = Vec::new();

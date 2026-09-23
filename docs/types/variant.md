@@ -320,7 +320,7 @@ names:
 | every byte layout, and a geometry or geography's WKB | `binary` | `binary` |
 | `duration32`, `duration64` | `string`, the ISO-8601 spelling | `utf8` |
 | `interval` | the JSON codec's number or array | that shape |
-| a list | `array` | a list |
+| a serie | `array` | a serie |
 | a struct, and a mapping whose keys are text | `object` | a struct |
 
 A decimal past thirty-eight digits, a time whose count is not a whole microsecond, a zoned time, a zoned duration and a mapping with a key that is not text are what no reading spells, and each is refused by name.

@@ -2230,7 +2230,7 @@ mod record_columns {
             .map(DataType::from)
             .expect("the child datatype is valid")
             .required_field("venue"),
-            DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),
+            DataType::serie(DataType::Int64.required_field("item")).required_field("sizes"),
             DataType::utf8().nullable_field("note"),
             DataType::Decimal128 {
                 precision: 12,
@@ -2435,7 +2435,7 @@ mod record_columns {
             )
             .expect("the rows write");
 
-        // Nothing is declared on the read: the struct child, the list item,
+        // Nothing is declared on the read: the struct child, the serie item,
         // the nullable column, the decimal, and the temporal all come back
         // named and parameterized by the schema the write stored.
         let read = target

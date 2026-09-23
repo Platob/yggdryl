@@ -112,7 +112,7 @@ impl Node {
                         StepKind::Where(predicate) => {
                             let element = step
                                 .element()
-                                .ok_or_else(|| missing("a list of structs to keep elements of"))?;
+                                .ok_or_else(|| missing("a serie of structs to keep elements of"))?;
                             keep_elements(element, predicate, &value)?
                         }
                     };
@@ -291,7 +291,7 @@ impl Node {
                 }
                 Ok(Scalar::from_sequence(values))
             }
-            Kind::List(items) => {
+            Kind::Serie(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
                     values.push(item.eval(row)?);
@@ -309,20 +309,20 @@ impl Node {
     }
 }
 
-/// The elements of one list value a predicate over the element struct keeps.
+/// The elements of one serie value a predicate over the element struct keeps.
 ///
 /// The definition the vectorized tier is an optimization of: an element is
 /// kept when the predicate answers exactly `true` for it, so `false` and
 /// unknown both drop it; a null element is dropped, because there is no
-/// struct there to ask about; a null list stays null, and so does a value
-/// that is no list at all, the way a position past the end reads as null.
+/// struct there to ask about; a null serie stays null, and so does a value
+/// that is no serie at all, the way a position past the end reads as null.
 ///
 /// # Errors
 ///
 /// Returns an error when the predicate refuses an element - a strict cast or
 /// checked arithmetic.
-pub(crate) fn keep_elements(element: &Field, predicate: &Node, list: &Scalar) -> Result<Scalar> {
-    let Some(items) = list.as_serie() else {
+pub(crate) fn keep_elements(element: &Field, predicate: &Node, serie: &Scalar) -> Result<Scalar> {
+    let Some(items) = serie.as_serie() else {
         return Ok(Scalar::Null);
     };
     let mut kept = Vec::new();
@@ -631,7 +631,7 @@ fn call(
     let first = values.first().unwrap_or(&Scalar::Null);
     // Coalesce and its two-argument spelling are the only functions that mean
     // something when an argument is null; a slice reads a null bound as the
-    // list's own end.
+    // serie's own end.
     if !matches!(
         function,
         Function::Coalesce | Function::IfNull | Function::Slice

@@ -173,7 +173,7 @@ nav:
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md
-      - List: types/nested/list.md
+      - Serie layouts: types/nested/sequence.md
       - Map: types/nested/map.md
       - Union: types/nested/union.md
       - Dictionary: types/nested/dictionary.md

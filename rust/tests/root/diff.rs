@@ -78,7 +78,7 @@ mod internal {
     fn shared_deep_snapshots_complete_without_traversal() {
         let mut dtype = DataType::Int64;
         for depth in 0..64 {
-            dtype = DataType::list(Field::new(format!("item_{depth}"), dtype, false));
+            dtype = DataType::serie(Field::new(format!("item_{depth}"), dtype, false));
         }
         let left = Field::new("root", dtype, false);
         let right = left.clone();
@@ -114,8 +114,8 @@ mod comparison {
             Field::from_parts("item", DataType::utf8(), true, [("source", "left")]).unwrap();
         let right_child =
             Field::from_parts("item", DataType::utf8(), true, [("source", "right")]).unwrap();
-        let left = DataType::list(left_child);
-        let right = DataType::list(right_child);
+        let left = DataType::serie(left_child);
+        let right = DataType::serie(right_child);
 
         assert!(!left.equals(&right, true));
         assert!(left.equals(&right, false));
@@ -141,7 +141,7 @@ mod comparison {
     fn show_diff_reports_deep_physical_and_metadata_changes() {
         let left = Field::from_parts(
             "payload",
-            DataType::fixed_size_list(
+            DataType::fixed_size_serie(
                 Field::from_parts("item", DataType::utf8(), false, [("side", "left")]).unwrap(),
                 2,
             )
@@ -152,7 +152,7 @@ mod comparison {
         .unwrap();
         let right = Field::from_parts(
             "body",
-            DataType::fixed_size_list(
+            DataType::fixed_size_serie(
                 Field::from_parts(
                     "item",
                     DataType::utf8(),
@@ -197,18 +197,18 @@ mod comparison {
     fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
         let private_child =
             Field::from_parts("private", DataType::utf8(), true, [("secret", "left")]).unwrap();
-        let left = DataType::list(private_child);
+        let left = DataType::serie(private_child);
         let right = DataType::from(
             StructType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap(),
         );
         let changed_kind = left.show_diff(&right, false, true);
-        assert_eq!(changed_kind, "≠ $.kind: list → struct");
+        assert_eq!(changed_kind, "≠ $.kind: serie → struct");
         assert!(!changed_kind.contains("secret"));
 
         let left = DataType::from(StructType::from_fields(std::iter::empty()).unwrap());
         let right = StructType::from_fields([Field::from_parts(
             "added",
-            DataType::list(
+            DataType::serie(
                 Field::from_parts("item", DataType::utf8(), true, [("secret", "right")]).unwrap(),
             ),
             true,
@@ -218,7 +218,7 @@ mod comparison {
         .map(DataType::from)
         .unwrap();
         let added = left.show_diff(&right, false, true);
-        assert!(added.contains("+ $.fields[0]: field(name=\"added\",dtype=list,nullable=true)"));
+        assert!(added.contains("+ $.fields[0]: field(name=\"added\",dtype=serie,nullable=true)"));
         assert!(!added.contains("secret"));
     }
 
@@ -265,8 +265,8 @@ mod comparison {
                 DataType::fixed_binary(16).unwrap(),
             ),
             (
-                DataType::fixed_size_list(item(), 2).unwrap(),
-                DataType::fixed_size_list(item(), 3).unwrap(),
+                DataType::fixed_size_serie(item(), 2).unwrap(),
+                DataType::fixed_size_serie(item(), 3).unwrap(),
             ),
             (
                 DataType::union([(0, item())], UnionMode::Sparse).unwrap(),

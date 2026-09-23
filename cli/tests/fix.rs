@@ -228,7 +228,7 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
         "--required",
     ]);
     let component = workspace.read("components", "Party");
-    let mut group = DataType::list(component.clone()).nullable_field("Parties");
+    let mut group = DataType::serie(component.clone()).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).expect("counter");
     group
         .as_fix_mut()

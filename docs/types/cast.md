@@ -18,7 +18,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; `nullability` decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
-| Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
+| Layouts | Every serie layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
@@ -319,7 +319,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "list"
+    assert row.kind == "serie"
     assert row.as_py() == [1, "AAPL"]
     root.validate_value(row)
     with pytest.raises(ValueError):
@@ -1111,7 +1111,7 @@ What each binding door accepts, each resolved once at the door:
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
-- Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
+- Two fixed sizes, serie or binary -> a value change rather than a layout change, refused by name.
 - A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null, under strict the row and column are named.
 - A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
 - A code or a UUID source entering a string -> read as the text the code holds and as the canonical spelling of the identifier, under the target's own layout, charset and bound: one `StringIngest`, not a second renderer per source.

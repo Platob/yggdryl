@@ -38,7 +38,7 @@ pub enum DataTypeKind {
     Code,
     /// Byte strings in variable, fixed, large, and view layouts.
     Bytes,
-    /// Lists, structs, unions, maps, wrappers, and self-describing values.
+    /// Series, structs, unions, maps, wrappers, and self-describing values.
     Nested,
     /// Geometries and geographies carried as Well-Known Binary.
     ///

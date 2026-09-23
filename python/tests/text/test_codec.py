@@ -187,7 +187,7 @@ def test_cls_value_preserves_typed_toml_root_canonicalization() -> None:
     native = toml.loads("value = 1.5", field=field, cls=Scalar)
 
     assert isinstance(native, Scalar)
-    assert native.kind == "list"
+    assert native.kind == "serie"
     assert toml.loads("value = 1.5", field=field) == {"value": 1.5}
 
 

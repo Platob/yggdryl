@@ -469,7 +469,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     let message = reader.sole_line(row.as_bytes()).unwrap();
 
     let parties = message.by_name("parties").expect("the group");
-    let occurrences = parties.as_sequence().expect("a list of occurrences");
+    let occurrences = parties.as_sequence().expect("a serie of occurrences");
     assert_eq!(occurrences.len(), 1);
     let members = occurrences[0].as_sequence().expect("one item struct");
     assert_eq!(members.len(), 3);
@@ -480,13 +480,13 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
         "{members:?}"
     );
 
-    // The group field is a List of a non-null `item` Struct.
+    // The group field is a Serie of a non-null `item` Struct.
     let field = message
         .as_field()
         .get_field_by_path("parties")
         .expect("the group field");
-    let DataType::List(item) = field.dtype() else {
-        panic!("a list, got {}", field.dtype());
+    let DataType::Serie(item) = field.dtype() else {
+        panic!("a serie, got {}", field.dtype());
     };
     assert_eq!(item.name(), "party");
     assert!(!item.is_nullable());
@@ -824,8 +824,8 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     );
     let members = |path: &str| -> Vec<String> {
         let group = message.as_field().get_field_by_path(path).expect(path);
-        let DataType::List(item) = group.dtype() else {
-            panic!("{path}: a list, got {}", group.dtype());
+        let DataType::Serie(item) = group.dtype() else {
+            panic!("{path}: a serie, got {}", group.dtype());
         };
         item.fields()
             .iter()
@@ -904,8 +904,8 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
         .as_field()
         .get_field_by_path("parties")
         .expect("parties");
-    let DataType::List(item) = party.dtype() else {
-        panic!("a list");
+    let DataType::Serie(item) = party.dtype() else {
+        panic!("a serie");
     };
     let names: Vec<&str> = item.fields().iter().map(yggdryl::Field::name).collect();
     assert!(names.contains(&"venueseq"), "{names:?}");
@@ -1024,8 +1024,8 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     let message = reader.sole_line(lifted).unwrap();
     let members = |path: &str| -> Vec<String> {
         let group = message.as_field().get_field_by_path(path).expect(path);
-        let DataType::List(item) = group.dtype() else {
-            panic!("{path}: a list, got {}", group.dtype());
+        let DataType::Serie(item) = group.dtype() else {
+            panic!("{path}: a serie, got {}", group.dtype());
         };
         item.fields()
             .iter()
@@ -1210,13 +1210,13 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
         .as_field()
         .get_field_by_path("parties")
         .expect("parties");
-    let DataType::List(item) = party.dtype() else {
-        panic!("a list");
+    let DataType::Serie(item) = party.dtype() else {
+        panic!("a serie");
     };
     // A mark belongs to the literal name, quoted in the shared selector grammar.
     let marked = item.field("\"#nopartysubids\"").expect("the marked group");
-    let DataType::List(sub) = marked.dtype() else {
-        panic!("a list, got {}", marked.dtype());
+    let DataType::Serie(sub) = marked.dtype() else {
+        panic!("a serie, got {}", marked.dtype());
     };
     let names: Vec<&str> = sub.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(names, ["partysubid", "partysubidtype"]);
@@ -1385,8 +1385,8 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
 
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     let parties_at = schema.index_of("parties").expect("the projected group");
-    let DataType::List(party) = schema.fields()[parties_at].dtype() else {
-        panic!("parties is not a list")
+    let DataType::Serie(party) = schema.fields()[parties_at].dtype() else {
+        panic!("parties is not a serie")
     };
     let partyid = party.index_of("partyid").expect("PartyID");
     let source = party.index_of("partyidsource").expect("PartyIDSource");
@@ -1532,7 +1532,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
         .as_field()
         .get_field_by_path("parties")
         .expect("the separate logical group");
-    let DataType::List(item) = field.dtype() else {
+    let DataType::Serie(item) = field.dtype() else {
         panic!("the group's own shape, got {}", field.dtype());
     };
     assert!(item.dtype().is_nested(), "a List of `item` Structs");
@@ -1611,7 +1611,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
     sub_count.as_fix_mut().set_tag(802).unwrap();
-    let mut subs = DataType::list(sub_item).nullable_field("partysubids");
+    let mut subs = DataType::serie(sub_item).nullable_field("partysubids");
     subs.as_fix_mut().set_counter(802).unwrap();
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
@@ -1628,7 +1628,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     .required_field("party");
     let mut count = DataType::Int32.nullable_field("nopartyids");
     count.as_fix_mut().set_tag(453).unwrap();
-    let mut parties = DataType::list(item).nullable_field("parties");
+    let mut parties = DataType::serie(item).nullable_field("parties");
     parties.as_fix_mut().set_counter(453).unwrap();
     let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).unwrap();
@@ -1739,7 +1739,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     let occurrences = super::sequence(message.by_name("parties").unwrap());
     assert_eq!(occurrences, [Scalar::Null, Scalar::Null]);
     let group = message.as_field().get_field_by_path("parties").unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Serie(item) = group.dtype() else {
         panic!("{}", group.dtype());
     };
     assert_eq!(item.name(), "party");
@@ -1797,8 +1797,8 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
 }
 
 #[test]
-fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
-    // The FIX layer reads a group as `List` or `LargeList` everywhere it looks
+fn a_group_the_dictionary_holds_as_a_large_serie_still_states_its_count() {
+    // The FIX layer reads a group as `Serie` or `LargeSerie` everywhere it looks
     // at one, so the miscount looks at the same pair: a dictionary that stored
     // its group in the wider variant is still a dictionary of groups.
     let mut party_id = DataType::utf8().nullable_field("partyid");
@@ -1807,7 +1807,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
         .map(DataType::from)
         .unwrap()
         .required_field("item");
-    let mut group = DataType::large_list(item.clone()).nullable_field("parties");
+    let mut group = DataType::large_serie(item.clone()).nullable_field("parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group.as_fix_mut().set_component(item.name()).unwrap();
     let mut counter = DataType::Int32.nullable_field("nopartyids");
@@ -1823,7 +1823,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
         .sole_line(b"35=D|55=AAPL|453=2|10=0|")
         .unwrap();
     // The counter describes the group: it holds no occurrence, so the count
-    // is zero however wide a list the dictionary stores the group in.
+    // is zero however wide a serie the dictionary stores the group in.
     assert_eq!(message.by_tag(453).unwrap(), Scalar::from(0_i32));
     assert!(
         message
@@ -1960,7 +1960,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
         .map(DataType::from)
         .unwrap()
         .required_field("minimalparty");
-    let mut group = DataType::list(item).nullable_field("minimalparties");
+    let mut group = DataType::serie(item).nullable_field("minimalparties");
     group.as_fix_mut().set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
     let mut definition =

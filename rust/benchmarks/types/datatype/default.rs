@@ -9,14 +9,14 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
         Field::new("label", DataType::utf8(), true),
         Field::new(
             "items",
-            DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 32).unwrap(),
+            DataType::fixed_size_serie(Field::new("item", DataType::Int32, true), 32).unwrap(),
             false,
         ),
     ])
     .map(DataType::from)
     .unwrap();
     let fixed =
-        DataType::fixed_size_list(Field::new("item", DataType::Int64, false), 1_024).unwrap();
+        DataType::fixed_size_serie(Field::new("item", DataType::Int64, false), 1_024).unwrap();
 
     let mut defaults = criterion.benchmark_group("datatype_default");
     defaults.bench_function("scalar", |bencher| {

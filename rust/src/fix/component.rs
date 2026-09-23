@@ -162,7 +162,7 @@ pub(crate) fn group_names(
 }
 
 pub(crate) fn occurrence_name(group: &crate::Field) -> SmolStr {
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = group.dtype() {
+    if let crate::DataType::Serie(item) | crate::DataType::LargeSerie(item) = group.dtype() {
         return SmolStr::new(item.name());
     }
     group_names(group, None).2

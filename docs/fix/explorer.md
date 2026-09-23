@@ -14,7 +14,7 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A List group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `identifiers` and `metadata` Map groups instead own tag and counter together - 65020 and 65049 - with no scalar counter column.
+A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `identifiers` and `metadata` Map groups instead own tag and counter together - 65020 and 65049 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
@@ -130,7 +130,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-A field's detail panel names the code set it reads by and opens that one set's members under the name, however many fields state it; `FIX:identifiers` appears in its owning component's panel the same way, and the definition filter narrows the rows to the fields that read by a set at all. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
+A field's detail panel names the code set it reads by and opens that one set's members under the name, however many fields state it; `FIX:identifiers` appears in its owning component's panel the same way, and the definition filter narrows the rows to the fields that read by a set at all. Serie groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 

@@ -30,8 +30,8 @@ _INTEGER_KINDS = frozenset(
     ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
 )
 _FLOAT_KINDS = frozenset(("float16", "float32", "float64"))
-_LIST_KINDS = frozenset(
-    ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")
+_SERIE_KINDS = frozenset(
+    ("serie", "serie_view", "fixed_size_serie", "large_serie", "large_serie_view")
 )
 _DECIMAL_KINDS = frozenset(("decimal32", "decimal64", "decimal128", "decimal256"))
 #: The only ordinary name a generated class owns: every other name it carries -
@@ -167,7 +167,7 @@ def _hint_from_datatype(
         return bytes
     if dtype.is_string or dtype.is_code or kind == "uuid":
         return str
-    if kind in _LIST_KINDS:
+    if kind in _SERIE_KINDS:
         child = dtype[0]
         item = _hint_from_field(
             child,

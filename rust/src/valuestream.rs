@@ -15,7 +15,7 @@
 //! little-endian bytes and nothing else, because the identifier already
 //! says how wide it is; a payload of no fixed width - text, bytes, a
 //! geometry - is a compression byte, a size and the bytes, compressed with
-//! zstd once it is past [`COMPRESS_FROM`]; a list, a map or a struct is a
+//! zstd once it is past [`COMPRESS_FROM`]; a serie, a map or a struct is a
 //! count and then each child as the same encoding without the version
 //! byte, which the whole stream stated once. What a datatype states
 //! beside its identifier travels where the value needs it - a decimal's
@@ -218,7 +218,7 @@ fn write_clock(chunk: &mut Vec<u8>, id: DataTypeId, unit: TimeUnit, zone: Option
 }
 
 /// Appends one value's own bytes to `chunk`, and answers the children a
-/// nested value has in order - a list's values, a map's key then value per
+/// nested value has in order - a serie's values, a map's key then value per
 /// entry, a struct's name then value per entry - for the caller to write
 /// after it.
 fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec<Child<'value>>) {
@@ -347,12 +347,12 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.push(DataTypeId::Geography.as_u8());
             write_variable(chunk, held.as_bytes());
         }
-        Scalar::List(held)
-        | Scalar::ListView(held)
-        | Scalar::FixedSizeList(held)
-        | Scalar::LargeList(held)
-        | Scalar::LargeListView(held) => {
-            chunk.push(DataTypeId::List.as_u8());
+        Scalar::Serie(held)
+        | Scalar::SerieView(held)
+        | Scalar::FixedSizeSerie(held)
+        | Scalar::LargeSerie(held)
+        | Scalar::LargeSerieView(held) => {
+            chunk.push(DataTypeId::Serie.as_u8());
             write_size(chunk, held.len());
             match held.as_slice() {
                 Some(rows) => children.extend(rows.iter().map(Child::Value)),
@@ -604,7 +604,7 @@ impl<'a> Reader<'a> {
             DataTypeId::Geography => Scalar::Geography(crate::Geography::new(Arc::<[u8]>::from(
                 &*self.variable()?,
             ))?),
-            DataTypeId::List => {
+            DataTypeId::Serie => {
                 let count = self.size()?;
                 let mut values = Vec::with_capacity(count.min(1 << 16));
                 for _ in 0..count {

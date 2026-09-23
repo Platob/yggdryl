@@ -624,16 +624,16 @@ impl JsTerm {
         Self::from_core(self.inner.clone().child(name))
     }
 
-    /// Read a list element by position, counting back from the end when
+    /// Read a serie element by position, counting back from the end when
     /// negative.
     #[napi]
     pub fn at(&self, index: i64) -> Self {
         Self::from_core(self.inner.clone().at(index))
     }
 
-    /// Read a run of list elements, `start` inclusive and `end` exclusive;
+    /// Read a run of serie elements, `start` inclusive and `end` exclusive;
     /// either bound counts back from the end when negative, and an absent
-    /// one is the list's own edge.
+    /// one is the serie's own edge.
     #[napi]
     pub fn slice(&self, start: Option<i64>, end: Option<i64>) -> Self {
         Self::from_core(self.inner.clone().slice(start, end))

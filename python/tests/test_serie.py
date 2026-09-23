@@ -27,15 +27,15 @@ from yggdryl import (
     DataType,
     Field,
     IOBase,
-    FixedSizeListSerie,
-    LargeListSerie,
-    LargeListViewSerie,
-    ListSerie,
-    ListViewSerie,
+    FixedSizeSerieSerie,
+    LargeSerieSerie,
+    LargeSerieViewSerie,
     MapSerie,
     Scalar,
     Serie,
     SerieReader,
+    SerieSerie,
+    SerieViewSerie,
     StructSerie,
 )
 
@@ -68,7 +68,7 @@ class TestConstruction:
         assert type(column) is Serie
         assert column.is_column
         assert column.field == price()
-        assert column.dtype == DataType("list<item: int64 not null>")
+        assert column.dtype == DataType("serie<item: int64 not null>")
         assert column.as_py() == [125, 126]
 
     def test_each_constructor_names_the_column_it_builds(self) -> None:
@@ -374,20 +374,20 @@ class TestWrites:
 
     def test_a_write_keeps_the_leaf_class(self) -> None:
         legs = Serie.from_arrow_array(pa.array([[1, 2], [3]], pa.list_(pa.int64())))
-        assert isinstance(legs, ListSerie)
+        assert isinstance(legs, SerieSerie)
         legs.push([4, 5, 6])
         legs[0] = []
         assert legs.offsets == [0, 0, 1, 4]
         assert legs.as_py() == [[], [3], [4, 5, 6]]
-        assert type(copy.copy(legs)) is ListSerie
-        assert type(pickle.loads(pickle.dumps(legs))) is ListSerie
+        assert type(copy.copy(legs)) is SerieSerie
+        assert type(pickle.loads(pickle.dumps(legs))) is SerieSerie
 
 
 class TestScalar:
     def test_a_scalar_sequence_holds_a_serie_and_a_serie_is_a_scalar(self) -> None:
         column = Serie.from_scalars(price(), [1, 2])
         value = column.into_scalar()
-        assert value.kind == "list"
+        assert value.kind == "serie"
         assert value.as_serie() == column
         assert Scalar.from_(column) == value
         assert Scalar.from_(1).as_serie() is None
@@ -396,10 +396,10 @@ class TestScalar:
 
 
 class TestNested:
-    def test_each_list_layout_is_its_own_class_and_lends_its_cut(self) -> None:
+    def test_each_serie_layout_is_its_own_class_and_lends_its_cut(self) -> None:
         rows = [[1, 2], None, [3]]
         legs = Serie.from_arrow_array(pa.array(rows, pa.list_(pa.int64())))
-        assert isinstance(legs, ListSerie) and isinstance(legs, Serie)
+        assert isinstance(legs, SerieSerie) and isinstance(legs, Serie)
         assert legs.offsets == [0, 2, 2, 3]
         assert legs.range(0) == (0, 2)
         assert legs.range(3) is None
@@ -410,21 +410,21 @@ class TestNested:
         assert legs.as_py() == rows
 
         large = Serie.from_arrow_array(pa.array(rows, pa.large_list(pa.int64())))
-        assert isinstance(large, LargeListSerie)
+        assert isinstance(large, LargeSerieSerie)
         assert large.offsets == [0, 2, 2, 3]
         assert large == legs
 
         view = Serie.from_arrow_array(pa.array(rows, pa.list_view(pa.int64())))
-        assert isinstance(view, ListViewSerie)
+        assert isinstance(view, SerieViewSerie)
         assert view.sizes == [2, 0, 1]
         assert view.row(2) == Serie([3])
 
         large_view = Serie.from_arrow_array(pa.array(rows, pa.large_list_view(pa.int64())))
-        assert isinstance(large_view, LargeListViewSerie)
+        assert isinstance(large_view, LargeSerieViewSerie)
         assert large_view.as_py() == rows
 
         fixed = Serie.from_arrow_array(pa.array([[1, 2], [3, 4]], pa.list_(pa.int64(), 2)))
-        assert isinstance(fixed, FixedSizeListSerie)
+        assert isinstance(fixed, FixedSizeSerieSerie)
         assert fixed.width == 2
         assert fixed.range(1) == (2, 4)
         second = fixed.row(1)
@@ -468,14 +468,14 @@ class TestNested:
         assert orders.names == ["id", "legs"]
 
         column = orders.child("legs")
-        assert isinstance(column, ListSerie)
+        assert isinstance(column, SerieSerie)
         records = column.items()
         assert isinstance(records, StructSerie)
         sizes = records.child("sizes")
-        assert isinstance(sizes, ListSerie)
+        assert isinstance(sizes, SerieSerie)
         assert sizes.as_py() == [[100, 200], [], [5]]
-        assert isinstance(orders.get_child_by_path("legs.sizes"), ListSerie)
-        assert [type(child) for child in orders.children()] == [Serie, ListSerie]
+        assert isinstance(orders.get_child_by_path("legs.sizes"), SerieSerie)
+        assert [type(child) for child in orders.children()] == [Serie, SerieSerie]
 
         second = column.row(1)
         assert isinstance(second, StructSerie)
@@ -535,7 +535,7 @@ class TestFrom:
         pinned = Serie.from_(pa.scalar(7, pa.int64()))
         assert len(pinned) == 1
         assert pinned.field == Field("value", "int64", nullable=False)
-        # As a value, one Arrow scalar is its row rather than a list of one.
+        # As a value, one Arrow scalar is its row rather than a serie of one.
         assert Scalar.from_(pa.scalar(7, pa.int64())).as_py() == 7
 
     def test_a_chunked_column_is_combined_rather_than_truncated(self) -> None:
@@ -675,10 +675,10 @@ class TestCrossings:
         rows = Serie.from_(quote_table().to_batches()[0]).into_numpy()
         assert rows[0] == {"symbol": "AAPL", "size": 100}
 
-    def test_a_columnar_scalar_is_a_list_sharing_the_columns_buffers(self) -> None:
+    def test_a_columnar_scalar_is_a_serie_sharing_the_columns_buffers(self) -> None:
         array = pa.array([1, 2, 3])
         value = Scalar.from_(array)
-        assert value.kind == "list"
+        assert value.kind == "serie"
         assert value.as_py() == [1, 2, 3]
         held = value.as_serie()
         assert held is not None and held.is_column

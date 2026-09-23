@@ -311,7 +311,7 @@ const internalDtypeNames = new Set([
   '_simple',
   '_temporal',
   '_decimal',
-  '_list',
+  '_serie',
   '_fromFields',
   '_union',
   '_variant',
@@ -556,7 +556,7 @@ const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),
   decimal: NativeDataType._decimal.bind(NativeDataType),
-  list: NativeDataType._list.bind(NativeDataType),
+  serie: NativeDataType._serie.bind(NativeDataType),
   fromFields: NativeDataType._fromFields.bind(NativeDataType),
   union: NativeDataType._union.bind(NativeDataType),
   variant: NativeDataType._variant.bind(NativeDataType),
@@ -1223,13 +1223,13 @@ function nativeBatchReader(reader, label) {
   )
 }
 
-// The scalar kinds a list layout reports, each read by position.
-const LIST_KINDS = new Set([
-  'list',
-  'list_view',
-  'fixed_size_list',
-  'large_list',
-  'large_list_view',
+// The scalar kinds a serie layout reports, each read by position.
+const SERIE_KINDS = new Set([
+  'serie',
+  'serie_view',
+  'fixed_size_serie',
+  'large_serie',
+  'large_serie_view',
 ])
 
 Object.defineProperties(Scalar.prototype, {
@@ -1258,7 +1258,7 @@ Object.defineProperties(Scalar.prototype, {
   get: {
     configurable: true,
     value(key) {
-      if (LIST_KINDS.has(this.kind)) {
+      if (SERIE_KINDS.has(this.kind)) {
         if (!Number.isSafeInteger(key) || key < 0) {
           throw new TypeError(
             'sequence keys must be non-negative safe integers',
@@ -1451,19 +1451,19 @@ function serieLeafClass(name) {
   return LeafClass
 }
 
-const ListSerie = serieLeafClass('ListSerie')
-const LargeListSerie = serieLeafClass('LargeListSerie')
-const ListViewSerie = serieLeafClass('ListViewSerie')
-const LargeListViewSerie = serieLeafClass('LargeListViewSerie')
-const FixedSizeListSerie = serieLeafClass('FixedSizeListSerie')
+const SerieSerie = serieLeafClass('SerieSerie')
+const LargeSerieSerie = serieLeafClass('LargeSerieSerie')
+const SerieViewSerie = serieLeafClass('SerieViewSerie')
+const LargeSerieViewSerie = serieLeafClass('LargeSerieViewSerie')
+const FixedSizeSerieSerie = serieLeafClass('FixedSizeSerieSerie')
 const MapSerie = serieLeafClass('MapSerie')
 const StructSerie = serieLeafClass('StructSerie')
 const serieLeafPrototypes = Object.freeze({
-  list: ListSerie.prototype,
-  largeList: LargeListSerie.prototype,
-  listView: ListViewSerie.prototype,
-  largeListView: LargeListViewSerie.prototype,
-  fixedSizeList: FixedSizeListSerie.prototype,
+  serie: SerieSerie.prototype,
+  largeSerie: LargeSerieSerie.prototype,
+  serieView: SerieViewSerie.prototype,
+  largeSerieView: LargeSerieViewSerie.prototype,
+  fixedSizeSerie: FixedSizeSerieSerie.prototype,
   map: MapSerie.prototype,
   struct: StructSerie.prototype,
 })
@@ -1524,17 +1524,17 @@ function leafVerb(name) {
   }
 }
 
-Object.defineProperties(ListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
-Object.defineProperties(LargeListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(SerieSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(LargeSerieSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
 Object.defineProperties(
-  ListViewSerie.prototype,
+  SerieViewSerie.prototype,
   leafVerbs(['offsets', 'sizes', 'range', 'row']),
 )
 Object.defineProperties(
-  LargeListViewSerie.prototype,
+  LargeSerieViewSerie.prototype,
   leafVerbs(['offsets', 'sizes', 'range', 'row']),
 )
-Object.defineProperties(FixedSizeListSerie.prototype, leafVerbs(['width', 'range', 'row']))
+Object.defineProperties(FixedSizeSerieSerie.prototype, leafVerbs(['width', 'range', 'row']))
 Object.defineProperties(
   MapSerie.prototype,
   leafVerbs(['entries', 'keys', 'values', 'offsets', 'keysSorted', 'range', 'row']),
@@ -1845,11 +1845,11 @@ Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
 binding.Serie = Serie
 binding.SerieReader = SerieReader
 binding.ArrowCastPlan = ArrowCastPlan
-binding.ListSerie = ListSerie
-binding.LargeListSerie = LargeListSerie
-binding.ListViewSerie = ListViewSerie
-binding.LargeListViewSerie = LargeListViewSerie
-binding.FixedSizeListSerie = FixedSizeListSerie
+binding.SerieSerie = SerieSerie
+binding.LargeSerieSerie = LargeSerieSerie
+binding.SerieViewSerie = SerieViewSerie
+binding.LargeSerieViewSerie = LargeSerieViewSerie
+binding.FixedSizeSerieSerie = FixedSizeSerieSerie
 binding.MapSerie = MapSerie
 binding.StructSerie = StructSerie
 

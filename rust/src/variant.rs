@@ -36,7 +36,7 @@
 //! | every byte layout, and a geometry or geography's WKB | `binary` | `binary` |
 //! | `duration32`, `duration64` | `string`, the ISO-8601 spelling | `utf8` |
 //! | `interval` | the JSON codec's number or array | that shape |
-//! | a list | `array` | a list |
+//! | a serie | `array` | a serie |
 //! | a struct, and a mapping whose keys are text | `object` | a struct |
 //!
 //! A decimal past thirty-eight digits, a time whose count is not a whole
@@ -557,11 +557,11 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
         return Err(refuse(0, "a value nested deeper than the parse limit"));
     }
     match value {
-        Scalar::List(held)
-        | Scalar::ListView(held)
-        | Scalar::FixedSizeList(held)
-        | Scalar::LargeList(held)
-        | Scalar::LargeListView(held) => {
+        Scalar::Serie(held)
+        | Scalar::SerieView(held)
+        | Scalar::FixedSizeSerie(held)
+        | Scalar::LargeSerie(held)
+        | Scalar::LargeSerieView(held) => {
             for item in held.iter() {
                 collect_keys(&item, depth + 1, keys)?;
             }
@@ -883,11 +883,11 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Timezone(held) => write_text(out, held.as_str())?,
         Scalar::MimeType(held) => write_text(out, held.as_str())?,
         Scalar::MediaType(held) => write_text(out, &held.to_string())?,
-        Scalar::List(held)
-        | Scalar::ListView(held)
-        | Scalar::FixedSizeList(held)
-        | Scalar::LargeList(held)
-        | Scalar::LargeListView(held) => write_array(held.iter(), keys, depth, out)?,
+        Scalar::Serie(held)
+        | Scalar::SerieView(held)
+        | Scalar::FixedSizeSerie(held)
+        | Scalar::LargeSerie(held)
+        | Scalar::LargeSerieView(held) => write_array(held.iter(), keys, depth, out)?,
         Scalar::Struct(held) => {
             let entries: Vec<(&str, &Scalar)> = held
                 .as_map()

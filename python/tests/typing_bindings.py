@@ -27,13 +27,12 @@ from yggdryl import (
     Expression,
     Field,
     Filter,
-    FixedSizeListField,
+    FixedSizeSerieField,
     GeographyField,
     GeometryField,
     IOBase,
     Int32Field,
     IsinCodeField,
-    ListField,
     MediaType,
     MicCodeField,
     MimeType,
@@ -47,6 +46,7 @@ from yggdryl import (
     SedolCodeField,
     Selector,
     Serie,
+    SerieField,
     SerieReader,
     StringField,
     Term,
@@ -332,9 +332,9 @@ typed_bit_cast_array: pa.Array = Serie.from_arrow_array(
     pa.array([2**32 - 1], type=pa.uint32()), typed_id, representation="bits"
 ).into_arrow_array()
 typed_clock: TimeField = yggdryl.time("clock", "microseconds", nullable=False)
-typed_ids: ListField[int] = yggdryl.list("ids", typed_id)
+typed_ids: SerieField[int] = yggdryl.serie("ids", typed_id)
 nullable_item: Int32Field = yggdryl.int32("item")
-typed_fixed: FixedSizeListField[int] = yggdryl.fixed_size_list(
+typed_fixed: FixedSizeSerieField[int] = yggdryl.fixed_size_serie(
     "fixed", nullable_item, 2, nullable=False
 )
 typed_fixed_default_scalar: Scalar = typed_fixed.default_scalar()
@@ -1639,7 +1639,7 @@ fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 fix_counter: Field = Field("nopartyids", "int32")
 fix_counter.fix.tag = 453
 fix_component: Field = Field("party", DataType.from_fields([fix_field]), nullable=False)
-fix_group: Field = yggdryl.list("parties", fix_component)
+fix_group: Field = yggdryl.serie("parties", fix_component)
 fix_group.fix.counter = 453
 fix_group.fix.component = "party"
 fix_reference: Field = Field("partyid", "null")
@@ -1897,7 +1897,7 @@ serie_arrow: pa.Array = serie_column.into_arrow_array()
 serie_rows: list[Scalar] = serie_column.rows()
 serie_field: Field | None = serie_column.field
 serie_legs = yggdryl.Serie.from_arrow_array(pa.array([[1, 2], [3]], pa.list_(pa.int64())))
-assert isinstance(serie_legs, yggdryl.ListSerie)
+assert isinstance(serie_legs, yggdryl.SerieSerie)
 serie_offsets: list[int] = serie_legs.offsets
 serie_leg: yggdryl.Serie | None = serie_legs.row(0)
 serie_range: tuple[int, int] | None = serie_legs.range(1)

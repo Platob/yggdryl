@@ -1619,7 +1619,7 @@ field_leaves! {
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
     [Url, Urn] => UriField / UriType,
-    [List, ListView, FixedSizeList, LargeList, LargeListView] => SerieField / SerieType,
+    [Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView] => SerieField / SerieType,
     [Struct] => StructField / StructType,
     [Union] => UnionField / UnionType,
     [Dictionary] => EnumField / EnumType,
@@ -1709,7 +1709,7 @@ impl Field {
     /// field identifier.
     ///
     /// The walk is over every child a datatype has - struct and union members,
-    /// a list's item, a map's entries, a run-end layout's two - because an
+    /// a serie's item, a map's entries, a run-end layout's two - because an
     /// identifier is unique across a whole schema and not only across one
     /// level of it.
     ///
@@ -1720,7 +1720,7 @@ impl Field {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut schema = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
+    ///     DataType::serie(DataType::utf8().nullable_field("item")).nullable_field("tags"),
     /// ])?)
     /// .required_field("row");
     ///

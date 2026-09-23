@@ -54,11 +54,11 @@ function datatypeFixtures() {
     ['utf8', fields.utf8('value')],
     ['large_utf8', fields.largeUtf8('value')],
     ['utf8_view', fields.utf8View('value')],
-    ['list', fields.list('value', item)],
-    ['list_view', fields.listView('value', item)],
-    ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
-    ['large_list', fields.largeList('value', item)],
-    ['large_list_view', fields.largeListView('value', item)],
+    ['serie', fields.serie('value', item)],
+    ['serie_view', fields.serieView('value', item)],
+    ['fixed_size_serie', fields.fixedSizeSerie('value', item, 3)],
+    ['large_serie', fields.largeSerie('value', item)],
+    ['large_serie_view', fields.largeSerieView('value', item)],
     ['struct', fields.struct('value', [item])],
     ['union', fields.union('value', [[3, item]], 'dense')],
     ['dictionary', fields.dictionary('value', 'int16', 'utf8')],
@@ -111,11 +111,11 @@ const DATATYPE_KINDS = new Map(
     bytes: ['binary', 'fixed_size_binary', 'large_binary', 'binary_view'],
     text: ['utf8', 'large_utf8', 'utf8_view'],
     nested: [
-      'list',
-      'list_view',
-      'fixed_size_list',
-      'large_list',
-      'large_list_view',
+      'serie',
+      'serie_view',
+      'fixed_size_serie',
+      'large_serie',
+      'large_serie_view',
       'struct',
       'union',
       'map',
@@ -173,10 +173,10 @@ test('all 42 datatypes use canonical schema-directed JavaScript defaults', () =>
   for (const id of ['utf8', 'large_utf8', 'utf8_view', 'dictionary', 'run_end_encoded']) {
     assert.equal(defaults.get(id), '', id)
   }
-  for (const id of ['list', 'list_view', 'large_list', 'large_list_view']) {
+  for (const id of ['serie', 'serie_view', 'large_serie', 'large_serie_view']) {
     assert.deepEqual(defaults.get(id), [], id)
   }
-  assert.deepEqual(defaults.get('fixed_size_list'), [0, 0, 0])
+  assert.deepEqual(defaults.get('fixed_size_serie'), [0, 0, 0])
 
   // A struct value is one ordered positional sequence, one slot per child.
   assert.deepEqual(defaults.get('struct'), [0])
@@ -234,7 +234,7 @@ test('hint-only calls skip default value projection', () => {
 
     const { fields } = require(path.join(packagePath, 'binding.js'))
     const huge = fields.fixedSizeBinary('huge', 67_108_865, { nullable: true })
-    const repeated = fields.fixedSizeList(
+    const repeated = fields.fixedSizeSerie(
       'repeated',
       fields.int32('item'),
       500_000,
@@ -359,7 +359,7 @@ test('deep collection defaults project every nested Struct slot', () => {
     nullable: false,
     metadata: { logical: 'item' },
   })
-  const fixed = fields.fixedSizeList('items', item, 3, { nullable: false })
+  const fixed = fields.fixedSizeSerie('items', item, 3, { nullable: false })
   const first = fixed.defaultJSValue()
   const second = fixed.defaultJSValue()
 
@@ -372,7 +372,7 @@ test('deep collection defaults project every nested Struct slot', () => {
 
 test('mutable default containers are fresh on every projection', () => {
   const binary = fields.fixedSizeBinary('data', 2).dtype
-  const list = fields.list('items', fields.int32('item')).dtype
+  const serie = fields.serie('items', fields.int32('item')).dtype
   const map = fields.mapOf('mapping', 'utf8', 'int32').dtype
   const struct = fields.struct('payload', [
     fields.int32('id', { nullable: false }),
@@ -380,18 +380,18 @@ test('mutable default containers are fresh on every projection', () => {
 
   const firstBinary = binary.defaultJSValue()
   const secondBinary = binary.defaultJSValue()
-  const firstList = list.defaultJSValue()
-  const secondList = list.defaultJSValue()
+  const firstSerie = serie.defaultJSValue()
+  const secondSerie = serie.defaultJSValue()
   const firstMap = map.defaultJSValue()
   const secondMap = map.defaultJSValue()
   assert.notEqual(firstBinary, secondBinary)
-  assert.notEqual(firstList, secondList)
+  assert.notEqual(firstSerie, secondSerie)
   assert.notEqual(firstMap, secondMap)
   firstBinary[0] = 9
-  firstList.push(1)
+  firstSerie.push(1)
   firstMap.set('changed', 1)
   assert.deepEqual(secondBinary, Buffer.alloc(2))
-  assert.deepEqual(secondList, [])
+  assert.deepEqual(secondSerie, [])
   assert.equal(secondMap.size, 0)
 
   const first = struct.defaultJSValue()
@@ -529,7 +529,7 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
   )
   assert.equal(arrowDefault(fields.utf8View('utf8_view', required)), '')
   assert.equal(
-    arrowDefault(fields.largeList('large_list', fields.int32('item'), required))
+    arrowDefault(fields.largeSerie('large_serie', fields.int32('item'), required))
       .length,
     0,
   )
@@ -551,13 +551,13 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
     0,
   )
   assert.equal(
-    arrowDefault(fields.list('items', fields.int32('item'), required)).length,
+    arrowDefault(fields.serie('items', fields.int32('item'), required)).length,
     0,
   )
   assert.notEqual(arrowDefault(fields.decimal256('wide', 76, required)), null)
   assert.notEqual(arrowDefault(fields.struct('empty', [], required)), null)
   assert.equal(
-    arrowDefault(fields.fixedSizeList('empty', fields.int32('item'), 0, required))
+    arrowDefault(fields.fixedSizeSerie('empty', fields.int32('item'), 0, required))
       .length,
     0,
   )
@@ -568,8 +568,8 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
   )
 
   const unsupported = [
-    fields.listView('list_view', fields.int32('item')),
-    fields.largeListView('large_list_view', fields.int32('item')),
+    fields.serieView('serie_view', fields.int32('item')),
+    fields.largeSerieView('large_serie_view', fields.int32('item')),
     fields.runEndEncoded(
       'run_end_encoded',
       fields.int16('run_ends', { nullable: false }),
@@ -591,7 +591,7 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
     [
       fields.uint8('small'),
       fields.largeUtf8('text'),
-      fields.listView('items', fields.float16('item')),
+      fields.serieView('items', fields.float16('item')),
       fields.dictionary('category', 'int8', 'utf8'),
     ],
     { nullable: true, metadata: { owner: 'events' } },

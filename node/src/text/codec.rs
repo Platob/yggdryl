@@ -2176,11 +2176,11 @@ pub(crate) fn value_to_transport(
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => values
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => values
             .iter()
             .map(|value| value_to_transport(&value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
@@ -2242,11 +2242,11 @@ fn struct_transport_with_field(
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values)
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
             if values.len() == fields.len() =>
         {
             fields.iter().zip(values.iter()).collect::<Vec<_>>()
@@ -2339,17 +2339,17 @@ pub(crate) fn value_to_transport_with_field(
         CoreDataType::Struct(structure) => {
             struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
-        sequence_dtype @ (CoreDataType::List(_)
-        | CoreDataType::ListView(_)
-        | CoreDataType::FixedSizeList(..)
-        | CoreDataType::LargeList(_)
-        | CoreDataType::LargeListView(_)) => {
+        sequence_dtype @ (CoreDataType::Serie(_)
+        | CoreDataType::SerieView(_)
+        | CoreDataType::FixedSizeSerie(..)
+        | CoreDataType::LargeSerie(_)
+        | CoreDataType::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
             value
                 .as_serie()
-                .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
+                .ok_or_else(|| napi_error(format!("expected a typed serie, got {}", value.kind())))?
                 .iter()
                 .map(|value| {
                     value_to_transport_with_field(&value, sequence.item(), depth + 1, max_depth)

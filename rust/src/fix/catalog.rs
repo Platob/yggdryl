@@ -429,14 +429,14 @@ pub(super) fn not_scalar(field: &Field) -> Error {
 /// validation and the fold alike.
 fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
     match category {
-        FixCategory::Fields if field.dtype().is_nested() && !is_column_list(field) => {
+        FixCategory::Fields if field.dtype().is_nested() && !is_column_serie(field) => {
             Err(not_scalar(field))
         }
         FixCategory::Components if !matches!(field.dtype(), DataType::Struct(_)) => {
             Err(invalid(field, "a Struct datatype"))
         }
         FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => Err(
-            invalid(field, "a List of non-null Struct occurrences or a Map"),
+            invalid(field, "a Serie of non-null Struct occurrences or a Map"),
         ),
         _ => Ok(()),
     }
@@ -445,7 +445,7 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
 /// A nested field read as one column, or the refusal a nested field that is
 /// no definition and no column earns.
 pub(super) fn column_shape(field: &Field) -> Result<()> {
-    if is_column_list(field) {
+    if is_column_serie(field) {
         Ok(())
     } else {
         Err(not_scalar(field))
@@ -455,16 +455,16 @@ pub(super) fn column_shape(field: &Field) -> Result<()> {
 /// Whether a nested field is one column of this crate's own rather than a
 /// definition.
 ///
-/// A list of non-null scalars - the identities a message descends from, each
+/// A serie of non-null scalars - the identities a message descends from, each
 /// a `Uuid` - is one value a row holds under one name. It is not a repeating
 /// group, because a group's occurrence is a Struct of members a wire states
 /// one tag at a time, and it is not a component.
 ///
 /// Only in this crate's own tag block. A wire tag carries one value, so a
-/// dialect handing the dictionary a list under one is stating a group badly
-/// and is told so; the crate's columns answer no wire tag at all, and a list
+/// dialect handing the dictionary a serie under one is stating a group badly
+/// and is told so; the crate's columns answer no wire tag at all, and a serie
 /// is what `srcuuids` is.
-fn is_column_list(field: &Field) -> bool {
+fn is_column_serie(field: &Field) -> bool {
     let crate_tag = field
         .as_fix()
         .tag()
@@ -475,7 +475,7 @@ fn is_column_list(field: &Field) -> bool {
         return false;
     }
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             !item.is_nullable() && !item.dtype().is_nested()
         }
         _ => false,
@@ -485,7 +485,7 @@ fn is_column_list(field: &Field) -> bool {
 /// The category a nested field's shape names, for a caller handing the
 /// registry a definition without saying which it is.
 ///
-/// A repeating group holds non-null Struct occurrences, in a List or a Map,
+/// A repeating group holds non-null Struct occurrences, in a Serie or a Map,
 /// and every Struct is a component, a message among them
 /// being the component whose `FIX:msgtype` names a wire code.
 /// The shape alone answers; the marker is a property of the component. A
@@ -493,7 +493,7 @@ fn is_column_list(field: &Field) -> bool {
 /// nothing.
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item)
+        DataType::Serie(item) | DataType::LargeSerie(item)
             if !item.is_nullable() && matches!(item.dtype(), DataType::Struct(_)) =>
         {
             Some(FixCategory::Groups)
@@ -518,10 +518,10 @@ fn restates_datatype(occurrence: &DataType, target: &DataType) -> bool {
     }
 }
 
-/// The occurrence a group's list or map holds.
+/// The occurrence a group's serie or map holds.
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => Some(item),
+        DataType::Serie(item) | DataType::LargeSerie(item) => Some(item),
         DataType::Map(map) | DataType::SortedMap(map) => Some(map.entries()),
         _ => None,
     }
@@ -530,8 +530,8 @@ pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
 /// Rebuilds only the occurrence, keeping the group's storage contract.
 fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
     match group.dtype() {
-        DataType::List(_) => Ok(DataType::list(occurrence)),
-        DataType::LargeList(_) => Ok(DataType::large_list(occurrence)),
+        DataType::Serie(_) => Ok(DataType::serie(occurrence)),
+        DataType::LargeSerie(_) => Ok(DataType::large_serie(occurrence)),
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()
@@ -540,7 +540,7 @@ fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
         }
         _ => Err(invalid(
             group,
-            "a List of non-null Struct occurrences or a Map",
+            "a Serie of non-null Struct occurrences or a Map",
         )),
     }
 }
@@ -689,7 +689,10 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?)),
-        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) | DataType::SortedMap(_) => {
+        DataType::Serie(_)
+        | DataType::LargeSerie(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_) => {
             let item = occurrence_of(&field).expect("a group has an occurrence");
             Some(group_dtype(
                 &field,
@@ -898,7 +901,7 @@ impl FixRegistry {
     /// A merge keeps the stored definition's identity, name, tag and every
     /// member it already declares, in its order. An incoming member whose
     /// folded name no stored member carries is appended - for a group, to
-    /// the occurrence Struct inside the List, whose counter and component
+    /// the occurrence Struct inside the Serie, whose counter and component
     /// markers stay; when that occurrence is a component's, the members
     /// belong to the component and are appended there. A member both sides
     /// declare is the stored one, one level deep: its own children are not

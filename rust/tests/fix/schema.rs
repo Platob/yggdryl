@@ -33,7 +33,7 @@ fn column_of(schema: &Field, tag: i32) -> usize {
 /// The `parties` occurrences out of a fixed row.
 ///
 /// The group is reached by its name and not by tag 453, which is the
-/// counter's column: a List group and its counter are two columns.
+/// counter's column: a Serie group and its counter are two columns.
 fn group<'row>(row: &'row Scalar, schema: &Field) -> &'row [Scalar] {
     let at = schema.index_of("parties").expect("a parties column");
     row.as_sequence().expect("a row")[at]
@@ -954,7 +954,7 @@ fn a_group_keeps_the_members_that_read() {
     assert_eq!(members[2].as_i128(), Some(1));
 }
 
-/// The regulatory identifiers are one typed List column beside their FIX
+/// The regulatory identifiers are one typed Serie column beside their FIX
 /// counter, and a projected occurrence leaves no duplicate in the residual.
 #[test]
 fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
@@ -968,8 +968,8 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
     assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());
-    let DataType::List(item) = field.dtype() else {
-        panic!("regulatorytradeids is a List, got {}", field.dtype());
+    let DataType::Serie(item) = field.dtype() else {
+        panic!("regulatorytradeids is a Serie, got {}", field.dtype());
     };
     assert_eq!(item.name(), "regulatorytradeidcomponent");
     let member_names: Vec<_> = item.fields().iter().map(Field::name).collect();
@@ -1034,7 +1034,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
 
     // A venue may reuse the standard counter while packing a proprietary
     // occurrence whose members are not RegulatoryTradeIDGrp members. The
-    // fixed List must not claim that shape: its List and scalar counter stay
+    // fixed Serie must not claim that shape: its Serie and scalar counter stay
     // null together, while the complete group remains in the residual.
     let proprietary = reader
         .sole_line(
@@ -1140,7 +1140,7 @@ fn a_group_column_is_regrouped_by_name_into_the_fixed_row() {
         "the message states its members in another order than the fixed row"
     );
     let mut group = root.fields()[at].clone();
-    group.set_dtype(DataType::list(item.clone())).unwrap();
+    group.set_dtype(DataType::serie(item.clone())).unwrap();
     let mut children = root.fields().to_vec();
     children[at] = group;
     root.set_dtype(

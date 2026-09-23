@@ -36,7 +36,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let deep = |leaf: DataType| {
         let mut dtype = leaf;
         for _ in 0..64 {
-            dtype = DataType::list(Field::new("item", dtype, true));
+            dtype = DataType::serie(Field::new("item", dtype, true));
         }
         Field::new("root", dtype, false)
     };

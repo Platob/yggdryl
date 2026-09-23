@@ -248,7 +248,7 @@ mod families {
         }
 
         let duplicate_metadata = r#"{
-            "type":"list",
+            "type":"serie",
             "field":{
                 "name":"item",
                 "dtype":{"type":"string"},
@@ -427,7 +427,7 @@ mod schemas {
         vec![
             DataType::Int64.required_field("flat"),
             nested,
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([DataType::Int64.required_field("id")])
                     .map(DataType::from)
                     .unwrap()
@@ -947,7 +947,7 @@ metadata: {}
                 .map(DataType::from)
                 .unwrap()
                 .nullable_field("line"),
-            DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
+            DataType::serie(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
         ])
         .map(DataType::from)
         .unwrap()
@@ -962,7 +962,7 @@ order: struct[3], required
   id: int64, required
   line: struct[1], nullable
     price: float64, required
-  tags: list, nullable
+  tags: serie, nullable
     tag: utf8, nullable"
         );
 
@@ -1009,7 +1009,7 @@ order: struct[3], required
 
     #[test]
     fn json_bytes_and_text_carry_the_same_nested_document() {
-        // struct > list > struct > map, so the assertion is about nesting rather
+        // struct > serie > struct > map, so the assertion is about nesting rather
         // than about a flat field.
         let inner = StructType::from_fields([
             DataType::utf8().required_field("sym"),
@@ -1019,7 +1019,7 @@ order: struct[3], required
         .unwrap();
         let row = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::list(inner.nullable_field("item")).nullable_field("levels"),
+            DataType::serie(inner.nullable_field("item")).nullable_field("levels"),
             DataType::map_of(DataType::utf8(), DataType::Int64, true)
                 .unwrap()
                 .nullable_field("tags"),
@@ -1038,7 +1038,7 @@ order: struct[3], required
 
         // Nesting survives, rather than being flattened or stringified.
         let document: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(document["dtype"]["fields"][1]["dtype"]["type"], "list");
+        assert_eq!(document["dtype"]["fields"][1]["dtype"]["type"], "serie");
         assert_eq!(
             document["dtype"]["fields"][1]["dtype"]["field"]["dtype"]["fields"][0]["name"],
             "sym"
@@ -1056,7 +1056,7 @@ order: struct[3], required
     #[test]
     fn every_format_round_trips_the_same_nested_field() {
         let field = StructType::from_fields([
-            DataType::list(DataType::Int64.nullable_field("item")).nullable_field("levels"),
+            DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("levels"),
             StructType::from_fields([DataType::Boolean.required_field("ok")])
                 .map(DataType::from)
                 .unwrap()
@@ -1083,6 +1083,94 @@ order: struct[3], required
         assert_eq!(
             Field::from_value(field.clone().into_value()).unwrap(),
             field
+        );
+    }
+}
+
+mod aliases {
+    use yggdryl::{DataType, Field};
+
+    /// The item every document below declares.
+    fn item() -> Field {
+        DataType::Int64.nullable_field("item")
+    }
+
+    /// A structural datatype document naming one serie layout by `tag`, the
+    /// fixed layout's length beside it.
+    fn document(tag: &str) -> String {
+        let field = r#"{"name":"item","dtype":{"type":"int64"},"nullable":true}"#;
+        if tag.starts_with("fixed_size_") {
+            format!(r#"{{"type":"{tag}","field":{field},"length":3}}"#)
+        } else {
+            format!(r#"{{"type":"{tag}","field":{field}}}"#)
+        }
+    }
+
+    #[test]
+    fn the_list_tags_read_as_the_serie_layouts_and_write_the_serie_tags() {
+        let layouts = [
+            ("list", "serie", DataType::serie(item())),
+            ("list_view", "serie_view", DataType::serie_view(item())),
+            (
+                "fixed_size_list",
+                "fixed_size_serie",
+                DataType::fixed_size_serie(item(), 3).unwrap(),
+            ),
+            ("large_list", "large_serie", DataType::large_serie(item())),
+            (
+                "large_list_view",
+                "large_serie_view",
+                DataType::large_serie_view(item()),
+            ),
+        ];
+        for (legacy, tag, expected) in layouts {
+            // Both doors read the old tag: serde's, which JSON goes through,
+            // and the value conversion YAML and TOML go through.
+            let read = DataType::from_json(&document(legacy))
+                .unwrap_or_else(|error| panic!("{legacy}: {error}"));
+            assert_eq!(read, expected, "{legacy}");
+            let value = yggdryl::json::from_utf8(&document(legacy)).unwrap();
+            assert_eq!(DataType::from_value(value).unwrap(), expected, "{legacy}");
+            // What is written back is the layout's own tag, which reads too.
+            let written: serde_json::Value =
+                serde_json::from_str(&read.clone().into_json().unwrap()).unwrap();
+            assert_eq!(written["type"], tag, "{legacy}");
+            assert_eq!(DataType::from_json(&document(tag)).unwrap(), expected);
+            assert_eq!(
+                DataType::from_value(yggdryl::json::from_utf8(&document(tag)).unwrap()).unwrap(),
+                expected
+            );
+
+            // A field's datatype reads the old tag the same way, through
+            // both doors, and writes the new one.
+            let field_document = format!(
+                r#"{{"name":"legs","dtype":{},"nullable":false}}"#,
+                document(legacy)
+            );
+            let field = Field::from_json(&field_document)
+                .unwrap_or_else(|error| panic!("{legacy}: {error}"));
+            assert_eq!(field, Field::new("legs", expected.clone(), false));
+            assert_eq!(
+                Field::from_value(yggdryl::json::from_utf8(&field_document).unwrap()).unwrap(),
+                field
+            );
+            let written: serde_json::Value =
+                serde_json::from_str(&field.into_json().unwrap()).unwrap();
+            assert_eq!(written["dtype"]["type"], tag, "{legacy}");
+        }
+
+        // Nested, the old tag reads at every depth.
+        let nested = format!(
+            r#"{{"type":"list","field":{{"name":"item","dtype":{},"nullable":true}}}}"#,
+            document("large_list_view")
+        );
+        let expected = DataType::serie(DataType::large_serie_view(item()).nullable_field("item"));
+        assert_eq!(DataType::from_json(&nested).unwrap(), expected);
+        let written = expected.into_json().unwrap();
+        assert!(!written.contains("list"), "{written}");
+        assert!(
+            written.contains(r#""type":"large_serie_view""#),
+            "{written}"
         );
     }
 }

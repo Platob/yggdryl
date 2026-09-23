@@ -1316,9 +1316,9 @@ def test_a_nested_datatype_is_rebuilt_with_replacement_children() -> None:
     with pytest.raises(ValueError):
         struct.with_fields([Field("id", "int32")])
 
-    # A list still holds exactly one item field, and the rebuilt datatype
+    # A serie still holds exactly one item field, and the rebuilt datatype
     # renders as the canonical lossless form the grammar round-trips.
-    widened = DataType("list<int32>").with_fields([Field("item", "int64")])
+    widened = DataType("serie<int32>").with_fields([Field("item", "int64")])
     assert DataType.from_str(str(widened)) == widened
     assert str(widened["item"].dtype) == "int64"
 
@@ -1382,11 +1382,11 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "large_cp1252_view": yggdryl.large_cp1252_view("value"),
         "fixed_cp1252": yggdryl.fixed_cp1252("value", 8),
         "sized_cp1252": yggdryl.sized_cp1252("value", 32),
-        "list": yggdryl.list("value", item),
-        "list_view": yggdryl.list_view("value", item),
-        "fixed_size_list": yggdryl.fixed_size_list("value", item, 3),
-        "large_list": yggdryl.large_list("value", item),
-        "large_list_view": yggdryl.large_list_view("value", item),
+        "serie": yggdryl.serie("value", item),
+        "serie_view": yggdryl.serie_view("value", item),
+        "fixed_size_serie": yggdryl.fixed_size_serie("value", item, 3),
+        "large_serie": yggdryl.large_serie("value", item),
+        "large_serie_view": yggdryl.large_serie_view("value", item),
         "struct": yggdryl.struct("value", [item]),
         "union": yggdryl.union("value", [(3, item)], "dense"),
         "dictionary": yggdryl.dictionary("value", "int16", "utf8"),
@@ -1486,7 +1486,7 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     item.set_dictionary_options(42, True)
     projected_item = item.into_arrow()
 
-    values = yggdryl.list("values", item, metadata={"owner": "events"})
+    values = yggdryl.serie("values", item, metadata={"owner": "events"})
     child = values.dtype[0]
 
     assert child.equals(item)
@@ -1495,6 +1495,79 @@ def test_nested_factories_preserve_exact_child_field_state() -> None:
     assert child.metadata["logical"] == "status"
     assert child.into_arrow().equals(projected_item, check_metadata=True)
     assert values.into_arrow().metadata == {b"owner": b"events"}
+
+
+class _LegacyPickle:
+    """Pickles as exactly the call a release before the serie rename wrote."""
+
+    def __init__(self, call: object, arguments: tuple[object, ...]) -> None:
+        self.call = call
+        self.arguments = arguments
+
+    def __reduce__(self) -> tuple[object, tuple[object, ...]]:
+        return self.call, self.arguments
+
+
+@pytest.mark.parametrize(
+    ("legacy", "canonical", "layout"),
+    [
+        ("list<int64>", "serie<int64>", "serie"),
+        ("list_view<int64>", "serie_view<int64>", "serie_view"),
+        ("fixed_size_list<int64, 3>", "fixed_size_serie<int64, 3>", "fixed_size_serie"),
+        ("large_list<int64>", "large_serie<int64>", "large_serie"),
+        ("large_list_view<int64>", "large_serie_view<int64>", "large_serie_view"),
+    ],
+)
+def test_a_serie_layout_still_reads_the_list_spelling_it_had(
+    legacy: str, canonical: str, layout: str
+) -> None:
+    # The five serie layouts were spelled as Arrow's lists before the rename.
+    # Every door a datatype enters by still reads that spelling as the layout
+    # it named, and every door out renders the serie name.
+    dtype = DataType(legacy)
+    assert dtype == DataType(canonical)
+    assert dtype.id == layout
+    assert str(dtype).startswith(f"{layout}(")
+    assert DataType.from_str(legacy) == dtype
+    assert Field("values", legacy) == Field("values", canonical)
+    assert Field("values", legacy).dtype.id == layout
+
+    # A pickle written before the rename carries the old rendering, and
+    # loads as the same datatype and field.
+    old_text = str(dtype).replace(layout, legacy.split("<")[0], 1)
+    assert old_text != str(dtype)
+    loaded = pickle.loads(pickle.dumps(_LegacyPickle(DataType.from_str, (old_text,))))
+    assert loaded == dtype
+    old_field = str(Field("values", dtype)).replace(layout, legacy.split("<")[0], 1)
+    loaded_field = pickle.loads(
+        pickle.dumps(_LegacyPickle(Field._from_pickle, (old_field, False)))
+    )
+    assert loaded_field == Field("values", dtype)
+
+    # The internal factory door reads either spelling of the layout.
+    item = Field("item", "int64")
+    length = 3 if layout == "fixed_size_serie" else None
+    assert DataType._serie(legacy.split("<")[0], item, length) == dtype
+    assert DataType._serie(layout, item, length) == dtype
+
+
+def test_the_serie_factories_are_the_package_names_for_the_five_layouts() -> None:
+    # `yggdryl.serie` is the factory, as `yggdryl.string` is: the module of
+    # the same name is reached by its import path.
+    item = yggdryl.int64("item", nullable=False)
+    assert callable(yggdryl.serie)
+    assert yggdryl.serie("values", item).dtype == DataType("serie<item: int64 not null>")
+    assert yggdryl.serie("values", item).dtype.id == "serie"
+    assert yggdryl.fixed_size_serie("values", item, 2).dtype.id == "fixed_size_serie"
+    for retired in ("list", "list_view", "fixed_size_list", "large_list", "large_list_view"):
+        assert not hasattr(yggdryl, retired)
+        assert retired not in yggdryl.__all__
+    for retired in ("ListSerie", "ListField", "FixedSizeListSerie", "LargeListViewField"):
+        assert not hasattr(yggdryl, retired)
+    with pytest.raises(TypeError, match="requires a length"):
+        DataType._serie("fixed_size_serie", item)
+    with pytest.raises(ValueError, match="invalid serie kind"):
+        DataType._serie("struct", item)
 
 
 def test_dense_union_factory_is_a_typed_union_alias_with_native_ids() -> None:

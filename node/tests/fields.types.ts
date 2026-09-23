@@ -20,7 +20,7 @@ import {
   type Duration32Field,
   type Duration64Field,
   type Int32Field,
-  type ListField,
+  type SerieField,
   type MapField,
   type MediaTypeField,
   type MimeTypeField,
@@ -38,7 +38,7 @@ const idKind: 'integer' = id.dtype.kind
 const idId: 'int32' = id.dtype.id
 // The exported aliases describe non-null fields, so a factory call that wants
 // one has to say so now that the factories default to nullable.
-const ids: ListField<number> = fields.list('ids', id, { nullable: false })
+const ids: SerieField<number> = fields.serie('ids', id, { nullable: false })
 const eventTime: DateTime64Field = fields.datetime64(
   'event_time',
   'us',
@@ -161,7 +161,7 @@ void region
 const clockType: DataType = DataType.time('milliseconds')
 const generic: Field = ids
 const genericItem = new Field('item', 'int32', false)
-const genericItems: ListField<unknown> = fields.list(
+const genericItems: SerieField<unknown> = fields.serie(
   'generic_items',
   genericItem,
   { nullable: false },

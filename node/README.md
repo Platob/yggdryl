@@ -266,12 +266,15 @@ Media pair updates are atomic and cache-aware.
 const { DataType, Field, fields } = require('yggdryl')
 
 const id = fields.int32('id', { nullable: false })
-const tags = fields.list('tags', fields.utf8('item'))
+const tags = fields.serie('tags', fields.utf8('item'))
 const row = DataType.fromFields([id, tags])
 
 console.assert(id instanceof Field)
-console.assert(tags.dtype.kind === 'list')
-console.assert(row.kind === 'struct')
+console.assert(tags.dtype.id === 'serie')
+console.assert(tags.dtype.kind === 'nested')
+console.assert(row.id === 'struct')
+// The list spellings the serie layouts had before still read as them.
+console.assert(DataType.from('list<utf8>').equals(DataType.from('serie<utf8>')))
 console.assert(id.showDiff(id) === '✓ equal')
 console.assert([...id.showDiffs(fields.int64('id'))].length > 0)
 ```

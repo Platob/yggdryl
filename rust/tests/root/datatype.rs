@@ -163,11 +163,11 @@ mod arrow {
             DataType::utf8(),
             DataType::large_utf8(),
             DataType::utf8_view(),
-            DataType::list(item()),
-            DataType::list_view(item()),
-            DataType::fixed_size_list(item(), 4).unwrap(),
-            DataType::large_list(item()),
-            DataType::large_list_view(item()),
+            DataType::serie(item()),
+            DataType::serie_view(item()),
+            DataType::fixed_size_serie(item(), 4).unwrap(),
+            DataType::large_serie(item()),
+            DataType::large_serie_view(item()),
             DataType::from(
                 StructType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
             ),
@@ -240,7 +240,7 @@ mod arrow {
             for held in [
                 dtype.clone(),
                 DataType::dictionary(DataType::Int32, dtype.clone()).unwrap(),
-                DataType::list(Field::new("item", dtype.clone(), true)),
+                DataType::serie(Field::new("item", dtype.clone(), true)),
                 DataType::from(
                     StructType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
                 ),
@@ -346,7 +346,9 @@ mod arrow {
             assert!(invalid.into_json().is_err());
         }
         assert!(DataType::fixed_binary(0).is_err());
-        assert!(DataType::fixed_size_list(Field::new("item", DataType::utf8(), true), -1).is_err());
+        assert!(
+            DataType::fixed_size_serie(Field::new("item", DataType::utf8(), true), -1).is_err()
+        );
         assert!(DataType::decimal128(0, 0).is_err());
         assert!(DataType::decimal128(5, 6).is_err());
         assert!(DataType::dictionary(DataType::Float64, DataType::utf8()).is_err());
@@ -421,14 +423,14 @@ mod arrow {
         }
 
         let item = Field::new("item", DataType::utf8(), true);
-        let invalid_list = DataType::FixedSizeList(Arc::new(item.clone()), -1);
+        let invalid_serie = DataType::FixedSizeSerie(Arc::new(item.clone()), -1);
         for error in [
-            DataType::fixed_size_list(item, -1).unwrap_err(),
-            invalid_list.validate().unwrap_err(),
-            invalid_list.clone().into_arrow_datatype().unwrap_err(),
-            invalid_list.into_arrow_datatype_ffi().unwrap_err(),
+            DataType::fixed_size_serie(item, -1).unwrap_err(),
+            invalid_serie.validate().unwrap_err(),
+            invalid_serie.clone().into_arrow_datatype().unwrap_err(),
+            invalid_serie.into_arrow_datatype_ffi().unwrap_err(),
         ] {
-            assert_invalid(error, "FixedSizeList", "length must be non-negative: -1");
+            assert_invalid(error, "FixedSizeSerie", "length must be non-negative: -1");
         }
     }
 
@@ -678,11 +680,11 @@ mod families {
             DataType::utf8(),
             DataType::large_utf8(),
             DataType::utf8_view(),
-            DataType::list(item()),
-            DataType::list_view(item()),
-            DataType::fixed_size_list(item(), 4).unwrap(),
-            DataType::large_list(item()),
-            DataType::large_list_view(item()),
+            DataType::serie(item()),
+            DataType::serie_view(item()),
+            DataType::fixed_size_serie(item(), 4).unwrap(),
+            DataType::large_serie(item()),
+            DataType::large_serie_view(item()),
             DataType::from(
                 StructType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
             ),

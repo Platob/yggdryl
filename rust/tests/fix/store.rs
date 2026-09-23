@@ -116,7 +116,7 @@ fn catalog() -> FixRegistry {
     // the message below takes the stored group rather than the field it was
     // built from.
     let component = registry.field_by_name("Party").unwrap().clone();
-    let mut group = DataType::list(component).nullable_field("Parties");
+    let mut group = DataType::serie(component).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group.as_fix_mut().set_component("Party").unwrap();
     registry.insert(group).unwrap();
@@ -502,8 +502,8 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
     let group = Field::from_value(record["groups"].get(0).unwrap().into_owned()).unwrap();
-    let DataType::List(item) = group.dtype() else {
-        panic!("the native group list")
+    let DataType::Serie(item) = group.dtype() else {
+        panic!("the native group serie")
     };
     assert_eq!(item.dtype(), &DataType::Null);
     assert_eq!(item.as_fix().component(), Some("party"));
@@ -768,8 +768,8 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert!(!root.join("messages").exists());
     let document =
         Field::from_json_bytes(&std::fs::read(root.join("groups/Parties.json")).unwrap()).unwrap();
-    let DataType::List(item) = document.dtype() else {
-        panic!("a group list")
+    let DataType::Serie(item) = document.dtype() else {
+        panic!("a group serie")
     };
     assert_eq!(item.dtype(), &DataType::Null);
     assert_eq!(item.as_fix().component(), Some("party"));
@@ -1317,8 +1317,8 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     let group = registry.field_by_name("Parties").unwrap();
-    let DataType::List(item) = group.dtype() else {
-        panic!("parties list")
+    let DataType::Serie(item) = group.dtype() else {
+        panic!("parties serie")
     };
     assert_eq!(item.name(), "party");
     assert_eq!(
@@ -1470,8 +1470,8 @@ fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
         assert_eq!(set.code_name("C"), Some("Client"), "{path}");
     }
     let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
-    let DataType::List(item) = group.dtype() else {
-        panic!("the resolved group list")
+    let DataType::Serie(item) = group.dtype() else {
+        panic!("the resolved group serie")
     };
     assert_eq!(
         target
@@ -1570,12 +1570,12 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .set_description("A changed description")
         .unwrap();
     registry.update(component).unwrap();
-    let DataType::List(item) = registry
+    let DataType::Serie(item) = registry
         .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap()
         .dtype()
     else {
-        panic!("a group list")
+        panic!("a group serie")
     };
     assert_eq!(item.as_fix().description(), Some("A changed description"));
     let mut scalar = registry.field(448).unwrap().clone();
@@ -1662,8 +1662,8 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
-    let DataType::List(item) = group.dtype() else {
-        panic!("a group list")
+    let DataType::Serie(item) = group.dtype() else {
+        panic!("a group serie")
     };
     assert_eq!(item.name(), "Party");
     assert_eq!(item.as_fix().description(), Some("Replaced metadata"));
@@ -1955,7 +1955,7 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
 }
 
 #[test]
-fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
+fn message_group_paths_cross_serie_items_and_refuse_repeated_contexts() {
     let mut registry = catalog();
     registry
         .insert(tagged("NoHops", 627, DataType::Int32))
@@ -1967,7 +1967,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .unwrap()
         .required_field("Hop");
     registry.insert(hop.clone()).unwrap();
-    let mut hops = DataType::large_list(hop).nullable_field("Hops");
+    let mut hops = DataType::large_serie(hop).nullable_field("Hops");
     hops.as_fix_mut().set_counter(627).unwrap();
     hops.as_fix_mut().set_component("Hop").unwrap();
     registry.insert(hops).unwrap();
@@ -2344,7 +2344,7 @@ mod committed {
     }
 
     /// The registry's fields of one category: a definition is filed by the
-    /// shape it has - a Struct is a component, a List or a Map a group - and
+    /// shape it has - a Struct is a component, a Serie or a Map a group - and
     /// everything else is a wire field.
     fn definitions(registry: &FixRegistry, category: FixCategory) -> impl Iterator<Item = &Field> {
         registry
@@ -2582,8 +2582,8 @@ mod committed {
         let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
         assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
         assert_ne!(derived, 453);
-        let DataType::List(item) = parties.dtype() else {
-            panic!("a list, got {}", parties.dtype());
+        let DataType::Serie(item) = parties.dtype() else {
+            panic!("a serie, got {}", parties.dtype());
         };
         assert_eq!(item.name(), "party");
         assert_eq!(item.as_fix().component(), Some("party"));
@@ -2700,7 +2700,7 @@ mod committed {
         fn walk(field: &Field, out: &mut Vec<Field>) {
             out.push(field.clone());
             match field.dtype() {
-                DataType::List(item) | DataType::LargeList(item) => walk(item, out),
+                DataType::Serie(item) | DataType::LargeSerie(item) => walk(item, out),
                 DataType::Struct(fields) => {
                     for held in fields.iter() {
                         walk(held, out);
@@ -2940,7 +2940,7 @@ mod committed {
     /// uuid became one parameter-free datatype again: a uuid column hashes a
     /// variant with nothing in it, where it used to hash the leaf that said which
     /// RFC 9562 versions it admitted. It last moved when the crate's own block
-    /// gained `srcuuids`: a twentieth definition, the list of the elements a
+    /// gained `srcuuids`: a twentieth definition, the serie of the elements a
     /// message was read from, hashes beside the nineteen and as a member of the
     /// fixed row. It last moved when the datatype identifiers were laid out by
     /// family and a mapping's entries became the plain struct of two children:

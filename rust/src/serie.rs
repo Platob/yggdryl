@@ -4,7 +4,7 @@
 //! as Arrow's layouts are. [`DataType`] says what shape a value has,
 //! [`Field`] says whose it is and whether a row may be absent, [`Scalar`] is
 //! one value, and a [`Serie`] is many of them. It is what the sequence
-//! family holds: `Scalar::List(Serie)`, so there is one type for "many
+//! family holds: `Scalar::Serie(Serie)`, so there is one type for "many
 //! values" and not two.
 //!
 //! | side | root | trait | widen | narrow |
@@ -33,7 +33,7 @@
 //!
 //! The root is flat, one variant per storage layout, spelled as the leaf that
 //! holds it - `Int8`, `Decimal128`, `Time32Second`, `DurationMillisecond`,
-//! `Utf8String`, `List`, `Map`, `SortedMap` - so a column's variant is the
+//! `Utf8String`, `Serie`, `Map`, `SortedMap` - so a column's variant is the
 //! buffers it holds and nothing wraps them. A layout serves every datatype
 //! whose Arrow storage it is: `Utf8String` holds each string leaf laid out as
 //! UTF-8, `DurationSecond` both duration widths, so which datatype a column
@@ -50,7 +50,7 @@
 //! | `Time32Second` .. `Time64Nanosecond`, `DateTimeSecond` .. `DateTimeNanosecond`, `DurationSecond` .. `DurationNanosecond`, `IntervalYearMonth` .. `IntervalMonthDayNano` | [`Time32SecondSerie`] .. [`IntervalMonthDayNanoSerie`] | the counts, at the unit the leaf is |
 //! | `Utf8String` .. `FixedString` | [`Utf8StringSerie`] .. [`FixedStringSerie`] | the offsets and the character bytes |
 //! | `Binary` .. `FixedBytes` | [`BinarySerie`] .. [`FixedBytesSerie`] | the offsets and the payload bytes |
-//! | `List` .. `LargeListView`, `FixedSizeList` | [`ListSerie`] .. [`FixedSizeListSerie`] | the offsets, and the item column under them |
+//! | `Serie` .. `LargeSerieView`, `FixedSizeSerie` | [`SerieSerie`] .. [`FixedSizeSerieSerie`] | the offsets, and the item column under them |
 //! | `Dictionary` | [`DictionarySerie`] | the key column and the values column |
 //! | `Struct` | [`StructSerie`] | one child [`Serie`] per child field |
 //! | `Map`, `SortedMap` | [`MapSerie`] | the offsets, and the entries column under them |
@@ -210,11 +210,11 @@ mod bytes;
 mod datatype;
 mod enums;
 pub(crate) mod layout;
-mod list;
 mod mapping;
 mod null;
 mod primitive;
 mod runend;
+mod sequence;
 mod string;
 mod structure;
 mod union;
@@ -228,10 +228,6 @@ pub use bytes::{
 };
 pub use datatype::{Run, SerieType};
 pub use enums::DictionarySerie;
-pub use list::{
-    FixedSizeListSerie, LargeListSerie, LargeListViewSerie, ListLeaf, ListSerie, ListViewSerie,
-    OffsetListSerie, OffsetListViewSerie,
-};
 pub use mapping::MapSerie;
 pub use null::NullSerie;
 pub use primitive::{
@@ -245,6 +241,10 @@ pub use primitive::{
     UInt32Serie, UInt64Serie,
 };
 pub use runend::RunEndEncodedSerie;
+pub use sequence::{
+    FixedSizeSerieSerie, LargeSerieSerie, LargeSerieViewSerie, OffsetLeaf, OffsetSerie,
+    OffsetViewSerie, SerieSerie, SerieViewSerie,
+};
 pub use string::{
     BinaryStringSerie, BinaryViewStringSerie, FixedStringSerie, LargeBinaryStringSerie,
     LargeUtf8StringSerie, Utf8StringSerie, Utf8ViewStringSerie,
@@ -554,16 +554,16 @@ pub enum Serie {
     FIGICode(Arc<Utf8StringSerie>),
     /// A column of UUIDs, sixteen fixed bytes each.
     Uuid(Arc<FixedBytesSerie>),
-    /// A column of lists: 32-bit offsets over one item column.
-    List(Arc<ListSerie>),
-    /// A column of list views: 32-bit offsets and sizes over one item column.
-    ListView(Arc<ListViewSerie>),
-    /// A column of fixed-size lists: `width` items per row.
-    FixedSizeList(Arc<FixedSizeListSerie>),
-    /// A column of large lists: 64-bit offsets over one item column.
-    LargeList(Arc<LargeListSerie>),
-    /// A column of large list views: 64-bit offsets and sizes over one item column.
-    LargeListView(Arc<LargeListViewSerie>),
+    /// A column of series: 32-bit offsets over one item column.
+    Serie(Arc<SerieSerie>),
+    /// A column of serie views: 32-bit offsets and sizes over one item column.
+    SerieView(Arc<SerieViewSerie>),
+    /// A column of fixed-size series: `width` items per row.
+    FixedSizeSerie(Arc<FixedSizeSerieSerie>),
+    /// A column of large series: 64-bit offsets over one item column.
+    LargeSerie(Arc<LargeSerieSerie>),
+    /// A column of large serie views: 64-bit offsets and sizes over one item column.
+    LargeSerieView(Arc<LargeSerieViewSerie>),
     /// A column of records, each child a serie of its own.
     Struct(Arc<StructSerie>),
     /// A column of union rows, one child column per member.
@@ -665,11 +665,11 @@ macro_rules! column {
             Serie::BloombergCode($column) => $answer,
             Serie::FIGICode($column) => $answer,
             Serie::Uuid($column) => $answer,
-            Serie::List($column) => $answer,
-            Serie::ListView($column) => $answer,
-            Serie::FixedSizeList($column) => $answer,
-            Serie::LargeList($column) => $answer,
-            Serie::LargeListView($column) => $answer,
+            Serie::Serie($column) => $answer,
+            Serie::SerieView($column) => $answer,
+            Serie::FixedSizeSerie($column) => $answer,
+            Serie::LargeSerie($column) => $answer,
+            Serie::LargeSerieView($column) => $answer,
             Serie::Struct($column) => $answer,
             Serie::Union($column) => $answer,
             Serie::Dictionary($column) => $answer,
@@ -936,23 +936,23 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::List(held) => {
+            Serie::Serie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::ListView(held) => {
+            Serie::SerieView(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::FixedSizeList(held) => {
+            Serie::FixedSizeSerie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::LargeList(held) => {
+            Serie::LargeSerie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::LargeListView(held) => {
+            Serie::LargeSerieView(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1426,101 +1426,101 @@ impl Leaf for FixedBytesSerie {
     }
 }
 
-impl Leaf for ListSerie {
+impl Leaf for SerieSerie {
     fn root(self) -> Serie {
-        Serie::List(Arc::new(self))
+        Serie::Serie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::List(held) => Some(held.as_ref()),
+            Serie::Serie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::List(held) => Some(Arc::make_mut(held)),
+            Serie::Serie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for ListViewSerie {
+impl Leaf for SerieViewSerie {
     fn root(self) -> Serie {
-        Serie::ListView(Arc::new(self))
+        Serie::SerieView(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::ListView(held) => Some(held.as_ref()),
+            Serie::SerieView(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::ListView(held) => Some(Arc::make_mut(held)),
+            Serie::SerieView(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for FixedSizeListSerie {
+impl Leaf for FixedSizeSerieSerie {
     fn root(self) -> Serie {
-        Serie::FixedSizeList(Arc::new(self))
+        Serie::FixedSizeSerie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::FixedSizeList(held) => Some(held.as_ref()),
+            Serie::FixedSizeSerie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::FixedSizeList(held) => Some(Arc::make_mut(held)),
+            Serie::FixedSizeSerie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for LargeListSerie {
+impl Leaf for LargeSerieSerie {
     fn root(self) -> Serie {
-        Serie::LargeList(Arc::new(self))
+        Serie::LargeSerie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::LargeList(held) => Some(held.as_ref()),
+            Serie::LargeSerie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::LargeList(held) => Some(Arc::make_mut(held)),
+            Serie::LargeSerie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for LargeListViewSerie {
+impl Leaf for LargeSerieViewSerie {
     fn root(self) -> Serie {
-        Serie::LargeListView(Arc::new(self))
+        Serie::LargeSerieView(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::LargeListView(held) => Some(held.as_ref()),
+            Serie::LargeSerieView(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::LargeListView(held) => Some(Arc::make_mut(held)),
+            Serie::LargeSerieView(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2400,7 +2400,7 @@ impl Serie {
 
     /// Return the datatype this serie materializes into.
     ///
-    /// A column carries its field, so this is a read: a list of the item
+    /// A column carries its field, so this is a read: a serie of the item
     /// field, named `item` exactly as a held array spells it, with the
     /// field's declared nullability. A run has its item agreed back out of
     /// its rows, and an empty run names a nullable null item.
@@ -2411,8 +2411,8 @@ impl Serie {
     /// datatype.
     pub fn dtype(&self) -> Result<DataType> {
         match self.field() {
-            Some(field) => Ok(DataType::list(field.clone().with_name("item"))),
-            None => Scalar::List(self.clone()).dtype(),
+            Some(field) => Ok(DataType::serie(field.clone().with_name("item"))),
+            None => Scalar::Serie(self.clone()).dtype(),
         }
     }
 
@@ -2580,11 +2580,11 @@ impl Serie {
     /// mapping column's entries, an encoding's values; `None` elsewhere.
     pub fn items(&self) -> Option<&Self> {
         match self {
-            Self::List(column) => Some(column.items()),
-            Self::ListView(column) => Some(column.items()),
-            Self::FixedSizeList(column) => Some(column.items()),
-            Self::LargeList(column) => Some(column.items()),
-            Self::LargeListView(column) => Some(column.items()),
+            Self::Serie(column) => Some(column.items()),
+            Self::SerieView(column) => Some(column.items()),
+            Self::FixedSizeSerie(column) => Some(column.items()),
+            Self::LargeSerie(column) => Some(column.items()),
+            Self::LargeSerieView(column) => Some(column.items()),
             Self::Map(column) | Self::SortedMap(column) => Some(column.entries()),
             Self::Dictionary(column) => Some(column.values()),
             Self::RunEndEncoded(column) => Some(column.values()),
@@ -2624,16 +2624,16 @@ impl Serie {
                 let entries = column.entries();
                 (entries.field()?.name() == name).then_some(entries)?
             }
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_) => {
+            Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_) => {
                 let items = self.items()?;
                 if items.field()?.name() == name {
                     items
                 } else {
-                    // Reading sees through a list item, the way the schema
+                    // Reading sees through a serie item, the way the schema
                     // walk does.
                     return items.walk(segments);
                 }
@@ -2920,13 +2920,15 @@ impl Serie {
             }
             (Self::FIGICode(mine), Self::FIGICode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Uuid(mine), Self::Uuid(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::List(mine), Self::List(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::ListView(mine), Self::ListView(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::FixedSizeList(mine), Self::FixedSizeList(theirs)) => {
+            (Self::Serie(mine), Self::Serie(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::SerieView(mine), Self::SerieView(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::FixedSizeSerie(mine), Self::FixedSizeSerie(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
-            (Self::LargeList(mine), Self::LargeList(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::LargeListView(mine), Self::LargeListView(theirs)) => {
+            (Self::LargeSerie(mine), Self::LargeSerie(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::LargeSerieView(mine), Self::LargeSerieView(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::Struct(mine), Self::Struct(theirs)) => Arc::make_mut(mine).append(theirs),
@@ -3322,73 +3324,73 @@ impl Serie {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`ListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`SerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_list(&self) -> Option<&ListSerie> {
+    pub fn as_serie(&self) -> Option<&SerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`ListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`SerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_list_mut(&mut self) -> Option<&mut ListSerie> {
+    pub fn get_serie_mut(&mut self) -> Option<&mut SerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`ListViewSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`SerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_list_view(&self) -> Option<&ListViewSerie> {
+    pub fn as_serie_view(&self) -> Option<&SerieViewSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`ListViewSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`SerieViewSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_list_view_mut(&mut self) -> Option<&mut ListViewSerie> {
+    pub fn get_serie_view_mut(&mut self) -> Option<&mut SerieViewSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`FixedSizeListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`FixedSizeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_fixed_size_list(&self) -> Option<&FixedSizeListSerie> {
+    pub fn as_fixed_size_serie(&self) -> Option<&FixedSizeSerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`FixedSizeListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`FixedSizeSerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_fixed_size_list_mut(&mut self) -> Option<&mut FixedSizeListSerie> {
+    pub fn get_fixed_size_serie_mut(&mut self) -> Option<&mut FixedSizeSerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`LargeListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`LargeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_large_list(&self) -> Option<&LargeListSerie> {
+    pub fn as_large_serie(&self) -> Option<&LargeSerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`LargeListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`LargeSerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_large_list_mut(&mut self) -> Option<&mut LargeListSerie> {
+    pub fn get_large_serie_mut(&mut self) -> Option<&mut LargeSerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`LargeListViewSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`LargeSerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_large_list_view(&self) -> Option<&LargeListViewSerie> {
+    pub fn as_large_serie_view(&self) -> Option<&LargeSerieViewSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`LargeListViewSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`LargeSerieViewSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_large_list_view_mut(&mut self) -> Option<&mut LargeListViewSerie> {
+    pub fn get_large_serie_view_mut(&mut self) -> Option<&mut LargeSerieViewSerie> {
         Leaf::narrow_mut(self)
     }
 
@@ -3900,8 +3902,8 @@ impl Serialize for Serie {
 }
 
 impl<'de> Deserialize<'de> for Serie {
-    /// The column wire alone: a run is never spelled through this type's own
-    /// serde, so a list here is refused naming the wire.
+    /// The column wire alone: a run is never read through this type's own
+    /// serde, so an array here is refused naming the wire.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 
@@ -3922,7 +3924,7 @@ impl<'de> Deserialize<'de> for Serie {
 
             fn visit_seq<A: SeqAccess<'de>>(self, _: A) -> std::result::Result<Serie, A::Error> {
                 Err(A::Error::custom(
-                    "a `serie` is a column, its field beside its rows: a list of values is a run, spelled under `sequence`",
+                    "a `serie` column is its field beside its rows: bare rows are a run, read through a scalar's `serie` tag",
                 ))
             }
         }
@@ -3937,16 +3939,16 @@ impl Value for Serie {
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::List(self)
+        Scalar::Serie(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::List(value)
-            | Scalar::ListView(value)
-            | Scalar::FixedSizeList(value)
-            | Scalar::LargeList(value)
-            | Scalar::LargeListView(value) => Some(value),
+            Scalar::Serie(value)
+            | Scalar::SerieView(value)
+            | Scalar::FixedSizeSerie(value)
+            | Scalar::LargeSerie(value)
+            | Scalar::LargeSerieView(value) => Some(value),
             _ => None,
         }
     }
@@ -3966,11 +3968,11 @@ impl NestedValue for Serie {
 }
 
 impl From<Serie> for Scalar {
-    /// A serie is the value a `list` holds: a run, or a column of the item
+    /// A serie is the value a `serie` holds: a run, or a column of the item
     /// its field names. The other four layouts are declared by their own
     /// variant, never inferred from the rows.
     fn from(value: Serie) -> Self {
-        Self::List(value)
+        Self::Serie(value)
     }
 }
 

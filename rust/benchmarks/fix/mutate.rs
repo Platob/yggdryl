@@ -348,7 +348,7 @@ fn coded_catalog() -> FixRegistry {
         .unwrap()
         .required_field("Party");
     registry.insert(component.clone()).unwrap();
-    let mut group = DataType::list(component).nullable_field("Parties");
+    let mut group = DataType::serie(component).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group.as_fix_mut().set_component("Party").unwrap();
     registry.insert(group).unwrap();

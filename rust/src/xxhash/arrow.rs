@@ -455,7 +455,7 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 /// Refuse a digest declaration no fill plan can reach.
 ///
 /// A plan descends into Struct children, because those are the ones that are
-/// columns of their own. Under a list, map, union, dictionary, or run-end
+/// columns of their own. Under a serie, map, union, dictionary, or run-end
 /// layout a holder is written by nobody and left at its canonical default,
 /// which a containing holder would then read as though it were an answer. The
 /// declaration is refused where it is written rather than silently ignored,

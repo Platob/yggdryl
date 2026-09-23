@@ -6,7 +6,7 @@
 //! stray `String` in an accessor hides easily inside a map lookup. So this
 //! counts them, and pins the three places a protocol read does allocate - a
 //! key handed back to the caller, a lookup key too long for `SmolStr`'s inline
-//! buffer, and a value that is a list.
+//! buffer, and a value that is a serie.
 //!
 //! It also pins the no-op write. A rewrite of a value a field already carries
 //! must cost the same however much metadata surrounds it, because it stops
@@ -495,7 +495,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
-    let mut parties = DataType::list(item).nullable_field("Parties");
+    let mut parties = DataType::serie(item).nullable_field("Parties");
     parties
         .as_fix_mut()
         .set_counter(453)
@@ -1647,7 +1647,7 @@ fn cloning_a_column_allocates_nothing() {
             }),
         )
         .expect("a record column");
-        let held = Scalar::List(counts.clone());
+        let held = Scalar::Serie(counts.clone());
 
         free(&format!("cloning {rows} int64 rows"), || {
             black_box(black_box(&counts).clone());
@@ -2713,7 +2713,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
-    let mut parties = DataType::list(item).nullable_field("Parties");
+    let mut parties = DataType::serie(item).nullable_field("Parties");
     parties
         .as_fix_mut()
         .set_counter(453)

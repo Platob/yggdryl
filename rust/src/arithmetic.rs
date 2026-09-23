@@ -373,12 +373,12 @@ fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<
             Some(Scalar::from(std::sync::Arc::<[u8]>::from(joined)))
         }
         (
-            Scalar::List(left),
-            Scalar::List(right)
-            | Scalar::ListView(right)
-            | Scalar::FixedSizeList(right)
-            | Scalar::LargeList(right)
-            | Scalar::LargeListView(right),
+            Scalar::Serie(left),
+            Scalar::Serie(right)
+            | Scalar::SerieView(right)
+            | Scalar::FixedSizeSerie(right)
+            | Scalar::LargeSerie(right)
+            | Scalar::LargeSerieView(right),
         ) => Some(Scalar::from_sequence(
             left.rows().iter().chain(right.rows().iter()).cloned(),
         )),
